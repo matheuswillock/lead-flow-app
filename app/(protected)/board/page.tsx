@@ -9,18 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollText, Filter, Plus } from "lucide-react";
 import { div, div as MotionDiv } from "framer-motion/client";
 
-// =============================
-// Kanban de Leads – Mockup UI
-// =============================
-// Requisitos atendidos:
-// - Colunas especificadas pelo usuário
-// - Scroll horizontal quando não couber na tela
-// - Cards com Nome do Lead e Data de entrada
-// - Contador por coluna, busca, filtros por período e responsável
-// - DnD simples (HTML5)
-// - shadcn/ui + Tailwind; dark-mode friendly
-// - Respeita o theme via CSS vars (usa tokens shadcn: background, card, border, etc.)
-
 // Tipos
 
 type Lead = {
@@ -163,127 +151,122 @@ export default function KanbanLeadsMock() {
   };
 
   return (
-      <div className="flex h-[calc(100vh-2rem)] w-full flex-col gap-3 p-4">
-        {/* Header */}
-        <div className="flex flex-wrap items-center gap-2">
-          <ScrollText className="size-5" />
-          <h1 className="text-xl font-semibold">Kanban de Leads</h1>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Filter className="pointer-events-none absolute left-2 top-2.5 size-4 opacity-70" />
-              <Input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar por nome ou data (dd/mm/aaaa)"
-                className="pl-8 w-64"
-              />
-            </div>
-
-            {/* Filtro por período */}
-            <div className="flex items-center gap-2">
-              <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="w-40" />
-              <span className="text-sm text-muted-foreground">até</span>
-              <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="w-40" />
-            </div>
-
-            {/* Filtro por responsável */}
-            <Select value={responsavel} onValueChange={setResponsavel}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Responsável" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os responsáveis</SelectItem>
-                {responsaveis.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {r}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <div className="flex h-[calc(100vh-2rem)] w-full flex-col gap-3 p-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-2">
+        <ScrollText className="size-5" />
+        <h1 className="text-xl font-semibold">Kanban de Leads</h1>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Filter className="pointer-events-none absolute left-2 top-2.5 size-4 opacity-70" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar por nome ou data (dd/mm/aaaa)"
+              className="pl-8 w-64"
+            />
           </div>
-        </div>
 
-        {/* Área de colunas com scroll horizontal */}
-        <div className="relative">
-          <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none" />
-          <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
-
-          <div
-            className="grid auto-cols-[minmax(18rem,20rem)] grid-flow-col gap-4 overflow-x-auto pb-2 pr-2"
-            style={{ scrollSnapType: "x proximity" }}
-          >
-            {COLUMNS.map(({ key, title }) => {
-              const items = filtered[key];
-              return (
-                <MotionDiv
-                  key={key}
-                  className="col-span-1 flex min-h-[70vh] flex-col rounded-2xl border bg-card p-3 shadow-sm"
-                  drag={false}
-                  style={{ scrollSnapAlign: "start" }}
-                  onDrop={(e) => onDrop(e, key)}
-                  onDragOver={onDragOver}
-                >
-                  {/* Cabeçalho da coluna */}
-                  <div className="mb-2 flex items-center justify-between bg-primary text-primary-foreground px-2 py-1 rounded-md h-12">
-                    <h2 className="text-base font-semibold">{title}</h2>
-                    <Badge variant="secondary" className="rounded-full">
-                      {items.length}
-                    </Badge>
-                  </div>
-
-                  {/* Zona de cards */}
-                  <div className="flex flex-1 flex-col gap-2">
-                    {items.length === 0 && (
-                      <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
-                        Solte aqui
-                      </div>
-                    )}
-
-                    {items.map((lead) => (
-                      <Card
-                        key={lead.id}
-                        draggable
-                        onDragStart={(e) => onDragStart(e, lead.id, key)}
-                        className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent"
-                      >
-                        <CardHeader className="py-3">
-                          <CardTitle className="text-base font-semibold leading-tight">
-                            {lead.name}
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-0 pb-3">
-                          <div className="text-xs text-accent-foreground">
-                            Entrada: {formatDate(lead.enteredAt)}
-                          </div>
-                          <div className="mt-1 text-xs">
-                            <span className="text-accent-foreground">Resp.: </span>
-                            <strong>
-                              {lead.responsible}
-                            </strong>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </MotionDiv>
-              );
-            })}
+          {/* Filtro por período */}
+          <div className="flex items-center gap-2">
+            <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="w-40" />
+            <span className="text-sm text-muted-foreground">até</span>
+            <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="w-40" />
           </div>
-        </div>
 
-        {/* Rodapé simples */}
-        <div className="flex items-center justify-end text-xs text-muted-foreground">
-          Dica: arraste os cards entre as colunas. Use a busca, período e responsável para filtrar.
+          {/* Filtro por responsável */}
+          <Select value={responsavel} onValueChange={setResponsavel}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Responsável" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os responsáveis</SelectItem>
+              {responsaveis.map((r) => (
+                <SelectItem key={r} value={r}>
+                  {r}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-
-        <Button size="lg" className="w-96 h-14 self-center justify-center text-2xl rounded-4xl mt-12">
-          <Plus className="mr-1 size-4" /> Adicionar novo lead
-        </Button>
       </div>
 
+      {/* Área de colunas com scroll horizontal */}
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none" />
+        <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
 
+        <div
+          className="grid auto-cols-[minmax(18rem,20rem)] grid-flow-col gap-4 overflow-x-auto pb-2 pr-2"
+          style={{ scrollSnapType: "x proximity" }}
+        >
+          {COLUMNS.map(({ key, title }) => {
+            const items = filtered[key];
+            return (
+              <MotionDiv
+                key={key}
+                className="col-span-1 flex min-h-[70vh] flex-col rounded-2xl border bg-card p-3 shadow-sm"
+                drag={false}
+                style={{ scrollSnapAlign: "start" }}
+                onDrop={(e) => onDrop(e, key)}
+                onDragOver={onDragOver}
+              >
+                {/* Cabeçalho da coluna */}
+                <div className="mb-2 flex items-center justify-between bg-primary text-primary-foreground px-2 py-1 rounded-md h-12">
+                  <h2 className="text-base font-semibold">{title}</h2>
+                  <Badge variant="secondary" className="rounded-full">
+                    {items.length}
+                  </Badge>
+                </div>
 
+                {/* Zona de cards */}
+                <div className="flex flex-1 flex-col gap-2">
+                  {items.length === 0 && (
+                    <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
+                      Solte aqui
+                    </div>
+                  )}
 
+                  {items.map((lead) => (
+                    <Card
+                      key={lead.id}
+                      draggable
+                      onDragStart={(e) => onDragStart(e, lead.id, key)}
+                      className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent"
+                    >
+                      <CardHeader className="py-3">
+                        <CardTitle className="text-base font-semibold leading-tight">
+                          {lead.name}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-0 pb-3">
+                        <div className="text-xs text-accent-foreground">
+                          Entrada: {formatDate(lead.enteredAt)}
+                        </div>
+                        <div className="mt-1 text-xs">
+                          <span className="text-accent-foreground">Resp.: </span>
+                          <strong>
+                            {lead.responsible}
+                          </strong>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </MotionDiv>
+            );
+          })}
+        </div>
+      </div>
 
+      {/* Rodapé simples */}
+      <div className="flex items-center justify-end text-xs text-muted-foreground">
+        Dica: arraste os cards entre as colunas. Use a busca, período e responsável para filtrar.
+      </div>
+
+      <Button size="lg" className="w-96 h-14 self-center justify-center text-2xl rounded-4xl mt-12">
+        <Plus className="mr-1 size-4" /> Adicionar novo lead
+      </Button>
+    </div>
   );
 }

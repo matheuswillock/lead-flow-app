@@ -8,7 +8,16 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "postinstall": "prisma generate",
+    "prisma:seed": "npx prisma db seed",
+    "prisma:migrate": "npx prisma migrate dev --name",
+    "prisma:studio": "npx prisma studio",
+    "prisma:generate": "npx prisma generate",
+    "prisma:db:pull": "npx prisma db pull",
+    "prisma:db:push": "npx prisma db push",
+    "prisma:db:reset": "npx prisma migrate reset --force",
+    "prisma:db:deploy": "npx prisma migrate deploy"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
