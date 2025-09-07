@@ -1,17 +1,12 @@
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
+import dynamic from "next/dynamic"
+
+const LandingSection = dynamic(() => import("@/components/landing/LandingSection"), {
+  ssr: false,
+  loading: () => (
+    <div className="mx-auto max-w-2xl p-10 text-center text-muted-foreground">Carregando…</div>
+  ),
+})
 
 export default function Home() {
-  return (
-    <main className="min-h-screen grid place-items-center p-6">
-      <div className="text-center space-y-4">
-        <h1 className="text-3xl font-semibold">Lead Flow</h1>
-        <p className="text-muted-foreground">Organize seus leads antes do CRM.</p>
-        <div className="flex items-center justify-center gap-3">
-          <Button asChild><Link href="/sign-in">Entrar</Link></Button>
-          <Button variant="secondary" asChild><Link href="/sign-up">Cadastrar</Link></Button>
-        </div>
-      </div>
-    </main>
-  )
+  return <LandingSection />
 }
