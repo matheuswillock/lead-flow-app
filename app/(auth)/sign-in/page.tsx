@@ -1,21 +1,35 @@
 "use client"
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
 import { LoginForm } from "@/components/loginForm"
+import { signin } from "./actions"
+import { useLoginForm } from "@/hooks/useForms"
+import { loginFormData } from "@/lib/types/formTypes"
 
 export default function SignInPage() {
+  const form = useLoginForm();
   const supabase = createSupabaseBrowser()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) alert(error.message)
-    else window.location.href = "/dashboard"
+  async function onSubmit(data: loginFormData) {
+    const formData = new FormData();
+    formData.append("email", data.email);
+    formData.append("password", data.password);
+
+    const result = await signin(formData);
+    if (result.success) {
+      window.location.href = "/dashboard";
+    } else {
+      // TODO: Mapear erros para string simples
+      console.log(result.errors);
+      const fe: Record<string, string> = {};
+      Object.entries(result.errors || {}).forEach(([k, v]) => {
+        fe[k] = Array.isArray(v) ? v.join(", ") : String(v);
+      });
+      setErrors(fe);
+    }
   }
 
   async function signInWithGoogle() {
@@ -25,7 +39,12 @@ export default function SignInPage() {
   return (
     <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-6 md:p-10">
       <div className="w-full max-w-sm ">
-        <LoginForm onSubmitEvent={onSubmit} />
+        <LoginForm 
+          form={form}
+          errors={errors}
+          setErrors={setErrors}
+          onSubmit={onSubmit} 
+        />
       </div>
     </main>
   )

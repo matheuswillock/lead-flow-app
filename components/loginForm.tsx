@@ -2,29 +2,32 @@ import { GalleryVerticalEnd } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "./ui/form"
-import { useLoginForm } from "@/hooks/useForms"
 import Link from "next/link"
-import { useState } from "react"
 import { Separator } from "@/components/ui/separator"
+import { loginFormData } from "@/lib/types/formTypes"
+import type { UseFormReturn } from "react-hook-form"
 
-interface LoginFormProps extends React.ComponentPropsWithoutRef<"div"> {
-  onSubmitEvent: (data: any) => void; 
+interface LoginFormProps {
+  form: UseFormReturn<loginFormData>;
+  errors: Record<string, string>;
+  setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  onSubmit: (data: loginFormData) => void | Promise<void>;
 }
 
 export function LoginForm({
   className,
-  onSubmitEvent,
+  form,
+  errors,
+  setErrors,
+  onSubmit,
   ...divProps
-}: React.ComponentProps<"form"> & LoginFormProps) {
-  const form = useLoginForm();
-  const [errors, setErrors] = useState<Record<string, string>>({});
+}: Omit<React.ComponentProps<"form">, "onSubmit"> & LoginFormProps) {
 
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(onSubmitEvent)}
+        onSubmit={form.handleSubmit(onSubmit)}
         className={cn("flex flex-col gap-6", className)} 
         {...divProps}
       >
@@ -106,9 +109,10 @@ export function LoginForm({
       </form>
     </Form>
 
-      // <div className="text-balance text-center text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:text-primary  ">
-      //   By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
-      //   and <a href="#">Privacy Policy</a>.
-      // </div>
+    // TODO: Criar os links de Terms of Service e Privacy Policy
+    // <div className="text-balance text-center text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:text-primary  ">
+    //   By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
+    //   and <a href="#">Privacy Policy</a>.
+    // </div>
   )
 }
