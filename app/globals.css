@@ -1,8 +1,9 @@
 @import "tailwindcss";
-
 @plugin "tailwindcss-animate";
-
 @custom-variant dark (&:is(.dark *));
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap');
 
 /* Map Tailwind design tokens to project CSS variables */
 @theme inline {
@@ -101,6 +102,14 @@
   --sidebar-ring: oklch(0.646 0.222 41.116);
 }
 
-/* Basic base styles so utilities apply correctly */
+/* Basic base styles */
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; background: var(--background); color: var(--foreground); }
+body { 
+  margin: 0; 
+  background: var(--background); 
+  color: var(--foreground); 
+  font-family: 'Inter', sans-serif; 
+}
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Poppins', sans-serif;
+}
