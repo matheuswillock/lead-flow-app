@@ -1,4 +1,5 @@
-import { createSupabaseServer } from "@/lib/supabase"
+import { createSupabaseServer } from "@/lib/supabase/server"
+
 
 export default async function Dashboard() {
   const supabase = await createSupabaseServer()
