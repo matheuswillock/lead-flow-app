@@ -23,23 +23,6 @@ export default function SignInPage() {
   }
 
   return (
-    // <main className="min-h-screen grid place-items-center p-6">
-    //   <form onSubmit={onSubmit} className="w-full max-w-sm space-y-4">
-    //     <div>
-    //       <Label htmlFor="email">Email</Label>
-    //       <Input id="email" value={email} onChange={(e)=>setEmail(e.target.value)} required />
-    //     </div>
-    //     <div>
-    //       <Label htmlFor="password">Senha</Label>
-    //       <Input id="password" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required />
-    //     </div>
-    //     <Button type="submit" className="w-full">Entrar</Button>
-    //     <Button type="button" variant="secondary" className="w-full" onClick={signInWithGoogle}>
-    //       Entrar com Google
-    //     </Button>
-    //   </form>
-    // </main>
-
     <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-6 md:p-10">
       <div className="w-full max-w-sm ">
         <LoginForm onSubmitEvent={onSubmit} />

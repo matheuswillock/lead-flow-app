@@ -1,18 +1,15 @@
 "use client"
 
-// app/page.tsx  (ou src/app/page.tsx)
-// Requisitos: Tailwind configurado, Framer Motion, lucide-react, Next Image (opcional)
-
 import { div as MotionDiv, h1 as MotionH1, p as MotionP } from "framer-motion/client";
 import { ArrowRight, LogIn } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 
 export default function LandingPage() {
   return (
     <main className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b" style={{ borderColor: "var(--border)" }}>
         <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">
-          {/*TODO: Add Brand */}
           <a href="/" className="flex items-center gap-2 font-bold tracking-tight">
             <span
               className="inline-block h-6 w-6 rounded-md"
@@ -22,19 +19,17 @@ export default function LandingPage() {
             <span>Lead Flow</span>
           </a>
 
-          <a
-            href="/login"
+          <Link
+            href="/sign-in"
             className="inline-flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold bg-card text-foreground/90 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
             style={{ borderColor: "var(--border)" }}
           >
             <LogIn className="h-4 w-4" /> Entrar
-          </a>
+          </Link>
         </div>
       </header>
 
-      {/* Single Section: Image + Copy + CTA */}
       <section className="relative overflow-hidden">
-        {/* Soft background accents (usando seus tokens) */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
@@ -46,7 +41,6 @@ export default function LandingPage() {
 
         <div className="relative z-10 mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 py-14 md:py-20">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 items-center">
-
             <MotionDiv
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -85,7 +79,7 @@ export default function LandingPage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.05 }}
-                className="mt-5 text-2xl sm:text-4xl md:text-5xl font-extrabold leading-12 tracking-tight"
+                className="mt-5 text-2xl sm:text-4xl md:text-5xl font-extrabold leading-14 tracking-tight"
                 style={{
                   background:
                     "linear-gradient(180deg, var(--foreground), color-mix(in oklab, var(--foreground) 80%, transparent))",
@@ -101,20 +95,19 @@ export default function LandingPage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.1 }}
-                className="mt-5 max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground leading-6"
+                className="mt-3 max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground leading-6"
               >
                 Uma plataforma elegante e objetiva para automatizar seu fluxo e encantar clientes.
                 Simples de começar, poderosa para escalar.
               </MotionP>
 
-              {/* Primary CTA under the copy */}
               <MotionDiv
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.15 }}
                 className="mt-8 flex justify-end"
               >
-                <a
+                <Link
                   href="/subscribe"
                   className="group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
                   style={{
@@ -126,11 +119,9 @@ export default function LandingPage() {
                 >
                   Assinar
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />
-                </a>
+                </Link>
               </MotionDiv>
             </div>
-
-
           </div>
         </div>
       </section>
