@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
-import { resend } from "@/lib/email"
+import { assertResend } from "@/lib/email"
 
 export async function POST() {
   try {
-    const data = await resend.emails.send({
+  const resend = assertResend()
+  const data = await resend.emails.send({
       from: "no-reply@your-domain.com",
       to: ["teste@exemplo.com"],
       subject: "Bem-vindo!",

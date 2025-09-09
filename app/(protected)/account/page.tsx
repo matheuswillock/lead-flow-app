@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import { Upload, Eye, EyeOff, Camera } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -73,7 +72,6 @@ export default function MinhaContaPage() {
               <div className="flex items-center gap-6">
                 <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full border border-border">
                   {avatarPreview ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={avatarPreview}
                       alt="Pré-visualização do avatar"

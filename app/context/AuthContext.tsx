@@ -50,14 +50,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user) {
       const fetchUserProfile = async () => {
-        const { data: profile } = await supabase
-          .from("users")
-          .select("teachers!userId(fullName)")
-          .eq("supabaseId", user.id)
-          .single();
+  // const { data: profile } = await supabase
+  //   .from("users")
+  //   .select("teachers!userId(fullName)")
+  //   .eq("supabaseId", user.id)
+  //   .single();
 
-        const name = profile?.teachers?.[0]?.fullName || user.email;
-        const avatar = user.user_metadata.avatar_url ?? null;
+  /* const name = profile?.teachers?.[0]?.fullName || user.email;
+     const avatar = user.user_metadata.avatar_url ?? null; */
 
         // setUserProfile({
         //   name,

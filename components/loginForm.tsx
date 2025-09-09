@@ -11,7 +11,6 @@ import type { UseFormReturn } from "react-hook-form"
 interface LoginFormProps {
   form: UseFormReturn<loginFormData>;
   errors: Record<string, string>;
-  setErrors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onSubmit: (data: loginFormData) => void | Promise<void>;
 }
 
@@ -19,7 +18,6 @@ export function LoginForm({
   className,
   form,
   errors,
-  setErrors,
   onSubmit,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & LoginFormProps) {

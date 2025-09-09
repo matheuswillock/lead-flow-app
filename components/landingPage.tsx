@@ -2,7 +2,6 @@
 
 import { div as MotionDiv, h1 as MotionH1, p as MotionP } from "framer-motion/client";
 import { ArrowRight, LogIn } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 
 export default function LandingPage() {
@@ -10,14 +9,14 @@ export default function LandingPage() {
     <main className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b" style={{ borderColor: "var(--border)" }}>
         <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2 font-bold tracking-tight">
+          <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
             <span
               className="inline-block h-6 w-6 rounded-md"
               style={{ background: "var(--primary)" }}
               aria-hidden
             />
             <span>Lead Flow</span>
-          </a>
+          </Link>
 
           <Link
             href="/sign-in"

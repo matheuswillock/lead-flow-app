@@ -10,18 +10,18 @@ export default function LandingSection() {
     <main className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-20 border-b" style={{ borderColor: "var(--border)" }}>
         <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2 font-bold tracking-tight">
+          <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
             <span className="inline-block h-6 w-6 rounded-md" style={{ background: "var(--primary)" }} aria-hidden />
             <span>Seu Produto</span>
-          </a>
+          </Link>
 
-          <a
+          <Link
             href="/login"
             className="inline-flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold bg-card text-foreground/90 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
             style={{ borderColor: "var(--border)" }}
           >
             <LogIn className="h-4 w-4" /> Entrar
-          </a>
+          </Link>
         </div>
       </header>
 
@@ -81,7 +81,7 @@ export default function LandingSection() {
                 transition={{ duration: 0.6, delay: 0.15 }}
                 className="mt-8"
               >
-                <a
+                <Link
                   href="/subscribe"
                   className="group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
                   style={{
@@ -93,7 +93,7 @@ export default function LandingSection() {
                 >
                   Contratar / Assinar
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />
-                </a>
+                </Link>
                 <p className="mt-3 text-xs sm:text-sm text-muted-foreground">
                   14 dias grátis • sem cartão • cancele quando quiser
                 </p>

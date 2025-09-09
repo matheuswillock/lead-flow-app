@@ -2,12 +2,18 @@
   "name": "lead-flow-app",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20 <21"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint",
+  "lint": "eslint .",
+  "eslint:fix": "eslint . --fix",
+    "lint:check": "prettier --check .",
+    "lint:fix": "prettier --write .",
     "format": "prettier --write .",
     "postinstall": "prisma generate",
     "prisma:seed": "npx prisma db seed",
@@ -49,16 +55,19 @@
     "zod": "^4.1.5"
   },
   "devDependencies": {
+    "@next/eslint-plugin-next": "^15.5.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^24.3.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.21",
+    "eslint": "^9.35.0",
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",
     "prisma": "^6.15.0",
     "prisma-erd-generator": "^2.0.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "typescript-eslint": "^8.43.0"
   }
 }
