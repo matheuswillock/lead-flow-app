@@ -1,11 +1,153 @@
+// Prisma schema for Lead Flow (Supabase Postgres)
+// - Mirrors the data model discussed (manager/operator, leads, activities)
+// - Integrates with Supabase Auth via auth.users (User model)
+// - Uses @updatedAt for updated_at columns
+// - Adds sensible indexes and referential actions
+// NOTE: RLS policies & triggers are not expressible in Prisma; create them via SQL migrations if needed.
+
+// -----------------------------
+// GENERATOR & DATASOURCE
+// -----------------------------
 
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["driverAdapters", "queryCompiler"]
+  runtime = "bun"
+}
+
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "./erd/diagram.md"
+  format   = "mermaid"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
-        
+
+// -----------------------------
+// ENUMS
+// -----------------------------
+
+enum UserRole {
+  manager
+  operator
+}
+
+enum LeadStatus {
+  new_opportunity
+  scheduled
+  no_show
+  pricingRequest
+  offerNegotiation
+  pending_documents
+  offerSubmission
+  dps_agreement
+  invoicePayment
+  disqualified
+  opportunityLost
+  operator_denied
+  contract_finalized
+}
+
+enum ActivityType {
+  note
+  call
+  whatsapp
+  email
+  status_change
+}
+
+// -----------------------------
+// PROFILES (public.profiles)
+// - Primary key is also a FK to auth.users.id (1:1)
+// - Self-relation: operator -> manager
+// -----------------------------
+
+model Profile {
+  id         String    @unique @id @db.Uuid
+  supabaseId  String?   @unique @db.Uuid
+  fullName   String?   @db.Text
+  phone      String?   @db.Text
+  role       UserRole  @default(manager)
+  managerId   String?   @db.Uuid
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  manager     Profile?  @relation("ManagerOperators", fields: [managerId], references: [id], onDelete: Restrict)
+  operators Profile[] @relation("ManagerOperators")
+
+  // Lead relations
+  leadsAsManager   Lead[]      @relation("LeadManager")
+  leadsAsAssignee Lead[]      @relation("LeadAssignee")
+  activities      LeadActivity[]
+
+  @@index([role])
+  @@index([managerId])
+  @@map("profiles")
+}
+
+// -----------------------------
+// LEADS (public.leads)
+// - tenant fence by managerId (uuid of manager profile)
+// - assignedTo must be operator (validate at app layer or with DB trigger via SQL)
+// -----------------------------
+
+model Lead {
+  id         String    @unique @id @db.Uuid
+  managerId      String     @db.Uuid
+  assignedTo    String?    @db.Uuid
+  status       LeadStatus  @default(new_opportunity)
+  name          String     @db.Text
+  email         String?    @db.Text
+  phone         String?    @db.Text
+  cnpj          String?    @db.Text
+  age           Int?
+  hasHealthPlan Boolean?   @default(false)
+  currentValue  Decimal?   @db.Decimal(12, 2)
+  referenceHospital String? @db.Text
+  currentTreatment String?  @db.Text
+  meetingDate   DateTime?  @db.Timestamptz(6)
+  notes         String?    @db.Text
+  createdAt     DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime   @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  manager   Profile @relation("LeadManager", fields: [managerId], references: [id], onDelete: Cascade)
+  assignee Profile? @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  activities LeadActivity[]
+
+  // Unique per tenant
+  @@unique([managerId, email])
+  @@unique([managerId, phone])
+  @@unique([managerId, cnpj])
+
+  @@index([managerId])
+  @@index([assignedTo])
+  @@index([meetingDate])
+  @@map("leads")
+}
+
+// -----------------------------
+// LEAD ACTIVITIES (public.lead_activities)
+// -----------------------------
+
+model LeadActivity {
+  id         BigInt       @id @default(autoincrement()) @db.BigInt
+  leadId     String       @db.Uuid
+  type       ActivityType
+  body       String?      @db.Text
+  payload    Json?
+  createdBy  String?      @db.Uuid
+  createdAt  DateTime     @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  lead   Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author Profile? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([leadId])
+  @@index([createdBy])
+  @@map("lead_activities")
+}

@@ -19,63 +19,63 @@ type Lead = {
 };
 
 type ColumnKey =
-  | "nova_oportunidade"
-  | "agendado"
+  | "new_opportunity"
+  | "scheduled"
   | "no_show"
-  | "cotacao"
-  | "negociacao"
-  | "documentos_pendentes"
-  | "proposta"
-  | "dps_contrato"
-  | "boleto"
-  | "desqualificado"
-  | "perdido"
-  | "negado_operadora"
-  | "negocio_fechado";
+  | "pricingRequest"
+  | "offerNegotiation"
+  | "pending_documents"
+  | "offerSubmission"
+  | "dps_agreement"
+  | "invoicePayment"
+  | "disqualified"
+  | "opportunityLost"
+  | "operator_denied"
+  | "contract_finalized";
 
 // Mapa de colunas (ordem do funil)
 const COLUMNS: { key: ColumnKey; title: string }[] = [
-  { key: "nova_oportunidade", title: "Nova oportunidade" },
-  { key: "agendado", title: "Agendado" },
+  { key: "new_opportunity", title: "Nova oportunidade" },
+  { key: "scheduled", title: "Agendado" },
   { key: "no_show", title: "No Show" },
-  { key: "cotacao", title: "Cotação" },
-  { key: "negociacao", title: "Negociação" },
-  { key: "documentos_pendentes", title: "Documentos pendentes" },
-  { key: "proposta", title: "Proposta" },
-  { key: "dps_contrato", title: "DPS | Contrato" },
-  { key: "boleto", title: "Boleto" },
-  { key: "desqualificado", title: "Desqualificado" },
-  { key: "perdido", title: "Perdido" },
-  { key: "negado_operadora", title: "Negado operadora" },
-  { key: "negocio_fechado", title: "Negócio fechado" },
+  { key: "pricingRequest", title: "Cotação" },
+  { key: "offerNegotiation", title: "Negociação" },
+  { key: "pending_documents", title: "Documentos pendentes" },
+  { key: "offerSubmission", title: "Proposta" },
+  { key: "dps_agreement", title: "DPS | Contrato" },
+  { key: "invoicePayment", title: "Boleto" },
+  { key: "disqualified", title: "Desqualificado" },
+  { key: "opportunityLost", title: "Perdido" },
+  { key: "operator_denied", title: "Negado operadora" },
+  { key: "contract_finalized", title: "Negócio fechado" },
 ];
 
 // Dados de exemplo (mock)
 const seed: Record<ColumnKey, Lead[]> = {
-  nova_oportunidade: [
+  new_opportunity: [
     { id: "l1", name: "João da Silva", enteredAt: "2025-09-05", responsible: "Ana" },
     { id: "l2", name: "Maria Souza", enteredAt: "2025-09-06", responsible: "Bruno" },
   ],
-  agendado: [
+  scheduled: [
     { id: "l3", name: "Padaria do Centro", enteredAt: "2025-09-04", responsible: "Ana" },
   ],
   no_show: [
     { id: "l4", name: "Rest. Sabor & Arte", enteredAt: "2025-09-03", responsible: "Carla" },
   ],
-  cotacao: [
+  pricingRequest: [
     { id: "l5", name: "Churras House", enteredAt: "2025-09-02", responsible: "Bruno" },
   ],
-  negociacao: [],
-  documentos_pendentes: [],
-  proposta: [
+  offerNegotiation: [],
+  pending_documents: [],
+  offerSubmission: [
     { id: "l6", name: "Pizzaria da Praça", enteredAt: "2025-09-01", responsible: "Carla" },
   ],
-  dps_contrato: [],
-  boleto: [],
-  desqualificado: [],
-  perdido: [],
-  negado_operadora: [],
-  negocio_fechado: [
+  dps_agreement: [],
+  invoicePayment: [],
+  disqualified: [],
+  opportunityLost: [],
+  operator_denied: [],
+  contract_finalized: [
     { id: "l7", name: "Café Aurora", enteredAt: "2025-08-29", responsible: "Ana" },
   ],
 };
