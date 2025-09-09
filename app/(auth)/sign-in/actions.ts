@@ -19,6 +19,13 @@ export async function signin(formData: FormData) {
 
   const { email, password } = validationFields.data;
 
+  if (!supabase) {
+    return {
+      success: false,
+      errors: { apiError: 'Serviço de autenticação indisponível' },
+    }
+  }
+
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {

@@ -1,13 +1,26 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+function getSupabaseEnv() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) return null;
+  return { url, anon };
+}
+
 export async function updateSession(request: NextRequest) {
   const response = NextResponse.next()
   const isDev = process.env.NODE_ENV === "development"
 
+  const env = getSupabaseEnv();
+  if (!env) {
+    if (isDev) console.warn("[middleware] Supabase env vars ausentes; ignorando atualização de sessão.");
+    return { supabase: null, response, user: null };
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    env.url,
+    env.anon,
     {
       cookies: {
         getAll() {
@@ -15,7 +28,6 @@ export async function updateSession(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) => {
-            // Persist cookies on the response (required in Next middleware)
             response.cookies.set({ name, value, ...options })
           })
         },

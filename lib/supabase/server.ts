@@ -5,10 +5,18 @@ import { cookies } from "next/headers"
 
 export const createSupabaseServer = async () => {
   const cookieStore = await cookies()
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !anon) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[supabase] Variáveis NEXT_PUBLIC_SUPABASE_URL / ANON_KEY ausentes.')
+    }
+    return null
+  }
   
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anon,
     {
       cookies: {
         get(name: string) {
