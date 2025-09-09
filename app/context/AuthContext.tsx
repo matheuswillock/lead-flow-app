@@ -1,13 +1,8 @@
 // src/context/AuthContext.tsx
 "use client";
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
-} from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { User } from "@supabase/supabase-js";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
@@ -15,6 +10,7 @@ interface AuthContextType {
   user: User | null;
 //   userProfile: UserDisplay | null;
   loading: boolean;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -75,9 +71,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, supabase]);
 
+  async function signOut() {
+    if (!supabase) return
+    await supabase.auth.signOut()
+    setUser(null)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, /*userProfile,*/ loading }}>
-      {children}
+    <AuthContext.Provider value={{ user, /*userProfile,*/ loading, signOut }}>
+      {loading ? (
+        <div className="flex min-h-screen items-center justify-center p-6">
+          <div className="flex w-full max-w-sm flex-col gap-4">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-10 w-full" />
+            <div className="flex gap-2">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+            <Skeleton className="h-40 w-full" />
+          </div>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 }

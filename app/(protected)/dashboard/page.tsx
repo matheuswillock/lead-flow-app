@@ -9,9 +9,9 @@ export default async function Dashboard() {
     user = data.user
   }
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
-      <p className="mt-2 text-sm text-muted-foreground">Olá, {user?.email}</p>
-    </main>
+    <div className="space-y-2">
+      <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+      <p className="text-sm text-muted-foreground">Olá, {user?.email}</p>
+    </div>
   )
 }

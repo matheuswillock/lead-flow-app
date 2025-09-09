@@ -7,13 +7,17 @@ const protectedPrefixes = ["/dashboard", "/account", "/board"]
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isProtected = protectedPrefixes.some((p) => pathname.startsWith(p))
+  const dev = process.env.NODE_ENV === 'development'
 
-  // Always refresh Supabase session cookies via helper
   const { user, response } = await updateSession(request)
+  if (dev) {
+    console.info('[middleware] path', pathname, 'protected?', isProtected, 'user?', !!user)
+  }
 
   // If the user is logged in and is trying to access auth pages, redirect to dashboard
   const authPages = ["/login", "/sign-in", "/sign-up"]
   if (user && authPages.includes(pathname)) {
+  if (dev) console.info('[middleware] redirect authenticated user away from auth page')
     return NextResponse.redirect(new URL("/board", request.url))
   }
 
@@ -22,6 +26,7 @@ export async function middleware(request: NextRequest) {
 
   // If not authenticated, redirect to sign-in
   if (!user) {
+  if (dev) console.info('[middleware] unauthenticated -> redirect to /sign-in')
     const signInUrl = new URL("/sign-in", request.url)
     return NextResponse.redirect(signInUrl)
   }

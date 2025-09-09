@@ -53,8 +53,8 @@ export default function MinhaContaPage() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground">
-      <div className="container mx-auto max-w-3xl px-4 py-10">
+    <div className="bg-background text-foreground">
+      <div className="container mx-auto max-w-3xl px-0 py-2 md:py-6">
         <Card className="border-border/60 shadow-sm">
           <CardHeader className="space-y-2">
             <CardTitle className="text-2xl">Minha conta</CardTitle>
