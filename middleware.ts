@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/auth-sessions"
 
 // Define protected route prefixes (actual URL paths)
-const protectedPrefixes = ["/dashboard", "/account", "/board"]
+const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline"]
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
