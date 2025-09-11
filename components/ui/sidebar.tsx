@@ -147,7 +147,7 @@ const SidebarProvider = React.forwardRef<
               } as React.CSSProperties
             }
             className={cn(
-              "group/sidebar-wrapper flex min-h-svh w-full has-[[data-variant=inset]]:bg-sidebar",
+              "group/sidebar-wrapper flex h-dvh w-full has-[[data-variant=inset]]:bg-sidebar",
               className
             )}
             ref={ref}
@@ -254,7 +254,7 @@ const Sidebar = React.forwardRef<
         <div
           className={cn(
             // Normal flow on desktop: sticky (no overlay). Mobile still uses Sheet.
-            "sticky top-0 z-10 hidden h-svh w-[--sidebar-width] transition-[width] duration-200 ease-linear md:flex",
+            "sticky top-0 z-10 hidden h-dvh w-[--sidebar-width] transition-[width] duration-200 ease-linear md:flex",
             // Adjust the padding for floating and inset variants.
             variant === "floating" || variant === "inset"
               ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
@@ -339,7 +339,7 @@ const SidebarInset = React.forwardRef<
     <main
       ref={ref}
       className={cn(
-        "relative flex min-w-0 flex-1 flex-col bg-background",
+        "relative flex min-w-0 flex-1 flex-col bg-background min-h-0 overflow-hidden",
         className
       )}
       {...props}
