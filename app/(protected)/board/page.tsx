@@ -8,6 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollText, Filter, Plus } from "lucide-react";
 import { div as MotionDiv } from "framer-motion/client";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 // Tipos
 
@@ -150,6 +157,23 @@ export default function KanbanLeadsMock() {
     e.dataTransfer.dropEffect = "move";
   };
 
+  // Dialog state
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<Lead | null>(null)
+
+  // prevent click after drag
+  let dragStarted = false
+  const handleCardMouseDown = () => { dragStarted = false }
+  const handleCardDragStart = (e: React.DragEvent, leadId: string, from: ColumnKey) => {
+    dragStarted = true
+    onDragStart(e, leadId, from)
+  }
+  const handleCardClick = (lead: Lead) => {
+    if (dragStarted) return
+    setSelected(lead)
+    setOpen(true)
+  }
+
   return (
     <div className="flex h-[calc(100vh-2rem)] w-full flex-col gap-3 p-4">
       {/* Header */}
@@ -227,11 +251,13 @@ export default function KanbanLeadsMock() {
                     </div>
                   )}
 
-                  {items.map((lead) => (
+          {items.map((lead) => (
                     <Card
                       key={lead.id}
                       draggable
-                      onDragStart={(e) => onDragStart(e, lead.id, key)}
+            onMouseDown={handleCardMouseDown}
+            onDragStart={(e) => handleCardDragStart(e, lead.id, key)}
+            onClick={() => handleCardClick(lead)}
                       className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent"
                     >
                       <CardHeader className="py-3">
@@ -267,6 +293,87 @@ export default function KanbanLeadsMock() {
       <Button size="lg" className="w-96 h-14 self-center justify-center text-2xl rounded-4xl mt-12">
         <Plus className="mr-1 size-4" /> Adicionar novo lead
       </Button>
+
+      {/* Dialog de edição/criação */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{selected ? `Editar lead: ${selected.name}` : "Novo lead"}</DialogTitle>
+            <DialogDescription>
+              Preencha os dados do lead para qualificação e acompanhamento.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            className="grid gap-4 grid-cols-1 sm:grid-cols-2"
+            onSubmit={(e) => { e.preventDefault(); setOpen(false) }}
+          >
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium mb-1">Nome Completo*</label>
+              <Input defaultValue={selected?.name ?? ""} required placeholder="Ex: Maria da Silva" />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Telefone*</label>
+              <Input type="tel" placeholder="(00) 00000-0000" required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Email*</label>
+              <Input type="email" placeholder="email@exemplo.com" required />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">CNPJ</label>
+              <Input placeholder="Digite o CNPJ" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Idades*</label>
+              <Input placeholder="Ex: 32, 29, 5" required />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium mb-1">Possui plano atualmente?*</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm"><input type="radio" name="hasPlan" value="sim" required /> Sim</label>
+                <label className="flex items-center gap-2 text-sm"><input type="radio" name="hasPlan" value="nao" /> Não</label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Valor Atual*</label>
+              <Input placeholder="R$ 0,00" required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Hospital Referência (se houver)*</label>
+              <Input placeholder="Digite o hospital" required />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium mb-1">Existe algum tratamento em andamento?*</label>
+              <Input placeholder="Descreva brevemente" required />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium mb-1">Observações Adicionais*</label>
+              <Input placeholder="Observações relevantes" required />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Data Reunião*</label>
+              <Input type="date" required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Responsável</label>
+              <Input defaultValue={selected?.responsible ?? ""} />
+            </div>
+
+            <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button type="submit">Salvar</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
