@@ -14,7 +14,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
 } from "@/components/ui/sidebar"
 import { NavUser } from "./nav-user"
 
@@ -56,8 +55,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </SidebarMenuButton>
             </SidebarMenuItem>
         </SidebarMenu>
-      </SidebarHeader>
-      <SidebarSeparator />
+  </SidebarHeader>
         <SidebarContent>
             <SidebarGroup>
                 <SidebarGroupLabel>Navegação</SidebarGroupLabel>
