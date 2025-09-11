@@ -16,7 +16,7 @@ export function SiteHeader() {
   }
   const currentTitle = titleMap[first] ?? 'Dashboard'
   return (
-  <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[height] ease-linear">
+  <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b box-border transition-[height] ease-linear">
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
         <SidebarTrigger className="-ml-1" />
         <Separator
