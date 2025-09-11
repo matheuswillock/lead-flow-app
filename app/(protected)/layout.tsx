@@ -7,15 +7,16 @@ export default async function ProtectedLayout({ children }: { children: React.Re
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true"
   return (
-    <SidebarProvider defaultOpen={defaultOpen}
-        style={
-            {
-                "--sidebar-width": "calc(var(--spacing) * 72)",
-                "--header-height": "calc(var(--spacing) * 12)",
-            } as React.CSSProperties
-        }
-    >
-        <AppSidebar variant="inset"/>
+        <SidebarProvider
+            defaultOpen={defaultOpen}
+            style={
+                {
+                    "--sidebar-width": "16rem",
+                    "--header-height": "3rem",
+                } as React.CSSProperties
+            }
+        >
+        <AppSidebar />
         <SidebarInset>
             <SiteHeader />
             <div className="flex flex-1 flex-col">
