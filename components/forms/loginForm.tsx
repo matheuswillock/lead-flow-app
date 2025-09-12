@@ -2,7 +2,7 @@ import { GalleryVerticalEnd } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "./ui/form"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form"
 import Link from "next/link"
 import { Separator } from "@/components/ui/separator"
 import { loginFormData } from "@/lib/types/formTypes"
@@ -33,7 +33,7 @@ export function LoginForm({
           <div className="flex flex-col items-center gap-2">
             {/* TODO: Add link to return intial page */}
             <Link
-              href="/"
+              href="/sign-up"
               className="flex flex-col items-center gap-2 font-medium"
             >
               <div className="flex h-8 w-8 items-center justify-center rounded-md">
@@ -45,7 +45,7 @@ export function LoginForm({
             <div className="text-center text-sm">
               Don&apos;t have an account?{" "}
               {/* TODO: Add sign up link */}
-              <Link href="#" className="underline underline-offset-4">
+              <Link href="/sign-up" className="underline underline-offset-4">
                 Sign up
               </Link>
             </div>

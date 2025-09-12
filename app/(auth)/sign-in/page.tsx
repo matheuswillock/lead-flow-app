@@ -1,9 +1,9 @@
 "use client"
 import { useState } from "react"
-import { LoginForm } from "@/components/loginForm"
 import { signin } from "./actions"
 import { useLoginForm } from "@/hooks/useForms"
 import { loginFormData } from "@/lib/types/formTypes"
+import { LoginForm } from "@/components/forms/loginForm"
 
 export default function SignInPage() {
   const form = useLoginForm();

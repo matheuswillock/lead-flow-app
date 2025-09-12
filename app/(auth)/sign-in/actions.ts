@@ -1,7 +1,7 @@
 "use server";
 
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { loginFormSchema } from "@/lib/validationForms";
+import { loginFormSchema } from "@/lib/validations/validationForms";
 
 export async function signin(formData: FormData) {
   const supabase = await createSupabaseServer();
