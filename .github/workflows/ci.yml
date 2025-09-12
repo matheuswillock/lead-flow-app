@@ -5,6 +5,12 @@ on:
     branches: ["**"]
   pull_request:
     branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Source branch to open a PR from (must start with feat/ or feature/)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -166,11 +172,17 @@ jobs:
 
   auto-pr:
     name: Create Pull Request
-    # Run only on push to branches starting with feat/ or feature/
+    # Run on push to feat*/feature* OR manual dispatch with a matching branch input
     if: >-
-      ${{ github.event_name == 'push' &&
+      ${{
+        (github.event_name == 'push' &&
           (startsWith(github.ref, 'refs/heads/feat/') ||
-           startsWith(github.ref, 'refs/heads/feature/')) }}
+           startsWith(github.ref, 'refs/heads/feature/')))
+        ||
+        (github.event_name == 'workflow_dispatch' &&
+          (startsWith(github.event.inputs.branch, 'feat/') ||
+           startsWith(github.event.inputs.branch, 'feature/')))
+      }}
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -183,30 +195,45 @@ jobs:
       - name: Open PR if not already open
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.PR_AUTOMATION_TOKEN }}
+          github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
-            const branchRef = context.ref; // e.g., refs/heads/feat/my-branch
-            const branch = branchRef.replace('refs/heads/', '');
+            const fromDispatch = context.eventName === 'workflow_dispatch'
+            const inputBranch = fromDispatch ? (context.payload?.inputs?.branch || '') : ''
+            const branchRef = fromDispatch ? `refs/heads/${inputBranch}` : context.ref // e.g., refs/heads/feat/my-branch
+            const branch = fromDispatch ? inputBranch : branchRef.replace('refs/heads/', '')
+            if (fromDispatch && !branch) {
+              core.setFailed('No branch provided in workflow_dispatch inputs.')
+              return
+            }
             const base = 'main';
 
-            // Check for existing open PR from this branch to base
-            const { data: prs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              head: `${context.repo.owner}:${branch}`,
-              base,
-              state: 'open',
-              per_page: 1,
-            });
-
-            if (prs.length > 0) {
-              core.info(`PR already exists: #${prs[0].number} ${prs[0].html_url}`);
-              return;
+            // Try to find an existing PR. Some tokens without repo access may 404; handle gracefully.
+            let prs = []
+            try {
+              const res = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${branch}`,
+                base,
+                state: 'open',
+                per_page: 1,
+              })
+              prs = res.data
+            } catch (err) {
+              if (err.status === 404) {
+                core.warning('Could not list PRs (404). Proceeding to attempt creation. Ensure the token has access to this repository.');
+              } else {
+                throw err
+              }
             }
 
-            // Derive a friendly title from the branch name
-            const clean = branch.replace(/^feat\//, '').replace(/^feature\//, '');
-            const title = `feat: ${clean}`;
+            if (prs.length > 0) {
+              core.info(`PR already exists: #${prs[0].number} ${prs[0].html_url}`)
+              return
+            }
+
+            const clean = branch.replace(/^feat\//, '').replace(/^feature\//, '')
+            const title = `feat: ${clean}`
             const body = [
               'This pull request was opened automatically by CI.',
               '',
@@ -214,16 +241,25 @@ jobs:
               `- Base: ${base}`,
               '',
               'Edit the title/description as needed.'
-            ].join('\n');
+            ].join('\n')
 
-            const res = await github.rest.pulls.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              head: branch,
-              base,
-              title,
-              body,
-              maintainer_can_modify: true,
-            });
-
-            core.info(`Created PR #${res.data.number}: ${res.data.html_url}`);
+            try {
+              const res = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: branch,
+                base,
+                title,
+                body,
+                maintainer_can_modify: true,
+              })
+              core.info(`Created PR #${res.data.number}: ${res.data.html_url}`)
+            } catch (err) {
+              if (err.status === 403) {
+                core.setFailed('Permission denied to create PR. If using GITHUB_TOKEN, enable "Allow GitHub Actions to create and approve pull requests" in Repository Settings > Actions > General. Otherwise, provide a PAT in PR_AUTOMATION_TOKEN with repo access (Contents + Pull requests: Read & Write).')
+              } else if (err.status === 404) {
+                core.setFailed('Not Found creating PR. The token likely does not have access to this private repository. Use a PAT (classic with repo scope, or fine-grained with access to this repo and Pull requests: Read & Write).')
+              } else {
+                throw err
+              }
+            }
