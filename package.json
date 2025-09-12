@@ -16,14 +16,17 @@
     "lint:fix": "prettier --write .",
     "format": "prettier --write .",
     "postinstall": "prisma generate",
-    "prisma:seed": "npx prisma db seed",
-    "prisma:migrate": "npx prisma migrate dev --name",
+    "prisma:seed": "bunx prisma db seed",
+    "prisma:migrate": "bunx prisma migrate dev --name",
     "prisma:studio": "npx prisma studio",
     "prisma:generate": "npx prisma generate",
     "prisma:db:pull": "npx prisma db pull",
     "prisma:db:push": "npx prisma db push",
     "prisma:db:reset": "npx prisma migrate reset --force",
     "prisma:db:deploy": "npx prisma migrate deploy"
+  },
+  "prisma": {
+    "seed": "bunx tsx prisma/seed.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.0.8",
