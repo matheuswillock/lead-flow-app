@@ -152,7 +152,7 @@ export default function MinhaContaPage() {
                   <Input
                     id="email"
                     type="email"
-                    placeholder="voce@exemplo.com"
+                    placeholder="johndoe@email.com"
                     autoComplete="email"
                     className="h-11"
                   />
