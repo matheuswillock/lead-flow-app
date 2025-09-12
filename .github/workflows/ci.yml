@@ -4,7 +4,7 @@ on:
   push:
     branches: ["**"]
   pull_request:
-    branches: ["main"]
+  branches: ["main", "develop"]
   workflow_dispatch:
     inputs:
       branch:
@@ -205,7 +205,12 @@ jobs:
               core.setFailed('No branch provided in workflow_dispatch inputs.')
               return
             }
-            const base = 'main';
+            const base = 'develop';
+
+            if (branch === base) {
+              core.info(`Branch '${branch}' is the base branch. Skipping PR creation.`)
+              return
+            }
 
             // Try to find an existing PR. Some tokens without repo access may 404; handle gracefully.
             let prs = []
