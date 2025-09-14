@@ -2,7 +2,6 @@
 
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { signupFormSchema } from "@/lib/validations/validationForms";
-import prisma from "@/app/api/infra/data/prisma";
 
 export async function signup(formData: FormData) {
   const supabase = await createSupabaseServer();
@@ -17,7 +16,7 @@ export async function signup(formData: FormData) {
     return { success: false, errors: { apiError: "Serviço de autenticação indisponível" } };
   }
 
-  const { email, password, fullName, phone } = validation.data;
+  const { email, password } = validation.data;
 
   const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
     email,
@@ -34,15 +33,15 @@ export async function signup(formData: FormData) {
 
   // Criar perfil como manager
   try {
-    await prisma.profile.create({
-      data: {
-        id: user.id,
-        supabaseId: user.id,
-        fullName,
-        phone,
-        role: "manager",
-      },
-    });
+    // await prisma.profile.create({
+    //   data: {
+    //     id: user.id,
+    //     supabaseId: user.id,
+    //     fullName,
+    //     phone,
+    //     role: "manager",
+    //   },
+    // });
   } catch {
     return { success: false, errors: { apiError: "Falha ao criar perfil" } };
   }
