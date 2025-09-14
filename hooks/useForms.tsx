@@ -1,9 +1,11 @@
-import { useForm } from "react-hook-form";
+"use client";
+
+import { useForm, UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginFormSchema, signupFormSchema } from "@/lib/validations/validationForms";
 import { loginFormData, signUpFormData } from "@/lib/types/formTypes";
 
-export function useLoginForm() {
+export function useLoginForm(): UseFormReturn<loginFormData> {
   return useForm<loginFormData>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {
@@ -13,7 +15,7 @@ export function useLoginForm() {
   });
 }
 
-export function useSignUpForm() {
+export function useSignUpForm(): UseFormReturn<signUpFormData> {
   return useForm<signUpFormData>({
     resolver: zodResolver(signupFormSchema),
     defaultValues: {

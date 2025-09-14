@@ -12,6 +12,7 @@ interface SignUpFormProps {
   form: UseFormReturn<signUpFormData>;
   errors: Record<string, string>;
   onSubmit: (data: signUpFormData) => void | Promise<void>;
+  isLoading?: boolean;
 }
 
 export function SignupForm({
@@ -19,6 +20,7 @@ export function SignupForm({
   form,
   errors,
   onSubmit,
+  isLoading = false,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignUpFormProps) {
 
@@ -33,7 +35,7 @@ export function SignupForm({
           <div className="flex flex-col items-center gap-2">
             {/* TODO: Add link to return intial page */}
             <Link
-              href="/"
+              href="#"
               className="flex flex-col items-center gap-2 font-medium"
             >
               <div className="flex h-8 w-8 items-center justify-center rounded-md">
@@ -95,7 +97,7 @@ export function SignupForm({
                   <FormControl>
                     <Input type="password" {...field} className="border-2 border-gray-300 rounded-md p-2" />
                   </FormControl>
-                  <FormMessage className="text-red-500">{errors.password || errors.apiError}</FormMessage>
+                  <FormMessage className="text-red-500">{errors.password}</FormMessage>
                 </FormItem>
               )}
             />
@@ -109,7 +111,7 @@ export function SignupForm({
                   <FormControl>
                     <Input type="password" {...field} className="border-2 border-gray-300 rounded-md p-2" />
                   </FormControl>
-                  <FormMessage className="text-red-500">{errors.confirmPassword}</FormMessage>
+                  <FormMessage className="text-red-500">{errors.confirmPassword || errors.apiError}</FormMessage>
                 </FormItem>
               )}
             />
@@ -117,9 +119,9 @@ export function SignupForm({
             <Button
               type="submit"
               className="w-full cursor-pointer"
-              disabled={!form.formState.isValid || form.formState.isSubmitting}
+              disabled={!form.formState.isValid || form.formState.isSubmitting || isLoading}
             >
-              {form.formState.isSubmitting ? "Cadastrando..." : "Criar conta"}
+              {form.formState.isSubmitting || isLoading ? "Cadastrando..." : "Criar conta"}
             </Button>
           </div>
           <div className="flex items-center gap-4">
