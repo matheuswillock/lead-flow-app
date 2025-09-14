@@ -13,9 +13,9 @@ export async function POST(req: NextRequest) {
         const status = output.isValid ? 201 : 400;
         return NextResponse.json({ output }, { status });
     } catch (error) {
-        console.error("Error creating teacher:", error);
+        console.error("Error creating user profile:", error);
         return NextResponse.json(
-        { errors: new Output(false, [], ["Failed to create teacher"], null) },
+        { errors: new Output(false, [], ["Failed to create user profile"], null) },
         { status: 500 },
         );
     }

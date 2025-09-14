@@ -34,6 +34,7 @@ class PrismaProfileRepository implements IProfileRepository {
             const existingProfile = await prisma.profile.findFirst({
                 where: { OR: [{ email }, { phone }] },
             });
+
             if (existingProfile) {
                 console.error("Usuário já existe com o mesmo email ou telefone.");
                 return null;
