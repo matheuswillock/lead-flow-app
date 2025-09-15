@@ -51,18 +51,20 @@ const nextConfig: NextConfig = {
 };
 ```
 
-### 3. **Warning do Prisma Config Deprecated** ✅
+### 3. **Warning do Prisma Config Deprecated** ⚠️
 **Problema**: `warn The configuration property package.json#prisma is deprecated and will be removed in Prisma 7`
 
-**Solução**:
-```typescript
-// ✅ Criado: prisma.config.ts
-export default {
-  seed: 'bunx tsx prisma/seed.ts'
-}
+**Status**: **Mantido temporariamente**
+- O Prisma ainda não suporta completamente configuração em TypeScript
+- A tentativa de criar `prisma.config.ts` causou erro de parsing no bun install
+- **Solução atual**: Manter configuração no package.json até Prisma 7 ser lançado
+- **Impacto**: Warning inofensivo que não afeta o funcionamento
 
-// ✅ Removido do package.json
-// "prisma": { "seed": "..." } // <- Removida seção deprecated
+```json
+// package.json - Mantido até migração oficial
+"prisma": {
+  "seed": "bunx tsx prisma/seed.ts"
+}
 ```
 
 ## 🚀 Resultado Esperado
@@ -84,7 +86,7 @@ Após essas correções, o build na Vercel deve mostrar:
 5. **prisma.config.ts** - Nova configuração moderna do Prisma
 
 ### Arquivos Removidos:
-- Seção `"prisma"` do package.json (deprecated)
+- ~~Seção `"prisma"` do package.json~~ (revertido - mantido para compatibilidade)
 
 ## 🔄 Próximos Passos
 
