@@ -125,7 +125,52 @@ Mesmo em casos de erro (não 200), a resposta sempre contém um objeto `Output` 
 - Campos não fornecidos permanecem inalterados
 - Role e outros campos administrativos não podem ser alterados via esta rota
 
-### 4. Deletar Profile
+### 4. Atualizar Senha
+
+**PUT** `/api/v1/profiles/[supabaseId]/password`
+
+- Atualiza apenas a senha do usuário
+- Parâmetros: `supabaseId` (string)
+- Body: `RequestToUpdatePassword`
+
+**Campos obrigatórios:**
+- `password` (string): Nova senha do usuário
+
+**Validações de senha:**
+- Mínimo 6 caracteres
+- Máximo 50 caracteres
+- Deve conter pelo menos 1 letra maiúscula
+- Deve conter pelo menos 1 número
+- Deve conter pelo menos 1 caractere especial (!@#$%^&*()_+-=[]{};':"\\|,.<>/?)
+
+**Exemplo de request:**
+```json
+{
+  "password": "MinhaSenh@123"
+}
+```
+
+**Exemplo de resposta (200):**
+```json
+{
+  "isValid": true,
+  "successMessages": ["Password updated successfully"],
+  "errorMessages": [],
+  "result": "Password updated successfully"
+}
+```
+
+**Exemplo de resposta de erro (400):**
+```json
+{
+  "isValid": false,
+  "successMessages": [],
+  "errorMessages": ["Password must contain at least one uppercase letter"],
+  "result": null
+}
+```
+
+### 5. Deletar Profile
 **DELETE** `/api/v1/profiles/[supabaseId]`
 - Remove o profile do banco de dados E deleta a conta de autenticação do Supabase
 - Parâmetros: `supabaseId` (string)

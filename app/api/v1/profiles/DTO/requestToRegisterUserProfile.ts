@@ -45,10 +45,21 @@ export function validateRegisterProfileRequest(data: any): RequestToRegisterUser
   } else if (data.password.length > 50) {
     errors.push('Password must be at most 50 characters long');
   } else {
-    // Validação de senha forte: pelo menos 1 letra, 1 número
-    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
-    if (!passwordRegex.test(data.password)) {
-      errors.push('Password must contain at least one letter and one number');
+    // Validação de senha forte: pelo menos 1 letra maiúscula, 1 número e 1 caractere especial
+    const hasUpperCase = /[A-Z]/.test(data.password);
+    const hasNumber = /\d/.test(data.password);
+    const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(data.password);
+    
+    if (!hasUpperCase) {
+      errors.push('Password must contain at least one uppercase letter');
+    }
+    
+    if (!hasNumber) {
+      errors.push('Password must contain at least one number');
+    }
+    
+    if (!hasSpecialChar) {
+      errors.push('Password must contain at least one special character (!@#$%^&*()_+-=[]{};\':"\\|,.<>\/?)');
     }
   }
 

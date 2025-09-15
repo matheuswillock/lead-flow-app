@@ -9,5 +9,6 @@ export interface IProfileUseCase {
   registerUserProfile(input: RequestToRegisterUserProfile): Promise<Output>;
   getProfileBySupabaseId(supabaseId: string): Promise<Output>;
   updateProfile(supabaseId: string, updates: { fullName?: string; phone?: string; email?: string }): Promise<Output>;
+  updatePassword(supabaseId: string, newPassword: string): Promise<Output>;
   deleteProfile(supabaseId: string): Promise<Output>;
 }

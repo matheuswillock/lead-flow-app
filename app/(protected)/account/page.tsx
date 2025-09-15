@@ -8,13 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
-/**
- * Mockup – Página "Minha Conta"
- * - Área para upload do ícone de perfil (com pré-visualização e drag & drop)
- * - Inputs: nome, email, senha
- * - Sem lógica de persistência (apenas UI mock)
- * - Segue tokens de cor via Tailwind (bg-background, text-foreground, etc.)
- */
 export default function MinhaContaPage() {
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);

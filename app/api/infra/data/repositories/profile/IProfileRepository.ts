@@ -14,5 +14,6 @@ export interface IProfileRepository {
     supabaseId: string,
     updates: { fullName?: string; phone?: string; email?: string }
   ): Promise<Profile | null>;
+  updatePassword(supabaseId: string, newPassword: string): Promise<boolean>;
   deleteProfile(supabaseId: string): Promise<Profile | null>;
 }

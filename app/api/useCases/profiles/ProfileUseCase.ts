@@ -6,6 +6,7 @@ import { UserRole } from "@prisma/client";
 import type { IProfileUseCase } from "./IProfileUseCase";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { createProfileOutput } from "../../v1/profiles/DTO/profileResponseDTO";
+import { createProfileUpdateOutput } from "../../v1/profiles/DTO/profileUpdateResponseDTO";
 
 export class RegisterNewUserProfile implements IProfileUseCase {
     constructor(private readonly repo: IProfileRepository = profileRepository) {}
@@ -90,17 +91,74 @@ export class RegisterNewUserProfile implements IProfileUseCase {
             const updatedProfile = await this.repo.updateProfile(supabaseId, {
                 fullName: updates.fullName,
                 phone: updates.phone,
-                // Note: email updates may need special handling in Supabase
+                email: updates.email,
             });
 
             if (!updatedProfile) {
                 return new Output(false, [], ["Failed to update profile"], null);
             }
 
-            return new Output(true, ["Profile updated successfully"], [], updatedProfile);
+            // Usar o novo DTO que retorna apenas email, fullName e phone
+            return createProfileUpdateOutput(updatedProfile);
         } catch (error) {
             console.error("Error updating profile:", error);
             return new Output(false, [], ["Failed to update profile"], null);
+        }
+    }
+
+    async updatePassword(supabaseId: string, newPassword: string): Promise<Output> {
+        try {
+            if (!supabaseId) {
+                return new Output(false, [], ["Supabase ID is required"], null);
+            }
+
+            if (!newPassword || typeof newPassword !== 'string') {
+                return new Output(false, [], ["New password is required"], null);
+            }
+
+            // Validações básicas de senha
+            if (newPassword.length < 6) {
+                return new Output(false, [], ["Password must be at least 6 characters long"], null);
+            }
+
+            if (newPassword.length > 50) {
+                return new Output(false, [], ["Password must be at most 50 characters long"], null);
+            }
+
+            // Validações de senha forte
+            const hasUpperCase = /[A-Z]/.test(newPassword);
+            const hasNumber = /\d/.test(newPassword);
+            const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword);
+            
+            if (!hasUpperCase) {
+                return new Output(false, [], ["Password must contain at least one uppercase letter"], null);
+            }
+            
+            if (!hasNumber) {
+                return new Output(false, [], ["Password must contain at least one number"], null);
+            }
+            
+            if (!hasSpecialChar) {
+                return new Output(false, [], ["Password must contain at least one special character"], null);
+            }
+
+            // Verificar se o perfil existe
+            const existingProfile = await this.repo.findBySupabaseId(supabaseId);
+            if (!existingProfile) {
+                return new Output(false, [], ["Profile not found"], null);
+            }
+
+            // Atualizar senha no Supabase Auth
+            const passwordUpdated = await this.repo.updatePassword(supabaseId, newPassword);
+            
+            if (!passwordUpdated) {
+                return new Output(false, [], ["Failed to update password"], null);
+            }
+
+            return new Output(true, ["Password updated successfully"], [], "Password updated successfully");
+        } catch (error) {
+            console.error("Error updating password:", error);
+            return new Output(false, [], ["Failed to update password"], null);
         }
     }
 

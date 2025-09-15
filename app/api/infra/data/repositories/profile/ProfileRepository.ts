@@ -129,6 +129,25 @@ class PrismaProfileRepository implements IProfileRepository {
         updates: { fullName?: string; phone?: string; email?: string }
     ): Promise<Profile | null> {
         try {
+            // Primeiro, atualizar no Supabase Auth se o email foi alterado
+            if (updates.email !== undefined) {
+                const { error: authError } = await supabase.auth.admin.updateUserById(
+                    supabaseId,
+                    {
+                        email: updates.email,
+                        email_confirm: true, // Confirma automaticamente o novo email
+                    }
+                );
+
+                if (authError) {
+                    console.error("Error updating email in Supabase Auth:", authError);
+                    throw new Error(`Failed to update email in authentication: ${authError.message}`);
+                }
+                
+                console.info("Email updated successfully in Supabase Auth:", updates.email);
+            }
+
+            // Depois, atualizar na tabela Profile
             const updateData: any = {};
             
             if (updates.fullName !== undefined) {
@@ -147,10 +166,43 @@ class PrismaProfileRepository implements IProfileRepository {
                 where: { supabaseId },
                 data: updateData,
             });
+            
+            console.info("Profile updated successfully in database:", profile.id);
             return profile;
         } catch (error) {
             console.error("Error updating profile:", error);
+            
+            // Em caso de erro após atualizar o Auth, tentar reverter (rollback manual)
+            if (updates.email !== undefined && error instanceof Error && error.message.includes('authentication')) {
+                // Se o erro foi na atualização do banco após sucesso no Auth,
+                // tentar reverter o email no Auth (seria ideal buscar o email anterior)
+                console.warn("Rollback may be needed for Supabase Auth email update");
+            }
+            
             return null;
+        }
+    }
+
+    async updatePassword(supabaseId: string, newPassword: string): Promise<boolean> {
+        try {
+            // Atualizar senha apenas no Supabase Auth
+            const { error: authError } = await supabase.auth.admin.updateUserById(
+                supabaseId,
+                {
+                    password: newPassword
+                }
+            );
+
+            if (authError) {
+                console.error("Error updating password in Supabase Auth:", authError);
+                return false;
+            }
+
+            console.info("Password updated successfully in Supabase Auth for user:", supabaseId);
+            return true;
+        } catch (error) {
+            console.error("Error updating password:", error);
+            return false;
         }
     }
 
