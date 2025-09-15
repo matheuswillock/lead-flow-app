@@ -3,9 +3,16 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 
-export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
+interface ProtectedLayoutProps {
+  children: React.ReactNode
+  params: Promise<{ supabaseId: string }>
+}
+
+export default async function ProtectedLayout({ children, params }: ProtectedLayoutProps) {
+  const { supabaseId } = await params
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true"
+  
   return (
         <SidebarProvider
             defaultOpen={defaultOpen}
@@ -16,7 +23,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
                 } as React.CSSProperties
             }
         >
-        <AppSidebar />
+        <AppSidebar supabaseId={supabaseId} />
         <SidebarInset>
             <SiteHeader />
             <div className="flex min-h-0 flex-1 flex-col h-[calc(100dvh-var(--header-height))] overflow-auto">

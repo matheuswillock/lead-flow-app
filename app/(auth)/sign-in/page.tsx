@@ -3,7 +3,7 @@ import { useState } from "react"
 import { signin } from "./actions"
 import { useLoginForm } from "@/hooks/useForms"
 import { loginFormData } from "@/lib/types/formTypes"
-import { LoginForm } from "@/components/forms/loginForm"
+import { SignInForm } from "@/components/forms/loginForm"
 
 export default function SignInPage() {
   const form = useLoginForm();
@@ -35,7 +35,7 @@ export default function SignInPage() {
   return (
     <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-6 md:p-10">
       <div className="w-full max-w-sm ">
-        <LoginForm 
+        <SignInForm 
           form={form}
           errors={errors}
           onSubmit={onSubmit} 

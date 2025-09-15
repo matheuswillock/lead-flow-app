@@ -8,19 +8,19 @@ import { Separator } from "@/components/ui/separator"
 import { loginFormData } from "@/lib/types/formTypes"
 import type { UseFormReturn } from "react-hook-form"
 
-interface LoginFormProps {
+interface SigninFormProps {
   form: UseFormReturn<loginFormData>;
   errors: Record<string, string>;
   onSubmit: (data: loginFormData) => void | Promise<void>;
 }
 
-export function LoginForm({
+export function SignInForm({
   className,
   form,
   errors,
   onSubmit,
   ...divProps
-}: Omit<React.ComponentProps<"form">, "onSubmit"> & LoginFormProps) {
+}: Omit<React.ComponentProps<"form">, "onSubmit"> & SigninFormProps) {
 
   return (
     <Form {...form}>

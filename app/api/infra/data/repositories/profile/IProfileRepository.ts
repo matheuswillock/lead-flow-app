@@ -9,7 +9,7 @@ export interface IProfileRepository {
     password: string,
     email: string,
     role: UserRole
-  ): Promise<string | null>;
+  ): Promise<{ profileId: string; supabaseId: string } | null>;
   updateProfile(
     supabaseId: string,
     updates: { fullName?: string; phone?: string; email?: string }

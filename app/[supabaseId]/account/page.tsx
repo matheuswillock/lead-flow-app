@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
-export default function MinhaContaPage() {
+export default function AccountProfilePage() {
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
@@ -56,7 +56,6 @@ export default function MinhaContaPage() {
             </p>
           </CardHeader>
           <CardContent className="space-y-8">
-            {/* Avatar / Upload */}
             <section aria-labelledby="avatar-title" className="space-y-4">
               <h2 id="avatar-title" className="text-base font-medium">
                 Ícone de perfil

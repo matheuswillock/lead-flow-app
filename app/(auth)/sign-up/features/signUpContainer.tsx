@@ -15,9 +15,9 @@ export function SignUpFormContainer() {
     async function onSubmit(data: signUpFormData) {
         const result = await registerUser(data);
 
-        if (result.isValid) {
-            // Sucesso - redirecionar para sign-in
-            window.location.href = "/sign-in";
+        if (result.isValid && result.result?.supabaseId) {
+            // Sucesso - redirecionar para board com supabaseId
+            window.location.href = `/${result.result.supabaseId}/board`;
         }
         // Os erros já são gerenciados pelo context
     }

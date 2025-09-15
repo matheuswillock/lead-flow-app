@@ -26,12 +26,14 @@ import { signout } from "@/app/actions/auth"
 
 export function NavUser({
   user,
+  supabaseId,
 }: {
   user: {
     name: string
     email: string
     avatar: string
   }
+  supabaseId?: string
 }) {
   const { isMobile } = useSidebar()
   const [isPending, startTransition] = useTransition()
@@ -82,7 +84,7 @@ export function NavUser({
             <DropdownMenuGroup>
               <DropdownMenuItem>
                 <CircleUser />
-                <Link href="/account">Account</Link>
+                <Link href={`/${supabaseId}/account`}>Account</Link>
               </DropdownMenuItem>
               {/* <DropdownMenuItem>
                 <CreditCard />

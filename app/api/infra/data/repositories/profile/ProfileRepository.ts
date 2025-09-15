@@ -38,91 +38,44 @@ class PrismaProfileRepository implements IProfileRepository {
     }
 
     async createProfile(
-        fullName: string,
-        phone: string,
-        password: string,
-        email: string,
-        role: UserRole
-    ): Promise<string | null> {
-        try {
-            // 1) Tenta encontrar usuário existente no Auth (idempotente)
-            const lookupByEmail = async (): Promise<string | null> => {
-                let page = 1
-                const perPage = 1000
-                for (;;) {
-                    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage })
-                    if (error) break
-                    const found = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())
-                    if (found) return found.id
-                    if (data.users.length < perPage) return null
-                    page += 1
-                }
-                return null
-            }
+    fullName: string,
+    phone: string,
+    password: string,
+    email: string,
+    role: UserRole
+  ): Promise<{ profileId: string; supabaseId: string } | null> {
+    try {
+      // Criar usuário no Supabase
+      const { data: user, error: authError } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true
+      });
 
-            let supabaseUserId = await lookupByEmail()
+      if (authError || !user.user) {
+        console.error("Erro ao criar usuário no Supabase:", authError);
+        return null;
+      }
 
-            if (!supabaseUserId) {
-                try {
-                    console.info("Creating user via admin.createUser...")
-                    const { data, error } = await supabase.auth.admin.createUser({
-                        email: email,
-                        password: password,
-                        email_confirm: true,
-                    })
+      const supabaseId = user.user.id;
 
-                    if (error) {
-                        console.error("admin.createUser failed:", error)
-                        return null
-                    }
-
-                    if (!data?.user?.id) {
-                        console.error("No user ID returned from admin.createUser")
-                        return null
-                    }
-
-                    supabaseUserId = data.user.id
-                    console.info("User created successfully:", supabaseUserId)
-                } catch (createError) {
-                    console.error("Error creating user:", createError)
-                    return null
-                }
-            }
-
-            if (supabaseUserId) {
-                console.info("Creating profile in database for user:", supabaseUserId)
-                try {
-                    const profile = await prisma.profile.upsert({
-                        where: { supabaseId: supabaseUserId },
-                        update: { fullName, phone, email, role },
-                        create: {
-                            supabaseId: supabaseUserId,
-                            fullName,
-                            phone,
-                            email,
-                            role,
-                        },
-                    })
-                    
-                    return profile.id
-                } catch (prismaError) {
-                    console.error("Error creating profile in database:", prismaError)
-                    try {
-                        await supabase.auth.admin.deleteUser(supabaseUserId)
-                        console.info("Deleted Auth user due to profile creation failure")
-                    } catch (deleteError) {
-                        console.warn("Failed to cleanup Auth user:", deleteError)
-                    }
-                    return null
-                }
-            }
-
-            return null
-        } catch (error) {
-            console.error("Error creating profile:", error);
-            return null;
+      // Criar profile no banco
+      const profile = await prisma.profile.create({
+        data: {
+          supabaseId,
+          fullName,
+          phone,
+          email,
+          role
         }
+      });
+
+      return { profileId: profile.id, supabaseId };
+    } catch (error) {
+      console.error("Erro ao criar profile:", error);
+      return null;
     }
+  }
 
     async updateProfile(
         supabaseId: string,

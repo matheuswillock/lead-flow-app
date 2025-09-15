@@ -27,7 +27,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 return new Output(false, [], ["User already exists with the same email or phone"], null);
             }
 
-            const profileId = await this.repo.createProfile(
+            const result = await this.repo.createProfile(
                 input.fullname,
                 input.phone,
                 input.password,
@@ -35,11 +35,14 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 UserRole.manager,
             );
 
-            if (!profileId) {
+            if (!result) {
                 return new Output(false, [], ["Failed to create user profile"], null);
             }
 
-            return new Output(true, ["User profile registered successfully"], [], { profileId });
+            return new Output(true, ["User profile registered successfully"], [], { 
+                profileId: result.profileId,
+                supabaseId: result.supabaseId 
+            });
         } catch (error) {
             console.error("Error registering user profile:", error);
             return new Output(false, [], ["Failed to register user profile"], null);
