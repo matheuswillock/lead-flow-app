@@ -23,18 +23,27 @@ import { CircleUser, EllipsisVertical, LogOut } from "lucide-react"
 import Link from "next/link"
 import { useTransition } from "react"
 import { signout } from "@/app/actions/auth"
+import { useUser } from "@/app/context/UserContext"
 
 export function NavUser({
-  user,
+  supabaseId,
 }: {
-  user: {
-    name: string
-    email: string
-    avatar: string
-  }
+  supabaseId?: string
 }) {
+  const { user } = useUser();
   const { isMobile } = useSidebar()
   const [isPending, startTransition] = useTransition()
+
+  // Se não há dados do usuário, mostra placeholder
+  const userData = user ? {
+    name: user.fullName || "Usuário",
+    email: user.email,
+    avatar: user.profileIconUrl ?? `https://avatar.vercel.sh/${user.email}.png`,
+  } : {
+    name: "Carregando...",
+    email: "carregando@example.com",
+    avatar: `https://avatar.vercel.sh/guest.png`,
+  };
 
   return (
     <SidebarMenu>
@@ -46,13 +55,13 @@ export function NavUser({
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg grayscale">
-                <AvatarImage src={user.avatar} alt={user.name} />
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                <AvatarImage src={userData.avatar} alt={userData.name} />
+                <AvatarFallback className="rounded-lg">LF</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{user.name}</span>
+                <span className="truncate font-medium">{userData.name}</span>
                 <span className="text-muted-foreground truncate text-xs">
-                  {user.email}
+                  {userData.email}
                 </span>
               </div>
               <EllipsisVertical className="ml-auto size-4" />
@@ -67,13 +76,13 @@ export function NavUser({
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                  <AvatarImage src={userData.avatar} alt={userData.name} />
+                  <AvatarFallback className="rounded-lg">LF</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{user.name}</span>
+                  <span className="truncate font-medium">{userData.name}</span>
                   <span className="text-muted-foreground truncate text-xs">
-                    {user.email}
+                    {userData.email}
                   </span>
                 </div>
               </div>
@@ -82,16 +91,8 @@ export function NavUser({
             <DropdownMenuGroup>
               <DropdownMenuItem>
                 <CircleUser />
-                <Link href="/account">Account</Link>
+                <Link href={`/${supabaseId}/account`}>Account</Link>
               </DropdownMenuItem>
-              {/* <DropdownMenuItem>
-                <CreditCard />
-                <Link href="/billing">Billing</Link>
-              </DropdownMenuItem> */}
-              {/* <DropdownMenuItem>
-                <IconNotification />
-                Notifications
-              </DropdownMenuItem> */}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem

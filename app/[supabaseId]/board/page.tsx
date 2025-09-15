@@ -368,7 +368,11 @@ export default function KanbanLeadsMock() {
             </div>
 
             <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button 
+                type="button" variant="ghost" onClick={() => setOpen(false)}
+              >
+              Cancelar
+              </Button>
               <Button type="submit">Salvar</Button>
             </div>
           </form>

@@ -1,7 +1,8 @@
 "use server";
 
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { loginFormSchema } from "@/lib/validationForms";
+import { loginFormSchema } from "@/lib/validations/validationForms";
+import { redirect } from "next/navigation";
 
 export async function signin(formData: FormData) {
   const supabase = await createSupabaseServer();
@@ -26,7 +27,7 @@ export async function signin(formData: FormData) {
     }
   }
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
     return {
@@ -37,5 +38,10 @@ export async function signin(formData: FormData) {
     };
   }
 
-  return { success: true };
+  // Se o login foi bem-sucedido, redirecionar para o board com supabaseId
+  if (data.user) {
+    redirect(`/${data.user.id}/board`);
+  } else {
+    redirect("/board");
+  }
 }

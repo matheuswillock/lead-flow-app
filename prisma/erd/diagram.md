@@ -36,9 +36,12 @@ status_change status_change
     
   "profiles" {
     String id "🗝️"
+    String email 
     String supabaseId "❓"
     String fullName "❓"
     String phone "❓"
+    String profileIconId "❓"
+    String profileIconUrl "❓"
     UserRole role 
     DateTime createdAt 
     DateTime updatedAt 
@@ -65,7 +68,7 @@ status_change status_change
   
 
   "lead_activities" {
-    BigInt id "🗝️"
+    String id "🗝️"
     ActivityType type 
     String body "❓"
     Json payload "❓"

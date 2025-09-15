@@ -19,24 +19,15 @@ import { NavUser } from "./nav-user"
 
 
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const items = [
-    { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-    { title: "Board", url: "/board", icon: KanbanSquare },
-    { title: "Pipeline", url: "/pipeline", icon: ChartBarBig },
+    { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
+    { title: "Board", url: `/${supabaseId}/board`, icon: KanbanSquare },
+    { title: "Pipeline", url: `/${supabaseId}/pipeline`, icon: ChartBarBig },
   ]
 
-//   TODO: iMPLEMENTAAR O REQUEST DE USER
-  const data = {
-      user: {
-        name: "shadcn",
-        email: "m@example.com",
-        avatar: "/avatars/shadcn.jpg",
-    },
-  }
-
   return (
-    <Sidebar collapsible="offcanvas" {...props}>
+    <Sidebar collapsible="offcanvas" {...sidebarProps}>
       <SidebarHeader>
         <SidebarMenu>
             <SidebarMenuItem>
@@ -76,7 +67,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
-            <NavUser user={data.user} />
+            <NavUser supabaseId={supabaseId} />
         </SidebarFooter>
     </Sidebar>
   )
