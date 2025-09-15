@@ -2,6 +2,7 @@ import { cookies } from "next/headers"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
+import { UserProvider } from "@/app/context/UserContext"
 
 interface ProtectedLayoutProps {
   children: React.ReactNode
@@ -14,6 +15,7 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true"
   
   return (
+    <UserProvider supabaseId={supabaseId}>
         <SidebarProvider
             defaultOpen={defaultOpen}
             style={
@@ -33,5 +35,6 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
             </div>
         </SidebarInset>
     </SidebarProvider>
+    </UserProvider>
   )
 }

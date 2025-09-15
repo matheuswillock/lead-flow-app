@@ -26,15 +26,6 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Pipeline", url: `/${supabaseId}/pipeline`, icon: ChartBarBig },
   ]
 
-//   TODO: iMPLEMENTAAR O REQUEST DE USER
-  const data = {
-      user: {
-        name: "shadcn",
-        email: "m@example.com",
-        avatar: "/avatars/shadcn.jpg",
-    },
-  }
-
   return (
     <Sidebar collapsible="offcanvas" {...sidebarProps}>
       <SidebarHeader>
@@ -76,7 +67,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
             </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
-            <NavUser user={data.user} supabaseId={supabaseId} />
+            <NavUser supabaseId={supabaseId} />
         </SidebarFooter>
     </Sidebar>
   )
