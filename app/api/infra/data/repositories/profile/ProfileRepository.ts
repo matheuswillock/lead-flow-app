@@ -3,14 +3,20 @@ import type { UserRole, Profile } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js"
 import type { IProfileRepository } from "./IProfileRepository";
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+// Função para criar cliente Supabase de forma segura
+function createSupabaseClient() {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-if (!url || !serviceKey) {
-    throw new Error("Supabase URL or Service Key is not defined in environment variables.");
+    if (!url || !serviceKey) {
+        if (process.env.NODE_ENV === 'development') {
+            console.warn("Supabase URL or Service Key is not defined in environment variables.");
+        }
+        return null;
+    }
+
+    return createClient(url, serviceKey);
 }
-
-const supabase = createClient(url, serviceKey)
 
 class PrismaProfileRepository implements IProfileRepository {
     async findBySupabaseId(supabaseId: string): Promise<Profile | null> {
@@ -45,6 +51,12 @@ class PrismaProfileRepository implements IProfileRepository {
     role: UserRole
   ): Promise<{ profileId: string; supabaseId: string } | null> {
     try {
+      const supabase = createSupabaseClient();
+      if (!supabase) {
+        console.error("Failed to initialize Supabase client");
+        return null;
+      }
+
       // Criar usuário no Supabase
       const { data: user, error: authError } = await supabase.auth.admin.createUser({
         email,
@@ -84,6 +96,12 @@ class PrismaProfileRepository implements IProfileRepository {
         try {
             // Primeiro, atualizar no Supabase Auth se o email foi alterado
             if (updates.email !== undefined) {
+                const supabase = createSupabaseClient();
+                if (!supabase) {
+                    console.error("Failed to initialize Supabase client");
+                    return null;
+                }
+
                 const { error: authError } = await supabase.auth.admin.updateUserById(
                     supabaseId,
                     {
@@ -138,6 +156,12 @@ class PrismaProfileRepository implements IProfileRepository {
 
     async updatePassword(supabaseId: string, newPassword: string): Promise<boolean> {
         try {
+            const supabase = createSupabaseClient();
+            if (!supabase) {
+                console.error("Failed to initialize Supabase client");
+                return false;
+            }
+
             // Atualizar senha apenas no Supabase Auth
             const { error: authError } = await supabase.auth.admin.updateUserById(
                 supabaseId,
