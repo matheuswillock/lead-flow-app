@@ -10,6 +10,7 @@ CREATE TYPE "public"."ActivityType" AS ENUM ('note', 'call', 'whatsapp', 'email'
 -- CreateTable
 CREATE TABLE "public"."profiles" (
     "id" UUID NOT NULL,
+    "email" TEXT NOT NULL,
     "supabaseId" UUID,
     "fullName" TEXT,
     "phone" TEXT,
@@ -46,7 +47,7 @@ CREATE TABLE "public"."leads" (
 
 -- CreateTable
 CREATE TABLE "public"."lead_activities" (
-    "id" BIGSERIAL NOT NULL,
+    "id" UUID NOT NULL,
     "leadId" UUID NOT NULL,
     "type" "public"."ActivityType" NOT NULL,
     "body" TEXT,
@@ -59,6 +60,9 @@ CREATE TABLE "public"."lead_activities" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "profiles_id_key" ON "public"."profiles"("id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "profiles_email_key" ON "public"."profiles"("email");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "profiles_supabaseId_key" ON "public"."profiles"("supabaseId");

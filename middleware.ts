@@ -1,24 +1,39 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/auth-sessions"
 
+// Configure runtime
+export const runtime = 'nodejs'
+
 // Define protected route prefixes (actual URL paths)
 const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline"]
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
-  const isProtected = protectedPrefixes.some((p) => pathname.startsWith(p))
-
+  
   // Always refresh Supabase session cookies via helper
   const { user, response } = await updateSession(request)
 
-  // If the user is logged in and is trying to access auth pages, redirect to dashboard
+  // Check if it's a protected route (with or without supabaseId)
+  const isProtectedRoute = protectedPrefixes.some((prefix) => {
+    // Check for direct route (old format)
+    if (pathname.startsWith(prefix)) return true
+    // Check for supabaseId route (new format: /[supabaseId]/route)
+    const pathSegments = pathname.split('/').filter(Boolean)
+    if (pathSegments.length >= 2) {
+      const potentialRoute = `/${pathSegments[1]}`
+      return protectedPrefixes.includes(potentialRoute)
+    }
+    return false
+  })
+
+  // If the user is logged in and is trying to access auth pages, redirect to board with supabaseId
   const authPages = ["/login", "/sign-in", "/sign-up"]
   if (user && authPages.includes(pathname)) {
-    return NextResponse.redirect(new URL("/board", request.url))
+    return NextResponse.redirect(new URL(`/${user.id}/board`, request.url))
   }
 
   // If route is not protected, let it pass while preserving any updated cookies
-  if (!isProtected) return response
+  if (!isProtectedRoute) return response
 
   // If not authenticated, redirect to sign-in
   if (!user) {
@@ -26,7 +41,27 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(signInUrl)
   }
 
-  // User is authenticated; continue with refreshed cookies
+  // Check if user is accessing a route with the correct supabaseId
+  const pathSegments = pathname.split('/').filter(Boolean)
+  
+  // If accessing old format route (without supabaseId), redirect to new format
+  if (protectedPrefixes.some(prefix => pathname.startsWith(prefix))) {
+    const routeName = pathSegments[0]
+    return NextResponse.redirect(new URL(`/${user.id}/${routeName}`, request.url))
+  }
+
+  // If accessing route with supabaseId, verify it matches the current user
+  if (pathSegments.length >= 2) {
+    const urlSupabaseId = pathSegments[0]
+    const routeName = pathSegments[1]
+    
+    // If the supabaseId in URL doesn't match the authenticated user, redirect to correct URL
+    if (urlSupabaseId !== user.id) {
+      return NextResponse.redirect(new URL(`/${user.id}/${routeName}`, request.url))
+    }
+  }
+
+  // User is authenticated and accessing correct route; continue with refreshed cookies
   return response
 }
 

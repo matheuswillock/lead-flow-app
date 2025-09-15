@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { assertResend } from "@/lib/email"
+import { Output } from "@/lib/output"
 
 export async function POST() {
   try {
@@ -10,8 +11,10 @@ export async function POST() {
       subject: "Bem-vindo!",
       html: "<p>Seu acesso foi criado com sucesso.</p>",
     })
-    return NextResponse.json({ ok: true, data })
+    const output = new Output(true, ["Email sent successfully"], [], data);
+    return NextResponse.json(output, { status: 200 })
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message }, { status: 500 })
+    const output = new Output(false, [], [e.message], null);
+    return NextResponse.json(output, { status: 500 })
   }
 }

@@ -2,11 +2,20 @@ import { cookies } from "next/headers"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
+import { UserProvider } from "@/app/context/UserContext"
 
-export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
+interface ProtectedLayoutProps {
+  children: React.ReactNode
+  params: Promise<{ supabaseId: string }>
+}
+
+export default async function ProtectedLayout({ children, params }: ProtectedLayoutProps) {
+  const { supabaseId } = await params
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true"
+  
   return (
+    <UserProvider supabaseId={supabaseId}>
         <SidebarProvider
             defaultOpen={defaultOpen}
             style={
@@ -16,7 +25,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
                 } as React.CSSProperties
             }
         >
-        <AppSidebar />
+        <AppSidebar supabaseId={supabaseId} />
         <SidebarInset>
             <SiteHeader />
             <div className="flex min-h-0 flex-1 flex-col h-[calc(100dvh-var(--header-height))] overflow-auto">
@@ -26,5 +35,6 @@ export default async function ProtectedLayout({ children }: { children: React.Re
             </div>
         </SidebarInset>
     </SidebarProvider>
+    </UserProvider>
   )
 }
