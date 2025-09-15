@@ -64,7 +64,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
         }
     }
 
-    async updateProfile(supabaseId: string, updates: { fullName?: string; phone?: string; email?: string }): Promise<Output> {
+    async updateProfile(supabaseId: string, updates: { fullName?: string; phone?: string; email?: string; password?: string }): Promise<Output> {
         try {
             if (!supabaseId) {
                 return new Output(false, [], ["Supabase ID is required"], null);
@@ -72,6 +72,14 @@ export class RegisterNewUserProfile implements IProfileUseCase {
 
             if (!updates || Object.keys(updates).length === 0) {
                 return new Output(false, [], ["No updates provided"], null);
+            }
+
+            // Validar senha se fornecida
+            if (updates.password) {
+                const passwordValidation = this.validatePassword(updates.password);
+                if (!passwordValidation.isValid) {
+                    return new Output(false, [], passwordValidation.errors, null);
+                }
             }
 
             // Check if profile exists
@@ -91,6 +99,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 }
             }
 
+            // Atualizar perfil
             const updatedProfile = await this.repo.updateProfile(supabaseId, {
                 fullName: updates.fullName,
                 phone: updates.phone,
@@ -101,6 +110,14 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 return new Output(false, [], ["Failed to update profile"], null);
             }
 
+            // Atualizar senha se fornecida
+            if (updates.password) {
+                const passwordUpdated = await this.repo.updatePassword(supabaseId, updates.password);
+                if (!passwordUpdated) {
+                    return new Output(false, [], ["Failed to update password"], null);
+                }
+            }
+
             // Usar o novo DTO que retorna apenas email, fullName e phone
             return createProfileUpdateOutput(updatedProfile);
         } catch (error) {
@@ -109,40 +126,57 @@ export class RegisterNewUserProfile implements IProfileUseCase {
         }
     }
 
+    private validatePassword(password: string): { isValid: boolean; errors: string[] } {
+        const errors: string[] = [];
+
+        // Verificar se é string válida
+        if (!password || typeof password !== 'string') {
+            return { isValid: false, errors: ["Password is required"] };
+        }
+
+        // Verificar comprimento mínimo
+        if (password.length < 6) {
+            errors.push("Password must be at least 6 characters long");
+        }
+
+        // Verificar comprimento máximo
+        if (password.length > 50) {
+            errors.push("Password must be at most 50 characters long");
+        }
+
+        // Verificar letra maiúscula
+        if (!/[A-Z]/.test(password)) {
+            errors.push("Password must contain at least one uppercase letter");
+        }
+
+        // Verificar letra minúscula
+        if (!/[a-z]/.test(password)) {
+            errors.push("Password must contain at least one lowercase letter");
+        }
+
+        // Verificar número
+        if (!/\d/.test(password)) {
+            errors.push("Password must contain at least one number");
+        }
+
+        // Verificar caractere especial
+        if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+            errors.push("Password must contain at least one special character");
+        }
+
+        return { isValid: errors.length === 0, errors };
+    }
+
     async updatePassword(supabaseId: string, newPassword: string): Promise<Output> {
         try {
             if (!supabaseId) {
                 return new Output(false, [], ["Supabase ID is required"], null);
             }
 
-            if (!newPassword || typeof newPassword !== 'string') {
-                return new Output(false, [], ["New password is required"], null);
-            }
-
-            // Validações básicas de senha
-            if (newPassword.length < 6) {
-                return new Output(false, [], ["Password must be at least 6 characters long"], null);
-            }
-
-            if (newPassword.length > 50) {
-                return new Output(false, [], ["Password must be at most 50 characters long"], null);
-            }
-
-            // Validações de senha forte
-            const hasUpperCase = /[A-Z]/.test(newPassword);
-            const hasNumber = /\d/.test(newPassword);
-            const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword);
-            
-            if (!hasUpperCase) {
-                return new Output(false, [], ["Password must contain at least one uppercase letter"], null);
-            }
-            
-            if (!hasNumber) {
-                return new Output(false, [], ["Password must contain at least one number"], null);
-            }
-            
-            if (!hasSpecialChar) {
-                return new Output(false, [], ["Password must contain at least one special character"], null);
+            // Usar a função de validação centralizada
+            const passwordValidation = this.validatePassword(newPassword);
+            if (!passwordValidation.isValid) {
+                return new Output(false, [], passwordValidation.errors, null);
             }
 
             // Verificar se o perfil existe

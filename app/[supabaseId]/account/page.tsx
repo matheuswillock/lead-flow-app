@@ -11,7 +11,7 @@ import { AccountForm } from "@/components/forms/accountForm";
 import { updateAccountFormData } from "@/lib/types/formTypes";
 
 export default function AccountProfilePage() {
-  const { user, isLoading, updateUser, updatePassword } = useUser();
+  const { user, isLoading, updateUser } = useUser();
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
   const [isUpdating, setIsUpdating] = React.useState(false);
@@ -67,41 +67,44 @@ export default function AccountProfilePage() {
 
     try {
       const updates: any = {};
+      let hasChanges = false;
       
-      // Apenas incluir campos que foram alterados
+      // Incluir campos que foram alterados
       if (data.fullName !== (user?.fullName || "")) {
         updates.fullName = data.fullName;
+        hasChanges = true;
       }
       if (data.email !== (user?.email || "")) {
         updates.email = data.email;
+        hasChanges = true;
       }
       if (data.phone !== (user?.phone || "")) {
         updates.phone = data.phone;
+        hasChanges = true;
+      }
+      
+      // Incluir senha se fornecida (mesmo que vazia)
+      if (data.password && data.password.length > 0) {
+        updates.password = data.password;
+        hasChanges = true;
       }
 
-      // Atualizar dados do perfil se houver mudanças
-      if (Object.keys(updates).length > 0) {
-        const result = await updateUser(updates);
-        if (result.isValid) {
-          toast.success("Perfil atualizado com sucesso!");
-        } else {
-          toast.error(result.errorMessages?.join(", ") || "Erro ao atualizar perfil");
-        }
-      }
-
-      // Atualizar senha se fornecida
-      if (data.password) {
-        const result = await updatePassword(data.password);
-        if (result.isValid) {
-          toast.success("Senha atualizada com sucesso!");
-          form.setValue("password", "");
-        } else {
-          toast.error(result.errorMessages?.join(", ") || "Erro ao atualizar senha");
-        }
-      }
-
-      if (Object.keys(updates).length === 0 && !data.password) {
+      if (!hasChanges) {
         toast.info("Nenhuma alteração detectada");
+        return;
+      }
+
+      // Usar uma única chamada para atualizar todos os dados incluindo senha
+      const result = await updateUser(updates);
+      
+      if (result.isValid) {
+        toast.success("Dados atualizados com sucesso!");
+        // Limpar o campo de senha após sucesso
+        if (updates.password) {
+          form.setValue("password", "");
+        }
+      } else {
+        toast.error(result.errorMessages?.join(", ") || "Erro ao atualizar dados");
       }
     } catch (error) {
       console.error("Erro ao atualizar:", error);

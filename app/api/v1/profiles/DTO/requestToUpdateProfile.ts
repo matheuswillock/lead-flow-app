@@ -1,11 +1,12 @@
 /**
  * DTO for updating profile information
- * Only allows updating email, phone, and fullName fields
+ * Allows updating email, phone, fullName, and password fields
  */
 export interface RequestToUpdateProfile {
   fullName?: string;
   phone?: string;
   email?: string;
+  password?: string;
 }
 
 /**
@@ -79,18 +80,37 @@ export function validateUpdateProfileRequest(data: any): RequestToUpdateProfile 
     hasValidField = true;
   }
 
+  // Validate password
+  if (data.password !== undefined) {
+    if (typeof data.password !== 'string') {
+      throw new Error('Password must be a string');
+    }
+    // Para senha, permitir string vazia (remove senha) ou senha válida
+    if (data.password.length > 0) {
+      // Se fornecida, deve ter pelo menos 6 caracteres
+      if (data.password.length < 6) {
+        throw new Error('Password must be at least 6 characters long');
+      }
+      if (data.password.length > 50) {
+        throw new Error('Password cannot exceed 50 characters');
+      }
+    }
+    result.password = data.password;
+    hasValidField = true;
+  }
+
   // Check for invalid fields
-  const allowedFields = ['fullName', 'phone', 'email'];
+  const allowedFields = ['fullName', 'phone', 'email', 'password'];
   const providedFields = Object.keys(data);
   const invalidFields = providedFields.filter(field => !allowedFields.includes(field));
   
   if (invalidFields.length > 0) {
-    throw new Error(`Invalid fields provided: ${invalidFields.join(', ')}. Only fullName, phone, and email are allowed.`);
+    throw new Error(`Invalid fields provided: ${invalidFields.join(', ')}. Only fullName, phone, email, and password are allowed.`);
   }
 
   // At least one field must be provided
   if (!hasValidField) {
-    throw new Error('At least one field (fullName, phone, or email) must be provided for update');
+    throw new Error('At least one field (fullName, phone, email, or password) must be provided for update');
   }
 
   return result;
