@@ -199,6 +199,34 @@ export class RegisterNewUserProfile implements IProfileUseCase {
         }
     }
 
+    async updateProfileIcon(supabaseId: string, profileIconId: string | null): Promise<Output> {
+        try {
+            if (!supabaseId) {
+                return new Output(false, [], ["Supabase ID is required"], null);
+            }
+
+            // Check if profile exists
+            const existingProfile = await this.repo.findBySupabaseId(supabaseId);
+            if (!existingProfile) {
+                return new Output(false, [], ["Profile not found"], null);
+            }
+
+            // Update profile icon
+            const updatedProfile = await this.repo.updateProfileIcon(supabaseId, profileIconId);
+
+            if (!updatedProfile) {
+                return new Output(false, [], ["Failed to update profile icon"], null);
+            }
+
+            return new Output(true, ["Profile icon updated successfully"], [], {
+                profileIconId: updatedProfile.profileIconId
+            });
+        } catch (error) {
+            console.error("Error updating profile icon:", error);
+            return new Output(false, [], ["Failed to update profile icon"], null);
+        }
+    }
+
     async deleteProfile(supabaseId: string): Promise<Output> {
         try {
             if (!supabaseId) {

@@ -159,6 +159,21 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
+    async updateProfileIcon(supabaseId: string, profileIconId: string | null): Promise<Profile | null> {
+        try {
+            const profile = await prisma.profile.update({
+                where: { supabaseId },
+                data: { profileIconId },
+            });
+            
+            console.info("Profile icon updated successfully:", profile.id);
+            return profile;
+        } catch (error) {
+            console.error("Error updating profile icon:", error);
+            return null;
+        }
+    }
+
     async deleteProfile(supabaseId: string): Promise<Profile | null> {
         try {
             const profile = await prisma.profile.delete({ where: { supabaseId } });

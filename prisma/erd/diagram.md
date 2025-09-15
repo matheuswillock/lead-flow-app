@@ -40,6 +40,7 @@ status_change status_change
     String supabaseId "❓"
     String fullName "❓"
     String phone "❓"
+    String profileIconId "❓"
     UserRole role 
     DateTime createdAt 
     DateTime updatedAt 

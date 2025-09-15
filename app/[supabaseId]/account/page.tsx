@@ -11,10 +11,11 @@ import { AccountForm } from "@/components/forms/accountForm";
 import { updateAccountFormData } from "@/lib/types/formTypes";
 
 export default function AccountProfilePage() {
-  const { user, isLoading, updateUser } = useUser();
+  const { user, isLoading, updateUser, uploadProfileIcon, deleteProfileIcon } = useUser();
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
   const [isUpdating, setIsUpdating] = React.useState(false);
+  const [isUploadingIcon, setIsUploadingIcon] = React.useState(false);
 
   const form = useUpdateAccountForm();
 
@@ -36,11 +37,63 @@ export default function AccountProfilePage() {
     fileInputRef.current?.click();
   }
 
-  function handleFiles(files: FileList | null) {
+  async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
+    
     const file = files[0];
+    
+    // Validar tipo de arquivo
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+      toast.error("Tipo de arquivo inválido. Use JPEG, PNG, WebP ou GIF.");
+      return;
+    }
+
+    // Validar tamanho (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Arquivo muito grande. Tamanho máximo: 5MB.");
+      return;
+    }
+
+    // Preview local
     const url = URL.createObjectURL(file);
     setAvatarPreview(url);
+
+    // Upload para servidor
+    setIsUploadingIcon(true);
+    try {
+      const result = await uploadProfileIcon(file);
+      if (result.isValid) {
+        toast.success("Ícone de perfil atualizado com sucesso!");
+      } else {
+        toast.error(result.errorMessages?.join(", ") || "Erro ao fazer upload do ícone");
+        setAvatarPreview(null); // Reset preview on error
+      }
+    } catch (error) {
+      console.error("Error uploading icon:", error);
+      toast.error("Erro inesperado ao fazer upload do ícone");
+      setAvatarPreview(null);
+    } finally {
+      setIsUploadingIcon(false);
+    }
+  }
+
+  async function handleDeleteIcon() {
+    setIsUploadingIcon(true);
+    try {
+      const result = await deleteProfileIcon();
+      if (result.isValid) {
+        toast.success("Ícone de perfil removido com sucesso!");
+        setAvatarPreview(null);
+      } else {
+        toast.error(result.errorMessages?.join(", ") || "Erro ao remover ícone");
+      }
+    } catch (error) {
+      console.error("Error deleting icon:", error);
+      toast.error("Erro inesperado ao remover ícone");
+    } finally {
+      setIsUploadingIcon(false);
+    }
   }
 
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -156,12 +209,28 @@ export default function AccountProfilePage() {
                           alt="Pré-visualização do avatar"
                           className="h-full w-full object-cover"
                         />
+                      ) : user?.profileIconId ? (
+                        <img
+                          src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/profile-icons/${user.profileIconId}`}
+                          alt="Ícone de perfil atual"
+                          className="h-full w-full object-cover"
+                          onError={(e) => {
+                            // Fallback se a imagem não carregar
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center bg-muted">
                           <Camera className="h-7 w-7 text-muted-foreground" aria-hidden />
                           <span className="sr-only">Sem imagem de perfil</span>
                         </div>
                       )}
+                      {/* Fallback div - inicialmente oculto */}
+                      <div className="hidden h-full w-full items-center justify-center bg-muted">
+                        <Camera className="h-7 w-7 text-muted-foreground" aria-hidden />
+                        <span className="sr-only">Erro ao carregar imagem</span>
+                      </div>
                     </div>
 
                     <div className="grow">
@@ -180,19 +249,27 @@ export default function AccountProfilePage() {
                           isDragging
                             ? "border-primary bg-primary/5"
                             : "border-border hover:border-primary/60 hover:bg-muted/50",
+                          isUploadingIcon ? "pointer-events-none opacity-50" : ""
                         ].join(" ")}
                         aria-label="Área para soltar arquivo do ícone de perfil"
                       >
                         <div className="grid place-items-center rounded-lg bg-muted p-3">
-                          <Upload className="h-5 w-5 text-muted-foreground transition group-hover:scale-110" />
+                          {isUploadingIcon ? (
+                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                          ) : (
+                            <Upload className="h-5 w-5 text-muted-foreground transition group-hover:scale-110" />
+                          )}
                         </div>
                         <div className="space-y-1">
-                          <p className="text-sm font-medium">Arraste e solte a imagem aqui</p>
+                          <p className="text-sm font-medium">
+                            {isUploadingIcon ? "Enviando..." : "Arraste e solte a imagem aqui"}
+                          </p>
                           <p className="text-xs text-muted-foreground">
-                            PNG, JPG até 2MB. Ou
+                            PNG, JPG, WebP, GIF até 5MB. Ou
                             <button
                               type="button"
                               className="ml-1 underline decoration-dotted underline-offset-4 hover:text-primary"
+                              disabled={isUploadingIcon}
                             >
                               clique para selecionar
                             </button>
@@ -207,6 +284,18 @@ export default function AccountProfilePage() {
                         className="hidden"
                         onChange={(e) => handleFiles(e.target.files)}
                       />
+
+                      {/* Botão para remover ícone */}
+                      {(user?.profileIconId || avatarPreview) && (
+                        <button
+                          type="button"
+                          onClick={handleDeleteIcon}
+                          disabled={isUploadingIcon}
+                          className="mt-2 text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isUploadingIcon ? "Processando..." : "Remover ícone atual"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </section>

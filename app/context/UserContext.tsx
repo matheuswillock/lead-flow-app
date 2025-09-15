@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Output } from "@/lib/output";
 import type { UserRole } from "@prisma/client";
 
@@ -8,15 +8,20 @@ import type { UserRole } from "@prisma/client";
  * Interface para os dados do usuário
  */
 export interface UserData {
+  id: string;
   email: string;
-  phone: string | null;
+  supabaseId: string;
   fullName: string | null;
+  phone: string | null;
+  profileIconId: string | null;
   role: UserRole;
   managerId: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
- * Interface para o estado do contexto do usuário
+ * Estado do contexto de usuário
  */
 interface UserContextState {
   user: UserData | null;
@@ -25,6 +30,8 @@ interface UserContextState {
   refreshUser: () => Promise<void>;
   updateUser: (updates: Partial<UserData>) => Promise<Output>;
   updatePassword: (newPassword: string) => Promise<Output>;
+  uploadProfileIcon: (file: File) => Promise<Output>;
+  deleteProfileIcon: () => Promise<Output>;
 }
 
 /**
@@ -53,37 +60,31 @@ export const UserProvider: React.FC<UserProviderProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Busca os dados do usuário da API
+   * Busca dados do usuário na API
    */
   const fetchUser = async (): Promise<void> => {
-    if (!supabaseId) {
-      setError("Supabase ID is required");
-      setIsLoading(false);
-      return;
-    }
-
     try {
       setIsLoading(true);
       setError(null);
 
       const response = await fetch(`/api/v1/profiles/${supabaseId}`);
       const output: Output = await response.json();
-
+      
       if (output.isValid && output.result) {
         setUser(output.result);
       } else {
-        setError(output.errorMessages?.join(", ") || "Failed to load user data");
+        setError(output.errorMessages?.join(", ") || "Failed to fetch user data");
       }
     } catch (err) {
       console.error("Error fetching user:", err);
-      setError("Network error while loading user data");
+      setError("Network error while fetching user data");
     } finally {
       setIsLoading(false);
     }
   };
 
   /**
-   * Atualiza os dados do usuário
+   * Atualiza dados do usuário
    */
   const updateUser = async (updates: Partial<UserData>): Promise<Output> => {
     if (!supabaseId) {
@@ -160,6 +161,82 @@ export const UserProvider: React.FC<UserProviderProps> = ({
   };
 
   /**
+   * Faz upload do ícone de perfil
+   */
+  const uploadProfileIcon = async (file: File): Promise<Output> => {
+    if (!supabaseId) {
+      return new Output(false, [], ["Supabase ID is required"], null);
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const formData = new FormData();
+      formData.append('icon', file);
+
+      const response = await fetch(`/api/v1/profiles/${supabaseId}/icon`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const output: Output = await response.json();
+
+      if (output.isValid) {
+        // Recarregar dados do usuário para obter o novo profileIconId
+        await fetchUser();
+      } else {
+        setError(output.errorMessages?.join(", ") || "Failed to upload profile icon");
+      }
+
+      return output;
+    } catch (err) {
+      console.error("Error uploading profile icon:", err);
+      const error = "Network error while uploading profile icon";
+      setError(error);
+      return new Output(false, [], [error], null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * Remove o ícone de perfil
+   */
+  const deleteProfileIcon = async (): Promise<Output> => {
+    if (!supabaseId) {
+      return new Output(false, [], ["Supabase ID is required"], null);
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const response = await fetch(`/api/v1/profiles/${supabaseId}/icon`, {
+        method: "DELETE",
+      });
+
+      const output: Output = await response.json();
+
+      if (output.isValid) {
+        // Recarregar dados do usuário para remover o profileIconId
+        await fetchUser();
+      } else {
+        setError(output.errorMessages?.join(", ") || "Failed to delete profile icon");
+      }
+
+      return output;
+    } catch (err) {
+      console.error("Error deleting profile icon:", err);
+      const error = "Network error while deleting profile icon";
+      setError(error);
+      return new Output(false, [], [error], null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
    * Função para recarregar dados do usuário
    */
   const refreshUser = async (): Promise<void> => {
@@ -178,6 +255,8 @@ export const UserProvider: React.FC<UserProviderProps> = ({
     refreshUser,
     updateUser,
     updatePassword,
+    uploadProfileIcon,
+    deleteProfileIcon,
   };
 
   return (
