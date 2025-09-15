@@ -1,4 +1,3 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 function getSupabaseEnv() {
@@ -17,6 +16,9 @@ export async function updateSession(request: NextRequest) {
     if (isDev) console.warn("[middleware] Supabase env vars ausentes; ignorando atualização de sessão.");
     return { supabase: null, response, user: null };
   }
+
+  // Dynamic import to avoid Edge Runtime issues
+  const { createServerClient } = await import("@supabase/ssr");
 
   const supabase = createServerClient(
     env.url,

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=20"
   },
   "scripts": {
     "dev": "next dev",
@@ -25,9 +25,6 @@
     "prisma:db:push": "npx prisma db push",
     "prisma:db:reset": "npx prisma migrate reset --force",
     "prisma:db:deploy": "npx prisma migrate deploy"
-  },
-  "prisma": {
-    "seed": "bunx tsx prisma/seed.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.0.8",

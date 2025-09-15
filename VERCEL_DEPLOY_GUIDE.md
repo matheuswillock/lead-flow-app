@@ -98,7 +98,7 @@ vercel env add DIRECT_URL
 ## 📝 Checklist de Deploy
 
 - [ ] Todas as 5 variáveis configuradas na Vercel
-- [ ] Build local funcionando (`npm run build`)
+- [ ] Build local funcionando (`bun run build`)
 - [ ] Supabase Storage bucket criado (`profile-icons`)
 - [ ] Prisma migrations aplicadas
 - [ ] Redeploy feito na Vercel
