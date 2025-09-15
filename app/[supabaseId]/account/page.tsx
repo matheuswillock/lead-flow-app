@@ -213,7 +213,6 @@ export default function AccountProfilePage() {
 
                 <Separator />
 
-                {/* Form */}
                 <form className="space-y-6" onSubmit={handleSubmit}>
                   <div className="grid gap-6 sm:grid-cols-2">
                     <div className="space-y-2">

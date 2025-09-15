@@ -35,7 +35,7 @@ export function SignupForm({
           <div className="flex flex-col items-center gap-2">
             {/* TODO: Add link to return intial page */}
             <Link
-              href="#"
+              href="/"
               className="flex flex-col items-center gap-2 font-medium"
             >
               <div className="flex h-8 w-8 items-center justify-center rounded-md">
@@ -44,7 +44,12 @@ export function SignupForm({
               <span className="sr-only">Lead Flow</span>
             </Link>
             <h1 className="text-xl font-bold">Criar conta</h1>
-            <div className="text-center text-sm">Já tem uma conta? <Link href="/sign-in" className="underline underline-offset-4">Entrar</Link></div>
+            <div className="text-center text-sm">
+              Já tem uma conta? 
+              <Link href="/sign-in" className="underline underline-offset-4">
+                Entrar
+              </Link>
+            </div>
           </div>
           <div className="flex flex-col gap-6">
             <FormField
@@ -54,7 +59,11 @@ export function SignupForm({
                 <FormItem className="grid gap-2">
                   <FormLabel>Nome completo</FormLabel>
                   <FormControl>
-                    <Input placeholder="Seu nome" {...field} className="border-2 border-gray-300 rounded-md p-2" />
+                    <Input
+                      placeholder="Seu nome"
+                      {...field}
+                      className="border-2 border-gray-300 rounded-md p-2"
+                    />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.fullName}</FormMessage>
                 </FormItem>
