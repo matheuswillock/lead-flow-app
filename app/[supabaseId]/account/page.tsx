@@ -1,41 +1,34 @@
 "use client";
 
 import * as React from "react";
-import { Upload, Eye, EyeOff, Camera } from "lucide-react";
+import { Upload, Camera } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useUser } from "@/app/context/UserContext";
 import { toast } from "sonner";
+import { useUpdateAccountForm } from "@/hooks/useForms";
+import { AccountForm } from "@/components/forms/accountForm";
+import { updateAccountFormData } from "@/lib/types/formTypes";
 
 export default function AccountProfilePage() {
   const { user, isLoading, updateUser, updatePassword } = useUser();
   const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
   const [isDragging, setIsDragging] = React.useState(false);
-  const [showPassword, setShowPassword] = React.useState(false);
   const [isUpdating, setIsUpdating] = React.useState(false);
 
-  // Form states
-  const [formData, setFormData] = React.useState({
-    fullName: "",
-    email: "",
-    phone: "",
-    password: "",
-  });
+  const form = useUpdateAccountForm();
 
   // Atualizar form quando dados do usuário carregarem
   React.useEffect(() => {
     if (user) {
-      setFormData({
+      form.reset({
         fullName: user.fullName || "",
         email: user.email || "",
         phone: user.phone || "",
         password: "",
       });
     }
-  }, [user]);
+  }, [user, form]);
 
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -69,22 +62,21 @@ export default function AccountProfilePage() {
     setIsDragging(false);
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function onSubmit(data: updateAccountFormData) {
     setIsUpdating(true);
 
     try {
       const updates: any = {};
       
       // Apenas incluir campos que foram alterados
-      if (formData.fullName !== (user?.fullName || "")) {
-        updates.fullName = formData.fullName;
+      if (data.fullName !== (user?.fullName || "")) {
+        updates.fullName = data.fullName;
       }
-      if (formData.email !== (user?.email || "")) {
-        updates.email = formData.email;
+      if (data.email !== (user?.email || "")) {
+        updates.email = data.email;
       }
-      if (formData.phone !== (user?.phone || "")) {
-        updates.phone = formData.phone;
+      if (data.phone !== (user?.phone || "")) {
+        updates.phone = data.phone;
       }
 
       // Atualizar dados do perfil se houver mudanças
@@ -98,17 +90,17 @@ export default function AccountProfilePage() {
       }
 
       // Atualizar senha se fornecida
-      if (formData.password) {
-        const result = await updatePassword(formData.password);
+      if (data.password) {
+        const result = await updatePassword(data.password);
         if (result.isValid) {
           toast.success("Senha atualizada com sucesso!");
-          setFormData(prev => ({ ...prev, password: "" }));
+          form.setValue("password", "");
         } else {
           toast.error(result.errorMessages?.join(", ") || "Erro ao atualizar senha");
         }
       }
 
-      if (Object.keys(updates).length === 0 && !formData.password) {
+      if (Object.keys(updates).length === 0 && !data.password) {
         toast.info("Nenhuma alteração detectada");
       }
     } catch (error) {
@@ -119,10 +111,15 @@ export default function AccountProfilePage() {
     }
   }
 
-  function handleInputChange(field: keyof typeof formData) {
-    return (e: React.ChangeEvent<HTMLInputElement>) => {
-      setFormData(prev => ({ ...prev, [field]: e.target.value }));
-    };
+  function onCancel() {
+    if (user) {
+      form.reset({
+        fullName: user.fullName || "",
+        email: user.email || "",
+        phone: user.phone || "",
+        password: "",
+      });
+    }
   }
 
   return (
@@ -213,105 +210,19 @@ export default function AccountProfilePage() {
 
                 <Separator />
 
-                <form className="space-y-6" onSubmit={handleSubmit}>
-                  <div className="grid gap-6 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Nome</Label>
-                      <Input
-                        id="name"
-                        placeholder="Seu nome completo"
-                        autoComplete="name"
-                        className="h-11"
-                        value={formData.fullName}
-                        onChange={handleInputChange("fullName")}
-                        disabled={isLoading}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="johndoe@email.com"
-                        autoComplete="email"
-                        className="h-11"
-                        value={formData.email}
-                        onChange={handleInputChange("email")}
-                        disabled={isLoading}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Telefone</Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="(11) 99999-9999"
-                      autoComplete="tel"
-                      className="h-11"
-                      value={formData.phone}
-                      onChange={handleInputChange("phone")}
-                      disabled={isLoading}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="password">Nova Senha (opcional)</Label>
-                    <div className="relative">
-                      <Input
-                        id="password"
-                        type={showPassword ? "text" : "password"}
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                        className="h-11 pr-12"
-                        value={formData.password}
-                        onChange={handleInputChange("password")}
-                        disabled={isLoading}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((v) => !v)}
-                        className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground hover:text-foreground"
-                        aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                      >
-                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                      </button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      A senha deve ter pelo menos 6 caracteres, 1 número, 1 caractere especial e 1 maiúsculo.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-end gap-3">
-                    <Button 
-                      type="button" 
-                      variant="ghost" 
-                      className="h-11"
-                      onClick={() => {
-                        if (user) {
-                          setFormData({
-                            fullName: user.fullName || "",
-                            email: user.email || "",
-                            phone: user.phone || "",
-                            password: "",
-                          });
-                        }
-                      }}
-                      disabled={isLoading || isUpdating}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button 
-                      type="submit" 
-                      className="h-11 px-6"
-                      disabled={isLoading || isUpdating}
-                    >
-                      {isUpdating ? "Salvando..." : "Salvar alterações"}
-                    </Button>
-                  </div>
-                </form>
+                <AccountForm 
+                  form={form}
+                  onSubmit={onSubmit}
+                  isLoading={isLoading}
+                  isUpdating={isUpdating}
+                  onCancel={onCancel}
+                  initialData={{
+                    fullName: user?.fullName || "",
+                    email: user?.email || "",
+                    phone: user?.phone || "",
+                    password: "",
+                  }}
+                />
               </>
             )}
           </CardContent>
