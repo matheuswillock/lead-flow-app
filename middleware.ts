@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/auth-sessions"
 
+// Configure runtime
+export const runtime = 'nodejs'
+
 // Define protected route prefixes (actual URL paths)
 const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline"]
 
