@@ -16,6 +16,7 @@ class PrismaProfileRepository implements IProfileRepository {
     async findBySupabaseId(supabaseId: string): Promise<Profile | null> {
         try {
             const profile = await prisma.profile.findUnique({ where: { supabaseId } });
+            console.info("Fetched profile:", profile);
             return profile ?? null;
         } catch (error) {
             console.error("Error fetching profile:", error);
@@ -95,7 +96,6 @@ class PrismaProfileRepository implements IProfileRepository {
                         where: { supabaseId: supabaseUserId },
                         update: { fullName, phone, email, role },
                         create: {
-                            id: supabaseUserId,
                             supabaseId: supabaseUserId,
                             fullName,
                             phone,
@@ -126,16 +126,26 @@ class PrismaProfileRepository implements IProfileRepository {
 
     async updateProfile(
         supabaseId: string,
-        updates: { fullName?: string; phone?: string; role?: UserRole }
+        updates: { fullName?: string; phone?: string; email?: string }
     ): Promise<Profile | null> {
         try {
+            const updateData: any = {};
+            
+            if (updates.fullName !== undefined) {
+                updateData.fullName = updates.fullName;
+            }
+            
+            if (updates.phone !== undefined) {
+                updateData.phone = updates.phone;
+            }
+            
+            if (updates.email !== undefined) {
+                updateData.email = updates.email;
+            }
+
             const profile = await prisma.profile.update({
                 where: { supabaseId },
-                data: {
-                    fullName: updates.fullName,
-                    phone: updates.phone,
-                    role: updates.role,
-                },
+                data: updateData,
             });
             return profile;
         } catch (error) {

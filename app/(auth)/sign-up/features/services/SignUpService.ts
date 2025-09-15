@@ -1,4 +1,4 @@
-import { RequestToRegisterUserProfile } from "@/app/api/v1/profiles/register/DTO/requestToRegisterUserProfile";
+import { RequestToRegisterUserProfile, validateRegisterProfileRequest } from "@/app/api/v1/profiles/DTO/requestToRegisterUserProfile";
 import { Output } from "@/lib/output";
 import { ISignUpService } from "./ISignUpService";
 
@@ -14,26 +14,31 @@ export class SignUpService implements ISignUpService {
    */
   async registerUser(requestData: RequestToRegisterUserProfile): Promise<Output> {
     try {
+      // Validar dados antes de enviar para a API
+      let validatedData: RequestToRegisterUserProfile;
+      try {
+        validatedData = validateRegisterProfileRequest(requestData);
+      } catch (validationError) {
+        return new Output(false, [], [(validationError as Error).message], null);
+      }
+
       const response = await fetch("/api/v1/profiles/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestData),
+        body: JSON.stringify(validatedData),
       });
 
-      const result: { output?: Output; errors?: Output } = await response.json();
+      const result = await response.json();
 
       if (!response.ok) {
-        // Em caso de erro HTTP, retornar o output de erro se disponível
-        if (result.errors) {
-          return result.errors;
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // O resultado já é um Output direto agora
+        return result;
       }
 
       // Em caso de sucesso, retornar o output
-      return result.output || new Output(false, [], ["Resposta inválida da API"], null);
+      return result;
     } catch (error) {
       console.error("Error on SignUp:", error);
       

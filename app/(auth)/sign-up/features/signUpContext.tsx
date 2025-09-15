@@ -1,6 +1,6 @@
 "use client";
 import React, { createContext, useContext, useState, ReactNode } from "react";
-import { RequestToRegisterUserProfile } from "@/app/api/v1/profiles/register/DTO/requestToRegisterUserProfile";
+import { RequestToRegisterUserProfile } from "@/app/api/v1/profiles/DTO/requestToRegisterUserProfile";
 // import { ISignUpService } from "../services/ISignUpService";
 import { signUpFormData } from "@/lib/types/formTypes";
 import { Output } from "@/lib/output";
@@ -53,12 +53,12 @@ export const SignUpProvider: React.FC<SignUpProviderProps> = ({
     setErrors({});
 
     try {
-      const requestData = new RequestToRegisterUserProfile(
-        data.email,
-        data.password,
-        data.fullName,
-        data.phone
-      );
+      const requestData: RequestToRegisterUserProfile = {
+        email: data.email,
+        password: data.password,
+        fullname: data.fullName,
+        phone: data.phone
+      };
 
       const result = await signUpService.registerUser(requestData);
 

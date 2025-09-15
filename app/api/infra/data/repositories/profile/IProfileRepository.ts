@@ -12,7 +12,7 @@ export interface IProfileRepository {
   ): Promise<string | null>;
   updateProfile(
     supabaseId: string,
-    updates: { fullName?: string; phone?: string; role?: UserRole }
+    updates: { fullName?: string; phone?: string; email?: string }
   ): Promise<Profile | null>;
   deleteProfile(supabaseId: string): Promise<Profile | null>;
 }

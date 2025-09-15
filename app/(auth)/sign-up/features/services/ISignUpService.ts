@@ -1,4 +1,4 @@
-import { RequestToRegisterUserProfile } from "@/app/api/v1/profiles/register/DTO/requestToRegisterUserProfile";
+import { RequestToRegisterUserProfile } from "@/app/api/v1/profiles/DTO/requestToRegisterUserProfile";
 import { Output } from "@/lib/output";
 
 /**
