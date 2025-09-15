@@ -46,8 +46,8 @@ export async function POST(
       return NextResponse.json(output, { status: 400 });
     }
 
-    // Atualizar o perfil com o novo iconId
-    const updateResult = await profileUseCase.updateProfileIcon(supabaseId, uploadResult.iconId!);
+    // Atualizar o perfil com o novo iconId e iconUrl
+    const updateResult = await profileUseCase.updateProfileIcon(supabaseId, uploadResult.iconId!, uploadResult.publicUrl!);
 
     if (!updateResult.isValid) {
       // Se falhou ao atualizar o banco, tentar remover o arquivo enviado
@@ -108,8 +108,8 @@ export async function DELETE(
       return NextResponse.json(output, { status: 400 });
     }
 
-    // Atualizar o perfil removendo o iconId
-    const updateResult = await profileUseCase.updateProfileIcon(supabaseId, null);
+    // Atualizar o perfil removendo o iconId e iconUrl
+    const updateResult = await profileUseCase.updateProfileIcon(supabaseId, null, null);
 
     if (!updateResult.isValid) {
       return NextResponse.json(updateResult, { status: 400 });

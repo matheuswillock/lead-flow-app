@@ -1,4 +1,4 @@
-import type { UserRole } from "@prisma/client";
+import type { Profile, UserRole } from "@prisma/client";
 import { Output } from "@/lib/output";
 
 export interface ProfileResponseDTO {
@@ -7,21 +7,19 @@ export interface ProfileResponseDTO {
   fullName: string | null;
   role: UserRole;
   managerId: string | null;
+  profileIconId: string | null;
+  profileIconUrl: string | null;
 }
 
-export function createProfileResponseDTO(profile: {
-  email: string;
-  phone: string | null;
-  fullName: string | null;
-  role: UserRole;
-  managerId: string | null;
-}): ProfileResponseDTO {
+export function createProfileResponseDTO(profile: Profile): ProfileResponseDTO {
   return {
     email: profile.email,
     phone: profile.phone,
     fullName: profile.fullName,
     role: profile.role,
     managerId: profile.managerId,
+    profileIconId: profile.profileIconId,
+    profileIconUrl: profile.profileIconUrl,
   };
 }
 
@@ -33,13 +31,7 @@ export function createProfileResponseDTO(profile: {
  * @returns Output object with appropriate success/error state
  */
 export function createProfileOutput(
-  profile: {
-    email: string;
-    phone: string | null;
-    fullName: string | null;
-    role: UserRole;
-    managerId: string | null;
-  } | null
+  profile: Profile | null
 ): Output {
   const successMessage = "Profile retrieved successfully";
   const notFoundMessage = "Profile not found";

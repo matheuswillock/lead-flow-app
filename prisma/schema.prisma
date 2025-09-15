@@ -72,6 +72,7 @@ model Profile {
   fullName   String?   @db.Text
   phone      String?   @db.Text
   profileIconId String? @db.Text // ID do arquivo no Supabase Storage
+  profileIconUrl String? @db.Text // URL pública do ícone no Supabase Storage
   role       UserRole  @default(manager)
   managerId   String?   @db.Uuid
   createdAt  DateTime  @default(now()) @db.Timestamptz(6)

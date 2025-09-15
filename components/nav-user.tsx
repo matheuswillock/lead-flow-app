@@ -38,7 +38,7 @@ export function NavUser({
   const userData = user ? {
     name: user.fullName || "Usuário",
     email: user.email,
-    avatar: `https://avatar.vercel.sh/${user.email}.png`,
+    avatar: user.profileIconUrl ?? `https://avatar.vercel.sh/${user.email}.png`,
   } : {
     name: "Carregando...",
     email: "carregando@example.com",
@@ -56,7 +56,7 @@ export function NavUser({
             >
               <Avatar className="h-8 w-8 rounded-lg grayscale">
                 <AvatarImage src={userData.avatar} alt={userData.name} />
-                <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                <AvatarFallback className="rounded-lg">LF</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{userData.name}</span>
@@ -77,7 +77,7 @@ export function NavUser({
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
                   <AvatarImage src={userData.avatar} alt={userData.name} />
-                  <AvatarFallback className="rounded-lg">CN</AvatarFallback>
+                  <AvatarFallback className="rounded-lg">LF</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{userData.name}</span>
@@ -93,14 +93,6 @@ export function NavUser({
                 <CircleUser />
                 <Link href={`/${supabaseId}/account`}>Account</Link>
               </DropdownMenuItem>
-              {/* <DropdownMenuItem>
-                <CreditCard />
-                <Link href="/billing">Billing</Link>
-              </DropdownMenuItem> */}
-              {/* <DropdownMenuItem>
-                <IconNotification />
-                Notifications
-              </DropdownMenuItem> */}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem

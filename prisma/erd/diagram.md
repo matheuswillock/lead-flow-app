@@ -41,6 +41,7 @@ status_change status_change
     String fullName "❓"
     String phone "❓"
     String profileIconId "❓"
+    String profileIconUrl "❓"
     UserRole role 
     DateTime createdAt 
     DateTime updatedAt 

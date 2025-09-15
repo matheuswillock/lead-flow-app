@@ -199,7 +199,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
         }
     }
 
-    async updateProfileIcon(supabaseId: string, profileIconId: string | null): Promise<Output> {
+    async updateProfileIcon(supabaseId: string, profileIconId: string | null, profileIconUrl?: string | null): Promise<Output> {
         try {
             if (!supabaseId) {
                 return new Output(false, [], ["Supabase ID is required"], null);
@@ -212,14 +212,15 @@ export class RegisterNewUserProfile implements IProfileUseCase {
             }
 
             // Update profile icon
-            const updatedProfile = await this.repo.updateProfileIcon(supabaseId, profileIconId);
+            const updatedProfile = await this.repo.updateProfileIcon(supabaseId, profileIconId, profileIconUrl || null);
 
             if (!updatedProfile) {
                 return new Output(false, [], ["Failed to update profile icon"], null);
             }
 
             return new Output(true, ["Profile icon updated successfully"], [], {
-                profileIconId: updatedProfile.profileIconId
+                profileIconId: updatedProfile.profileIconId,
+                profileIconUrl: updatedProfile.profileIconUrl
             });
         } catch (error) {
             console.error("Error updating profile icon:", error);

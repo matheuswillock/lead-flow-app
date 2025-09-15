@@ -14,6 +14,7 @@ export interface UserData {
   fullName: string | null;
   phone: string | null;
   profileIconId: string | null;
+  profileIconUrl: string | null;
   role: UserRole;
   managerId: string | null;
   createdAt: string;

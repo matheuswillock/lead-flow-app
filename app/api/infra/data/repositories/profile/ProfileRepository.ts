@@ -159,11 +159,14 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
-    async updateProfileIcon(supabaseId: string, profileIconId: string | null): Promise<Profile | null> {
+    async updateProfileIcon(supabaseId: string, profileIconId: string | null, profileIconUrl: string | null): Promise<Profile | null> {
         try {
             const profile = await prisma.profile.update({
                 where: { supabaseId },
-                data: { profileIconId },
+                data: { 
+                    profileIconId,
+                    profileIconUrl 
+                },
             });
             
             console.info("Profile icon updated successfully:", profile.id);
