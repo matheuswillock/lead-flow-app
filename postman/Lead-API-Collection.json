@@ -1,0 +1,465 @@
+{
+  "info": {
+    "name": "Lead Flow App - Lead API",
+    "description": "Collection para testar todas as rotas da API de Leads",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "supabaseUserId",
+      "value": "ed4ab5a4-3188-41fa-8389-481784cb1f84",
+      "type": "string",
+      "description": "ID do usuário no Supabase - substitua pelo ID real"
+    },
+    {
+      "key": "leadId",
+      "value": "",
+      "type": "string",
+      "description": "ID do lead criado - será preenchido automaticamente"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Criar Lead",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Salvar o ID do lead criado para usar em outras requisições",
+              "if (pm.response.code === 201) {",
+              "    const response = pm.response.json();",
+              "    if (response.isValid && response.result && response.result.id) {",
+              "        pm.collectionVariables.set('leadId', response.result.id);",
+              "        console.log('Lead ID salvo:', response.result.id);",
+              "    }",
+              "}",
+              "",
+              "// Testes básicos",
+              "pm.test('Status code é 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test('Response tem estrutura Output', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response).to.have.property('isValid');",
+              "    pm.expect(response).to.have.property('successMessages');",
+              "    pm.expect(response).to.have.property('errorMessages');",
+              "    pm.expect(response).to.have.property('result');",
+              "});",
+              "",
+              "pm.test('Lead criado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.have.property('id');",
+              "    pm.expect(response.result.name).to.eql('João Silva');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}",
+            "description": "ID do usuário autenticado no Supabase"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"João Silva\",\n  \"email\": \"joao.silva@email.com\",\n  \"phone\": \"(11) 99999-9999\",\n  \"cnpj\": \"12.345.678/0001-90\",\n  \"age\": 45,\n  \"hasHealthPlan\": true,\n  \"currentValue\": 2500.00,\n  \"referenceHospital\": \"Hospital São Paulo\",\n  \"currentTreatment\": \"Cardiologia\",\n  \"meetingDate\": \"2025-09-20T14:00:00.000Z\",\n  \"notes\": \"Cliente interessado em plano familiar\",\n  \"status\": \"new_opportunity\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leads",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leads"]
+        }
+      }
+    },
+    {
+      "name": "2. Listar Leads",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response tem estrutura Output', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response).to.have.property('isValid');",
+              "    pm.expect(response).to.have.property('result');",
+              "});",
+              "",
+              "pm.test('Lista de leads retornada', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.have.property('leads');",
+              "    pm.expect(response.result).to.have.property('total');",
+              "    pm.expect(response.result).to.have.property('page');",
+              "    pm.expect(response.result).to.have.property('limit');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leads?page=1&limit=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leads"],
+          "query": [
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Buscar Lead por ID",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Lead encontrado', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.have.property('id');",
+              "    pm.expect(response.result.name).to.eql('João Silva');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leads", "{{leadId}}"]
+        }
+      }
+    },
+    {
+      "name": "4. Atualizar Lead",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Lead atualizado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result.name).to.eql('João Silva Santos');",
+              "    pm.expect(response.result.currentValue).to.eql(3000);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"João Silva Santos\",\n  \"email\": \"joao.santos@email.com\",\n  \"currentValue\": 3000.00,\n  \"notes\": \"Cliente atualizado - interessado em plano premium\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leads", "{{leadId}}"]
+        }
+      }
+    },
+    {
+      "name": "5. Atualizar Status do Lead",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Status atualizado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result.status).to.eql('scheduled');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"status\": \"scheduled\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/status",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leads", "{{leadId}}", "status"]
+        }
+      }
+    },
+    {
+      "name": "6. Atribuir Lead a Operador",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Lead atribuído com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    // Verifica se a mensagem de sucesso está presente",
+              "    pm.expect(response.successMessages).to.include('Lead atribuído ao operador com sucesso');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"operatorId\": \"operator-uuid-here\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/assign",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leads", "{{leadId}}", "assign"]
+        }
+      }
+    },
+    {
+      "name": "7. Listar Leads com Filtros",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Filtros aplicados corretamente', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.have.property('leads');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leads?status=scheduled&search=João&page=1&limit=5",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leads"],
+          "query": [
+            {
+              "key": "status",
+              "value": "scheduled"
+            },
+            {
+              "key": "search",
+              "value": "João"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "8. Excluir Lead",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Lead excluído com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.successMessages).to.include('Lead excluído com sucesso');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leads", "{{leadId}}"]
+        }
+      }
+    },
+    {
+      "name": "9. Teste de Erro - Lead Não Encontrado",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 404', function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test('Erro correto retornado', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.false;",
+              "    pm.expect(response.errorMessages).to.include('Lead não encontrado');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leads/lead-inexistente",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leads", "lead-inexistente"]
+        }
+      }
+    },
+    {
+      "name": "10. Teste de Erro - Sem Autenticação",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 401', function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test('Erro de autenticação retornado', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.false;",
+              "    pm.expect(response.errorMessages).to.include('ID do usuário é obrigatório');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/leads",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "leads"]
+        }
+      }
+    }
+  ]
+}

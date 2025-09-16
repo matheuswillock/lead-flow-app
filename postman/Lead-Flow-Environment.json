@@ -1,0 +1,34 @@
+{
+  "id": "lead-flow-environment",
+  "name": "Lead Flow App - Development",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "supabaseUserId",
+      "value": "ed4ab5a4-3188-41fa-8389-481784cb1f84",
+      "type": "default",
+      "enabled": true,
+      "description": "Substitua pelo ID real do usuário autenticado no Supabase"
+    },
+    {
+      "key": "leadId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID do lead - será preenchido automaticamente pelos testes"
+    },
+    {
+      "key": "operatorId",
+      "value": "operator-uuid-example",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de um operador válido para teste de atribuição"
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}
