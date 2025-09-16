@@ -268,3 +268,135 @@ jobs:
                 throw err
               }
             }
+
+  auto-pr-develop-to-main:
+    name: Create PR from Develop to Main
+    # Run when there's a push to develop branch (typically after merging feature branches)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch full history to check for recent merges
+
+      - name: Check if recent merge from feature branch and create PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            // Check if this push was a merge from a feature/feat branch
+            const { execSync } = require('child_process');
+            
+            try {
+              // Get the commit message of the latest commit
+              const commitMessage = execSync('git log -1 --pretty=%s', { encoding: 'utf-8' }).trim();
+              console.log(`Latest commit message: ${commitMessage}`);
+              
+              // Check if it's a merge commit from a feature/feat branch
+              const isMergeFromFeature = commitMessage.includes('Merge') && 
+                                        (commitMessage.includes('feat/') || commitMessage.includes('feature/'));
+              
+              if (!isMergeFromFeature) {
+                core.info('This push is not a merge from a feature branch. Skipping PR creation.');
+                return;
+              }
+              
+              console.log('Detected merge from feature branch to develop. Creating PR to main...');
+              
+            } catch (error) {
+              core.warning(`Could not check git history: ${error.message}`);
+              // Continue anyway - we still want to create the PR if develop has new commits
+            }
+
+            const head = 'develop';
+            const base = 'main';
+
+            // Check if there's already an open PR from develop to main
+            let existingPrs = [];
+            try {
+              const res = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head: `${context.repo.owner}:${head}`,
+                base,
+                state: 'open',
+                per_page: 1,
+              });
+              existingPrs = res.data;
+            } catch (err) {
+              if (err.status === 404) {
+                core.warning('Could not list PRs (404). Proceeding to attempt creation.');
+              } else {
+                throw err;
+              }
+            }
+
+            if (existingPrs.length > 0) {
+              core.info(`PR from develop to main already exists: #${existingPrs[0].number} ${existingPrs[0].html_url}`);
+              return;
+            }
+
+            // Check if develop is ahead of main
+            try {
+              const comparison = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base,
+                head,
+              });
+
+              if (comparison.data.ahead_by === 0) {
+                core.info('Develop branch is not ahead of main. No PR needed.');
+                return;
+              }
+
+              console.log(`Develop is ${comparison.data.ahead_by} commits ahead of main.`);
+            } catch (err) {
+              core.warning(`Could not compare branches: ${err.message}. Proceeding with PR creation.`);
+            }
+
+            // Create the PR
+            const title = 'chore: release develop to main';
+            const body = [
+              'This pull request was opened automatically after feature branches were merged into develop.',
+              '',
+              '## Changes',
+              'This PR contains all the accumulated changes from feature branches that were merged into develop.',
+              '',
+              '## Review Instructions',
+              '1. Review the commits and changes included',
+              '2. Ensure all tests are passing',
+              '3. Verify the build is successful',
+              '4. Merge when ready to deploy to production',
+              '',
+              '---',
+              '*This PR was created automatically by CI workflow*'
+            ].join('\n');
+
+            try {
+              const res = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head,
+                base,
+                title,
+                body,
+                maintainer_can_modify: true,
+              });
+              core.info(`Created PR #${res.data.number}: ${res.data.html_url}`);
+            } catch (err) {
+              if (err.status === 403) {
+                core.setFailed('Permission denied to create PR. Ensure proper permissions are configured.');
+              } else if (err.status === 404) {
+                core.setFailed('Not Found creating PR. Check repository access and token permissions.');
+              } else if (err.status === 422) {
+                core.info('PR could not be created - likely no differences between branches or validation error.');
+              } else {
+                throw err;
+              }
+            }
