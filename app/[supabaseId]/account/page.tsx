@@ -291,7 +291,7 @@ export default function AccountProfilePage() {
                           type="button"
                           onClick={handleDeleteIcon}
                           disabled={isUploadingIcon}
-                          className="mt-2 text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="mt-2 text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                           {isUploadingIcon ? "Processando..." : "Remover ícone atual"}
                         </button>
