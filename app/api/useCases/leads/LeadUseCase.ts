@@ -5,6 +5,7 @@ import { Output } from "@/lib/output";
 import { LeadStatus, ActivityType } from "@prisma/client";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
+import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
 
 export class LeadUseCase implements ILeadUseCase {
@@ -236,6 +237,51 @@ export class LeadUseCase implements ILeadUseCase {
       return new Output(true, [], [], leads.map(lead => this.transformToDTO(lead)));
     } catch (error) {
       console.error("Erro ao buscar leads por status:", error);
+      return new Output(false, [], ["Erro interno do servidor"], null);
+    }
+  }
+
+  async transferLead(supabaseId: string, id: string, data: TransferLeadRequest): Promise<Output> {
+    try {
+      // Buscar informações do perfil do usuário atual
+      const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
+      
+      if (!profileInfo) {
+        return new Output(false, [], ["Perfil do usuário não encontrado"], null);
+      }
+
+      // Verificar se o usuário atual é um manager
+      if (profileInfo.role !== 'manager') {
+        return new Output(false, [], ["Apenas managers podem transferir leads"], null);
+      }
+
+      // Buscar o lead para verificar se pertence ao manager atual
+      const lead = await this.leadRepository.findById(id);
+      
+      if (!lead) {
+        return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      // Verificar se o lead pertence ao manager atual
+      if (lead.managerId !== profileInfo.id) {
+        return new Output(false, [], ["Você só pode transferir leads que são seus"], null);
+      }
+
+      // Verificar se não é uma transferência para o mesmo manager
+      if (data.newManagerId === profileInfo.id) {
+        return new Output(false, [], ["Não é possível transferir o lead para você mesmo"], null);
+      }
+
+      // Realizar a transferência
+      const transferredLead = await this.leadRepository.transferToManager(
+        id, 
+        data.newManagerId, 
+        data.reason || undefined
+      );
+
+      return new Output(true, [], ["Lead transferido com sucesso"], this.transformToDTO(transferredLead));
+    } catch (error) {
+      console.error("Erro ao transferir lead:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);
     }
   }

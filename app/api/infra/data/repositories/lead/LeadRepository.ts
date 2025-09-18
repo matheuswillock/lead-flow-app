@@ -235,4 +235,51 @@ export class LeadRepository implements ILeadRepository {
       },
     });
   }
+
+  async transferToManager(id: string, newManagerId: string, reason?: string): Promise<Lead> {
+    return await prisma.lead.update({
+      where: { id },
+      data: {
+        managerId: newManagerId,
+        updatedAt: new Date(),
+        activities: {
+          create: {
+            type: 'status_change',
+            body: reason || 'Lead transferido para novo gestor',
+            createdAt: new Date(),
+          },
+        },
+      },
+      include: {
+        manager: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        activities: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+  }
 }

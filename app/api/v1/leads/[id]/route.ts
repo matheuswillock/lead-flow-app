@@ -11,7 +11,7 @@ const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Extrair supabaseId dos headers
@@ -22,7 +22,9 @@ export async function GET(
       return NextResponse.json(output, { status: 401 });
     }
 
-    const output = await leadUseCase.getLeadById(supabaseId, params.id);
+    const { id } = await params;
+
+    const output = await leadUseCase.getLeadById(supabaseId, id);
     const status = output.isValid ? 200 : (output.errorMessages.includes("Lead não encontrado") ? 404 : 400);
     return NextResponse.json(output, { status });
 
@@ -35,7 +37,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Extrair supabaseId dos headers
@@ -56,7 +58,9 @@ export async function PUT(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const output = await leadUseCase.updateLead(supabaseId, params.id, validatedData);
+    const { id } = await params;
+
+    const output = await leadUseCase.updateLead(supabaseId, id, validatedData);
     const status = output.isValid ? 200 : 400;
     return NextResponse.json(output, { status });
 
@@ -69,7 +73,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Extrair supabaseId dos headers
@@ -80,7 +84,9 @@ export async function DELETE(
       return NextResponse.json(output, { status: 401 });
     }
 
-    const output = await leadUseCase.deleteLead(supabaseId, params.id);
+    const { id } = await params;
+
+    const output = await leadUseCase.deleteLead(supabaseId, id);
     const status = output.isValid ? 200 : 400;
     return NextResponse.json(output, { status });
 

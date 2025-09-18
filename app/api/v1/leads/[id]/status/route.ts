@@ -11,7 +11,7 @@ const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Extrair supabaseId dos headers
@@ -30,7 +30,9 @@ export async function PATCH(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const output = await leadUseCase.updateLeadStatus(supabaseId, params.id, status);
+    const { id } = await params;
+
+    const output = await leadUseCase.updateLeadStatus(supabaseId, id, status);
     const responseStatus = output.isValid ? 200 : 400;
     return NextResponse.json(output, { status: responseStatus });
 
