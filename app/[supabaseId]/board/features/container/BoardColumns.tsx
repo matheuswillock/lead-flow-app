@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { div as MotionDiv } from "framer-motion/client";
-import { useBoardContext, COLUMNS, formatDate } from "../BoardContext";
+import { COLUMNS, formatDate } from "../context/BoardContext";
+import useBoardContext from "../context/BoardHook";
 
 export default function BoardColumns() {
     const { 

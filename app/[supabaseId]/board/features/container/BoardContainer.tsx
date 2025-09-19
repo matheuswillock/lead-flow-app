@@ -3,11 +3,11 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { useBoardContext } from "../BoardContext";
 import BoardHeader from "./BoardHeader";
 import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
 import BoardDialog from "./BoardDialog";
+import useBoardContext from "../context/BoardHook";
 
 export function BoardContainer() {
   const { openNewLeadDialog } = useBoardContext();

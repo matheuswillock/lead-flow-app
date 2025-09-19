@@ -1,5 +1,5 @@
-import { createContext, ReactNode, useMemo, useState, useContext } from "react";
-import { IBoardService } from "./services/IBoardServices";
+import { createContext, ReactNode, useMemo, useState } from "react";
+import { IBoardService } from "../services/IBoardServices";
 // import { createBoardService } from "./services/BoardService"; // TODO: Implement service integration
 
 interface IBoardProviderProps {
@@ -34,7 +34,6 @@ interface IBoardContextState {
   onDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
 }
 
-
 const COLUMNS: { key: ColumnKey; title: string }[] = [
   { key: "new_opportunity", title: "Nova oportunidade" },
   { key: "scheduled", title: "Agendado" },
@@ -60,7 +59,7 @@ function formatDate(iso: string) {
   }
 }
 
-const BoardContext = createContext<IBoardContextState | undefined>(undefined);
+export const BoardContext = createContext<IBoardContextState | undefined>(undefined);
 
 export const BoardProvider: React.FC<IBoardProviderProps> = ({ 
   children, 
@@ -221,24 +220,12 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     onDrop,
     onDragStart
   };
-
-
-
   
   return (
     <BoardContext.Provider value={value}>
       {children}
     </BoardContext.Provider>
   );
-}
-
-// Hook customizado para usar o contexto
-export function useBoardContext() {
-  const context = useContext(BoardContext);
-  if (context === undefined) {
-    throw new Error('useBoardContext must be used within a BoardProvider');
-  }
-  return context;
 }
 
 // Exportar constantes úteis
