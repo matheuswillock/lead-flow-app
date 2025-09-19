@@ -1,8 +1,18 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { div as MotionDiv } from "framer-motion/client";
+import { useBoardContext, COLUMNS, formatDate } from "../BoardContext";
 
 export default function BoardColumns() {
+    const { 
+        filtered, 
+        handleCardMouseDown, 
+        handleCardDragStart, 
+        handleCardClick, 
+        onDrop, 
+        onDragOver 
+    } = useBoardContext();
+
     return (
         <div className="relative">
             <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none" />
@@ -13,7 +23,7 @@ export default function BoardColumns() {
             style={{ scrollSnapType: "x proximity" }}
             >
             {COLUMNS.map(({ key, title }) => {
-                const items = filtered[key];
+                const items = filtered[key] || []; // Fallback para array vazio
                 return (
                 <MotionDiv
                     key={key}

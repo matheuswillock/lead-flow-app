@@ -1,6 +1,6 @@
-import { createContext, ReactNode, useMemo, useState } from "react";
+import { createContext, ReactNode, useMemo, useState, useContext } from "react";
 import { IBoardService } from "./services/IBoardServices";
-import { createBoardService } from "./services/BoardService";
+// import { createBoardService } from "./services/BoardService"; // TODO: Implement service integration
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -10,17 +10,25 @@ interface IBoardProviderProps {
 interface IBoardContextState {
   isLoading: boolean;
   query: string;
+  setQuery: (query: string) => void;
   data: Record<ColumnKey, Lead[]>;
+  filtered: Record<ColumnKey, Lead[]>;
   periodStart: string; 
+  setPeriodStart: (date: string) => void;
   periodEnd: string;
+  setPeriodEnd: (date: string) => void;
   assignedUser: string; 
+  setAssignedUser: (user: string) => void;
+  responsaveis: string[];
   errors: Record<string, string>;
   open: boolean;
+  setOpen: (open: boolean) => void;
   selected: Lead | null;
   clearErrors: () => void;
   handleCardClick: (lead: Lead) => void;
   handleCardMouseDown: () => void;
   handleCardDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
+  openNewLeadDialog: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent, to: ColumnKey) => void;
   onDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
@@ -56,11 +64,47 @@ const BoardContext = createContext<IBoardContextState | undefined>(undefined);
 
 export const BoardProvider: React.FC<IBoardProviderProps> = ({ 
   children, 
-  boardService = createBoardService()
+  // boardService = createBoardService() // TODO: Implement service integration
 }) => {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading] = useState(false); // TODO: Use when implementing service calls
   const [query, setQuery] = useState("");
-  const [data, setData] = useState<Record<ColumnKey, Lead[]>>(() => ({} as Record<ColumnKey, Lead[]>));
+
+  // TODO: Replace with service data fetching
+  const [data, setData] = useState<Record<ColumnKey, Lead[]>>(() => {
+    // Inicializa todas as colunas com arrays vazios
+    const initialData: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
+    COLUMNS.forEach(({ key }) => {
+      initialData[key] = [];
+    });
+    
+    // Adiciona alguns dados de exemplo para teste
+    initialData.new_opportunity = [
+      {
+        id: "1",
+        name: "João Silva",
+        enteredAt: "2025-09-15",
+        responsible: "Maria Santos"
+      },
+      {
+        id: "2", 
+        name: "Ana Costa",
+        enteredAt: "2025-09-16",
+        responsible: "Carlos Lima"
+      }
+    ];
+    
+    initialData.scheduled = [
+      {
+        id: "3",
+        name: "Pedro Oliveira", 
+        enteredAt: "2025-09-10",
+        responsible: "Maria Santos"
+      }
+    ];
+    
+    return initialData;
+  });
+
   const [periodStart, setPeriodStart] = useState<string>(""); // yyyy-mm-dd
   const [periodEnd, setPeriodEnd] = useState<string>(""); // yyyy-mm-dd
   const [assignedUser, setAssignedUser] = useState<string>("todos");
@@ -79,6 +123,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     const handleCardClick = (lead: Lead) => {
       if (dragStarted) return
       setSelected(lead)
+      setOpen(true)
+    }
+
+    const openNewLeadDialog = () => {
+      setSelected(null) // Limpa a seleção para indicar que é um novo lead
       setOpen(true)
     }
 
@@ -125,17 +174,23 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const beforeEnd = !periodEnd || d <= periodEnd;
       return afterStart && beforeEnd;
     };
-    const next: Record<ColumnKey, Lead[]> = { ...data } as any;
-    (Object.keys(next) as ColumnKey[]).forEach((key) => {
-      next[key] = next[key].filter((l) => inQuery(l) && inResponsible(l) && inPeriod(l));
+    
+    const next: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
+    
+    // Garante que todas as colunas existam no resultado filtrado
+    COLUMNS.forEach(({ key }) => {
+      const columnData = data[key] || []; // Fallback para array vazio se não existir
+      next[key] = columnData.filter((l) => inQuery(l) && inResponsible(l) && inPeriod(l));
     });
+    
     return next;
   }, [data, query, assignedUser, periodStart, periodEnd]);
 
   const responsaveis = useMemo(() => {
     const set = new Set<string>();
-    (Object.keys(data) as ColumnKey[]).forEach((k) => {
-      data[k].forEach((l) => set.add(l.responsible));
+    COLUMNS.forEach(({ key }) => {
+      const columnData = data[key] || []; // Fallback para array vazio se não existir
+      columnData.forEach((l) => set.add(l.responsible));
     });
     return Array.from(set).sort();
   }, [data]);
@@ -143,18 +198,26 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const value: IBoardContextState = {
     isLoading,
     query,
+    setQuery,
     data,
+    filtered,
     periodStart,
+    setPeriodStart,
     periodEnd,
+    setPeriodEnd,
     assignedUser,
+    setAssignedUser,
+    responsaveis,
     errors,
     open,
+    setOpen,
     selected,
     onDragOver,
     clearErrors,
     handleCardClick,
     handleCardMouseDown,
     handleCardDragStart,
+    openNewLeadDialog,
     onDrop,
     onDragStart
   };
@@ -168,3 +231,15 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     </BoardContext.Provider>
   );
 }
+
+// Hook customizado para usar o contexto
+export function useBoardContext() {
+  const context = useContext(BoardContext);
+  if (context === undefined) {
+    throw new Error('useBoardContext must be used within a BoardProvider');
+  }
+  return context;
+}
+
+// Exportar constantes úteis
+export { COLUMNS, formatDate };

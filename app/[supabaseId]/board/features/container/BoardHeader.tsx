@@ -1,8 +1,21 @@
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Filter, ScrollText } from "lucide-react";
+import { useBoardContext } from "../BoardContext";
 
 export default function BoardHeader() {
+    const { 
+        query, 
+        setQuery, 
+        periodStart, 
+        setPeriodStart, 
+        periodEnd, 
+        setPeriodEnd, 
+        assignedUser, 
+        setAssignedUser, 
+        responsaveis 
+    } = useBoardContext();
+
     return (
       <div className="flex flex-wrap items-center gap-2">
         <ScrollText className="size-5" />
