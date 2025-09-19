@@ -33,7 +33,6 @@ export class SignUpService implements ISignUpService {
       const result = await response.json();
 
       if (!response.ok) {
-        // O resultado já é um Output direto agora
         return result;
       }
 

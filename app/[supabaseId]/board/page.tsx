@@ -101,7 +101,7 @@ export default function KanbanLeadsMock() {
   const [data, setData] = useState<Record<ColumnKey, Lead[]>>(seed);
   const [periodStart, setPeriodStart] = useState<string>(""); // yyyy-mm-dd
   const [periodEnd, setPeriodEnd] = useState<string>(""); // yyyy-mm-dd
-  const [responsavel, setResponsavel] = useState<string>("todos");
+  const [assignedUser, setAssignedUser] = useState<string>("todos");
 
   const responsaveis = useMemo(() => {
     const set = new Set<string>();
@@ -114,7 +114,7 @@ export default function KanbanLeadsMock() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const inQuery = (l: Lead) => !q || l.name.toLowerCase().includes(q) || formatDate(l.enteredAt).includes(q);
-    const inResponsible = (l: Lead) => responsavel === "todos" || l.responsible === responsavel;
+    const inResponsible = (l: Lead) => assignedUser === "todos" || l.responsible === assignedUser;
     const inPeriod = (l: Lead) => {
       const d = l.enteredAt; // ISO yyyy-mm-dd
       const afterStart = !periodStart || d >= periodStart;
@@ -126,7 +126,7 @@ export default function KanbanLeadsMock() {
       next[key] = next[key].filter((l) => inQuery(l) && inResponsible(l) && inPeriod(l));
     });
     return next;
-  }, [data, query, responsavel, periodStart, periodEnd]);
+  }, [data, query, assignedUser, periodStart, periodEnd]);
 
   // Drag n' Drop – eventos básicos
   const onDragStart = (e: React.DragEvent, leadId: string, from: ColumnKey) => {
@@ -199,7 +199,7 @@ export default function KanbanLeadsMock() {
           </div>
 
           {/* Filtro por responsável */}
-          <Select value={responsavel} onValueChange={setResponsavel}>
+          <Select value={assignedUser} onValueChange={setAssignedUser}>
             <SelectTrigger className="w-48">
               <SelectValue placeholder="Responsável" />
             </SelectTrigger>
