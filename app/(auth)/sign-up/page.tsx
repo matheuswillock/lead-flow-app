@@ -1,5 +1,5 @@
-import { SignUpFormContainer } from "./features/signUpContainer";
-import { SignUpProvider } from "./features/signUpContext"
+import { SignUpFormContainer } from "./features/container/signUpContainer";
+import { SignUpProvider } from "./features/container/signUpContext"
 
 export default function SignUpPage() {
 	return (

@@ -4,8 +4,8 @@ import { RequestToRegisterUserProfile } from "@/app/api/v1/profiles/DTO/requestT
 // import { ISignUpService } from "../services/ISignUpService";
 import { signUpFormData } from "@/lib/types/formTypes";
 import { Output } from "@/lib/output";
-import { ISignUpService } from "./services/ISignUpService";
-import { createSignUpService } from "./services/SignUpService";
+import { ISignUpService } from "../services/ISignUpService";
+import { createSignUpService } from "../services/SignUpService";
 
 /**
  * Interface para o estado do contexto de cadastro
