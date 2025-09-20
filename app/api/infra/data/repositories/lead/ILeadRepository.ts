@@ -15,6 +15,25 @@ export interface ILeadRepository {
       endDate?: Date;
     }
   ): Promise<{ leads: Lead[]; total: number }>;
+  findAllByManagerId(
+    managerId: string, 
+    options?: {
+      status?: LeadStatus;
+      assignedTo?: string;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+    }
+  ): Promise<{ leads: Lead[] }>;
+  findAllByOperatorId(
+    operatorId: string, 
+    options?: {
+      status?: LeadStatus;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+    }
+  ): Promise<{ leads: Lead[] }>;
   update(id: string, data: Prisma.LeadUpdateInput): Promise<Lead>;
   delete(id: string): Promise<void>;
   updateStatus(id: string, status: LeadStatus): Promise<Lead>;

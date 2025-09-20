@@ -1,4 +1,3 @@
-// src/context/AuthContext.tsx
 "use client";
 
 import React, {
@@ -13,7 +12,6 @@ import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 interface AuthContextType {
   user: User | null;
-//   userProfile: UserDisplay | null;
   loading: boolean;
 }
 
@@ -22,7 +20,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = createSupabaseBrowser();
   const [user, setUser] = useState<User | null>(null);
-//   const [userProfile, setUserProfile] = useState<UserDisplay | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -46,7 +43,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       : { data: { subscription: { unsubscribe() {} } } }
 
     return () => {
-  // defensive unsubscribe
   authListener?.data?.subscription?.unsubscribe?.()
     }
   }, [supabase]);
@@ -54,29 +50,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user) {
       const fetchUserProfile = async () => {
-  // const { data: profile } = await supabase
-  //   .from("users")
-  //   .select("teachers!userId(fullName)")
-  //   .eq("supabaseId", user.id)
-  //   .single();
-
-  /* const name = profile?.teachers?.[0]?.fullName || user.email;
-     const avatar = user.user_metadata.avatar_url ?? null; */
-
-        // setUserProfile({
-        //   name,
-        //   email: user.email,
-        //   avatar,
-        // });
       };
       fetchUserProfile();
     } else {
-      // setUserProfile(null);
     }
   }, [user, supabase]);
 
   return (
-    <AuthContext.Provider value={{ user, /*userProfile,*/ loading }}>
+    <AuthContext.Provider value={{ user, loading }}>
       {children}
     </AuthContext.Provider>
   );

@@ -282,4 +282,127 @@ export class LeadRepository implements ILeadRepository {
       },
     });
   }
+
+  async findAllByManagerId(
+    managerId: string,
+    options?: {
+      status?: LeadStatus;
+      assignedTo?: string;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+    }
+  ): Promise<{ leads: Lead[] }> {
+    const {
+      status,
+      assignedTo,
+      search,
+      startDate,
+      endDate,
+    } = options || {};
+
+    const where: Prisma.LeadWhereInput = {
+      managerId,
+      ...(status && { status }),
+      ...(assignedTo && { assignedTo }),
+      ...(search && {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search, mode: 'insensitive' } },
+        ],
+      }),
+      ...(startDate && endDate && {
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      }),
+    };
+
+    const leads = await prisma.lead.findMany({
+      where,
+      include: {
+        manager: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return { leads };
+  }
+
+  async findAllByOperatorId(
+    operatorId: string,
+    options?: {
+      status?: LeadStatus;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+    }
+  ): Promise<{ leads: Lead[] }> {
+    const {
+      status,
+      search,
+      startDate,
+      endDate,
+    } = options || {};
+
+    const where: Prisma.LeadWhereInput = {
+      assignedTo: operatorId, // Filtra apenas leads atribuídos ao operator
+      ...(status && { status }),
+      ...(search && {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { phone: { contains: search, mode: 'insensitive' } },
+        ],
+      }),
+      ...(startDate && endDate && {
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      }),
+    };
+
+    const leads = await prisma.lead.findMany({
+      where,
+      include: {
+        manager: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+        assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    return { leads };
+  }
 }

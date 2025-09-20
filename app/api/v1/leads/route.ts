@@ -52,25 +52,28 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
+    const role = searchParams.get('role');
     const status = searchParams.get('status') as LeadStatus | null;
     const assignedTo = searchParams.get('assignedTo');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
     const search = searchParams.get('search');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
+    if (!role) {
+      const output = new Output(false, [], ["Role do usuário é obrigatório"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
     const options = {
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
-      page,
-      limit,
       ...(search && { search }),
       ...(startDate && { startDate: new Date(startDate) }),
       ...(endDate && { endDate: new Date(endDate) }),
+      role, // Adiciona o role nas opções
     };
 
-    const output = await leadUseCase.getLeadsByManager(supabaseId, options);
+    const output = await leadUseCase.getAllLeadsByUserRole(supabaseId, options);
     return NextResponse.json(output);
 
   } catch (error) {

@@ -2,7 +2,9 @@ import type { Profile, UserRole } from "@prisma/client";
 import { Output } from "@/lib/output";
 
 export interface ProfileResponseDTO {
+  id: string;
   email: string;
+  supabaseId: string | null;
   phone: string | null;
   fullName: string | null;
   role: UserRole;
@@ -13,7 +15,9 @@ export interface ProfileResponseDTO {
 
 export function createProfileResponseDTO(profile: Profile): ProfileResponseDTO {
   return {
+    id: profile.id,
     email: profile.email,
+    supabaseId: profile.supabaseId,
     phone: profile.phone,
     fullName: profile.fullName,
     role: profile.role,

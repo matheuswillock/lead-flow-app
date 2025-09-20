@@ -19,6 +19,17 @@ export interface ILeadUseCase {
       endDate?: Date;
     }
   ): Promise<Output>;
+  getAllLeadsByUserRole(
+    supabaseId: string,
+    options?: {
+      status?: LeadStatus;
+      assignedTo?: string;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+      role: string;
+    }
+  ): Promise<Output>;
   updateLead(supabaseId: string, id: string, data: UpdateLeadRequest): Promise<Output>;
   deleteLead(supabaseId: string, id: string): Promise<Output>;
   updateLeadStatus(supabaseId: string, id: string, status: LeadStatus): Promise<Output>;

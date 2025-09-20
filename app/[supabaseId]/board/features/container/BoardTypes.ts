@@ -1,21 +1,33 @@
-type Lead = {
+import { LeadStatus } from "@prisma/client";
+
+export type Lead = {
   id: string;
+  managerId: string;
+  assignedTo: string | null;
+  status: LeadStatus;
   name: string;
-  enteredAt: string; // ISO date (yyyy-mm-dd)
-  responsible: string; // responsável pelo lead
+  email: string | null;
+  phone: string | null;
+  cnpj: string | null;
+  age: number | null;
+  hasHealthPlan: boolean | null;
+  currentValue: number | null;
+  referenceHospital: string | null;
+  currentTreatment: string | null;
+  meetingDate: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  manager?: {
+    id: string;
+    fullName: string | null;
+    email: string;
+  };
+  assignee?: {
+    id: string;
+    fullName: string | null;
+    email: string;
+  } | null;
 };
 
-type ColumnKey =
-  | "new_opportunity"
-  | "scheduled"
-  | "no_show"
-  | "pricingRequest"
-  | "offerNegotiation"
-  | "pending_documents"
-  | "offerSubmission"
-  | "dps_agreement"
-  | "invoicePayment"
-  | "disqualified"
-  | "opportunityLost"
-  | "operator_denied"
-  | "contract_finalized";
+export type ColumnKey = LeadStatus;

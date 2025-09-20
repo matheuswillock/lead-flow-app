@@ -10,7 +10,7 @@ import type { UserRole } from "@prisma/client";
 export interface UserData {
   id: string;
   email: string;
-  supabaseId: string;
+  supabaseId: string | null;
   fullName: string | null;
   phone: string | null;
   profileIconId: string | null;

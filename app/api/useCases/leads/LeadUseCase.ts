@@ -127,6 +127,69 @@ export class LeadUseCase implements ILeadUseCase {
     }
   }
 
+  async getAllLeadsByUserRole(
+    supabaseId: string,
+    options?: {
+      status?: LeadStatus;
+      assignedTo?: string;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+      role: string;
+    }
+  ): Promise<Output> {
+    try {
+      // Buscar informações do perfil através do ProfileUseCase
+      const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
+      
+      if (!profileInfo) {
+        return new Output(false, [], ["Perfil do usuário não encontrado"], null);
+      }
+
+      let leads: any[] = [];
+
+      if (options?.role === 'manager') {
+        // Se for manager, busca todos os leads do manager (incluindo dos operators)
+        const managerId = profileInfo.role === 'manager' ? profileInfo.id : profileInfo.managerId;
+        
+        if (!managerId) {
+          return new Output(false, [], ["Manager não identificado"], null);
+        }
+
+        const result = await this.leadRepository.findAllByManagerId(managerId, {
+          status: options.status,
+          assignedTo: options.assignedTo,
+          search: options.search,
+          startDate: options.startDate,
+          endDate: options.endDate,
+        });
+        
+        leads = result.leads;
+      } else if (options?.role === 'operator') {
+        // Se for operator, busca apenas os leads atribuídos a ele
+        if (profileInfo.role !== 'operator') {
+          return new Output(false, [], ["Usuário não é um operator"], null);
+        }
+
+        const result = await this.leadRepository.findAllByOperatorId(profileInfo.id, {
+          status: options.status,
+          search: options.search,
+          startDate: options.startDate,
+          endDate: options.endDate,
+        });
+        
+        leads = result.leads;
+      } else {
+        return new Output(false, [], ["Role inválido. Use 'manager' ou 'operator'"], null);
+      }
+
+      return new Output(true, [], [], leads.map(lead => this.transformToDTO(lead)));
+    } catch (error) {
+      console.error("Erro ao buscar leads por role:", error);
+      return new Output(false, [], ["Erro interno do servidor"], null);
+    }
+  }
+
   async updateLead(supabaseId: string, id: string, data: UpdateLeadRequest): Promise<Output> {
     try {
       // Verificar se o usuário existe e tem permissão
