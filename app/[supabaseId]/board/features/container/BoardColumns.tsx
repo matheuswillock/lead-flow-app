@@ -1,8 +1,10 @@
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { div as MotionDiv } from "framer-motion/client";
-import { COLUMNS, formatDate } from "../context/BoardContext";
+import { COLUMNS } from "../context/BoardContext";
 import useBoardContext from "../context/BoardHook";
+import { LeadsLoader } from "./LeadsLoader";
+import { LeadsError } from "./LeadsError";
+import { LeadCard } from "./LeadCard";
 
 export default function BoardColumns() {
     const { 
@@ -18,23 +20,13 @@ export default function BoardColumns() {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-[50vh]">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-                    <p className="text-muted-foreground">Carregando leads...</p>
-                </div>
-            </div>
+            <LeadsLoader />
         );
     }
 
     if (errors.api) {
         return (
-            <div className="flex items-center justify-center min-h-[50vh]">
-                <div className="text-center">
-                    <p className="text-destructive mb-2">Erro ao carregar leads</p>
-                    <p className="text-muted-foreground text-sm">{errors.api}</p>
-                </div>
-            </div>
+            <LeadsError error={errors.api} />
         );
     }
 
@@ -75,31 +67,14 @@ export default function BoardColumns() {
                                 )}
 
                                 {items.map((lead) => (
-                                    <Card
+                                    <LeadCard
                                         key={lead.id}
-                                        draggable
-                                        onMouseDown={handleCardMouseDown}
-                                        onDragStart={(e) => handleCardDragStart(e, lead.id, key)}
-                                        onClick={() => handleCardClick(lead)}
-                                        className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent"
-                                    >
-                                        <CardHeader className="py-3">
-                                            <CardTitle className="text-base font-semibold leading-tight">
-                                                {lead.name}
-                                            </CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="pt-0 pb-3">
-                                            <div className="text-xs text-accent-foreground">
-                                                Entrada: {formatDate(lead.createdAt)}
-                                            </div>
-                                            <div className="mt-1 text-xs">
-                                                <span className="text-accent-foreground">Resp.: </span>
-                                                <strong>
-                                                    {lead.assignedTo || "Não atribuído"}
-                                                </strong>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
+                                        lead={lead}
+                                        columnKey={key}
+                                        handleCardMouseDown={handleCardMouseDown}
+                                        handleCardDragStart={handleCardDragStart}
+                                        handleCardClick={handleCardClick}
+                                    />
                                 ))}
                             </div>
                         </MotionDiv>
