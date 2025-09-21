@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Button } from "../ui/button";
 import { LogIn } from "lucide-react";
 
-export function LandingPageHeader() {
+export function LandingHeader() {
     return (
         <header className="sticky top-0 z-20 border-b" style={{ borderColor: "var(--border)" }}>
             <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">

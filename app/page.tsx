@@ -1,6 +1,6 @@
 "use client"
 
-import { LandingPageHeader } from "@/components/landingpage/landingPageHeader";
+import { LandingHeader } from "@/components/landing/landingHeader";
 import { div as MotionDiv, h1 as MotionH1, p as MotionP } from "framer-motion/client";
 import { ArrowRight, } from "lucide-react";
 import Link from "next/link";
@@ -8,7 +8,7 @@ import Link from "next/link";
 export default function Home() {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <LandingPageHeader />
+      <LandingHeader />
 
       <section className="relative overflow-hidden">
         <div
