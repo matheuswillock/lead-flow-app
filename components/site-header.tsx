@@ -7,14 +7,18 @@ import { ThemeToggle } from '@/components/theme-toggle'
 
 export function SiteHeader() {
   const pathname = usePathname()
-  const first = (pathname || '/').split('/').filter(Boolean)[0] || ''
+  const pathSegments = (pathname || '/').split('/').filter(Boolean)
+
+  const routeName = pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0] || ''
+  
   const titleMap: Record<string, string> = {
     dashboard: 'Dashboard',
     board: 'Board',
     pipeline: 'Pipeline',
     account: 'Account',
+    'manager-users': 'Manager Users',
   }
-  const currentTitle = titleMap[first] ?? 'Dashboard'
+  const currentTitle = titleMap[routeName] ?? 'Dashboard'
   return (
   <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b box-border transition-[height] ease-linear">
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
@@ -23,7 +27,7 @@ export function SiteHeader() {
           orientation="vertical"
           className="mx-2 data-[orientation=vertical]:h-4"
         />
-        <h1 className="text-base font-medium">{currentTitle}</h1>
+        <h1 className="text-sm font-semibold">{currentTitle}</h1>
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
         </div>
