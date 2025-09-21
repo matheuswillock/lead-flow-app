@@ -5,6 +5,9 @@ export const loginFormSchema = z.object({
   password: z.string().min(6, "Senha inválida"),
 });
 
+export type loginFormData = z.infer<typeof loginFormSchema>;
+
+
 export const signupFormSchema = z.object({
   fullName: z
     .string()
@@ -25,6 +28,8 @@ export const signupFormSchema = z.object({
   path: ["confirmPassword"],
 });
 
+export type signUpFormData = z.infer<typeof signupFormSchema>;
+
 export const updateAccountFormSchema = z.object({
   fullName: z
     .string()
@@ -43,3 +48,30 @@ export const updateAccountFormSchema = z.object({
     .refine((val) => !val || /[^A-Za-z0-9]/.test(val), "A senha deve conter pelo menos um caracter especial")
     .optional(),
 });
+
+export type updateAccountFormData = z.infer<typeof updateAccountFormSchema>;
+
+export const leadFormSchema = z.object({
+  name: z.string().min(2, "Nome inválido"),
+  phone: z.string().min(8, "Telefone inválido").max(20, "Telefone inválido"),
+  email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
+  cnpj: z.string().min(0).optional(),
+  age: z.array(z.enum([
+    "0-18",
+    "19-25",
+    "26-35",
+    "36-45",
+    "46-60",
+    "61+"
+  ], { message: "Selecione uma faixa de idade" }))
+    .min(1, "Selecione pelo menos uma faixa de idade"),
+  hasPlan: z.enum(["sim", "nao"], { message: "Selecione uma opção" }),
+  currentValue: z.string().min(1, "O valor atual é obrigatório"),
+  referenceHospital: z.string().min(2, "O hospital de referência é obrigatório"),
+  ongoingTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
+  additionalNotes: z.string().min(2, "Adicione observações relevantes"),
+  meetingDate: z.string().min(1, "A data da reunião é obrigatória"),
+  responsible: z.string().min(2, "O responsável é obrigatório"),
+});
+
+export type leadFormData = z.infer<typeof leadFormSchema>;

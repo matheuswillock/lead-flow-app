@@ -2,13 +2,11 @@
 import { useState } from "react"
 import { signin } from "./actions"
 import { useLoginForm } from "@/hooks/useForms"
-import { loginFormData } from "@/lib/types/formTypes"
 import { SignInForm } from "@/components/forms/loginForm"
+import { loginFormData } from "@/lib/validations/validationForms"
 
 export default function SignInPage() {
   const form = useLoginForm();
-  // const supabase = createSupabaseBrowser() // (removido enquanto login social não é usado)
-  // Estados removidos (email/password) pois o formulário usa react-hook-form
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   async function onSubmit(data: loginFormData) {
