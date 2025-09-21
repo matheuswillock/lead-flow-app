@@ -7,6 +7,9 @@ export const runtime = 'nodejs'
 // Define protected route prefixes (actual URL paths)
 const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users"]
 
+// Routes that require manager role
+const managerOnlyRoutes = ["/manager-users"]
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   
@@ -24,6 +27,16 @@ export async function middleware(request: NextRequest) {
       return protectedPrefixes.includes(potentialRoute)
     }
     return false
+  })
+
+  // Check if it's a manager-only route
+  const isManagerOnlyRoute = managerOnlyRoutes.some((route) => {
+    const pathSegments = pathname.split('/').filter(Boolean)
+    if (pathSegments.length >= 2) {
+      const potentialRoute = `/${pathSegments[1]}`
+      return route === potentialRoute
+    }
+    return pathname.startsWith(route)
   })
 
   // If the user is logged in and is trying to access auth pages, redirect to board with supabaseId
@@ -58,6 +71,34 @@ export async function middleware(request: NextRequest) {
     // If the supabaseId in URL doesn't match the authenticated user, redirect to correct URL
     if (urlSupabaseId !== user.id) {
       return NextResponse.redirect(new URL(`/${user.id}/${routeName}`, request.url))
+    }
+  }
+
+  // Additional check for manager-only routes
+  if (isManagerOnlyRoute && user) {
+    try {
+      // Verificar role do usuário via API
+      const profileResponse = await fetch(`${request.nextUrl.origin}/api/v1/profiles/${user.id}`, {
+        headers: {
+          'x-supabase-user-id': user.id,
+        },
+      })
+      
+      if (profileResponse.ok) {
+        const profileData = await profileResponse.json()
+        
+        // Se não for manager, redirecionar para dashboard
+        if (!profileData.isValid || !profileData.result || profileData.result.role !== 'manager') {
+          return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
+        }
+      } else {
+        // Se não conseguir verificar o role, redirecionar por segurança
+        return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
+      }
+    } catch (error) {
+      console.error('Erro ao verificar role do usuário:', error)
+      // Em caso de erro, redirecionar por segurança
+      return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
     }
   }
 

@@ -16,14 +16,21 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { NavUser } from "./nav-user"
+import { useUserRole } from "@/hooks/useUserRole"
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
-  const items = [
+  const { isManager } = useUserRole();
+  
+  const baseItems = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "Board", url: `/${supabaseId}/board`, icon: KanbanSquare },
     { title: "Pipeline", url: `/${supabaseId}/pipeline`, icon: ChartBarBig },
-    { title: "Manager users", url: `/${supabaseId}/manager-users`, icon: Users },
-  ]
+  ];
+
+  // Adicionar "Manager users" apenas se o usuário for manager
+  const items = isManager 
+    ? [...baseItems, { title: "Manager users", url: `/${supabaseId}/manager-users`, icon: Users }]
+    : baseItems;
 
   return (
     <Sidebar collapsible="offcanvas" {...sidebarProps}>
