@@ -193,14 +193,40 @@ export default function BoardDialog() {
         return enumMap[ageEnum] || ageEnum;
       };
 
+      // Função para formatar valor como moeda
+      const formatCurrency = (value: number): string => {
+        if (value === null || value === undefined) return "";
+        return `R$ ${value.toFixed(2).replace('.', ',')}`;
+      };
+
+      // Função para formatar telefone
+      const formatPhone = (phone: string): string => {
+        if (!phone) return "";
+        const numbers = phone.replace(/\D/g, '');
+        if (numbers.length === 11) {
+          return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+        }
+        return phone; // Retorna como está se não tiver 11 dígitos
+      };
+
+      // Função para formatar CNPJ
+      const formatCNPJ = (cnpj: string): string => {
+        if (!cnpj) return "";
+        const numbers = cnpj.replace(/\D/g, '');
+        if (numbers.length === 14) {
+          return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+        }
+        return cnpj; // Retorna como está se não tiver 14 dígitos
+      };
+
       form.reset({
         name: lead.name || "",
-        phone: lead.phone || "",
+        phone: formatPhone(lead.phone || ""),
         email: lead.email || "",
-        cnpj: lead.cnpj || "",
+        cnpj: formatCNPJ(lead.cnpj || ""),
         age: lead.age?.map(mapEnumToAgeString).filter(Boolean) as ("0-18" | "19-25" | "26-35" | "36-45" | "46-60" | "61+")[] || [],
         hasPlan: lead.hasHealthPlan ? "sim" : "nao",
-        currentValue: lead.currentValue?.toString() || "",
+        currentValue: lead.currentValue ? formatCurrency(lead.currentValue) : "",
         referenceHospital: lead.referenceHospital || "",
         ongoingTreatment: lead.currentTreatment || "",
         additionalNotes: lead.notes || "",
