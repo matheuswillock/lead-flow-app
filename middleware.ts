@@ -5,7 +5,7 @@ import { updateSession } from "@/lib/supabase/auth-sessions"
 export const runtime = 'nodejs'
 
 // Define protected route prefixes (actual URL paths)
-const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline"]
+const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users"]
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl

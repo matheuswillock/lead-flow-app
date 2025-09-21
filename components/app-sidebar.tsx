@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"  
-import { LayoutDashboard, KanbanSquare, ChartBarBig } from "lucide-react"
+import { LayoutDashboard, KanbanSquare, ChartBarBig, Users } from "lucide-react"
 
 import {
   Sidebar,
@@ -17,13 +17,12 @@ import {
 } from "@/components/ui/sidebar"
 import { NavUser } from "./nav-user"
 
-
-
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const items = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "Board", url: `/${supabaseId}/board`, icon: KanbanSquare },
     { title: "Pipeline", url: `/${supabaseId}/pipeline`, icon: ChartBarBig },
+    { title: "Manager users", url: `/${supabaseId}/manager-users`, icon: Users },
   ]
 
   return (
