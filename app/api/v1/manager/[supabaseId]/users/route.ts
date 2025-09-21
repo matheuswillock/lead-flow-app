@@ -8,6 +8,7 @@ import {
   AssociateOperatorSchema, 
   DissociateOperatorSchema 
 } from "./types";
+import { emailService } from "@/lib/services/EmailService";
 
 // Instâncias dos casos de uso
 const managerUserRepository = new ManagerUserRepository();
@@ -61,6 +62,21 @@ export async function POST(
         fullName: validatedData.name,
         email: validatedData.email
       });
+      
+      // Enviar email de boas-vindas se criação foi bem-sucedida
+      if (output.isValid && output.result) {
+        try {
+          await emailService.sendWelcomeEmail({
+            userName: validatedData.name,
+            userEmail: validatedData.email,
+            loginUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/sign-in`
+          });
+        } catch (emailError) {
+          console.error("Erro ao enviar email de boas-vindas:", emailError);
+          // Não falha a criação do usuário se o email falhar
+        }
+      }
+      
       const status = output.isValid ? 200 : 400;
       return NextResponse.json(output, { status });
     } else if (role === 'operator') {
@@ -70,6 +86,21 @@ export async function POST(
         email: validatedData.email,
         managerId: requesterProfile.id // Use the manager who is creating the operator
       });
+      
+      // Enviar email de boas-vindas se criação foi bem-sucedida
+      if (output.isValid && output.result) {
+        try {
+          await emailService.sendWelcomeEmail({
+            userName: validatedData.name,
+            userEmail: validatedData.email,
+            loginUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/sign-in`
+          });
+        } catch (emailError) {
+          console.error("Erro ao enviar email de boas-vindas:", emailError);
+          // Não falha a criação do usuário se o email falhar
+        }
+      }
+      
       const status = output.isValid ? 200 : 400;
       return NextResponse.json(output, { status });
     } else {
