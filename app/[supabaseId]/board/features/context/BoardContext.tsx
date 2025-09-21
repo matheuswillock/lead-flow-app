@@ -10,6 +10,11 @@ interface IBoardProviderProps {
   boardService?: IBoardService;
 }
 
+interface Responsavel {
+  id: string;
+  name: string;
+}
+
 interface IBoardContextState {
   isLoading: boolean;
   query: string;
@@ -22,7 +27,7 @@ interface IBoardContextState {
   setPeriodEnd: (date: string) => void;
   assignedUser: string; 
   setAssignedUser: (user: string) => void;
-  responsaveis: string[];
+  responsaveis: Responsavel[];
   errors: Record<string, string>;
   open: boolean;
   user: ProfileResponseDTO | null;
@@ -277,14 +282,20 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   }, [data, query, assignedUser, periodStart, periodEnd]);
 
   const responsaveis = useMemo(() => {
-    const set = new Set<string>();
+    const responsaveisMap = new Map<string, string>();
     COLUMNS.forEach(({ key }) => {
       const columnData = data[key] || []; // Fallback para array vazio se não existir
       columnData.forEach((l) => {
-        if (typeof l.assignedTo === "string") set.add(l.assignedTo);
+        if (l.assignedTo && l.assignee) {
+          // Usar o nome completo se disponível, senão o email, senão o ID
+          const displayName = l.assignee.fullName || l.assignee.email || l.assignedTo;
+          responsaveisMap.set(l.assignedTo, displayName);
+        }
       });
     });
-    return Array.from(set).sort();
+    return Array.from(responsaveisMap.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
 
   const value: IBoardContextState = {
