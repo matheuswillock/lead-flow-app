@@ -1,3 +1,5 @@
+"use client";
+
 import { Badge } from '@/components/ui/badge'
 import {
   Card,
@@ -7,93 +9,164 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { TrendingDown, TrendingUp } from 'lucide-react'
+import { TrendingDown, TrendingUp, Loader2 } from 'lucide-react'
+import { useDashboard } from '@/hooks/useDashboard'
+import { useUser } from '@/app/context/UserContext'
 
 export function SectionCards() {
+  const { user } = useUser();
+  const { metrics, isLoading, error } = useDashboard(user?.supabaseId || null);
+
+  // Função para formatar valores monetários
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(value);
+  };
+
+  // Função para formatar números
+  const formatNumber = (value: number) => {
+    return new Intl.NumberFormat('pt-BR').format(value);
+  };
+
+  // Função para formatar porcentagem
+  const formatPercentage = (value: number) => {
+    return `${value.toFixed(1)}%`;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i} className="@container/card">
+            <CardHeader>
+              <CardDescription>Carregando...</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-2xl font-semibold">--</span>
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="grid grid-cols-1 gap-4 px-4 lg:px-6">
+        <Card className="@container/card">
+          <CardHeader>
+            <CardDescription>Erro ao carregar dados</CardDescription>
+            <CardTitle className="text-red-600">{error}</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!metrics) {
+    return null;
+  }
+
   return (
     <div className="*:data-[slot=card]:from-primary/5 *:data-[slot=card]:to-card dark:*:data-[slot=card]:bg-card grid grid-cols-1 gap-4 px-4 *:data-[slot=card]:bg-gradient-to-t *:data-[slot=card]:shadow-xs lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
+      {/* Total Revenue Card */}
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Total Revenue</CardDescription>
+          <CardDescription>Receita Total</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            $1,250.00
+            {formatCurrency(metrics.totalRevenue.value)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
-              <TrendingUp />
-              +12.5%
+              {metrics.totalRevenue.trend === "up" ? <TrendingUp /> : <TrendingDown />}
+              {metrics.totalRevenue.trend === "up" ? "+" : "-"}{metrics.totalRevenue.percentage}%
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Trending up this month <TrendingUp className="size-4" />
+            {metrics.totalRevenue.trend === "up" ? "Crescimento" : "Redução"} este mês{" "}
+            {metrics.totalRevenue.trend === "up" ? <TrendingUp className="size-4" /> : <TrendingDown className="size-4" />}
           </div>
           <div className="text-muted-foreground">
-            Visitors for the last 6 months
+            Baseado em leads com valor definido
           </div>
         </CardFooter>
       </Card>
+
+      {/* New Leads Card */}
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>New Customers</CardDescription>
+          <CardDescription>Novos Leads</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            1,234
+            {formatNumber(metrics.newLeads.value)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
-              <TrendingDown />
-              -20%
+              {metrics.newLeads.trend === "up" ? <TrendingUp /> : <TrendingDown />}
+              {metrics.newLeads.trend === "up" ? "+" : "-"}{metrics.newLeads.percentage}%
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Down 20% this period <TrendingDown className="size-4" />
+            {metrics.newLeads.trend === "up" ? "Aumento" : "Redução"} este período{" "}
+            {metrics.newLeads.trend === "up" ? <TrendingUp className="size-4" /> : <TrendingDown className="size-4" />}
           </div>
           <div className="text-muted-foreground">
-            Acquisition needs attention
+            {metrics.newLeads.trend === "up" ? "Boa captação de leads" : "Atenção necessária na captação"}
           </div>
         </CardFooter>
       </Card>
+
+      {/* Active Leads Card */}
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Active Accounts</CardDescription>
+          <CardDescription>Leads Ativos</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            45,678
+            {formatNumber(metrics.activeLeads.value)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
-              <TrendingUp />
-              +12.5%
+              {metrics.activeLeads.trend === "up" ? <TrendingUp /> : <TrendingDown />}
+              {metrics.activeLeads.trend === "up" ? "+" : "-"}{metrics.activeLeads.percentage}%
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Strong user retention <TrendingUp className="size-4" />
+            {metrics.activeLeads.trend === "up" ? "Pipeline crescendo" : "Pipeline reduzindo"}{" "}
+            {metrics.activeLeads.trend === "up" ? <TrendingUp className="size-4" /> : <TrendingDown className="size-4" />}
           </div>
-          <div className="text-muted-foreground">Engagement exceed targets</div>
+          <div className="text-muted-foreground">Leads em andamento no pipeline</div>
         </CardFooter>
       </Card>
+
+      {/* Conversion Rate Card */}
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Growth Rate</CardDescription>
+          <CardDescription>Taxa de Conversão</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
-            4.5%
+            {formatPercentage(metrics.conversionRate.value)}
           </CardTitle>
           <CardAction>
             <Badge variant="outline">
-              <TrendingUp />
-              +4.5%
+              {metrics.conversionRate.trend === "up" ? <TrendingUp /> : <TrendingDown />}
+              {metrics.conversionRate.trend === "up" ? "+" : "-"}{metrics.conversionRate.percentage}%
             </Badge>
           </CardAction>
         </CardHeader>
         <CardFooter className="flex-col items-start gap-1.5 text-sm">
           <div className="line-clamp-1 flex gap-2 font-medium">
-            Steady performance increase <TrendingUp className="size-4" />
+            {metrics.conversionRate.trend === "up" ? "Performance melhorando" : "Performance em queda"}{" "}
+            {metrics.conversionRate.trend === "up" ? <TrendingUp className="size-4" /> : <TrendingDown className="size-4" />}
           </div>
-          <div className="text-muted-foreground">Meets growth projections</div>
+          <div className="text-muted-foreground">
+            {metrics.conversionRate.trend === "up" ? "Excelente resultado" : "Acompanhar de perto"}
+          </div>
         </CardFooter>
       </Card>
     </div>
