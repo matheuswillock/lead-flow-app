@@ -14,6 +14,14 @@ export interface WelcomeEmailData {
   loginUrl?: string;
 }
 
+export interface UserInviteEmailData {
+  userName: string;
+  userEmail: string;
+  inviterName: string;
+  confirmationUrl: string;
+  token: string;
+}
+
 export interface LeadNotificationData {
   leadName: string;
   leadEmail: string;
@@ -60,6 +68,86 @@ export class EmailService {
       console.error("Erro ao enviar email:", error);
       return { success: false, error: error.message };
     }
+  }
+
+  // Email de convite para novos usuários
+  async sendUserInviteEmail(data: UserInviteEmailData) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8f9fa; padding: 20px;">
+        <div style="background-color: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #333; margin-bottom: 10px;">Bem-vindo ao Lead Flow!</h1>
+            <div style="width: 50px; height: 3px; background-color: #007bff; margin: 0 auto;"></div>
+          </div>
+          
+          <p style="color: #666; font-size: 16px; line-height: 1.6;">Olá <strong>${data.userName}</strong>,</p>
+          
+          <p style="color: #666; font-size: 16px; line-height: 1.6;">
+            Você foi convidado por <strong>${data.inviterName}</strong> para fazer parte da equipe no Lead Flow, 
+            nossa plataforma de gestão de leads para corretores de planos de saúde.
+          </p>
+          
+          <div style="background-color: #e3f2fd; padding: 20px; border-radius: 6px; margin: 25px 0; border-left: 4px solid #2196f3;">
+            <h3 style="margin-top: 0; color: #1976d2; font-size: 18px;">🎯 O que você pode fazer:</h3>
+            <ul style="color: #666; margin: 10px 0; padding-left: 20px;">
+              <li>Gerenciar leads de forma eficiente</li>
+              <li>Acompanhar o pipeline de vendas</li>
+              <li>Colaborar com sua equipe em tempo real</li>
+              <li>Visualizar métricas e relatórios detalhados</li>
+            </ul>
+          </div>
+          
+          <p style="color: #666; font-size: 16px; line-height: 1.6;">
+            Para começar, clique no botão abaixo para ativar sua conta e criar sua senha:
+          </p>
+          
+          <div style="text-align: center; margin: 35px 0;">
+            <a href="${data.confirmationUrl}" 
+               style="background-color: #007bff; color: white; padding: 14px 30px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600; font-size: 16px; box-shadow: 0 2px 4px rgba(0,123,255,0.3);">
+              ✨ Ativar Minha Conta
+            </a>
+          </div>
+          
+          <div style="background-color: #fff3cd; padding: 15px; border-radius: 6px; margin: 25px 0; border-left: 4px solid #ffc107;">
+            <p style="margin: 0; color: #856404; font-size: 14px;">
+              <strong>⚠️ Importante:</strong> Este link de ativação expira em 24 horas por motivos de segurança.
+            </p>
+          </div>
+          
+          <p style="color: #666; font-size: 14px; line-height: 1.6;">
+            Se você não conseguir clicar no botão, copie e cole este link no seu navegador:<br>
+            <a href="${data.confirmationUrl}" style="color: #007bff; word-break: break-all;">${data.confirmationUrl}</a>
+          </p>
+          
+          <div style="border-top: 1px solid #eee; margin-top: 40px; padding-top: 20px;">
+            <p style="color: #999; font-size: 12px; text-align: center; margin: 0;">
+              Este é um email automático do Lead Flow. Se você não esperava receber este convite, pode ignorar este email.
+            </p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const text = `
+Bem-vindo ao Lead Flow!
+
+Olá ${data.userName},
+
+Você foi convidado por ${data.inviterName} para fazer parte da equipe no Lead Flow.
+
+Para ativar sua conta, acesse: ${data.confirmationUrl}
+
+Este link expira em 24 horas.
+
+Se você não esperava receber este convite, pode ignorar este email.
+    `;
+
+    return this.sendEmail({
+      to: [data.userEmail],
+      subject: `🎯 Convite para Lead Flow - Ative sua conta agora!`,
+      html,
+      text,
+    });
   }
 
   // Email de boas-vindas para novos usuários

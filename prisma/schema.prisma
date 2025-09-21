@@ -75,17 +75,20 @@ enum AgeRange {
 // -----------------------------
 
 model Profile {
-  id             String   @id @unique @default(uuid()) @db.Uuid
-  email          String   @unique @db.Text
-  supabaseId     String?  @unique @db.Uuid
-  fullName       String?  @db.Text
-  phone          String?  @db.Text
-  profileIconId  String?  @db.Text // ID do arquivo no Supabase Storage
-  profileIconUrl String?  @db.Text // URL pública do ícone no Supabase Storage
-  role           UserRole @default(manager)
-  managerId      String?  @db.Uuid
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+  id                   String    @id @unique @default(uuid()) @db.Uuid
+  email                String    @unique @db.Text
+  supabaseId           String?   @unique @db.Uuid
+  fullName             String?   @db.Text
+  phone                String?   @db.Text
+  profileIconId        String?   @db.Text // ID do arquivo no Supabase Storage
+  profileIconUrl       String?   @db.Text // URL pública do ícone no Supabase Storage
+  role                 UserRole  @default(manager)
+  managerId            String?   @db.Uuid
+  confirmationToken    String?   @unique @db.Text // Token para confirmação de conta
+  confirmationTokenExp DateTime? @db.Timestamptz(6) // Expiração do token
+  isConfirmed          Boolean   @default(false) // Status de confirmação da conta
+  createdAt            DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @db.Timestamptz(6)
 
   // Relations
   manager   Profile?  @relation("ManagerOperators", fields: [managerId], references: [id], onDelete: Restrict)

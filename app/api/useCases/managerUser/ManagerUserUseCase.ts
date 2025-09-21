@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output";
 import { IManagerUserUseCase } from "./IManagerUserUseCase";
 import { IManagerUserRepository } from "../../infra/data/repositories/managerUser/IManagerUserRepository";
+import { getEmailService } from "@/lib/services/EmailService";
 
 export class ManagerUserUseCase implements IManagerUserUseCase {
     constructor(
@@ -62,6 +63,175 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 false,
                 [],
                 ["Erro interno do servidor ao buscar operators"],
+                null
+            );
+        }
+    }
+
+    async createManagerWithInvite(
+        data: { fullName: string; email: string; },
+        inviterName: string
+    ): Promise<Output> {
+        try {
+            // Validações básicas
+            if (!data.fullName || data.fullName.trim().length < 2) {
+                return new Output(
+                    false,
+                    [],
+                    ["Nome completo deve ter pelo menos 2 caracteres"],
+                    null
+                );
+            }
+
+            if (!data.email || !this.isValidEmail(data.email)) {
+                return new Output(
+                    false,
+                    [],
+                    ["Email inválido"],
+                    null
+                );
+            }
+
+            const result = await this.managerUserRepository.createPendingManager(data);
+            
+            if (!result) {
+                return new Output(
+                    false,
+                    [],
+                    ["Erro ao criar manager pendente"],
+                    null
+                );
+            }
+
+            // Enviar email de convite
+            try {
+                const emailService = getEmailService();
+                const confirmationUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/confirm-account?token=${result.confirmationToken}`;
+                
+                await emailService.sendUserInviteEmail({
+                    userName: data.fullName,
+                    userEmail: data.email,
+                    inviterName,
+                    confirmationUrl,
+                    token: result.confirmationToken
+                });
+            } catch (emailError) {
+                console.error("Erro ao enviar email de convite:", emailError);
+                // Não falha a criação do usuário se o email falhar
+            }
+
+            return new Output(
+                true,
+                ["Convite enviado com sucesso! O usuário receberá um email para ativar sua conta."],
+                [],
+                result
+            );
+        } catch (error) {
+            console.error("Erro ao criar manager com convite:", error);
+            
+            // Verifica se é erro de email duplicado
+            if (error instanceof Error && error.message.includes("Unique constraint")) {
+                return new Output(
+                    false,
+                    [],
+                    ["Email já está em uso"],
+                    null
+                );
+            }
+
+            return new Output(
+                false,
+                [],
+                ["Erro interno do servidor ao criar manager"],
+                null
+            );
+        }
+    }
+
+    async createOperatorWithInvite(
+        data: { fullName: string; email: string; managerId: string; },
+        inviterName: string
+    ): Promise<Output> {
+        try {
+            // Validações básicas
+            if (!data.fullName || data.fullName.trim().length < 2) {
+                return new Output(
+                    false,
+                    [],
+                    ["Nome completo deve ter pelo menos 2 caracteres"],
+                    null
+                );
+            }
+
+            if (!data.email || !this.isValidEmail(data.email)) {
+                return new Output(
+                    false,
+                    [],
+                    ["Email inválido"],
+                    null
+                );
+            }
+
+            if (!data.managerId || !this.isValidUUID(data.managerId)) {
+                return new Output(
+                    false,
+                    [],
+                    ["ID do manager inválido"],
+                    null
+                );
+            }
+
+            const result = await this.managerUserRepository.createPendingOperator(data);
+            
+            if (!result) {
+                return new Output(
+                    false,
+                    [],
+                    ["Erro ao criar operator pendente"],
+                    null
+                );
+            }
+
+            // Enviar email de convite
+            try {
+                const emailService = getEmailService();
+                const confirmationUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/confirm-account?token=${result.confirmationToken}`;
+                
+                await emailService.sendUserInviteEmail({
+                    userName: data.fullName,
+                    userEmail: data.email,
+                    inviterName,
+                    confirmationUrl,
+                    token: result.confirmationToken
+                });
+            } catch (emailError) {
+                console.error("Erro ao enviar email de convite:", emailError);
+                // Não falha a criação do usuário se o email falhar
+            }
+
+            return new Output(
+                true,
+                ["Convite enviado com sucesso! O usuário receberá um email para ativar sua conta."],
+                [],
+                result
+            );
+        } catch (error) {
+            console.error("Erro ao criar operator com convite:", error);
+            
+            // Verifica se é erro de email duplicado
+            if (error instanceof Error && error.message.includes("Unique constraint")) {
+                return new Output(
+                    false,
+                    [],
+                    ["Email já está em uso"],
+                    null
+                );
+            }
+
+            return new Output(
+                false,
+                [],
+                [error instanceof Error ? error.message : "Erro interno do servidor"],
                 null
             );
         }

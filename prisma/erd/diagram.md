@@ -54,6 +54,9 @@ RANGE_61_PLUS 61+
     String profileIconId "❓"
     String profileIconUrl "❓"
     UserRole role 
+    String confirmationToken "❓"
+    DateTime confirmationTokenExp "❓"
+    Boolean isConfirmed 
     DateTime createdAt 
     DateTime updatedAt 
     }

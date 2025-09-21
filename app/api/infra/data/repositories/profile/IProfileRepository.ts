@@ -3,6 +3,7 @@ import type { Profile, UserRole } from "@prisma/client";
 export interface IProfileRepository {
   findBySupabaseId(supabaseId: string): Promise<Profile | null>;
   findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null>;
+  findByConfirmationToken(token: string): Promise<Profile | null>;
   existingByEmailOrPhone(email: string, phone: string): Promise<boolean>;
   createProfile(
     fullName: string,
@@ -11,6 +12,16 @@ export interface IProfileRepository {
     email: string,
     role: UserRole
   ): Promise<{ profileId: string; supabaseId: string } | null>;
+  createPendingProfile(
+    fullName: string,
+    email: string,
+    role: UserRole,
+    managerId?: string
+  ): Promise<{ profileId: string; confirmationToken: string } | null>;
+  confirmAccount(
+    profileId: string,
+    data: { password: string; fullName?: string; phone?: string }
+  ): Promise<boolean>;
   updateProfile(
     supabaseId: string,
     updates: { fullName?: string; phone?: string; email?: string }

@@ -1,6 +1,7 @@
 import { IManagerUserRepository } from "./IManagerUserRepository";
 import { prisma } from "../../prisma";
 import { UserRole } from "@prisma/client";
+import { profileRepository } from "../profile/ProfileRepository";
 
 export class ManagerUserRepository implements IManagerUserRepository {
     async associateOperatorToManager(managerId: string, operatorId: string): Promise<void> {
@@ -115,6 +116,46 @@ export class ManagerUserRepository implements IManagerUserRepository {
             fullName: operator.fullName || '',
             email: operator.email,
             managerId: operator.managerId || ''
+        };
+    }
+
+    async createPendingManager(data: { fullName: string; email: string }): Promise<{ id: string; confirmationToken: string } | null> {
+        const result = await profileRepository.createPendingProfile(
+            data.fullName,
+            data.email,
+            UserRole.manager
+        );
+        
+        if (!result) return null;
+        
+        return {
+            id: result.profileId,
+            confirmationToken: result.confirmationToken
+        };
+    }
+
+    async createPendingOperator(data: { fullName: string; email: string; managerId: string }): Promise<{ id: string; confirmationToken: string } | null> {
+        // Verifica se o manager existe
+        const manager = await prisma.profile.findUnique({
+            where: { id: data.managerId }
+        });
+
+        if (!manager || manager.role !== UserRole.manager) {
+            throw new Error("Manager não encontrado ou não é um manager válido");
+        }
+
+        const result = await profileRepository.createPendingProfile(
+            data.fullName,
+            data.email,
+            UserRole.operator,
+            data.managerId
+        );
+        
+        if (!result) return null;
+        
+        return {
+            id: result.profileId,
+            confirmationToken: result.confirmationToken
         };
     }
 

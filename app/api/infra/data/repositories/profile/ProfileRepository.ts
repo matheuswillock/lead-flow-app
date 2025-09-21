@@ -2,6 +2,7 @@ import prisma from "@/app/api/infra/data/prisma";
 import type { UserRole, Profile } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js"
 import type { IProfileRepository } from "./IProfileRepository";
+import { randomUUID } from "crypto";
 
 // Função para criar cliente Supabase de forma segura
 function createSupabaseClient() {
@@ -73,7 +74,107 @@ class PrismaProfileRepository implements IProfileRepository {
             console.error("Error checking existing profile:", error);
             return false;
         }
+    }
 
+    async findByConfirmationToken(token: string): Promise<Profile | null> {
+        try {
+            const profile = await prisma.profile.findUnique({
+                where: { confirmationToken: token },
+            });
+            return profile;
+        } catch (error) {
+            console.error("Error finding profile by confirmation token:", error);
+            return null;
+        }
+    }
+
+    async createPendingProfile(
+        fullName: string,
+        email: string,
+        role: UserRole,
+        managerId?: string
+    ): Promise<{ profileId: string; confirmationToken: string } | null> {
+        try {
+            // Gerar token único
+            const confirmationToken = randomUUID() + '-' + Date.now();
+            
+            // Expiração em 24 horas
+            const confirmationTokenExp = new Date();
+            confirmationTokenExp.setHours(confirmationTokenExp.getHours() + 24);
+
+            // Criar profile pendente (sem supabaseId ainda)
+            const profile = await prisma.profile.create({
+                data: {
+                    fullName,
+                    email,
+                    role,
+                    managerId,
+                    confirmationToken,
+                    confirmationTokenExp,
+                    isConfirmed: false
+                }
+            });
+
+            return { profileId: profile.id, confirmationToken };
+        } catch (error) {
+            console.error("Error creating pending profile:", error);
+            return null;
+        }
+    }
+
+    async confirmAccount(
+        profileId: string,
+        data: { password: string; fullName?: string; phone?: string }
+    ): Promise<boolean> {
+        try {
+            const supabase = createSupabaseClient();
+            if (!supabase) {
+                console.error("Failed to initialize Supabase client");
+                return false;
+            }
+
+            // Buscar o profile pendente
+            const profile = await prisma.profile.findUnique({
+                where: { id: profileId }
+            });
+
+            if (!profile) {
+                console.error("Profile not found");
+                return false;
+            }
+
+            // Criar usuário no Supabase Auth
+            const { data: user, error: authError } = await supabase.auth.admin.createUser({
+                email: profile.email,
+                password: data.password,
+                email_confirm: true
+            });
+
+            if (authError || !user.user) {
+                console.error("Erro ao criar usuário no Supabase:", authError);
+                return false;
+            }
+
+            const supabaseId = user.user.id;
+
+            // Atualizar profile com supabaseId e marcar como confirmado
+            await prisma.profile.update({
+                where: { id: profileId },
+                data: {
+                    supabaseId,
+                    fullName: data.fullName || profile.fullName,
+                    phone: data.phone,
+                    isConfirmed: true,
+                    confirmationToken: null,
+                    confirmationTokenExp: null
+                }
+            });
+
+            return true;
+        } catch (error) {
+            console.error("Error confirming account:", error);
+            return false;
+        }
     }
 
     async createProfile(

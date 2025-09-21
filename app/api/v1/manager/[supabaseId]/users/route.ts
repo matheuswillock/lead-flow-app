@@ -8,7 +8,6 @@ import {
   AssociateOperatorSchema, 
   DissociateOperatorSchema 
 } from "./types";
-import { getEmailService } from "@/lib/services/EmailService";
 
 // Instâncias dos casos de uso
 const managerUserRepository = new ManagerUserRepository();
@@ -57,51 +56,23 @@ export async function POST(
 
     const { role } = validatedData;
 
+    // Obter nome do usuário que está criando para usar no email de convite
+    const inviterName = requesterProfile.fullName || requesterProfile.email;
+
     if (role === 'manager') {
-      const output = await managerUserUseCase.createManager({
+      const output = await managerUserUseCase.createManagerWithInvite({
         fullName: validatedData.name,
         email: validatedData.email
-      });
-      
-      // Enviar email de boas-vindas se criação foi bem-sucedida
-      if (output.isValid && output.result) {
-        try {
-          const emailService = getEmailService();
-          await emailService.sendWelcomeEmail({
-            userName: validatedData.name,
-            userEmail: validatedData.email,
-            loginUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/sign-in`
-          });
-        } catch (emailError) {
-          console.error("Erro ao enviar email de boas-vindas:", emailError);
-          // Não falha a criação do usuário se o email falhar
-        }
-      }
+      }, inviterName);
       
       const status = output.isValid ? 200 : 400;
       return NextResponse.json(output, { status });
     } else if (role === 'operator') {
-      // For operator creation, we need managerId from the requester
-      const output = await managerUserUseCase.createOperator({
+      const output = await managerUserUseCase.createOperatorWithInvite({
         fullName: validatedData.name,
         email: validatedData.email,
         managerId: requesterProfile.id // Use the manager who is creating the operator
-      });
-      
-      // Enviar email de boas-vindas se criação foi bem-sucedida
-      if (output.isValid && output.result) {
-        try {
-          const emailService = getEmailService();
-          await emailService.sendWelcomeEmail({
-            userName: validatedData.name,
-            userEmail: validatedData.email,
-            loginUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/sign-in`
-          });
-        } catch (emailError) {
-          console.error("Erro ao enviar email de boas-vindas:", emailError);
-          // Não falha a criação do usuário se o email falhar
-        }
-      }
+      }, inviterName);
       
       const status = output.isValid ? 200 : 400;
       return NextResponse.json(output, { status });
