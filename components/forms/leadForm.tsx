@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 
-// Funções de formatação
 const formatCNPJ = (value: string): string => {
     const cleanValue = value.replace(/\D/g, '');
     if (cleanValue.length <= 14) {
@@ -79,8 +78,26 @@ export function LeadForm({
     const isSubmitDisabled = !hasChanges || !isFormValid || isLoading || isUpdating;
 
     useEffect(() => {
-        if (!initialData) return;
+        if (!initialData) {
+            const hasAnyData = 
+                (watchedValues.name && watchedValues.name.trim() !== '') ||
+                (watchedValues.email && watchedValues.email.trim() !== '') ||
+                (watchedValues.phone && watchedValues.phone.trim() !== '') ||
+                (watchedValues.cnpj && watchedValues.cnpj.trim() !== '') ||
+                (watchedValues.age && watchedValues.age.length > 0) ||
+                (watchedValues.hasPlan && watchedValues.hasPlan !== undefined) ||
+                (watchedValues.currentValue && watchedValues.currentValue.trim() !== '') ||
+                (watchedValues.referenceHospital && watchedValues.referenceHospital.trim() !== '') ||
+                (watchedValues.ongoingTreatment && watchedValues.ongoingTreatment.trim() !== '') ||
+                (watchedValues.additionalNotes && watchedValues.additionalNotes.trim() !== '') ||
+                (watchedValues.meetingDate && watchedValues.meetingDate.trim() !== '') ||
+                (watchedValues.responsible && watchedValues.responsible.trim() !== '');
 
+            setHasChanges(!!hasAnyData);
+            return;
+        }
+
+        // Modo de edição - verificar se há mudanças em relação aos dados iniciais
         const hasFormChanges = 
             watchedValues.name !== initialData.name ||
             watchedValues.email !== initialData.email ||

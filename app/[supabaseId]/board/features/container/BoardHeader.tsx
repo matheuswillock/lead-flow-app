@@ -69,15 +69,6 @@ export default function BoardHeader() {
               <span>•</span>
               <span>{isLoading ? 'Carregando...' : `${totalLeads} leads`}</span>
             </div>
-            <Button
-              onClick={handleTestLoad}
-              size="sm"
-              variant="outline"
-              className="flex items-center gap-1"
-            >
-              <RefreshCw className="size-3" />
-              Teste Load
-            </Button>
           </div>
         ) : null}
         

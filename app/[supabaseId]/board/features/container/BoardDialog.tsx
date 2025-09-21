@@ -10,7 +10,7 @@ import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 
 export default function BoardDialog() {
-  const { open, setOpen, selected: lead, user, userLoading } = useBoardContext();
+  const { open, setOpen, selected: lead, user, userLoading, refreshLeads } = useBoardContext();
   const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,19 +30,50 @@ export default function BoardDialog() {
       return ageMap[ageString];
     };
 
+    const parseCurrentValue = (value: string): number | undefined => {
+      if (!value || value.trim() === '') return undefined;
+      const cleanValue = value.replace(/[^\d.,]/g, '').replace(',', '.');
+      const parsed = parseFloat(cleanValue);
+      
+      // Retorna undefined se não é um número válido ou se é negativo
+      if (isNaN(parsed) || parsed < 0) return undefined;
+      
+      // Retorna o valor (incluindo 0) se é válido
+      return parsed;
+    };
+
+    // Helper para converter data para ISO datetime ou undefined
+    const parseMeetingDate = (date: string): string | undefined => {
+      if (!date || date.trim() === '') return undefined;
+      try {
+        // Se já é uma data ISO, retornar como está
+        if (date.includes('T') && date.includes('Z')) {
+          return date;
+        }
+        // Se é uma data no formato YYYY-MM-DD ou DD/MM/YYYY, converter para ISO
+        const parsedDate = new Date(date);
+        if (isNaN(parsedDate.getTime())) {
+          return undefined;
+        }
+        return parsedDate.toISOString();
+      } catch {
+        return undefined;
+      }
+    };
+
     return {
       name: data.name,
-      email: data.email,
-      phone: data.phone,
+      email: data.email || undefined,
+      phone: data.phone || undefined,
       age: data.age.map(mapAgeStringToEnum).filter(Boolean) as any[],
       hasHealthPlan: data.hasPlan === "sim",
-      currentValue: parseFloat(data.currentValue),
-      referenceHospital: data.referenceHospital,
-      currentTreatment: data.ongoingTreatment,
-      notes: data.additionalNotes,
-      meetingDate: data.meetingDate,
+      currentValue: parseCurrentValue(data.currentValue),
+      referenceHospital: data.referenceHospital || undefined,
+      currentTreatment: data.ongoingTreatment || undefined,
+      notes: data.additionalNotes || undefined,
+      meetingDate: parseMeetingDate(data.meetingDate || ''),
       cnpj: data.cnpj || undefined,
-      assignedTo: data.responsible,
+      assignedTo: data.responsible || undefined,
       status: "new_opportunity" as any // Status padrão para novos leads
     };
   };
@@ -62,19 +93,51 @@ export default function BoardDialog() {
       return ageMap[ageString];
     };
 
+    // Helper para converter valor para número ou undefined
+    const parseCurrentValue = (value: string): number | undefined => {
+      if (!value || value.trim() === '') return undefined;
+      const cleanValue = value.replace(/[^\d.,]/g, '').replace(',', '.');
+      const parsed = parseFloat(cleanValue);
+      
+      // Retorna undefined se não é um número válido ou se é negativo
+      if (isNaN(parsed) || parsed < 0) return undefined;
+      
+      // Retorna o valor (incluindo 0) se é válido
+      return parsed;
+    };
+
+    // Helper para converter data para ISO datetime ou undefined
+    const parseMeetingDate = (date: string): string | undefined => {
+      if (!date || date.trim() === '') return undefined;
+      try {
+        // Se já é uma data ISO, retornar como está
+        if (date.includes('T') && date.includes('Z')) {
+          return date;
+        }
+        // Se é uma data no formato YYYY-MM-DD ou DD/MM/YYYY, converter para ISO
+        const parsedDate = new Date(date);
+        if (isNaN(parsedDate.getTime())) {
+          return undefined;
+        }
+        return parsedDate.toISOString();
+      } catch {
+        return undefined;
+      }
+    };
+
     return {
       name: data.name,
-      email: data.email,
-      phone: data.phone,
+      email: data.email || undefined,
+      phone: data.phone || undefined,
       age: data.age.map(mapAgeStringToEnum).filter(Boolean) as any[],
       hasHealthPlan: data.hasPlan === "sim",
-      currentValue: parseFloat(data.currentValue),
-      referenceHospital: data.referenceHospital,
-      currentTreatment: data.ongoingTreatment,
-      notes: data.additionalNotes,
-      meetingDate: data.meetingDate,
+      currentValue: parseCurrentValue(data.currentValue),
+      referenceHospital: data.referenceHospital || undefined,
+      currentTreatment: data.ongoingTreatment || undefined,
+      notes: data.additionalNotes || undefined,
+      meetingDate: parseMeetingDate(data.meetingDate || ''),
       cnpj: data.cnpj || undefined,
-      assignedTo: data.responsible
+      assignedTo: data.responsible || undefined
     };
   };
 
@@ -89,6 +152,8 @@ export default function BoardDialog() {
         if (result.success) {
           toast.success("Lead atualizado com sucesso!");
           setOpen(false);
+          // Atualizar o board para refletir as mudanças
+          await refreshLeads();
         } else {
           toast.error(result.message || "Erro ao atualizar lead");
         }
@@ -99,6 +164,8 @@ export default function BoardDialog() {
         if (result.success) {
           toast.success("Lead criado com sucesso!");
           setOpen(false);
+          // Atualizar o board para refletir o novo lead
+          await refreshLeads();
         } else {
           toast.error(result.message || "Erro ao criar lead");
         }

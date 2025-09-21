@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import { LeadStatus } from '@prisma/client';
 import { 
   LeadResponseDTO, 
@@ -18,14 +19,46 @@ interface UseLeadsOptions {
   search?: string;
   startDate?: string;
   endDate?: string;
+  role?: string;
 }
 
-export function useLeads(options?: UseLeadsOptions) {
+export const useLeads = () => {
+  const params = useParams();
+  const supabaseId = params.supabaseId as string;
+
   const [leads, setLeads] = useState<LeadResponseDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+  const [userRole, setUserRole] = useState<string>('manager'); // Default role
+
+  // Fetch user profile to get role
+  const fetchUserProfile = useCallback(async () => {
+    if (!supabaseId) return;
+    
+    try {
+      const response = await fetch(`/api/v1/profiles/${supabaseId}`, {
+        headers: {
+          'x-supabase-user-id': supabaseId,
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.isValid && data.result?.role) {
+          setUserRole(data.result.role);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching user profile:', err);
+    }
+  }, [supabaseId]);
+
+  // Load user profile when hook initializes
+  useEffect(() => {
+    fetchUserProfile();
+  }, [fetchUserProfile]);
 
   const fetchLeads = useCallback(async (newOptions?: UseLeadsOptions) => {
     setLoading(true);
@@ -33,7 +66,11 @@ export function useLeads(options?: UseLeadsOptions) {
 
     try {
       const searchParams = new URLSearchParams();
-      const finalOptions = { ...options, ...newOptions };
+      const finalOptions = newOptions || {};
+
+      // Always include role in the request
+      const roleToUse = finalOptions.role || userRole;
+      searchParams.append('role', roleToUse);
 
       if (finalOptions.status) searchParams.append('status', finalOptions.status);
       if (finalOptions.assignedTo) searchParams.append('assignedTo', finalOptions.assignedTo);
@@ -43,7 +80,11 @@ export function useLeads(options?: UseLeadsOptions) {
       if (finalOptions.startDate) searchParams.append('startDate', finalOptions.startDate);
       if (finalOptions.endDate) searchParams.append('endDate', finalOptions.endDate);
 
-      const response = await fetch(`/api/v1/leads?${searchParams.toString()}`);
+      const response = await fetch(`/api/v1/leads?${searchParams.toString()}`, {
+        headers: {
+          'x-supabase-user-id': supabaseId,
+        },
+      });
       
       if (!response.ok) {
         throw new Error('Erro ao buscar leads');
@@ -58,7 +99,7 @@ export function useLeads(options?: UseLeadsOptions) {
     } finally {
       setLoading(false);
     }
-  }, [options]);
+  }, [supabaseId, userRole]);
 
   const createLead = useCallback(async (leadData: CreateLeadRequest): Promise<CreateLeadResponseDTO> => {
     setLoading(true);
@@ -69,6 +110,7 @@ export function useLeads(options?: UseLeadsOptions) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
         },
         body: JSON.stringify(leadData),
       });
@@ -77,10 +119,16 @@ export function useLeads(options?: UseLeadsOptions) {
         throw new Error('Erro ao criar lead');
       }
 
-      const result: CreateLeadResponseDTO = await response.json();
+      const apiResult = await response.json();
       
-      // Atualizar a lista de leads
-      await fetchLeads();
+      // Transform API response to DTO format expected by frontend
+      const result: CreateLeadResponseDTO = {
+        success: apiResult.isValid,
+        lead: apiResult.result,
+        message: apiResult.isValid 
+          ? apiResult.successMessages.join(', ') || 'Lead criado com sucesso'
+          : apiResult.errorMessages.join(', ') || 'Erro ao criar lead'
+      };
       
       return result;
     } catch (err) {
@@ -90,7 +138,7 @@ export function useLeads(options?: UseLeadsOptions) {
     } finally {
       setLoading(false);
     }
-  }, [fetchLeads]);
+  }, [supabaseId]);
 
   const updateLead = useCallback(async (id: string, leadData: UpdateLeadRequest): Promise<UpdateLeadResponseDTO> => {
     setLoading(true);
@@ -101,6 +149,7 @@ export function useLeads(options?: UseLeadsOptions) {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
         },
         body: JSON.stringify(leadData),
       });
@@ -109,10 +158,16 @@ export function useLeads(options?: UseLeadsOptions) {
         throw new Error('Erro ao atualizar lead');
       }
 
-      const result: UpdateLeadResponseDTO = await response.json();
+      const apiResult = await response.json();
       
-      // Atualizar a lista de leads
-      await fetchLeads();
+      // Transform API response to DTO format expected by frontend
+      const result: UpdateLeadResponseDTO = {
+        success: apiResult.isValid,
+        lead: apiResult.result,
+        message: apiResult.isValid 
+          ? apiResult.successMessages.join(', ') || 'Lead atualizado com sucesso'
+          : apiResult.errorMessages.join(', ') || 'Erro ao atualizar lead'
+      };
       
       return result;
     } catch (err) {
@@ -122,7 +177,7 @@ export function useLeads(options?: UseLeadsOptions) {
     } finally {
       setLoading(false);
     }
-  }, [fetchLeads]);
+  }, [supabaseId]);
 
   const deleteLead = useCallback(async (id: string): Promise<DeleteLeadResponseDTO> => {
     setLoading(true);
@@ -131,16 +186,24 @@ export function useLeads(options?: UseLeadsOptions) {
     try {
       const response = await fetch(`/api/v1/leads/${id}`, {
         method: 'DELETE',
+        headers: {
+          'x-supabase-user-id': supabaseId,
+        },
       });
 
       if (!response.ok) {
         throw new Error('Erro ao excluir lead');
       }
 
-      const result: DeleteLeadResponseDTO = await response.json();
+      const apiResult = await response.json();
       
-      // Atualizar a lista de leads
-      await fetchLeads();
+      // Transform API response to DTO format expected by frontend
+      const result: DeleteLeadResponseDTO = {
+        success: apiResult.isValid,
+        message: apiResult.isValid 
+          ? apiResult.successMessages.join(', ') || 'Lead excluído com sucesso'
+          : apiResult.errorMessages.join(', ') || 'Erro ao excluir lead'
+      };
       
       return result;
     } catch (err) {
@@ -150,7 +213,7 @@ export function useLeads(options?: UseLeadsOptions) {
     } finally {
       setLoading(false);
     }
-  }, [fetchLeads]);
+  }, [supabaseId]);
 
   const updateLeadStatus = useCallback(async (id: string, status: LeadStatus): Promise<UpdateLeadResponseDTO> => {
     setLoading(true);
@@ -161,6 +224,7 @@ export function useLeads(options?: UseLeadsOptions) {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
         },
         body: JSON.stringify({ status }),
       });
@@ -169,10 +233,16 @@ export function useLeads(options?: UseLeadsOptions) {
         throw new Error('Erro ao atualizar status do lead');
       }
 
-      const result: UpdateLeadResponseDTO = await response.json();
+      const apiResult = await response.json();
       
-      // Atualizar a lista de leads
-      await fetchLeads();
+      // Transform API response to DTO format expected by frontend
+      const result: UpdateLeadResponseDTO = {
+        success: apiResult.isValid,
+        lead: apiResult.result,
+        message: apiResult.isValid 
+          ? apiResult.successMessages.join(', ') || 'Status do lead atualizado com sucesso'
+          : apiResult.errorMessages.join(', ') || 'Erro ao atualizar status do lead'
+      };
       
       return result;
     } catch (err) {
@@ -182,7 +252,7 @@ export function useLeads(options?: UseLeadsOptions) {
     } finally {
       setLoading(false);
     }
-  }, [fetchLeads]);
+  }, [supabaseId]);
 
   const assignLeadToOperator = useCallback(async (id: string, operatorId: string): Promise<UpdateLeadResponseDTO> => {
     setLoading(true);
@@ -193,6 +263,7 @@ export function useLeads(options?: UseLeadsOptions) {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
         },
         body: JSON.stringify({ operatorId }),
       });
@@ -201,10 +272,16 @@ export function useLeads(options?: UseLeadsOptions) {
         throw new Error('Erro ao atribuir lead ao operador');
       }
 
-      const result: UpdateLeadResponseDTO = await response.json();
+      const apiResult = await response.json();
       
-      // Atualizar a lista de leads
-      await fetchLeads();
+      // Transform API response to DTO format expected by frontend
+      const result: UpdateLeadResponseDTO = {
+        success: apiResult.isValid,
+        lead: apiResult.result,
+        message: apiResult.isValid 
+          ? apiResult.successMessages.join(', ') || 'Lead atribuído ao operador com sucesso'
+          : apiResult.errorMessages.join(', ') || 'Erro ao atribuir lead ao operador'
+      };
       
       return result;
     } catch (err) {
@@ -214,7 +291,7 @@ export function useLeads(options?: UseLeadsOptions) {
     } finally {
       setLoading(false);
     }
-  }, [fetchLeads]);
+  }, [supabaseId]);
 
   return {
     leads,
@@ -232,6 +309,9 @@ export function useLeads(options?: UseLeadsOptions) {
 }
 
 export function useLead(id: string) {
+  const params = useParams();
+  const supabaseId = params.supabaseId as string;
+  
   const [lead, setLead] = useState<LeadResponseDTO | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -243,7 +323,11 @@ export function useLead(id: string) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/v1/leads/${id}`);
+      const response = await fetch(`/api/v1/leads/${id}`, {
+        headers: {
+          'x-supabase-user-id': supabaseId,
+        },
+      });
       
       if (!response.ok) {
         throw new Error('Erro ao buscar lead');
@@ -256,7 +340,7 @@ export function useLead(id: string) {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, supabaseId]);
 
   return {
     lead,
