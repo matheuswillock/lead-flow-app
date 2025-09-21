@@ -117,18 +117,9 @@ export async function GET(
 
     // Listar usuários com filtro opcional por role
     if (roleFilter === 'manager') {
-      // Retornar apenas o manager atual
-      const managerData = {
-        id: requesterProfile.id,
-        name: requesterProfile.fullName || 'Manager',
-        email: requesterProfile.email || '',
-        role: 'manager' as const,
-        profileIconUrl: null,
-        managerId: null,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      const output = new Output(true, [], [], [managerData]);
+      // Para managers, retornar apenas outros managers (excluindo o próprio)
+      // Por enquanto retornaremos vazio até definir a regra de negócio
+      const output = new Output(true, [], [], []);
       return NextResponse.json(output, { status: 200 });
     } else if (roleFilter === 'operator') {
       // Get operators managed by this manager
@@ -136,24 +127,18 @@ export async function GET(
       const output = new Output(true, [], [], operators);
       return NextResponse.json(output, { status: 200 });
     } else {
-      // Return both manager and operators
+      // Return operators and include stats in metadata
       const operators = await managerUserRepository.getOperatorsByManager(requesterProfile.id);
+      const stats = await managerUserRepository.getManagerStats(requesterProfile.id);
       
-      // Include the manager in the list
-      const managerData = {
-        id: requesterProfile.id,
-        name: requesterProfile.fullName || 'Manager',
-        email: requesterProfile.email || '',
-        role: 'manager' as const,
-        profileIconUrl: null,
-        managerId: null,
-        createdAt: new Date(),
-        updatedAt: new Date()
+      const output = new Output(true, [], [], operators);
+      // Add stats to the response
+      const responseWithStats = {
+        ...output,
+        stats
       };
       
-      const allUsers = [managerData, ...operators];
-      const output = new Output(true, [], [], allUsers);
-      return NextResponse.json(output, { status: 200 });
+      return NextResponse.json(responseWithStats, { status: 200 });
     }
 
   } catch (error) {

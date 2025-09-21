@@ -99,15 +99,8 @@ class ManagerUsersService {
       
       if (!user) return false;
 
-      // Manager não pode deletar a si mesmo
-      if (user.id === this.supabaseId) return false;
-
-      // Verificar se é o único manager
-      if (user.role === "manager") {
-        const managerCount = users.filter(u => u.role === "manager").length;
-        return managerCount > 1;
-      }
-
+      // Como agora só retornamos operators, qualquer usuário na lista pode ser deletado
+      // (exceto se houver outras regras de negócio específicas)
       return true;
     } catch (error) {
       console.error("Erro ao verificar se usuário pode ser deletado:", error);

@@ -59,6 +59,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
         setState(prev => ({ 
           ...prev, 
           users: usersWithLeadsCount, 
+          stats: response.stats,
           loading: false 
         }));
       } else {

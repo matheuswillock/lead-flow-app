@@ -5,15 +5,20 @@ import { ArrowUpDown, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { CopyIcon } from "@/components/ui/copy";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ManagerUserTableRow } from "../types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface CreateColumnsProps {
   onEdit: (user: ManagerUserTableRow) => void;
@@ -77,9 +82,37 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
           </Button>
         );
       },
-      cell: ({ row }) => (
-        <div className="text-muted-foreground">{row.getValue("email") || "Email não informado"}</div>
-      ),
+      cell: ({ row }) => {
+        const email = row.getValue("email") as string || "Email não informado";
+        
+        return (
+          <div className="flex items-center gap-2">
+            <div className="text-muted-foreground">{email}</div>
+            {email !== "Email não informado" && (
+                
+
+
+            
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 hover:bg-muted cursor-pointer"
+                            onClick={() => navigator.clipboard.writeText(email)}
+                        >
+                            <CopyIcon size={14} className="text-muted-foreground hover:text-foreground" />
+                        </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        <p>Copiar e-mail</p>
+                    </TooltipContent>
+                </Tooltip>
+
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: "role",
@@ -166,13 +199,6 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel >Ações</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => navigator.clipboard.writeText(user.email)}
-              >
-                Copiar email
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {user.canEdit && (
                 <DropdownMenuItem
                   onClick={() => onEdit(user)}
                   className="flex items-center gap-2"
@@ -180,8 +206,7 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
                   <Pencil className="h-4 w-4" />
                   Editar usuário
                 </DropdownMenuItem>
-              )}
-              {user.canDelete && (
+              
                 <DropdownMenuItem
                   onClick={() => onDelete(user)}
                   className="flex items-center gap-2 text-destructive focus:text-destructive"
@@ -189,7 +214,7 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
                   <Trash2 className="h-4 w-4" />
                   Remover usuário
                 </DropdownMenuItem>
-              )}
+              
             </DropdownMenuContent>
           </DropdownMenu>
         );

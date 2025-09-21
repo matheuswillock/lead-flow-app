@@ -156,4 +156,28 @@ export class ManagerUserRepository implements IManagerUserRepository {
             where: { id: operatorId }
         });
     }
+
+    async getManagerStats(managerId: string): Promise<{
+        totalOperators: number;
+        totalManagers: number;
+        totalUsers: number;
+    }> {
+        // Contar operators relacionados ao manager
+        const operatorsCount = await prisma.profile.count({
+            where: { 
+                managerId: managerId,
+                role: UserRole.operator
+            }
+        });
+
+        // Por enquanto, considerar apenas 1 manager (o próprio logado)
+        // Futuramente pode ser expandido para managers hierárquicos
+        const managersCount = 1;
+
+        return {
+            totalOperators: operatorsCount,
+            totalManagers: managersCount,
+            totalUsers: operatorsCount + managersCount
+        };
+    }
 }

@@ -48,6 +48,11 @@ export interface ManagerUsersState {
   isCreateModalOpen: boolean;
   isEditModalOpen: boolean;
   isDeleteDialogOpen: boolean;
+  stats?: {
+    totalOperators: number;
+    totalManagers: number;
+    totalUsers: number;
+  };
 }
 
 // API Response types
@@ -56,6 +61,11 @@ export interface ManagerUsersApiResponse {
   successMessages: string[];
   errorMessages: string[];
   result: ManagerUser[] | null;
+  stats?: {
+    totalOperators: number;
+    totalManagers: number;
+    totalUsers: number;
+  };
 }
 
 export interface ManagerUserApiResponse {

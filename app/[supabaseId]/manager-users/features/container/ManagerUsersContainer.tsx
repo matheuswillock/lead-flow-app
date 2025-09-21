@@ -30,7 +30,7 @@ export function ManagerUsersContainer({
     isCreateModalOpen,
     isEditModalOpen,
     isDeleteDialogOpen,
-    permissions,
+    stats,
     
     // Ações
     createUser,
@@ -72,13 +72,6 @@ export function ManagerUsersContainer({
     onDelete: openDeleteDialog,
   });
 
-  // Estatísticas
-  const stats = {
-    total: tableData.length,
-    managers: tableData.filter(u => u.role === "manager").length,
-    operators: tableData.filter(u => u.role === "operator").length,
-  };
-
   return (
     <div className="container mx-auto py-6 px-6 space-y-6">
       {/* Header */}
@@ -86,7 +79,7 @@ export function ManagerUsersContainer({
             <div>
             <h1 className="text-3xl font-bold tracking-tight">Gerenciar Usuários</h1>
             <p className="text-muted-foreground">
-                Gerencie managers e operators do sistema
+                Gerencie operators do seu sistema
             </p>
             </div>
 
@@ -100,7 +93,7 @@ export function ManagerUsersContainer({
             </Button>
         </div>
 
-      {/* Estatísticas */}
+      {/* Cards de Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -111,8 +104,11 @@ export function ManagerUsersContainer({
             {loading ? (
               <Skeleton className="h-8 w-16" />
             ) : (
-              <div className="text-2xl font-bold">{stats.total}</div>
+              <div className="text-2xl font-bold">{stats?.totalUsers ?? 0}</div>
             )}
+            <p className="text-xs text-muted-foreground">
+              Managers e Operators
+            </p>
           </CardContent>
         </Card>
 
@@ -125,8 +121,11 @@ export function ManagerUsersContainer({
             {loading ? (
               <Skeleton className="h-8 w-16" />
             ) : (
-              <div className="text-2xl font-bold">{stats.managers}</div>
+              <div className="text-2xl font-bold">{stats?.totalManagers ?? 0}</div>
             )}
+            <p className="text-xs text-muted-foreground">
+              Incluindo você
+            </p>
           </CardContent>
         </Card>
 
@@ -139,8 +138,11 @@ export function ManagerUsersContainer({
             {loading ? (
               <Skeleton className="h-8 w-16" />
             ) : (
-              <div className="text-2xl font-bold">{stats.operators}</div>
+              <div className="text-2xl font-bold">{stats?.totalOperators ?? 0}</div>
             )}
+            <p className="text-xs text-muted-foreground">
+              Usuários gerenciados
+            </p>
           </CardContent>
         </Card>
       </div>
