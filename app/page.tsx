@@ -1,32 +1,14 @@
 "use client"
 
+import { LandingHeader } from "@/components/landing/landingHeader";
 import { div as MotionDiv, h1 as MotionH1, p as MotionP } from "framer-motion/client";
-import { ArrowRight, LogIn } from "lucide-react";
+import { ArrowRight, } from "lucide-react";
 import Link from "next/link";
 
 export default function Home() {
   return (
-        <main className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b" style={{ borderColor: "var(--border)" }}>
-        <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
-            <span
-              className="inline-block h-6 w-6 rounded-md"
-              style={{ background: "var(--primary)" }}
-              aria-hidden
-            />
-            <span>Lead Flow</span>
-          </Link>
-
-          <Link
-            href="/sign-in"
-            className="inline-flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold bg-card text-foreground/90 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
-            style={{ borderColor: "var(--border)" }}
-          >
-            <LogIn className="h-4 w-4" /> Entrar
-          </Link>
-        </div>
-      </header>
+    <main className="min-h-screen bg-background text-foreground">
+      <LandingHeader />
 
       <section className="relative overflow-hidden">
         <div

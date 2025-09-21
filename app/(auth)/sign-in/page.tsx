@@ -2,7 +2,7 @@
 import { useState } from "react"
 import { signin } from "./actions"
 import { useLoginForm } from "@/hooks/useForms"
-import { SignInForm } from "@/components/forms/loginForm"
+import { SignInForm } from "@/components/forms/SignInForm"
 import { loginFormData } from "@/lib/validations/validationForms"
 
 export default function SignInPage() {
