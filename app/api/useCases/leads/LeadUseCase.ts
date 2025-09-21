@@ -386,7 +386,7 @@ export class LeadUseCase implements ILeadUseCase {
           id: lead.assignee.id,
           fullName: lead.assignee.fullName,
           email: lead.assignee.email,
-          avatarUrl: lead.assignee.avatarUrl || null,
+          avatarUrl: lead.assignee.profileIconUrl || null,
         }
       }),
       ...(lead.activities && {

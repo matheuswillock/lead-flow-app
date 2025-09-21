@@ -19,6 +19,7 @@ export class LeadRepository implements ILeadRepository {
             id: true,
             fullName: true,
             email: true,
+            profileIconUrl: true,
           },
         },
       },
@@ -36,7 +37,14 @@ export class LeadRepository implements ILeadRepository {
             email: true,
           },
         },
-        assignee: true,
+        assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
         activities: {
           include: {
             author: {
@@ -112,6 +120,7 @@ export class LeadRepository implements ILeadRepository {
               id: true,
               fullName: true,
               email: true,
+              profileIconUrl: true,
             },
           },
         },
@@ -144,6 +153,7 @@ export class LeadRepository implements ILeadRepository {
             id: true,
             fullName: true,
             email: true,
+            profileIconUrl: true,
           },
         },
       },
@@ -173,6 +183,7 @@ export class LeadRepository implements ILeadRepository {
             id: true,
             fullName: true,
             email: true,
+            profileIconUrl: true,
           },
         },
       },
@@ -196,6 +207,7 @@ export class LeadRepository implements ILeadRepository {
             id: true,
             fullName: true,
             email: true,
+            profileIconUrl: true,
           },
         },
       },
@@ -221,6 +233,7 @@ export class LeadRepository implements ILeadRepository {
             id: true,
             fullName: true,
             email: true,
+            profileIconUrl: true,
           },
         },
       },
@@ -257,6 +270,7 @@ export class LeadRepository implements ILeadRepository {
             id: true,
             fullName: true,
             email: true,
+            profileIconUrl: true,
           },
         },
         activities: {
@@ -295,7 +309,7 @@ export class LeadRepository implements ILeadRepository {
       endDate,
     } = options || {};
 
-    const where: Prisma.LeadWhereInput = {
+    const where: any = {
       managerId,
       ...(status && { status }),
       ...(assignedTo && { assignedTo }),
@@ -329,6 +343,7 @@ export class LeadRepository implements ILeadRepository {
             id: true,
             fullName: true,
             email: true,
+            profileIconUrl: true,
           },
         },
       },
@@ -389,6 +404,7 @@ export class LeadRepository implements ILeadRepository {
             id: true,
             fullName: true,
             email: true,
+            profileIconUrl: true,
           },
         },
       },
