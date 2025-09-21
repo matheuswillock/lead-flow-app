@@ -111,9 +111,22 @@ export default function BoardDialog() {
         responsible: lead.assignedTo || "",
       });
     } else if (!lead && open) {
-      form.reset();
+      form.reset({
+        name: "",
+        phone: "",
+        email: "",
+        cnpj: "",
+        age: [],
+        hasPlan: undefined,
+        currentValue: "",
+        referenceHospital: "",
+        ongoingTreatment: "",
+        additionalNotes: "",
+        meetingDate: "",
+        responsible: user?.usersAssociated?.[0]?.id || "",
+      });
     }
-  }, [lead, open, form]);
+  }, [lead, open, form, user]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
