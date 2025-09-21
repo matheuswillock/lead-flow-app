@@ -7,11 +7,13 @@ import { UseFormReturn } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "../ui/form";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 
 interface IUsersToAssign {
     id: string; 
     name: string; 
-    avatarId: string 
+    avatarImageUrl: string;
 }
 
 interface ILeadFormProps {
@@ -60,6 +62,13 @@ export function LeadForm({
 
         setHasChanges(hasFormChanges);
     }, [watchedValues, initialData]);
+
+    // Auto-select responsible when there's only one user available
+    useEffect(() => {
+        if (usersToAssign?.length === 1 && !form.getValues('responsible')) {
+            form.setValue('responsible', usersToAssign[0].id);
+        }
+    }, [usersToAssign, form]);
 
     return (
       <Form {...form}>
@@ -147,16 +156,49 @@ export function LeadForm({
                 control={form.control}
                 name="age"
                 render={({ field }) => (
-                    <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">Idades*</FormLabel>
+                    <FormItem className="sm:col-span-2">
+                        <FormLabel className="block text-sm font-medium mb-1">Faixas Etárias*</FormLabel>
                         <FormControl>
-                            <Input
-                                {...field}
-                                type="text"
-                                placeholder="Ex: 32, 29, 5"
-                                required
-                                disabled={isLoading || isUpdating}
-                            />
+                            <div className="space-y-3">
+                                {/* Input que mostra as seleções */}
+                                <Input
+                                    value={field.value?.join(", ") || ""}
+                                    placeholder="Selecione as faixas etárias abaixo"
+                                    readOnly
+                                    disabled={isLoading || isUpdating}
+                                    className="bg-gray-50"
+                                />
+                                
+                                {/* Checkboxes para seleção múltipla */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                        { value: "0-18", label: "0-18 anos" },
+                                        { value: "19-25", label: "19-25 anos" },
+                                        { value: "26-35", label: "26-35 anos" },
+                                        { value: "36-45", label: "36-45 anos" },
+                                        { value: "46-60", label: "46-60 anos" },
+                                        { value: "61+", label: "61+ anos" }
+                                    ].map((option) => (
+                                        <label key={option.value} className="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={field.value?.includes(option.value as any) || false}
+                                                onChange={(e) => {
+                                                    const currentValues = field.value || [];
+                                                    if (e.target.checked) {
+                                                        field.onChange([...currentValues, option.value]);
+                                                    } else {
+                                                        field.onChange(currentValues.filter(v => v !== option.value));
+                                                    }
+                                                }}
+                                                disabled={isLoading || isUpdating}
+                                                className="rounded"
+                                            />
+                                            {option.label}
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
                         </FormControl>
                     </FormItem>
                 )}
@@ -301,26 +343,60 @@ export function LeadForm({
             <FormField
                 control={form.control}
                 name="responsible"
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">Responsável</FormLabel>
-                        <FormControl>
-                            <select
-                                {...field}
-                                className="block w-full border rounded px-3 py-2"
-                                disabled={isLoading || isUpdating}
-                                required
-                            >
-                                <option value="">Selecione um responsável</option>
-                                {usersToAssign?.map(user => (
-                                    <option key={user.id} value={user.id}>
-                                        {user.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </FormControl>
-                    </FormItem>
-                )}
+                render={({ field }) => {
+                    const selectedUser = usersToAssign?.find(user => user.id === field.value);
+                    const isOnlyOneUser = usersToAssign?.length === 1;
+                    
+                    return (
+                        <FormItem>
+                            <FormLabel className="block text-sm font-medium mb-1">
+                                Responsável{isOnlyOneUser && " (único disponível)"}
+                            </FormLabel>
+                            <FormControl>
+                                <Select
+                                    value={field.value}
+                                    onValueChange={field.onChange}
+                                    disabled={isLoading || isUpdating || isOnlyOneUser}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione um responsável">
+                                            {selectedUser && (
+                                                <div className="flex items-center gap-2">
+                                                    <Avatar className="h-5 w-5">
+                                                        <AvatarImage 
+                                                            src={selectedUser.avatarImageUrl || undefined} 
+                                                        />
+                                                        <AvatarFallback className="text-xs">
+                                                            {selectedUser.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                                                        </AvatarFallback>
+                                                    </Avatar>
+                                                    <span className="truncate">{selectedUser.name}</span>
+                                                </div>
+                                            )}
+                                        </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {usersToAssign?.map(user => (
+                                            <SelectItem key={user.id} value={user.id}>
+                                                <div className="flex items-center gap-2">
+                                                    <Avatar className="h-6 w-6">
+                                                        <AvatarImage 
+                                                            src={user.avatarImageUrl || undefined} 
+                                                        />
+                                                        <AvatarFallback className="text-xs">
+                                                            {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                                                        </AvatarFallback>
+                                                    </Avatar>
+                                                    <span>{user.name}</span>
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </FormControl>
+                        </FormItem>
+                    );
+                }}
             />
 
             <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
