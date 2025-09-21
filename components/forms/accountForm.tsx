@@ -3,11 +3,11 @@
 import { UseFormReturn } from "react-hook-form";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { updateAccountFormData } from "@/lib/types/formTypes";
 import { cn } from "@/lib/utils";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form";
 import { Eye, EyeOff } from "lucide-react";
 import { useState, useEffect } from "react";
+import { updateAccountFormData } from "@/lib/validations/validationForms";
 
 interface AccountFormProps {
   form: UseFormReturn<updateAccountFormData>;
@@ -31,13 +31,11 @@ export function AccountForm({
   const [showPassword, setShowPassword] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Observa mudanças nos valores do formulário
   const watchedValues = form.watch();
 
   useEffect(() => {
     if (!initialData) return;
 
-    // Verifica se há mudanças comparando com os dados iniciais
     const hasFormChanges = 
       watchedValues.fullName !== initialData.fullName ||
       watchedValues.email !== initialData.email ||
@@ -47,10 +45,8 @@ export function AccountForm({
     setHasChanges(hasFormChanges);
   }, [watchedValues, initialData]);
 
-  // Verifica se o formulário é válido
   const isFormValid = form.formState.isValid;
   
-  // Botão deve estar habilitado apenas se há mudanças, o form é válido e não está carregando
   const isSubmitDisabled = !hasChanges || !isFormValid || isLoading || isUpdating;
 
   return (
@@ -161,7 +157,7 @@ export function AccountForm({
           <Button 
             type="button" 
             variant="ghost" 
-            className="h-11"
+            className="h-11 cursor-pointer"
             onClick={onCancel}
             disabled={isLoading || isUpdating}
           >

@@ -2,8 +2,7 @@
 
 import { useForm, UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { loginFormSchema, signupFormSchema, updateAccountFormSchema } from "@/lib/validations/validationForms";
-import { loginFormData, signUpFormData, updateAccountFormData } from "@/lib/types/formTypes";
+import { leadFormData, leadFormSchema, loginFormData, loginFormSchema, signUpFormData, signupFormSchema, updateAccountFormData, updateAccountFormSchema } from "@/lib/validations/validationForms";
 
 export function useLoginForm(): UseFormReturn<loginFormData> {
   return useForm<loginFormData>({
@@ -36,6 +35,26 @@ export function useUpdateAccountForm(): UseFormReturn<updateAccountFormData> {
       email: "",
       phone: "",
       password: "",
+    },
+  });
+}
+
+export function useLeadForm(): UseFormReturn<leadFormData> {
+  return useForm<leadFormData>({
+    resolver: zodResolver(leadFormSchema),
+    defaultValues: {
+      name: "",
+      phone: "",
+      email: "",
+      cnpj: "",
+      age: [],
+      hasPlan: undefined,
+      currentValue: "",
+      referenceHospital: "",
+      ongoingTreatment: "",
+      meetingDate: "",
+      additionalNotes: "",
+      responsible: "",
     },
   });
 }

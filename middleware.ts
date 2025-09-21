@@ -62,6 +62,21 @@ export async function middleware(request: NextRequest) {
   }
 
   // User is authenticated and accessing correct route; continue with refreshed cookies
+  
+  // For API routes, add the user ID to headers
+  if (pathname.startsWith('/api')) {
+    const requestHeaders = new Headers(request.headers)
+    if (user) {
+      requestHeaders.set('x-supabase-user-id', user.id)
+    }
+    
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    })
+  }
+  
   return response
 }
 

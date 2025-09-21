@@ -3,7 +3,7 @@ import { RequestToRegisterUserProfile } from "../../v1/profiles/DTO/requestToReg
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository";
 import { UserRole } from "@prisma/client";
-import type { IProfileUseCase } from "./IProfileUseCase";
+import type { IProfileUseCase, ProfileInfo } from "./IProfileUseCase";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { createProfileOutput } from "../../v1/profiles/DTO/profileResponseDTO";
 import { createProfileUpdateOutput } from "../../v1/profiles/DTO/profileUpdateResponseDTO";
@@ -55,12 +55,37 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 return new Output(false, [], ["Supabase ID is required"], null);
             }
 
-            const profile = await this.repo.findBySupabaseId(supabaseId);
+            const profile = await this.repo.findBySupabaseIdWithRelations(supabaseId);
             
             return createProfileOutput(profile);
         } catch (error) {
             console.error("Error getting profile:", error);
             return new Output(false, [], ["Failed to retrieve profile"], null);
+        }
+    }
+
+    async getProfileInfoBySupabaseId(supabaseId: string): Promise<ProfileInfo | null> {
+        try {
+            if (!supabaseId) {
+                return null;
+            }
+
+            const profile = await this.repo.findBySupabaseId(supabaseId);
+            
+            if (!profile) {
+                return null;
+            }
+
+            return {
+                id: profile.id,
+                role: profile.role as 'manager' | 'operator',
+                managerId: profile.managerId,
+                fullName: profile.fullName,
+                email: profile.email
+            };
+        } catch (error) {
+            console.error("Error getting profile info:", error);
+            return null;
         }
     }
 

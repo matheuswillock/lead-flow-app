@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form"
 import Link from "next/link"
 import { Separator } from "@/components/ui/separator"
-import { loginFormData } from "@/lib/types/formTypes"
 import type { UseFormReturn } from "react-hook-form"
+import { loginFormData } from "@/lib/validations/validationForms"
 
 interface SigninFormProps {
   form: UseFormReturn<loginFormData>;

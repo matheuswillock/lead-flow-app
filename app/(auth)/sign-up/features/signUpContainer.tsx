@@ -1,8 +1,8 @@
 "use client";
 import { useSignUpForm } from "@/hooks/useForms";
-import { signUpFormData } from "@/lib/types/formTypes";
 import { SignupForm } from "@/components/forms/signUpForm";
 import { useSignUp } from "./signUpContext";
+import { signUpFormData } from "@/lib/validations/validationForms";
 
 /**
  * Componente interno que usa o context
