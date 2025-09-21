@@ -27,7 +27,8 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
       header: "",
       cell: ({ row }) => {
         const user = row.original;
-        const initials = user.name
+        const userName = user.name || "Usuário";
+        const initials = userName
           .split(" ")
           .map(n => n[0])
           .join("")
@@ -36,7 +37,7 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
 
         return (
           <Avatar className="h-8 w-8">
-            <AvatarImage src={user.profileIconUrl} alt={user.name} />
+            <AvatarImage src={user.profileIconUrl} alt={userName} />
             <AvatarFallback className="text-xs">{initials}</AvatarFallback>
           </Avatar>
         );
@@ -59,7 +60,7 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
         );
       },
       cell: ({ row }) => (
-        <div className="font-medium">{row.getValue("name")}</div>
+        <div className="font-medium">{row.getValue("name") || "Nome não informado"}</div>
       ),
     },
     {
@@ -77,7 +78,7 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
         );
       },
       cell: ({ row }) => (
-        <div className="text-muted-foreground">{row.getValue("email")}</div>
+        <div className="text-muted-foreground">{row.getValue("email") || "Email não informado"}</div>
       ),
     },
     {
@@ -158,13 +159,13 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button variant="ghost" className="h-8 w-8 p-0 cursor-pointer">
                 <span className="sr-only">Abrir menu</span>
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Ações</DropdownMenuLabel>
+              <DropdownMenuLabel >Ações</DropdownMenuLabel>
               <DropdownMenuItem
                 onClick={() => navigator.clipboard.writeText(user.email)}
               >

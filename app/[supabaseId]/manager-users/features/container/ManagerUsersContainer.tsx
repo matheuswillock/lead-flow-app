@@ -82,14 +82,14 @@ export function ManagerUsersContainer({
   return (
     <div className="container mx-auto py-6 px-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Gerenciar Usuários</h1>
-          <p className="text-muted-foreground">
-            Gerencie managers e operators do sistema
-          </p>
-        </div>
-        {permissions.canCreateUser && (
+        <div className="flex items-center justify-between">
+            <div>
+            <h1 className="text-3xl font-bold tracking-tight">Gerenciar Usuários</h1>
+            <p className="text-muted-foreground">
+                Gerencie managers e operators do sistema
+            </p>
+            </div>
+
             <Button 
                 onClick={openCreateModal} 
                 className="gap-2 text-base cursor-pointer font-medium" 
@@ -97,11 +97,8 @@ export function ManagerUsersContainer({
             >
                 <UserRoundPlusIcon />
                 Adicionar Usuário
-          </Button>
-        )}
-
-
-      </div>
+            </Button>
+        </div>
 
       {/* Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

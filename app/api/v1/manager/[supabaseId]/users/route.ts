@@ -117,8 +117,18 @@ export async function GET(
 
     // Listar usuários com filtro opcional por role
     if (roleFilter === 'manager') {
-      // Return empty for now - would need getAllManagers implementation
-      const output = new Output(true, [], [], []);
+      // Retornar apenas o manager atual
+      const managerData = {
+        id: requesterProfile.id,
+        name: requesterProfile.fullName || 'Manager',
+        email: requesterProfile.email || '',
+        role: 'manager' as const,
+        profileIconUrl: null,
+        managerId: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      const output = new Output(true, [], [], [managerData]);
       return NextResponse.json(output, { status: 200 });
     } else if (roleFilter === 'operator') {
       // Get operators managed by this manager
@@ -126,9 +136,23 @@ export async function GET(
       const output = new Output(true, [], [], operators);
       return NextResponse.json(output, { status: 200 });
     } else {
-      // Return operators for this manager (we could expand this to include all users)
+      // Return both manager and operators
       const operators = await managerUserRepository.getOperatorsByManager(requesterProfile.id);
-      const output = new Output(true, [], [], operators);
+      
+      // Include the manager in the list
+      const managerData = {
+        id: requesterProfile.id,
+        name: requesterProfile.fullName || 'Manager',
+        email: requesterProfile.email || '',
+        role: 'manager' as const,
+        profileIconUrl: null,
+        managerId: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      const allUsers = [managerData, ...operators];
+      const output = new Output(true, [], [], allUsers);
       return NextResponse.json(output, { status: 200 });
     }
 

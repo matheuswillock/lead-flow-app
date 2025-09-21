@@ -51,7 +51,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
         // Buscar contador de leads para cada usuário
         const usersWithLeadsCount = await Promise.all(
           response.result.map(async (user) => {
-            const leadsCount = await managerUsersService.getUserLeadsCount(user.id);
+            const leadsCount = await managerUsersService.getUserLeadsCount();
             return { ...user, leadsCount };
           })
         );

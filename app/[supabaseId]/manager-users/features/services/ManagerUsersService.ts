@@ -1,5 +1,4 @@
 import { 
-  ManagerUser, 
   CreateManagerUserFormData, 
   UpdateManagerUserFormData,
   ManagerUsersApiResponse,
@@ -81,7 +80,7 @@ class ManagerUsersService {
   }
 
   // Buscar contagem de leads por usuário (simulado por enquanto)
-  async getUserLeadsCount(userId: string): Promise<number> {
+  async getUserLeadsCount(): Promise<number> {
     // TODO: Implementar endpoint real quando disponível
     // Por enquanto retorna um número aleatório para demonstração
     return Math.floor(Math.random() * 50);

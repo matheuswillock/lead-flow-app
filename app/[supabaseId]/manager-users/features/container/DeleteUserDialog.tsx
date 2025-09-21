@@ -52,21 +52,23 @@ export function DeleteUserDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2">
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={loading}
-          >
-            Cancelar
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={onConfirm}
-            disabled={loading}
-          >
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {loading ? "Removendo..." : "Remover Usuário"}
-          </Button>
+            <Button
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={loading}
+                className="cursor-pointer font-medium"
+            >
+                Cancelar
+            </Button>
+            <Button
+                variant="destructive"
+                onClick={onConfirm}
+                disabled={loading}
+                className="cursor-pointer font-medium"
+            >
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {loading ? "Removendo..." : "Remover Usuário"}
+            </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

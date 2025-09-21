@@ -32,7 +32,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
         });
     }
 
-    async getOperatorsByManager(managerId: string): Promise<{ id: string; fullName: string; email: string; }[]> {
+    async getOperatorsByManager(managerId: string): Promise<any[]> {
         const operators = await prisma.profile.findMany({
             where: { 
                 managerId: managerId,
@@ -41,7 +41,11 @@ export class ManagerUserRepository implements IManagerUserRepository {
             select: {
                 id: true,
                 fullName: true,
-                email: true
+                email: true,
+                profileIconUrl: true,
+                managerId: true,
+                createdAt: true,
+                updatedAt: true
             },
             orderBy: {
                 fullName: 'asc'
@@ -50,8 +54,13 @@ export class ManagerUserRepository implements IManagerUserRepository {
 
         return operators.map(op => ({
             id: op.id,
-            fullName: op.fullName || '',
-            email: op.email
+            name: op.fullName || 'Operator',
+            email: op.email,
+            role: 'operator' as const,
+            profileIconUrl: op.profileIconUrl,
+            managerId: op.managerId,
+            createdAt: op.createdAt,
+            updatedAt: op.updatedAt
         }));
     }
 

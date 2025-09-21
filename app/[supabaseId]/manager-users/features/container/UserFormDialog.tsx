@@ -205,18 +205,23 @@ export function UserFormDialog({
             />
 
             <DialogFooter className="gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleCancel}
-                disabled={loading}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isEditing ? "Atualizar" : "Criar"} Usuário
-              </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCancel}
+                    disabled={loading}
+                    className="cursor-pointer font-medium"
+                >
+                    Cancelar
+                </Button>
+                <Button 
+                    type="submit" 
+                    disabled={loading} 
+                    className="cursor-pointer font-medium"
+                >
+                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {isEditing ? "Atualizar" : "Criar"} Usuário
+                </Button>
             </DialogFooter>
           </form>
         </Form>
