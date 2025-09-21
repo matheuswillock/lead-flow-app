@@ -55,7 +55,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 return new Output(false, [], ["Supabase ID is required"], null);
             }
 
-            const profile = await this.repo.findBySupabaseId(supabaseId);
+            const profile = await this.repo.findBySupabaseIdWithRelations(supabaseId);
             
             return createProfileOutput(profile);
         } catch (error) {

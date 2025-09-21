@@ -10,7 +10,7 @@ import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 
 export default function BoardDialog() {
-  const { open, setOpen, selected: lead } = useBoardContext();
+  const { open, setOpen, selected: lead, user, userLoading } = useBoardContext();
   const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -57,7 +57,6 @@ export default function BoardDialog() {
     
     try {
       if (lead) {
-        // Atualizar lead existente
         const updateData = transformToUpdateRequest(data);
         const result = await updateLead(lead.id, updateData);
         
@@ -68,7 +67,6 @@ export default function BoardDialog() {
           toast.error(result.message || "Erro ao atualizar lead");
         }
       } else {
-        // Criar novo lead
         const createData = transformToCreateRequest(data);
         const result = await createLead(createData);
         
@@ -87,10 +85,8 @@ export default function BoardDialog() {
     }
   };
 
-  // Preencher o formulário quando um lead for selecionado para edição
   useEffect(() => {
     if (lead && open) {
-      // Função para mapear a idade para as faixas etárias corretas
       const getAgeRange = (age: number): ("0-18" | "19-25" | "26-35" | "36-45" | "46-60" | "61+")[] => {
         if (age <= 18) return ["0-18"];
         if (age <= 25) return ["19-25"];
@@ -115,7 +111,6 @@ export default function BoardDialog() {
         responsible: lead.assignedTo || "",
       });
     } else if (!lead && open) {
-      // Reset do formulário para criação de novo lead
       form.reset();
     }
   }, [lead, open, form]);
@@ -135,11 +130,26 @@ export default function BoardDialog() {
           </DialogDescription>
         </DialogHeader>
         
-        <LeadForm
-          form={form}
-          onSubmit={onSubmit}
-          isLoading={isSubmitting}
-        />
+        {userLoading ? (
+          <div className="flex items-center justify-center p-8">
+            <div className="text-center">
+              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+              <p className="text-sm text-muted-foreground">Carregando dados do usuário...</p>
+            </div>
+          </div>
+        ) : !user ? (
+          <div className="flex items-center justify-center p-8">
+            <p className="text-sm text-destructive">Erro ao carregar dados do usuário</p>
+          </div>
+        ) : (
+          <LeadForm
+            form={form}
+            onSubmit={onSubmit}
+            isLoading={isSubmitting}
+            onCancel={() => setOpen(false)}
+            usersToAssign={user.usersAssociated || []}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

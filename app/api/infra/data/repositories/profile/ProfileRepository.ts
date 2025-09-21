@@ -30,6 +30,39 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
+    async findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null> {
+        try {
+            const profile = await prisma.profile.findUnique({ 
+                where: { supabaseId },
+                include: {
+                    operators: {
+                        select: {
+                            id: true,
+                            fullName: true,
+                            profileIconUrl: true,
+                            email: true,
+                            role: true
+                        }
+                    },
+                    manager: {
+                        select: {
+                            id: true,
+                            fullName: true,
+                            profileIconUrl: true,
+                            email: true,
+                            role: true
+                        }
+                    }
+                }
+            });
+            console.info("Fetched profile with relations:", profile);
+            return profile ?? null;
+        } catch (error) {
+            console.error("Error fetching profile with relations:", error);
+            return null;
+        }
+    }
+
     async existingByEmailOrPhone(email: string, phone: string): Promise<boolean> {
         try {
             const profile = await prisma.profile.findFirst({

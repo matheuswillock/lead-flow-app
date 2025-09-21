@@ -1,11 +1,10 @@
 "use client";
 import React, { createContext, useContext, useState, ReactNode } from "react";
 import { RequestToRegisterUserProfile } from "@/app/api/v1/profiles/DTO/requestToRegisterUserProfile";
-// import { ISignUpService } from "../services/ISignUpService";
-import { signUpFormData } from "@/lib/types/formTypes";
 import { Output } from "@/lib/output";
 import { ISignUpService } from "./services/ISignUpService";
 import { createSignUpService } from "./services/SignUpService";
+import { signUpFormData } from "@/lib/validations/validationForms";
 
 /**
  * Interface para o estado do contexto de cadastro

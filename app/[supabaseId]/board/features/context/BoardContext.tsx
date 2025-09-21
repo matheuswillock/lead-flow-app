@@ -1,9 +1,9 @@
 import { createContext, ReactNode, useMemo, useState, useEffect } from "react";
 import { IBoardService } from "../services/IBoardServices";
-import { User } from "@supabase/supabase-js";
 import { Lead, ColumnKey } from "./BoardTypes";
 import { createBoardService } from "../services/BoardService";
 import { useParams } from "next/navigation";
+import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -25,7 +25,7 @@ interface IBoardContextState {
   responsaveis: string[];
   errors: Record<string, string>;
   open: boolean;
-  user: User | null;
+  user: ProfileResponseDTO | null;
   userLoading: boolean;
   setOpen: (open: boolean) => void;
   selected: Lead | null;
@@ -91,6 +91,38 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
+  const [user, setUser] = useState<ProfileResponseDTO | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
+
+  // Função para carregar dados do usuário
+  const loadUser = async () => {
+    try {
+      setUserLoading(true);
+      
+      if (!supabaseId) {
+        console.error('ID do usuário não encontrado');
+        return;
+      }
+      
+      const response = await fetch(`/api/v1/profiles/${supabaseId}`);
+      
+      if (!response.ok) {
+        throw new Error('Erro ao buscar dados do usuário');
+      }
+      
+      const result = await response.json();
+      
+      if (result.isValid && result.result) {
+        setUser(result.result);
+      } else {
+        console.error('Erro ao carregar usuário:', result.errorMessages);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar usuário:', error);
+    } finally {
+      setUserLoading(false);
+    }
+  };
 
   // Função para carregar leads da API
   const loadLeads = async () => {
@@ -134,10 +166,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     }
   };
 
-  // Carregar leads quando o componente montar
+  // Carregar dados quando o componente montar
   useEffect(() => {
+    loadUser();
     loadLeads();
-  }, []);
+  }, [supabaseId]);
 
     let dragStarted = false
     const handleCardMouseDown = () => { dragStarted = false }
@@ -269,8 +302,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     responsaveis,
     errors,
     open,
-    user: null, // TODO: Replace with actual user data
-    userLoading: false, // TODO: Replace with actual loading state
+    user,
+    userLoading,
     setOpen,
     selected,
     onDragOver,

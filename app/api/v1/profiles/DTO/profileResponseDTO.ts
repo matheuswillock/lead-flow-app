@@ -1,5 +1,13 @@
-import type { Profile, UserRole } from "@prisma/client";
+import type { UserRole } from "@prisma/client";
 import { Output } from "@/lib/output";
+
+export interface UserAssociated {
+  id: string; 
+  name: string; 
+  avatarImageUrl: string;
+  email: string;
+  role: UserRole;
+}
 
 export interface ProfileResponseDTO {
   id: string;
@@ -11,9 +19,41 @@ export interface ProfileResponseDTO {
   managerId: string | null;
   profileIconId: string | null;
   profileIconUrl: string | null;
+  usersAssociated: UserAssociated[];
 }
 
-export function createProfileResponseDTO(profile: Profile): ProfileResponseDTO {
+export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
+  const usersAssociated: UserAssociated[] = [];
+  
+  // SEMPRE incluir o próprio usuário no array como primeiro item
+  const currentUser: UserAssociated = {
+    id: profile.id,
+    name: profile.fullName || 'N/A',
+    avatarImageUrl: profile.profileIconUrl || '',
+    email: profile.email,
+    role: profile.role
+  };
+  
+  usersAssociated.push(currentUser);
+  
+  // Se for manager, incluir TAMBÉM todos os operadores
+  if (profile.role === 'manager' && profile.operators && profile.operators.length > 0) {
+    const operators = profile.operators.map((operator: any) => ({
+      id: operator.id,
+      name: operator.fullName || 'N/A',
+      avatarImageUrl: operator.profileIconUrl || '',
+      email: operator.email,
+      role: operator.role
+    }));
+    
+    usersAssociated.push(...operators);
+  }
+  
+  // Garantir que sempre há pelo menos 1 usuário (o próprio)
+  if (usersAssociated.length === 0) {
+    usersAssociated.push(currentUser);
+  }
+  
   return {
     id: profile.id,
     email: profile.email,
@@ -24,6 +64,7 @@ export function createProfileResponseDTO(profile: Profile): ProfileResponseDTO {
     managerId: profile.managerId,
     profileIconId: profile.profileIconId,
     profileIconUrl: profile.profileIconUrl,
+    usersAssociated,
   };
 }
 
@@ -35,7 +76,7 @@ export function createProfileResponseDTO(profile: Profile): ProfileResponseDTO {
  * @returns Output object with appropriate success/error state
  */
 export function createProfileOutput(
-  profile: Profile | null
+  profile: any | null
 ): Output {
   const successMessage = "Profile retrieved successfully";
   const notFoundMessage = "Profile not found";
@@ -46,3 +87,4 @@ export function createProfileOutput(
 
   return new Output(true, [successMessage], [], createProfileResponseDTO(profile));
 }
+

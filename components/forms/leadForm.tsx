@@ -9,22 +9,17 @@ import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 
-interface IUsersToAssign {
-    id: string; 
-    name: string; 
-    avatarImageUrl: string;
-}
-
-interface ILeadFormProps {
+export interface ILeadFormProps {
     form: UseFormReturn<leadFormData>;
     onSubmit: (data: leadFormData) => void | Promise<void>;
     isLoading?: boolean;
     isUpdating?: boolean;
-    onCancel?: () => void;
+    onCancel: () => void;
     className?: string;
     initialData?: leadFormData;
-    usersToAssign?: IUsersToAssign[];
+    usersToAssign: UserAssociated[];
 }
 
 export function LeadForm({
@@ -356,7 +351,7 @@ export function LeadForm({
                                 <Select
                                     value={field.value}
                                     onValueChange={field.onChange}
-                                    disabled={isLoading || isUpdating || isOnlyOneUser}
+                                    disabled={isOnlyOneUser || isLoading || isUpdating}
                                 >
                                     <SelectTrigger>
                                         <SelectValue placeholder="Selecione um responsável">
