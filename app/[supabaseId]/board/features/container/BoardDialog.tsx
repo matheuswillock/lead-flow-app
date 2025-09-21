@@ -79,7 +79,7 @@ export default function BoardDialog() {
                     </div>
                     <div>
                         <label className="block text-sm font-medium mb-1">Responsável</label>
-                        <Input defaultValue={selected?.responsible ?? ""} />
+                        <Input defaultValue={selected?.assignedTo ?? ""} />
                     </div>
 
                     <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
