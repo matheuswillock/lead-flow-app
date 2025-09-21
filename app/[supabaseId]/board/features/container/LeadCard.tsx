@@ -1,6 +1,7 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "../context/BoardContext";
-import { Lead, ColumnKey } from "./BoardTypes";
+import { Lead, ColumnKey } from "../context/BoardTypes";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface LeadCardProps {
     lead: Lead;
@@ -24,24 +25,25 @@ export function LeadCard({
             onMouseDown={handleCardMouseDown}
             onDragStart={(e) => handleCardDragStart(e, lead.id, columnKey)}
             onClick={() => handleCardClick(lead)}
-            className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent"
+            className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent m-0"
         >
-            <CardHeader className="py-3">
+            <CardHeader >
                 <CardTitle className="text-base font-semibold leading-tight">
                     {lead.name}
                 </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 pb-3">
-                <div className="text-xs text-accent-foreground">
+                <div className="mt-1 text-xs text-accent-foreground">
                     Entrada: {formatDate(lead.createdAt)}
                 </div>
-                <div className="mt-1 text-xs">
-                    <span className="text-accent-foreground">Resp.: </span>
-                    <strong>
-                        {lead.assignedTo || "Não atribuído"}
-                    </strong>
-                </div>
+            </CardHeader>
+            <CardContent>
+                {/* TODO: Avaliar o conteudo para inserir aqui */}
             </CardContent>
+            <CardFooter className="w-full flex justify-end">
+                <Avatar className="h-6 w-6">
+                    <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
+                    <AvatarFallback>CN</AvatarFallback>
+                </Avatar>
+            </CardFooter>
         </Card>
     );
 }

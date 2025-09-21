@@ -9,7 +9,7 @@ const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
 const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
 
-export async function PATCH(
+export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -31,6 +31,11 @@ export async function PATCH(
     }
 
     const { id } = await params;
+
+    if (!id) {
+      const output = new Output(false, [], ["ID do lead é obrigatório"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
 
     const output = await leadUseCase.updateLeadStatus(supabaseId, id, status);
     const responseStatus = output.isValid ? 200 : 400;

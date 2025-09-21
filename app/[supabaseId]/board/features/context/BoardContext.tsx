@@ -1,7 +1,7 @@
 import { createContext, ReactNode, useMemo, useState, useEffect } from "react";
 import { IBoardService } from "../services/IBoardServices";
 import { User } from "@supabase/supabase-js";
-import { Lead, ColumnKey } from "../container/BoardTypes";
+import { Lead, ColumnKey } from "./BoardTypes";
 import { createBoardService } from "../services/BoardService";
 import { useParams } from "next/navigation";
 
