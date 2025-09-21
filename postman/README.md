@@ -1,6 +1,49 @@
-# 📋 Collection Postman - Lead API
+# Postman Collections - Lead Flow App
 
-Esta collection contém todos os testes para a API de Leads do Lead Flow App.
+Este diretório contém as coleções do Postman para testar os endpoints da API do Lead Flow App.
+
+## Coleções Disponíveis
+
+### 1. Lead API Collection
+**Arquivo**: `Lead-API-Collection.json`
+**Descrição**: Endpoints para gerenciamento de leads (CRUD completo)
+
+**Endpoints incluídos**:
+- ✅ Criar Lead
+- ✅ Listar Leads (com paginação)
+- ✅ Buscar Lead por ID
+- ✅ Atualizar Lead
+- ✅ Deletar Lead
+- ✅ Atribuir Lead a Operador
+- ✅ Desatribuir Lead
+
+### 2. Manager User API Collection ⭐ **NOVO**
+**Arquivo**: `Manager-User-API-Collection.json`
+**Descrição**: Endpoints para gerenciamento de usuários (Manager/Operator)
+
+**Endpoints incluídos**:
+- ✅ Criar Manager
+- ✅ Criar Operator
+- ✅ Listar Todos os Usuários
+- ✅ Listar Apenas Managers
+- ✅ Listar Apenas Operators
+- ✅ Associar Operator ao Manager
+- ✅ Dissociar Operator do Manager
+- ✅ Deletar Operator
+- ✅ Deletar Manager
+- ✅ Testes de Erro (Email duplicado, Acesso não autorizado, Dados inválidos)
+
+## Environment
+
+**Arquivo**: `Lead-Flow-Environment.json`
+**Descrição**: Variáveis de ambiente para todas as coleções
+
+**Variáveis configuradas**:
+- `baseUrl`: http://localhost:3000
+- `supabaseUserId`: ed4ab5a4-3188-41fa-8389-481784cb1f84
+- `leadId`: (preenchido automaticamente)
+- `operatorId`: (preenchido automaticamente)
+- `managerId`: (preenchido automaticamente)
 
 ## 🚀 Como Usar
 

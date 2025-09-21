@@ -1,0 +1,446 @@
+{
+  "info": {
+    "name": "Manager User API - Lead Flow App",
+    "description": "Coleção de endpoints para gerenciamento de usuários (Manager/Operator) no Lead Flow App. Inclui operações CRUD para criar, listar, associar, dissociar e remover usuários.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "Base URL da aplicação"
+    },
+    {
+      "key": "supabaseUserId",
+      "value": "ed4ab5a4-3188-41fa-8389-481784cb1f84",
+      "type": "string",
+      "description": "ID do usuário autenticado no Supabase (Manager)"
+    },
+    {
+      "key": "managerId",
+      "value": "",
+      "type": "string",
+      "description": "ID do manager criado - será preenchido automaticamente"
+    },
+    {
+      "key": "operatorId",
+      "value": "",
+      "type": "string",
+      "description": "ID do operator criado - será preenchido automaticamente"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Criar Manager",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response tem estrutura Output', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response).to.have.property('isValid');",
+              "    pm.expect(response).to.have.property('successMessages');",
+              "    pm.expect(response).to.have.property('errorMessages');",
+              "    pm.expect(response).to.have.property('result');",
+              "});",
+              "",
+              "pm.test('Manager criado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.have.property('id');",
+              "    pm.expect(response.result.name).to.eql('Maria Silva Manager');",
+              "    pm.expect(response.result.role).to.eql('manager');",
+              "    ",
+              "    // Salvar o ID do manager para usar em outros testes",
+              "    if (response.result && response.result.id) {",
+              "        pm.collectionVariables.set('managerId', response.result.id);",
+              "    }",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}",
+            "description": "ID do usuário autenticado no Supabase (deve ser Manager)"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Maria Silva Manager\",\n  \"email\": \"maria.manager@leadflow.com\",\n  \"role\": \"manager\",\n  \"profileIconUrl\": \"https://avatar.vercel.sh/maria\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/manager/{{supabaseUserId}}/users",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "manager", "{{supabaseUserId}}", "users"]
+        }
+      }
+    },
+    {
+      "name": "2. Criar Operator",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response tem estrutura Output', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response).to.have.property('isValid');",
+              "    pm.expect(response).to.have.property('successMessages');",
+              "    pm.expect(response).to.have.property('errorMessages');",
+              "    pm.expect(response).to.have.property('result');",
+              "});",
+              "",
+              "pm.test('Operator criado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.have.property('id');",
+              "    pm.expect(response.result.name).to.eql('João Operator Santos');",
+              "    pm.expect(response.result.role).to.eql('operator');",
+              "    ",
+              "    // Salvar o ID do operator para usar em outros testes",
+              "    if (response.result && response.result.id) {",
+              "        pm.collectionVariables.set('operatorId', response.result.id);",
+              "    }",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}",
+            "description": "ID do usuário autenticado no Supabase (deve ser Manager)"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"João Operator Santos\",\n  \"email\": \"joao.operator@leadflow.com\",\n  \"role\": \"operator\",\n  \"profileIconUrl\": \"https://avatar.vercel.sh/joao\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/manager/{{supabaseUserId}}/users",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "manager", "{{supabaseUserId}}", "users"]
+        }
+      }
+    },
+    {
+      "name": "3. Listar Todos os Usuários",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response tem estrutura Output', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response).to.have.property('isValid');",
+              "    pm.expect(response).to.have.property('result');",
+              "});",
+              "",
+              "pm.test('Lista de usuários retornada', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}",
+            "description": "ID do usuário autenticado no Supabase (deve ser Manager)"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/manager/{{supabaseUserId}}/users",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "manager", "{{supabaseUserId}}", "users"]
+        }
+      }
+    },
+    {
+      "name": "4. Listar Apenas Managers",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Apenas managers retornados', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/manager/{{supabaseUserId}}/users?role=manager",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "manager", "{{supabaseUserId}}", "users"],
+          "query": [
+            {
+              "key": "role",
+              "value": "manager"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Listar Apenas Operators",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Apenas operators retornados', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/manager/{{supabaseUserId}}/users?role=operator",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "manager", "{{supabaseUserId}}", "users"],
+          "query": [
+            {
+              "key": "role",
+              "value": "operator"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "6. Associar Operator ao Manager",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Associação realizada com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.successMessages).to.include('Operator associado ao manager com sucesso');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"action\": \"associate\",\n  \"operatorId\": \"{{operatorId}}\",\n  \"managerId\": \"{{managerId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/manager/{{supabaseUserId}}/users",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "manager", "{{supabaseUserId}}", "users"]
+        }
+      }
+    },
+    {
+      "name": "7. Dissociar Operator do Manager",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Dissociação realizada com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.successMessages).to.include('Operator desassociado do manager com sucesso');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"action\": \"dissociate\",\n  \"operatorId\": \"{{operatorId}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/manager/{{supabaseUserId}}/users",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "manager", "{{supabaseUserId}}", "users"]
+        }
+      }
+    },
+    {
+      "name": "8. Deletar Operator",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Operator deletado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.successMessages).to.include('Usuário removido com sucesso');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/manager/{{supabaseUserId}}/users?userId={{operatorId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "manager", "{{supabaseUserId}}", "users"],
+          "query": [
+            {
+              "key": "userId",
+              "value": "{{operatorId}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "9. Deletar Manager",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Manager deletado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.successMessages).to.include('Usuário removido com sucesso');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "x-supabase-user-id",
+            "value": "{{supabaseUserId}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/manager/{{supabaseUserId}}/users?userId={{managerId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "manager", "{{supabaseUserId}}", "users"],
+          "query": [
+            {
+              "key": "userId",
+              "value": "{{managerId}}"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
