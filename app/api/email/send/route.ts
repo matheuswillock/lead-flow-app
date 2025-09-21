@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { emailService } from "@/lib/services/EmailService";
+import { getEmailService } from "@/lib/services/EmailService";
 import { Output } from "@/lib/output";
 
 export async function POST(request: NextRequest) {
@@ -7,6 +7,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { type, ...data } = body;
 
+    const emailService = getEmailService();
     let result;
 
     switch (type) {

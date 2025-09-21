@@ -23,15 +23,24 @@ export interface LeadNotificationData {
 }
 
 export class EmailService {
-  private resend;
+  private resend?: ReturnType<typeof assertResend>;
 
-  constructor() {
-    this.resend = assertResend();
+  private getResend() {
+    if (!this.resend) {
+      try {
+        this.resend = assertResend();
+      } catch {
+        throw new Error("RESEND_API_KEY não configurada. Configure a variável de ambiente para enviar emails.");
+      }
+    }
+    return this.resend;
   }
 
   // Método genérico para enviar emails
   async sendEmail(options: EmailOptions) {
     try {
+      const resend = this.getResend();
+      
       const emailData: any = {
         from: options.from || "Lead Flow <noreply@leadflow.com>",
         to: options.to,
@@ -45,7 +54,7 @@ export class EmailService {
         emailData.text = options.text;
       }
 
-      const result = await this.resend.emails.send(emailData);
+      const result = await resend.emails.send(emailData);
       return { success: true, data: result };
     } catch (error: any) {
       console.error("Erro ao enviar email:", error);
@@ -161,5 +170,18 @@ export class EmailService {
   }
 }
 
-// Instância singleton
-export const emailService = new EmailService();
+// Função para criar instância quando necessário
+export function createEmailService() {
+  return new EmailService();
+}
+
+// Export padrão que pode ser usado quando necessário
+export const getEmailService = (() => {
+  let instance: EmailService | null = null;
+  return () => {
+    if (!instance) {
+      instance = new EmailService();
+    }
+    return instance;
+  };
+})();

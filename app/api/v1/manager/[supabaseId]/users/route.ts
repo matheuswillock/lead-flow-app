@@ -8,7 +8,7 @@ import {
   AssociateOperatorSchema, 
   DissociateOperatorSchema 
 } from "./types";
-import { emailService } from "@/lib/services/EmailService";
+import { getEmailService } from "@/lib/services/EmailService";
 
 // Instâncias dos casos de uso
 const managerUserRepository = new ManagerUserRepository();
@@ -66,6 +66,7 @@ export async function POST(
       // Enviar email de boas-vindas se criação foi bem-sucedida
       if (output.isValid && output.result) {
         try {
+          const emailService = getEmailService();
           await emailService.sendWelcomeEmail({
             userName: validatedData.name,
             userEmail: validatedData.email,
@@ -90,6 +91,7 @@ export async function POST(
       // Enviar email de boas-vindas se criação foi bem-sucedida
       if (output.isValid && output.result) {
         try {
+          const emailService = getEmailService();
           await emailService.sendWelcomeEmail({
             userName: validatedData.name,
             userEmail: validatedData.email,

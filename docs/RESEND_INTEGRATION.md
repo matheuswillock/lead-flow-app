@@ -24,7 +24,10 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 ### **1. Serviço de Email (Recomendado)**
 
 ```typescript
-import { emailService } from "@/lib/services/EmailService";
+import { getEmailService } from "@/lib/services/EmailService";
+
+// Obter instância do serviço
+const emailService = getEmailService();
 
 // Email de boas-vindas
 await emailService.sendWelcomeEmail({
