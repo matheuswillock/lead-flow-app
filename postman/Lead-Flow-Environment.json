@@ -28,6 +28,20 @@
       "type": "default",
       "enabled": true,
       "description": "ID de um operador válido para teste de atribuição"
+    },
+    {
+      "key": "managerId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID do manager criado - será preenchido automaticamente pelos testes"
+    },
+    {
+      "key": "newUserSupabaseId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID do novo usuário criado nos testes de profile - será preenchido automaticamente"
     }
   ],
   "_postman_variable_scope": "environment"

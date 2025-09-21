@@ -33,6 +33,19 @@ Este diretório contém as coleções do Postman para testar os endpoints da API
 - ✅ Deletar Manager
 - ✅ Testes de Erro (Email duplicado, Acesso não autorizado, Dados inválidos)
 
+### 3. Profile API Collection ⭐ **NOVO**
+**Arquivo**: `Profile-API-Collection.json`
+**Descrição**: Endpoints para gerenciamento de profiles de usuários (CRUD completo)
+
+**Endpoints incluídos**:
+- ✅ Registrar Novo Profile
+- ✅ Buscar Profile por Supabase ID
+- ✅ Atualizar Profile (Nome, Telefone, Email)
+- ✅ Atualizar Senha
+- ✅ Deletar Profile
+- ✅ Verificação de Profile Deletado
+- ✅ Testes de Erro (Email duplicado, Senha fraca, Profile inexistente, Dados inválidos)
+
 ## Environment
 
 **Arquivo**: `Lead-Flow-Environment.json`
@@ -45,14 +58,52 @@ Este diretório contém as coleções do Postman para testar os endpoints da API
 - `operatorId`: (preenchido automaticamente)
 - `managerId`: (preenchido automaticamente)
 
-## 🚀 Como Usar
+## � Profile API Collection
+
+A coleção **Profile-API-Collection.json** contém 14 requests para testar todos os endpoints da API de Profiles:
+
+### ✅ Testes de Sucesso
+- Register New Profile: Criação de profile com dados válidos
+- Get Profile by ID: Busca profile existente
+- Update Profile Fields: Atualização parcial de campos
+- Change Password: Alteração de senha com validação
+- Delete Profile: Remoção de profile existente
+
+### ❌ Testes de Erro
+- Register with Duplicate Email: Teste de email já existente
+- Register with Weak Password: Teste de senha fraca
+- Register with Invalid Data: Teste de dados malformados
+- Get Non-existent Profile: Busca profile inexistente
+- Update Non-existent Profile: Atualização de profile inexistente
+- Update with Invalid Data: Dados inválidos na atualização
+- Change Password Non-existent: Alteração em profile inexistente
+- Change Password Weak: Teste de senha fraca
+- Delete Non-existent Profile: Remoção de profile inexistente
+
+### Variáveis Utilizadas
+   - `leadEmail`: Email para testes de lead
+   - `leadPhone`: Telefone para testes de lead
+   - `managerEmail`: Email do gerente para testes
+   - `operatorEmail`: Email do operador para testes
+   - `managerId`: ID do gerente no Supabase
+   - `profileEmail`: Email para testes de profile ⭐ **NOVO**
+   - `newUserSupabaseId`: ID do Supabase para o novo usuário ⭐ **NOVO**
+- `newUserSupabaseId`: ID do Supabase para o novo usuário
+- Variáveis automáticas salvam: `profileId`, `authToken`
+
+---
+
+## 🧪 Como Executar os Testes
 
 ### 1. Importar no Postman
 
 1. Abra o Postman
-2. Clique em **Import**
-3. Selecione o arquivo `Lead-API-Collection.json`
-4. Importe também o environment `Lead-Flow-Environment.json`
+2. Clique em "Import"
+3. Selecione os arquivos:
+   - `Lead-Flow-Environment.json` (Environment)
+   - `Lead-API-Collection.json` (Coleção de Leads)
+   - `Manager-User-API-Collection.json` (Coleção de Usuários) ⭐ **NOVO**
+   - `Profile-API-Collection.json` (Coleção de Profiles) ⭐ **NOVO**
 
 ### 2. Configurar Environment
 
@@ -79,6 +130,7 @@ Para obter um `supabaseUserId` válido:
 
 ### 4. Executar os Testes
 
+#### 🔍 Para API de Leads:
 Execute as requisições na ordem para testar o fluxo completo:
 
 1. **Criar Lead** - Cria um novo lead e salva o ID
@@ -91,6 +143,17 @@ Execute as requisições na ordem para testar o fluxo completo:
 8. **Excluir Lead** - Remove o lead
 9. **Teste de Erro - 404** - Testa lead inexistente
 10. **Teste de Erro - 401** - Testa sem autenticação
+
+#### 👥 Para API de Profiles:
+Execute na ordem para testar o fluxo completo:
+
+1. **Register New Profile** - Cria um novo profile (salva automaticamente `profileId`)
+2. **Get Profile by ID** - Busca o profile criado
+3. **Update Profile Fields** - Atualiza campos do profile
+4. **Change Password** - Altera a senha do profile
+5. **Delete Profile** - Remove o profile
+
+Para testar cenários de erro, execute os testes de erro de cada endpoint para verificar as mensagens apropriadas e status codes corretos (400, 404, etc.).
 
 ## 📊 Estrutura das Respostas
 

@@ -1,0 +1,556 @@
+{
+  "info": {
+    "name": "Profile API - Lead Flow App",
+    "description": "Coleção de endpoints para gerenciamento de profiles de usuários no Lead Flow App. Inclui operações para registrar, buscar, atualizar profile, atualizar senha e deletar profiles.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "Base URL da aplicação"
+    },
+    {
+      "key": "supabaseUserId",
+      "value": "ed4ab5a4-3188-41fa-8389-481784cb1f84",
+      "type": "string",
+      "description": "ID do usuário autenticado no Supabase"
+    },
+    {
+      "key": "newUserSupabaseId",
+      "value": "",
+      "type": "string",
+      "description": "ID do novo usuário criado - será preenchido automaticamente"
+    },
+    {
+      "key": "testEmail",
+      "value": "test.user@leadflow.com",
+      "type": "string",
+      "description": "Email de teste para criação de usuários"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Registrar Novo Profile",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 201', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "pm.test('Response tem estrutura Output', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response).to.have.property('isValid');",
+              "    pm.expect(response).to.have.property('successMessages');",
+              "    pm.expect(response).to.have.property('errorMessages');",
+              "    pm.expect(response).to.have.property('result');",
+              "});",
+              "",
+              "pm.test('Profile criado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.have.property('id');",
+              "    pm.expect(response.result).to.have.property('supabaseId');",
+              "    pm.expect(response.result.email).to.eql('test.profile@leadflow.com');",
+              "    pm.expect(response.result.fullName).to.eql('Usuário de Teste Profile');",
+              "    ",
+              "    // Salvar o supabaseId do novo usuário para usar em outros testes",
+              "    if (response.result && response.result.supabaseId) {",
+              "        pm.collectionVariables.set('newUserSupabaseId', response.result.supabaseId);",
+              "    }",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"test.profile@leadflow.com\",\n  \"password\": \"TestPass@123\",\n  \"fullname\": \"Usuário de Teste Profile\",\n  \"phone\": \"+5511987654321\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "register"]
+        }
+      }
+    },
+    {
+      "name": "2. Buscar Profile por Supabase ID",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response tem estrutura Output', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response).to.have.property('isValid');",
+              "    pm.expect(response).to.have.property('result');",
+              "});",
+              "",
+              "pm.test('Profile encontrado', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result).to.have.property('id');",
+              "    pm.expect(response.result).to.have.property('email');",
+              "    pm.expect(response.result).to.have.property('fullName');",
+              "    pm.expect(response.result).to.have.property('phone');",
+              "    pm.expect(response.result).to.have.property('role');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/{{supabaseUserId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "{{supabaseUserId}}"]
+        }
+      }
+    },
+    {
+      "name": "3. Buscar Profile Recém-Criado",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Profile recém-criado encontrado', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result.email).to.eql('test.profile@leadflow.com');",
+              "    pm.expect(response.result.fullName).to.eql('Usuário de Teste Profile');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/{{newUserSupabaseId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "{{newUserSupabaseId}}"]
+        }
+      }
+    },
+    {
+      "name": "4. Atualizar Profile - Nome e Telefone",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Profile atualizado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result.fullName).to.eql('Usuário Atualizado Profile');",
+              "    pm.expect(response.result.phone).to.eql('+5511999888777');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fullName\": \"Usuário Atualizado Profile\",\n  \"phone\": \"+5511999888777\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/{{newUserSupabaseId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "{{newUserSupabaseId}}"]
+        }
+      }
+    },
+    {
+      "name": "5. Atualizar Profile - Email",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Email atualizado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result.email).to.eql('updated.profile@leadflow.com');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"updated.profile@leadflow.com\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/{{newUserSupabaseId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "{{newUserSupabaseId}}"]
+        }
+      }
+    },
+    {
+      "name": "6. Atualizar Senha",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Senha atualizada com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.successMessages).to.include('Password updated successfully');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"NewStrongPass@456\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/{{newUserSupabaseId}}/password",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "{{newUserSupabaseId}}", "password"]
+        }
+      }
+    },
+    {
+      "name": "7. Atualizar Profile do Usuário Existente",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Profile atualizado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fullName\": \"Nome Atualizado Via API\",\n  \"phone\": \"+5511123456789\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/{{supabaseUserId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "{{supabaseUserId}}"]
+        }
+      }
+    },
+    {
+      "name": "8. Verificar Profile Atualizado",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Dados atualizados persistidos', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.true;",
+              "    pm.expect(response.result.fullName).to.eql('Nome Atualizado Via API');",
+              "    pm.expect(response.result.phone).to.eql('+5511123456789');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/{{supabaseUserId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "{{supabaseUserId}}"]
+        }
+      }
+    },
+    {
+      "name": "9. Deletar Profile Recém-Criado",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Profile deletado com sucesso', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.output.isValid).to.be.true;",
+              "    pm.expect(response.output.successMessages).to.include('Profile and authentication deleted successfully');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/{{newUserSupabaseId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "{{newUserSupabaseId}}"]
+        }
+      }
+    },
+    {
+      "name": "10. Verificar Profile Deletado (404)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 404', function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test('Profile não encontrado após deleção', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.false;",
+              "    pm.expect(response.errorMessages).to.include('Profile not found');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/{{newUserSupabaseId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "{{newUserSupabaseId}}"]
+        }
+      }
+    },
+    {
+      "name": "11. Teste de Erro - Email Duplicado",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 400', function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test('Erro de email duplicado', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.false;",
+              "    pm.expect(response.errorMessages).to.be.an('array').that.is.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"updated.profile@leadflow.com\",\n  \"password\": \"TestPass@123\",\n  \"fullname\": \"Usuário Duplicado\",\n  \"phone\": \"+5511999999999\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "register"]
+        }
+      }
+    },
+    {
+      "name": "12. Teste de Erro - Senha Fraca",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 400', function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test('Erro de senha fraca', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.false;",
+              "    pm.expect(response.errorMessages).to.be.an('array').that.is.not.empty;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"password\": \"123\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/{{supabaseUserId}}/password",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "{{supabaseUserId}}", "password"]
+        }
+      }
+    },
+    {
+      "name": "13. Teste de Erro - Profile Inexistente",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 404', function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test('Profile não encontrado', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.false;",
+              "    pm.expect(response.errorMessages).to.include('Profile not found');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/00000000-0000-0000-0000-000000000000",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "00000000-0000-0000-0000-000000000000"]
+        }
+      }
+    },
+    {
+      "name": "14. Teste de Erro - Dados Inválidos",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code é 400', function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test('Erro de validação', function () {",
+              "    const response = pm.response.json();",
+              "    pm.expect(response.isValid).to.be.false;",
+              "    pm.expect(response.errorMessages.length).to.be.greaterThan(0);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"email-invalido\",\n  \"password\": \"123\",\n  \"fullname\": \"\",\n  \"phone\": \"\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/profiles/register",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "profiles", "register"]
+        }
+      }
+    }
+  ]
+}
