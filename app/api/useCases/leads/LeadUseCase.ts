@@ -65,7 +65,6 @@ export class LeadUseCase implements ILeadUseCase {
 
   async getLeadById(supabaseId: string, id: string): Promise<Output> {
     try {
-      // Verificar se o usuário existe e tem permissão
       const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
       
       if (!profileInfo) {
@@ -387,6 +386,7 @@ export class LeadUseCase implements ILeadUseCase {
           id: lead.assignee.id,
           fullName: lead.assignee.fullName,
           email: lead.assignee.email,
+          avatarUrl: lead.assignee.avatarUrl || null,
         }
       }),
       ...(lead.activities && {

@@ -36,13 +36,7 @@ export class LeadRepository implements ILeadRepository {
             email: true,
           },
         },
-        assignee: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
+        assignee: true,
         activities: {
           include: {
             author: {

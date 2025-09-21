@@ -14,7 +14,6 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Extrair supabaseId dos headers
     const supabaseId = request.headers.get('x-supabase-user-id');
     
     if (!supabaseId) {

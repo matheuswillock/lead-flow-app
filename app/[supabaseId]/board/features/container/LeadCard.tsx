@@ -1,14 +1,15 @@
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate } from "../context/BoardContext";
-import { Lead, ColumnKey } from "../context/BoardTypes";
+import { ColumnKey } from "../context/BoardTypes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 
 interface LeadCardProps {
-    lead: Lead;
+    lead: LeadResponseDTO;
     columnKey: ColumnKey;
     handleCardMouseDown: () => void;
     handleCardDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
-    handleCardClick: (lead: Lead) => void;
+    handleCardClick: (lead: LeadResponseDTO) => void;
 }
 
 export function LeadCard({
@@ -40,8 +41,16 @@ export function LeadCard({
             </CardContent>
             <CardFooter className="w-full flex justify-end">
                 <Avatar className="h-6 w-6">
-                    <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
-                    <AvatarFallback>CN</AvatarFallback>
+                    <AvatarImage src={lead?.assignee?.avatarUrl || ""} alt={`@${lead?.assignee?.fullName || ""}`} />
+                    <AvatarFallback>
+                        {lead?.assignee?.fullName
+                            ? lead.assignee.fullName
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .toUpperCase()
+                            : "LF"}
+                    </AvatarFallback>
                 </Avatar>
             </CardFooter>
         </Card>

@@ -29,6 +29,7 @@ export interface LeadResponseDTO {
     id: string;
     fullName: string | null;
     email: string;
+    avatarUrl?: string | null;
   } | null;
   activities?: LeadActivityResponseDTO[];
 }
