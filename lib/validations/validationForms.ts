@@ -69,8 +69,8 @@ export const leadFormSchema = z.object({
   currentValue: z.string().min(1, "O valor atual é obrigatório"),
   referenceHospital: z.string().min(2, "O hospital de referência é obrigatório"),
   ongoingTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
-  additionalNotes: z.string().min(2, "Adicione observações relevantes"),
-  meetingDate: z.string().min(1, "A data da reunião é obrigatória"),
+  additionalNotes: z.string().min(0).optional(),
+  meetingDate: z.string().min(0).optional(),
   responsible: z.string().min(2, "O responsável é obrigatório"),
 });
 

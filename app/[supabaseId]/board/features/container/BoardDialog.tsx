@@ -17,11 +17,24 @@ export default function BoardDialog() {
 
   // Função para transformar os dados do formulário para criação de lead
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
+    // Mapear strings do formulário para enum AgeRange
+    const mapAgeStringToEnum = (ageString: string) => {
+      const ageMap: Record<string, string> = {
+        "0-18": "RANGE_0_18",
+        "19-25": "RANGE_19_25", 
+        "26-35": "RANGE_26_35",
+        "36-45": "RANGE_36_45",
+        "46-60": "RANGE_46_60",
+        "61+": "RANGE_61_PLUS"
+      };
+      return ageMap[ageString];
+    };
+
     return {
       name: data.name,
       email: data.email,
       phone: data.phone,
-      age: data.age.length > 0 ? parseInt(data.age[0].split('-')[0]) : undefined, // Converte primeira faixa etária para número
+      age: data.age.map(mapAgeStringToEnum).filter(Boolean) as any[],
       hasHealthPlan: data.hasPlan === "sim",
       currentValue: parseFloat(data.currentValue),
       referenceHospital: data.referenceHospital,
@@ -30,17 +43,30 @@ export default function BoardDialog() {
       meetingDate: data.meetingDate,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible,
-      status: "new_opportunity" // Status padrão para novos leads
+      status: "new_opportunity" as any // Status padrão para novos leads
     };
   };
 
   // Função para transformar os dados do formulário para atualização de lead
   const transformToUpdateRequest = (data: leadFormData): UpdateLeadRequest => {
+    // Mapear strings do formulário para enum AgeRange
+    const mapAgeStringToEnum = (ageString: string) => {
+      const ageMap: Record<string, string> = {
+        "0-18": "RANGE_0_18",
+        "19-25": "RANGE_19_25", 
+        "26-35": "RANGE_26_35",
+        "36-45": "RANGE_36_45",
+        "46-60": "RANGE_46_60",
+        "61+": "RANGE_61_PLUS"
+      };
+      return ageMap[ageString];
+    };
+
     return {
       name: data.name,
       email: data.email,
       phone: data.phone,
-      age: data.age.length > 0 ? parseInt(data.age[0].split('-')[0]) : undefined, // Converte primeira faixa etária para número
+      age: data.age.map(mapAgeStringToEnum).filter(Boolean) as any[],
       hasHealthPlan: data.hasPlan === "sim",
       currentValue: parseFloat(data.currentValue),
       referenceHospital: data.referenceHospital,
@@ -87,13 +113,17 @@ export default function BoardDialog() {
 
   useEffect(() => {
     if (lead && open) {
-      const getAgeRange = (age: number): ("0-18" | "19-25" | "26-35" | "36-45" | "46-60" | "61+")[] => {
-        if (age <= 18) return ["0-18"];
-        if (age <= 25) return ["19-25"];
-        if (age <= 35) return ["26-35"];
-        if (age <= 45) return ["36-45"];
-        if (age <= 60) return ["46-60"];
-        return ["61+"];
+      // Mapear enum AgeRange para strings do formulário
+      const mapEnumToAgeString = (ageEnum: string): string => {
+        const enumMap: Record<string, string> = {
+          "RANGE_0_18": "0-18",
+          "RANGE_19_25": "19-25",
+          "RANGE_26_35": "26-35", 
+          "RANGE_36_45": "36-45",
+          "RANGE_46_60": "46-60",
+          "RANGE_61_PLUS": "61+"
+        };
+        return enumMap[ageEnum] || ageEnum;
       };
 
       form.reset({
@@ -101,7 +131,7 @@ export default function BoardDialog() {
         phone: lead.phone || "",
         email: lead.email || "",
         cnpj: lead.cnpj || "",
-        age: lead.age ? getAgeRange(lead.age) : [],
+        age: lead.age?.map(mapEnumToAgeString).filter(Boolean) as ("0-18" | "19-25" | "26-35" | "36-45" | "46-60" | "61+")[] || [],
         hasPlan: lead.hasHealthPlan ? "sim" : "nao",
         currentValue: lead.currentValue?.toString() || "",
         referenceHospital: lead.referenceHospital || "",

@@ -11,6 +11,46 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 
+// Funções de formatação
+const formatCNPJ = (value: string): string => {
+    const cleanValue = value.replace(/\D/g, '');
+    if (cleanValue.length <= 14) {
+        return cleanValue
+            .replace(/^(\d{2})(\d)/, '$1.$2')
+            .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+            .replace(/\.(\d{3})(\d)/, '.$1/$2')
+            .replace(/(\d{4})(\d)/, '$1-$2');
+    }
+    return cleanValue.slice(0, 14)
+        .replace(/^(\d{2})(\d)/, '$1.$2')
+        .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+        .replace(/\.(\d{3})(\d)/, '.$1/$2')
+        .replace(/(\d{4})(\d)/, '$1-$2');
+};
+
+const formatPhone = (value: string): string => {
+    const cleanValue = value.replace(/\D/g, '');
+    if (cleanValue.length <= 11) {
+        return cleanValue
+            .replace(/^(\d{2})(\d)/, '($1) $2')
+            .replace(/(\d{5})(\d)/, '$1-$2');
+    }
+    return cleanValue.slice(0, 11)
+        .replace(/^(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{5})(\d)/, '$1-$2');
+};
+
+const formatCurrency = (value: string): string => {
+    const cleanValue = value.replace(/\D/g, '');
+    if (cleanValue === '') return '';
+    
+    const numberValue = parseInt(cleanValue) / 100;
+    return `R$ ${numberValue.toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    })}`;
+};
+
 export interface ILeadFormProps {
     form: UseFormReturn<leadFormData>;
     onSubmit: (data: leadFormData) => void | Promise<void>;
@@ -99,11 +139,16 @@ export function LeadForm({
                         <FormLabel className="block text-sm font-medium mb-1">Telefone*</FormLabel>
                         <FormControl>
                             <Input
-                                {...field}
+                                value={field.value || ''}
+                                onChange={(e) => {
+                                    const formatted = formatPhone(e.target.value);
+                                    field.onChange(formatted);
+                                }}
                                 type="tel"
-                                placeholder="(00) 00000-0000"
+                                placeholder="(11) 91234-1234"
                                 required
                                 disabled={isLoading || isUpdating}
+                                maxLength={15}
                             />
                         </FormControl>
                     </FormItem>
@@ -137,10 +182,15 @@ export function LeadForm({
                         <FormLabel className="block text-sm font-medium mb-1">CNPJ</FormLabel>
                         <FormControl>
                             <Input
-                                {...field}
+                                value={field.value || ''}
+                                onChange={(e) => {
+                                    const formatted = formatCNPJ(e.target.value);
+                                    field.onChange(formatted);
+                                }}
                                 type="text"
-                                placeholder="Digite o CNPJ"
+                                placeholder="00.000.000/0000-00"
                                 disabled={isLoading || isUpdating}
+                                maxLength={18}
                             />
                         </FormControl>
                     </FormItem>
@@ -248,9 +298,13 @@ export function LeadForm({
                         <FormLabel className="block text-sm font-medium mb-1">Valor Atual*</FormLabel>
                         <FormControl>
                             <Input
-                                {...field}
+                                value={field.value || ''}
+                                onChange={(e) => {
+                                    const formatted = formatCurrency(e.target.value);
+                                    field.onChange(formatted);
+                                }}
                                 type="text"
-                                placeholder="R$ 0,00"
+                                placeholder="R$ 10,00"
                                 required
                                 disabled={isLoading || isUpdating}
                             />
@@ -304,12 +358,11 @@ export function LeadForm({
                 name="additionalNotes"
                 render={({ field }) => (
                     <FormItem className="sm:col-span-2">
-                        <FormLabel className="block text-sm font-medium mb-1">Observações Adicionais*</FormLabel>
+                        <FormLabel className="block text-sm font-medium mb-1">Observações Adicionais</FormLabel>
                         <FormControl>
                             <Input
                                 {...field}
                                 placeholder="Observações relevantes"
-                                required
                                 disabled={isLoading || isUpdating}
                             />
                         </FormControl>
@@ -322,12 +375,11 @@ export function LeadForm({
                 name="meetingDate"
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">Data Reunião*</FormLabel>
+                        <FormLabel className="block text-sm font-medium mb-1">Data Reunião</FormLabel>
                         <FormControl>
                             <Input
                                 {...field}
                                 type="date"
-                                required
                                 disabled={isLoading || isUpdating}
                             />
                         </FormControl>

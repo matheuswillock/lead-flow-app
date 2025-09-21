@@ -34,7 +34,7 @@ export class LeadUseCase implements ILeadUseCase {
         email: data.email || null,
         phone: data.phone || null,
         cnpj: data.cnpj || null,
-        age: data.age || null,
+        age: data.age || [],
         hasHealthPlan: data.hasHealthPlan || null,
         currentValue: data.currentValue || null,
         referenceHospital: data.referenceHospital || null,
@@ -42,6 +42,8 @@ export class LeadUseCase implements ILeadUseCase {
         meetingDate: data.meetingDate ? new Date(data.meetingDate) : null,
         notes: data.notes || null,
         status: data.status || LeadStatus.new_opportunity,
+        creator: { connect: { id: profileInfo.id } },
+        updater: { connect: { id: profileInfo.id } },
         ...(data.assignedTo && {
           assignee: { connect: { id: data.assignedTo } }
         }),
@@ -221,6 +223,9 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
+      // Sempre atualizar o campo updater
+      updateData.updater = { connect: { id: profileInfo.id } };
+
       const lead = await this.leadRepository.update(id, updateData);
 
       return new Output(true, ["Lead atualizado com sucesso"], [], this.transformToDTO(lead));
@@ -366,6 +371,8 @@ export class LeadUseCase implements ILeadUseCase {
       currentTreatment: lead.currentTreatment,
       meetingDate: lead.meetingDate ? lead.meetingDate.toISOString() : null,
       notes: lead.notes,
+      createdBy: lead.createdBy,
+      updatedBy: lead.updatedBy,
       createdAt: lead.createdAt.toISOString(),
       updatedAt: lead.updatedAt.toISOString(),
       ...(lead.manager && {
