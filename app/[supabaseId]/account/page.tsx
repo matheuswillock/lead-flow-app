@@ -8,19 +8,20 @@ import { useUser } from "@/app/context/UserContext";
 import { toast } from "sonner";
 import { useUpdateAccountForm } from "@/hooks/useForms";
 import { AccountForm } from "@/components/forms/accountForm";
-import { updateAccountFormData } from "@/lib/types/formTypes";
+import { useEffect, useRef, useState } from "react";
+import { updateAccountFormData } from "@/lib/validations/validationForms";
 
 export default function AccountProfilePage() {
   const { user, isLoading, updateUser, uploadProfileIcon, deleteProfileIcon } = useUser();
-  const [avatarPreview, setAvatarPreview] = React.useState<string | null>(null);
-  const [isDragging, setIsDragging] = React.useState(false);
-  const [isUpdating, setIsUpdating] = React.useState(false);
-  const [isUploadingIcon, setIsUploadingIcon] = React.useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isUploadingIcon, setIsUploadingIcon] = useState(false);
 
   const form = useUpdateAccountForm();
 
   // Atualizar form quando dados do usuário carregarem
-  React.useEffect(() => {
+  useEffect(() => {
     if (user) {
       form.reset({
         fullName: user.fullName || "",
@@ -31,7 +32,7 @@ export default function AccountProfilePage() {
     }
   }, [user, form]);
 
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   function onFilePickerClick() {
     fileInputRef.current?.click();
@@ -67,7 +68,7 @@ export default function AccountProfilePage() {
         toast.success("Ícone de perfil atualizado com sucesso!");
       } else {
         toast.error(result.errorMessages?.join(", ") || "Erro ao fazer upload do ícone");
-        setAvatarPreview(null); // Reset preview on error
+        setAvatarPreview(null);
       }
     } catch (error) {
       console.error("Error uploading icon:", error);

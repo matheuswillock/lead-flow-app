@@ -1,16 +1,15 @@
 "use client";
 import React, { createContext, useContext, useState, ReactNode } from "react";
 import { RequestToRegisterUserProfile } from "@/app/api/v1/profiles/DTO/requestToRegisterUserProfile";
-// import { ISignUpService } from "../services/ISignUpService";
-import { signUpFormData } from "@/lib/types/formTypes";
 import { Output } from "@/lib/output";
 import { ISignUpService } from "./services/ISignUpService";
 import { createSignUpService } from "./services/SignUpService";
+import { signUpFormData } from "@/lib/validations/validationForms";
 
 /**
  * Interface para o estado do contexto de cadastro
  */
-interface SignUpContextState {
+interface ISignUpContextState {
   isLoading: boolean;
   errors: Record<string, string>;
   registerUser: (data: signUpFormData) => Promise<Output>;
@@ -21,7 +20,7 @@ interface SignUpContextState {
  * Propriedades do provider do contexto
 */
 
-interface SignUpProviderProps {
+interface ISignUpProviderProps {
   children: ReactNode;
   signUpService?: ISignUpService;
 }
@@ -30,13 +29,13 @@ interface SignUpProviderProps {
  * Context para gerenciar o estado de cadastro de usuários
  * Segue o princípio de Dependency Inversion usando a interface do serviço
  */
-const SignUpContext = createContext<SignUpContextState | undefined>(undefined);
+const SignUpContext = createContext<ISignUpContextState | undefined>(undefined);
 
 /**
  * Provider do contexto de cadastro
  * Gerencia o estado e lógica de negócio relacionada ao cadastro
  */
-export const SignUpProvider: React.FC<SignUpProviderProps> = ({ 
+export const SignUpProvider: React.FC<ISignUpProviderProps> = ({ 
   children, 
   signUpService = createSignUpService()
 }) => {
@@ -104,7 +103,7 @@ export const SignUpProvider: React.FC<SignUpProviderProps> = ({
     setErrors({});
   };
 
-  const value: SignUpContextState = {
+  const value: ISignUpContextState = {
     isLoading,
     errors,
     registerUser,
@@ -123,7 +122,7 @@ export const SignUpProvider: React.FC<SignUpProviderProps> = ({
  * @returns Estado e funções do contexto de cadastro
  * @throws Error se usado fora do SignUpProvider
  */
-export const useSignUp = (): SignUpContextState => {
+export const useSignUp = (): ISignUpContextState => {
   const context = useContext(SignUpContext);
   
   if (context === undefined) {

@@ -34,6 +34,17 @@ email email
 status_change status_change
         }
     
+
+
+        AgeRange {
+            RANGE_0_18 0-18
+RANGE_19_25 19-25
+RANGE_26_35 26-35
+RANGE_36_45 36-45
+RANGE_46_60 46-60
+RANGE_61_PLUS 61+
+        }
+    
   "profiles" {
     String id "🗝️"
     String email 
@@ -55,7 +66,7 @@ status_change status_change
     String email "❓"
     String phone "❓"
     String cnpj "❓"
-    Int age "❓"
+    AgeRange age 
     Boolean hasHealthPlan "❓"
     Decimal currentValue "❓"
     String referenceHospital "❓"
@@ -80,10 +91,15 @@ status_change status_change
     "profiles" o{--}o "profiles" : "operators"
     "profiles" o{--}o "leads" : "leadsAsManager"
     "profiles" o{--}o "leads" : "leadsAsAssignee"
+    "profiles" o{--}o "leads" : "leadsAsCreator"
+    "profiles" o{--}o "leads" : "leadsAsUpdater"
     "profiles" o{--}o "lead_activities" : "activities"
     "leads" o|--|| "LeadStatus" : "enum:status"
+    "leads" o|--}o "AgeRange" : "enum:age"
     "leads" o|--|| "profiles" : "manager"
     "leads" o|--|o "profiles" : "assignee"
+    "leads" o|--|o "profiles" : "creator"
+    "leads" o|--|o "profiles" : "updater"
     "leads" o{--}o "lead_activities" : "activities"
     "lead_activities" o|--|| "ActivityType" : "enum:type"
     "lead_activities" o|--|| "leads" : "lead"
