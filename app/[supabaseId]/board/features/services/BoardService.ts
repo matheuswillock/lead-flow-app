@@ -2,13 +2,36 @@ import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { IBoardService } from "./IBoardServices";
 import { Output } from "@/lib/output";
 
+const API_BASE_URL = '/api/v1';
+
 export class BoardService implements IBoardService {
+    updateLeadStatus(leadId: string, newStatus: string, supabaseId: string): Promise<Output> {
+        return fetch(`${API_BASE_URL}/leads/${leadId}/status`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "x-supabase-user-id": supabaseId
+            },
+            body: JSON.stringify({ status: newStatus }),
+        })
+        .then(response => response.json())
+        .then(data => data as Output)
+        .catch(error => {
+            console.error("Error updating lead status:", error);
+            return new Output(
+                false,
+                [],
+                ["Ocorreu um erro ao atualizar o status do lead. Tente novamente mais tarde."],
+                null
+            );
+        });
+    }
     async fetchLeads(supabaseId: string, role: string): Promise<Output> {
         try {
             const searchParams = new URLSearchParams();
             searchParams.append('role', role);
-            
-            const response = await fetch(`/api/v1/leads?${searchParams.toString()}`, {
+
+            const response = await fetch(`${API_BASE_URL}/leads?${searchParams.toString()}`, {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
@@ -34,7 +57,7 @@ export class BoardService implements IBoardService {
 
     async createLead(leadToCreate: CreateLeadRequest, supabaseId: string): Promise<Output> {
         try {
-            const response = await fetch("/api/v1/leads", {
+            const response = await fetch(`${API_BASE_URL}/leads`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

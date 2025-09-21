@@ -3,5 +3,6 @@ import { Output } from "@/lib/output";
 
 export interface IBoardService {
     createLead(leadToCreate: CreateLeadRequest, supabaseId: string): Promise<Output>;
+    updateLeadStatus(leadId: string, newStatus: string, supabaseId: string): Promise<Output>;
     fetchLeads(supabaseId: string, role: string): Promise<Output>;
 }
