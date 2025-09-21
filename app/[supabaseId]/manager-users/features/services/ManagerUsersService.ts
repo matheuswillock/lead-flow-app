@@ -8,9 +8,11 @@ import {
 
 class ManagerUsersService {
   private baseUrl: string;
+  private supabaseId: string;
 
-  constructor() {
+  constructor(supabaseId: string) {
     this.baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    this.supabaseId = supabaseId;
   }
 
   private async makeRequest<T>(
@@ -21,6 +23,7 @@ class ManagerUsersService {
     
     const defaultHeaders = {
       "Content-Type": "application/json",
+      "x-supabase-user-id": this.supabaseId,
     };
 
     const response = await fetch(url, {
@@ -39,16 +42,15 @@ class ManagerUsersService {
   }
 
   // Buscar todos os usuários (managers e operators)
-  async getUsers(supabaseId: string): Promise<ManagerUsersApiResponse> {
-    return this.makeRequest<ManagerUsersApiResponse>(`/${supabaseId}/users`);
+  async getUsers(): Promise<ManagerUsersApiResponse> {
+    return this.makeRequest<ManagerUsersApiResponse>(`/${this.supabaseId}/users`);
   }
 
   // Criar novo usuário
   async createUser(
-    supabaseId: string, 
     userData: CreateManagerUserFormData
   ): Promise<ManagerUserApiResponse> {
-    return this.makeRequest<ManagerUserApiResponse>(`/${supabaseId}/users`, {
+    return this.makeRequest<ManagerUserApiResponse>(`/${this.supabaseId}/users`, {
       method: "POST",
       body: JSON.stringify(userData),
     });
@@ -56,11 +58,10 @@ class ManagerUsersService {
 
   // Atualizar usuário existente
   async updateUser(
-    supabaseId: string,
     userId: string,
     userData: UpdateManagerUserFormData
   ): Promise<ManagerUserApiResponse> {
-    return this.makeRequest<ManagerUserApiResponse>(`/${supabaseId}/users`, {
+    return this.makeRequest<ManagerUserApiResponse>(`/${this.supabaseId}/users`, {
       method: "PUT",
       body: JSON.stringify({
         id: userId,
@@ -71,10 +72,9 @@ class ManagerUsersService {
 
   // Deletar usuário
   async deleteUser(
-    supabaseId: string,
     userId: string
   ): Promise<ManagerUserApiResponse> {
-    return this.makeRequest<ManagerUserApiResponse>(`/${supabaseId}/users`, {
+    return this.makeRequest<ManagerUserApiResponse>(`/${this.supabaseId}/users`, {
       method: "DELETE",
       body: JSON.stringify({ id: userId }),
     });
@@ -88,9 +88,9 @@ class ManagerUsersService {
   }
 
   // Verificar se usuário pode ser deletado
-  async canDeleteUser(supabaseId: string, userId: string): Promise<boolean> {
+  async canDeleteUser(userId: string): Promise<boolean> {
     try {
-      const response = await this.getUsers(supabaseId);
+      const response = await this.getUsers();
       if (!response.isValid || !response.result) {
         return false;
       }
@@ -101,7 +101,7 @@ class ManagerUsersService {
       if (!user) return false;
 
       // Manager não pode deletar a si mesmo
-      if (user.id === supabaseId) return false;
+      if (user.id === this.supabaseId) return false;
 
       // Verificar se é o único manager
       if (user.role === "manager") {
@@ -126,4 +126,4 @@ class ManagerUsersService {
   }
 }
 
-export const managerUsersService = new ManagerUsersService();
+export { ManagerUsersService };

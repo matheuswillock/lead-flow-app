@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import { 
   ManagerUser, 
@@ -10,7 +10,7 @@ import {
   UserPermissions,
   ManagerUserTableRow 
 } from "../types";
-import { managerUsersService } from "../services/ManagerUsersService";
+import { ManagerUsersService } from "../services/ManagerUsersService";
 
 interface UseManagerUsersProps {
   supabaseId: string;
@@ -35,12 +35,17 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     canManageOperators: currentUserRole === "manager",
   });
 
+  // Criar instância do serviço com o supabaseId
+  const managerUsersService = useMemo(() => {
+    return new ManagerUsersService(supabaseId);
+  }, [supabaseId]);
+
   // Carregar usuários
   const loadUsers = useCallback(async () => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      const response = await managerUsersService.getUsers(supabaseId);
+      const response = await managerUsersService.getUsers();
       
       if (response.isValid && response.result) {
         // Buscar contador de leads para cada usuário
@@ -71,14 +76,14 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
         loading: false 
       }));
     }
-  }, [supabaseId]);
+  }, [managerUsersService]);
 
   // Criar usuário
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
     try {
       setState(prev => ({ ...prev, loading: true }));
       
-      const response = await managerUsersService.createUser(supabaseId, userData);
+      const response = await managerUsersService.createUser(userData);
       
       if (response.isValid && response.result) {
         toast.success("Usuário criado com sucesso!");
@@ -97,14 +102,14 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
       toast.error("Erro ao criar usuário");
       setState(prev => ({ ...prev, loading: false }));
     }
-  }, [supabaseId, loadUsers]);
+  }, [managerUsersService, loadUsers]);
 
   // Atualizar usuário
   const updateUser = useCallback(async (userId: string, userData: UpdateManagerUserFormData) => {
     try {
       setState(prev => ({ ...prev, loading: true }));
       
-      const response = await managerUsersService.updateUser(supabaseId, userId, userData);
+      const response = await managerUsersService.updateUser(userId, userData);
       
       if (response.isValid && response.result) {
         toast.success("Usuário atualizado com sucesso!");
@@ -124,7 +129,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
       toast.error("Erro ao atualizar usuário");
       setState(prev => ({ ...prev, loading: false }));
     }
-  }, [supabaseId, loadUsers]);
+  }, [managerUsersService, loadUsers]);
 
   // Deletar usuário
   const deleteUser = useCallback(async (userId: string) => {
@@ -132,7 +137,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
       setState(prev => ({ ...prev, loading: true }));
       
       // Verificar se pode deletar
-      const canDelete = await managerUsersService.canDeleteUser(supabaseId, userId);
+      const canDelete = await managerUsersService.canDeleteUser(userId);
       
       if (!canDelete) {
         toast.error("Não é possível deletar este usuário");
@@ -140,7 +145,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
         return;
       }
       
-      const response = await managerUsersService.deleteUser(supabaseId, userId);
+      const response = await managerUsersService.deleteUser(userId);
       
       if (response.isValid) {
         toast.success("Usuário removido com sucesso!");

@@ -1,11 +1,11 @@
 "use client";
 
-import { Plus, Users, AlertCircle } from "lucide-react";
+import { Users,   } from "lucide-react";
+import { UserRoundPlusIcon } from "@/components/ui/user-round-plus";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import { useManagerUsers } from "../context/useManagerUsers";
 import { DataTable } from "./DataTable";
@@ -26,7 +26,6 @@ export function ManagerUsersContainer({
     // Estado
     tableData,
     loading,
-    error,
     selectedUser,
     isCreateModalOpen,
     isEditModalOpen,
@@ -91,11 +90,17 @@ export function ManagerUsersContainer({
           </p>
         </div>
         {permissions.canCreateUser && (
-          <Button onClick={openCreateModal} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Adicionar Usuário
+            <Button 
+                onClick={openCreateModal} 
+                className="gap-2 text-base cursor-pointer font-medium" 
+                variant="outline"
+            >
+                <UserRoundPlusIcon />
+                Adicionar Usuário
           </Button>
         )}
+
+
       </div>
 
       {/* Estatísticas */}
