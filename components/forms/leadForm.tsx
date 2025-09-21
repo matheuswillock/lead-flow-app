@@ -339,9 +339,15 @@ export function LeadForm({
                 control={form.control}
                 name="responsible"
                 render={({ field }) => {
-                    const selectedUser = usersToAssign?.find(user => user.id === field.value);
+                    const selectedValue = field.value || (usersToAssign?.[0]?.id ?? "");
+                    const selectedUser = usersToAssign?.find(user => user.id === selectedValue);
                     const isOnlyOneUser = usersToAssign?.length === 1;
-                    
+                    useEffect(() => {
+                        if (!field.value && usersToAssign?.length > 0) {
+                            field.onChange(usersToAssign[0].id);
+                        }
+                    }, [usersToAssign, field.value, field.onChange]);
+
                     return (
                         <FormItem>
                             <FormLabel className="block text-sm font-medium mb-1">
@@ -349,9 +355,9 @@ export function LeadForm({
                             </FormLabel>
                             <FormControl>
                                 <Select
-                                    value={field.value}
+                                    value={selectedValue}
                                     onValueChange={field.onChange}
-                                    disabled={isOnlyOneUser || isLoading || isUpdating}
+                                    disabled={isLoading || isUpdating}
                                 >
                                     <SelectTrigger>
                                         <SelectValue placeholder="Selecione um responsável">
