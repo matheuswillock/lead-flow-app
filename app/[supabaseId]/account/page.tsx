@@ -8,8 +8,8 @@ import { useUser } from "@/app/context/UserContext";
 import { toast } from "sonner";
 import { useUpdateAccountForm } from "@/hooks/useForms";
 import { AccountForm } from "@/components/forms/accountForm";
-import { updateAccountFormData } from "@/lib/types/formTypes";
 import { useEffect, useRef, useState } from "react";
+import { updateAccountFormData } from "@/lib/validations/validationForms";
 
 export default function AccountProfilePage() {
   const { user, isLoading, updateUser, uploadProfileIcon, deleteProfileIcon } = useUser();

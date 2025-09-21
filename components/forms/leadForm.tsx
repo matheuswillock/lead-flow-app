@@ -3,8 +3,8 @@
 import { cn } from "@/lib/utils";
 import { leadFormData } from "@/lib/validations/validationForms";
 import { useEffect, useState } from "react";
-import { Form, UseFormReturn } from "react-hook-form";
-import { FormControl, FormField, FormItem, FormLabel } from "../ui/form";
+import { UseFormReturn } from "react-hook-form";
+import { Form, FormControl, FormField, FormItem, FormLabel } from "../ui/form";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 
@@ -65,7 +65,7 @@ export function LeadForm({
       <Form {...form}>
         <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className={cn("space-y-6 grid gap-4 grid-cols-1 sm:grid-cols-2", className)}
+            className={cn("grid gap-4 grid-cols-1 sm:grid-cols-2", className)}
         >            
             <FormField
                 control={form.control}
@@ -130,13 +130,12 @@ export function LeadForm({
                 name="cnpj"
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">CNPJ*</FormLabel>
+                        <FormLabel className="block text-sm font-medium mb-1">CNPJ</FormLabel>
                         <FormControl>
                             <Input
                                 {...field}
                                 type="text"
                                 placeholder="Digite o CNPJ"
-                                required
                                 disabled={isLoading || isUpdating}
                             />
                         </FormControl>
@@ -208,13 +207,14 @@ export function LeadForm({
                 control={form.control}
                 name="currentValue"
                 render={({ field }) => (
-                    <FormItem className="sm:col-span-2">
-                        <FormLabel className="block text-sm font-medium mb-1">Valor Atual (se houver)</FormLabel>
+                    <FormItem>
+                        <FormLabel className="block text-sm font-medium mb-1">Valor Atual*</FormLabel>
                         <FormControl>
                             <Input
                                 {...field}
                                 type="text"
                                 placeholder="R$ 0,00"
+                                required
                                 disabled={isLoading || isUpdating}
                             />
                         </FormControl>
