@@ -41,21 +41,6 @@ function DashboardContent() {
   // Renderiza o dashboard normal
   return (
     <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <div className="flex items-center space-x-2">
-          <div className="text-sm text-gray-500">
-            Visão geral das métricas e performance
-          </div>
-          {isLoading && (
-            <div className="flex items-center space-x-1 text-sm text-blue-600">
-              <div className="w-3 h-3 border border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <span>Atualizando...</span>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Seção de Cards com Métricas */}
       <SectionCardsWithContext />
