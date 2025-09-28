@@ -440,7 +440,284 @@ if (!validation.success) {
 - [ ] Nomenclatura segue padrões
 - [ ] Responsabilidades estão separadas
 
-## 🎯 Prompt Sugerido para IA/Copilot
+## � Arquitetura Frontend/Components
+
+### 📁 Estrutura de Componentes
+
+```
+app/[supabaseId]/[feature]/
+├── page.tsx                     # Página principal com Provider
+└── features/
+    ├── container/               # Componentes de apresentação
+    │   ├── [Feature]Container.tsx   # Container principal
+    │   ├── [Feature]Dialog.tsx      # Modais e dialogs
+    │   ├── [Feature]Header.tsx      # Cabeçalho
+    │   ├── [Feature]Card.tsx        # Cards individuais
+    │   └── [Feature]List.tsx        # Listas
+    ├── context/                 # Context API (SOLID)
+    │   ├── [Feature]Types.ts        # Interfaces e tipos
+    │   ├── [Feature]Hook.ts         # Lógica de negócio
+    │   └── [Feature]Context.tsx     # Provider e Context
+    ├── services/                # Camada de serviço frontend
+    │   ├── I[Feature]Service.ts     # Interface do serviço
+    │   └── [Feature]Service.ts      # Implementação
+    └── hooks/                   # Custom hooks (opcional)
+        └── use[Feature].ts          # Hooks específicos
+```
+
+### 🔄 Arquitetura Frontend
+
+```
+┌─────────────┐    ┌──────────────┐    ┌─────────────────┐    ┌──────────────┐
+│    Page     │───▶│   Context    │───▶│    Service      │───▶│   API/Hook   │
+│ (Provider)  │    │ (State Mgmt) │    │ (Data Layer)    │    │ (External)   │
+└─────────────┘    └──────────────┘    └─────────────────┘    └──────────────┘
+```
+
+### 🎯 Responsabilidades Frontend
+
+| Camada | Responsabilidade | Input | Output |
+|--------|------------------|-------|--------|
+| **Page** | • Provider setup<br>• Layout principal<br>• Roteamento | `params` | JSX com Provider |
+| **Context** | • Estado global<br>• Ações compartilhadas<br>• Lógica de negócio | Props/Params | Estado tipado |
+| **Service** | • Chamadas API<br>• Transformação dados<br>• Cache local | DTOs | Dados tipados |
+| **Container** | • Apresentação<br>• Interação usuário<br>• Estados loading | Context | JSX Components |
+
+### 🏗️ Padrões de Implementação Frontend
+
+#### 1. Context SOLID Pattern
+
+```typescript
+// [Feature]Types.ts - Definições de tipos
+export interface I[Feature]State {
+  items: [Feature][];
+  isLoading: boolean;
+  error: string | null;
+  filters: [Feature]Filters;
+}
+
+export interface I[Feature]Actions {
+  fetchItems: () => Promise<void>;
+  createItem: (data: Create[Feature]DTO) => Promise<void>;
+  updateItem: (id: string, data: Update[Feature]DTO) => Promise<void>;
+  deleteItem: (id: string) => Promise<void>;
+  updateFilters: (filters: Partial<[Feature]Filters>) => void;
+}
+
+export interface I[Feature]Context extends I[Feature]State, I[Feature]Actions {}
+
+// [Feature]Hook.ts - Lógica de negócio
+export function use[Feature]Hook({
+  supabaseId,
+  service,
+  initialFilters
+}: Use[Feature]HookProps): Use[Feature]HookReturn {
+  
+  const [state, setState] = useState<I[Feature]State>(initialState);
+
+  const fetchItems = useCallback(async () => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const items = await service.get[Feature]s(state.filters);
+      setState(prev => ({ ...prev, items, isLoading: false }));
+    } catch (error) {
+      setState(prev => ({ 
+        ...prev, 
+        error: error.message, 
+        isLoading: false 
+      }));
+    }
+  }, [service, state.filters]);
+
+  return { ...state, fetchItems };
+}
+
+// [Feature]Context.tsx - Provider
+export const [Feature]Provider: React.FC<I[Feature]ProviderProps> = ({
+  children,
+  initialFilters = {}
+}) => {
+  const params = useParams();
+  const supabaseId = params.supabaseId as string;
+
+  const contextState = use[Feature]Hook({
+    supabaseId,
+    service: [feature]Service,
+    initialFilters
+  });
+
+  return (
+    <[Feature]Context.Provider value={contextState}>
+      {children}
+    </[Feature]Context.Provider>
+  );
+};
+```
+
+#### 2. Service Frontend Pattern
+
+```typescript
+// I[Feature]Service.ts - Interface
+export interface I[Feature]Service {
+  get[Feature]s(filters: [Feature]Filters): Promise<[Feature][]>;
+  get[Feature]ById(id: string): Promise<[Feature] | null>;
+  create[Feature](data: Create[Feature]DTO): Promise<[Feature]>;
+  update[Feature](id: string, data: Update[Feature]DTO): Promise<[Feature]>;
+  delete[Feature](id: string): Promise<boolean>;
+}
+
+// [Feature]Service.ts - Implementação
+export class [Feature]Service implements I[Feature]Service {
+  private baseUrl = '/api/v1/[feature]';
+
+  async get[Feature]s(filters: [Feature]Filters): Promise<[Feature][]> {
+    const params = new URLSearchParams(filters as any);
+    const response = await fetch(`${this.baseUrl}?${params}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    
+    if (!result.isValid) {
+      throw new Error(result.errorMessages.join(', '));
+    }
+    
+    return result.result;
+  }
+
+  async create[Feature](data: Create[Feature]DTO): Promise<[Feature]> {
+    const response = await fetch(this.baseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    const result = await response.json();
+    
+    if (!result.isValid) {
+      throw new Error(result.errorMessages.join(', '));
+    }
+    
+    return result.result;
+  }
+}
+
+export const [feature]Service = new [Feature]Service();
+```
+
+#### 3. Container Component Pattern
+
+```typescript
+// [Feature]Container.tsx
+'use client';
+
+import { use[Feature]Context } from '../context/[Feature]Context';
+import { [Feature]Header } from './[Feature]Header';
+import { [Feature]List } from './[Feature]List';
+import { [Feature]Dialog } from './[Feature]Dialog';
+import { [Feature]Skeleton } from './[Feature]Skeleton';
+import { [Feature]Error } from './[Feature]Error';
+
+export function [Feature]Container() {
+  const { 
+    items, 
+    isLoading, 
+    error, 
+    fetchItems,
+    createItem 
+  } = use[Feature]Context();
+
+  if (isLoading && items.length === 0) {
+    return <[Feature]Skeleton />;
+  }
+
+  if (error) {
+    return (
+      <[Feature]Error 
+        error={error} 
+        onRetry={fetchItems} 
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <[Feature]Header onAdd={createItem} />
+      
+      <[Feature]List 
+        items={items} 
+        isLoading={isLoading}
+      />
+      
+      <[Feature]Dialog />
+    </div>
+  );
+}
+```
+
+#### 4. Page Pattern
+
+```typescript
+// page.tsx
+import { [Feature]Provider } from './features/context/[Feature]Context';
+import { [Feature]Container } from './features/container/[Feature]Container';
+
+export default function [Feature]Page() {
+  return (
+    <[Feature]Provider initialFilters={{ period: '30d' }}>
+      <div className="container mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">
+            [Feature Title]
+          </h1>
+          <div className="text-sm text-gray-500">
+            [Feature Description]
+          </div>
+        </div>
+
+        <[Feature]Container />
+      </div>
+    </[Feature]Provider>
+  );
+}
+```
+
+### 📐 Convenções Frontend
+
+#### 🏷️ Nomenclatura
+
+| Tipo | Padrão | Exemplo |
+|------|--------|---------|
+| **Context Types** | `I[Feature]State/Actions/Context` | `IDashboardState` |
+| **Hook** | `use[Feature]Hook` | `useDashboardHook` |
+| **Provider** | `[Feature]Provider` | `DashboardProvider` |
+| **Service** | `I[Feature]Service, [Feature]Service` | `IDashboardService` |
+| **Container** | `[Feature]Container` | `DashboardContainer` |
+| **Components** | `[Feature][Component]` | `DashboardHeader` |
+
+#### ✅ Boas Práticas Frontend
+
+- Use interfaces para Context state/actions
+- Extraia supabaseId com useParams automaticamente
+- Implemente estados de loading e error
+- Use useCallback para ações
+- Mantenha componentes pequenos e focados
+- Use Shadcn/ui para componentes base
+- Implemente skeleton loading
+- Trate erros graciosamente
+
+#### ❌ Evite
+
+- Estado global desnecessário
+- Componentes grandes monolíticos
+- Lógica de negócio nos componentes
+- Chamadas diretas de API nos componentes
+- Props drilling excessivo
+- Estados não tipados
+
+## �🎯 Prompt Sugerido para IA/Copilot
 
 ```
 Implemente uma nova feature seguindo a arquitetura do Lead Flow:

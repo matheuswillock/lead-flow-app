@@ -2,6 +2,27 @@
 
 > Prompts otimizados para implementações consistentes na arquitetura Lead Flow
 
+## 📋 Índice
+
+### 🔧 Backend/API
+1. [Prompt Principal para Novas Features](#-prompt-principal-para-novas-features)
+2. [Prompts Específicos por Tipo](#-prompts-específicos-por-tipo)
+3. [Prompts para Correções](#-prompts-para-correções)
+
+### 🎨 Frontend/Components  
+4. [Prompts para Frontend/Components](#-prompts-para-frontendcomponents)
+5. [Prompt Completo para Novo Componente](#-prompt-completo-para-novo-componente-frontend)
+
+### 📝 Documentação & Testes
+6. [Prompts para Documentação](#-prompts-para-documentação)
+7. [Prompts para Testes](#-prompts-para-testes)
+8. [Prompt para Review de Code](#-prompt-para-review-de-code)
+
+### 📋 Utilitários
+9. [Checklist de Prompt](#-checklist-de-prompt)
+
+---
+
 ## 🎯 Prompt Principal para Novas Features
 
 ```
@@ -205,6 +226,288 @@ INCLUIR:
 ARQUIVO: /postman/[Feature]-API-Collection.json
 ```
 
+## 🎨 Prompts para Frontend/Components
+
+### 1. Novo Componente/Página Completa
+```
+Crie um novo componente frontend seguindo a arquitetura Lead Flow:
+
+ESTRUTURA OBRIGATÓRIA:
+app/[supabaseId]/[feature]/
+├── page.tsx                     # Página principal
+└── features/
+    ├── container/               # Componentes de apresentação
+    │   ├── [Feature]Container.tsx
+    │   ├── [Feature]Dialog.tsx
+    │   ├── [Feature]Header.tsx
+    │   └── [Feature]Footer.tsx
+    ├── context/                 # Context API (SOLID)
+    │   ├── [Feature]Types.ts    # Interfaces e tipos
+    │   ├── [Feature]Hook.ts     # Lógica de negócio
+    │   └── [Feature]Context.tsx # Provider e Context
+    ├── services/                # Camada de serviço
+    │   ├── I[Feature]Service.ts # Interface do serviço
+    │   └── [Feature]Service.ts  # Implementação
+    └── hooks/                   # Custom hooks (opcional)
+        └── use[Feature].ts
+
+PADRÕES OBRIGATÓRIOS:
+- Context seguindo SOLID (Types → Hook → Context)
+- useParams para extrair supabaseId
+- Estados de loading/error
+- TypeScript completo
+- Separação de responsabilidades
+
+FEATURE SOLICITADA: [DESCREVER AQUI]
+FUNCIONALIDADES: [LISTAR FUNCIONALIDADES]
+```
+
+### 2. Context SOLID Pattern
+```
+Implemente Context seguindo padrão SOLID para [FEATURE]:
+
+ARQUITETURA OBRIGATÓRIA:
+1. [Feature]Types.ts - Definições de tipos
+2. [Feature]Hook.ts - Lógica de negócio com useCallback
+3. [Feature]Context.tsx - Provider com useParams
+
+TIPOS NECESSÁRIOS:
+- I[Feature]State: estado do contexto
+- I[Feature]Actions: ações disponíveis  
+- I[Feature]Context: contexto completo
+- [Feature]ContextType: tipo do provider
+
+HOOK PATTERN:
+```typescript
+export function use[Feature]Hook({ 
+  supabaseId, 
+  service, 
+  initialData 
+}: Use[Feature]HookProps): Use[Feature]HookReturn {
+  const [state, setState] = useState(initialState);
+  
+  const action = useCallback(async () => {
+    // lógica com service
+  }, [dependencies]);
+  
+  return { ...state, action };
+}
+```
+
+CONTEXT PATTERN:
+```typescript
+export const [Feature]Provider: React.FC<I[Feature]ProviderProps> = ({
+  children,
+  initialData
+}) => {
+  const params = useParams();
+  const supabaseId = params.supabaseId as string;
+  
+  const contextState = use[Feature]Hook({
+    supabaseId,
+    service: [feature]Service,
+    initialData
+  });
+  
+  return (
+    <[Feature]Context.Provider value={contextState}>
+      {children}
+    </[Feature]Context.Provider>
+  );
+};
+```
+
+REFERÊNCIA: /app/[supabaseId]/dashboard/features/context/
+```
+
+### 3. Service Frontend Pattern
+```
+Crie Service para frontend da feature [FEATURE]:
+
+RESPONSABILIDADES:
+- Chamadas para API
+- Transformação de dados
+- Cache local (opcional)
+- Tratamento de erros
+
+INTERFACE PATTERN:
+```typescript
+export interface I[Feature]Service {
+  get[Feature]s(filters: [Feature]Filters): Promise<[Feature][]>;
+  get[Feature]ById(id: string): Promise<[Feature] | null>;
+  create[Feature](data: Create[Feature]DTO): Promise<[Feature]>;
+  update[Feature](id: string, data: Update[Feature]DTO): Promise<[Feature]>;
+  delete[Feature](id: string): Promise<boolean>;
+}
+```
+
+IMPLEMENTAÇÃO PATTERN:
+```typescript
+export class [Feature]Service implements I[Feature]Service {
+  private baseUrl = '/api/v1/[feature]';
+  
+  async get[Feature]s(filters: [Feature]Filters): Promise<[Feature][]> {
+    const params = new URLSearchParams(filters as any);
+    const response = await fetch(`${this.baseUrl}?${params}`);
+    const result = await response.json();
+    
+    if (!result.isValid) {
+      throw new Error(result.errorMessages.join(', '));
+    }
+    
+    return result.result;
+  }
+}
+
+export const [feature]Service = new [Feature]Service();
+```
+```
+
+### 4. Componente Container Pattern
+```
+Crie componentes container para [FEATURE] seguindo padrões:
+
+ESTRUTURA:
+1. [Feature]Container.tsx - Container principal
+2. [Feature]Header.tsx - Cabeçalho com ações
+3. [Feature]Dialog.tsx - Modal/Dialog
+4. [Feature]Card.tsx - Card individual
+5. [Feature]List.tsx - Lista de itens
+
+CONTAINER PATTERN:
+```typescript
+'use client';
+
+import { use[Feature]Context } from '../context/[Feature]Context';
+
+export function [Feature]Container() {
+  const { 
+    items, 
+    isLoading, 
+    error, 
+    fetchItems, 
+    createItem 
+  } = use[Feature]Context();
+
+  if (isLoading) {
+    return <[Feature]Skeleton />;
+  }
+
+  if (error) {
+    return <[Feature]Error error={error} onRetry={fetchItems} />;
+  }
+
+  return (
+    <div className="space-y-6">
+      <[Feature]Header onAdd={createItem} />
+      <[Feature]List items={items} />
+    </div>
+  );
+}
+```
+
+USAR PADRÕES:
+- Shadcn/ui components
+- Loading states com skeleton
+- Error boundaries
+- Responsividade
+```
+
+### 5. Página Principal Pattern
+```
+Crie page.tsx para [FEATURE] seguindo arquitetura:
+
+PATTERN OBRIGATÓRIO:
+```typescript
+import { [Feature]Provider } from './features/context/[Feature]Context';
+import { [Feature]Container } from './features/container/[Feature]Container';
+
+export default function [Feature]Page() {
+  return (
+    <[Feature]Provider>
+      <div className="container mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold">[Feature Title]</h1>
+          <div className="text-sm text-muted-foreground">
+            [Feature Description]
+          </div>
+        </div>
+
+        <[Feature]Container />
+      </div>
+    </[Feature]Provider>
+  );
+}
+```
+
+CARACTERÍSTICAS:
+- Provider no nível da página
+- Layout consistente
+- Títulos e descrições
+- Classes Tailwind padrão
+- Estrutura semântica
+```
+
+## 🎯 Prompt Completo para Novo Componente Frontend
+
+```
+Crie um componente frontend completo seguindo a arquitetura Lead Flow:
+
+ARQUITETURA OBRIGATÓRIA:
+app/[supabaseId]/[FEATURE]/
+├── page.tsx (Provider + Layout)
+└── features/
+    ├── container/ (Componentes apresentação)
+    ├── context/ (Context SOLID: Types → Hook → Context)
+    ├── services/ (Interface + Service para API)
+    └── hooks/ (Custom hooks opcionais)
+
+REQUISITOS TÉCNICOS:
+1. Context seguindo padrão SOLID (Types, Hook, Context)
+2. useParams para extrair supabaseId automaticamente
+3. Service para chamadas API com Output pattern
+4. Estados loading/error com tratamento
+5. TypeScript completo com interfaces
+6. Componentes Shadcn/ui
+7. Layout responsivo Tailwind
+
+PADRÕES OBRIGATÓRIOS:
+
+Context Types:
+- I[Feature]State: estado do contexto
+- I[Feature]Actions: ações disponíveis
+- I[Feature]Context: contexto completo
+
+Service Pattern:
+- Interface I[Feature]Service
+- Implementação [Feature]Service
+- Chamadas fetch com tratamento Output
+- Instância singleton exportada
+
+Container Pattern:
+- [Feature]Container (principal)
+- [Feature]Header (cabeçalho)
+- [Feature]Dialog (modais)
+- Estados loading com skeleton
+- Error handling com retry
+
+Page Pattern:
+- Provider no nível da página
+- Layout consistente
+- Título e descrição
+- Container principal
+
+REFERÊNCIAS NO PROJETO:
+- /app/[supabaseId]/dashboard/ (Context SOLID completo)
+- /app/[supabaseId]/board/ (Container patterns)
+- /app/[supabaseId]/manager-users/ (Service patterns)
+
+FEATURE SOLICITADA: [DESCREVER FUNCIONALIDADE]
+COMPONENTES NECESSÁRIOS: [LISTAR COMPONENTES]
+AÇÕES DO USUÁRIO: [LISTAR AÇÕES]
+INTEGRAÇÃO API: [ENDPOINTS NECESSÁRIOS]
+```
+
 ## 🧪 Prompts para Testes
 
 ### 1. Criar Testes Unitários
@@ -262,6 +565,44 @@ QUALIDADE ✅:
 - [ ] Tratamento de erros adequado
 - [ ] Separação de responsabilidades
 - [ ] Consistência com código existente
+
+SUGERIR MELHORIAS se necessário
+```
+
+### Frontend Review
+```
+Revise o componente frontend implementado para [FEATURE] verificando:
+
+ARQUITETURA FRONTEND ✅:
+- [ ] Page.tsx com Provider no nível superior
+- [ ] Context seguindo SOLID (Types → Hook → Context)
+- [ ] Service com interface e implementação
+- [ ] Container components separados por responsabilidade
+
+CONTEXT PATTERN ✅:
+- [ ] useParams extrai supabaseId automaticamente
+- [ ] useState com tipos corretos
+- [ ] useCallback para ações (performance)
+- [ ] Provider injeta dependências
+
+SERVICE PATTERN ✅:
+- [ ] Interface I[Feature]Service definida
+- [ ] Implementação com tratamento Output
+- [ ] Fetch com headers corretos
+- [ ] Error handling adequado
+
+COMPONENTS ✅:
+- [ ] Loading states com skeleton
+- [ ] Error handling com retry
+- [ ] Componentes Shadcn/ui
+- [ ] Layout responsivo Tailwind
+- [ ] TypeScript completo
+
+INTEGRAÇÃO ✅:
+- [ ] Context consumido corretamente
+- [ ] Service integrado com Context
+- [ ] Estados sincronizados
+- [ ] Performance otimizada
 
 SUGERIR MELHORIAS se necessário
 ```
