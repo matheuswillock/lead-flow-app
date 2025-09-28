@@ -1,5 +1,6 @@
-import { prisma } from "@/app/api/infra/data/prisma";
 import { LeadStatus } from "@prisma/client";
+import { metricsRepository } from "@/app/api/infra/data/repositories/metrics/MetricsRepository";
+import type { MetricsFilters } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository";
 
 export type DashboardMetrics = {
   // Métricas básicas
@@ -60,27 +61,15 @@ export class DashboardInfosService {
   static async getDashboardMetrics(filters: DashboardFilters): Promise<DashboardMetrics> {
     const { managerId, startDate, endDate } = filters;
     
-    // Query base com filtros
-    const whereClause = {
+    // Converter para formato do Repository
+    const repositoryFilters: MetricsFilters = {
       managerId,
-      ...(startDate && endDate && {
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      }),
+      startDate,
+      endDate,
     };
 
-    // Buscar todos os leads com as condições
-    const leads = await prisma.lead.findMany({
-      where: whereClause,
-      select: {
-        id: true,
-        status: true,
-        currentValue: true,
-        createdAt: true,
-      },
-    });
+    // Buscar todos os leads através do Repository
+    const leads = await metricsRepository.findLeadsForMetrics(repositoryFilters);
 
     // Contar por status
     const statusCount = leads.reduce((acc: Record<LeadStatus, number>, lead) => {
@@ -166,22 +155,7 @@ export class DashboardInfosService {
         startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    const leads = await prisma.lead.groupBy({
-      by: ['createdAt'],
-      where: {
-        managerId,
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      },
-      _count: {
-        id: true,
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-    });
+    const leads = await metricsRepository.getLeadsByPeriod(managerId, startDate, endDate);
 
     // Agrupar por dia/semana/mês dependendo do período
     const groupedData = this.groupLeadsByTimeInterval(leads, period);
@@ -229,19 +203,7 @@ export class DashboardInfosService {
    * Busca métricas detalhadas por status
    */
   static async getDetailedStatusMetrics(managerId: string) {
-    const statusMetrics = await prisma.lead.groupBy({
-      by: ['status'],
-      where: { managerId },
-      _count: {
-        id: true,
-      },
-      _avg: {
-        currentValue: true,
-      },
-      _sum: {
-        currentValue: true,
-      },
-    });
+    const statusMetrics = await metricsRepository.getStatusMetrics(managerId);
 
     return statusMetrics.map((metric) => ({
       status: metric.status,

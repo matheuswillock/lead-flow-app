@@ -1,5 +1,5 @@
 import { Output } from "@/lib/output";
-import { DashboardInfosService, DashboardFilters } from "@/app/api/services/DashboardInfos";
+import { DashboardInfosService, DashboardFilters } from "@/app/api/services/DashboardInfosService";
 import type { IMetricsUseCase, MetricsFilters } from "./IMetricsUseCase";
 
 export class MetricsUseCase implements IMetricsUseCase {

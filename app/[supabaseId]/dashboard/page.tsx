@@ -1,15 +1,7 @@
-import { ChartAreaInteractive } from "@/components/chart-area-interactive"
-import { SectionCards } from "@/components/section-cards"
-// import { createSupabaseServer } from "@/lib/supabase/server"
-
+import { ChartAreaInteractive } from "@/app/[supabaseId]/dashboard/features/container/chart-area-interactive"
+import { SectionCards } from "@/app/[supabaseId]/dashboard/features/container/section-cards"
 
 export default async function Dashboard() {
-  // const supabase = await createSupabaseServer()
-  // let user: any = null
-  // if (supabase) {
-  //   const { data } = await supabase.auth.getUser()
-  //   user = data.user
-  // }
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <SectionCards />
