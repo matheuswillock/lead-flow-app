@@ -46,6 +46,17 @@ Este diretório contém as coleções do Postman para testar os endpoints da API
 - ✅ Verificação de Profile Deletado
 - ✅ Testes de Erro (Email duplicado, Senha fraca, Profile inexistente, Dados inválidos)
 
+### 4. Dashboard API Collection 📊 **NOVO**
+**Arquivo**: `Dashboard-API-Collection.json`
+**Descrição**: Endpoints para métricas e dashboard (buscas por supabaseId)
+
+**Endpoints incluídos**:
+- ✅ Métricas Gerais (30d, 7d, período customizado)
+- ✅ Métricas Detalhadas por Status
+- ✅ Testes de Validação (sem supabaseId)
+- ✅ Testes de Performance (1 ano)
+- ✅ **Segurança**: Todas as buscas usam supabaseId do usuário autenticado
+
 ## Environment
 
 **Arquivo**: `Lead-Flow-Environment.json`
@@ -154,6 +165,34 @@ Execute na ordem para testar o fluxo completo:
 5. **Delete Profile** - Remove o profile
 
 Para testar cenários de erro, execute os testes de erro de cada endpoint para verificar as mensagens apropriadas e status codes corretos (400, 404, etc.).
+
+#### 📊 Para API de Dashboard:
+Execute na ordem para testar métricas:
+
+1. **Métricas Dashboard - 30 dias** - Métricas gerais padrão
+2. **Métricas Dashboard - 7 dias** - Métricas recentes
+3. **Métricas Dashboard - Período Customizado** - Data específica
+4. **Métricas Detalhadas por Status** - Breakdown por status
+5. **Testes de Performance** - Teste com 1 ano de dados
+6. **Testes de Validação** - Testa erros de supabaseId
+
+### 🖥️ Scripts de Terminal
+
+Também incluídos scripts bash para testes rápidos:
+
+#### `test-lead-api.sh`
+```bash
+chmod +x test-lead-api.sh
+./test-lead-api.sh
+```
+
+#### `test-dashboard-api.sh` 📊 **NOVO**
+```bash
+chmod +x test-dashboard-api.sh
+./test-dashboard-api.sh
+```
+
+Os scripts fazem requisições curl e mostram os resultados formatados.
 
 ## 📊 Estrutura das Respostas
 

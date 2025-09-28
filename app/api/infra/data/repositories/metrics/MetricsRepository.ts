@@ -50,7 +50,7 @@ export class MetricsRepository implements IMetricsRepository {
         }
       },
       _count: {
-        id: true,
+        _all: true,
       },
       _avg: {
         currentValue: true,
@@ -60,7 +60,14 @@ export class MetricsRepository implements IMetricsRepository {
       },
     });
 
-    return results as StatusMetricsData[];
+    return results.map(result => ({
+      status: result.status,
+      _count: {
+        id: result._count._all,
+      },
+      _avg: result._avg,
+      _sum: result._sum,
+    }));
   }
 
   /**
@@ -79,14 +86,19 @@ export class MetricsRepository implements IMetricsRepository {
         },
       },
       _count: {
-        id: true,
+        _all: true,
       },
       orderBy: {
         createdAt: 'asc',
       },
     });
 
-    return results as LeadsPeriodData[];
+    return results.map(result => ({
+      createdAt: result.createdAt,
+      _count: {
+        id: result._count._all,
+      },
+    }));
   }
 }
 
