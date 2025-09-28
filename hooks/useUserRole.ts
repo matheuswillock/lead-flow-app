@@ -3,6 +3,9 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/app/context/AuthContext";
 
+// Cache simples para evitar múltiplas requisições
+const roleCache: { [key: string]: string } = {};
+
 export function useUserRole() {
   const { user } = useAuth();
   const [role, setRole] = useState<string | null>(null);
@@ -16,6 +19,13 @@ export function useUserRole() {
         return;
       }
 
+      // Verifica cache primeiro
+      if (roleCache[user.id]) {
+        setRole(roleCache[user.id]);
+        setLoading(false);
+        return;
+      }
+
       try {
         // Buscar o role do usuário na API de profiles
         const response = await fetch(`/api/v1/profiles/${user.id}`);
@@ -23,16 +33,21 @@ export function useUserRole() {
         if (response.ok) {
           const data = await response.json();
           if (data.isValid && data.result) {
-            setRole(data.result.role || "operator");
+            const userRole = data.result.role || "operator";
+            roleCache[user.id] = userRole; // Armazenar no cache
+            setRole(userRole);
           } else {
+            roleCache[user.id] = "operator";
             setRole("operator"); // Default para operator
           }
         } else {
           // Se não conseguir buscar, assume operator por segurança
+          roleCache[user.id] = "operator";
           setRole("operator");
         }
       } catch (error) {
         console.error("Erro ao buscar role do usuário:", error);
+        roleCache[user.id] = "operator";
         setRole("operator"); // Default para operator em caso de erro
       } finally {
         setLoading(false);

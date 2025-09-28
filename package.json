@@ -18,6 +18,8 @@
     "postinstall": "prisma generate",
     "prisma:seed": "bunx prisma db seed",
     "prisma:migrate": "bunx prisma migrate dev",
+    "prisma:migrate:reset": "bunx prisma migrate reset",
+    "prisma:migrate:deploy": "bunx prisma migrate deploy",
     "prisma:migrate:status": "bunx prisma migrate status",
     "prisma:studio": "npx prisma studio",
     "prisma:generate": "npx prisma generate",

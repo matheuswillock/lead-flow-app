@@ -7,6 +7,9 @@ CREATE TYPE "public"."LeadStatus" AS ENUM ('new_opportunity', 'scheduled', 'no_s
 -- CreateEnum
 CREATE TYPE "public"."ActivityType" AS ENUM ('note', 'call', 'whatsapp', 'email', 'status_change');
 
+-- CreateEnum
+CREATE TYPE "public"."AgeRange" AS ENUM ('0-18', '19-25', '26-35', '36-45', '46-60', '61+');
+
 -- CreateTable
 CREATE TABLE "public"."profiles" (
     "id" UUID NOT NULL,
@@ -14,6 +17,8 @@ CREATE TABLE "public"."profiles" (
     "supabaseId" UUID,
     "fullName" TEXT,
     "phone" TEXT,
+    "profileIconId" TEXT,
+    "profileIconUrl" TEXT,
     "role" "public"."UserRole" NOT NULL DEFAULT 'manager',
     "managerId" UUID,
     "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -32,13 +37,15 @@ CREATE TABLE "public"."leads" (
     "email" TEXT,
     "phone" TEXT,
     "cnpj" TEXT,
-    "age" INTEGER,
+    "age" "public"."AgeRange"[],
     "hasHealthPlan" BOOLEAN DEFAULT false,
     "currentValue" DECIMAL(12,2),
     "referenceHospital" TEXT,
     "currentTreatment" TEXT,
     "meetingDate" TIMESTAMPTZ(6),
     "notes" TEXT,
+    "createdBy" UUID,
+    "updatedBy" UUID,
     "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(6) NOT NULL,
 
@@ -83,6 +90,12 @@ CREATE INDEX "leads_managerId_idx" ON "public"."leads"("managerId");
 CREATE INDEX "leads_assignedTo_idx" ON "public"."leads"("assignedTo");
 
 -- CreateIndex
+CREATE INDEX "leads_createdBy_idx" ON "public"."leads"("createdBy");
+
+-- CreateIndex
+CREATE INDEX "leads_updatedBy_idx" ON "public"."leads"("updatedBy");
+
+-- CreateIndex
 CREATE INDEX "leads_meetingDate_idx" ON "public"."leads"("meetingDate");
 
 -- CreateIndex
@@ -108,6 +121,12 @@ ALTER TABLE "public"."leads" ADD CONSTRAINT "leads_managerId_fkey" FOREIGN KEY (
 
 -- AddForeignKey
 ALTER TABLE "public"."leads" ADD CONSTRAINT "leads_assignedTo_fkey" FOREIGN KEY ("assignedTo") REFERENCES "public"."profiles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."leads" ADD CONSTRAINT "leads_createdBy_fkey" FOREIGN KEY ("createdBy") REFERENCES "public"."profiles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "public"."leads" ADD CONSTRAINT "leads_updatedBy_fkey" FOREIGN KEY ("updatedBy") REFERENCES "public"."profiles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "public"."lead_activities" ADD CONSTRAINT "lead_activities_leadId_fkey" FOREIGN KEY ("leadId") REFERENCES "public"."leads"("id") ON DELETE CASCADE ON UPDATE CASCADE;
