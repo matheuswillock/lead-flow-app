@@ -10,18 +10,18 @@ export class MetricsUseCase implements IMetricsUseCase {
   async getDashboardMetrics(filters: MetricsFilters): Promise<Output> {
     try {
       // Validar entrada
-      if (!filters.managerId) {
+      if (!filters.supabaseId) {
         return new Output(
           false,
           [],
-          ['managerId é obrigatório'],
+          ['supabaseId é obrigatório'],
           null
         );
       }
 
       // Converter para o formato do serviço
       const serviceFilters: DashboardFilters = {
-        managerId: filters.managerId,
+        supabaseId: filters.supabaseId,
         period: filters.period || '30d',
         ...(filters.startDate && { startDate: filters.startDate }),
         ...(filters.endDate && { endDate: filters.endDate }),
@@ -52,20 +52,20 @@ export class MetricsUseCase implements IMetricsUseCase {
   /**
    * Busca métricas detalhadas por status
    */
-  async getDetailedStatusMetrics(managerId: string): Promise<Output> {
+  async getDetailedStatusMetrics(supabaseId: string): Promise<Output> {
     try {
       // Validar entrada
-      if (!managerId) {
+      if (!supabaseId) {
         return new Output(
           false,
           [],
-          ['managerId é obrigatório'],
+          ['supabaseId é obrigatório'],
           null
         );
       }
 
       // Chamar o serviço
-      const detailedMetrics = await DashboardInfosService.getDetailedStatusMetrics(managerId);
+      const detailedMetrics = await DashboardInfosService.getDetailedStatusMetrics(supabaseId);
 
       return new Output(
         true,

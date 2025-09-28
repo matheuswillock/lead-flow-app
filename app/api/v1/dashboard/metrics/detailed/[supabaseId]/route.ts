@@ -3,12 +3,12 @@ import { metricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { managerId: string } }
+  { params }: { params: { supabaseId: string } }
 ) {
   try {
-    const { managerId } = params;
+    const { supabaseId } = params;
 
-    const result = await metricsUseCase.getDetailedStatusMetrics(managerId);
+    const result = await metricsUseCase.getDetailedStatusMetrics(supabaseId);
 
     const statusCode = result.isValid ? 200 : 400;
     

@@ -13,10 +13,12 @@ export class MetricsRepository implements IMetricsRepository {
    * Busca leads básicos para cálculo de métricas
    */
   async findLeadsForMetrics(filters: MetricsFilters): Promise<LeadMetricsData[]> {
-    const { managerId, startDate, endDate } = filters;
+    const { supabaseId, startDate, endDate } = filters;
     
     const whereClause = {
-      managerId,
+      manager: {
+        supabaseId: supabaseId,
+      },
       ...(startDate && endDate && {
         createdAt: {
           gte: startDate,
@@ -39,10 +41,14 @@ export class MetricsRepository implements IMetricsRepository {
   /**
    * Busca métricas detalhadas por status
    */
-  async getStatusMetrics(managerId: string): Promise<StatusMetricsData[]> {
+  async getStatusMetrics(supabaseId: string): Promise<StatusMetricsData[]> {
     const results = await prisma.lead.groupBy({
       by: ['status'],
-      where: { managerId },
+      where: { 
+        manager: {
+          supabaseId: supabaseId,
+        }
+      },
       _count: {
         id: true,
       },
@@ -60,11 +66,13 @@ export class MetricsRepository implements IMetricsRepository {
   /**
    * Busca leads agrupados por período
    */
-  async getLeadsByPeriod(managerId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]> {
+  async getLeadsByPeriod(supabaseId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]> {
     const results = await prisma.lead.groupBy({
       by: ['createdAt'],
       where: {
-        managerId,
+        manager: {
+          supabaseId: supabaseId,
+        },
         createdAt: {
           gte: startDate,
           lte: endDate,

@@ -25,7 +25,7 @@ export type DashboardMetrics = {
 };
 
 export type DashboardFilters = {
-  managerId: string;
+  supabaseId: string;
   startDate?: Date;
   endDate?: Date;
   period?: '7d' | '30d' | '3m' | '6m' | '1y';
@@ -59,11 +59,11 @@ export class DashboardInfosService {
    * Busca todas as métricas do dashboard
    */
   static async getDashboardMetrics(filters: DashboardFilters): Promise<DashboardMetrics> {
-    const { managerId, startDate, endDate } = filters;
+    const { supabaseId, startDate, endDate } = filters;
     
     // Converter para formato do Repository
     const repositoryFilters: MetricsFilters = {
-      managerId,
+      supabaseId,
       startDate,
       endDate,
     };
@@ -130,7 +130,7 @@ export class DashboardInfosService {
    * Busca leads agrupados por período
    */
   private static async getLeadsByPeriod(filters: DashboardFilters) {
-    const { managerId, period = '30d' } = filters;
+    const { supabaseId, period = '30d' } = filters;
     
     let startDate: Date;
     const endDate = new Date();
@@ -155,7 +155,7 @@ export class DashboardInfosService {
         startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    const leads = await metricsRepository.getLeadsByPeriod(managerId, startDate, endDate);
+    const leads = await metricsRepository.getLeadsByPeriod(supabaseId, startDate, endDate);
 
     // Agrupar por dia/semana/mês dependendo do período
     const groupedData = this.groupLeadsByTimeInterval(leads, period);
@@ -202,8 +202,8 @@ export class DashboardInfosService {
   /**
    * Busca métricas detalhadas por status
    */
-  static async getDetailedStatusMetrics(managerId: string) {
-    const statusMetrics = await metricsRepository.getStatusMetrics(managerId);
+  static async getDetailedStatusMetrics(supabaseId: string) {
+    const statusMetrics = await metricsRepository.getStatusMetrics(supabaseId);
 
     return statusMetrics.map((metric) => ({
       status: metric.status,

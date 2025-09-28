@@ -28,7 +28,7 @@ export interface LeadsPeriodData {
 }
 
 export interface MetricsFilters {
-  managerId: string;
+  supabaseId: string;
   startDate?: Date;
   endDate?: Date;
 }
@@ -42,10 +42,10 @@ export interface IMetricsRepository {
   /**
    * Busca métricas detalhadas por status
    */
-  getStatusMetrics(managerId: string): Promise<StatusMetricsData[]>;
+  getStatusMetrics(supabaseId: string): Promise<StatusMetricsData[]>;
 
   /**
    * Busca leads agrupados por período
    */
-  getLeadsByPeriod(managerId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]>;
+  getLeadsByPeriod(supabaseId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]>;
 }

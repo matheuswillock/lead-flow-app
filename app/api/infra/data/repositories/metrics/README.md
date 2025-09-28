@@ -8,6 +8,10 @@ A implementação das métricas agora segue a arquitetura correta:
 Route → UseCase → Service → Repository → Prisma
 ```
 
+## 🆔 Parâmetro de Busca: supabaseId
+
+**IMPORTANTE**: Todas as métricas são buscadas pelo `supabaseId` do usuário autenticado, não pelo `managerId`.
+
 ## 📁 Estrutura de Arquivos
 
 ```
@@ -53,23 +57,23 @@ app/api/
 ```typescript
 // Busca leads básicos para cálculo de métricas
 const leads = await metricsRepository.findLeadsForMetrics({
-  managerId: 'uuid',
+  supabaseId: 'uuid-from-auth',
   startDate: new Date('2024-01-01'),
   endDate: new Date('2024-01-31')
 });
 ```
 
-### `getStatusMetrics(managerId: string)`
+### `getStatusMetrics(supabaseId: string)`
 ```typescript
 // Busca métricas agrupadas por status
-const statusMetrics = await metricsRepository.getStatusMetrics('managerId');
+const statusMetrics = await metricsRepository.getStatusMetrics('supabase-uuid');
 ```
 
-### `getLeadsByPeriod(managerId, startDate, endDate)`
+### `getLeadsByPeriod(supabaseId, startDate, endDate)`
 ```typescript
 // Busca leads agrupados por período
 const periodData = await metricsRepository.getLeadsByPeriod(
-  'managerId', 
+  'supabase-uuid', 
   startDate, 
   endDate
 );

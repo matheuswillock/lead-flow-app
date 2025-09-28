@@ -5,13 +5,13 @@ import type { MetricsFilters } from '@/app/api/useCases/metrics/IMetricsUseCase'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const managerId = searchParams.get('managerId');
+    const supabaseId = searchParams.get('supabaseId');
     const period = searchParams.get('period') as '7d' | '30d' | '3m' | '6m' | '1y' || '30d';
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
     const filters: MetricsFilters = {
-      managerId: managerId || '',
+      supabaseId: supabaseId || '',
       period,
       ...(startDate && { startDate: new Date(startDate) }),
       ...(endDate && { endDate: new Date(endDate) }),
