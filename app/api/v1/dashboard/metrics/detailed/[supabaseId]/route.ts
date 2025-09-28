@@ -3,10 +3,10 @@ import { metricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { supabaseId: string } }
+  { params }: { params: Promise<{ supabaseId: string }> }
 ) {
   try {
-    const { supabaseId } = params;
+    const { supabaseId } = await params;
 
     const result = await metricsUseCase.getDetailedStatusMetrics(supabaseId);
 

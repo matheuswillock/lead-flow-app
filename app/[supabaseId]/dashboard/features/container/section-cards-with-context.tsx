@@ -1,6 +1,7 @@
 'use client';
 
 import { useDashboardContext } from '../context/DashboardContext';
+import { DashboardCardsSkeleton } from '../components/DashboardSkeleton';
 import {
   Card,
   CardAction,
@@ -14,21 +15,7 @@ export function SectionCardsWithContext() {
   const { metrics, isLoading, error } = useDashboardContext();
 
   if (isLoading) {
-    return (
-      <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2 @5xl/main:grid-cols-4">
-        {[1, 2, 3, 4].map((index) => (
-          <Card key={index} className="@container/card animate-pulse">
-            <CardHeader className="pb-3">
-              <div className="h-4 bg-gray-200 rounded w-20"></div>
-              <div className="h-8 bg-gray-200 rounded w-16"></div>
-            </CardHeader>
-            <CardFooter className="pt-0">
-              <div className="h-3 bg-gray-200 rounded w-24"></div>
-            </CardFooter>
-          </Card>
-        ))}
-      </div>
-    );
+    return <DashboardCardsSkeleton />;
   }
 
   if (error) {
@@ -168,3 +155,4 @@ export function SectionCardsWithContext() {
     </div>
   );
 }
+
