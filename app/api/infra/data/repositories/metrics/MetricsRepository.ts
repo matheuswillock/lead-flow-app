@@ -4,7 +4,9 @@ import type {
   LeadMetricsData, 
   StatusMetricsData, 
   LeadsPeriodData,
-  MetricsFilters 
+  MetricsFilters,
+  ScheduleMetricsData,
+  SaleMetricsData
 } from "./IMetricsRepository";
 
 export class MetricsRepository implements IMetricsRepository {
@@ -206,6 +208,146 @@ export class MetricsRepository implements IMetricsRepository {
         id: result._count._all,
       },
     }));
+  }
+
+  /**
+   * Busca agendamentos da tabela LeadsSchedule
+   * - Se supabaseId for de um Manager: busca agendamentos do manager + operators dele
+   * - Se supabaseId for de um Operator: busca apenas agendamentos do operator
+   */
+  async getScheduledLeads(filters: MetricsFilters): Promise<ScheduleMetricsData[]> {
+    const { supabaseId, startDate, endDate } = filters;
+    
+    // Buscar o perfil para verificar se é Manager ou Operator
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { 
+        id: true, 
+        role: true,
+        operators: {
+          select: { id: true }
+        }
+      },
+    });
+
+    if (!profile) {
+      throw new Error('Profile não encontrado');
+    }
+
+    // Construir where clause baseado na role
+    let whereClause: any;
+
+    if (profile.role === 'manager') {
+      // Manager: buscar agendamentos do manager E de seus operators
+      const operatorIds = profile.operators.map(op => op.id);
+      whereClause = {
+        lead: {
+          OR: [
+            { managerId: profile.id },
+            { assignedTo: { in: operatorIds } }
+          ],
+        },
+        ...(startDate && endDate && {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        }),
+      };
+    } else {
+      // Operator: buscar apenas agendamentos atribuídos a ele
+      whereClause = {
+        lead: {
+          assignedTo: profile.id,
+        },
+        ...(startDate && endDate && {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        }),
+      };
+    }
+
+    return await prisma.leadsSchedule.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        leadId: true,
+        date: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  /**
+   * Busca vendas finalizadas da tabela LeadFinalized
+   * - Se supabaseId for de um Manager: busca vendas do manager + operators dele
+   * - Se supabaseId for de um Operator: busca apenas vendas do operator
+   */
+  async getFinalizedLeads(filters: MetricsFilters): Promise<SaleMetricsData[]> {
+    const { supabaseId, startDate, endDate } = filters;
+    
+    // Buscar o perfil para verificar se é Manager ou Operator
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { 
+        id: true, 
+        role: true,
+        operators: {
+          select: { id: true }
+        }
+      },
+    });
+
+    if (!profile) {
+      throw new Error('Profile não encontrado');
+    }
+
+    // Construir where clause baseado na role
+    let whereClause: any;
+
+    if (profile.role === 'manager') {
+      // Manager: buscar vendas do manager E de seus operators
+      const operatorIds = profile.operators.map(op => op.id);
+      whereClause = {
+        lead: {
+          OR: [
+            { managerId: profile.id },
+            { assignedTo: { in: operatorIds } }
+          ],
+        },
+        ...(startDate && endDate && {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        }),
+      };
+    } else {
+      // Operator: buscar apenas vendas atribuídas a ele
+      whereClause = {
+        lead: {
+          assignedTo: profile.id,
+        },
+        ...(startDate && endDate && {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        }),
+      };
+    }
+
+    return await prisma.leadFinalized.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        leadId: true,
+        amount: true,
+        finalizedAt: true,
+      },
+    });
   }
 }
 

@@ -71,7 +71,15 @@ export class DashboardInfosService {
 
     const leads = await metricsRepository.findLeadsForMetrics(repositoryFilters);
 
-    // Contar por status
+    // Buscar agendamentos da tabela LeadsSchedule
+    const scheduledLeads = await metricsRepository.getScheduledLeads(repositoryFilters);
+    const agendamentos = scheduledLeads.length;
+
+    // Buscar vendas da tabela LeadFinalized
+    const finalizedLeads = await metricsRepository.getFinalizedLeads(repositoryFilters);
+    const vendas = finalizedLeads.length;
+
+    // Contar por status (para as outras métricas)
     const statusCount = leads.reduce((acc: Record<LeadStatus, number>, lead) => {
       acc[lead.status] = (acc[lead.status] || 0) + 1;
       return acc;
@@ -84,20 +92,18 @@ export class DashboardInfosService {
       }
     });
 
-    const agendamentos = this.countByStatusGroup(statusCount, STATUS_GROUPS.SCHEDULED);
     const negociacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.NEGOTIATION);
     const implementacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.IMPLEMENTATION);
-    const vendas = this.countByStatusGroup(statusCount, STATUS_GROUPS.SALES);
     const churn = this.countByStatusGroup(statusCount, STATUS_GROUPS.CHURN);
     const NoShow = this.countByStatusGroup(statusCount, STATUS_GROUPS.NO_SHOW);
 
     const taxaConversao = agendamentos > 0 ? (vendas / agendamentos) * 100 : 0;
     const churnRate = vendas > 0 ? (churn / vendas) * 100 : 0;
     
-    // Calcular receita total (apenas de vendas finalizadas)
-    const receitaTotal = leads
-      .filter((lead) => lead.status === 'contract_finalized' && lead.currentValue)
-      .reduce((total: number, lead) => total + Number(lead.currentValue || 0), 0);
+    // Calcular receita total a partir da tabela LeadFinalized
+    const receitaTotal = finalizedLeads.reduce((total: number, sale) => 
+      total + Number(sale.amount || 0), 0
+    );
 
     // Dados por período
     const leadsPorPeriodo = await this.getLeadsByPeriod(filters);

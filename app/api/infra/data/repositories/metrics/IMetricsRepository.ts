@@ -33,6 +33,20 @@ export interface MetricsFilters {
   endDate?: Date;
 }
 
+export interface ScheduleMetricsData {
+  id: string;
+  leadId: string;
+  date: Date;
+  createdAt: Date;
+}
+
+export interface SaleMetricsData {
+  id: string;
+  leadId: string;
+  amount: any; // Prisma Decimal type
+  finalizedAt: Date;
+}
+
 export interface IMetricsRepository {
   /**
    * Busca leads básicos para cálculo de métricas
@@ -48,4 +62,14 @@ export interface IMetricsRepository {
    * Busca leads agrupados por período
    */
   getLeadsByPeriod(supabaseId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]>;
+
+  /**
+   * Busca agendamentos da tabela LeadsSchedule
+   */
+  getScheduledLeads(filters: MetricsFilters): Promise<ScheduleMetricsData[]>;
+
+  /**
+   * Busca vendas finalizadas da tabela LeadFinalized
+   */
+  getFinalizedLeads(filters: MetricsFilters): Promise<SaleMetricsData[]>;
 }
