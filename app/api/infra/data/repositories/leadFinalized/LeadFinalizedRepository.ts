@@ -14,7 +14,9 @@ export class LeadFinalizedRepository implements ILeadFinalizedRepository {
     return await prisma.leadFinalized.create({
       data: {
         leadId: data.leadId,
-        finalizedAt: data.finalizedAt,
+        finalizedDateAt: data.finalizedAt,
+        startDateAt: data.startDateAt || data.finalizedAt,
+        duration: data.duration || 0,
         amount: data.amount,
         notes: data.notes,
       },
@@ -30,7 +32,7 @@ export class LeadFinalizedRepository implements ILeadFinalizedRepository {
         leadId,
       },
       orderBy: {
-        finalizedAt: 'desc',
+        finalizedDateAt: 'desc',
       },
     });
   }
@@ -44,7 +46,7 @@ export class LeadFinalizedRepository implements ILeadFinalizedRepository {
         leadId,
       },
       orderBy: {
-        finalizedAt: 'desc',
+        finalizedDateAt: 'desc',
       },
     });
   }

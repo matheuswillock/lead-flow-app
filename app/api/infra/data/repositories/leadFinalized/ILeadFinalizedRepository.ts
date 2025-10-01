@@ -3,6 +3,8 @@ import { LeadFinalized } from "@prisma/client";
 export interface CreateLeadFinalizedDTO {
   leadId: string;
   finalizedAt: Date;
+  startDateAt: Date;
+  duration: number;
   amount: number;
   notes?: string;
 }

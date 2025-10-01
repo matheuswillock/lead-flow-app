@@ -44,7 +44,7 @@ export interface SaleMetricsData {
   id: string;
   leadId: string;
   amount: any; // Prisma Decimal type
-  finalizedAt: Date;
+  finalizedDateAt: Date;
 }
 
 export interface IMetricsRepository {

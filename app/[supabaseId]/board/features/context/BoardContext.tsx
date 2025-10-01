@@ -4,6 +4,7 @@ import { Lead, ColumnKey } from "./BoardTypes";
 import { createBoardService } from "../services/BoardService";
 import { useParams } from "next/navigation";
 import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+import { FinalizeContractData } from "../container/FinalizeContractDialog";
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -43,6 +44,7 @@ interface IBoardContextState {
   onDrop: (e: React.DragEvent, to: ColumnKey) => void;
   onDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
   refreshLeads: () => Promise<void>;
+  finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
 const COLUMNS: { key: ColumnKey; title: string }[] = [
@@ -256,6 +258,31 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           // TODO: Implementar rollback do estado local em caso de erro
         }
       };
+
+      // Função para finalizar contrato
+      const finalizeContract = async (leadId: string, contractData: FinalizeContractData) => {
+        try {
+          const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-supabase-user-id': supabaseId
+            },
+            body: JSON.stringify(contractData)
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.errorMessages?.[0] || 'Erro ao finalizar contrato');
+          }
+
+          // Atualizar o lead para a coluna de contrato finalizado
+          await loadLeads(); // Recarrega todos os leads para garantir consistência
+        } catch (error) {
+          console.error('Erro ao finalizar contrato:', error);
+          throw error;
+        }
+      };
     
 
   const clearErrors = () => {
@@ -328,7 +355,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     openNewLeadDialog,
     onDrop,
     onDragStart,
-    refreshLeads: loadLeads
+    refreshLeads: loadLeads,
+    finalizeContract
   };
   
   return (

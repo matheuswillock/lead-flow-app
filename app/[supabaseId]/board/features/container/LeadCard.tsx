@@ -1,8 +1,10 @@
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { formatDate } from "../context/BoardContext";
 import { ColumnKey } from "../context/BoardTypes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
+import { CheckCircle } from "lucide-react";
 
 interface LeadCardProps {
     lead: LeadResponseDTO;
@@ -10,6 +12,7 @@ interface LeadCardProps {
     handleCardMouseDown: () => void;
     handleCardDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
     handleCardClick: (lead: LeadResponseDTO) => void;
+    onFinalizeContract?: (lead: LeadResponseDTO) => void;
 }
 
 export function LeadCard({
@@ -18,7 +21,20 @@ export function LeadCard({
     handleCardMouseDown,
     handleCardDragStart,
     handleCardClick,
+    onFinalizeContract,
 }: LeadCardProps) {
+    // Verifica se o lead está em uma coluna que permite finalizar contrato
+    const canFinalizeContract = columnKey === 'invoicePayment' || 
+                                columnKey === 'dps_agreement' ||
+                                columnKey === 'offerSubmission';
+
+    const handleFinalizeClick = (e: React.MouseEvent) => {
+        e.stopPropagation(); // Evita que o card seja clicado
+        if (onFinalizeContract) {
+            onFinalizeContract(lead);
+        }
+    };
+
     return (
         <Card
             key={lead.id}
@@ -37,7 +53,17 @@ export function LeadCard({
                 </div>
             </CardHeader>
             <CardContent>
-                {/* TODO: Avaliar o conteudo para inserir aqui */}
+                {canFinalizeContract && (
+                    <Button
+                        size="sm"
+                        variant="default"
+                        className="w-full"
+                        onClick={handleFinalizeClick}
+                    >
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Fechar Contrato
+                    </Button>
+                )}
             </CardContent>
             <CardFooter className="w-full flex justify-end">
                 <Avatar className="h-6 w-6">

@@ -120,6 +120,7 @@ model Lead {
   cnpj              String?    @db.Text
   age               AgeRange[]
   hasHealthPlan     Boolean?   @default(false)
+  currentHealthPlan String?    @db.Text
   currentValue      Decimal?   @db.Decimal(12, 2)
   referenceHospital String?    @db.Text
   currentTreatment  String?    @db.Text

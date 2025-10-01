@@ -86,6 +86,7 @@ export function LeadForm({
                 (watchedValues.cnpj && watchedValues.cnpj.trim() !== '') ||
                 (watchedValues.age && watchedValues.age.length > 0) ||
                 (watchedValues.hasPlan && watchedValues.hasPlan !== undefined) ||
+                (watchedValues.currentHealthPlan && watchedValues.currentHealthPlan.trim() !== '') ||
                 (watchedValues.currentValue && watchedValues.currentValue.trim() !== '') ||
                 (watchedValues.referenceHospital && watchedValues.referenceHospital.trim() !== '') ||
                 (watchedValues.ongoingTreatment && watchedValues.ongoingTreatment.trim() !== '') ||
@@ -105,6 +106,7 @@ export function LeadForm({
             watchedValues.cnpj !== initialData.cnpj ||
             watchedValues.age !== initialData.age ||
             watchedValues.hasPlan !== initialData.hasPlan ||
+            watchedValues.currentHealthPlan !== initialData.currentHealthPlan ||
             watchedValues.currentValue !== initialData.currentValue ||
             watchedValues.referenceHospital !== initialData.referenceHospital ||
             watchedValues.ongoingTreatment !== initialData.ongoingTreatment ||
@@ -306,6 +308,31 @@ export function LeadForm({
                     )}
                 />
             </div>
+
+            {watchedValues.hasPlan === "sim" && (
+                <div className="sm:col-span-2">
+                    <FormField
+                        control={form.control}
+                        name="currentHealthPlan"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="block text-sm font-medium mb-1">
+                                    Qual o plano de saúde atual?*
+                                </FormLabel>
+                                <FormControl>
+                                    <Input
+                                        {...field}
+                                        value={field.value || ''}
+                                        placeholder="Ex: Unimed, Bradesco Saúde, etc."
+                                        required={watchedValues.hasPlan === "sim"}
+                                        disabled={isLoading || isUpdating}
+                                    />
+                                </FormControl>
+                            </FormItem>
+                        )}
+                    />
+                </div>
+            )}
 
             <FormField 
                 control={form.control}

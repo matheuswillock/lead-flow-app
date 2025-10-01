@@ -66,12 +66,21 @@ export const leadFormSchema = z.object({
   ], { message: "Selecione uma faixa de idade" }))
     .min(1, "Selecione pelo menos uma faixa de idade"),
   hasPlan: z.enum(["sim", "nao"], { message: "Selecione uma opção" }),
+  currentHealthPlan: z.string().min(0).optional(),
   currentValue: z.string().min(1, "O valor atual é obrigatório"),
   referenceHospital: z.string().min(2, "O hospital de referência é obrigatório"),
   ongoingTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
   additionalNotes: z.string().min(0).optional(),
   meetingDate: z.string().min(0).optional(),
   responsible: z.string().min(2, "O responsável é obrigatório"),
+}).refine((data) => {
+  if (data.hasPlan === "sim" && (!data.currentHealthPlan || data.currentHealthPlan.trim() === "")) {
+    return false;
+  }
+  return true;
+}, {
+  message: "O plano de saúde atual é obrigatório quando possui plano",
+  path: ["currentHealthPlan"],
 });
 
 export type leadFormData = z.infer<typeof leadFormSchema>;

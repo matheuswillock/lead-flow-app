@@ -68,6 +68,7 @@ RANGE_61_PLUS 61+
     String cnpj "❓"
     AgeRange age 
     Boolean hasHealthPlan "❓"
+    String currentHealthPlan "❓"
     Decimal currentValue "❓"
     String referenceHospital "❓"
     String currentTreatment "❓"
@@ -98,7 +99,9 @@ RANGE_61_PLUS 61+
 
   "lead_finalized" {
     String id "🗝️"
-    DateTime finalizedAt 
+    DateTime finalizedDateAt 
+    DateTime startDateAt 
+    Int duration 
     Decimal amount 
     String notes "❓"
     DateTime createdAt 

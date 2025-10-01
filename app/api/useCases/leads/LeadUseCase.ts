@@ -38,6 +38,7 @@ export class LeadUseCase implements ILeadUseCase {
         cnpj: data.cnpj || null,
         age: data.age || [],
         hasHealthPlan: data.hasHealthPlan || null,
+        currentHealthPlan: data.currentHealthPlan || null,
         currentValue: data.currentValue || null,
         referenceHospital: data.referenceHospital || null,
         currentTreatment: data.currentTreatment || null,
@@ -210,6 +211,7 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.cnpj !== undefined) updateData.cnpj = data.cnpj || null;
       if (data.age !== undefined) updateData.age = data.age;
       if (data.hasHealthPlan !== undefined) updateData.hasHealthPlan = data.hasHealthPlan;
+      if (data.currentHealthPlan !== undefined) updateData.currentHealthPlan = data.currentHealthPlan || null;
       if (data.currentValue !== undefined) updateData.currentValue = data.currentValue;
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
       if (data.currentTreatment !== undefined) updateData.currentTreatment = data.currentTreatment || null;
@@ -274,9 +276,17 @@ export class LeadUseCase implements ILeadUseCase {
 
       // Se o status for contract_finalized, criar registro na tabela LeadFinalized
       if (status === LeadStatus.contract_finalized) {
+        const createdAt = new Date(existingLead.createdAt);
+        const finalizedAt = new Date();
+        const durationInDays = Math.floor(
+          (finalizedAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
+        );
+
         await leadFinalizedRepository.create({
           leadId: id,
-          finalizedAt: new Date(),
+          finalizedAt: finalizedAt,
+          startDateAt: finalizedAt,
+          duration: durationInDays,
           amount: Number(existingLead.currentValue || 0),
           notes: `Venda finalizada. Valor: R$ ${existingLead.currentValue || 0}`,
         });
@@ -395,6 +405,7 @@ export class LeadUseCase implements ILeadUseCase {
       cnpj: lead.cnpj,
       age: lead.age,
       hasHealthPlan: lead.hasHealthPlan,
+      currentHealthPlan: lead.currentHealthPlan,
       currentValue: lead.currentValue ? Number(lead.currentValue) : null,
       referenceHospital: lead.referenceHospital,
       currentTreatment: lead.currentTreatment,
