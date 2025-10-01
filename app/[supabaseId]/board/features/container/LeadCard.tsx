@@ -57,7 +57,7 @@ export function LeadCard({
                     <Button
                         size="sm"
                         variant="default"
-                        className="w-full"
+                        className="w-full cursor-pointer"
                         onClick={handleFinalizeClick}
                     >
                         <CheckCircle className="mr-2 h-4 w-4" />

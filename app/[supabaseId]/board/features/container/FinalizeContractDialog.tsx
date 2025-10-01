@@ -219,7 +219,7 @@ export function FinalizeContractDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading} className='cursor-pointer'>
               {isLoading ? 'Finalizando...' : 'Fechar Contrato'}
             </Button>
           </DialogFooter>

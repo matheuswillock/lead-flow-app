@@ -8,12 +8,23 @@ import { useLeads } from "@/hooks/useLeads";
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { CheckCircle } from "lucide-react";
+import { FinalizeContractDialog } from "./FinalizeContractDialog";
 
 export default function BoardDialog() {
   const { open, setOpen, selected: lead, user, userLoading, refreshLeads } = useBoardContext();
   const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
+
+  // Verificar se o lead pode ter o contrato finalizado
+  const canFinalizeContract = lead && (
+    lead.status === 'invoicePayment' || 
+    lead.status === 'dps_agreement' ||
+    lead.status === 'offerSubmission'
+  );
 
   // Função para transformar os dados do formulário para criação de lead
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
@@ -180,6 +191,37 @@ export default function BoardDialog() {
     }
   };
 
+  const handleFinalizeContract = () => {
+    setShowFinalizeDialog(true);
+  };
+
+  const handleFinalizeSubmit = async (data: any) => {
+    if (!lead) return;
+
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}/finalize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.errors?.[0] || 'Erro ao finalizar contrato');
+      }
+
+      toast.success('Contrato finalizado com sucesso!');
+      setShowFinalizeDialog(false);
+      setOpen(false);
+      await refreshLeads();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao finalizar contrato');
+      throw error;
+    }
+  };
+
   useEffect(() => {
     if (lead && open) {
       // Mapear enum AgeRange para strings do formulário
@@ -256,41 +298,67 @@ export default function BoardDialog() {
   }, [lead, open, form, user]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {lead ? "Editar Lead" : "Novo Lead"}
-          </DialogTitle>
-          <DialogDescription>
-            {lead 
-              ? "Faça as alterações necessárias nos dados do lead."
-              : "Preencha os dados para criar um novo lead."
-            }
-          </DialogDescription>
-        </DialogHeader>
-        
-        {userLoading ? (
-          <div className="flex items-center justify-center p-8">
-            <div className="text-center">
-              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
-              <p className="text-sm text-muted-foreground">Carregando dados do usuário...</p>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>
+                  {lead ? "Editar Lead" : "Novo Lead"}
+                </DialogTitle>
+                <DialogDescription>
+                  {lead 
+                    ? "Faça as alterações necessárias nos dados do lead."
+                    : "Preencha os dados para criar um novo lead."
+                  }
+                </DialogDescription>
+              </div>
+              {canFinalizeContract && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={handleFinalizeContract}
+                  className="ml-4"
+                >
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Fechar Contrato
+                </Button>
+              )}
             </div>
-          </div>
-        ) : !user ? (
-          <div className="flex items-center justify-center p-8">
-            <p className="text-sm text-destructive">Erro ao carregar dados do usuário</p>
-          </div>
-        ) : (
-          <LeadForm
-            form={form}
-            onSubmit={onSubmit}
-            isLoading={isSubmitting}
-            onCancel={() => setOpen(false)}
-            usersToAssign={user.usersAssociated || []}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
+          </DialogHeader>
+          
+          {userLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <div className="text-center">
+                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+                <p className="text-sm text-muted-foreground">Carregando dados do usuário...</p>
+              </div>
+            </div>
+          ) : !user ? (
+            <div className="flex items-center justify-center p-8">
+              <p className="text-sm text-destructive">Erro ao carregar dados do usuário</p>
+            </div>
+          ) : (
+            <LeadForm
+              form={form}
+              onSubmit={onSubmit}
+              isLoading={isSubmitting}
+              onCancel={() => setOpen(false)}
+              usersToAssign={user.usersAssociated || []}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {lead && (
+        <FinalizeContractDialog
+          open={showFinalizeDialog}
+          onOpenChange={setShowFinalizeDialog}
+          leadName={lead.name}
+          onFinalize={handleFinalizeSubmit}
+        />
+      )}
+    </>
   );
 }
