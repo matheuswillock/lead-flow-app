@@ -90,6 +90,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     return initialData;
   });
 
+  // TODO: Implementar o carregamento de todos os leads operators do manager
+  // TODO: Implementar rastreio de quantidade de leads foram agendados, convertidos, perdidos, etc.
+
   const [periodStart, setPeriodStart] = useState<string>(""); // yyyy-mm-dd
   const [periodEnd, setPeriodEnd] = useState<string>(""); // yyyy-mm-dd
   const [assignedUser, setAssignedUser] = useState<string>("todos");

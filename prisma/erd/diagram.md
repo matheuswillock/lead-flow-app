@@ -86,6 +86,25 @@ RANGE_61_PLUS 61+
     DateTime createdAt 
     }
   
+
+  "leads_schedule" {
+    String id "🗝️"
+    DateTime date 
+    String notes "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "lead_finalized" {
+    String id "🗝️"
+    DateTime finalizedAt 
+    Decimal amount 
+    String notes "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "profiles" o|--|| "UserRole" : "enum:role"
     "profiles" o|--|o "profiles" : "manager"
     "profiles" o{--}o "profiles" : "operators"
@@ -101,7 +120,11 @@ RANGE_61_PLUS 61+
     "leads" o|--|o "profiles" : "creator"
     "leads" o|--|o "profiles" : "updater"
     "leads" o{--}o "lead_activities" : "activities"
+    "leads" o{--}o "leads_schedule" : "LeadsSchedule"
+    "leads" o{--}o "lead_finalized" : "LeadFinalized"
     "lead_activities" o|--|| "ActivityType" : "enum:type"
     "lead_activities" o|--|| "leads" : "lead"
     "lead_activities" o|--|o "profiles" : "author"
+    "leads_schedule" o|--|| "leads" : "lead"
+    "lead_finalized" o|--|| "leads" : "lead"
 ```

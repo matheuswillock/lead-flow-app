@@ -80,8 +80,8 @@ model Profile {
   supabaseId     String?  @unique @db.Uuid
   fullName       String?  @db.Text
   phone          String?  @db.Text
-  profileIconId  String?  @db.Text // ID do arquivo no Supabase Storage
-  profileIconUrl String?  @db.Text // URL pública do ícone no Supabase Storage
+  profileIconId  String?  @db.Text
+  profileIconUrl String?  @db.Text
   role           UserRole @default(manager)
   managerId      String?  @db.Uuid
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
@@ -147,6 +147,8 @@ model Lead {
   @@index([updatedBy])
   @@index([meetingDate])
   @@map("leads")
+  LeadsSchedule LeadsSchedule[]
+  LeadFinalized LeadFinalized[]
 }
 
 // -----------------------------
@@ -162,11 +164,41 @@ model LeadActivity {
   createdBy String?      @db.Uuid
   createdAt DateTime     @default(now()) @db.Timestamptz(6)
 
-  // Relations
   lead   Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   author Profile? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([leadId])
   @@index([createdBy])
   @@map("lead_activities")
+}
+
+model LeadsSchedule {
+  id        String   @id @default(uuid()) @db.Uuid
+  leadId    String   @db.Uuid
+  date      DateTime @db.Timestamptz(6)
+  notes     String?  @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)  
+
+  // Relations
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("leads_schedule")
+}
+
+model LeadFinalized {
+  id         String   @id @default(uuid()) @db.Uuid
+  leadId     String   @db.Uuid
+  finalizedAt DateTime @db.Timestamptz(6)
+  amount    Decimal  @db.Decimal(12, 2)
+  notes      String?  @db.Text
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_finalized")
 }

@@ -67,6 +67,23 @@ export function SectionCardsWithContext() {
         </CardFooter>
       </Card>
 
+      {/* No-Show */}
+      <Card className="@container/card">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            No-Show
+          </CardTitle>
+          <CardDescription className="text-3xl font-bold text-foreground">
+            {metrics.Noshow}
+          </CardDescription>
+        </CardHeader>
+        <CardFooter className="pt-0">
+          <CardAction className="text-xs text-muted-foreground">
+            Leads no-show
+          </CardAction>
+        </CardFooter>
+      </Card>
+
       {/* Negociação */}
       <Card className="@container/card">
         <CardHeader className="pb-3">
