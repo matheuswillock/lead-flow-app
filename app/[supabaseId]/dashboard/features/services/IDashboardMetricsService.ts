@@ -3,6 +3,7 @@ export interface DashboardMetricsData {
   negociacao: number;
   implementacao: number;
   vendas: number;
+  NoShow: number;
   taxaConversao: number;
   receitaTotal: number;
   churnRate: number;

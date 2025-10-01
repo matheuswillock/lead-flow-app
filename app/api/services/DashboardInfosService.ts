@@ -13,6 +13,7 @@ export type DashboardMetrics = {
   taxaConversao: number; // (vendas / agendamentos) * 100
   receitaTotal: number;
   churnRate: number; // (negada operadora / vendas) * 100
+  NoShow: number; // (NoShow / agendamentos) * 100
   
   // Dados por período
   leadsPorPeriodo: {
@@ -51,6 +52,7 @@ const STATUS_GROUPS = {
   ] as LeadStatus[],
   VENDAS: ['contract_finalized'] as LeadStatus[],
   CHURN: ['operator_denied'] as LeadStatus[],
+  NO_SHOW: ['no_show'] as LeadStatus[],
 } as const;
 
 export class DashboardInfosService {
@@ -61,14 +63,12 @@ export class DashboardInfosService {
   static async getDashboardMetrics(filters: DashboardFilters): Promise<DashboardMetrics> {
     const { supabaseId, startDate, endDate } = filters;
     
-    // Converter para formato do Repository
     const repositoryFilters: MetricsFilters = {
       supabaseId,
       startDate,
       endDate,
     };
 
-    // Buscar todos os leads através do Repository
     const leads = await metricsRepository.findLeadsForMetrics(repositoryFilters);
 
     // Contar por status
@@ -84,14 +84,13 @@ export class DashboardInfosService {
       }
     });
 
-    // Calcular métricas principais
     const agendamentos = this.countByStatusGroup(statusCount, STATUS_GROUPS.AGENDAMENTOS);
     const negociacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.NEGOCIACAO);
     const implementacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.IMPLEMENTACAO);
     const vendas = this.countByStatusGroup(statusCount, STATUS_GROUPS.VENDAS);
     const churn = this.countByStatusGroup(statusCount, STATUS_GROUPS.CHURN);
+    const NoShow = this.countByStatusGroup(statusCount, STATUS_GROUPS.NO_SHOW);
 
-    // Calcular métricas derivadas
     const taxaConversao = agendamentos > 0 ? (vendas / agendamentos) * 100 : 0;
     const churnRate = vendas > 0 ? (churn / vendas) * 100 : 0;
     
@@ -113,6 +112,7 @@ export class DashboardInfosService {
       churnRate: Math.round(churnRate * 100) / 100,
       leadsPorPeriodo,
       statusCount,
+      NoShow,
     };
   }
 
