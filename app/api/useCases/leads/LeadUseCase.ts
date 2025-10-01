@@ -7,6 +7,8 @@ import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
+import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinalized/LeadFinalizedRepository";
+import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -260,7 +262,35 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
+      // Buscar o lead para obter informações
+      const existingLead = await this.leadRepository.findById(id);
+      
+      if (!existingLead) {
+        return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      // Atualizar o status do lead
       const lead = await this.leadRepository.updateStatus(id, status);
+
+      // Se o status for contract_finalized, criar registro na tabela LeadFinalized
+      if (status === LeadStatus.contract_finalized) {
+        await leadFinalizedRepository.create({
+          leadId: id,
+          finalizedAt: new Date(),
+          amount: Number(existingLead.currentValue || 0),
+          notes: `Venda finalizada. Valor: R$ ${existingLead.currentValue || 0}`,
+        });
+      }
+
+      // Se o status for scheduled, criar registro na tabela LeadsSchedule
+      if (status === LeadStatus.scheduled) {
+        await leadScheduleRepository.create({
+          leadId: id,
+          date: existingLead.meetingDate || new Date(),
+          notes: `Lead agendado`,
+        });
+      }
+
       return new Output(true, ["Status do lead atualizado com sucesso"], [], this.transformToDTO(lead));
     } catch (error) {
       console.error("Erro ao atualizar status do lead:", error);
