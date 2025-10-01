@@ -36,19 +36,19 @@ export type DashboardFilters = {
  * Status Groups para cálculo das métricas
  * 
  * Agendamentos: scheduled
- * Negociação: offerNegotiation
- * Implementação: offerSubmission + dps_agreement + invoicePayment + pending_documents
+ * Negociação: offerNegotiation + pricingRequest (Cotação)
+ * Implementação: offerSubmission (proposta) + dps_agreement (DPS) + invoicePayment (BOLETO) + pending_documents (DOCUMENTOS PENDENTES)
  * Vendas: contract_finalized
- * Churn: operator_denied
+ * Churn: operator_denied (Negada pela operadora)
  */
 const STATUS_GROUPS = {
   AGENDAMENTOS: ['scheduled'] as LeadStatus[],
-  NEGOCIACAO: ['offerNegotiation'] as LeadStatus[],
+  NEGOCIACAO: ['offerNegotiation', 'pricingRequest'] as LeadStatus[],
   IMPLEMENTACAO: [
-    'offerSubmission',
-    'dps_agreement', 
-    'invoicePayment',
-    'pending_documents'
+    'offerSubmission',    // Proposta
+    'dps_agreement',      // DPS
+    'invoicePayment',     // BOLETO
+    'pending_documents'   // DOCUMENTOS PENDENTES
   ] as LeadStatus[],
   VENDAS: ['contract_finalized'] as LeadStatus[],
   CHURN: ['operator_denied'] as LeadStatus[],

@@ -11,21 +11,58 @@ export class MetricsRepository implements IMetricsRepository {
   
   /**
    * Busca leads básicos para cálculo de métricas
+   * - Se supabaseId for de um Manager: busca leads do manager + operators dele
+   * - Se supabaseId for de um Operator: busca apenas os leads do operator
    */
   async findLeadsForMetrics(filters: MetricsFilters): Promise<LeadMetricsData[]> {
     const { supabaseId, startDate, endDate } = filters;
     
-    const whereClause = {
-      manager: {
-        supabaseId: supabaseId,
+    // Buscar o perfil para verificar se é Manager ou Operator
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { 
+        id: true, 
+        role: true,
+        operators: {
+          select: { id: true }
+        }
       },
-      ...(startDate && endDate && {
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      }),
-    };
+    });
+
+    if (!profile) {
+      throw new Error('Profile não encontrado');
+    }
+
+    // Construir where clause baseado na role
+    let whereClause: any;
+
+    if (profile.role === 'manager') {
+      // Manager: buscar leads do manager E de seus operators
+      const operatorIds = profile.operators.map(op => op.id);
+      whereClause = {
+        OR: [
+          { managerId: profile.id },
+          { assignedTo: { in: operatorIds } }
+        ],
+        ...(startDate && endDate && {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        }),
+      };
+    } else {
+      // Operator: buscar apenas leads atribuídos a ele
+      whereClause = {
+        assignedTo: profile.id,
+        ...(startDate && endDate && {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        }),
+      };
+    }
 
     return await prisma.lead.findMany({
       where: whereClause,
@@ -40,15 +77,48 @@ export class MetricsRepository implements IMetricsRepository {
 
   /**
    * Busca métricas detalhadas por status
+   * - Se supabaseId for de um Manager: busca leads do manager + operators dele
+   * - Se supabaseId for de um Operator: busca apenas os leads do operator
    */
   async getStatusMetrics(supabaseId: string): Promise<StatusMetricsData[]> {
-    const results = await prisma.lead.groupBy({
-      by: ['status'],
-      where: { 
-        manager: {
-          supabaseId: supabaseId,
+    // Buscar o perfil para verificar se é Manager ou Operator
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { 
+        id: true, 
+        role: true,
+        operators: {
+          select: { id: true }
         }
       },
+    });
+
+    if (!profile) {
+      throw new Error('Profile não encontrado');
+    }
+
+    // Construir where clause baseado na role
+    let whereClause: any;
+
+    if (profile.role === 'manager') {
+      // Manager: buscar leads do manager E de seus operators
+      const operatorIds = profile.operators.map(op => op.id);
+      whereClause = {
+        OR: [
+          { managerId: profile.id },
+          { assignedTo: { in: operatorIds } }
+        ],
+      };
+    } else {
+      // Operator: buscar apenas leads atribuídos a ele
+      whereClause = {
+        assignedTo: profile.id,
+      };
+    }
+
+    const results = await prisma.lead.groupBy({
+      by: ['status'],
+      where: whereClause,
       _count: {
         _all: true,
       },
@@ -72,19 +142,56 @@ export class MetricsRepository implements IMetricsRepository {
 
   /**
    * Busca leads agrupados por período
+   * - Se supabaseId for de um Manager: busca leads do manager + operators dele
+   * - Se supabaseId for de um Operator: busca apenas os leads do operator
    */
   async getLeadsByPeriod(supabaseId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]> {
-    const results = await prisma.lead.groupBy({
-      by: ['createdAt'],
-      where: {
-        manager: {
-          supabaseId: supabaseId,
-        },
+    // Buscar o perfil para verificar se é Manager ou Operator
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { 
+        id: true, 
+        role: true,
+        operators: {
+          select: { id: true }
+        }
+      },
+    });
+
+    if (!profile) {
+      throw new Error('Profile não encontrado');
+    }
+
+    // Construir where clause baseado na role
+    let whereClause: any;
+
+    if (profile.role === 'manager') {
+      // Manager: buscar leads do manager E de seus operators
+      const operatorIds = profile.operators.map(op => op.id);
+      whereClause = {
+        OR: [
+          { managerId: profile.id },
+          { assignedTo: { in: operatorIds } }
+        ],
         createdAt: {
           gte: startDate,
           lte: endDate,
         },
-      },
+      };
+    } else {
+      // Operator: buscar apenas leads atribuídos a ele
+      whereClause = {
+        assignedTo: profile.id,
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      };
+    }
+
+    const results = await prisma.lead.groupBy({
+      by: ['createdAt'],
+      where: whereClause,
       _count: {
         _all: true,
       },
