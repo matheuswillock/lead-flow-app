@@ -33,24 +33,24 @@ export type DashboardFilters = {
 };
 
 /**
- * Status Groups para cálculo das métricas
+ * Status Groups for metrics calculation
  * 
- * Agendamentos: scheduled
- * Negociação: offerNegotiation + pricingRequest (Cotação)
- * Implementação: offerSubmission (proposta) + dps_agreement (DPS) + invoicePayment (BOLETO) + pending_documents (DOCUMENTOS PENDENTES)
- * Vendas: contract_finalized
- * Churn: operator_denied (Negada pela operadora)
+ * Scheduled: scheduled
+ * Negotiation: offerNegotiation + pricingRequest (Quote)
+ * Implementation: offerSubmission (Proposal) + dps_agreement (DPS) + invoicePayment (Invoice) + pending_documents (Pending Documents)
+ * Sales: contract_finalized
+ * Churn: operator_denied (Denied by operator)
  */
 const STATUS_GROUPS = {
-  AGENDAMENTOS: ['scheduled'] as LeadStatus[],
-  NEGOCIACAO: ['offerNegotiation', 'pricingRequest'] as LeadStatus[],
-  IMPLEMENTACAO: [
-    'offerSubmission',    // Proposta
+  SCHEDULED: ['scheduled'] as LeadStatus[],
+  NEGOTIATION: ['offerNegotiation', 'pricingRequest'] as LeadStatus[],
+  IMPLEMENTATION: [
+    'offerSubmission',    // Proposal
     'dps_agreement',      // DPS
-    'invoicePayment',     // BOLETO
-    'pending_documents'   // DOCUMENTOS PENDENTES
+    'invoicePayment',     // Invoice
+    'pending_documents'   // Pending Documents
   ] as LeadStatus[],
-  VENDAS: ['contract_finalized'] as LeadStatus[],
+  SALES: ['contract_finalized'] as LeadStatus[],
   CHURN: ['operator_denied'] as LeadStatus[],
   NO_SHOW: ['no_show'] as LeadStatus[],
 } as const;
@@ -84,10 +84,10 @@ export class DashboardInfosService {
       }
     });
 
-    const agendamentos = this.countByStatusGroup(statusCount, STATUS_GROUPS.AGENDAMENTOS);
-    const negociacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.NEGOCIACAO);
-    const implementacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.IMPLEMENTACAO);
-    const vendas = this.countByStatusGroup(statusCount, STATUS_GROUPS.VENDAS);
+    const agendamentos = this.countByStatusGroup(statusCount, STATUS_GROUPS.SCHEDULED);
+    const negociacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.NEGOTIATION);
+    const implementacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.IMPLEMENTATION);
+    const vendas = this.countByStatusGroup(statusCount, STATUS_GROUPS.SALES);
     const churn = this.countByStatusGroup(statusCount, STATUS_GROUPS.CHURN);
     const NoShow = this.countByStatusGroup(statusCount, STATUS_GROUPS.NO_SHOW);
 
