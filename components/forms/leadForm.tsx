@@ -423,6 +423,7 @@ export function LeadForm({
                         <FormControl>
                             <Input
                                 {...field}
+                                value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
                                 type="date"
                                 disabled={isLoading || isUpdating}
                             />

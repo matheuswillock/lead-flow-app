@@ -148,6 +148,19 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const result = await boardService.fetchLeads(supabaseId, 'manager'); // Assumindo que é um manager por enquanto
 
       if (result.isValid && result.result) {
+        console.log('[BoardContext] Leads fetched from API:', result.result.length, 'leads');
+        
+        // Log dos meetingDates para debug
+        const leadsWithMeetingDate = result.result.filter((l: Lead) => l.meetingDate);
+        if (leadsWithMeetingDate.length > 0) {
+          console.log('[BoardContext] Leads with meetingDate:', leadsWithMeetingDate.map((l: Lead) => ({
+            id: l.id,
+            name: l.name,
+            meetingDate: l.meetingDate,
+            status: l.status
+          })));
+        }
+        
         // Organizar leads por status (coluna)
         const leadsGroupedByStatus: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
         
@@ -164,6 +177,43 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         });
         
         setData(leadsGroupedByStatus);
+
+        // Se há um lead selecionado, atualizar com os novos dados
+        if (selected && selected.id) {
+          console.log('[BoardContext] Checking if selected lead needs update...', {
+            selectedId: selected.id,
+            currentMeetingDate: selected.meetingDate
+          });
+
+          const updatedLead = result.result.find((l: Lead) => l.id === selected.id);
+          if (updatedLead) {
+            console.log('[BoardContext] Found updated lead in API response:', {
+              newMeetingDate: updatedLead.meetingDate,
+              newStatus: updatedLead.status
+            });
+
+            const hasChanges = 
+              updatedLead.meetingDate !== selected.meetingDate ||
+              updatedLead.status !== selected.status ||
+              updatedLead.name !== selected.name ||
+              updatedLead.email !== selected.email ||
+              updatedLead.phone !== selected.phone;
+
+            console.log('[BoardContext] Has changes?', hasChanges, {
+              meetingDateChanged: updatedLead.meetingDate !== selected.meetingDate,
+              statusChanged: updatedLead.status !== selected.status
+            });
+
+            if (hasChanges) {
+              console.log('[BoardContext] ✅ Updating selected lead with fresh data');
+              setSelected(updatedLead);
+            } else {
+              console.log('[BoardContext] ℹ️ No changes detected, keeping current selected');
+            }
+          } else {
+            console.log('[BoardContext] ⚠️ Selected lead not found in API response');
+          }
+        }
       } else {
         console.error('Erro ao carregar leads:', result.errorMessages);
         setErrors({ api: result.errorMessages?.join(', ') || 'Erro desconhecido' });
@@ -182,7 +232,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     loadLeads();
   }, [supabaseId]);
 
-    let dragStarted = false
+  let dragStarted = false
     const handleCardMouseDown = () => { dragStarted = false }
 
     const handleCardDragStart = (e: React.DragEvent, leadId: string, from: ColumnKey) => {

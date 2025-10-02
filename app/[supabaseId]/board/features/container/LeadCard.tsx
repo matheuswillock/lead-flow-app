@@ -4,7 +4,7 @@ import { formatDate } from "../context/BoardContext";
 import { ColumnKey } from "../context/BoardTypes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, Calendar } from "lucide-react";
 
 interface LeadCardProps {
     lead: LeadResponseDTO;
@@ -13,6 +13,7 @@ interface LeadCardProps {
     handleCardDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
     handleCardClick: (lead: LeadResponseDTO) => void;
     onFinalizeContract?: (lead: LeadResponseDTO) => void;
+    onScheduleMeeting?: (lead: LeadResponseDTO) => void;
 }
 
 export function LeadCard({
@@ -22,16 +23,27 @@ export function LeadCard({
     handleCardDragStart,
     handleCardClick,
     onFinalizeContract,
+    onScheduleMeeting,
 }: LeadCardProps) {
     // Verifica se o lead está em uma coluna que permite finalizar contrato
     const canFinalizeContract = columnKey === 'invoicePayment' || 
                                 columnKey === 'dps_agreement' ||
                                 columnKey === 'offerSubmission';
 
+    // Verifica se o lead está na coluna de nova oportunidade (pode agendar)
+    const canScheduleMeeting = columnKey === 'new_opportunity';
+
     const handleFinalizeClick = (e: React.MouseEvent) => {
         e.stopPropagation(); // Evita que o card seja clicado
         if (onFinalizeContract) {
             onFinalizeContract(lead);
+        }
+    };
+
+    const handleScheduleClick = (e: React.MouseEvent) => {
+        e.stopPropagation(); // Evita que o card seja clicado
+        if (onScheduleMeeting) {
+            onScheduleMeeting(lead);
         }
     };
 
@@ -53,6 +65,17 @@ export function LeadCard({
                 </div>
             </CardHeader>
             <CardContent>
+                {canScheduleMeeting && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full cursor-pointer"
+                        onClick={handleScheduleClick}
+                    >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        Agendar Reunião
+                    </Button>
+                )}
                 {canFinalizeContract && (
                     <Button
                         size="sm"

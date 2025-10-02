@@ -346,6 +346,8 @@ export class MetricsRepository implements IMetricsRepository {
         leadId: true,
         amount: true,
         finalizedDateAt: true,
+        startDateAt: true,
+        duration: true,
       },
     });
   }

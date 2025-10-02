@@ -6,6 +6,11 @@ export interface CreateLeadScheduleDTO {
   notes?: string;
 }
 
+export interface UpdateLeadScheduleDTO {
+  date?: Date;
+  notes?: string;
+}
+
 export interface ILeadScheduleRepository {
   /**
    * Cria um registro de agendamento
@@ -21,4 +26,14 @@ export interface ILeadScheduleRepository {
    * Busca o último registro de agendamento de um lead
    */
   findLatestByLeadId(leadId: string): Promise<LeadsSchedule | null>;
+
+  /**
+   * Atualiza um agendamento existente
+   */
+  update(id: string, data: UpdateLeadScheduleDTO): Promise<LeadsSchedule>;
+
+  /**
+   * Deleta um agendamento
+   */
+  delete(id: string): Promise<void>;
 }

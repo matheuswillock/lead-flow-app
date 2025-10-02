@@ -1,7 +1,8 @@
 import { prisma } from "../../prisma";
 import type { 
   ILeadScheduleRepository, 
-  CreateLeadScheduleDTO 
+  CreateLeadScheduleDTO,
+  UpdateLeadScheduleDTO
 } from "./ILeadScheduleRepository";
 import { LeadsSchedule } from "@prisma/client";
 
@@ -45,6 +46,25 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
       orderBy: {
         date: 'desc',
       },
+    });
+  }
+
+  /**
+   * Atualiza um agendamento existente
+   */
+  async update(id: string, data: UpdateLeadScheduleDTO): Promise<LeadsSchedule> {
+    return await prisma.leadsSchedule.update({
+      where: { id },
+      data,
+    });
+  }
+
+  /**
+   * Deleta um agendamento
+   */
+  async delete(id: string): Promise<void> {
+    await prisma.leadsSchedule.delete({
+      where: { id },
     });
   }
 }

@@ -294,11 +294,20 @@ export class LeadUseCase implements ILeadUseCase {
 
       // Se o status for scheduled, criar registro na tabela LeadsSchedule
       if (status === LeadStatus.scheduled) {
+        const meetingDate = existingLead.meetingDate || new Date();
+        
         await leadScheduleRepository.create({
           leadId: id,
-          date: existingLead.meetingDate || new Date(),
+          date: meetingDate,
           notes: `Lead agendado`,
         });
+
+        // Se não tinha meetingDate, atualizar o lead com a data atual
+        if (!existingLead.meetingDate) {
+          await this.leadRepository.update(id, {
+            meetingDate,
+          });
+        }
       }
 
       return new Output(true, ["Status do lead atualizado com sucesso"], [], this.transformToDTO(lead));

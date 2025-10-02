@@ -8,18 +8,25 @@ import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
 import BoardDialog from "./BoardDialog";
 import { FinalizeContractDialog } from "./FinalizeContractDialog";
+import { ScheduleMeetingDialog } from "./ScheduleMeetingDialog";
 import useBoardContext from "../context/BoardHook";
 import { Lead } from "../context/BoardTypes";
 import { toast } from "sonner";
 
 export function BoardContainer() {
-  const { openNewLeadDialog, finalizeContract } = useBoardContext();
+  const { openNewLeadDialog, finalizeContract, refreshLeads } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   const handleFinalizeContract = (lead: Lead) => {
     setSelectedLead(lead);
     setShowFinalizeDialog(true);
+  };
+
+  const handleScheduleMeeting = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowScheduleDialog(true);
   };
 
   const handleFinalizeSubmit = async (data: any) => {
@@ -36,12 +43,20 @@ export function BoardContainer() {
     }
   };
 
+  const handleScheduleSuccess = async () => {
+    await refreshLeads();
+    setSelectedLead(null);
+  };
+
   return (
     <div className="flex h-[calc(100vh-2rem)] w-full flex-col gap-3 p-4">
 
       <BoardHeader />
 
-      <BoardColumns onFinalizeContract={handleFinalizeContract} />
+      <BoardColumns 
+        onFinalizeContract={handleFinalizeContract}
+        onScheduleMeeting={handleScheduleMeeting}
+      />
 
       <BoardFooter />
 
@@ -56,12 +71,21 @@ export function BoardContainer() {
       <BoardDialog />
 
       {selectedLead && (
-        <FinalizeContractDialog
-          open={showFinalizeDialog}
-          onOpenChange={setShowFinalizeDialog}
-          leadName={selectedLead.name}
-          onFinalize={handleFinalizeSubmit}
-        />
+        <>
+          <FinalizeContractDialog
+            open={showFinalizeDialog}
+            onOpenChange={setShowFinalizeDialog}
+            leadName={selectedLead.name}
+            onFinalize={handleFinalizeSubmit}
+          />
+          
+          <ScheduleMeetingDialog
+            open={showScheduleDialog}
+            onOpenChange={setShowScheduleDialog}
+            lead={selectedLead}
+            onScheduleSuccess={handleScheduleSuccess}
+          />
+        </>
       )}
     </div>
   );
