@@ -45,6 +45,14 @@ export function ScheduleMeetingDialog({
       return;
     }
 
+    // 🚀 OPTIMISTIC UPDATE - Fechar dialog e mostrar loading toast imediatamente
+    const loadingToast = toast.loading("Agendando reunião...");
+    onOpenChange(false);
+    
+    // Chamar onScheduleSuccess imediatamente para UI responsiva
+    // Isso vai disparar refreshLeads() que buscará os dados atualizados
+    onScheduleSuccess();
+
     try {
       setIsSubmitting(true);
 
@@ -83,16 +91,32 @@ export function ScheduleMeetingDialog({
         console.warn("Erro ao atualizar status do lead");
       }
 
-      toast.success("Reunião agendada com sucesso!");
-      onScheduleSuccess();
-      onOpenChange(false);
+      // ✅ Sucesso - Atualizar loading toast para success
+      toast.success(`Reunião agendada para ${meetingDate.toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit"
+      })}`, {
+        id: loadingToast,
+        duration: 4000,
+      });
       
       // Limpar form
       setMeetingDate(undefined);
       setNotes("");
     } catch (error) {
       console.error("Erro ao agendar reunião:", error);
-      toast.error(error instanceof Error ? error.message : "Erro ao agendar reunião");
+      
+      // ❌ Erro - Atualizar loading toast para error
+      toast.error(error instanceof Error ? error.message : "Erro ao agendar reunião", {
+        id: loadingToast,
+        duration: 5000,
+      });
+      
+      // Reabrir dialog em caso de erro para usuário tentar novamente
+      onOpenChange(true);
     } finally {
       setIsSubmitting(false);
     }

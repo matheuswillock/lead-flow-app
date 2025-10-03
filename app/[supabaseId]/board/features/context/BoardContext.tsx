@@ -1,4 +1,5 @@
 import { createContext, ReactNode, useMemo, useState, useEffect } from "react";
+import { toast } from "sonner";
 import { IBoardService } from "../services/IBoardServices";
 import { Lead, ColumnKey } from "./BoardTypes";
 import { createBoardService } from "../services/BoardService";
@@ -206,6 +207,21 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
             if (hasChanges) {
               console.log('[BoardContext] ✅ Updating selected lead with fresh data');
+              
+              // 🎉 Notificar usuário sobre mudanças específicas
+              if (updatedLead.meetingDate !== selected.meetingDate && updatedLead.meetingDate) {
+                const meetingDateFormatted = new Date(updatedLead.meetingDate).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+                toast.info(`📅 Data de reunião atualizada: ${meetingDateFormatted}`, {
+                  duration: 3000,
+                });
+              }
+              
               setSelected(updatedLead);
             } else {
               console.log('[BoardContext] ℹ️ No changes detected, keeping current selected');
@@ -289,6 +305,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
       // Função para atualizar status na API
       const updateLeadStatusInAPI = async (leadId: string, newStatus: ColumnKey) => {
+        // 🚀 Toast de loading para feedback imediato
+        const loadingToast = toast.loading('Atualizando status do lead...');
+        
         try {
           const response = await fetch(`/api/v1/leads/${leadId}/status`, {
             method: 'PUT',
@@ -300,12 +319,41 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           });
 
           if (!response.ok) {
-            console.error('Erro ao atualizar status do lead');
-            // TODO: Implementar rollback do estado local em caso de erro
+            throw new Error('Erro ao atualizar status do lead');
           }
+          
+          // ✅ Sucesso
+          const statusLabels: Record<ColumnKey, string> = {
+            'new_opportunity': 'Nova Oportunidade',
+            'scheduled': 'Agendado',
+            'no_show': 'Não Compareceu',
+            'pricingRequest': 'Solicitação de Preço',
+            'offerNegotiation': 'Negociação de Proposta',
+            'pending_documents': 'Documentos Pendentes',
+            'offerSubmission': 'Proposta Enviada',
+            'dps_agreement': 'Acordo DPS',
+            'invoicePayment': 'Pagamento de Fatura',
+            'disqualified': 'Desqualificado',
+            'opportunityLost': 'Oportunidade Perdida',
+            'operator_denied': 'Operadora Negou',
+            'contract_finalized': 'Contrato Finalizado'
+          };
+          
+          toast.success(`Status atualizado para: ${statusLabels[newStatus] || newStatus}`, {
+            id: loadingToast,
+            duration: 3000,
+          });
         } catch (error) {
           console.error('Erro ao atualizar status do lead:', error);
-          // TODO: Implementar rollback do estado local em caso de erro
+          
+          // ❌ Erro - Reverter mudança visual
+          toast.error('Erro ao atualizar status. Recarregando...', {
+            id: loadingToast,
+            duration: 4000,
+          });
+          
+          // Recarregar dados para reverter UI
+          await loadLeads();
         }
       };
 

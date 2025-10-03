@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
@@ -55,26 +56,35 @@ export function FinalizeContractDialog({
 
     // Validações
     if (!amount || parseFloat(amount) <= 0) {
+      toast.error('Por favor, insira um valor válido para o contrato.');
       setError('Por favor, insira um valor válido para o contrato.');
       return;
     }
 
     if (!startDate) {
+      toast.error('Por favor, selecione a data de início do contrato.');
       setError('Por favor, selecione a data de início do contrato.');
       return;
     }
 
     if (!finalizedDate) {
+      toast.error('Por favor, selecione a data de finalização do contrato.');
       setError('Por favor, selecione a data de finalização do contrato.');
       return;
     }
 
     if (finalizedDate < startDate) {
+      toast.error('A data de finalização não pode ser anterior à data de início.');
       setError('A data de finalização não pode ser anterior à data de início.');
       return;
     }
 
+    // 🚀 OPTIMISTIC UPDATE - Loading toast
+    const loadingToast = toast.loading('Finalizando contrato...');
     setIsLoading(true);
+    
+    // Fechar dialog imediatamente para UX mais rápida
+    onOpenChange(false);
 
     try {
       await onFinalize({
@@ -84,14 +94,33 @@ export function FinalizeContractDialog({
         notes: notes.trim() || undefined,
       });
 
+      // ✅ Sucesso - Toast detalhado com informações do contrato
+      toast.success(`Contrato finalizado com sucesso! Valor: R$ ${parseFloat(amount).toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      })}`, {
+        id: loadingToast,
+        duration: 5000,
+      });
+
       // Limpar formulário após sucesso
       setAmount('');
       setStartDate(undefined);
       setFinalizedDate(undefined);
       setNotes('');
-      onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao finalizar contrato');
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao finalizar contrato';
+      
+      // ❌ Erro - Atualizar loading toast
+      toast.error(errorMessage, {
+        id: loadingToast,
+        duration: 5000,
+      });
+      
+      setError(errorMessage);
+      
+      // Reabrir dialog em caso de erro
+      onOpenChange(true);
     } finally {
       setIsLoading(false);
     }
