@@ -68,6 +68,24 @@ enum AgeRange {
   RANGE_61_PLUS @map("61+")
 }
 
+enum SubscriptionStatus {
+  trial // Período de teste (7-30 dias)
+  active // Ativa e paga
+  past_due // Pagamento atrasado (ainda com acesso)
+  suspended // Suspensa por falta de pagamento
+  canceled // Cancelada pelo usuário
+
+  @@map("subscription_status")
+}
+
+enum SubscriptionPlan {
+  free_trial // Trial gratuito
+  manager_base // R$ 59,90 - Somente Manager
+  with_operators // R$ 59,90 + (N × R$ 19,90)
+
+  @@map("subscription_plan")
+}
+
 // -----------------------------
 // PROFILES (public.profiles)
 // - Primary key is also a FK to auth.users.id (1:1)
@@ -84,8 +102,19 @@ model Profile {
   profileIconUrl String?  @db.Text
   role           UserRole @default(manager)
   managerId      String?  @db.Uuid
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+
+  // 💳 Campos de Assinatura Asaas
+  asaasCustomerId       String?             @db.Text // ID do cliente no Asaas
+  subscriptionId        String?             @db.Text // ID da assinatura no Asaas
+  subscriptionStatus    SubscriptionStatus? // Status da assinatura
+  subscriptionPlan      SubscriptionPlan? // Plano atual
+  operatorCount         Int                 @default(0) // Quantidade de operadores ativos
+  subscriptionStartDate DateTime?           @db.Timestamptz(6)
+  subscriptionEndDate   DateTime?           @db.Timestamptz(6)
+  trialEndDate          DateTime?           @db.Timestamptz(6) // Data fim do trial
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   // Relations
   manager   Profile?  @relation("ManagerOperators", fields: [managerId], references: [id], onDelete: Restrict)

@@ -45,6 +45,24 @@ RANGE_46_60 46-60
 RANGE_61_PLUS 61+
         }
     
+
+
+        subscription_status {
+            trial trial
+active active
+past_due past_due
+suspended suspended
+canceled canceled
+        }
+    
+
+
+        subscription_plan {
+            free_trial free_trial
+manager_base manager_base
+with_operators with_operators
+        }
+    
   "profiles" {
     String id "🗝️"
     String email 
@@ -54,6 +72,14 @@ RANGE_61_PLUS 61+
     String profileIconId "❓"
     String profileIconUrl "❓"
     UserRole role 
+    String asaasCustomerId "❓"
+    String subscriptionId "❓"
+    SubscriptionStatus subscriptionStatus "❓"
+    SubscriptionPlan subscriptionPlan "❓"
+    Int operatorCount 
+    DateTime subscriptionStartDate "❓"
+    DateTime subscriptionEndDate "❓"
+    DateTime trialEndDate "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -109,6 +135,8 @@ RANGE_61_PLUS 61+
     }
   
     "profiles" o|--|| "UserRole" : "enum:role"
+    "profiles" o|--|o "SubscriptionStatus" : "enum:subscriptionStatus"
+    "profiles" o|--|o "SubscriptionPlan" : "enum:subscriptionPlan"
     "profiles" o|--|o "profiles" : "manager"
     "profiles" o{--}o "profiles" : "operators"
     "profiles" o{--}o "leads" : "leadsAsManager"
