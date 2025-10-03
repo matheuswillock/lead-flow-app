@@ -72,55 +72,60 @@ export function DateTimePicker({
   }
 
   return (
-    <div className={cn("grid gap-2", className)}>
+    <div className={cn("grid gap-1", className)}>
       {label && (
-        <Label>
+        <Label className="block text-sm font-medium mb-1 px-1">
           {label}
           {required && <span className="text-destructive ml-1">*</span>}
         </Label>
       )}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                "w-full justify-start text-left font-normal sm:w-[240px]",
-                !selectedDate && "text-muted-foreground"
-              )}
-              disabled={disabled}
-            >
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {selectedDate ? (
-                format(selectedDate, "PPP", { locale: ptBR })
-              ) : (
-                <span>Selecione a data</span>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={handleDateSelect}
-              disabled={
-                disablePastDates
-                  ? (date: Date) =>
-                      date < new Date(new Date().setHours(0, 0, 0, 0))
-                  : undefined
-              }
-              initialFocus
-              locale={ptBR}
-            />
-          </PopoverContent>
-        </Popover>
+      <div className="flex flex-col sm:flex-row sm:gap-4">
+        {/* Date Picker */}
+        <div className="flex flex-col">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                id="date-picker"
+                variant="outline"
+                className={cn(
+                  "h-9 w-full sm:w-[180px] justify-start text-left font-normal",
+                  !selectedDate && "text-muted-foreground"
+                )}
+                disabled={disabled}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {selectedDate ? (
+                  format(selectedDate, "dd/MM/yyyy", { locale: ptBR })
+                ) : (
+                  <span>Selecione</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto overflow-hidden p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={handleDateSelect}
+                disabled={
+                  disablePastDates
+                    ? (date: Date) =>
+                        date < new Date(new Date().setHours(0, 0, 0, 0))
+                    : undefined
+                }
+                initialFocus
+                locale={ptBR}
+                captionLayout="dropdown"
+                fromYear={2020}
+                toYear={2030}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
 
-        <div className="flex items-center gap-2">
-          <Label htmlFor="time" className="whitespace-nowrap">
-            Horário
-          </Label>
+        {/* Time Picker */}
+        <div className="flex flex-col gap-2">
           <input
-            id="time"
+            id="time-picker"
             type="time"
             value={time}
             onChange={(e) => handleTimeChange(e.target.value)}
@@ -129,7 +134,8 @@ export function DateTimePicker({
               "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors",
               "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
               "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-              "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+              "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+              "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
             )}
             required={required}
           />

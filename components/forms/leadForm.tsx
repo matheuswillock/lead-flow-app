@@ -9,6 +9,7 @@ import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 
 const formatCNPJ = (value: string): string => {
@@ -414,88 +415,93 @@ export function LeadForm({
                 )}
             />
 
-            <FormField
-                control={form.control}
-                name="meetingDate"
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">Data Reunião</FormLabel>
-                        <FormControl>
-                            <Input
-                                {...field}
-                                value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                                type="date"
-                                disabled={isLoading || isUpdating}
-                            />
-                        </FormControl>
-                    </FormItem>
-                )}
-            />
-
-            <FormField
-                control={form.control}
-                name="responsible"
-                render={({ field }) => {
-                    const selectedValue = field.value || (usersToAssign?.[0]?.id ?? "");
-                    const selectedUser = usersToAssign?.find(user => user.id === selectedValue);
-                    const isOnlyOneUser = usersToAssign?.length === 1;
-                    useEffect(() => {
-                        if (!field.value && usersToAssign?.length > 0) {
-                            field.onChange(usersToAssign[0].id);
-                        }
-                    }, [usersToAssign, field.value, field.onChange]);
-
-                    return (
-                        <FormItem>
-                            <FormLabel className="block text-sm font-medium mb-1">
-                                Responsável{isOnlyOneUser && " (único disponível)"}
-                            </FormLabel>
+            {/* Data, Horário e Responsável em uma linha no desktop */}
+            <div className="sm:col-span-2 flex flex-col sm:flex-row gap-4">
+                <FormField
+                    control={form.control}
+                    name="meetingDate"
+                    render={({ field }) => (
+                        <FormItem className="sm:flex-shrink-0">
                             <FormControl>
-                                <Select
-                                    value={selectedValue}
-                                    onValueChange={field.onChange}
+                                <DateTimePicker
+                                    date={field.value ? new Date(field.value) : undefined}
+                                    onDateChange={(date) => {
+                                        field.onChange(date ? date.toISOString() : '');
+                                    }}
+                                    label="Data e Horário da Reunião"
                                     disabled={isLoading || isUpdating}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Selecione um responsável">
-                                            {selectedUser && (
-                                                <div className="flex items-center gap-2">
-                                                    <Avatar className="h-5 w-5">
-                                                        <AvatarImage 
-                                                            src={selectedUser.avatarImageUrl || undefined} 
-                                                        />
-                                                        <AvatarFallback className="text-xs">
-                                                            {selectedUser.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                    <span className="truncate">{selectedUser.name}</span>
-                                                </div>
-                                            )}
-                                        </SelectValue>
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {usersToAssign?.map(user => (
-                                            <SelectItem key={user.id} value={user.id}>
-                                                <div className="flex items-center gap-2">
-                                                    <Avatar className="h-6 w-6">
-                                                        <AvatarImage 
-                                                            src={user.avatarImageUrl || undefined} 
-                                                        />
-                                                        <AvatarFallback className="text-xs">
-                                                            {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                    <span>{user.name}</span>
-                                                </div>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                    disablePastDates={true}
+                                />
                             </FormControl>
                         </FormItem>
-                    );
-                }}
-            />
+                    )}
+                />
+
+                <FormField
+                    control={form.control}
+                    name="responsible"
+                    render={({ field }) => {
+                        const selectedValue = field.value || (usersToAssign?.[0]?.id ?? "");
+                        const selectedUser = usersToAssign?.find(user => user.id === selectedValue);
+                        const isOnlyOneUser = usersToAssign?.length === 1;
+                        useEffect(() => {
+                            if (!field.value && usersToAssign?.length > 0) {
+                                field.onChange(usersToAssign[0].id);
+                            }
+                        }, [usersToAssign, field.value, field.onChange]);
+
+                        return (
+                            <FormItem className="flex flex-col sm:flex-1">
+                                <FormLabel className="text-sm font-medium">
+                                    Responsável{isOnlyOneUser && " (único disponível)"}
+                                </FormLabel>
+                                <FormControl>
+                                    <Select
+                                        value={selectedValue}
+                                        onValueChange={field.onChange}
+                                        disabled={isLoading || isUpdating}
+                                    >
+                                        <SelectTrigger className="h-9">
+                                            <SelectValue placeholder="Selecione um responsável">
+                                                {selectedUser && (
+                                                    <div className="flex items-center gap-2">
+                                                        <Avatar className="h-5 w-5">
+                                                            <AvatarImage 
+                                                                src={selectedUser.avatarImageUrl || undefined} 
+                                                            />
+                                                            <AvatarFallback className="text-xs">
+                                                                {selectedUser.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                                                            </AvatarFallback>
+                                                        </Avatar>
+                                                        <span className="truncate">{selectedUser.name}</span>
+                                                    </div>
+                                                )}
+                                            </SelectValue>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {usersToAssign?.map(user => (
+                                                <SelectItem key={user.id} value={user.id}>
+                                                    <div className="flex items-center gap-2">
+                                                        <Avatar className="h-6 w-6">
+                                                            <AvatarImage 
+                                                                src={user.avatarImageUrl || undefined} 
+                                                            />
+                                                            <AvatarFallback className="text-xs">
+                                                                {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                                                            </AvatarFallback>
+                                                        </Avatar>
+                                                        <span>{user.name}</span>
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </FormControl>
+                            </FormItem>
+                        );
+                    }}
+                />
+            </div>
 
             <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
                 <Button 
