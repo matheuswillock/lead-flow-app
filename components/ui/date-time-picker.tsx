@@ -82,9 +82,6 @@ export function DateTimePicker({
       <div className="flex flex-col sm:flex-row sm:gap-4">
         {/* Date Picker */}
         <div className="flex flex-col">
-          {/* <Label htmlFor="date-picker" className="text-sm font-medium">
-            Data
-          </Label> */}
           <Popover>
             <PopoverTrigger asChild>
               <Button
@@ -127,9 +124,6 @@ export function DateTimePicker({
 
         {/* Time Picker */}
         <div className="flex flex-col gap-2">
-          {/* <Label htmlFor="time-picker" className="text-sm font-medium">
-            Horário
-          </Label> */}
           <input
             id="time-picker"
             type="time"
@@ -137,10 +131,11 @@ export function DateTimePicker({
             onChange={(e) => handleTimeChange(e.target.value)}
             disabled={disabled}
             className={cn(
-              "flex h-9 w-full sm:w-[140px] rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors",
+              "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors",
               "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
               "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-              "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+              "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+              "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
             )}
             required={required}
           />
