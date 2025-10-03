@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Filter, ScrollText, User, Plus } from "lucide-react";
 import useBoardContext from "../context/BoardHook";
 
@@ -14,7 +15,7 @@ export default function BoardHeader() {
         setPeriodEnd, 
         assignedUser, 
         setAssignedUser, 
-        responsaveis,
+        taskOwners: responsaveis,
         user,
         userLoading,
         data,
@@ -73,7 +74,15 @@ export default function BoardHeader() {
               <SelectItem value="todos">Todos os responsáveis</SelectItem>
               {responsaveis.map((r) => (
                 <SelectItem key={r.id} value={r.id}>
-                  {r.name}
+                  <div className="flex items-center gap-2">
+                    <Avatar className="size-6">
+                      <AvatarImage src={r.avatarUrl || undefined} alt={r.name} />
+                      <AvatarFallback className="text-xs">
+                        {r.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span>{r.name}</span>
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>
