@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Filter, ScrollText, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Filter, ScrollText, User, Plus } from "lucide-react";
 import useBoardContext from "../context/BoardHook";
 
 export default function BoardHeader() {
@@ -17,7 +18,8 @@ export default function BoardHeader() {
         user,
         userLoading,
         data,
-        isLoading
+        isLoading,
+        openNewLeadDialog
     } = useBoardContext();
 
     // Calcular total de leads
@@ -76,6 +78,14 @@ export default function BoardHeader() {
               ))}
             </SelectContent>
           </Select>
+
+          <Button 
+            onClick={openNewLeadDialog}
+            className="ml-2 cursor-pointer"
+          >
+            <Plus className="mr-2 size-4" />
+            Adicionar novo lead
+          </Button>
         </div>
       </div>
     );

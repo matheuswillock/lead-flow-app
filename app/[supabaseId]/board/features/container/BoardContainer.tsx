@@ -1,8 +1,6 @@
 "use client"
 
 import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
 import BoardHeader from "./BoardHeader";
 import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
@@ -14,7 +12,7 @@ import { Lead } from "../context/BoardTypes";
 import { toast } from "sonner";
 
 export function BoardContainer() {
-  const { openNewLeadDialog, finalizeContract, refreshLeads } = useBoardContext();
+  const { finalizeContract, refreshLeads } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -59,14 +57,6 @@ export function BoardContainer() {
       />
 
       <BoardFooter />
-
-      <Button 
-        size="lg" 
-        className="w-96 h-14 self-center justify-center text-2xl rounded-4xl mt-12 cursor-pointer"
-        onClick={openNewLeadDialog}
-      >
-        <Plus className="mr-1 size-4" /> Adicionar novo lead
-      </Button>
 
       <BoardDialog />
 
