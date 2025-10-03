@@ -17,6 +17,8 @@ import {
 import {
   ChartConfig,
   ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart'
@@ -199,6 +201,7 @@ export function ChartAreaInteractive() {
                 />
               }
             />
+            <ChartLegend content={<ChartLegendContent />} />
             <Area
               dataKey="conversoes"
               type="natural"
