@@ -147,7 +147,10 @@ export function DashboardMetrics({ supabaseId }: DashboardMetricsProps) {
             {metrics.leadsPorPeriodo.slice(0, 10).map((item, index) => (
               <div key={index} className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">{item.periodo}</span>
-                <span className="font-medium">{item.total}</span>
+                <div className="flex gap-4">
+                  <span className="font-medium text-blue-600">{item.leads} leads</span>
+                  <span className="font-medium text-green-600">{item.conversoes} conversões</span>
+                </div>
               </div>
             ))}
           </div>

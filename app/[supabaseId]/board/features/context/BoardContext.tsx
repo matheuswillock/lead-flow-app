@@ -150,12 +150,12 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const result = await boardService.fetchLeads(supabaseId, 'manager'); // Assumindo que é um manager por enquanto
 
       if (result.isValid && result.result) {
-        console.log('[BoardContext] Leads fetched from API:', result.result.length, 'leads');
+        console.info('[BoardContext] Leads fetched from API:', result.result.length, 'leads');
         
         // Log dos meetingDates para debug
         const leadsWithMeetingDate = result.result.filter((l: Lead) => l.meetingDate);
         if (leadsWithMeetingDate.length > 0) {
-          console.log('[BoardContext] Leads with meetingDate:', leadsWithMeetingDate.map((l: Lead) => ({
+          console.info('[BoardContext] Leads with meetingDate:', leadsWithMeetingDate.map((l: Lead) => ({
             id: l.id,
             name: l.name,
             meetingDate: l.meetingDate,
@@ -182,14 +182,14 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
         // Se há um lead selecionado, atualizar com os novos dados
         if (selected && selected.id) {
-          console.log('[BoardContext] Checking if selected lead needs update...', {
+          console.info('[BoardContext] Checking if selected lead needs update...', {
             selectedId: selected.id,
             currentMeetingDate: selected.meetingDate
           });
 
           const updatedLead = result.result.find((l: Lead) => l.id === selected.id);
           if (updatedLead) {
-            console.log('[BoardContext] Found updated lead in API response:', {
+            console.info('[BoardContext] Found updated lead in API response:', {
               newMeetingDate: updatedLead.meetingDate,
               newStatus: updatedLead.status
             });
@@ -201,13 +201,13 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
               updatedLead.email !== selected.email ||
               updatedLead.phone !== selected.phone;
 
-            console.log('[BoardContext] Has changes?', hasChanges, {
+            console.info('[BoardContext] Has changes?', hasChanges, {
               meetingDateChanged: updatedLead.meetingDate !== selected.meetingDate,
               statusChanged: updatedLead.status !== selected.status
             });
 
             if (hasChanges) {
-              console.log('[BoardContext] ✅ Updating selected lead with fresh data');
+              console.info('[BoardContext] ✅ Updating selected lead with fresh data');
               
               // 🎉 Notificar usuário sobre mudanças específicas
               if (updatedLead.meetingDate !== selected.meetingDate && updatedLead.meetingDate) {
@@ -225,10 +225,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
               
               setSelected(updatedLead);
             } else {
-              console.log('[BoardContext] ℹ️ No changes detected, keeping current selected');
+              console.info('[BoardContext] ℹ️ No changes detected, keeping current selected');
             }
           } else {
-            console.log('[BoardContext] ⚠️ Selected lead not found in API response');
+            console.info('[BoardContext] ⚠️ Selected lead not found in API response');
           }
         }
       } else {
