@@ -62,6 +62,28 @@ export class LeadUseCase implements ILeadUseCase {
       return new Output(true, ["Lead criado com sucesso"], [], this.transformToDTO(lead));
     } catch (error) {
       console.error("Erro ao criar lead:", error);
+      
+      // Detectar erros específicos do Prisma
+      if (error instanceof Error) {
+        // Erro de unique constraint (telefone duplicado)
+        if (error.message.includes('Unique constraint') || error.message.includes('unique constraint')) {
+          if (data.phone) {
+            return new Output(false, [], [`Já existe um lead com o telefone ${data.phone}`], null);
+          }
+          return new Output(false, [], ["Já existe um lead com estes dados"], null);
+        }
+        
+        // Erro de validação
+        if (error.message.includes('validation') || error.message.includes('Invalid')) {
+          return new Output(false, [], [`Dados inválidos: ${error.message}`], null);
+        }
+        
+        // Erro de foreign key (relacionamento inválido)
+        if (error.message.includes('Foreign key constraint')) {
+          return new Output(false, [], ["Erro: Dados de relacionamento inválidos"], null);
+        }
+      }
+      
       return new Output(false, [], ["Erro interno do servidor ao criar lead"], null);
     }
   }

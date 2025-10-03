@@ -159,33 +159,87 @@ export default function BoardDialog() {
     
     try {
       if (lead) {
+        // 🔄 EDITAR LEAD
+        const loadingToast = toast.loading('Atualizando lead...');
+        
         const updateData = transformToUpdateRequest(data);
         const result = await updateLead(lead.id, updateData);
         
         if (result.success) {
-          toast.success("Lead atualizado com sucesso!");
+          toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
+            id: loadingToast,
+            duration: 3000,
+          });
           setOpen(false);
-          // Atualizar o board para refletir as mudanças
           await refreshLeads();
         } else {
-          toast.error(result.message || "Erro ao atualizar lead");
+          toast.error(result.message || "Erro ao atualizar lead", {
+            id: loadingToast,
+            duration: 5000,
+          });
         }
       } else {
-        const createData = transformToCreateRequest(data);
-        const result = await createLead(createData);
+        // ➕ CRIAR NOVO LEAD
+        const loadingToast = toast.loading(`Criando lead "${data.name}"...`);
         
-        if (result.success) {
-          toast.success("Lead criado com sucesso!");
-          setOpen(false);
-          // Atualizar o board para refletir o novo lead
-          await refreshLeads();
-        } else {
-          toast.error(result.message || "Erro ao criar lead");
+        // 🚀 Optimistic update - fechar dialog imediatamente
+        setOpen(false);
+        
+        try {
+          const createData = transformToCreateRequest(data);
+          const result = await createLead(createData);
+          
+          if (result.success) {
+            toast.success(`Lead "${data.name}" criado com sucesso!`, {
+              id: loadingToast,
+              duration: 4000,
+            });
+            await refreshLeads();
+          } else {
+            // Reabrir dialog em caso de erro
+            toast.error(result.message || "Erro ao criar lead", {
+              id: loadingToast,
+              duration: 5000,
+            });
+            setOpen(true);
+          }
+        } catch (createError) {
+          // ❌ Erro específico da criação
+          const errorMessage = createError instanceof Error ? createError.message : "Erro ao criar lead";
+          
+          // Verificar se é erro de duplicação (unique constraint)
+          if (errorMessage.includes('Unique constraint') || errorMessage.includes('já existe')) {
+            toast.error(`⚠️ Já existe um lead com este telefone: ${data.phone}`, {
+              id: loadingToast,
+              duration: 6000,
+            });
+          } else if (errorMessage.includes('validation') || errorMessage.includes('inválido')) {
+            toast.error(`⚠️ Dados inválidos: ${errorMessage}`, {
+              id: loadingToast,
+              duration: 5000,
+            });
+          } else {
+            toast.error(errorMessage, {
+              id: loadingToast,
+              duration: 5000,
+            });
+          }
+          
+          // Reabrir dialog para usuário corrigir
+          setOpen(true);
         }
       }
     } catch (error) {
       console.error("Erro na submissão do formulário:", error);
-      toast.error("Erro inesperado ao processar o formulário");
+      const errorMessage = error instanceof Error ? error.message : "Erro inesperado ao processar o formulário";
+      toast.error(errorMessage, {
+        duration: 5000,
+      });
+      
+      // Reabrir dialog em caso de erro
+      if (!lead) {
+        setOpen(true);
+      }
     } finally {
       setIsSubmitting(false);
     }
