@@ -348,6 +348,11 @@ export class MetricsRepository implements IMetricsRepository {
         finalizedDateAt: true,
         startDateAt: true,
         duration: true,
+        lead: {
+          select: {
+            createdAt: true,
+          },
+        },
       },
     });
   }

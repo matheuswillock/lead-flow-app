@@ -223,9 +223,10 @@ export class DashboardInfosService {
 
   /**
    * Agrupa conversões por intervalo de tempo
+   * IMPORTANTE: Agrupa pela data de CRIAÇÃO do lead, não pela data de finalização
    */
   private static groupConversionsByTimeInterval(
-    conversions: Array<{ finalizedDateAt: Date }>,
+    conversions: Array<{ finalizedDateAt: Date; lead: { createdAt: Date } }>,
     period: string
   ): Map<string, number> {
     const grouped = new Map<string, number>();
@@ -234,11 +235,11 @@ export class DashboardInfosService {
       let key: string;
       
       if (period === '7d' || period === '30d') {
-        // Agrupar por dia
-        key = conversion.finalizedDateAt.toISOString().split('T')[0];
+        // Agrupar por dia usando a data de CRIAÇÃO do lead
+        key = conversion.lead.createdAt.toISOString().split('T')[0];
       } else {
-        // Agrupar por mês para períodos maiores
-        const date = new Date(conversion.finalizedDateAt);
+        // Agrupar por mês para períodos maiores usando a data de CRIAÇÃO do lead
+        const date = new Date(conversion.lead.createdAt);
         key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       }
 

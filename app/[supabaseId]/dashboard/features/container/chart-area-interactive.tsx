@@ -36,13 +36,13 @@ import { useDashboardContext } from "../context/DashboardContext"
 export const description = "Gráfico de Leads e Conversões por Período"
 
 const chartConfig = {
-  leads: {
-    label: "Leads",
-    color: "var(--primary)", // Laranja vibrante
-  },
   conversoes: {
     label: "Conversões",
-    color: "var(--secondary)", // Laranja mais escuro
+    color: "var(--primary)", // Usa a cor primary do tema
+  },
+  leads: {
+    label: "Leads",
+    color: "var(--chart-1)", // Usa a cor chart-1 do tema
   },
 } satisfies ChartConfig
 
