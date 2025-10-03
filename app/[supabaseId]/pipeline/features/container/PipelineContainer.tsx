@@ -2,7 +2,7 @@
 
 import PipelineTable from "./PipelineTable";
 import PipelineDialog from "./PipelineDialog";
-import { Table2, User, Plus } from "lucide-react";
+import { Table2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import usePipelineContext from "../context/PipelineHook";
 

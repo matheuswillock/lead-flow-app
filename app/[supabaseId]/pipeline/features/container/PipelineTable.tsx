@@ -55,10 +55,8 @@ export default function PipelineTable() {
     handleRowClick, 
     statusLabels, 
     isLoading,
-    setOpen,
     setSelected,
     refreshLeads,
-    finalizeContract,
   } = usePipelineContext();
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -67,7 +65,6 @@ export default function PipelineTable() {
   const [data, setData] = React.useState<Lead[]>(filtered);
   
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
-  const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   // Atualizar data quando filtered mudar
@@ -157,9 +154,11 @@ export default function PipelineTable() {
     }
   };
 
-  const handleFinalizeContract = (lead: Lead) => {
+  const handleFinalizeContract = async (lead: Lead) => {
     setSelected(lead);
-    setShowFinalizeDialog(true);
+    // Aqui você pode adicionar a lógica para finalizar o contrato
+    // Por exemplo, abrir um modal ou chamar uma API
+    toast.success('Funcionalidade de finalizar contrato será implementada');
   };
 
   const columns = React.useMemo<ColumnDef<Lead>[]>(

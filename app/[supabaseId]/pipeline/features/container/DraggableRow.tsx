@@ -13,8 +13,6 @@ interface DraggableRowProps {
 
 export function DraggableRow({ row, onRowClick }: DraggableRowProps) {
   const {
-    attributes,
-    listeners,
     setNodeRef,
     transform,
     transition,
