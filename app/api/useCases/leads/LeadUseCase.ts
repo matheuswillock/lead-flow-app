@@ -314,15 +314,27 @@ export class LeadUseCase implements ILeadUseCase {
         });
       }
 
-      // Se o status for scheduled, criar registro na tabela LeadsSchedule
+      // Se o status for scheduled, criar ou atualizar registro na tabela LeadsSchedule
       if (status === LeadStatus.scheduled) {
         const meetingDate = existingLead.meetingDate || new Date();
         
-        await leadScheduleRepository.create({
-          leadId: id,
-          date: meetingDate,
-          notes: `Lead agendado`,
-        });
+        // Verificar se já existe um agendamento para este lead
+        const existingSchedule = await leadScheduleRepository.findLatestByLeadId(id);
+        
+        if (existingSchedule) {
+          // Atualizar agendamento existente
+          await leadScheduleRepository.update(existingSchedule.id, {
+            date: meetingDate,
+            notes: `Lead agendado`,
+          });
+        } else {
+          // Criar novo agendamento
+          await leadScheduleRepository.create({
+            leadId: id,
+            date: meetingDate,
+            notes: `Lead agendado`,
+          });
+        }
 
         // Se não tinha meetingDate, atualizar o lead com a data atual
         if (!existingLead.meetingDate) {

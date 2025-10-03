@@ -3,7 +3,7 @@
 import * as React from "react"
 import { format, formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Clock, User, Calendar } from "lucide-react"
+import { Clock, Calendar } from "lucide-react"
 
 import {
   Card,
@@ -48,22 +48,32 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
     const fetchSchedules = async () => {
       try {
         setIsLoading(true)
+        
         const response = await fetch('/api/v1/dashboard/schedules', {
           headers: {
             'x-supabase-user-id': supabaseId,
           },
         })
 
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json()
 
-        if (data.success) {
-          setSchedules(data.data || [])
+        if (data.success && data.data) {
+          setSchedules(data.data)
+          setError(null)
         } else {
-          setError(data.errors?.[0] || 'Erro ao carregar agendamentos')
+          const errorMessage = data.errors && data.errors.length > 0 
+            ? data.errors[0] 
+            : 'Erro ao carregar agendamentos';
+          setError(errorMessage)
         }
       } catch (err) {
-        setError('Erro ao carregar agendamentos')
-        console.error('Erro ao buscar agendamentos:', err)
+        const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar agendamentos';
+        console.error('[UpcomingMeetings] Fetch error:', errorMessage);
+        setError(errorMessage)
       } finally {
         setIsLoading(false)
       }

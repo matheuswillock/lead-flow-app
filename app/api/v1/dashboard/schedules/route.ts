@@ -48,8 +48,8 @@ export async function GET(request: NextRequest) {
           ],
         },
         date: {
-          gte: now, // Apenas agendamentos futuros
-          lte: endOfDay, // Apenas hoje
+          gte: startOfDay, // Desde o início do dia
+          lte: endOfDay, // Até o fim do dia
         },
       };
     } else {
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
           assignedTo: profile.id,
         },
         date: {
-          gte: now,
+          gte: startOfDay,
           lte: endOfDay,
         },
       };
@@ -68,9 +68,20 @@ export async function GET(request: NextRequest) {
     // Buscar agendamentos com informações do lead e responsável
     const schedules = await prisma.leadsSchedule.findMany({
       where: whereClause,
-      include: {
+      select: {
+        id: true,
+        leadId: true,
+        date: true,
+        notes: true,
+        createdAt: true,
+        updatedAt: true,
         lead: {
-          include: {
+          select: {
+            name: true,
+            email: true,
+            phone: true,
+            assignedTo: true,
+            managerId: true,
             assignee: {
               select: {
                 id: true,
