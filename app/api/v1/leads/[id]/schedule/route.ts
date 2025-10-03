@@ -45,12 +45,28 @@ export async function POST(
     const { date, notes } = validation.data;
     const meetingDate = new Date(date);
 
-    // Criar agendamento
-    const schedule = await leadScheduleRepository.create({
-      leadId,
-      date: meetingDate,
-      notes,
-    });
+    // Verificar se já existe um agendamento para este lead
+    const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
+
+    let schedule;
+    let message: string;
+
+    if (existingSchedule) {
+      // Atualizar o agendamento existente
+      schedule = await leadScheduleRepository.update(existingSchedule.id, {
+        date: meetingDate,
+        notes,
+      });
+      message = "Agendamento atualizado com sucesso";
+    } else {
+      // Criar novo agendamento
+      schedule = await leadScheduleRepository.create({
+        leadId,
+        date: meetingDate,
+        notes,
+      });
+      message = "Agendamento criado com sucesso";
+    }
 
     // Atualizar o campo meetingDate do lead
     await prisma.lead.update({
@@ -60,11 +76,11 @@ export async function POST(
 
     const output = new Output(
       true, 
-      ["Agendamento criado com sucesso"], 
+      [message], 
       [], 
       schedule
     );
-    return NextResponse.json(output, { status: 201 });
+    return NextResponse.json(output, { status: existingSchedule ? 200 : 201 });
 
   } catch (error) {
     console.error("Erro ao criar agendamento:", error);

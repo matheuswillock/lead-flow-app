@@ -1,13 +1,17 @@
 'use client';
 
+import { useParams } from 'next/navigation';
 import { DashboardProvider } from "./features/context/DashboardContext";
 import { useDashboardContext } from "./features/context/DashboardContext";
 import { DashboardSkeleton } from "./features/components/DashboardSkeleton";
 import { SectionCardsWithContext } from "./features/container/section-cards-with-context";
 import { ChartAreaInteractive } from "./features/container/chart-area-interactive";
+import { UpcomingMeetings } from "./features/container/upcoming-meetings";
 
 function DashboardContent() {
   const { isLoading, error, metrics } = useDashboardContext();
+  const params = useParams();
+  const supabaseId = params.supabaseId as string;
 
   // Se está carregando e não tem dados ainda, mostra skeleton completo
   if (isLoading && !metrics) {
@@ -48,6 +52,11 @@ function DashboardContent() {
       {/* Gráfico Interativo */}
       <div className="px-4 lg:px-6">
         <ChartAreaInteractive />
+      </div>
+
+      {/* Próximas Reuniões */}
+      <div className="px-4 lg:px-6">
+        <UpcomingMeetings supabaseId={supabaseId} />
       </div>
     </div>
   );
