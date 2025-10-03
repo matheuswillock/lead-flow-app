@@ -5,8 +5,14 @@ import useBoardContext from "../context/BoardHook";
 import { LeadsLoader } from "./LeadsLoader";
 import { LeadsError } from "./LeadsError";
 import { LeadCard } from "./LeadCard";
+import { Lead } from "../context/BoardTypes";
 
-export default function BoardColumns() {
+interface BoardColumnsProps {
+    onFinalizeContract: (lead: Lead) => void;
+    onScheduleMeeting: (lead: Lead) => void;
+}
+
+export default function BoardColumns({ onFinalizeContract, onScheduleMeeting }: BoardColumnsProps) {
     const { 
         filtered, 
         isLoading,
@@ -74,6 +80,8 @@ export default function BoardColumns() {
                                         handleCardMouseDown={handleCardMouseDown}
                                         handleCardDragStart={handleCardDragStart}
                                         handleCardClick={handleCardClick}
+                                        onFinalizeContract={onFinalizeContract}
+                                        onScheduleMeeting={onScheduleMeeting}
                                     />
                                 ))}
                             </div>

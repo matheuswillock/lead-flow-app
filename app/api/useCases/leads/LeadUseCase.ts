@@ -7,6 +7,8 @@ import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
+import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinalized/LeadFinalizedRepository";
+import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -36,6 +38,7 @@ export class LeadUseCase implements ILeadUseCase {
         cnpj: data.cnpj || null,
         age: data.age || [],
         hasHealthPlan: data.hasHealthPlan || null,
+        currentHealthPlan: data.currentHealthPlan || null,
         currentValue: data.currentValue || null,
         referenceHospital: data.referenceHospital || null,
         currentTreatment: data.currentTreatment || null,
@@ -59,6 +62,28 @@ export class LeadUseCase implements ILeadUseCase {
       return new Output(true, ["Lead criado com sucesso"], [], this.transformToDTO(lead));
     } catch (error) {
       console.error("Erro ao criar lead:", error);
+      
+      // Detectar erros específicos do Prisma
+      if (error instanceof Error) {
+        // Erro de unique constraint (telefone duplicado)
+        if (error.message.includes('Unique constraint') || error.message.includes('unique constraint')) {
+          if (data.phone) {
+            return new Output(false, [], [`Já existe um lead com o telefone ${data.phone}`], null);
+          }
+          return new Output(false, [], ["Já existe um lead com estes dados"], null);
+        }
+        
+        // Erro de validação
+        if (error.message.includes('validation') || error.message.includes('Invalid')) {
+          return new Output(false, [], [`Dados inválidos: ${error.message}`], null);
+        }
+        
+        // Erro de foreign key (relacionamento inválido)
+        if (error.message.includes('Foreign key constraint')) {
+          return new Output(false, [], ["Erro: Dados de relacionamento inválidos"], null);
+        }
+      }
+      
       return new Output(false, [], ["Erro interno do servidor ao criar lead"], null);
     }
   }
@@ -208,6 +233,7 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.cnpj !== undefined) updateData.cnpj = data.cnpj || null;
       if (data.age !== undefined) updateData.age = data.age;
       if (data.hasHealthPlan !== undefined) updateData.hasHealthPlan = data.hasHealthPlan;
+      if (data.currentHealthPlan !== undefined) updateData.currentHealthPlan = data.currentHealthPlan || null;
       if (data.currentValue !== undefined) updateData.currentValue = data.currentValue;
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
       if (data.currentTreatment !== undefined) updateData.currentTreatment = data.currentTreatment || null;
@@ -260,7 +286,64 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
+      // Buscar o lead para obter informações
+      const existingLead = await this.leadRepository.findById(id);
+      
+      if (!existingLead) {
+        return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      // Atualizar o status do lead
       const lead = await this.leadRepository.updateStatus(id, status);
+
+      // Se o status for contract_finalized, criar registro na tabela LeadFinalized
+      if (status === LeadStatus.contract_finalized) {
+        const createdAt = new Date(existingLead.createdAt);
+        const finalizedAt = new Date();
+        const durationInDays = Math.floor(
+          (finalizedAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
+        );
+
+        await leadFinalizedRepository.create({
+          leadId: id,
+          finalizedAt: finalizedAt,
+          startDateAt: finalizedAt,
+          duration: durationInDays,
+          amount: Number(existingLead.currentValue || 0),
+          notes: `Venda finalizada. Valor: R$ ${existingLead.currentValue || 0}`,
+        });
+      }
+
+      // Se o status for scheduled, criar ou atualizar registro na tabela LeadsSchedule
+      if (status === LeadStatus.scheduled) {
+        const meetingDate = existingLead.meetingDate || new Date();
+        
+        // Verificar se já existe um agendamento para este lead
+        const existingSchedule = await leadScheduleRepository.findLatestByLeadId(id);
+        
+        if (existingSchedule) {
+          // Atualizar agendamento existente
+          await leadScheduleRepository.update(existingSchedule.id, {
+            date: meetingDate,
+            notes: `Lead agendado`,
+          });
+        } else {
+          // Criar novo agendamento
+          await leadScheduleRepository.create({
+            leadId: id,
+            date: meetingDate,
+            notes: `Lead agendado`,
+          });
+        }
+
+        // Se não tinha meetingDate, atualizar o lead com a data atual
+        if (!existingLead.meetingDate) {
+          await this.leadRepository.update(id, {
+            meetingDate,
+          });
+        }
+      }
+
       return new Output(true, ["Status do lead atualizado com sucesso"], [], this.transformToDTO(lead));
     } catch (error) {
       console.error("Erro ao atualizar status do lead:", error);
@@ -365,6 +448,7 @@ export class LeadUseCase implements ILeadUseCase {
       cnpj: lead.cnpj,
       age: lead.age,
       hasHealthPlan: lead.hasHealthPlan,
+      currentHealthPlan: lead.currentHealthPlan,
       currentValue: lead.currentValue ? Number(lead.currentValue) : null,
       referenceHospital: lead.referenceHospital,
       currentTreatment: lead.currentTreatment,

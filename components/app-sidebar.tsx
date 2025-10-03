@@ -2,6 +2,7 @@
 
 import Link from "next/link"  
 import { LayoutDashboard, KanbanSquare, ChartBarBig, Users } from "lucide-react"
+import { Suspense } from "react"
 
 import {
   Sidebar,
@@ -17,20 +18,42 @@ import {
 } from "@/components/ui/sidebar"
 import { NavUser } from "./nav-user"
 import { useUserRole } from "@/hooks/useUserRole"
+import { Skeleton } from "@/components/ui/skeleton"
 
-export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
+function ManagerUserItem({ supabaseId }: { supabaseId?: string }) {
   const { isManager } = useUserRole();
   
+  if (!isManager) return null;
+  
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild>
+        <Link href={`/${supabaseId}/manager-users`}>
+          <Users />
+          <span>Manager users</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+function ManagerUserItemSkeleton() {
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton disabled>
+        <Skeleton className="h-4 w-4 rounded" />
+        <Skeleton className="h-4 w-24" />
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const baseItems = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "Board", url: `/${supabaseId}/board`, icon: KanbanSquare },
     { title: "Pipeline", url: `/${supabaseId}/pipeline`, icon: ChartBarBig },
   ];
-
-  // Adicionar "Manager users" apenas se o usuário for manager
-  const items = isManager 
-    ? [...baseItems, { title: "Manager users", url: `/${supabaseId}/manager-users`, icon: Users }]
-    : baseItems;
 
   return (
     <Sidebar collapsible="offcanvas" {...sidebarProps}>
@@ -58,16 +81,20 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 <SidebarGroupLabel>Navegação</SidebarGroupLabel>
                 <SidebarGroupContent>
                     <SidebarMenu>
-                        {items.map((item) => (
-                        <SidebarMenuItem key={item.title}>
+                        {baseItems.map((item) => (
+                          <SidebarMenuItem key={item.title}>
                             <SidebarMenuButton asChild>
-                            <Link href={item.url}>
+                              <Link href={item.url}>
                                 <item.icon />
                                 <span>{item.title}</span>
-                            </Link>
+                              </Link>
                             </SidebarMenuButton>
-                        </SidebarMenuItem>
+                          </SidebarMenuItem>
                         ))}
+                        
+                        <Suspense fallback={<ManagerUserItemSkeleton />}>
+                          <ManagerUserItem supabaseId={supabaseId} />
+                        </Suspense>
                     </SidebarMenu>
                 </SidebarGroupContent>
             </SidebarGroup>

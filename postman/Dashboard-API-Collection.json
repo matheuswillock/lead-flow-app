@@ -1,0 +1,468 @@
+{
+  "info": {
+    "name": "Lead Flow App - Dashboard API",
+    "description": "Collection para testar todas as rotas da API de Dashboard e Métricas. Todas as buscas são feitas pelo supabaseId do usuário autenticado.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "supabaseId",
+      "value": "73943504-6ccb-4c5a-9276-e830f7eae682",
+      "type": "string",
+      "description": "ID do usuário autenticado no Supabase - substitua pelo ID real"
+    }
+  ],
+  "item": [
+    {
+      "name": "📊 Métricas Gerais",
+      "item": [
+        {
+          "name": "1. Métricas Dashboard - Período Padrão (30d)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Testes de estrutura da resposta",
+                  "pm.test('Status code é 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response tem estrutura Output', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('isValid');",
+                  "    pm.expect(response).to.have.property('successMessages');",
+                  "    pm.expect(response).to.have.property('errorMessages');",
+                  "    pm.expect(response).to.have.property('result');",
+                  "});",
+                  "",
+                  "pm.test('Response isValid é true', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.isValid).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('Result tem estrutura de métricas', function () {",
+                  "    const response = pm.response.json();",
+                  "    if (response.isValid && response.result) {",
+                  "        const metrics = response.result;",
+                  "        pm.expect(metrics).to.have.property('agendamentos');",
+                  "        pm.expect(metrics).to.have.property('negociacao');",
+                  "        pm.expect(metrics).to.have.property('implementacao');",
+                  "        pm.expect(metrics).to.have.property('vendas');",
+                  "        pm.expect(metrics).to.have.property('taxaConversao');",
+                  "        pm.expect(metrics).to.have.property('receitaTotal');",
+                  "        pm.expect(metrics).to.have.property('churnRate');",
+                  "        pm.expect(metrics).to.have.property('leadsPorPeriodo');",
+                  "        pm.expect(metrics).to.have.property('statusCount');",
+                  "    }",
+                  "});",
+                  "",
+                  "// Log dos resultados",
+                  "console.log('Métricas recebidas:', JSON.stringify(pm.response.json(), null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dashboard/metrics?supabaseId={{supabaseId}}&period=30d",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "metrics"
+              ],
+              "query": [
+                {
+                  "key": "supabaseId",
+                  "value": "{{supabaseId}}",
+                  "description": "ID do usuário autenticado no Supabase"
+                },
+                {
+                  "key": "period",
+                  "value": "30d",
+                  "description": "Período: 7d, 30d, 3m, 6m, 1y"
+                }
+              ]
+            },
+            "description": "Busca métricas gerais do dashboard para os últimos 30 dias"
+          }
+        },
+        {
+          "name": "2. Métricas Dashboard - Últimos 7 dias",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code é 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response isValid é true', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.isValid).to.be.true;",
+                  "});",
+                  "",
+                  "console.log('Métricas 7 dias:', JSON.stringify(pm.response.json(), null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dashboard/metrics?supabaseId={{supabaseId}}&period=7d",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "metrics"
+              ],
+              "query": [
+                {
+                  "key": "supabaseId",
+                  "value": "{{supabaseId}}"
+                },
+                {
+                  "key": "period",
+                  "value": "7d"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "3. Métricas Dashboard - Período Customizado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code é 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response isValid é true', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.isValid).to.be.true;",
+                  "});",
+                  "",
+                  "console.log('Métricas período customizado:', JSON.stringify(pm.response.json(), null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dashboard/metrics?supabaseId={{supabaseId}}&startDate=2024-01-01&endDate=2024-12-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "metrics"
+              ],
+              "query": [
+                {
+                  "key": "supabaseId",
+                  "value": "{{supabaseId}}"
+                },
+                {
+                  "key": "startDate",
+                  "value": "2024-01-01",
+                  "description": "Data inicial (YYYY-MM-DD)"
+                },
+                {
+                  "key": "endDate",
+                  "value": "2024-12-31",
+                  "description": "Data final (YYYY-MM-DD)"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "4. Métricas Dashboard - Sem supabaseId (Erro esperado)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code é 400 (Bad Request)', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response isValid é false', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.isValid).to.be.false;",
+                  "});",
+                  "",
+                  "pm.test('Mensagem de erro sobre supabaseId', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.errorMessages).to.include('supabaseId é obrigatório');",
+                  "});",
+                  "",
+                  "console.log('Erro esperado:', JSON.stringify(pm.response.json(), null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dashboard/metrics?period=30d",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "metrics"
+              ],
+              "query": [
+                {
+                  "key": "period",
+                  "value": "30d"
+                }
+              ]
+            },
+            "description": "Teste de validação - deve retornar erro por não informar supabaseId"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📈 Métricas Detalhadas",
+      "item": [
+        {
+          "name": "1. Métricas Detalhadas por Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code é 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response tem estrutura Output', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('isValid');",
+                  "    pm.expect(response).to.have.property('successMessages');",
+                  "    pm.expect(response).to.have.property('errorMessages');",
+                  "    pm.expect(response).to.have.property('result');",
+                  "});",
+                  "",
+                  "pm.test('Response isValid é true', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.isValid).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('Result é array de métricas detalhadas', function () {",
+                  "    const response = pm.response.json();",
+                  "    if (response.isValid && response.result) {",
+                  "        pm.expect(response.result).to.be.an('array');",
+                  "        ",
+                  "        // Se há dados, verificar estrutura",
+                  "        if (response.result.length > 0) {",
+                  "            const metric = response.result[0];",
+                  "            pm.expect(metric).to.have.property('status');",
+                  "            pm.expect(metric).to.have.property('count');",
+                  "            pm.expect(metric).to.have.property('averageValue');",
+                  "            pm.expect(metric).to.have.property('totalValue');",
+                  "        }",
+                  "    }",
+                  "});",
+                  "",
+                  "console.log('Métricas detalhadas:', JSON.stringify(pm.response.json(), null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dashboard/metrics/detailed/{{supabaseId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "metrics",
+                "detailed",
+                "{{supabaseId}}"
+              ]
+            },
+            "description": "Busca métricas detalhadas agrupadas por status para o usuário"
+          }
+        },
+        {
+          "name": "2. Métricas Detalhadas - supabaseId Inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code é 400 (Bad Request)', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response isValid é false', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.isValid).to.be.false;",
+                  "});",
+                  "",
+                  "console.log('Erro com supabaseId inválido:', JSON.stringify(pm.response.json(), null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dashboard/metrics/detailed/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "metrics",
+                "detailed",
+                ""
+              ]
+            },
+            "description": "Teste com supabaseId vazio - deve retornar erro"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🧪 Testes de Performance",
+      "item": [
+        {
+          "name": "1. Métricas com Dados Grandes (1 ano)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code é 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response time é menor que 5000ms', function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+                  "});",
+                  "",
+                  "pm.test('Response isValid é true', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response.isValid).to.be.true;",
+                  "});",
+                  "",
+                  "console.log('Performance (1 ano) - Tempo:', pm.response.responseTime + 'ms');",
+                  "console.log('Dados recebidos:', JSON.stringify(pm.response.json().result?.leadsPorPeriodo?.length || 0) + ' períodos');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/dashboard/metrics?supabaseId={{supabaseId}}&period=1y",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "dashboard",
+                "metrics"
+              ],
+              "query": [
+                {
+                  "key": "supabaseId",
+                  "value": "{{supabaseId}}"
+                },
+                {
+                  "key": "period",
+                  "value": "1y"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
