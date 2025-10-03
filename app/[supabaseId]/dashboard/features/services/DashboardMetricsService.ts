@@ -9,12 +9,6 @@ import {
 export type { DashboardMetricsData, DetailedMetricsData, MetricsFilters };
 
 export class DashboardMetricsService implements IDashboardMetricsService {
-  private baseUrl: string;
-
-  constructor() {
-    this.baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  }
-
   /**
    * Busca métricas gerais do dashboard
    */
@@ -37,12 +31,13 @@ export class DashboardMetricsService implements IDashboardMetricsService {
         params.append('endDate', filters.endDate);
       }
 
-      // Fazer requisição para a API
-      const response = await fetch(`${this.baseUrl}/api/v1/dashboard/metrics?${params.toString()}`, {
+      // Fazer requisição para a API usando URL relativa
+      const response = await fetch(`/api/v1/dashboard/metrics?${params.toString()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
+        cache: 'no-store',
       });
 
       if (!response.ok) {
@@ -72,12 +67,13 @@ export class DashboardMetricsService implements IDashboardMetricsService {
    */
   async getDetailedMetrics(supabaseId: string): Promise<DetailedMetricsData[]> {
     try {
-      // Fazer requisição para a API
-      const response = await fetch(`${this.baseUrl}/api/v1/dashboard/metrics/detailed/${supabaseId}`, {
+      // Fazer requisição para a API usando URL relativa
+      const response = await fetch(`/api/v1/dashboard/metrics/detailed/${supabaseId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
+        cache: 'no-store',
       });
 
       if (!response.ok) {
