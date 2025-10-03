@@ -72,16 +72,19 @@ export function DateTimePicker({
   }
 
   return (
-    <div className={cn("grid gap-2", className)}>
+    <div className={cn("grid gap-1", className)}>
       {label && (
         <Label className="block text-sm font-medium mb-1 px-1">
           {label}
           {required && <span className="text-destructive ml-1">*</span>}
         </Label>
       )}
-      <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
+      <div className="flex flex-col sm:flex-row sm:gap-4">
         {/* Date Picker */}
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col">
+          {/* <Label htmlFor="date-picker" className="text-sm font-medium">
+            Data
+          </Label> */}
           <Popover>
             <PopoverTrigger asChild>
               <Button
@@ -124,6 +127,9 @@ export function DateTimePicker({
 
         {/* Time Picker */}
         <div className="flex flex-col gap-2">
+          {/* <Label htmlFor="time-picker" className="text-sm font-medium">
+            Horário
+          </Label> */}
           <input
             id="time-picker"
             type="time"

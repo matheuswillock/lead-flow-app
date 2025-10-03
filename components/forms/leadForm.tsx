@@ -416,12 +416,12 @@ export function LeadForm({
             />
 
             {/* Data, Horário e Responsável em uma linha no desktop */}
-            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-2 flex flex-col sm:flex-row gap-4">
                 <FormField
                     control={form.control}
                     name="meetingDate"
                     render={({ field }) => (
-                        <FormItem className="sm:col-span-2">
+                        <FormItem className="sm:flex-shrink-0">
                             <FormControl>
                                 <DateTimePicker
                                     date={field.value ? new Date(field.value) : undefined}
@@ -451,7 +451,7 @@ export function LeadForm({
                         }, [usersToAssign, field.value, field.onChange]);
 
                         return (
-                            <FormItem className="flex flex-col gap-2">
+                            <FormItem className="flex flex-col sm:flex-1">
                                 <FormLabel className="text-sm font-medium">
                                     Responsável{isOnlyOneUser && " (único disponível)"}
                                 </FormLabel>
