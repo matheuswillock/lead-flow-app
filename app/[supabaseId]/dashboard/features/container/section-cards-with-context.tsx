@@ -74,7 +74,7 @@ export function SectionCardsWithContext() {
             No-Show
           </CardTitle>
           <CardDescription className="text-3xl font-bold text-foreground">
-            {metrics.NoShow}
+            {metrics.noShowRate?.toFixed(1)}%
           </CardDescription>
         </CardHeader>
         <CardFooter className="pt-0">

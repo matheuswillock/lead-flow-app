@@ -619,4 +619,84 @@ Antes de usar qualquer prompt, certifique-se de:
 
 ---
 
+## ⚠️ IMPORTANTE: Política de Documentação
+
+### ❌ NÃO CRIAR documentos de resumo ao final de cada execução
+
+**EVITAR:**
+- ❌ Documentos `[FEATURE]_IMPLEMENTATION_SUMMARY.md`
+- ❌ Documentos `[FEATURE]_FIX_SUMMARY.md`
+- ❌ Documentos `[FEATURE]_CHANGES_LOG.md`
+- ❌ Documentos de changelog automático
+- ❌ Resumos de cada alteração
+
+**RAZÃO:**
+Isso gera poluição no repositório com múltiplos arquivos de documentação que ficam desatualizados e dificultam a manutenção do projeto.
+
+### ✅ DOCUMENTAR apenas quando necessário
+
+**CRIAR documentação SOMENTE para:**
+- ✅ **Arquitetura nova**: Quando criar um padrão arquitetural novo
+- ✅ **APIs públicas**: README.md em `/app/api/useCases/[feature]/README.md`
+- ✅ **Features complexas**: Documentação de uso em `/docs/[FEATURE]_GUIDE.md`
+- ✅ **Configurações**: Setup, instalação, deployment
+- ✅ **Convenções**: Padrões de código, boas práticas
+
+**EXEMPLOS DE DOCUMENTAÇÃO APROPRIADA:**
+```
+✅ /docs/ARCHITECTURE_GUIDE.md       (arquitetura geral)
+✅ /docs/API_CONVENTIONS.md          (convenções de API)
+✅ /app/api/useCases/metrics/README.md  (documentação da API)
+✅ /postman/README.md                (como usar collections)
+
+❌ DASHBOARD_IMPLEMENTATION_SUMMARY.md  (resumo de implementação)
+❌ LEAD_FIX_CHANGES.md                   (log de correções)
+❌ NOSHOW_CORRECTION_SUMMARY.md          (resumo de correção)
+```
+
+### 📝 Use commits descritivos no lugar
+
+Ao invés de criar documentos de resumo, use **commits bem descritivos**:
+
+```bash
+# ✅ Bom commit (substitui documento de resumo)
+git commit -m "feat(dashboard): add NoShow rate calculation
+
+- Changed NoShow from count to percentage
+- Updated DashboardInfosService to calculate (noShow/agendamentos)*100
+- Updated frontend interface and component
+- Fixed card rendering issue
+
+Resolves: Dashboard NoShow card showing empty value"
+
+# ❌ Evite commits genéricos
+git commit -m "fix: corrections"
+```
+
+### 🎯 Quando ADICIONAR ao Prompt
+
+**Adicione esta instrução em TODOS os prompts:**
+
+```
+IMPORTANTE: Não crie documentos de resumo ao final (como *_SUMMARY.md, *_FIX.md, *_CHANGES.md).
+Faça apenas as alterações necessárias no código e forneça um resumo verbal da implementação.
+```
+
+**Exemplo de prompt completo:**
+```
+Implemente [FEATURE] seguindo a arquitetura Lead Flow:
+
+[... instruções da feature ...]
+
+IMPORTANTE: 
+- Não crie documentos de resumo ao final
+- Apenas implemente o código necessário
+- Forneça um resumo verbal das alterações
+- Use commits descritivos ao invés de documentos
+```
+
+---
+
 💡 **Dica**: Combine prompts quando necessário. Por exemplo: "Prompt Principal" + "Feature CRUD" para APIs completas.
+
+💡 **Lembre-se**: Documentação de código e commits descritivos > Documentos de resumo automáticos.

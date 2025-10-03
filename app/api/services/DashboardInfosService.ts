@@ -13,7 +13,7 @@ export type DashboardMetrics = {
   taxaConversao: number; // (vendas / agendamentos) * 100
   receitaTotal: number;
   churnRate: number; // (negada operadora / vendas) * 100
-  NoShow: number; // (NoShow / agendamentos) * 100
+  noShowRate: number; // (NoShow / agendamentos) * 100
   
   // Dados por período
   leadsPorPeriodo: {
@@ -95,10 +95,11 @@ export class DashboardInfosService {
     const negociacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.NEGOTIATION);
     const implementacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.IMPLEMENTATION);
     const churn = this.countByStatusGroup(statusCount, STATUS_GROUPS.CHURN);
-    const NoShow = this.countByStatusGroup(statusCount, STATUS_GROUPS.NO_SHOW);
+    const noShowCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.NO_SHOW);
 
     const taxaConversao = agendamentos > 0 ? (vendas / agendamentos) * 100 : 0;
     const churnRate = vendas > 0 ? (churn / vendas) * 100 : 0;
+    const noShowRate = agendamentos > 0 ? (noShowCount / agendamentos) * 100 : 0;
     
     // Calcular receita total a partir da tabela LeadFinalized
     const receitaTotal = finalizedLeads.reduce((total: number, sale) => 
@@ -116,9 +117,9 @@ export class DashboardInfosService {
       taxaConversao: Math.round(taxaConversao * 100) / 100,
       receitaTotal,
       churnRate: Math.round(churnRate * 100) / 100,
+      noShowRate: Math.round(noShowRate * 100) / 100,
       leadsPorPeriodo,
       statusCount,
-      NoShow,
     };
   }
 
