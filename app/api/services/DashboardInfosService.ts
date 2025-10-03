@@ -15,10 +15,11 @@ export type DashboardMetrics = {
   churnRate: number; // (negada operadora / vendas) * 100
   noShowRate: number; // (NoShow / agendamentos) * 100
   
-  // Dados por período
+  // Dados por período com conversão
   leadsPorPeriodo: {
     periodo: string;
-    total: number;
+    leads: number;
+    conversoes: number;
   }[];
   
   // Dados detalhados por status
@@ -134,7 +135,7 @@ export class DashboardInfosService {
   }
 
   /**
-   * Busca leads agrupados por período
+   * Busca leads agrupados por período com dados de conversão
    */
   private static async getLeadsByPeriod(filters: DashboardFilters) {
     const { supabaseId, period = '30d' } = filters;
@@ -162,14 +163,28 @@ export class DashboardInfosService {
         startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     }
 
+    // Buscar leads criados no período
     const leads = await metricsRepository.getLeadsByPeriod(supabaseId, startDate, endDate);
-
-    // Agrupar por dia/semana/mês dependendo do período
-    const groupedData = this.groupLeadsByTimeInterval(leads, period);
     
-    return groupedData.map(item => ({
+    // Buscar conversões (vendas finalizadas) no período
+    const repositoryFilters: MetricsFilters = {
+      supabaseId,
+      startDate,
+      endDate,
+    };
+    const finalizedLeads = await metricsRepository.getFinalizedLeads(repositoryFilters);
+
+    // Agrupar leads por intervalo de tempo
+    const groupedLeads = this.groupLeadsByTimeInterval(leads, period);
+    
+    // Agrupar conversões por intervalo de tempo
+    const groupedConversions = this.groupConversionsByTimeInterval(finalizedLeads, period);
+    
+    // Combinar dados
+    return groupedLeads.map(item => ({
       periodo: item.date,
-      total: item.count,
+      leads: item.count,
+      conversoes: groupedConversions.get(item.date) || 0,
     }));
   }
 
@@ -204,6 +219,33 @@ export class DashboardInfosService {
       date,
       count,
     }));
+  }
+
+  /**
+   * Agrupa conversões por intervalo de tempo
+   */
+  private static groupConversionsByTimeInterval(
+    conversions: Array<{ finalizedDateAt: Date }>,
+    period: string
+  ): Map<string, number> {
+    const grouped = new Map<string, number>();
+
+    conversions.forEach(conversion => {
+      let key: string;
+      
+      if (period === '7d' || period === '30d') {
+        // Agrupar por dia
+        key = conversion.finalizedDateAt.toISOString().split('T')[0];
+      } else {
+        // Agrupar por mês para períodos maiores
+        const date = new Date(conversion.finalizedDateAt);
+        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      }
+
+      grouped.set(key, (grouped.get(key) || 0) + 1);
+    });
+
+    return grouped;
   }
 
   /**

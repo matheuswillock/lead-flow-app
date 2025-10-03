@@ -9,7 +9,8 @@ export interface DashboardMetricsData {
   churnRate: number;
   leadsPorPeriodo: Array<{
     periodo: string;
-    total: number;
+    leads: number;
+    conversoes: number;
   }>;
   statusCount: Record<string, number>;
 }
