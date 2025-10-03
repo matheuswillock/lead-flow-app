@@ -8,6 +8,7 @@ export const UpdateLeadRequestSchema = z.object({
   cnpj: z.string().nullish().transform(val => val || undefined),
   age: z.array(z.nativeEnum(AgeRange)).optional(),
   hasHealthPlan: z.boolean().optional(),
+  currentHealthPlan: z.string().nullish().transform(val => val || undefined),
   currentValue: z.number().min(0, "Valor deve ser maior ou igual a zero").nullish().transform(val => val || undefined),
   referenceHospital: z.string().nullish().transform(val => val || undefined),
   currentTreatment: z.string().nullish().transform(val => val || undefined),

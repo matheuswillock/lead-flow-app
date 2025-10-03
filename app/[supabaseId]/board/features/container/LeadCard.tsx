@@ -1,8 +1,10 @@
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { formatDate } from "../context/BoardContext";
 import { ColumnKey } from "../context/BoardTypes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
+import { CheckCircle, Calendar } from "lucide-react";
 
 interface LeadCardProps {
     lead: LeadResponseDTO;
@@ -10,6 +12,8 @@ interface LeadCardProps {
     handleCardMouseDown: () => void;
     handleCardDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
     handleCardClick: (lead: LeadResponseDTO) => void;
+    onFinalizeContract?: (lead: LeadResponseDTO) => void;
+    onScheduleMeeting?: (lead: LeadResponseDTO) => void;
 }
 
 export function LeadCard({
@@ -18,7 +22,31 @@ export function LeadCard({
     handleCardMouseDown,
     handleCardDragStart,
     handleCardClick,
+    onFinalizeContract,
+    onScheduleMeeting,
 }: LeadCardProps) {
+    // Verifica se o lead está em uma coluna que permite finalizar contrato
+    const canFinalizeContract = columnKey === 'invoicePayment' || 
+                                columnKey === 'dps_agreement' ||
+                                columnKey === 'offerSubmission';
+
+    // Verifica se o lead está na coluna de nova oportunidade (pode agendar)
+    const canScheduleMeeting = columnKey === 'new_opportunity';
+
+    const handleFinalizeClick = (e: React.MouseEvent) => {
+        e.stopPropagation(); // Evita que o card seja clicado
+        if (onFinalizeContract) {
+            onFinalizeContract(lead);
+        }
+    };
+
+    const handleScheduleClick = (e: React.MouseEvent) => {
+        e.stopPropagation(); // Evita que o card seja clicado
+        if (onScheduleMeeting) {
+            onScheduleMeeting(lead);
+        }
+    };
+
     return (
         <Card
             key={lead.id}
@@ -37,7 +65,28 @@ export function LeadCard({
                 </div>
             </CardHeader>
             <CardContent>
-                {/* TODO: Avaliar o conteudo para inserir aqui */}
+                {canScheduleMeeting && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full cursor-pointer"
+                        onClick={handleScheduleClick}
+                    >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        Agendar Reunião
+                    </Button>
+                )}
+                {canFinalizeContract && (
+                    <Button
+                        size="sm"
+                        variant="default"
+                        className="w-full cursor-pointer"
+                        onClick={handleFinalizeClick}
+                    >
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Fechar Contrato
+                    </Button>
+                )}
             </CardContent>
             <CardFooter className="w-full flex justify-end">
                 <Avatar className="h-6 w-6">

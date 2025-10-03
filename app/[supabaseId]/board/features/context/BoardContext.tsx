@@ -1,18 +1,21 @@
 import { createContext, ReactNode, useMemo, useState, useEffect } from "react";
+import { toast } from "sonner";
 import { IBoardService } from "../services/IBoardServices";
 import { Lead, ColumnKey } from "./BoardTypes";
 import { createBoardService } from "../services/BoardService";
 import { useParams } from "next/navigation";
 import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+import { FinalizeContractData } from "../container/FinalizeContractDialog";
 
 interface IBoardProviderProps {
   children: ReactNode;
   boardService?: IBoardService;
 }
 
-interface Responsavel {
+interface TaskOwner {
   id: string;
   name: string;
+  avatarUrl?: string | null;
 }
 
 interface IBoardContextState {
@@ -27,7 +30,7 @@ interface IBoardContextState {
   setPeriodEnd: (date: string) => void;
   assignedUser: string; 
   setAssignedUser: (user: string) => void;
-  responsaveis: Responsavel[];
+  taskOwners: TaskOwner[];
   errors: Record<string, string>;
   open: boolean;
   user: ProfileResponseDTO | null;
@@ -43,6 +46,7 @@ interface IBoardContextState {
   onDrop: (e: React.DragEvent, to: ColumnKey) => void;
   onDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
   refreshLeads: () => Promise<void>;
+  finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
 const COLUMNS: { key: ColumnKey; title: string }[] = [
@@ -89,6 +93,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     });
     return initialData;
   });
+
+  // TODO: Implementar o carregamento de todos os leads operators do manager
+  // TODO: Implementar rastreio de quantidade de leads foram agendados, convertidos, perdidos, etc.
 
   const [periodStart, setPeriodStart] = useState<string>(""); // yyyy-mm-dd
   const [periodEnd, setPeriodEnd] = useState<string>(""); // yyyy-mm-dd
@@ -143,6 +150,19 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const result = await boardService.fetchLeads(supabaseId, 'manager'); // Assumindo que é um manager por enquanto
 
       if (result.isValid && result.result) {
+        console.info('[BoardContext] Leads fetched from API:', result.result.length, 'leads');
+        
+        // Log dos meetingDates para debug
+        const leadsWithMeetingDate = result.result.filter((l: Lead) => l.meetingDate);
+        if (leadsWithMeetingDate.length > 0) {
+          console.info('[BoardContext] Leads with meetingDate:', leadsWithMeetingDate.map((l: Lead) => ({
+            id: l.id,
+            name: l.name,
+            meetingDate: l.meetingDate,
+            status: l.status
+          })));
+        }
+        
         // Organizar leads por status (coluna)
         const leadsGroupedByStatus: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
         
@@ -159,6 +179,58 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         });
         
         setData(leadsGroupedByStatus);
+
+        // Se há um lead selecionado, atualizar com os novos dados
+        if (selected && selected.id) {
+          console.info('[BoardContext] Checking if selected lead needs update...', {
+            selectedId: selected.id,
+            currentMeetingDate: selected.meetingDate
+          });
+
+          const updatedLead = result.result.find((l: Lead) => l.id === selected.id);
+          if (updatedLead) {
+            console.info('[BoardContext] Found updated lead in API response:', {
+              newMeetingDate: updatedLead.meetingDate,
+              newStatus: updatedLead.status
+            });
+
+            const hasChanges = 
+              updatedLead.meetingDate !== selected.meetingDate ||
+              updatedLead.status !== selected.status ||
+              updatedLead.name !== selected.name ||
+              updatedLead.email !== selected.email ||
+              updatedLead.phone !== selected.phone;
+
+            console.info('[BoardContext] Has changes?', hasChanges, {
+              meetingDateChanged: updatedLead.meetingDate !== selected.meetingDate,
+              statusChanged: updatedLead.status !== selected.status
+            });
+
+            if (hasChanges) {
+              console.info('[BoardContext] ✅ Updating selected lead with fresh data');
+              
+              // 🎉 Notificar usuário sobre mudanças específicas
+              if (updatedLead.meetingDate !== selected.meetingDate && updatedLead.meetingDate) {
+                const meetingDateFormatted = new Date(updatedLead.meetingDate).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+                toast.info(`📅 Data de reunião atualizada: ${meetingDateFormatted}`, {
+                  duration: 3000,
+                });
+              }
+              
+              setSelected(updatedLead);
+            } else {
+              console.info('[BoardContext] ℹ️ No changes detected, keeping current selected');
+            }
+          } else {
+            console.info('[BoardContext] ⚠️ Selected lead not found in API response');
+          }
+        }
       } else {
         console.error('Erro ao carregar leads:', result.errorMessages);
         setErrors({ api: result.errorMessages?.join(', ') || 'Erro desconhecido' });
@@ -177,7 +249,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     loadLeads();
   }, [supabaseId]);
 
-    let dragStarted = false
+  let dragStarted = false
     const handleCardMouseDown = () => { dragStarted = false }
 
     const handleCardDragStart = (e: React.DragEvent, leadId: string, from: ColumnKey) => {
@@ -234,6 +306,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
       // Função para atualizar status na API
       const updateLeadStatusInAPI = async (leadId: string, newStatus: ColumnKey) => {
+        // 🚀 Toast de loading para feedback imediato
+        const loadingToast = toast.loading('Atualizando status do lead...');
+        
         try {
           const response = await fetch(`/api/v1/leads/${leadId}/status`, {
             method: 'PUT',
@@ -245,12 +320,66 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           });
 
           if (!response.ok) {
-            console.error('Erro ao atualizar status do lead');
-            // TODO: Implementar rollback do estado local em caso de erro
+            throw new Error('Erro ao atualizar status do lead');
           }
+          
+          // ✅ Sucesso
+          const statusLabels: Record<ColumnKey, string> = {
+            'new_opportunity': 'Nova Oportunidade',
+            'scheduled': 'Agendado',
+            'no_show': 'Não Compareceu',
+            'pricingRequest': 'Solicitação de Preço',
+            'offerNegotiation': 'Negociação de Proposta',
+            'pending_documents': 'Documentos Pendentes',
+            'offerSubmission': 'Proposta Enviada',
+            'dps_agreement': 'Acordo DPS',
+            'invoicePayment': 'Pagamento de Fatura',
+            'disqualified': 'Desqualificado',
+            'opportunityLost': 'Oportunidade Perdida',
+            'operator_denied': 'Operadora Negou',
+            'contract_finalized': 'Contrato Finalizado'
+          };
+          
+          toast.success(`Status atualizado para: ${statusLabels[newStatus] || newStatus}`, {
+            id: loadingToast,
+            duration: 3000,
+          });
         } catch (error) {
           console.error('Erro ao atualizar status do lead:', error);
-          // TODO: Implementar rollback do estado local em caso de erro
+          
+          // ❌ Erro - Reverter mudança visual
+          toast.error('Erro ao atualizar status. Recarregando...', {
+            id: loadingToast,
+            duration: 4000,
+          });
+          
+          // Recarregar dados para reverter UI
+          await loadLeads();
+        }
+      };
+
+      // Função para finalizar contrato
+      const finalizeContract = async (leadId: string, contractData: FinalizeContractData) => {
+        try {
+          const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-supabase-user-id': supabaseId
+            },
+            body: JSON.stringify(contractData)
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.errorMessages?.[0] || 'Erro ao finalizar contrato');
+          }
+
+          // Atualizar o lead para a coluna de contrato finalizado
+          await loadLeads(); // Recarrega todos os leads para garantir consistência
+        } catch (error) {
+          console.error('Erro ao finalizar contrato:', error);
+          throw error;
         }
       };
     
@@ -282,19 +411,20 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   }, [data, query, assignedUser, periodStart, periodEnd]);
 
   const responsaveis = useMemo(() => {
-    const responsaveisMap = new Map<string, string>();
+    const responsaveisMap = new Map<string, { name: string; avatarUrl?: string | null }>();
     COLUMNS.forEach(({ key }) => {
       const columnData = data[key] || []; // Fallback para array vazio se não existir
       columnData.forEach((l) => {
         if (l.assignedTo && l.assignee) {
           // Usar o nome completo se disponível, senão o email, senão o ID
           const displayName = l.assignee.fullName || l.assignee.email || l.assignedTo;
-          responsaveisMap.set(l.assignedTo, displayName);
+          const avatarUrl = l.assignee.avatarUrl;
+          responsaveisMap.set(l.assignedTo, { name: displayName, avatarUrl });
         }
       });
     });
     return Array.from(responsaveisMap.entries())
-      .map(([id, name]) => ({ id, name }))
+      .map(([id, data]) => ({ id, name: data.name, avatarUrl: data.avatarUrl }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
 
@@ -310,7 +440,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setPeriodEnd,
     assignedUser,
     setAssignedUser,
-    responsaveis,
+    taskOwners: responsaveis,
     errors,
     open,
     user,
@@ -325,7 +455,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     openNewLeadDialog,
     onDrop,
     onDragStart,
-    refreshLeads: loadLeads
+    refreshLeads: loadLeads,
+    finalizeContract
   };
   
   return (

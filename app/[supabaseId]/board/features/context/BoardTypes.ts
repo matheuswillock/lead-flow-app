@@ -11,6 +11,7 @@ export type Lead = {
   cnpj: string | null;
   age: AgeRange[];
   hasHealthPlan: boolean | null;
+  currentHealthPlan: string | null;
   currentValue: number | null;
   referenceHospital: string | null;
   currentTreatment: string | null;

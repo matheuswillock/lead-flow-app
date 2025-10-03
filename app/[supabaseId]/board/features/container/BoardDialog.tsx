@@ -8,12 +8,23 @@ import { useLeads } from "@/hooks/useLeads";
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { CheckCircle } from "lucide-react";
+import { FinalizeContractDialog } from "./FinalizeContractDialog";
 
 export default function BoardDialog() {
   const { open, setOpen, selected: lead, user, userLoading, refreshLeads } = useBoardContext();
   const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
+
+  // Verificar se o lead pode ter o contrato finalizado
+  const canFinalizeContract = lead && (
+    lead.status === 'invoicePayment' || 
+    lead.status === 'dps_agreement' ||
+    lead.status === 'offerSubmission'
+  );
 
   // Função para transformar os dados do formulário para criação de lead
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
@@ -67,6 +78,7 @@ export default function BoardDialog() {
       phone: data.phone || undefined,
       age: data.age.map(mapAgeStringToEnum).filter(Boolean) as any[],
       hasHealthPlan: data.hasPlan === "sim",
+      currentHealthPlan: data.currentHealthPlan || undefined,
       currentValue: parseCurrentValue(data.currentValue),
       referenceHospital: data.referenceHospital || undefined,
       currentTreatment: data.ongoingTreatment || undefined,
@@ -131,6 +143,7 @@ export default function BoardDialog() {
       phone: data.phone || undefined,
       age: data.age.map(mapAgeStringToEnum).filter(Boolean) as any[],
       hasHealthPlan: data.hasPlan === "sim",
+      currentHealthPlan: data.currentHealthPlan || undefined,
       currentValue: parseCurrentValue(data.currentValue),
       referenceHospital: data.referenceHospital || undefined,
       currentTreatment: data.ongoingTreatment || undefined,
@@ -146,35 +159,120 @@ export default function BoardDialog() {
     
     try {
       if (lead) {
+        // 🔄 EDITAR LEAD
+        const loadingToast = toast.loading('Atualizando lead...');
+        
         const updateData = transformToUpdateRequest(data);
         const result = await updateLead(lead.id, updateData);
         
         if (result.success) {
-          toast.success("Lead atualizado com sucesso!");
+          toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
+            id: loadingToast,
+            duration: 3000,
+          });
           setOpen(false);
-          // Atualizar o board para refletir as mudanças
           await refreshLeads();
         } else {
-          toast.error(result.message || "Erro ao atualizar lead");
+          toast.error(result.message || "Erro ao atualizar lead", {
+            id: loadingToast,
+            duration: 5000,
+          });
         }
       } else {
-        const createData = transformToCreateRequest(data);
-        const result = await createLead(createData);
+        // ➕ CRIAR NOVO LEAD
+        const loadingToast = toast.loading(`Criando lead "${data.name}"...`);
         
-        if (result.success) {
-          toast.success("Lead criado com sucesso!");
-          setOpen(false);
-          // Atualizar o board para refletir o novo lead
-          await refreshLeads();
-        } else {
-          toast.error(result.message || "Erro ao criar lead");
+        // 🚀 Optimistic update - fechar dialog imediatamente
+        setOpen(false);
+        
+        try {
+          const createData = transformToCreateRequest(data);
+          const result = await createLead(createData);
+          
+          if (result.success) {
+            toast.success(`Lead "${data.name}" criado com sucesso!`, {
+              id: loadingToast,
+              duration: 4000,
+            });
+            await refreshLeads();
+          } else {
+            // Reabrir dialog em caso de erro
+            toast.error(result.message || "Erro ao criar lead", {
+              id: loadingToast,
+              duration: 5000,
+            });
+            setOpen(true);
+          }
+        } catch (createError) {
+          // ❌ Erro específico da criação
+          const errorMessage = createError instanceof Error ? createError.message : "Erro ao criar lead";
+          
+          // Verificar se é erro de duplicação (unique constraint)
+          if (errorMessage.includes('Unique constraint') || errorMessage.includes('já existe')) {
+            toast.error(`⚠️ Já existe um lead com este telefone: ${data.phone}`, {
+              id: loadingToast,
+              duration: 6000,
+            });
+          } else if (errorMessage.includes('validation') || errorMessage.includes('inválido')) {
+            toast.error(`⚠️ Dados inválidos: ${errorMessage}`, {
+              id: loadingToast,
+              duration: 5000,
+            });
+          } else {
+            toast.error(errorMessage, {
+              id: loadingToast,
+              duration: 5000,
+            });
+          }
+          
+          // Reabrir dialog para usuário corrigir
+          setOpen(true);
         }
       }
     } catch (error) {
       console.error("Erro na submissão do formulário:", error);
-      toast.error("Erro inesperado ao processar o formulário");
+      const errorMessage = error instanceof Error ? error.message : "Erro inesperado ao processar o formulário";
+      toast.error(errorMessage, {
+        duration: 5000,
+      });
+      
+      // Reabrir dialog em caso de erro
+      if (!lead) {
+        setOpen(true);
+      }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleFinalizeContract = () => {
+    setShowFinalizeDialog(true);
+  };
+
+  const handleFinalizeSubmit = async (data: any) => {
+    if (!lead) return;
+
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}/finalize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.errors?.[0] || 'Erro ao finalizar contrato');
+      }
+
+      toast.success('Contrato finalizado com sucesso!');
+      setShowFinalizeDialog(false);
+      setOpen(false);
+      await refreshLeads();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao finalizar contrato');
+      throw error;
     }
   };
 
@@ -226,6 +324,7 @@ export default function BoardDialog() {
         cnpj: formatCNPJ(lead.cnpj || ""),
         age: lead.age?.map(mapEnumToAgeString).filter(Boolean) as ("0-18" | "19-25" | "26-35" | "36-45" | "46-60" | "61+")[] || [],
         hasPlan: lead.hasHealthPlan ? "sim" : "nao",
+        currentHealthPlan: lead.currentHealthPlan || "",
         currentValue: lead.currentValue ? formatCurrency(lead.currentValue) : "",
         referenceHospital: lead.referenceHospital || "",
         ongoingTreatment: lead.currentTreatment || "",
@@ -241,6 +340,7 @@ export default function BoardDialog() {
         cnpj: "",
         age: [],
         hasPlan: undefined,
+        currentHealthPlan: "",
         currentValue: "",
         referenceHospital: "",
         ongoingTreatment: "",
@@ -252,41 +352,67 @@ export default function BoardDialog() {
   }, [lead, open, form, user]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {lead ? "Editar Lead" : "Novo Lead"}
-          </DialogTitle>
-          <DialogDescription>
-            {lead 
-              ? "Faça as alterações necessárias nos dados do lead."
-              : "Preencha os dados para criar um novo lead."
-            }
-          </DialogDescription>
-        </DialogHeader>
-        
-        {userLoading ? (
-          <div className="flex items-center justify-center p-8">
-            <div className="text-center">
-              <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
-              <p className="text-sm text-muted-foreground">Carregando dados do usuário...</p>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle>
+                  {lead ? "Editar Lead" : "Novo Lead"}
+                </DialogTitle>
+                <DialogDescription>
+                  {lead 
+                    ? "Faça as alterações necessárias nos dados do lead."
+                    : "Preencha os dados para criar um novo lead."
+                  }
+                </DialogDescription>
+              </div>
+              {canFinalizeContract && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={handleFinalizeContract}
+                  className="ml-4"
+                >
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Fechar Contrato
+                </Button>
+              )}
             </div>
-          </div>
-        ) : !user ? (
-          <div className="flex items-center justify-center p-8">
-            <p className="text-sm text-destructive">Erro ao carregar dados do usuário</p>
-          </div>
-        ) : (
-          <LeadForm
-            form={form}
-            onSubmit={onSubmit}
-            isLoading={isSubmitting}
-            onCancel={() => setOpen(false)}
-            usersToAssign={user.usersAssociated || []}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
+          </DialogHeader>
+          
+          {userLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <div className="text-center">
+                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+                <p className="text-sm text-muted-foreground">Carregando dados do usuário...</p>
+              </div>
+            </div>
+          ) : !user ? (
+            <div className="flex items-center justify-center p-8">
+              <p className="text-sm text-destructive">Erro ao carregar dados do usuário</p>
+            </div>
+          ) : (
+            <LeadForm
+              form={form}
+              onSubmit={onSubmit}
+              isLoading={isSubmitting}
+              onCancel={() => setOpen(false)}
+              usersToAssign={user.usersAssociated || []}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {lead && (
+        <FinalizeContractDialog
+          open={showFinalizeDialog}
+          onOpenChange={setShowFinalizeDialog}
+          leadName={lead.name}
+          onFinalize={handleFinalizeSubmit}
+        />
+      )}
+    </>
   );
 }

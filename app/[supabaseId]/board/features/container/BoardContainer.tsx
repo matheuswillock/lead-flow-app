@@ -1,35 +1,82 @@
 "use client"
 
-import React from "react";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import React, { useState } from "react";
 import BoardHeader from "./BoardHeader";
 import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
 import BoardDialog from "./BoardDialog";
+import { FinalizeContractDialog } from "./FinalizeContractDialog";
+import { ScheduleMeetingDialog } from "./ScheduleMeetingDialog";
 import useBoardContext from "../context/BoardHook";
+import { Lead } from "../context/BoardTypes";
+import { toast } from "sonner";
 
 export function BoardContainer() {
-  const { openNewLeadDialog } = useBoardContext();
+  const { finalizeContract, refreshLeads } = useBoardContext();
+  const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+
+  const handleFinalizeContract = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowFinalizeDialog(true);
+  };
+
+  const handleScheduleMeeting = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowScheduleDialog(true);
+  };
+
+  const handleFinalizeSubmit = async (data: any) => {
+    if (!selectedLead) return;
+
+    try {
+      await finalizeContract(selectedLead.id, data);
+      toast.success('Contrato finalizado com sucesso!');
+      setShowFinalizeDialog(false);
+      setSelectedLead(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao finalizar contrato');
+      throw error; // Re-throw para o dialog poder mostrar o erro
+    }
+  };
+
+  const handleScheduleSuccess = async () => {
+    await refreshLeads();
+    setSelectedLead(null);
+  };
 
   return (
     <div className="flex h-[calc(100vh-2rem)] w-full flex-col gap-3 p-4">
 
       <BoardHeader />
 
-      <BoardColumns />
+      <BoardColumns 
+        onFinalizeContract={handleFinalizeContract}
+        onScheduleMeeting={handleScheduleMeeting}
+      />
 
       <BoardFooter />
 
-      <Button 
-        size="lg" 
-        className="w-96 h-14 self-center justify-center text-2xl rounded-4xl mt-12 cursor-pointer"
-        onClick={openNewLeadDialog}
-      >
-        <Plus className="mr-1 size-4" /> Adicionar novo lead
-      </Button>
-
       <BoardDialog />
+
+      {selectedLead && (
+        <>
+          <FinalizeContractDialog
+            open={showFinalizeDialog}
+            onOpenChange={setShowFinalizeDialog}
+            leadName={selectedLead.name}
+            onFinalize={handleFinalizeSubmit}
+          />
+          
+          <ScheduleMeetingDialog
+            open={showScheduleDialog}
+            onOpenChange={setShowScheduleDialog}
+            lead={selectedLead}
+            onScheduleSuccess={handleScheduleSuccess}
+          />
+        </>
+      )}
     </div>
   );
 }

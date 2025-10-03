@@ -115,19 +115,23 @@ export const useLeads = () => {
         body: JSON.stringify(leadData),
       });
 
-      if (!response.ok) {
-        throw new Error('Erro ao criar lead');
-      }
-
       const apiResult = await response.json();
+
+      // Se a resposta não for OK, extrair mensagem de erro específica
+      if (!response.ok) {
+        const errorMessage = apiResult.errorMessages?.join(', ') || 
+                           apiResult.message || 
+                           'Erro ao criar lead';
+        throw new Error(errorMessage);
+      }
       
       // Transform API response to DTO format expected by frontend
       const result: CreateLeadResponseDTO = {
         success: apiResult.isValid,
         lead: apiResult.result,
         message: apiResult.isValid 
-          ? apiResult.successMessages.join(', ') || 'Lead criado com sucesso'
-          : apiResult.errorMessages.join(', ') || 'Erro ao criar lead'
+          ? apiResult.successMessages?.join(', ') || 'Lead criado com sucesso'
+          : apiResult.errorMessages?.join(', ') || 'Erro ao criar lead'
       };
       
       return result;
