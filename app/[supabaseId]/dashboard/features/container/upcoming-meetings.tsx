@@ -61,12 +61,13 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
 
         const data = await response.json()
 
-        if (data.success && data.data) {
-          setSchedules(data.data)
+        // Output usa isValid e result, não success e data
+        if (data.isValid && data.result) {
+          setSchedules(data.result)
           setError(null)
         } else {
-          const errorMessage = data.errors && data.errors.length > 0 
-            ? data.errors[0] 
+          const errorMessage = data.errorMessages && data.errorMessages.length > 0 
+            ? data.errorMessages[0] 
             : 'Erro ao carregar agendamentos';
           setError(errorMessage)
         }
