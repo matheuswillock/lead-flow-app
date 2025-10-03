@@ -45,18 +45,11 @@ export function ScheduleMeetingDialog({
       return;
     }
 
-    // 🚀 OPTIMISTIC UPDATE - Fechar dialog e mostrar loading toast imediatamente
+    setIsSubmitting(true);
     const loadingToast = toast.loading("Agendando reunião...");
-    onOpenChange(false);
-    
-    // Chamar onScheduleSuccess imediatamente para UI responsiva
-    // Isso vai disparar refreshLeads() que buscará os dados atualizados
-    onScheduleSuccess();
 
     try {
-      setIsSubmitting(true);
-
-      // Criar agendamento
+      // 1. Criar agendamento
       const response = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
         method: "POST",
         headers: {
@@ -75,7 +68,7 @@ export function ScheduleMeetingDialog({
         throw new Error(result.errorMessages?.join(", ") || "Erro ao agendar reunião");
       }
 
-      // Atualizar status do lead para scheduled
+      // 2. Atualizar status do lead para scheduled
       const statusResponse = await fetch(`/api/v1/leads/${lead.id}/status`, {
         method: "PUT",
         headers: {
@@ -91,7 +84,7 @@ export function ScheduleMeetingDialog({
         console.warn("Erro ao atualizar status do lead");
       }
 
-      // ✅ Sucesso - Atualizar loading toast para success
+      // ✅ Sucesso - Fechar dialog e atualizar UI
       toast.success(`Reunião agendada para ${meetingDate.toLocaleDateString("pt-BR", {
         day: "2-digit",
         month: "long",
@@ -106,17 +99,21 @@ export function ScheduleMeetingDialog({
       // Limpar form
       setMeetingDate(undefined);
       setNotes("");
+      
+      // Fechar dialog
+      onOpenChange(false);
+      
+      // 3. Atualizar board (recarregar leads)
+      onScheduleSuccess();
+      
     } catch (error) {
       console.error("Erro ao agendar reunião:", error);
       
-      // ❌ Erro - Atualizar loading toast para error
+      // ❌ Erro - Mostrar mensagem de erro
       toast.error(error instanceof Error ? error.message : "Erro ao agendar reunião", {
         id: loadingToast,
         duration: 5000,
       });
-      
-      // Reabrir dialog em caso de erro para usuário tentar novamente
-      onOpenChange(true);
     } finally {
       setIsSubmitting(false);
     }
