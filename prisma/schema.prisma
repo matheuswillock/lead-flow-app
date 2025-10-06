@@ -93,25 +93,23 @@ enum SubscriptionPlan {
 // -----------------------------
 
 model Profile {
-  id             String   @id @unique @default(uuid()) @db.Uuid
-  email          String   @unique @db.Text
-  supabaseId     String?  @unique @db.Uuid
-  fullName       String?  @db.Text
-  phone          String?  @db.Text
-  profileIconId  String?  @db.Text
-  profileIconUrl String?  @db.Text
-  role           UserRole @default(manager)
-  managerId      String?  @db.Uuid
-
-  // 💳 Campos de Assinatura Asaas
-  asaasCustomerId       String?             @db.Text // ID do cliente no Asaas
-  subscriptionId        String?             @db.Text // ID da assinatura no Asaas
-  subscriptionStatus    SubscriptionStatus? // Status da assinatura
-  subscriptionPlan      SubscriptionPlan? // Plano atual
-  operatorCount         Int                 @default(0) // Quantidade de operadores ativos
+  id                    String              @id @unique @default(uuid()) @db.Uuid
+  email                 String              @unique @db.Text
+  supabaseId            String?             @unique @db.Uuid
+  fullName              String?             @db.Text
+  phone                 String?             @db.Text
+  profileIconId         String?             @db.Text
+  profileIconUrl        String?             @db.Text
+  role                  UserRole            @default(manager)
+  managerId             String?             @db.Uuid
+  asaasCustomerId       String?             @db.Text
+  subscriptionId        String?             @db.Text
+  subscriptionStatus    SubscriptionStatus?
+  subscriptionPlan      SubscriptionPlan?
+  operatorCount         Int                 @default(0)
   subscriptionStartDate DateTime?           @db.Timestamptz(6)
   subscriptionEndDate   DateTime?           @db.Timestamptz(6)
-  trialEndDate          DateTime?           @db.Timestamptz(6) // Data fim do trial
+  trialEndDate          DateTime?           @db.Timestamptz(6)
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)

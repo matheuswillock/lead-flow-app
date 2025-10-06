@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { metricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
-import type { MetricsFilters } from '@/app/api/useCases/metrics/IMetricsUseCase';
+import type { IMetricsUseCase, MetricsFilters } from '@/app/api/useCases/metrics/IMetricsUseCase';
+import { IDashboardInfosService } from '@/app/api/services/DashboardInfos/IDashboardInfosService';
+import { DashboardInfosService } from '@/app/api/services/DashboardInfos/DashboardInfosService';
+import { MetricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
+
+const dashboardInfosService : IDashboardInfosService = new DashboardInfosService();
+const metricsUseCase : IMetricsUseCase = new MetricsUseCase(dashboardInfosService);
 
 export async function GET(request: NextRequest) {
   try {

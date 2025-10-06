@@ -1,9 +1,11 @@
 import { Output } from "@/lib/output";
-import { DashboardInfosService, DashboardFilters } from "@/app/api/services/DashboardInfosService";
 import type { IMetricsUseCase, MetricsFilters } from "./IMetricsUseCase";
+import { DashboardFilters } from "../../services/DashboardInfos/types/DashboardFilters";
+import { IDashboardInfosService } from "../../services";
 
 export class MetricsUseCase implements IMetricsUseCase {
-  
+  constructor(private dashboardInfosService: IDashboardInfosService) {}
+
   /**
    * Busca métricas do dashboard
    */
@@ -28,7 +30,7 @@ export class MetricsUseCase implements IMetricsUseCase {
       };
 
       // Chamar o serviço
-      const metrics = await DashboardInfosService.getDashboardMetrics(serviceFilters);
+      const metrics = await this.dashboardInfosService.getDashboardMetrics(serviceFilters);
 
       return new Output(
         true,
@@ -65,7 +67,7 @@ export class MetricsUseCase implements IMetricsUseCase {
       }
 
       // Chamar o serviço
-      const detailedMetrics = await DashboardInfosService.getDetailedStatusMetrics(supabaseId);
+      const detailedMetrics = await this.dashboardInfosService.getDetailedStatusMetrics(supabaseId);
 
       return new Output(
         true,
@@ -76,7 +78,6 @@ export class MetricsUseCase implements IMetricsUseCase {
 
     } catch (error) {
       console.error('Erro ao buscar métricas detalhadas:', error);
-      
       return new Output(
         false,
         [],
@@ -86,6 +87,3 @@ export class MetricsUseCase implements IMetricsUseCase {
     }
   }
 }
-
-// Instância única para uso em toda aplicação
-export const metricsUseCase = new MetricsUseCase();

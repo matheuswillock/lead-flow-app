@@ -1,37 +1,10 @@
 import { LeadStatus } from "@prisma/client";
 import { metricsRepository } from "@/app/api/infra/data/repositories/metrics/MetricsRepository";
 import type { MetricsFilters } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository";
-
-export type DashboardMetrics = {
-  // Métricas básicas
-  agendamentos: number;
-  negociacao: number;
-  implementacao: number;
-  vendas: number;
-  
-  // Métricas calculadas
-  taxaConversao: number; // (vendas / agendamentos) * 100
-  receitaTotal: number;
-  churnRate: number; // (negada operadora / vendas) * 100
-  noShowRate: number; // (NoShow / agendamentos) * 100
-  
-  // Dados por período com conversão
-  leadsPorPeriodo: {
-    periodo: string;
-    leads: number;
-    conversoes: number;
-  }[];
-  
-  // Dados detalhados por status
-  statusCount: Record<LeadStatus, number>;
-};
-
-export type DashboardFilters = {
-  supabaseId: string;
-  startDate?: Date;
-  endDate?: Date;
-  period?: '7d' | '30d' | '3m' | '6m' | '1y';
-};
+import { IDashboardInfosService } from "./IDashboardInfosService";
+import { DashboardMetrics } from "./types/DashboardMetrics";
+import { DashboardFilters } from "./types/DashboardFilters";
+import { DetailedStatusMetrics } from "./types/DetailedStatusMetrics";
 
 /**
  * Status Groups for metrics calculation
@@ -56,12 +29,11 @@ const STATUS_GROUPS = {
   NO_SHOW: ['no_show'] as LeadStatus[],
 } as const;
 
-export class DashboardInfosService {
-  
+export class DashboardInfosService implements IDashboardInfosService {
   /**
    * Busca todas as métricas do dashboard
    */
-  static async getDashboardMetrics(filters: DashboardFilters): Promise<DashboardMetrics> {
+ async getDashboardMetrics(filters: DashboardFilters): Promise<DashboardMetrics> {
     const { supabaseId, startDate, endDate } = filters;
     
     const repositoryFilters: MetricsFilters = {
@@ -127,7 +99,7 @@ export class DashboardInfosService {
   /**
    * Conta leads por grupo de status
    */
-  private static countByStatusGroup(
+  private countByStatusGroup(
     statusCount: Record<LeadStatus, number>, 
     statusGroup: readonly LeadStatus[]
   ): number {
@@ -137,7 +109,7 @@ export class DashboardInfosService {
   /**
    * Busca leads agrupados por período com dados de conversão
    */
-  private static async getLeadsByPeriod(filters: DashboardFilters) {
+  private async getLeadsByPeriod(filters: DashboardFilters) {
     const { supabaseId, period = '30d' } = filters;
     
     let startDate: Date;
@@ -191,7 +163,7 @@ export class DashboardInfosService {
   /**
    * Agrupa leads por intervalo de tempo
    */
-  private static groupLeadsByTimeInterval(
+  private groupLeadsByTimeInterval(
     leads: Array<{ createdAt: Date; _count: { id: number } }>,
     period: string
   ) {
@@ -225,7 +197,7 @@ export class DashboardInfosService {
    * Agrupa conversões por intervalo de tempo
    * IMPORTANTE: Agrupa pela data de CRIAÇÃO do lead, não pela data de finalização
    */
-  private static groupConversionsByTimeInterval(
+  private groupConversionsByTimeInterval(
     conversions: Array<{ finalizedDateAt: Date; lead: { createdAt: Date } }>,
     period: string
   ): Map<string, number> {
@@ -252,7 +224,7 @@ export class DashboardInfosService {
   /**
    * Busca métricas detalhadas por status
    */
-  static async getDetailedStatusMetrics(supabaseId: string) {
+ async getDetailedStatusMetrics(supabaseId: string) : Promise<DetailedStatusMetrics[]> {
     const statusMetrics = await metricsRepository.getStatusMetrics(supabaseId);
 
     return statusMetrics.map((metric) => ({

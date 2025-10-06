@@ -14,7 +14,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Extrair supabaseId dos headers ou body
     const supabaseId = request.headers.get('x-supabase-user-id') || body.supabaseId;
     
     if (!supabaseId) {
