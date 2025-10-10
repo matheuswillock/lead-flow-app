@@ -1,6 +1,9 @@
 "use client"
 
 import { LandingHeader } from "@/components/landing/landingHeader";
+import { FeaturesSection } from "@/components/landing/FeaturesSection";
+import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
+import { PricingSection } from "@/components/landing/PricingSection";
 import { div as MotionDiv, h1 as MotionH1, p as MotionP } from "framer-motion/client";
 import { ArrowRight, } from "lucide-react";
 import Link from "next/link";
@@ -106,6 +109,30 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Features Section */}
+      <FeaturesSection />
+
+      {/* How It Works Section */}
+      <HowItWorksSection />
+
+      {/* Pricing Section */}
+      <PricingSection />
+
+      {/* Simple Footer */}
+      <footer className="relative border-t" style={{ borderColor: "var(--border)" }}>
+        <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
+            <p>© {new Date().getFullYear()} Lead Flow. Todos os direitos reservados.</p>
+            <p className="flex items-center gap-2">
+              <span>Produzido por</span>
+              <span className="font-semibold" style={{ color: "var(--primary)" }}>
+                Willocks House
+              </span>
+            </p>
+          </div>
+        </div>
+      </footer>
     </main>
   )
 }
