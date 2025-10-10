@@ -73,10 +73,33 @@ export class CreateSubscriptionUseCase {
         return new Output(false, [], validationErrors, null)
       }
 
+      // Debug: Ver o que está chegando
+      console.info('🔍 [CreateSubscriptionUseCase] Dados recebidos:', {
+        cpfCnpj: input.cpfCnpj,
+        phone: input.phone,
+        postalCode: input.postalCode
+      });
+
       // Normalização básica
-      const cpfCnpj = input.cpfCnpj.replace(/\D/g, '')
-      const phone = input.phone?.replace(/\D/g, '')
-      const postalCode = input.postalCode?.replace(/\D/g, '')
+      const cpfCnpj = input.cpfCnpj?.replace(/\D/g, '') || ''
+      const phone = input.phone?.replace(/\D/g, '') || ''
+      const postalCode = input.postalCode?.replace(/\D/g, '') || ''
+
+      // Validação adicional
+      if (!cpfCnpj || cpfCnpj.length < 11) {
+        return new Output(false, [], ['CPF/CNPJ é obrigatório e deve ter pelo menos 11 dígitos'], null)
+      }
+
+      if (!phone || phone.length < 10) {
+        return new Output(false, [], ['Telefone é obrigatório e deve ter pelo menos 10 dígitos'], null)
+      }
+
+      console.info('✅ [CreateSubscriptionUseCase] Dados normalizados:', {
+        cpfCnpj: `${cpfCnpj.substring(0, 3)}***`,
+        cpfCnpjLength: cpfCnpj.length,
+        phone: `${phone.substring(0, 4)}***`,
+        phoneLength: phone.length
+      });
 
       // 1. Verificar se já existe profile com este email
       console.info('📊 [CreateSubscriptionUseCase] Verificando profile existente...');
@@ -199,90 +222,73 @@ export class CreateSubscriptionUseCase {
         console.info('📋 [CreateSubscriptionUseCase] Usando assinatura existente para criar novo pagamento');
       }
 
-  let profileId: string
-  let supabaseId: string | null
+      // Verificar se já existe profile (se sim, reutilizar)
+      let customerId: string;
+      let existingAsaasCustomerId = existingProfile?.asaasCustomerId;
 
-      if (!existingProfile) {
-        // Criar profile "placeholder" (usuário supabase será criado em fluxo separado de confirmação)
-        console.info('➕ [CreateSubscriptionUseCase] Criando novo profile...');
-        const profile = await prisma.profile.create({
-          data: {
-            fullName: input.fullName,
-            email: input.email,
-            phone: phone,
-            role: 'manager'
-          }
-        })
-        profileId = profile.id
-        supabaseId = profile.supabaseId || null
-        console.info('✅ [CreateSubscriptionUseCase] Profile criado:', profileId);
+      if (existingAsaasCustomerId) {
+        // Reutilizar cliente Asaas existente
+        customerId = existingAsaasCustomerId;
+        console.info('♻️ [CreateSubscriptionUseCase] Reutilizando cliente Asaas:', customerId);
       } else {
-        profileId = existingProfile.id
-        supabaseId = existingProfile.supabaseId || null
-        console.info('♻️ [CreateSubscriptionUseCase] Reutilizando profile:', profileId);
+        // Criar cliente Asaas (SEM criar profile ainda)
+        console.info('💳 [CreateSubscriptionUseCase] Criando cliente Asaas...');
+        console.info('💳 [CreateSubscriptionUseCase] Dados cliente:', {
+          name: input.fullName,
+          email: input.email,
+          cpfCnpj: cpfCnpj.substring(0, 3) + '***',
+          phone: phone?.substring(0, 4) + '***'
+        });
+        
+        const customer = await this.customerService.createCustomer({
+          name: input.fullName,
+          email: input.email,
+          cpfCnpj,
+          phone,
+          postalCode,
+          address: input.address,
+          addressNumber: input.addressNumber,
+          complement: input.complement,
+          province: input.province,
+          externalReference: input.email // Usar email como referência temporária
+        })
+        
+        customerId = customer.customerId;
+        console.info('✅ [CreateSubscriptionUseCase] Cliente Asaas criado:', customerId);
       }
-
-      // 2. Criar cliente Asaas se ainda não houver
-      if (existingProfile?.asaasCustomerId) {
-        // reutilizar
-        console.info('♻️ [CreateSubscriptionUseCase] Reutilizando cliente Asaas:', existingProfile.asaasCustomerId);
-      }
-
-      console.info('💳 [CreateSubscriptionUseCase] Criando cliente Asaas...');
-      console.info('💳 [CreateSubscriptionUseCase] Dados cliente:', {
-        name: input.fullName,
-        email: input.email,
-        cpfCnpj: cpfCnpj.substring(0, 3) + '***',
-        phone: phone?.substring(0, 4) + '***'
-      });
-      
-      const customer = await this.customerService.createCustomer({
-        name: input.fullName,
-        email: input.email,
-        cpfCnpj,
-        phone,
-        postalCode,
-        address: input.address,
-        addressNumber: input.addressNumber,
-        complement: input.complement,
-        province: input.province,
-        externalReference: profileId
-      })
-      
-      console.info('✅ [CreateSubscriptionUseCase] Cliente Asaas criado:', customer.customerId);
 
       // 3. Criar assinatura base (manager R$ 59,90). Serviço já força 59.90
       console.info('💰 [CreateSubscriptionUseCase] Criando assinatura Manager...');
       console.info('💰 [CreateSubscriptionUseCase] Tipo de pagamento:', input.billingType);
       
       const subscription = await this.subscriptionService.createManagerSubscription({
-        customer: customer.customerId,
+        customer: customerId,
         billingType: input.billingType,
         value: 59.90,
         cycle: 'MONTHLY',
         description: 'Lead Flow - Plano Manager',
-        externalReference: profileId
+        externalReference: input.email // Usar email como referência temporária
       })
       
       console.info('✅ [CreateSubscriptionUseCase] Assinatura criada:', subscription.subscriptionId);
 
-      // 4. Persistir dados de subscription no profile
-      await prisma.profile.update({
-        where: { id: profileId },
-        data: {
-          asaasCustomerId: customer.customerId,
-            subscriptionId: subscription.subscriptionId,
-            subscriptionStatus: 'active',
-            subscriptionPlan: 'manager_base',
-            subscriptionStartDate: new Date()
-        }
-      })
+      // 4. NÃO criar profile ainda - será criado no sign-up após confirmação de pagamento
+      console.info('ℹ️ [CreateSubscriptionUseCase] Profile será criado no sign-up após confirmação de pagamento');
 
-      const result: CreateSubscriptionResult = {
-        profileId,
-        customerId: customer.customerId,
+      const result: CreateSubscriptionResult & { 
+        email: string; 
+        fullName: string; 
+        cpfCnpj: string; 
+        phone: string;
+      } = {
+        profileId: '', // Será preenchido no sign-up
+        customerId: customerId,
         subscriptionId: subscription.subscriptionId,
-        paymentUrl: (subscription as any)?.data?.invoiceUrl || undefined
+        paymentUrl: (subscription as any)?.data?.invoiceUrl || undefined,
+        email: input.email,
+        fullName: input.fullName,
+        cpfCnpj: cpfCnpj,
+        phone: phone
       }
 
       // PIX: tentar obter primeiro payment e QR Code (se houver)

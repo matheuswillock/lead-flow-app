@@ -112,7 +112,13 @@ export function PixPayment({
     setIsChecking(true);
     
     try {
-      const response = await fetch(`/api/v1/payments/${paymentId}/status`);
+      const response = await fetch('/api/v1/payments/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ paymentId }),
+      });
       
       if (!response.ok) {
         throw new Error('Erro ao verificar pagamento');
@@ -120,7 +126,7 @@ export function PixPayment({
 
       const data = await response.json();
       
-      if (data.result?.status === 'CONFIRMED' || data.result?.status === 'RECEIVED') {
+      if (data.isPaid) {
         toast.success('Pagamento confirmado!', {
           description: 'Seu pagamento foi processado com sucesso',
         });

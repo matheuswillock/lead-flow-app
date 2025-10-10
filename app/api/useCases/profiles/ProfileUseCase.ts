@@ -33,6 +33,10 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 input.password,
                 input.email,
                 UserRole.manager,
+                input.asaasCustomerId,
+                input.subscriptionId,
+                input.cpfCnpj,
+                input.subscriptionStatus
             );
 
             if (!result) {

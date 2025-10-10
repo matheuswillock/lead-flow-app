@@ -49,6 +49,23 @@ export async function asaasFetch(endpoint: string, options?: RequestInit) {
   console.log('🔑 [ASAAS] access_token length:', asaasHeaders.access_token.length);
   console.log('🔑 [ASAAS] access_token (primeiros 30 chars):', asaasHeaders.access_token.substring(0, 30));
   console.log('🔑 [ASAAS] access_token (últimos 30 chars):', asaasHeaders.access_token.substring(asaasHeaders.access_token.length - 30));
+  
+  // Log do body se existir
+  if (options?.body) {
+    try {
+      const bodyString = options.body as string;
+      console.log('🔑 [ASAAS] Body RAW (string):', bodyString);
+      
+      const bodyObj = JSON.parse(bodyString);
+      console.log('🔑 [ASAAS] Body parsed:', {
+        ...bodyObj,
+        cpfCnpj: bodyObj.cpfCnpj ? `${bodyObj.cpfCnpj.substring(0, 3)}*** (length: ${bodyObj.cpfCnpj.length})` : undefined,
+        cpfCnpjActual: bodyObj.cpfCnpj, // Show actual value
+      });
+    } catch (e) {
+      console.log('🔑 [ASAAS] Body (não-JSON):', options.body);
+    }
+  }
 
   try {
     const response = await fetch(endpoint, {

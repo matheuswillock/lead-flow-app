@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Loader2, CreditCard, Smartphone, Barcode, QrCode, Copy, ExternalLink, Download, CheckCircle, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +22,8 @@ import { StepIndicator } from './StepIndicator';
 import { subscriptionSchema, type SubscriptionFormSchema } from '../validation/subscriptionSchema';
 import { SubscriptionService } from '../services/SubscriptionService';
 import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from '@/lib/masks';
+import { usePaymentPolling } from '@/hooks/usePaymentPolling';
+import { saveEncryptedData, removeEncryptedData } from '@/lib/crypto';
 
 interface SubscriptionFormMultiStepProps {
   onSuccess: (
@@ -63,6 +66,57 @@ export function SubscriptionFormMultiStep({
   const [loadingPayment, setLoadingPayment] = useState(false);
 
   const service = new SubscriptionService();
+  const router = useRouter();
+
+  // Hook de polling para verificar o status do pagamento
+  const { isPolling, attempts } = usePaymentPolling({
+    subscriptionId: subscriptionData?.subscriptionId || null,
+    enabled: currentStep === 3 && !!subscriptionData?.subscriptionId, // Só ativa no step 3 quando tem subscription
+    onPaymentConfirmed: () => {
+      console.info('🎉 [SubscriptionFormMultiStep] Pagamento confirmado via polling!');
+      
+      toast.success('Pagamento confirmado!', {
+        description: 'Redirecionando para completar seu cadastro...',
+        duration: 3000,
+      });
+
+      // Aguardar 2 segundos para mostrar a mensagem e redirecionar
+      setTimeout(() => {
+        // IMPORTANTE: Salvar dados CRIPTOGRAFADOS para usar no sign-up
+        const formData = form.getValues();
+        const signUpData = {
+          fullName: formData.fullName,
+          email: formData.email,
+          cpfCnpj: unmask(formData.cpfCnpj), // Salvar sem máscara
+          phone: unmask(formData.phone), // Salvar sem máscara
+          postalCode: unmask(formData.postalCode), // Salvar sem máscara
+          address: formData.address,
+          addressNumber: formData.addressNumber,
+          complement: formData.complement,
+          city: formData.city,
+          state: formData.state,
+          subscriptionId: subscriptionData?.subscriptionId,
+          customerId: subscriptionData?.customerId,
+          subscriptionConfirmed: true,
+          timestamp: new Date().toISOString(),
+        };
+        
+        // Salvar CRIPTOGRAFADO no sessionStorage
+        saveEncryptedData('pendingSignUp', signUpData);
+        
+        console.info('💾 [SubscriptionFormMultiStep] Dados salvos (criptografados) para sign-up');
+        
+        // Limpar dados antigos do formulário de subscription
+        removeEncryptedData('subscriptionFormData');
+        sessionStorage.removeItem('subscriptionFormData'); // Remover versão não criptografada também
+        
+        // Redirecionar para o sign-up para completar o cadastro
+        router.push('/sign-up?from=subscription');
+      }, 2000);
+    },
+    interval: 3000, // Verificar a cada 3 segundos
+    maxAttempts: 100, // Máximo 5 minutos (100 * 3s)
+  });
 
   const form = useForm<SubscriptionFormSchema>({
     resolver: zodResolver(subscriptionSchema),
@@ -217,6 +271,15 @@ export function SubscriptionFormMultiStep({
           console.info('♻️ [SubscriptionFormMultiStep] Recuperando pagamento pendente');
           toast.success('Pagamento pendente encontrado!');
         }
+
+        // Armazenar dados do formulário no sessionStorage para usar após pagamento
+        sessionStorage.setItem('subscriptionFormData', JSON.stringify({
+          fullName: formData.fullName,
+          email: formData.email,
+          cpfCnpj: unmask(formData.cpfCnpj),
+          phone: unmask(formData.phone),
+          asaasCustomerId: result.customerId,
+        }));
 
         // Armazenar dados da assinatura
         setSubscriptionData({
@@ -668,6 +731,32 @@ export function SubscriptionFormMultiStep({
                         <p className="text-xs text-muted-foreground">
                           Expira em: {new Date(pixData.expirationDate).toLocaleString('pt-BR')}
                         </p>
+
+                        {/* Indicador de verificação de pagamento */}
+                        {isPolling && (
+                          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                            <div className="flex items-center justify-center gap-3 mb-2">
+                              <div className="relative">
+                                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                <div className="absolute -top-1 -right-1">
+                                  <span className="flex h-3 w-3">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                                  </span>
+                                </div>
+                              </div>
+                              <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                                Verificando pagamento...
+                              </p>
+                            </div>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
+                              Você será redirecionado automaticamente após a confirmação
+                            </p>
+                            <p className="text-xs text-blue-500 dark:text-blue-500 text-center mt-1">
+                              Tentativa {attempts} de 100
+                            </p>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       // Loading ou placeholder
@@ -843,6 +932,32 @@ export function SubscriptionFormMultiStep({
                             Pague em qualquer banco, casa lotérica ou via internet banking
                           </p>
                         </div>
+
+                        {/* Indicador de verificação de pagamento */}
+                        {isPolling && (
+                          <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                            <div className="flex items-center justify-center gap-3 mb-2">
+                              <div className="relative">
+                                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                <div className="absolute -top-1 -right-1">
+                                  <span className="flex h-3 w-3">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                                  </span>
+                                </div>
+                              </div>
+                              <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                                Verificando pagamento...
+                              </p>
+                            </div>
+                            <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
+                              Você será redirecionado automaticamente após a confirmação
+                            </p>
+                            <p className="text-xs text-blue-500 dark:text-blue-500 text-center mt-1">
+                              Tentativa {attempts} de 100
+                            </p>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       // Loading ou placeholder

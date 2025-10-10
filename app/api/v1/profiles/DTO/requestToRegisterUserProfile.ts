@@ -3,6 +3,10 @@ export interface RequestToRegisterUserProfile {
   password: string;
   fullname: string;
   phone: string;
+  asaasCustomerId?: string;
+  subscriptionId?: string;
+  cpfCnpj?: string;
+  subscriptionStatus?: string;
 }
 
 /**

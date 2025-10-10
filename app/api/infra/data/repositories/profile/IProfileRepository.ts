@@ -9,7 +9,11 @@ export interface IProfileRepository {
     phone: string,
     password: string,
     email: string,
-    role: UserRole
+    role: UserRole,
+    asaasCustomerId?: string,
+    subscriptionId?: string,
+    cpfCnpj?: string,
+    subscriptionStatus?: string
   ): Promise<{ profileId: string; supabaseId: string } | null>;
   updateProfile(
     supabaseId: string,

@@ -48,6 +48,17 @@ export class AsaasCustomerService implements IAsaasCustomerService {
    */
   static async createCustomer(data: AsaasCustomer) {
     try {
+      // Debug: Log the actual data being sent (with masked sensitive info)
+      console.info('🚀 [AsaasCustomerService] Enviando para Asaas:', {
+        name: data.name,
+        email: data.email,
+        cpfCnpj: data.cpfCnpj,
+        cpfCnpjLength: data.cpfCnpj?.length || 0,
+        cpfCnpjType: typeof data.cpfCnpj,
+        phone: data.phone?.substring(0, 4) + '***',
+        phoneLength: data.phone?.length || 0
+      });
+      
       const customer = await asaasFetch(asaasApi.customers, {
         method: 'POST',
         body: JSON.stringify(data),

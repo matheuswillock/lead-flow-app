@@ -81,7 +81,11 @@ class PrismaProfileRepository implements IProfileRepository {
     phone: string,
     password: string,
     email: string,
-    role: UserRole
+    role: UserRole,
+    asaasCustomerId?: string,
+    subscriptionId?: string,
+    cpfCnpj?: string,
+    subscriptionStatus?: string
   ): Promise<{ profileId: string; supabaseId: string } | null> {
     try {
       const supabase = createSupabaseClient();
@@ -104,15 +108,31 @@ class PrismaProfileRepository implements IProfileRepository {
 
       const supabaseId = user.user.id;
 
+      // Preparar dados do profile
+      const profileData: any = {
+        supabaseId,
+        fullName,
+        phone,
+        email,
+        role,
+      };
+
+      // Adicionar dados do Asaas se fornecidos
+      if (asaasCustomerId) {
+        profileData.asaasCustomerId = asaasCustomerId;
+      }
+      if (subscriptionId) {
+        profileData.subscriptionId = subscriptionId;
+      }
+      if (subscriptionStatus) {
+        profileData.subscriptionStatus = subscriptionStatus;
+        profileData.subscriptionPlan = 'manager_base'; // Plano padrão
+        profileData.subscriptionStartDate = new Date();
+      }
+
       // Criar profile no banco
       const profile = await prisma.profile.create({
-        data: {
-          supabaseId,
-          fullName,
-          phone,
-          email,
-          role
-        }
+        data: profileData
       });
 
       return { profileId: profile.id, supabaseId };

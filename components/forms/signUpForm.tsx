@@ -14,6 +14,7 @@ interface SignUpFormProps {
   errors: Record<string, string>;
   onSubmit: (data: signUpFormData) => void | Promise<void>;
   isLoading?: boolean;
+  readonly?: boolean;
 }
 
 export function SignupForm({
@@ -22,6 +23,7 @@ export function SignupForm({
   errors,
   onSubmit,
   isLoading = false,
+  readonly = false,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignUpFormProps) {
 
@@ -53,6 +55,14 @@ export function SignupForm({
             </div>
           </div>
           <div className="flex flex-col gap-6">
+            {readonly && (
+              <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  ✓ Seus dados foram pré-preenchidos da assinatura. Complete apenas com sua senha.
+                </p>
+              </div>
+            )}
+            
             <FormField
               control={form.control}
               name="fullName"
@@ -64,6 +74,7 @@ export function SignupForm({
                       placeholder="Seu nome"
                       {...field}
                       className="border-2 border-gray-300 rounded-md p-2"
+                      disabled={readonly}
                     />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.fullName}</FormMessage>
@@ -77,7 +88,12 @@ export function SignupForm({
                 <FormItem className="grid gap-2">
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input placeholder="email@exemplo.com" {...field} className="border-2 border-gray-300 rounded-md p-2"/>
+                    <Input 
+                      placeholder="email@exemplo.com" 
+                      {...field} 
+                      className="border-2 border-gray-300 rounded-md p-2"
+                      disabled={readonly}
+                    />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.email}</FormMessage>
                 </FormItem>
@@ -100,7 +116,8 @@ export function SignupForm({
                         const unmasked = unmask(masked);
                         field.onChange(unmasked);
                       }}
-                      className="border-2 border-gray-300 rounded-md p-2" 
+                      className="border-2 border-gray-300 rounded-md p-2"
+                      disabled={readonly}
                     />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.phone}</FormMessage>

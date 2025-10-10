@@ -1,16 +1,35 @@
 // app/subscribe/features/services/SubscriptionService.ts
 import type { ISubscriptionService, SubscriptionResponse } from './ISubscriptionService';
 import type { SubscriptionFormData } from '../types/SubscriptionTypes';
+import { unmask } from '@/lib/masks';
 
 export class SubscriptionService implements ISubscriptionService {
   async createSubscription(data: SubscriptionFormData): Promise<SubscriptionResponse> {
     try {
+      // Remover máscaras antes de enviar para a API
+      const cleanData = {
+        ...data,
+        cpfCnpj: unmask(data.cpfCnpj),
+        phone: unmask(data.phone),
+        postalCode: unmask(data.postalCode || ''),
+      };
+
+      console.info('📤 [SubscriptionService] Enviando dados:', {
+        fullName: cleanData.fullName,
+        email: cleanData.email,
+        cpfCnpj: cleanData.cpfCnpj ? `${cleanData.cpfCnpj.substring(0, 3)}***` : 'VAZIO',
+        cpfCnpjLength: cleanData.cpfCnpj?.length || 0,
+        phone: cleanData.phone ? `${cleanData.phone.substring(0, 4)}***` : 'VAZIO',
+        phoneLength: cleanData.phone?.length || 0,
+        billingType: cleanData.billingType
+      });
+
       const response = await fetch('/api/v1/subscriptions/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(cleanData),
       });
 
       const output = await response.json();

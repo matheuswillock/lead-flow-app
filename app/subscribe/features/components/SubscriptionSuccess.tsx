@@ -1,6 +1,8 @@
 'use client';
 
 // app/subscribe/features/components/SubscriptionSuccess.tsx
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { CheckCircle2, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -15,6 +17,24 @@ interface SubscriptionSuccessProps {
 }
 
 export function SubscriptionSuccess({ subscriptionId, paymentUrl, paymentId, pix, boleto }: SubscriptionSuccessProps) {
+  const router = useRouter();
+  const [formData, setFormData] = useState<{
+    fullName: string;
+    email: string;
+    cpfCnpj: string;
+    phone: string;
+    asaasCustomerId: string;
+  } | null>(null);
+
+  // Recuperar dados do formulário do sessionStorage
+  useEffect(() => {
+    const storedData = sessionStorage.getItem('subscriptionFormData');
+    if (storedData) {
+      const data = JSON.parse(storedData);
+      setFormData(data);
+    }
+  }, []);
+
   // Debug log
   console.info('🎨 [SubscriptionSuccess] Props recebidas:', {
     subscriptionId,
@@ -25,6 +45,26 @@ export function SubscriptionSuccess({ subscriptionId, paymentUrl, paymentId, pix
     pixKeys: pix ? Object.keys(pix) : [],
     boletoKeys: boleto ? Object.keys(boleto) : []
   });
+
+  const handlePaymentConfirmed = () => {
+    if (!formData) {
+      console.warn('⚠️ [SubscriptionSuccess] Dados do formulário não encontrados');
+      router.push('/sign-in');
+      return;
+    }
+
+    // Redirecionar para página de confirmação com dados
+    const params = new URLSearchParams({
+      fullName: formData.fullName,
+      email: formData.email,
+      cpfCnpj: formData.cpfCnpj,
+      phone: formData.phone,
+      asaasCustomerId: formData.asaasCustomerId,
+      subscriptionId: subscriptionId,
+    });
+
+    router.push(`/pix-confirmed?${params.toString()}`);
+  };
 
   // Se for pagamento PIX com QR Code
   if (pix && paymentId) {
@@ -44,9 +84,7 @@ export function SubscriptionSuccess({ subscriptionId, paymentUrl, paymentId, pix
           payload={pix.payload}
           expirationDate={pix.expirationDate}
           paymentId={paymentId}
-          onPaymentConfirmed={() => {
-            window.location.href = '/sign-in';
-          }}
+          onPaymentConfirmed={handlePaymentConfirmed}
         />
 
         <div className="text-center space-y-2 pt-4">
