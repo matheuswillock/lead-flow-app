@@ -746,29 +746,6 @@ export function SubscriptionFormMultiStep({
                           </div>
                         )}
 
-                        {/* Código de Barras */}
-                        {boletoData.barCode && (
-                          <div className="p-4 bg-muted/50 rounded-lg">
-                            <p className="text-xs font-medium mb-2">Código de Barras:</p>
-                            <div className="flex items-center gap-2">
-                              <code className="flex-1 text-xs break-all bg-background p-2 rounded font-mono">
-                                {boletoData.barCode}
-                              </code>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(boletoData.barCode);
-                                  toast.success('Código de barras copiado!');
-                                }}
-                              >
-                                <Copy className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-
                         {/* Botões de Ação */}
                         <div className="flex gap-2">
                           {boletoData.bankSlipUrl && (

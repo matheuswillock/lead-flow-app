@@ -306,6 +306,12 @@ export class AsaasSubscriptionService implements IAsaasSubscriptionService {
   static async getBoletoIdentificationField(paymentId: string): Promise<{ identificationField: string; nossoNumero: string; barCode: string }> {
     try {
       const data = await asaasFetch(`${asaasApi.payments}/${paymentId}/identificationField`, { method: 'GET' })
+      
+      console.info('📄 [AsaasSubscriptionService] Resposta completa da API do boleto:', JSON.stringify(data, null, 2));
+      console.info('📄 [AsaasSubscriptionService] identificationField recebido:', data?.identificationField);
+      console.info('📄 [AsaasSubscriptionService] barCode recebido:', data?.barCode);
+      console.info('📄 [AsaasSubscriptionService] nossoNumero recebido:', data?.nossoNumero);
+      
       return { 
         identificationField: data?.identificationField, 
         nossoNumero: data?.nossoNumero,

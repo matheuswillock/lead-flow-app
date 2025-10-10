@@ -101,82 +101,102 @@ export class CreateSubscriptionUseCase {
           
           if (pendingPayment) {
             console.info('💰 [CreateSubscriptionUseCase] Pagamento pendente encontrado:', pendingPayment.id);
+            console.info('💳 [CreateSubscriptionUseCase] billingType do pagamento:', pendingPayment.billingType);
+            console.info('💳 [CreateSubscriptionUseCase] billingType solicitado:', input.billingType);
             
-            // Se existe pagamento pendente, retornar os dados para o usuário continuar o pagamento
-            const result: any = {
-              profileId: existingProfile.id,
-              customerId: existingProfile.asaasCustomerId,
-              subscriptionId: existingProfile.subscriptionId,
-              paymentId: pendingPayment.id,
-              paymentStatus: 'PENDING',
-              existingSubscription: true
-            }
-            
-            // Se for PIX, obter QR Code
-            if (pendingPayment.billingType === 'PIX') {
-              try {
-                const pix = await (this.subscriptionService as any).getPixQrCode(pendingPayment.id)
-                result.pix = {
-                  encodedImage: pix.encodedImage,
-                  payload: pix.payload,
-                  expirationDate: pix.expirationDate
-                };
-                console.info('🔲 [CreateSubscriptionUseCase] QR Code PIX recuperado para pagamento pendente');
-              } catch (e) {
-                console.warn('⚠️ [CreateSubscriptionUseCase] Erro ao obter QR Code:', e)
-              }
-            }
-            
-            // Se for BOLETO, obter dados
-            if (pendingPayment.billingType === 'BOLETO') {
-              try {
-                const boletoIdentification = await this.subscriptionService.getBoletoIdentificationField(pendingPayment.id)
-                result.boleto = {
-                  bankSlipUrl: pendingPayment.bankSlipUrl || pendingPayment.invoiceUrl,
-                  identificationField: boletoIdentification.identificationField,
-                  barCode: boletoIdentification.barCode,
-                  dueDate: pendingPayment.dueDate
-                };
-                console.info('📄 [CreateSubscriptionUseCase] Dados do boleto recuperados para pagamento pendente');
-              } catch (e) {
-                console.warn('⚠️ [CreateSubscriptionUseCase] Erro ao obter dados do boleto:', e)
-              }
-            }
-            
-            return new Output(
-              true, 
-              ['Pagamento pendente encontrado. Continue de onde parou!'], 
-              [], 
-              result
-            )
-          }
-          
-          // Se não há pagamento pendente e a assinatura está ativa, significa que já está pago
-          if (subscription.status === 'ACTIVE') {
-            console.warn('✅ [CreateSubscriptionUseCase] Assinatura já está ativa e paga');
-            return new Output(
-              false, 
-              [], 
-              ['Você já possui uma assinatura ativa. Faça login para acessar sua conta.'], 
-              { 
-                alreadyActive: true,
+            // Verificar se o billingType do pagamento pendente é diferente do solicitado
+            if (pendingPayment.billingType !== input.billingType) {
+              console.warn('⚠️ [CreateSubscriptionUseCase] billingType diferente! Ignorando pagamento pendente e seguindo para criar novo.');
+              // Não retornar aqui - deixar o fluxo continuar para criar um novo pagamento
+            } else {
+              // Se o billingType é o mesmo, retornar os dados do pagamento pendente
+              const result: any = {
                 profileId: existingProfile.id,
                 customerId: existingProfile.asaasCustomerId,
-                subscriptionId: existingProfile.subscriptionId
+                subscriptionId: existingProfile.subscriptionId,
+                paymentId: pendingPayment.id,
+                paymentStatus: 'PENDING',
+                existingSubscription: true
               }
+              
+              // Se for PIX, obter QR Code
+              if (pendingPayment.billingType === 'PIX') {
+                try {
+                  const pix = await (this.subscriptionService as any).getPixQrCode(pendingPayment.id)
+                  result.pix = {
+                    encodedImage: pix.encodedImage,
+                    payload: pix.payload,
+                    expirationDate: pix.expirationDate
+                  };
+                  console.info('🔲 [CreateSubscriptionUseCase] QR Code PIX recuperado para pagamento pendente');
+                } catch (e) {
+                  console.warn('⚠️ [CreateSubscriptionUseCase] Erro ao obter QR Code:', e)
+                }
+              }
+              
+              // Se for BOLETO, obter dados
+              if (pendingPayment.billingType === 'BOLETO') {
+                try {
+                  const boletoIdentification = await this.subscriptionService.getBoletoIdentificationField(pendingPayment.id)
+                  result.boleto = {
+                    bankSlipUrl: pendingPayment.bankSlipUrl || pendingPayment.invoiceUrl,
+                    identificationField: boletoIdentification.identificationField,
+                    barCode: boletoIdentification.barCode,
+                    dueDate: pendingPayment.dueDate
+                  };
+                  console.info('📄 [CreateSubscriptionUseCase] Dados do boleto recuperados para pagamento pendente');
+                } catch (e) {
+                  console.warn('⚠️ [CreateSubscriptionUseCase] Erro ao obter dados do boleto:', e)
+                }
+              }
+              
+              return new Output(
+                true, 
+                ['Pagamento pendente encontrado. Continue de onde parou!'], 
+                [], 
+                result
+              )
+            }
+          }
+          
+          // Se não há pagamento pendente do tipo solicitado e a assinatura está ativa
+          // Vamos verificar se há algum pagamento CONFIRMADO/RECEIVED
+          if (subscription.status === 'ACTIVE') {
+            // Verificar se já existe pagamento confirmado
+            const confirmedPayments = await (this.subscriptionService as any).getSubscriptionPayments(
+              existingProfile.subscriptionId,
+              { limit: 1, offset: 0, status: 'RECEIVED' }
             )
+            
+            const hasConfirmedPayment = Array.isArray(confirmedPayments) 
+              ? confirmedPayments.length > 0 
+              : confirmedPayments?.data?.length > 0
+            
+            if (hasConfirmedPayment) {
+              console.warn('✅ [CreateSubscriptionUseCase] Assinatura já está ativa e paga');
+              return new Output(
+                false, 
+                [], 
+                ['Você já possui uma assinatura ativa. Faça login para acessar sua conta.'], 
+                { 
+                  alreadyActive: true,
+                  profileId: existingProfile.id,
+                  customerId: existingProfile.asaasCustomerId,
+                  subscriptionId: existingProfile.subscriptionId
+                }
+              )
+            }
+            
+            // Se não tem pagamento confirmado, permitir criar um novo
+            console.info('ℹ️ [CreateSubscriptionUseCase] Assinatura ativa mas sem pagamento confirmado. Criando novo pagamento...');
           }
         } catch (error) {
           console.error('❌ [CreateSubscriptionUseCase] Erro ao verificar assinatura:', error);
+          // Em caso de erro, seguir com o fluxo normal de criação
         }
         
-        // Fallback: se chegou aqui, já existe assinatura mas não conseguimos determinar o status
-        return new Output(
-          false, 
-          [], 
-          ['Já existe uma assinatura para este email. Entre em contato com o suporte.'], 
-          null
-        )
+        // Se chegou aqui, usar a assinatura existente e criar um novo pagamento
+        console.info('📋 [CreateSubscriptionUseCase] Usando assinatura existente para criar novo pagamento');
       }
 
   let profileId: string
@@ -314,11 +334,14 @@ export class CreateSubscriptionUseCase {
           const firstPayment = Array.isArray(payments) ? payments[0] : payments?.data?.[0]
           if (firstPayment?.id) {
             console.info('� [CreateSubscriptionUseCase] Boleto para payment:', firstPayment.id);
+            // Obter linha digitável e código de barras via API específica
+            const boletoIdentification = await this.subscriptionService.getBoletoIdentificationField(firstPayment.id);
+            
             // Anexar dados do boleto ao result
             ;(result as any).boleto = {
               bankSlipUrl: firstPayment.bankSlipUrl || firstPayment.invoiceUrl,
-              identificationField: firstPayment.identificationField || firstPayment.nossoNumero,
-              barCode: firstPayment.barCode,
+              identificationField: boletoIdentification.identificationField,
+              barCode: boletoIdentification.barCode,
               dueDate: firstPayment.dueDate
             };
             (result as any).paymentId = firstPayment.id;
