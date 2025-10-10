@@ -39,6 +39,7 @@ export function SubscriptionFormMultiStep({
 }: SubscriptionFormMultiStepProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [loadingNext, setLoadingNext] = useState(false);
   const [billingType, setBillingType] = useState<'CREDIT_CARD' | 'PIX' | 'BOLETO'>('PIX');
   const [isStepValid, setIsStepValid] = useState(false);
   const [pixData, setPixData] = useState<{
@@ -140,7 +141,12 @@ export function SubscriptionFormMultiStep({
 
     // Ao avançar para o Step 3, criar a assinatura e carregar o pagamento
     if (currentStep === 2) {
-      await createSubscriptionAndLoadPayment('PIX'); // PIX é o padrão
+      setLoadingNext(true);
+      try {
+        await createSubscriptionAndLoadPayment('PIX'); // PIX é o padrão
+      } finally {
+        setLoadingNext(false);
+      }
     }
     
     if (currentStep < 3) {
@@ -820,7 +826,7 @@ export function SubscriptionFormMultiStep({
               type="button"
               variant="outline"
               onClick={handleBack}
-              disabled={currentStep === 1 || loading}
+              disabled={currentStep === 1 || loading || loadingNext}
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Voltar
@@ -830,11 +836,20 @@ export function SubscriptionFormMultiStep({
               <Button 
                 type="button" 
                 onClick={handleNext} 
-                disabled={!isStepValid || loading}
+                disabled={!isStepValid || loading || loadingNext}
                 className="cursor-pointer disabled:cursor-not-allowed"
               >
-                Continuar
-                <ArrowRight className="ml-2 h-4 w-4" />
+                {loadingNext ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Preparando...
+                  </>
+                ) : (
+                  <>
+                    Continuar
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
               </Button>
             ) : (
               <Button type="submit" disabled={loading}>
