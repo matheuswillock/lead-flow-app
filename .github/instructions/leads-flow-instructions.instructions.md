@@ -1,11 +1,116 @@
 ---
 applyTo: '**'
 ---
-# 🤖 Prompts para IA/Copilot - Lead Flow
+# 🤖 Instruções para IA/Copilot - Lead Flow
 
-> Prompts otimizados para implementações consistentes na arquitetura Lead Flow
+> Diretrizes e prompts otimizados para implementações consistentes na arquitetura Lead Flow
 
-## 📋 Índice
+## ⚠️ REGRAS FUNDAMENTAIS
+
+### 🚫 O QUE NÃO FAZER
+
+1. **NUNCA criar documentos de resumo/explicação**:
+   - ❌ `[FEATURE]_IMPLEMENTATION_SUMMARY.md`
+   - ❌ `[FEATURE]_FIX_SUMMARY.md`
+   - ❌ `[FEATURE]_CHANGES_LOG.md`
+   - ❌ `WEBHOOK_IMPLEMENTATION.md`
+   - ❌ Qualquer documento explicando a implementação
+   - **RAZÃO**: Gera poluição no repositório e desatualização
+
+2. **NUNCA desviar da arquitetura estabelecida**:
+   - ❌ Criar estruturas diferentes das definidas
+   - ❌ Pular camadas (ex: Route → Prisma direto)
+   - ❌ Inventar novos padrões sem necessidade
+   - **RAZÃO**: Quebra consistência e dificulta manutenção
+
+3. **NUNCA implementar sem contexto**:
+   - ❌ Assumir estruturas sem verificar código existente
+   - ❌ Criar arquivos sem seguir nomenclatura padrão
+   - ❌ Ignorar padrões já implementados
+   - **RAZÃO**: Cria inconsistências e código duplicado
+
+### ✅ O QUE FAZER
+
+1. **SEMPRE seguir a arquitetura estabelecida**:
+   - ✅ Consultar código existente similar antes de implementar
+   - ✅ Seguir estruturas de pastas existentes
+   - ✅ Usar nomenclatura consistente com o projeto
+   - ✅ Respeitar separação de camadas
+
+2. **SEMPRE usar commits descritivos**:
+   - ✅ Commits explicativos substituem documentos
+   - ✅ Formato: `tipo(escopo): descrição clara`
+   - ✅ Incluir contexto e motivo no corpo do commit
+   - ✅ Exemplo:
+     ```
+     feat(webhook): implement payment confirmation flow
+     
+     - Add webhook listener hook
+     - Create notify-payment endpoint with in-memory cache
+     - Update frontend to poll for payment status
+     - Remove polling in favor of webhook-driven approach
+     
+     Resolves payment confirmation not triggering redirect
+     ```
+
+3. **SEMPRE fornecer apenas resumo verbal**:
+   - ✅ Explicar mudanças em texto na resposta
+   - ✅ Listar arquivos criados/modificados
+   - ✅ Destacar pontos importantes da implementação
+   - ❌ NÃO criar arquivo MD com essa informação
+
+---
+
+## � ARQUITETURA OBRIGATÓRIA
+
+### Backend (API)
+
+**Estrutura de Camadas**:
+```
+Route (HTTP) → UseCase (Business) → [Service (Domain)] → Prisma (Data)
+```
+
+**Responsabilidades**:
+- **Route**: Apenas HTTP handling (parsing, status codes)
+- **UseCase**: Validações, orquestração, SEMPRE retorna `Output`
+- **Service**: Lógica complexa, cálculos, transformações (opcional)
+- **Prisma**: Acesso a dados, queries
+
+**Arquivos Obrigatórios**:
+1. `app/api/useCases/[feature]/I[Feature]UseCase.ts` - Interface
+2. `app/api/useCases/[feature]/[Feature]UseCase.ts` - Implementação
+3. `app/api/services/[Feature]Service.ts` - Service (se necessário)
+4. `app/api/v1/[feature]/route.ts` - HTTP endpoints
+
+### Frontend (Components)
+
+**Estrutura de Camadas**:
+```
+Page (Provider) → Context (State) → Service (API) → Components (UI)
+```
+
+**Estrutura de Pastas**:
+```
+app/[supabaseId]/[feature]/
+├── page.tsx                     # Provider + Layout
+└── features/
+    ├── container/               # Componentes apresentação
+    │   ├── [Feature]Container.tsx
+    │   ├── [Feature]Dialog.tsx
+    │   └── [Feature]Header.tsx
+    ├── context/                 # Context SOLID
+    │   ├── [Feature]Types.ts    # Interfaces
+    │   ├── [Feature]Hook.ts     # Lógica de negócio
+    │   └── [Feature]Context.tsx # Provider
+    ├── services/                # Camada de serviço
+    │   ├── I[Feature]Service.ts # Interface
+    │   └── [Feature]Service.ts  # Implementação
+    └── hooks/                   # Custom hooks (opcional)
+```
+
+---
+
+## �📋 Índice
 
 ### 🔧 Backend/API
 1. [Prompt Principal para Novas Features](#-prompt-principal-para-novas-features)
@@ -29,7 +134,12 @@ applyTo: '**'
 ## 🎯 Prompt Principal para Novas Features
 
 ```
-Implemente uma nova feature seguindo a arquitetura do Lead Flow App:
+Implemente uma nova feature seguindo ESTRITAMENTE a arquitetura do Lead Flow App:
+
+ANTES DE COMEÇAR:
+1. Consultar código existente similar em app/api/useCases/
+2. Verificar estrutura de pastas e nomenclatura
+3. Identificar padrões já implementados no projeto
 
 ARQUITETURA OBRIGATÓRIA:
 - Route → UseCase → [Service opcional] → Prisma
@@ -76,6 +186,11 @@ export class [Feature]UseCase implements I[Feature]UseCase {
 }
 ```
 
+IMPORTANTE:
+- NÃO criar documentos de resumo (.md)
+- Fornecer apenas resumo verbal na resposta
+- Seguir EXATAMENTE a estrutura existente no projeto
+
 FEATURE SOLICITADA: [DESCREVER AQUI]
 ```
 
@@ -83,7 +198,12 @@ FEATURE SOLICITADA: [DESCREVER AQUI]
 
 ### 1. Feature CRUD Simples
 ```
-Crie uma API CRUD completa para [ENTITY] seguindo a arquitetura Lead Flow:
+Crie uma API CRUD completa para [ENTITY] seguindo ESTRITAMENTE a arquitetura Lead Flow:
+
+VERIFICAR ANTES:
+- Como outras CRUDs estão implementadas no projeto
+- Estrutura de pastas em app/api/useCases/
+- Padrões de nomenclatura existentes
 
 REQUISITOS:
 - Interface I[Entity]UseCase com métodos: create, getById, update, delete, list
@@ -98,7 +218,11 @@ CAMPOS DA ENTIDADE:
 
 VALIDAÇÕES NECESSÁRIAS:
 [LISTAR VALIDAÇÕES]
-```
+
+IMPORTANTE:
+- Não criar documentos de implementação
+- Apenas código funcional seguindo arquitetura
+````
 
 ### 2. Feature com Service Complexo
 ```
@@ -1448,6 +1572,90 @@ return new Output(false, [], ['Erro'], null);
 
 Feature solicitada: [DESCREVER AQUI]
 ```
+
+---
+
+## ⚠️ IMPORTANTE: Política de Documentação
+
+### ❌ NÃO CRIAR documentos de resumo ao final de cada execução
+
+**EVITAR:**
+- ❌ Documentos `[FEATURE]_IMPLEMENTATION_SUMMARY.md`
+- ❌ Documentos `[FEATURE]_FIX_SUMMARY.md`
+- ❌ Documentos `[FEATURE]_CHANGES_LOG.md`
+- ❌ Documentos de changelog automático
+- ❌ Resumos de cada alteração
+
+**RAZÃO:**
+Isso gera poluição no repositório com múltiplos arquivos de documentação que ficam desatualizados e dificultam a manutenção do projeto.
+
+### ✅ DOCUMENTAR apenas quando necessário
+
+**CRIAR documentação SOMENTE para:**
+- ✅ **Arquitetura nova**: Quando criar um padrão arquitetural novo
+- ✅ **APIs públicas**: README.md em `/app/api/useCases/[feature]/README.md`
+- ✅ **Features complexas**: Documentação de uso em `/docs/[FEATURE]_GUIDE.md`
+- ✅ **Configurações**: Setup, instalação, deployment
+- ✅ **Convenções**: Padrões de código, boas práticas
+
+**EXEMPLOS DE DOCUMENTAÇÃO APROPRIADA:**
+```
+✅ /docs/ARCHITECTURE_GUIDE.md       (arquitetura geral)
+✅ /docs/API_CONVENTIONS.md          (convenções de API)
+✅ /app/api/useCases/metrics/README.md  (documentação da API)
+✅ /postman/README.md                (como usar collections)
+
+❌ DASHBOARD_IMPLEMENTATION_SUMMARY.md  (resumo de implementação)
+❌ LEAD_FIX_CHANGES.md                   (log de correções)
+❌ NOSHOW_CORRECTION_SUMMARY.md          (resumo de correção)
+```
+
+### 📝 Use commits descritivos no lugar
+
+Ao invés de criar documentos de resumo, use **commits bem descritivos**:
+
+```bash
+# ✅ Bom commit (substitui documento de resumo)
+git commit -m "feat(dashboard): add NoShow rate calculation
+
+- Changed NoShow from count to percentage
+- Updated DashboardInfosService to calculate (noShow/agendamentos)*100
+- Updated frontend interface and component
+- Fixed card rendering issue
+
+Resolves: Dashboard NoShow card showing empty value"
+
+# ❌ Evite commits genéricos
+git commit -m "fix: corrections"
+```
+
+### 🎯 Quando ADICIONAR ao Prompt
+
+**Adicione esta instrução em TODOS os prompts:**
+
+```
+IMPORTANTE: Não crie documentos de resumo ao final (como *_SUMMARY.md, *_FIX.md, *_CHANGES.md).
+Faça apenas as alterações necessárias no código e forneça um resumo verbal da implementação.
+```
+
+**Exemplo de prompt completo:**
+```
+Implemente [FEATURE] seguindo a arquitetura Lead Flow:
+
+[... instruções da feature ...]
+
+IMPORTANTE: 
+- Não crie documentos de resumo ao final
+- Apenas implemente o código necessário
+- Forneça um resumo verbal das alterações
+- Use commits descritivos ao invés de documentos
+```
+
+---
+
+💡 **Dica**: Combine prompts quando necessário. Por exemplo: "Prompt Principal" + "Feature CRUD" para APIs completas.
+
+💡 **Lembre-se**: Documentação de código e commits descritivos > Documentos de resumo automáticos.
 
 ---
 
