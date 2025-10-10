@@ -20,6 +20,7 @@ import {
 import { StepIndicator } from './StepIndicator';
 import { subscriptionSchema, type SubscriptionFormSchema } from '../validation/subscriptionSchema';
 import { SubscriptionService } from '../services/SubscriptionService';
+import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from '@/lib/masks';
 
 interface SubscriptionFormMultiStepProps {
   onSuccess: (
@@ -389,7 +390,16 @@ export function SubscriptionFormMultiStep({
                       <FormItem>
                         <FormLabel>CPF/CNPJ</FormLabel>
                         <FormControl>
-                          <Input placeholder="000.000.000-00" {...field} />
+                          <Input 
+                            placeholder="000.000.000-00" 
+                            {...field}
+                            value={maskCPFOrCNPJ(field.value)}
+                            onChange={(e) => {
+                              const masked = maskCPFOrCNPJ(e.target.value);
+                              const unmasked = unmask(masked);
+                              field.onChange(unmasked);
+                            }}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -404,7 +414,16 @@ export function SubscriptionFormMultiStep({
                     <FormItem>
                       <FormLabel>Telefone</FormLabel>
                       <FormControl>
-                        <Input placeholder="(11) 99999-9999" {...field} />
+                        <Input 
+                          placeholder="(11) 99999-9999" 
+                          {...field}
+                          value={maskPhone(field.value)}
+                          onChange={(e) => {
+                            const masked = maskPhone(e.target.value);
+                            const unmasked = unmask(masked);
+                            field.onChange(unmasked);
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -431,7 +450,16 @@ export function SubscriptionFormMultiStep({
                     <FormItem>
                       <FormLabel>CEP</FormLabel>
                       <FormControl>
-                        <Input placeholder="00000-000" {...field} />
+                        <Input 
+                          placeholder="00000-000" 
+                          {...field}
+                          value={maskCEP(field.value)}
+                          onChange={(e) => {
+                            const masked = maskCEP(e.target.value);
+                            const unmasked = unmask(masked);
+                            field.onChange(unmasked);
+                          }}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

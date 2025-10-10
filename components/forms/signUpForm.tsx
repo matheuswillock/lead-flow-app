@@ -7,6 +7,7 @@ import Link from "next/link"
 import { Separator } from "@/components/ui/separator"
 import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData } from "@/lib/validations/validationForms"
+import { maskPhone, unmask } from "@/lib/masks"
 
 interface SignUpFormProps {
   form: UseFormReturn<signUpFormData>;
@@ -90,7 +91,17 @@ export function SignupForm({
                 <FormItem className="grid gap-2">
                   <FormLabel>Telefone</FormLabel>
                   <FormControl>
-                    <Input placeholder="(11) 99999-9999" {...field} className="border-2 border-gray-300 rounded-md p-2" />
+                    <Input 
+                      placeholder="(11) 99999-9999" 
+                      {...field}
+                      value={maskPhone(field.value)}
+                      onChange={(e) => {
+                        const masked = maskPhone(e.target.value);
+                        const unmasked = unmask(masked);
+                        field.onChange(unmasked);
+                      }}
+                      className="border-2 border-gray-300 rounded-md p-2" 
+                    />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.phone}</FormMessage>
                 </FormItem>
