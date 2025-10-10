@@ -140,6 +140,36 @@ export function SubscriptionFormMultiStep({
     const isValid = await validateStep(currentStep);
     if (!isValid) return;
 
+    // Verificar assinatura ativa ao sair do Step 1
+    if (currentStep === 1) {
+      setLoadingNext(true);
+      try {
+        const formData = form.getValues();
+        const response = await fetch('/api/v1/subscriptions/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: formData.email,
+            cpfCnpj: formData.cpfCnpj,
+            phone: formData.phone,
+          }),
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.hasActiveSubscription) {
+          toast.error('Assinatura ativa encontrada!');
+          onError('Você já possui uma assinatura ativa. Faça login para acessar sua conta.');
+          return;
+        }
+      } catch (error: any) {
+        console.error('❌ [SubscriptionFormMultiStep] Erro ao verificar assinatura:', error);
+        // Em caso de erro, permitir continuar (fail-safe)
+      } finally {
+        setLoadingNext(false);
+      }
+    }
+
     // Ao avançar para o Step 3, criar a assinatura e carregar o pagamento
     if (currentStep === 2) {
       setLoadingNext(true);

@@ -6,6 +6,7 @@ export type { IAsaasSubscriptionService } from './AsaasSubscription/IAsaasSubscr
 export type { IAsaasOperatorService } from './AsaasOperator/IAsaasOperatorService';
 export type { IProfileIconService } from './profile/IProfileIconService';
 export type { IDashboardInfosService } from './DashboardInfos/IDashboardInfosService';
+export type { ISubscriptionCheckService } from './SubscriptionCheck/ISubscriptionCheckService';
 
 // // Services
 // export { AsaasCustomerService } from './AsaasCustomerService';
