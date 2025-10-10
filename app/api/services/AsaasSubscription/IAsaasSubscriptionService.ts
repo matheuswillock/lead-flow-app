@@ -21,4 +21,8 @@ export interface IAsaasSubscriptionService {
   }): Promise<{ data: any[]; hasMore: boolean; totalCount: number; limit: number; offset: number }>;
   updateNextDueDate(subscriptionId: string, nextDueDate: string): Promise<AsaasSubscriptionResponse>;
   updateBillingType(subscriptionId: string, billingType: 'PIX' | 'CREDIT_CARD' | 'BOLETO'): Promise<AsaasSubscriptionResponse>;
+  /** PIX: obtém dados do QR Code (encodedImage/payload/expirationDate) para um payment específico */
+  getPixQrCode(paymentId: string): Promise<{ encodedImage: string; payload: string; expirationDate: string }>
+  /** BOLETO: obtém linha digitável e código de barras para um payment específico */
+  getBoletoIdentificationField(paymentId: string): Promise<{ identificationField: string; nossoNumero: string; barCode: string }>
 }

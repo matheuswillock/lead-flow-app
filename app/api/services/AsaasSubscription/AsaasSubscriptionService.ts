@@ -53,6 +53,8 @@ export class AsaasSubscriptionService implements IAsaasSubscriptionService {
   getSubscriptionPayments: IAsaasSubscriptionService['getSubscriptionPayments'] = AsaasSubscriptionService.getSubscriptionPayments;
   updateNextDueDate: IAsaasSubscriptionService['updateNextDueDate'] = AsaasSubscriptionService.updateNextDueDate;
   updateBillingType: IAsaasSubscriptionService['updateBillingType'] = AsaasSubscriptionService.updateBillingType;
+  getPixQrCode: IAsaasSubscriptionService['getPixQrCode'] = AsaasSubscriptionService.getPixQrCode;
+  getBoletoIdentificationField: IAsaasSubscriptionService['getBoletoIdentificationField'] = AsaasSubscriptionService.getBoletoIdentificationField;
   /**
    * Cria assinatura base do Manager (R$ 59,90/mês)
    */
@@ -277,6 +279,41 @@ export class AsaasSubscriptionService implements IAsaasSubscriptionService {
     } catch (error: any) {
       console.error('❌ Erro ao atualizar forma de pagamento:', error);
       throw new Error('Erro ao atualizar forma de pagamento');
+    }
+  }
+
+  /**
+   * PIX: Obter QR Code (imagem base64 e payload copia-e-cola) para um payment
+   * Observação: para assinaturas, o Asaas cria o primeiro payment agendado. Busque o paymentId e chame este método.
+   */
+  static async getPixQrCode(paymentId: string): Promise<{ encodedImage: string; payload: string; expirationDate: string }> {
+    try {
+      const data = await asaasFetch(asaasApi.pixQrCode(paymentId), { method: 'GET' })
+      return { 
+        encodedImage: data?.encodedImage, 
+        payload: data?.payload,
+        expirationDate: data?.expirationDate
+      }
+    } catch (error: any) {
+      console.error('Erro ao obter QR Code PIX:', error)
+      throw new Error('Erro ao obter QR Code PIX')
+    }
+  }
+
+  /**
+   * BOLETO: Obter linha digitável e código de barras para um payment
+   */
+  static async getBoletoIdentificationField(paymentId: string): Promise<{ identificationField: string; nossoNumero: string; barCode: string }> {
+    try {
+      const data = await asaasFetch(`${asaasApi.payments}/${paymentId}/identificationField`, { method: 'GET' })
+      return { 
+        identificationField: data?.identificationField, 
+        nossoNumero: data?.nossoNumero,
+        barCode: data?.barCode
+      }
+    } catch (error: any) {
+      console.error('Erro ao obter linha digitável do boleto:', error)
+      throw new Error('Erro ao obter linha digitável do boleto')
     }
   }
 }

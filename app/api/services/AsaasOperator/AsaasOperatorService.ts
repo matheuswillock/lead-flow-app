@@ -399,7 +399,6 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         throw new Error('Operador já está ativo');
       }
 
-      // Recriar assinatura
       const result = await this.addOperator(operator.managerId, operatorId);
 
       console.info(`▶️ Operador reativado: ${operatorId}`);
