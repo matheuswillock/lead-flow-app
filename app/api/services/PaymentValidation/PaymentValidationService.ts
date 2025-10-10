@@ -82,22 +82,41 @@ export class PaymentValidationService implements IPaymentValidationService {
     paymentData: any
   ): Promise<PaymentValidationResult> {
     try {
-      console.info(`[PaymentValidationService] Processando webhook: ${event}`);
+      console.info(`🔔 [PaymentValidationService] Processando webhook: ${event}`);
+      console.info(`💳 [PaymentValidationService] Status do pagamento: ${paymentData.status}`);
 
       // Eventos que indicam pagamento confirmado
       const confirmedEvents = ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'];
 
-      if (!confirmedEvents.includes(event)) {
-        console.info(
-          `[PaymentValidationService] Evento não é de confirmação: ${event}`
+      // Validação rigorosa: evento E status devem estar corretos
+      const isConfirmedEvent = confirmedEvents.includes(event);
+      const isConfirmedStatus = ['RECEIVED', 'CONFIRMED'].includes(paymentData.status);
+
+      if (!isConfirmedEvent) {
+        console.warn(
+          `⚠️ [PaymentValidationService] Evento NÃO é de confirmação: ${event} (esperado: PAYMENT_RECEIVED ou PAYMENT_CONFIRMED)`
         );
         return {
           success: true,
           isPaid: false,
           paymentStatus: paymentData.status,
-          message: 'Evento processado mas não é confirmação de pagamento',
+          message: `Evento ${event} processado mas não é confirmação de pagamento`,
         };
       }
+
+      if (!isConfirmedStatus) {
+        console.warn(
+          `⚠️ [PaymentValidationService] Status do pagamento NÃO confirmado: ${paymentData.status} (esperado: RECEIVED ou CONFIRMED)`
+        );
+        return {
+          success: true,
+          isPaid: false,
+          paymentStatus: paymentData.status,
+          message: `Status ${paymentData.status} não indica pagamento confirmado`,
+        };
+      }
+
+      console.info('✅ [PaymentValidationService] Pagamento CONFIRMADO! Atualizando profile...');
 
       // Atualizar profile
       const profileUpdated = await this.updateProfileStatus(

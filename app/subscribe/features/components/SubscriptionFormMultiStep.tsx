@@ -22,7 +22,7 @@ import { StepIndicator } from './StepIndicator';
 import { subscriptionSchema, type SubscriptionFormSchema } from '../validation/subscriptionSchema';
 import { SubscriptionService } from '../services/SubscriptionService';
 import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from '@/lib/masks';
-import { usePaymentPolling } from '@/hooks/usePaymentPolling';
+import { useWebhookListener } from '@/hooks/useWebhookListener';
 import { saveEncryptedData, removeEncryptedData } from '@/lib/crypto';
 
 interface SubscriptionFormMultiStepProps {
@@ -68,12 +68,12 @@ export function SubscriptionFormMultiStep({
   const service = new SubscriptionService();
   const router = useRouter();
 
-  // Hook de polling para verificar o status do pagamento
-  const { isPolling, attempts } = usePaymentPolling({
+  // Hook para escutar quando o webhook confirmar o pagamento
+  useWebhookListener({
     subscriptionId: subscriptionData?.subscriptionId || null,
     enabled: currentStep === 3 && !!subscriptionData?.subscriptionId, // Só ativa no step 3 quando tem subscription
     onPaymentConfirmed: () => {
-      console.info('🎉 [SubscriptionFormMultiStep] Pagamento confirmado via polling!');
+      console.info('🎉 [SubscriptionFormMultiStep] Pagamento confirmado via webhook!');
       
       toast.success('Pagamento confirmado!', {
         description: 'Redirecionando para completar seu cadastro...',
@@ -114,8 +114,6 @@ export function SubscriptionFormMultiStep({
         router.push('/sign-up?from=subscription');
       }, 2000);
     },
-    interval: 3000, // Verificar a cada 3 segundos
-    maxAttempts: 100, // Máximo 5 minutos (100 * 3s)
   });
 
   const form = useForm<SubscriptionFormSchema>({
@@ -732,31 +730,26 @@ export function SubscriptionFormMultiStep({
                           Expira em: {new Date(pixData.expirationDate).toLocaleString('pt-BR')}
                         </p>
 
-                        {/* Indicador de verificação de pagamento */}
-                        {isPolling && (
-                          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                            <div className="flex items-center justify-center gap-3 mb-2">
-                              <div className="relative">
-                                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                                <div className="absolute -top-1 -right-1">
-                                  <span className="flex h-3 w-3">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-                                  </span>
-                                </div>
+                        {/* Indicador de aguardando confirmação via webhook */}
+                        <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                          <div className="flex items-center justify-center gap-3 mb-2">
+                            <div className="relative">
+                              <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                              <div className="absolute -top-1 -right-1">
+                                <span className="flex h-3 w-3">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                                </span>
                               </div>
-                              <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                                Verificando pagamento...
-                              </p>
                             </div>
-                            <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
-                              Você será redirecionado automaticamente após a confirmação
-                            </p>
-                            <p className="text-xs text-blue-500 dark:text-blue-500 text-center mt-1">
-                              Tentativa {attempts} de 100
+                            <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                              Aguardando confirmação do pagamento...
                             </p>
                           </div>
-                        )}
+                          <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
+                            Você será redirecionado automaticamente após a confirmação
+                          </p>
+                        </div>
                       </div>
                     ) : (
                       // Loading ou placeholder
@@ -933,31 +926,26 @@ export function SubscriptionFormMultiStep({
                           </p>
                         </div>
 
-                        {/* Indicador de verificação de pagamento */}
-                        {isPolling && (
-                          <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                            <div className="flex items-center justify-center gap-3 mb-2">
-                              <div className="relative">
-                                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                                <div className="absolute -top-1 -right-1">
-                                  <span className="flex h-3 w-3">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-                                  </span>
-                                </div>
+                        {/* Indicador de aguardando confirmação via webhook */}
+                        <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                          <div className="flex items-center justify-center gap-3 mb-2">
+                            <div className="relative">
+                              <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                              <div className="absolute -top-1 -right-1">
+                                <span className="flex h-3 w-3">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                                </span>
                               </div>
-                              <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                                Verificando pagamento...
-                              </p>
                             </div>
-                            <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
-                              Você será redirecionado automaticamente após a confirmação
-                            </p>
-                            <p className="text-xs text-blue-500 dark:text-blue-500 text-center mt-1">
-                              Tentativa {attempts} de 100
+                            <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                              Aguardando confirmação do pagamento...
                             </p>
                           </div>
-                        )}
+                          <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
+                            Você será redirecionado automaticamente após a confirmação
+                          </p>
+                        </div>
                       </div>
                     ) : (
                       // Loading ou placeholder

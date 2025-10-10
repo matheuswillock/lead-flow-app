@@ -1,7 +1,15 @@
 // app/api/v1/subscriptions/[subscriptionId]/status/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/app/api/infra/data/prisma';
+import { subscriptionStatusUseCase } from '@/app/api/useCases/subscriptions/SubscriptionStatusUseCase';
 
+/**
+ * GET /api/v1/subscriptions/[subscriptionId]/status
+ * 
+ * Verifica o status de pagamento de uma assinatura
+ * Usado pelo polling do frontend para detectar quando o pagamento foi confirmado
+ * 
+ * @returns Output com informações de pagamento
+ */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ subscriptionId: string }> }
@@ -10,53 +18,20 @@ export async function GET(
     // Aguardar params (Next.js 15)
     const { subscriptionId } = await params;
 
-    console.info('🔍 [StatusController] Verificando status:', subscriptionId);
+    console.info('🎯 [StatusController] GET /api/v1/subscriptions/[subscriptionId]/status');
+    console.info('📋 [StatusController] subscriptionId:', subscriptionId);
 
-    // Buscar profile pela subscriptionId
-    const profile = await prisma.profile.findFirst({
-      where: {
-        subscriptionId: subscriptionId,
-      },
-      select: {
-        id: true,
-        email: true,
-        subscriptionStatus: true,
-        subscriptionPlan: true,
-        subscriptionStartDate: true,
-        subscriptionEndDate: true,
-      },
-    });
+    // Chamar UseCase
+    const output = await subscriptionStatusUseCase.getSubscriptionStatus(subscriptionId);
 
-    if (!profile) {
-      console.warn('⚠️ [StatusController] Profile não encontrado - assumindo pagamento pendente');
-      
-      // Quando o profile não existe, significa que o pagamento foi confirmado mas o usuário ainda não fez o sign-up
-      // Retornar isPaid: true para que o polling redirecione para o sign-up
-      return NextResponse.json({
-        isPaid: true, // ✅ Consideramos pago pois o webhook já confirmou
-        status: 'paid_pending_signup',
-        message: 'Pagamento confirmado - complete seu cadastro',
-      });
-    }
+    // Determinar status code baseado no resultado
+    const statusCode = output.isValid ? 200 : 400;
 
-    const isPaid = profile.subscriptionStatus === 'active';
+    return NextResponse.json(output.result, { status: statusCode });
 
-    console.info('📊 [StatusController] Status:', {
-      profileId: profile.id,
-      isPaid,
-      subscriptionStatus: profile.subscriptionStatus,
-    });
-
-    return NextResponse.json({
-      isPaid,
-      status: profile.subscriptionStatus || 'pending',
-      subscriptionStatus: profile.subscriptionStatus,
-      subscriptionPlan: profile.subscriptionPlan,
-      subscriptionStartDate: profile.subscriptionStartDate,
-      subscriptionEndDate: profile.subscriptionEndDate,
-    });
   } catch (error: any) {
-    console.error('❌ [StatusController] Erro:', error);
+    console.error('❌ [StatusController] Erro inesperado:', error);
+    
     return NextResponse.json(
       {
         isPaid: false,

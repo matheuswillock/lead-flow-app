@@ -13,6 +13,12 @@ const managerOnlyRoutes = ["/manager-users"]
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   
+  // Skip middleware completely for webhook routes
+  if (pathname.startsWith('/api/webhooks')) {
+    console.info('[middleware] Webhook route - skipping auth');
+    return NextResponse.next();
+  }
+  
   // Always refresh Supabase session cookies via helper
   const { user, response } = await updateSession(request)
 
