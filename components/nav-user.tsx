@@ -19,7 +19,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { CircleUser, EllipsisVertical, LogOut } from "lucide-react"
+import { CircleUser, CreditCard, EllipsisVertical, LogOut } from "lucide-react"
 import Link from "next/link"
 import { useTransition } from "react"
 import { signout } from "@/app/actions/auth"
@@ -100,6 +100,10 @@ export function NavUser({
               <DropdownMenuItem>
                 <CircleUser />
                 <Link href={`/${supabaseId}/account`}>Account</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <CreditCard />
+                <Link href={`/${supabaseId}/subscription`}>Assinatura</Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
