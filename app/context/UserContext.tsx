@@ -17,6 +17,8 @@ export interface UserData {
   profileIconUrl: string | null;
   role: UserRole;
   managerId: string | null;
+  subscriptionStatus: string | null;
+  subscriptionId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -28,6 +30,7 @@ interface UserContextState {
   user: UserData | null;
   isLoading: boolean;
   error: string | null;
+  hasActiveSubscription: boolean;
   refreshUser: () => Promise<void>;
   updateUser: (updates: Partial<UserData>) => Promise<Output>;
   updatePassword: (newPassword: string) => Promise<Output>;
@@ -54,11 +57,12 @@ const UserContext = createContext<UserContextState | undefined>(undefined);
  */
 export const UserProvider: React.FC<UserProviderProps> = ({ 
   children, 
-  supabaseId 
+  supabaseId
 }) => {
   const [user, setUser] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
 
   /**
    * Busca dados do usuário na API
@@ -73,6 +77,13 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       
       if (output.isValid && output.result) {
         setUser(output.result);
+        
+        // Atualizar status da assinatura
+        const hasActive = !!(
+          output.result.subscriptionId && 
+          (output.result.subscriptionStatus === 'ACTIVE' || output.result.subscriptionStatus === 'RECEIVED')
+        );
+        setHasActiveSubscription(hasActive);
       } else {
         setError(output.errorMessages?.join(", ") || "Failed to fetch user data");
       }
@@ -253,6 +264,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
     user,
     isLoading,
     error,
+    hasActiveSubscription,
     refreshUser,
     updateUser,
     updatePassword,
@@ -281,3 +293,8 @@ export const useUser = (): UserContextState => {
   
   return context;
 };
+
+/**
+ * Alias for useUser hook (backward compatibility)
+ */
+export const useUserContext = useUser;

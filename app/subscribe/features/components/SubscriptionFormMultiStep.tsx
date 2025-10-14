@@ -23,7 +23,7 @@ import { subscriptionSchema, type SubscriptionFormSchema } from '../validation/s
 import { SubscriptionService } from '../services/SubscriptionService';
 import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from '@/lib/masks';
 import { useWebhookListener } from '@/hooks/useWebhookListener';
-import { saveEncryptedData, removeEncryptedData } from '@/lib/crypto';
+import { saveEncryptedData, removeEncryptedData, getEncryptedData } from '@/lib/crypto';
 
 interface SubscriptionFormMultiStepProps {
   onSuccess: (
@@ -68,6 +68,16 @@ export function SubscriptionFormMultiStep({
   const service = new SubscriptionService();
   const router = useRouter();
 
+  // Log para debug do estado do hook
+  useEffect(() => {
+    console.info('🔍 [SubscriptionFormMultiStep] Estado atual:', {
+      currentStep,
+      hasSubscriptionData: !!subscriptionData,
+      subscriptionId: subscriptionData?.subscriptionId,
+      hookEnabled: currentStep === 3 && !!subscriptionData?.subscriptionId
+    });
+  }, [currentStep, subscriptionData]);
+
   // Hook para escutar quando o webhook confirmar o pagamento
   useWebhookListener({
     subscriptionId: subscriptionData?.subscriptionId || null,
@@ -75,43 +85,78 @@ export function SubscriptionFormMultiStep({
     onPaymentConfirmed: () => {
       console.info('🎉 [SubscriptionFormMultiStep] Pagamento confirmado via webhook!');
       
+      // IMPORTANTE: Salvar dados CRIPTOGRAFADOS IMEDIATAMENTE (antes de qualquer timeout/redirect)
+      const formData = form.getValues();
+      const signUpData = {
+        fullName: formData.fullName,
+        email: formData.email,
+        cpfCnpj: unmask(formData.cpfCnpj), // Salvar sem máscara
+        phone: unmask(formData.phone), // Salvar sem máscara
+        postalCode: unmask(formData.postalCode), // Salvar sem máscara
+        address: formData.address,
+        addressNumber: formData.addressNumber,
+        complement: formData.complement,
+        city: formData.city,
+        state: formData.state,
+        subscriptionId: subscriptionData?.subscriptionId,
+        customerId: subscriptionData?.customerId,
+        subscriptionConfirmed: true,
+        timestamp: new Date().toISOString(),
+      };
+      
+      console.info('💾 [SubscriptionFormMultiStep] Preparando dados para salvar:', {
+        hasSubscriptionId: !!signUpData.subscriptionId,
+        hasCustomerId: !!signUpData.customerId,
+        subscriptionId: signUpData.subscriptionId,
+        customerId: signUpData.customerId,
+        subscriptionConfirmed: signUpData.subscriptionConfirmed,
+        timestamp: signUpData.timestamp
+      });
+      
+      // Salvar CRIPTOGRAFADO no sessionStorage
+      saveEncryptedData('pendingSignUp', signUpData);
+      
+      // Verificar IMEDIATAMENTE se foi salvo
+      const testRead = getEncryptedData<any>('pendingSignUp');
+      console.info('✅ [SubscriptionFormMultiStep] Dados salvos e verificados:', {
+        salvou: !!testRead,
+        temSubscriptionId: !!testRead?.subscriptionId,
+        subscriptionId: testRead?.subscriptionId
+      });
+      
+      if (!testRead || !testRead.subscriptionId) {
+        console.error('❌ [SubscriptionFormMultiStep] ERRO: Dados não foram salvos corretamente!');
+        toast.error('Erro ao processar pagamento', {
+          description: 'Por favor, entre em contato com o suporte.',
+        });
+        return;
+      }
+      
+      console.info('💾 [SubscriptionFormMultiStep] Dados salvos (criptografados) com sucesso para sign-up');
+      
+      // Limpar dados antigos do formulário de subscription
+      removeEncryptedData('subscriptionFormData');
+      sessionStorage.removeItem('subscriptionFormData'); // Remover versão não criptografada também
+      
+      // Mostrar toast de sucesso
       toast.success('Pagamento confirmado!', {
         description: 'Redirecionando para completar seu cadastro...',
-        duration: 3000,
+        duration: 2000,
       });
 
-      // Aguardar 2 segundos para mostrar a mensagem e redirecionar
+      // Aguardar 2 segundos APENAS para mostrar a mensagem antes de redirecionar
       setTimeout(() => {
-        // IMPORTANTE: Salvar dados CRIPTOGRAFADOS para usar no sign-up
-        const formData = form.getValues();
-        const signUpData = {
-          fullName: formData.fullName,
-          email: formData.email,
-          cpfCnpj: unmask(formData.cpfCnpj), // Salvar sem máscara
-          phone: unmask(formData.phone), // Salvar sem máscara
-          postalCode: unmask(formData.postalCode), // Salvar sem máscara
-          address: formData.address,
-          addressNumber: formData.addressNumber,
-          complement: formData.complement,
-          city: formData.city,
-          state: formData.state,
-          subscriptionId: subscriptionData?.subscriptionId,
-          customerId: subscriptionData?.customerId,
-          subscriptionConfirmed: true,
-          timestamp: new Date().toISOString(),
-        };
+        console.info('🔄 [SubscriptionFormMultiStep] Redirecionando para /sign-up...');
         
-        // Salvar CRIPTOGRAFADO no sessionStorage
-        saveEncryptedData('pendingSignUp', signUpData);
+        // Verificar mais uma vez antes do redirect
+        const finalCheck = getEncryptedData<any>('pendingSignUp');
+        console.info('🔍 [SubscriptionFormMultiStep] Verificação final antes do redirect:', {
+          dadosExistem: !!finalCheck,
+          temSubscriptionId: !!finalCheck?.subscriptionId
+        });
         
-        console.info('💾 [SubscriptionFormMultiStep] Dados salvos (criptografados) para sign-up');
-        
-        // Limpar dados antigos do formulário de subscription
-        removeEncryptedData('subscriptionFormData');
-        sessionStorage.removeItem('subscriptionFormData'); // Remover versão não criptografada também
-        
-        // Redirecionar para o sign-up para completar o cadastro
-        router.push('/sign-up?from=subscription');
+        // Usar window.location.href em vez de router.push para garantir que sessionStorage persiste
+        window.location.href = '/sign-up?from=subscription';
       }, 2000);
     },
   });

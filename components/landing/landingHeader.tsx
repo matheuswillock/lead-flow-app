@@ -4,7 +4,7 @@ import { LogIn } from "lucide-react";
 
 export function LandingHeader() {
     return (
-        <header className="sticky top-0 z-20 border-b" style={{ borderColor: "var(--border)" }}>
+        <header className="sticky top-0 z-20 border-b bg-background" style={{ borderColor: "var(--border)" }}>
             <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">
                 <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
                     <span
@@ -19,7 +19,7 @@ export function LandingHeader() {
                     className="cursor-pointer inline-flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-lg font-semibold text-foreground/80 hover:text-foreground "
                     variant="link"
                 >
-                    <Link href="/sign-in" className="inline-flex items-center gap-2">
+                    <Link href="/sign-in" className="inline-flex items-center gap-2 text-white">
                         <LogIn className="h-8 w-8" /> Entrar
                     </Link>
                 </Button>

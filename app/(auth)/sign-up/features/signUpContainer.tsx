@@ -22,6 +22,17 @@ export function SignUpFormContainer() {
 
     // Recuperar dados criptografados do sessionStorage
     useEffect(() => {
+        console.info('🏁 [SignUpFormContainer] Componente renderizado (client-side)');
+        console.info('🔍 [SignUpFormContainer] Window location:', window.location.href);
+        console.info('📋 [SignUpFormContainer] SessionStorage keys:', Object.keys(sessionStorage));
+        console.info('💾 [SignUpFormContainer] pendingSignUp exists:', !!sessionStorage.getItem('pendingSignUp'));
+        console.info('🔍 [SignUpFormContainer] searchParams obtido:', searchParams.toString());
+        console.info('🎬 [SignUpFormContainer] useEffect executado');
+        console.info('🔍 [SignUpFormContainer] searchParams:', {
+            from: searchParams.get('from'),
+            fromSubscription: searchParams.get('from') === 'subscription'
+        });
+        
         const fromSubscription = searchParams.get('from') === 'subscription';
         
         if (fromSubscription) {
@@ -30,10 +41,26 @@ export function SignUpFormContainer() {
             // Recuperar dados criptografados
             const data = getEncryptedData<PendingSignUpData>('pendingSignUp');
             
+            console.info('📦 [SignUpFormContainer] Dados recuperados:', {
+                encontrado: !!data,
+                temSubscriptionConfirmed: !!data?.subscriptionConfirmed,
+                temSubscriptionId: !!data?.subscriptionId,
+                temCustomerId: !!data?.customerId,
+                subscriptionId: data?.subscriptionId,
+                customerId: data?.customerId
+            });
+            
             if (data?.subscriptionConfirmed) {
+                console.info('✅ [SignUpFormContainer] Dados encontrados!');
+                console.info('📦 [SignUpFormContainer] subscriptionId:', data.subscriptionId);
+                console.info('📦 [SignUpFormContainer] customerId:', data.customerId);
+                console.info('📦 [SignUpFormContainer] timestamp:', data.timestamp);
+                
                 // Validar se dados não expiraram (30 minutos)
                 const age = Date.now() - new Date(data.timestamp).getTime();
                 const maxAge = 30 * 60 * 1000; // 30 minutos
+                
+                console.info('⏰ [SignUpFormContainer] Idade dos dados:', `${Math.floor(age / 1000)}s / ${Math.floor(maxAge / 1000)}s`);
                 
                 if (age > maxAge) {
                     console.warn('⚠️ [SignUpFormContainer] Dados expirados');
@@ -95,9 +122,14 @@ export function SignUpFormContainer() {
     }, [searchParams, form]);
 
     async function onSubmit(data: signUpFormData) {
+        console.info('🚀 [SignUpFormContainer] onSubmit iniciado');
+        console.info('📦 [SignUpFormContainer] pendingData:', pendingData);
+        
         // Verificar se temos dados criptografados (prioridade)
         if (pendingData) {
             console.info('✅ [SignUpFormContainer] Incluindo dados da assinatura no registro');
+            console.info('🔑 [SignUpFormContainer] subscriptionId:', pendingData.subscriptionId);
+            console.info('🔑 [SignUpFormContainer] customerId:', pendingData.customerId);
             
             // Adicionar TODOS os dados do pendingData ao payload
             (data as any).cpfCnpj = pendingData.cpfCnpj;
@@ -109,9 +141,19 @@ export function SignUpFormContainer() {
             (data as any).state = pendingData.state;
             (data as any).asaasCustomerId = pendingData.customerId;
             (data as any).subscriptionId = pendingData.subscriptionId;
-            (data as any).subscriptionStatus = 'active';
+            (data as any).subscriptionStatus = 'active'; // Status active após pagamento confirmado
             (data as any).subscriptionPlan = 'manager_base';
             (data as any).role = 'manager';
+            (data as any).operatorCount = 0; // Inicialmente sem operadores
+            (data as any).subscriptionStartDate = new Date(); // Data de início da assinatura
+            // trialEndDate não é enviado para manager_base, apenas para free_trial
+            
+            console.info('📤 [SignUpFormContainer] Payload final com assinatura:', {
+                hasSubscriptionId: !!(data as any).subscriptionId,
+                hasCustomerId: !!(data as any).asaasCustomerId,
+                subscriptionPlan: (data as any).subscriptionPlan,
+                operatorCount: (data as any).operatorCount
+            });
             
             // Limpar dados criptografados após usar
             removeEncryptedData('pendingSignUp');

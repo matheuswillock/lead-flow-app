@@ -7,9 +7,12 @@ import { DashboardSkeleton } from "./features/components/DashboardSkeleton";
 import { SectionCardsWithContext } from "./features/container/section-cards-with-context";
 import { ChartAreaInteractive } from "./features/container/chart-area-interactive";
 import { UpcomingMeetings } from "./features/container/upcoming-meetings";
+import { SubscriptionGuard } from "@/components/subscription-guard";
+import { useUserContext } from "@/app/context/UserContext";
 
 function DashboardContent() {
   const { isLoading, error, metrics } = useDashboardContext();
+  const { hasActiveSubscription } = useUserContext();
   const params = useParams();
   const supabaseId = params.supabaseId as string;
 
@@ -42,8 +45,8 @@ function DashboardContent() {
     );
   }
 
-  // Renderiza o dashboard normal
-  return (
+  // Renderiza o dashboard com guard de assinatura
+  const dashboardContent = (
     <div className="container mx-auto p-6 space-y-6">
 
       {/* Seção de Cards com Métricas */}
@@ -60,6 +63,12 @@ function DashboardContent() {
       </div>
     </div>
   );
+  
+  return (
+    <SubscriptionGuard hasActiveSubscription={hasActiveSubscription}>
+      {dashboardContent}
+    </SubscriptionGuard>
+  );
 }
 
 export default function Dashboard() {
@@ -67,5 +76,5 @@ export default function Dashboard() {
     <DashboardProvider initialFilters={{ period: '30d' }}>
       <DashboardContent />
     </DashboardProvider>
-  )
+  );
 }

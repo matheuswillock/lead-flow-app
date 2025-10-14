@@ -6,7 +6,19 @@ export interface RequestToRegisterUserProfile {
   asaasCustomerId?: string;
   subscriptionId?: string;
   cpfCnpj?: string;
-  subscriptionStatus?: string;
+  subscriptionStatus?: 'trial' | 'active' | 'past_due' | 'suspended' | 'canceled';
+  subscriptionPlan?: 'free_trial' | 'manager_base' | 'with_operators';
+  role?: 'manager' | 'operator';
+  operatorCount?: number;
+  subscriptionStartDate?: Date;
+  trialEndDate?: Date;
+  // Campos adicionais de endereço
+  postalCode?: string;
+  address?: string;
+  addressNumber?: string;
+  complement?: string;
+  city?: string;
+  state?: string;
 }
 
 /**

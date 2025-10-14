@@ -5,7 +5,8 @@ import { FeaturesSection } from "@/components/landing/FeaturesSection";
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
 import { PricingSection } from "@/components/landing/PricingSection";
 import { div as MotionDiv, h1 as MotionH1, p as MotionP } from "framer-motion/client";
-import { ArrowRight, } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { HeartIcon } from "@/components/ui/heart"
 import Link from "next/link";
 
 export default function Home() {
@@ -32,15 +33,18 @@ export default function Home() {
             >
               <figure
                 className="relative rounded-2xl border shadow-xl backdrop-blur overflow-hidden"
-                style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--card) 70%, transparent)" }}
-              >                
+                style={{
+                  borderColor: "var(--border)",
+                  background: "color-mix(in oklab, var(--card) 70%, transparent)",
+                }}
+              >
                 <div className="relative aspect-[4/3] w-full">
                   <img
                     src="/images/product-banner.svg"
                     alt="Interface do produto"
                     className="absolute inset-0 h-full w-full object-cover"
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = "/window.svg"
+                      ;(e.currentTarget as HTMLImageElement).src = "/window.svg"
                     }}
                   />
                 </div>
@@ -55,11 +59,14 @@ export default function Home() {
                 className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1 text-xs sm:text-sm text-muted-foreground shadow-sm backdrop-blur"
                 style={{ background: "color-mix(in oklab, var(--card) 60%, transparent)" }}
               >
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--primary)" }} />
+                <span
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ background: "var(--primary)" }}
+                />
                 Lançamento — experiência mais rápida e clara
               </MotionDiv>
 
-                <MotionH1
+              <MotionH1
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.05 }}
@@ -124,12 +131,13 @@ export default function Home() {
         <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
             <p>© {new Date().getFullYear()} Lead Flow. Todos os direitos reservados.</p>
-            <p className="flex items-center gap-2">
-              <span>Produzido por</span>
+            <div className="flex items-center gap-2">
+              <span>Made with</span>
+              <HeartIcon style={{ color: "var(--primary)" }} />
               <span className="font-semibold" style={{ color: "var(--primary)" }}>
-                Willocks House
+                Willock's House
               </span>
-            </p>
+            </div>
           </div>
         </div>
       </footer>

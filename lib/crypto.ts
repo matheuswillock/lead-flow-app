@@ -47,18 +47,50 @@ export function decryptData<T>(encryptedData: string): T | null {
  * Salva dados criptografados no sessionStorage
  */
 export function saveEncryptedData(key: string, data: any): void {
+  console.info(`🔐 [Crypto] Salvando dados criptografados com chave: ${key}`);
+  console.info(`📦 [Crypto] Dados a serem salvos:`, {
+    keys: Object.keys(data),
+    hasSubscriptionId: !!data.subscriptionId,
+    hasCustomerId: !!data.customerId,
+    subscriptionId: data.subscriptionId,
+    customerId: data.customerId
+  });
+  
   const encrypted = encryptData(data);
   sessionStorage.setItem(key, encrypted);
+  
+  console.info(`✅ [Crypto] Dados salvos com sucesso. Tamanho: ${encrypted.length} chars`);
 }
 
 /**
  * Recupera dados criptografados do sessionStorage
  */
 export function getEncryptedData<T>(key: string): T | null {
-  const encrypted = sessionStorage.getItem(key);
-  if (!encrypted) return null;
+  console.info(`🔓 [Crypto] Recuperando dados criptografados com chave: ${key}`);
   
-  return decryptData<T>(encrypted);
+  const encrypted = sessionStorage.getItem(key);
+  
+  if (!encrypted) {
+    console.warn(`⚠️ [Crypto] Nenhum dado encontrado para chave: ${key}`);
+    console.info(`📋 [Crypto] Chaves disponíveis no sessionStorage:`, Object.keys(sessionStorage));
+    return null;
+  }
+  
+  console.info(`✅ [Crypto] Dados encontrados. Tamanho: ${encrypted.length} chars`);
+  
+  const decrypted = decryptData<T>(encrypted);
+  
+  if (decrypted) {
+    console.info(`✅ [Crypto] Dados descriptografados com sucesso:`, {
+      keys: Object.keys(decrypted as any),
+      hasSubscriptionId: !!(decrypted as any).subscriptionId,
+      subscriptionId: (decrypted as any).subscriptionId
+    });
+  } else {
+    console.error(`❌ [Crypto] Falha ao descriptografar dados`);
+  }
+  
+  return decrypted;
 }
 
 /**

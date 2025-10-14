@@ -21,6 +21,7 @@ export function useWebhookListener({
   
   useEffect(() => {
     if (!enabled || !subscriptionId) {
+      console.warn('⚠️ [useWebhookListener] Hook desabilitado:', { enabled, subscriptionId });
       return;
     }
 
@@ -29,6 +30,8 @@ export function useWebhookListener({
     // Polling simples verificando o endpoint
     const checkInterval = setInterval(async () => {
       try {
+        console.info('🔄 [useWebhookListener] Verificando pagamento...');
+        
         const response = await fetch(
           `/api/v1/subscriptions/${subscriptionId}/notify-payment`
         );
@@ -40,10 +43,17 @@ export function useWebhookListener({
 
         const data = await response.json();
         
+        console.info('📦 [useWebhookListener] Resposta recebida:', {
+          isPaid: data.isPaid,
+          hasData: !!data
+        });
+        
         if (data.isPaid) {
           console.info('✅ [useWebhookListener] Pagamento confirmado via webhook!');
+          console.info('🎯 [useWebhookListener] Chamando onPaymentConfirmed...');
           clearInterval(checkInterval);
           onPaymentConfirmed();
+          console.info('✅ [useWebhookListener] onPaymentConfirmed executado!');
         }
       } catch (error) {
         console.error('❌ [useWebhookListener] Erro:', error);
@@ -51,6 +61,7 @@ export function useWebhookListener({
     }, 3000); // Verificar a cada 3 segundos
 
     return () => {
+      console.info('🛑 [useWebhookListener] Limpando interval');
       clearInterval(checkInterval);
     };
   }, [subscriptionId, onPaymentConfirmed, enabled]);

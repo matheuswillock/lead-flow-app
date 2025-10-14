@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { saveEncryptedData } from '@/lib/crypto';
+import type { PendingSignUpData } from '@/types/subscription';
 
 export default function PixConfirmedPage() {
   const router = useRouter();
@@ -18,19 +20,41 @@ export default function PixConfirmedPage() {
   const phone = searchParams.get('phone') || '';
   const asaasCustomerId = searchParams.get('asaasCustomerId') || '';
   const subscriptionId = searchParams.get('subscriptionId') || '';
+  const postalCode = (searchParams.get('postalCode') || '').replace(/\D/g, '');
+  const address = searchParams.get('address') || '';
+  const addressNumber = searchParams.get('addressNumber') || '';
+  const complement = searchParams.get('complement') || '';
+  const city = searchParams.get('city') || '';
+  const state = searchParams.get('state') || '';
 
   useEffect(() => {
     if (countdown === 0) {
-      // Redirecionar para sign-up com os dados
-      const params = new URLSearchParams({
+      // Montar payload criptografado para o sign-up
+      const payload: PendingSignUpData = {
         fullName,
         email,
-        cpfCnpj,
-        phone,
-        asaasCustomerId,
+        cpfCnpj: cpfCnpj.replace(/\D/g, ''),
+        phone: phone.replace(/\D/g, ''),
+        postalCode,
+        address,
+        addressNumber,
+        complement: complement || undefined,
+        city,
+        state,
         subscriptionId,
-      });
-      
+        customerId: asaasCustomerId,
+        subscriptionConfirmed: true,
+        timestamp: new Date().toISOString(),
+      };
+
+      try {
+        saveEncryptedData('pendingSignUp', payload);
+      } catch (e) {
+        console.error('❌ Falha ao salvar dados criptografados:', e);
+      }
+
+      // Redirecionar para sign-up com marcador de origem
+      const params = new URLSearchParams({ from: 'subscription' });
       router.push(`/sign-up?${params.toString()}`);
       return;
     }
@@ -43,15 +67,30 @@ export default function PixConfirmedPage() {
   }, [countdown, router, fullName, email, cpfCnpj, phone, asaasCustomerId, subscriptionId]);
 
   const handleContinueNow = () => {
-    const params = new URLSearchParams({
+    const payload: PendingSignUpData = {
       fullName,
       email,
-      cpfCnpj,
-      phone,
-      asaasCustomerId,
+      cpfCnpj: cpfCnpj.replace(/\D/g, ''),
+      phone: phone.replace(/\D/g, ''),
+      postalCode,
+      address,
+      addressNumber,
+      complement: complement || undefined,
+      city,
+      state,
       subscriptionId,
-    });
-    
+      customerId: asaasCustomerId,
+      subscriptionConfirmed: true,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      saveEncryptedData('pendingSignUp', payload);
+    } catch (e) {
+      console.error('❌ Falha ao salvar dados criptografados:', e);
+    }
+
+    const params = new URLSearchParams({ from: 'subscription' });
     router.push(`/sign-up?${params.toString()}`);
   };
 
