@@ -1,10 +1,9 @@
 // app/api/services/PaymentValidation/PaymentValidationService.ts
 
-import {
-  IPaymentValidationService,
-  PaymentValidationResult,
-} from './IPaymentValidationService';
+import { IPaymentValidationService, PaymentValidationResult } from './IPaymentValidationService';
 import { IPaymentRepository } from '../../infra/data/repositories/payment/IPaymentRepository';
+import type { AsaasPayment, AsaasSubscription } from './AsaasWebhookTypes';
+import { isAsaasPayment, isAsaasSubscription } from './AsaasWebhookTypes';
 
 export class PaymentValidationService implements IPaymentValidationService {
   constructor(private paymentRepository: IPaymentRepository) {}
@@ -79,43 +78,33 @@ export class PaymentValidationService implements IPaymentValidationService {
 
   async processWebhook(
     event: string,
-    paymentData: any
+    paymentData: unknown
   ): Promise<PaymentValidationResult> {
     try {
       console.info(`🔔 [PaymentValidationService] Processando webhook: ${event}`);
-      console.info(`💳 [PaymentValidationService] Status do pagamento: ${paymentData.status}`);
 
-      // Suporte a SUBSCRIPTION_CREATED (sem payment): usar externalReference do subscription
-      if (event === 'SUBSCRIPTION_CREATED' && !paymentData?.id) {
-        const sub = (paymentData as any)?.subscription || (paymentData as any);
-        const subscriptionId = sub?.id || (paymentData as any)?.id;
-        const customerId = sub?.customer;
-        const externalRef = sub?.externalReference; // no nosso fluxo atual: email
-
+      // SUBSCRIPTION_CREATED (sem payment): payload é subscription
+      if (event === 'SUBSCRIPTION_CREATED' && paymentData && isAsaasSubscription(paymentData as any)) {
+        const sub = paymentData as AsaasSubscription;
         console.info('[PaymentValidationService] SUBSCRIPTION_CREATED recebido', {
-          subscriptionId,
-          customerId,
-          externalRef,
+          subscriptionId: sub.id,
+          customerId: sub.customer,
+          externalRef: sub.externalReference,
         });
 
-        if (!externalRef || !subscriptionId || !customerId) {
-          return {
-            success: true,
-            isPaid: false,
-            message: 'SUBSCRIPTION_CREATED sem dados suficientes para vincular',
-          };
+        if (!sub.externalReference || !sub.id || !sub.customer) {
+          return { success: true, isPaid: false, message: 'SUBSCRIPTION_CREATED sem dados suficientes para vincular' };
         }
 
-        // Tentar localizar Profile pelo email (externalReference)
-        let profile = await this.paymentRepository.findByEmail(externalRef);
+        const profile = await this.paymentRepository.findByEmail(sub.externalReference);
         if (!profile) {
           console.warn('[PaymentValidationService] Profile não encontrado por email no SUBSCRIPTION_CREATED');
           return { success: true, isPaid: false, message: 'Profile não encontrado para SUBSCRIPTION_CREATED' };
         }
 
         await this.paymentRepository.updateSubscriptionData(profile.id, {
-          asaasCustomerId: customerId,
-          subscriptionId: subscriptionId,
+          asaasCustomerId: sub.customer,
+          subscriptionId: sub.id,
           subscriptionPlan: 'manager_base',
           subscriptionStatus: 'active',
           subscriptionStartDate: new Date(),
@@ -125,12 +114,23 @@ export class PaymentValidationService implements IPaymentValidationService {
         return { success: true, isPaid: false, paymentStatus: 'PENDING', profileUpdated: true, message: 'Assinatura vinculada ao Profile' };
       }
 
+      // Pagamentos: payload é payment
+      if (!paymentData || !isAsaasPayment(paymentData as any)) {
+        console.warn('[PaymentValidationService] Payload de webhook não reconhecido');
+        return { success: true, isPaid: false, message: 'Payload não reconhecido' };
+      }
+
+      const payment = paymentData as AsaasPayment;
+      console.info(`💳 [PaymentValidationService] Status do pagamento: ${payment.status}`);
+
+      // (bloco SUBSCRIPTION_CREATED já tratado acima com tipagem forte)
+
       // Eventos que indicam pagamento confirmado
       const confirmedEvents = ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'];
 
       // Validação rigorosa: evento E status devem estar corretos
       const isConfirmedEvent = confirmedEvents.includes(event);
-      const isConfirmedStatus = ['RECEIVED', 'CONFIRMED'].includes(paymentData.status);
+  const isConfirmedStatus = ['RECEIVED', 'CONFIRMED'].includes(payment.status);
 
       if (!isConfirmedEvent) {
         console.warn(
@@ -139,35 +139,32 @@ export class PaymentValidationService implements IPaymentValidationService {
         return {
           success: true,
           isPaid: false,
-          paymentStatus: paymentData.status,
+          paymentStatus: payment.status,
           message: `Evento ${event} processado mas não é confirmação de pagamento`,
         };
       }
 
       if (!isConfirmedStatus) {
         console.warn(
-          `⚠️ [PaymentValidationService] Status do pagamento NÃO confirmado: ${paymentData.status} (esperado: RECEIVED ou CONFIRMED)`
+          `⚠️ [PaymentValidationService] Status do pagamento NÃO confirmado: ${payment.status} (esperado: RECEIVED ou CONFIRMED)`
         );
         return {
           success: true,
           isPaid: false,
-          paymentStatus: paymentData.status,
-          message: `Status ${paymentData.status} não indica pagamento confirmado`,
+          paymentStatus: payment.status,
+          message: `Status ${payment.status} não indica pagamento confirmado`,
         };
       }
 
       console.info('✅ [PaymentValidationService] Pagamento CONFIRMADO! Atualizando profile...');
 
       // Atualizar profile com dados completos de assinatura
-      const profileUpdated = await this.updateProfileStatus(
-        paymentData.customer,
-        paymentData.subscription
-      );
+      const profileUpdated = await this.updateProfileStatus(payment.customer, payment.subscription);
 
       return {
         success: true,
         isPaid: true,
-        paymentStatus: paymentData.status,
+        paymentStatus: payment.status,
         profileUpdated,
         message: 'Pagamento confirmado via webhook',
       };

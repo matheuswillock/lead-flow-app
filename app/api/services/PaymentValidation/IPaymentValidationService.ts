@@ -24,6 +24,6 @@ export interface IPaymentValidationService {
    */
   processWebhook(
     event: string,
-    paymentData: any
+    paymentData: unknown
   ): Promise<PaymentValidationResult>;
 }

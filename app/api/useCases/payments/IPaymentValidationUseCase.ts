@@ -1,3 +1,4 @@
+import type { AsaasPayment, AsaasSubscription } from '../../services/PaymentValidation/AsaasWebhookTypes';
 // app/api/useCases/payments/IPaymentValidationUseCase.ts
 
 export interface ValidatePaymentDTO {
@@ -6,7 +7,7 @@ export interface ValidatePaymentDTO {
 
 export interface ProcessWebhookDTO {
   event: string;
-  payment: any;
+  payment: AsaasPayment | AsaasSubscription;
 }
 
 export interface IPaymentValidationUseCase {
