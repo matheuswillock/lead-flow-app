@@ -4,7 +4,7 @@ import { SubscriptionContainer } from './features/container/SubscriptionContaine
 
 export const metadata: Metadata = {
   title: 'Assinar Lead Flow | Plataforma de Gestão de Leads',
-  description: 'Assine o Lead Flow e comece a gerenciar seus leads de forma profissional. R$ 59,90/mês.',
+  description: 'Assine o Lead Flow (login necessário) e comece a gerenciar seus leads de forma profissional. R$ 59,90/mês.',
 };
 
 export default function SubscribePage() {

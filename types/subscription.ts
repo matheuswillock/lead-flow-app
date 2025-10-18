@@ -1,33 +1,4 @@
-// types/subscription.ts - Tipos relacionados a assinatura e sign-up
-
-/**
- * Dados salvos no sessionStorage após confirmação de pagamento
- * Estes dados serão usados no sign-up para criar o profile
- */
-export interface PendingSignUpData {
-  // Dados pessoais
-  fullName: string;
-  email: string;
-  cpfCnpj: string; // Sem máscara
-  phone: string; // Sem máscara
-  
-  // Endereço completo
-  postalCode: string; // Sem máscara
-  address: string;
-  addressNumber: string;
-  complement?: string;
-  city: string;
-  state: string;
-  
-  // Dados da assinatura Asaas
-  subscriptionId: string;
-  customerId: string;
-  
-  // Flags de controle
-  subscriptionConfirmed: boolean;
-  timestamp: string; // ISO string da data de criação
-}
-
+// types/subscription.ts - Tipos relacionados a assinatura
 /**
  * Resultado da criação de subscription (sem profile)
  */

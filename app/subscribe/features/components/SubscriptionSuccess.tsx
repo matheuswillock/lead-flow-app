@@ -1,12 +1,13 @@
 'use client';
 
 // app/subscribe/features/components/SubscriptionSuccess.tsx
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { PixPayment } from './PixPayment';
+import { createSupabaseBrowser } from '@/lib/supabase/browser';
 
 interface SubscriptionSuccessProps {
   subscriptionId: string;
@@ -18,22 +19,7 @@ interface SubscriptionSuccessProps {
 
 export function SubscriptionSuccess({ subscriptionId, paymentUrl, paymentId, pix, boleto }: SubscriptionSuccessProps) {
   const router = useRouter();
-  const [formData, setFormData] = useState<{
-    fullName: string;
-    email: string;
-    cpfCnpj: string;
-    phone: string;
-    asaasCustomerId: string;
-  } | null>(null);
-
-  // Recuperar dados do formulário do sessionStorage
-  useEffect(() => {
-    const storedData = sessionStorage.getItem('subscriptionFormData');
-    if (storedData) {
-      const data = JSON.parse(storedData);
-      setFormData(data);
-    }
-  }, []);
+  // Legacy data passing via sessionStorage removed.
 
   // Debug log
   console.info('🎨 [SubscriptionSuccess] Props recebidas:', {
@@ -46,24 +32,17 @@ export function SubscriptionSuccess({ subscriptionId, paymentUrl, paymentId, pix
     boletoKeys: boleto ? Object.keys(boleto) : []
   });
 
-  const handlePaymentConfirmed = () => {
-    if (!formData) {
-      console.warn('⚠️ [SubscriptionSuccess] Dados do formulário não encontrados');
-      router.push('/sign-in');
-      return;
-    }
-
-    // Redirecionar para página de confirmação com dados
-    const params = new URLSearchParams({
-      fullName: formData.fullName,
-      email: formData.email,
-      cpfCnpj: formData.cpfCnpj,
-      phone: formData.phone,
-      asaasCustomerId: formData.asaasCustomerId,
-      subscriptionId: subscriptionId,
-    });
-
-    router.push(`/pix-confirmed?${params.toString()}`);
+  const handlePaymentConfirmed = async () => {
+    try {
+      const supabase = createSupabaseBrowser();
+      const { data: { user } } = await (supabase?.auth.getUser() || { data: { user: null } });
+      if (user?.id) {
+        router.push(`/${user.id}/board`);
+        return;
+      }
+    } catch (_) {}
+    // Fallback: send to sign-in
+    router.push('/sign-in');
   };
 
   // Se for pagamento PIX com QR Code
@@ -96,7 +75,6 @@ export function SubscriptionSuccess({ subscriptionId, paymentUrl, paymentId, pix
     );
   }
 
-  // Pagamento com Cartão de Crédito ou Boleto
   // Pagamento com Cartão de Crédito ou Boleto
   return (
     <div className="rounded-lg border bg-card p-8">

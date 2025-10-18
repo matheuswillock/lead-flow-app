@@ -1,5 +1,6 @@
 "use client"
 import { useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { signin } from "./actions"
 import { useLoginForm } from "@/hooks/useForms"
 import { SignInForm } from "@/components/forms/SignInForm"
@@ -8,16 +9,17 @@ import { loginFormData } from "@/lib/validations/validationForms"
 export default function SignInPage() {
   const form = useLoginForm();
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const searchParams = useSearchParams();
 
   async function onSubmit(data: loginFormData) {
     const formData = new FormData();
     formData.append("email", data.email);
     formData.append("password", data.password);
+    const from = searchParams.get('from');
+    if (from) formData.append('from', from);
 
     const result = await signin(formData);
-    if (result.success) {
-      window.location.href = "/dashboard";
-    } else {
+    if (!result.success) {
       // TODO: Mapear erros para string simples
   console.error(result.errors);
       const fe: Record<string, string> = {};

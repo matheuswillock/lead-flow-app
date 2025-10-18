@@ -2,6 +2,7 @@
 import type { ISubscriptionService, SubscriptionResponse } from './ISubscriptionService';
 import type { SubscriptionFormData } from '../types/SubscriptionTypes';
 import { unmask } from '@/lib/masks';
+import { createSupabaseBrowser } from '@/lib/supabase/browser';
 
 export class SubscriptionService implements ISubscriptionService {
   async createSubscription(data: SubscriptionFormData): Promise<SubscriptionResponse> {
@@ -17,17 +18,28 @@ export class SubscriptionService implements ISubscriptionService {
       console.info('📤 [SubscriptionService] Enviando dados:', {
         fullName: cleanData.fullName,
         email: cleanData.email,
-        cpfCnpj: cleanData.cpfCnpj ? `${cleanData.cpfCnpj.substring(0, 3)}***` : 'VAZIO',
+        cpfCnpj: cleanData.cpfCnpj ? `${cleanData.cpfCnpj.substring(0, 3)}***` : '',
         cpfCnpjLength: cleanData.cpfCnpj?.length || 0,
-        phone: cleanData.phone ? `${cleanData.phone.substring(0, 4)}***` : 'VAZIO',
+        phone: cleanData.phone ? `${cleanData.phone.substring(0, 4)}***` : '',
         phoneLength: cleanData.phone?.length || 0,
         billingType: cleanData.billingType
       });
+
+      // Tentar identificar o usuário autenticado para enviar no header
+      let supabaseUserId: string | undefined = undefined;
+      try {
+        const supabase = createSupabaseBrowser();
+        const { data: { user } } = await (supabase?.auth.getUser() || { data: { user: null } });
+        supabaseUserId = user?.id;
+      } catch (_) {
+        // ignore
+      }
 
       const response = await fetch('/api/v1/subscriptions/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(supabaseUserId ? { 'x-supabase-user-id': supabaseUserId } : {}),
         },
         body: JSON.stringify(cleanData),
       });

@@ -19,6 +19,7 @@ export async function signin(formData: FormData) {
   }
 
   const { email, password } = validationFields.data;
+  const from = (formData.get('from') as string) || undefined;
 
   if (!supabase) {
     return {
@@ -40,8 +41,10 @@ export async function signin(formData: FormData) {
 
   // Se o login foi bem-sucedido, redirecionar para o board com supabaseId
   if (data.user) {
+    if (from === 'subscribe') {
+      redirect('/subscribe');
+    }
     redirect(`/${data.user.id}/board`);
-  } else {
-    redirect("/board");
   }
+  redirect("/board");
 }

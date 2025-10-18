@@ -22,8 +22,7 @@ import { StepIndicator } from './StepIndicator';
 import { subscriptionSchema, type SubscriptionFormSchema } from '../validation/subscriptionSchema';
 import { SubscriptionService } from '../services/SubscriptionService';
 import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from '@/lib/masks';
-import { useWebhookListener } from '@/hooks/useWebhookListener';
-import { saveEncryptedData, removeEncryptedData, getEncryptedData } from '@/lib/crypto';
+// Legacy payment-first flow removed: no pendingSignUp/session storage
 import { createSupabaseBrowser } from '@/lib/supabase/browser';
 
 interface SubscriptionFormMultiStepProps {
@@ -79,88 +78,8 @@ export function SubscriptionFormMultiStep({
     });
   }, [currentStep, subscriptionData]);
 
-  // Hook para escutar quando o webhook confirmar o pagamento
-  useWebhookListener({
-    subscriptionId: subscriptionData?.subscriptionId || null,
-    enabled: currentStep === 3 && !!subscriptionData?.subscriptionId, // Só ativa no step 3 quando tem subscription
-    onPaymentConfirmed: () => {
-      console.info('🎉 [SubscriptionFormMultiStep] Pagamento confirmado via webhook!');
-      
-      // IMPORTANTE: Salvar dados CRIPTOGRAFADOS IMEDIATAMENTE (antes de qualquer timeout/redirect)
-      const formData = form.getValues();
-      const signUpData = {
-        fullName: formData.fullName,
-        email: formData.email,
-        cpfCnpj: unmask(formData.cpfCnpj), // Salvar sem máscara
-        phone: unmask(formData.phone), // Salvar sem máscara
-        postalCode: unmask(formData.postalCode), // Salvar sem máscara
-        address: formData.address,
-        addressNumber: formData.addressNumber,
-        complement: formData.complement,
-        city: formData.city,
-        state: formData.state,
-        subscriptionId: subscriptionData?.subscriptionId,
-        customerId: subscriptionData?.customerId,
-        subscriptionConfirmed: true,
-        timestamp: new Date().toISOString(),
-      };
-      
-      console.info('💾 [SubscriptionFormMultiStep] Preparando dados para salvar:', {
-        hasSubscriptionId: !!signUpData.subscriptionId,
-        hasCustomerId: !!signUpData.customerId,
-        subscriptionId: signUpData.subscriptionId,
-        customerId: signUpData.customerId,
-        subscriptionConfirmed: signUpData.subscriptionConfirmed,
-        timestamp: signUpData.timestamp
-      });
-      
-      // Salvar CRIPTOGRAFADO no sessionStorage
-      saveEncryptedData('pendingSignUp', signUpData);
-      
-      // Verificar IMEDIATAMENTE se foi salvo
-      const testRead = getEncryptedData<any>('pendingSignUp');
-      console.info('✅ [SubscriptionFormMultiStep] Dados salvos e verificados:', {
-        salvou: !!testRead,
-        temSubscriptionId: !!testRead?.subscriptionId,
-        subscriptionId: testRead?.subscriptionId
-      });
-      
-      if (!testRead || !testRead.subscriptionId) {
-        console.error('❌ [SubscriptionFormMultiStep] ERRO: Dados não foram salvos corretamente!');
-        toast.error('Erro ao processar pagamento', {
-          description: 'Por favor, entre em contato com o suporte.',
-        });
-        return;
-      }
-      
-      console.info('💾 [SubscriptionFormMultiStep] Dados salvos (criptografados) com sucesso para sign-up');
-      
-      // Limpar dados antigos do formulário de subscription
-      removeEncryptedData('subscriptionFormData');
-      sessionStorage.removeItem('subscriptionFormData'); // Remover versão não criptografada também
-      
-      // Mostrar toast de sucesso
-      toast.success('Pagamento confirmado!', {
-        description: 'Redirecionando para completar seu cadastro...',
-        duration: 2000,
-      });
-
-      // Aguardar 2 segundos APENAS para mostrar a mensagem antes de redirecionar
-      setTimeout(() => {
-        console.info('🔄 [SubscriptionFormMultiStep] Redirecionando para /sign-up...');
-        
-        // Verificar mais uma vez antes do redirect
-        const finalCheck = getEncryptedData<any>('pendingSignUp');
-        console.info('🔍 [SubscriptionFormMultiStep] Verificação final antes do redirect:', {
-          dadosExistem: !!finalCheck,
-          temSubscriptionId: !!finalCheck?.subscriptionId
-        });
-        
-        // Usar window.location.href em vez de router.push para garantir que sessionStorage persiste
-        window.location.href = '/sign-up?from=subscription';
-      }, 2000);
-    },
-  });
+  // Legacy webhook-redirect to sign-up removed. Pix/Boleto confirmation will be handled
+  // in the SubscriptionSuccess step via PixPayment callback, redirecting to the board.
 
   const form = useForm<SubscriptionFormSchema>({
     resolver: zodResolver(subscriptionSchema),
@@ -354,14 +273,7 @@ export function SubscriptionFormMultiStep({
           toast.success('Pagamento pendente encontrado!');
         }
 
-        // Armazenar dados do formulário no sessionStorage para usar após pagamento
-        sessionStorage.setItem('subscriptionFormData', JSON.stringify({
-          fullName: formData.fullName,
-          email: formData.email,
-          cpfCnpj: unmask(formData.cpfCnpj),
-          phone: unmask(formData.phone),
-          asaasCustomerId: result.customerId,
-        }));
+        // Nenhum armazenamento em sessionStorage é necessário no fluxo auth-first
 
         // Armazenar dados da assinatura
         setSubscriptionData({

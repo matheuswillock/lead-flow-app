@@ -9,6 +9,7 @@ import prisma from '@/app/api/infra/data/prisma'
  * Input para criação de assinatura manager (onboarding via landing page)
  */
 export interface CreateSubscriptionInput {
+  supabaseId?: string
   fullName: string
   email: string
   cpfCnpj: string
@@ -272,8 +273,42 @@ export class CreateSubscriptionUseCase {
       
       console.info('✅ [CreateSubscriptionUseCase] Assinatura criada:', subscription.subscriptionId);
 
-      // 4. NÃO criar profile ainda - será criado no sign-up após confirmação de pagamento
-      console.info('ℹ️ [CreateSubscriptionUseCase] Profile será criado no sign-up após confirmação de pagamento');
+      // 4. Se o usuário já está autenticado (auth-first), vincular assinatura ao Profile existente
+      if (input.supabaseId) {
+        try {
+          console.info('🔗 [CreateSubscriptionUseCase] Vinculando assinatura ao Profile do usuário autenticado');
+          const profile = await prisma.profile.findFirst({ where: { supabaseId: input.supabaseId } });
+          if (!profile) {
+            console.warn('⚠️ [CreateSubscriptionUseCase] Profile não encontrado para supabaseId informado');
+          } else {
+            const updateData: any = {
+              asaasCustomerId: customerId,
+              subscriptionId: subscription.subscriptionId,
+              subscriptionPlan: 'manager_base',
+            };
+
+            // Completar campos básicos se ainda estiverem vazios
+            if (!profile.fullName && input.fullName) updateData.fullName = input.fullName;
+            if (!profile.email && input.email) updateData.email = input.email;
+            if (!profile.phone && phone) updateData.phone = phone;
+            if (!profile.cpfCnpj && cpfCnpj) updateData.cpfCnpj = cpfCnpj;
+            if (!profile.postalCode && postalCode) updateData.postalCode = postalCode;
+            if (!profile.address && input.address) updateData.address = input.address;
+            if (!profile.addressNumber && input.addressNumber) updateData.addressNumber = input.addressNumber;
+            if (!profile.complement && input.complement) updateData.complement = input.complement;
+            if (!profile.city && input.city) updateData.city = input.city;
+            if (!profile.state && input.state) updateData.state = input.state;
+
+            await prisma.profile.update({ where: { id: profile.id }, data: updateData });
+            console.info('✅ [CreateSubscriptionUseCase] Profile atualizado com IDs da assinatura');
+          }
+        } catch (e) {
+          console.warn('⚠️ [CreateSubscriptionUseCase] Não foi possível atualizar o Profile do usuário autenticado:', e);
+        }
+      } else {
+        // Caso não esteja autenticado, manter o comportamento antigo (profile será criado no sign-up)
+        console.info('ℹ️ [CreateSubscriptionUseCase] Profile será criado no sign-up após confirmação de pagamento');
+      }
 
       const result: CreateSubscriptionResult & { 
         email: string; 
@@ -281,7 +316,7 @@ export class CreateSubscriptionUseCase {
         cpfCnpj: string; 
         phone: string;
       } = {
-        profileId: '', // Será preenchido no sign-up
+        profileId: existingProfile?.id || '', // Se já havia profile, retorná-lo
         customerId: customerId,
         subscriptionId: subscription.subscriptionId,
         paymentUrl: (subscription as any)?.data?.invoiceUrl || undefined,

@@ -118,7 +118,7 @@ export class PaymentValidationService implements IPaymentValidationService {
 
       console.info('✅ [PaymentValidationService] Pagamento CONFIRMADO! Atualizando profile...');
 
-      // Atualizar profile
+      // Atualizar profile com dados completos de assinatura
       const profileUpdated = await this.updateProfileStatus(
         paymentData.customer,
         paymentData.subscription
@@ -179,12 +179,14 @@ export class PaymentValidationService implements IPaymentValidationService {
         return true; // Retornar true para não causar erro no webhook
       }
 
-      // Atualizar status para active
-      await this.paymentRepository.updateSubscriptionStatus(
-        profile.id,
-        'active',
-        new Date()
-      );
+      // Atualizar dados completos
+      await this.paymentRepository.updateSubscriptionData(profile.id, {
+        asaasCustomerId,
+        subscriptionId,
+        subscriptionPlan: 'manager_base',
+        subscriptionStatus: 'active',
+        subscriptionStartDate: new Date(),
+      });
 
       console.info(
         `[PaymentValidationService] ✅ Profile atualizado: ${profile.id}`

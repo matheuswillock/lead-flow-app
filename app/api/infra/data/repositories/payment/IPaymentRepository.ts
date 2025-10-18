@@ -29,4 +29,18 @@ export interface IPaymentRepository {
     subscriptionStatus: string,
     subscriptionStartDate?: Date
   ): Promise<Profile>;
+
+  /**
+   * Upsert subscription linkage and status fields on the Profile.
+   */
+  updateSubscriptionData(
+    profileId: string,
+    data: {
+      asaasCustomerId?: string;
+      subscriptionId?: string;
+      subscriptionPlan?: string;
+      subscriptionStatus?: string;
+      subscriptionStartDate?: Date;
+    }
+  ): Promise<Profile>;
 }

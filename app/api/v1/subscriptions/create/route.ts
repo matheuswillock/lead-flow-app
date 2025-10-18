@@ -9,14 +9,17 @@ export async function POST(req: NextRequest) {
   
   try {
     const body = await req.json()
+    const supabaseId = req.headers.get('x-supabase-user-id') || undefined
     console.info('🌐 [SubscriptionController] Body:', { 
       email: body.email, 
       billingType: body.billingType,
-      fullName: body.fullName 
+      fullName: body.fullName,
+      hasSupabaseId: !!supabaseId
     });
 
     const useCase = new CreateSubscriptionUseCase()
     const output: Output = await useCase.execute({
+      supabaseId,
       fullName: body.fullName,
       email: body.email,
       cpfCnpj: body.cpfCnpj,
