@@ -4,14 +4,15 @@ import { CheckSubscriptionResult, ISubscriptionCheckService } from './ISubscript
 export class SubscriptionCheckService implements ISubscriptionCheckService {
   constructor(private subscriptionRepository: ISubscriptionRepository) {}
 
-  async checkActiveSubscription(email?: string, phone?: string): Promise<CheckSubscriptionResult> {
+  async checkActiveSubscription(email?: string, phone?: string, cpfCnpj?: string): Promise<CheckSubscriptionResult> {
     console.info('🔍 [SubscriptionCheckService] Verificando assinatura:', {
       email: email || 'não fornecido',
       phone: phone || 'não fornecido',
+      cpfCnpj: cpfCnpj ? `${cpfCnpj?.substring(0,3)}***` : 'não fornecido',
     });
 
     // Buscar perfil do usuário
-    const profile = await this.subscriptionRepository.findProfileByEmailOrPhone(email, phone);
+    const profile = await this.subscriptionRepository.findProfileByEmailOrPhone(email, phone, cpfCnpj);
 
     // Usuário não existe
     if (!profile) {
@@ -21,6 +22,20 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         hasActiveSubscription: false,
         userExists: false,
       };
+    }
+
+    // Determinar origem do match
+    let matchSource: 'email' | 'phone' | 'document' | undefined;
+    let matchedIdentifier: string | undefined;
+    if (email && profile.email === email) {
+      matchSource = 'email';
+      matchedIdentifier = email;
+    } else if (phone && profile.phone === phone) {
+      matchSource = 'phone';
+      matchedIdentifier = phone;
+    } else if ((cpfCnpj as any) && (profile as any).cpfCnpj === cpfCnpj) {
+      matchSource = 'document';
+      matchedIdentifier = cpfCnpj;
     }
 
     // Verificar se tem assinatura ativa
@@ -33,6 +48,8 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         success: true,
         hasActiveSubscription: true,
         userExists: true,
+        matchSource,
+        matchedIdentifier,
         userId: profile.supabaseId,
         subscription: {
           id: profile.subscriptionId,
@@ -56,6 +73,8 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
       success: true,
       hasActiveSubscription: false,
       userExists: true,
+      matchSource,
+      matchedIdentifier,
       userId: profile.supabaseId,
       subscription: hasSubscription
         ? {

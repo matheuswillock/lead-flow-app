@@ -98,6 +98,13 @@ model Profile {
   supabaseId            String?             @unique @db.Uuid
   fullName              String?             @db.Text
   phone                 String?             @db.Text
+  cpfCnpj               String?             @db.Text
+  postalCode            String?             @db.Text
+  address               String?             @db.Text
+  addressNumber         String?             @db.Text
+  complement            String?             @db.Text
+  city                  String?             @db.Text
+  state                 String?             @db.Text
   profileIconId         String?             @db.Text
   profileIconUrl        String?             @db.Text
   role                  UserRole            @default(manager)
@@ -127,6 +134,7 @@ model Profile {
 
   @@index([role])
   @@index([managerId])
+  @@index([cpfCnpj])
   @@map("profiles")
 }
 

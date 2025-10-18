@@ -16,6 +16,8 @@ interface CheckSubscriptionResponse {
   hasActiveSubscription: boolean;
   userExists: boolean;
   userId?: string;
+  matchSource?: 'email' | 'phone' | 'document';
+  matchedIdentifier?: string;
   subscription?: {
     id: string;
     status: string;
@@ -36,6 +38,8 @@ export function SubscriptionContainer() {
   const [activeSubscriptionData, setActiveSubscriptionData] = useState<{
     userExists: boolean;
     userId?: string;
+    matchSource?: 'email' | 'phone' | 'document';
+    matchedIdentifier?: string;
     subscription?: {
       status: string;
       value?: number;
@@ -75,6 +79,8 @@ export function SubscriptionContainer() {
           setActiveSubscriptionData({
             userExists: result.userExists,
             userId: result.userId,
+            matchSource: result.matchSource,
+            matchedIdentifier: result.matchedIdentifier,
             subscription: result.subscription,
           });
         } else {
@@ -175,6 +181,8 @@ export function SubscriptionContainer() {
           <ActiveSubscriptionMessage
             userExists={activeSubscriptionData.userExists}
             userId={activeSubscriptionData.userId}
+            matchSource={activeSubscriptionData.matchSource}
+            matchedIdentifier={activeSubscriptionData.matchedIdentifier}
             subscription={activeSubscriptionData.subscription}
           />
         )}

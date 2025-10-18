@@ -255,7 +255,20 @@ export function SubscriptionFormMultiStep({
         const result = await response.json();
 
         if (result.success && result.hasActiveSubscription) {
-          toast.error('Assinatura ativa encontrada!');
+          const label = result.matchSource === 'email'
+            ? 'e-mail'
+            : result.matchSource === 'phone'
+              ? 'telefone'
+              : result.matchSource === 'document'
+                ? 'documento (CPF/CNPJ)'
+                : undefined;
+          const masked = result.matchSource === 'phone'
+            ? `${(result.matchedIdentifier || '').substring(0,4)}****`
+            : result.matchSource === 'document'
+              ? `${(result.matchedIdentifier || '').substring(0,3)}***`
+              : result.matchedIdentifier;
+          const detail = label && masked ? ` associada ao ${label}: ${masked}` : '';
+          toast.error(`Assinatura ativa encontrada${detail ? ` (${detail})` : '!'}`);
           onError('Você já possui uma assinatura ativa. Faça login para acessar sua conta.');
           return;
         }

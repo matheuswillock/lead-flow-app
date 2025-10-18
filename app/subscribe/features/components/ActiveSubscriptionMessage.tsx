@@ -8,6 +8,8 @@ import { AlertCircle, ArrowRight } from 'lucide-react';
 interface ActiveSubscriptionMessageProps {
   userExists: boolean;
   userId?: string;
+  matchSource?: 'email' | 'phone' | 'document';
+  matchedIdentifier?: string;
   subscription?: {
     status: string;
     value?: number;
@@ -18,8 +20,28 @@ interface ActiveSubscriptionMessageProps {
 export function ActiveSubscriptionMessage({
   userExists,
   userId,
+  matchSource,
+  matchedIdentifier,
   subscription,
 }: ActiveSubscriptionMessageProps) {
+  const renderMatchText = () => {
+    if (!matchSource || !matchedIdentifier) return null;
+    let label = '';
+    if (matchSource === 'email') label = 'e-mail';
+    if (matchSource === 'phone') label = 'telefone';
+    if (matchSource === 'document') label = 'documento (CPF/CNPJ)';
+    // Mask phone/document lightly for display if needed
+    const value = matchSource === 'phone'
+      ? `${matchedIdentifier.substring(0, 4)}****`
+      : matchSource === 'document'
+        ? `${matchedIdentifier.substring(0, 3)}***`
+        : matchedIdentifier;
+    return (
+      <p className="text-sm text-muted-foreground">
+        Encontrada associada ao {label}: <span className="font-medium">{value}</span>
+      </p>
+    );
+  };
   return (
     <div className="w-full max-w-2xl mx-auto px-4 py-12">
       <Card className="border-amber-500/50 bg-amber-500/5">
@@ -31,6 +53,7 @@ export function ActiveSubscriptionMessage({
           <CardDescription className="text-base mt-2">
             Identificamos que você já possui uma assinatura ativa no Lead Flow
           </CardDescription>
+          {renderMatchText()}
         </CardHeader>
         <CardContent className="space-y-6">
           {subscription && (
