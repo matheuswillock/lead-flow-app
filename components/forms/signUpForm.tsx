@@ -15,6 +15,7 @@ interface SignUpFormProps {
   onSubmit: (data: signUpFormData) => void | Promise<void>;
   isLoading?: boolean;
   readonly?: boolean;
+  fromSubscribe?: boolean;
 }
 
 export function SignupForm({
@@ -24,6 +25,7 @@ export function SignupForm({
   onSubmit,
   isLoading = false,
   readonly = false,
+  fromSubscribe = false,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignUpFormProps) {
 
@@ -47,10 +49,15 @@ export function SignupForm({
               <span className="sr-only">Lead Flow</span>
             </Link>
             <h1 className="text-xl font-bold">Criar conta</h1>
+            {fromSubscribe && (
+              <p className="text-center text-sm text-muted-foreground max-w-sm">
+                Para assinar a plataforma, primeiro crie sua conta. Após entrar, você será direcionado para a página de assinatura.
+              </p>
+            )}
             <div className="text-center text-sm">
               Já tem uma conta? 
               {' '}
-              <Link href="/sign-in" className="underline underline-offset-4 text-lg">
+              <Link href={fromSubscribe ? "/sign-in?from=subscribe" : "/sign-in"} className="underline underline-offset-4 text-lg">
                 Entrar
               </Link>
             </div>
