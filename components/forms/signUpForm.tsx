@@ -6,6 +6,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Info } from "lucide-react"
 import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData } from "@/lib/validations/validationForms"
 import { maskPhone, unmask } from "@/lib/masks"
@@ -68,11 +70,23 @@ export function SignupForm({
           </div>
           <div className="flex flex-col gap-6">
             {fromSubscribe && (form.getValues("fullName") || form.getValues("email") || form.getValues("phone")) && (
-              <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  ✓ Seus dados foram pré-preenchidos da assinatura. Complete apenas com sua senha.
-                </p>
-              </div>
+              <TooltipProvider>
+                <div className="flex items-start gap-2 p-2 rounded-md border border-primary/20 bg-primary/5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" className="pt-0.5 text-primary" aria-label="Mais detalhes">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Dados pré-preenchidos a partir da intenção de assinatura.
+                    </TooltipContent>
+                  </Tooltip>
+                  <p className="text-sm text-muted-foreground">
+                    Seus dados foram importados; revise e crie sua senha.
+                  </p>
+                </div>
+              </TooltipProvider>
             )}
             
             <FormField
