@@ -49,6 +49,7 @@ export function SignupForm({
             <h1 className="text-xl font-bold">Criar conta</h1>
             <div className="text-center text-sm">
               Já tem uma conta? 
+              {' '}
               <Link href="/sign-in" className="underline underline-offset-4 text-lg">
                 Entrar
               </Link>
