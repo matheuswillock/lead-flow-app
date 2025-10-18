@@ -450,6 +450,8 @@ export function SubscriptionFormMultiStep({
       try {
         const supabase = createSupabaseBrowser();
         const { data: { user } } = await (supabase?.auth.getUser() || { data: { user: null } });
+        // sinalizar para o board exibir um toast de boas-vindas
+        try { sessionStorage.setItem('subscriptionJustActivated', '1'); } catch (_) { /* ignore */ }
         if (user?.id) {
           router.push(`/${user.id}/board`);
           return;
