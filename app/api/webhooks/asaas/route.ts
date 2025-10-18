@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     // Log completo do evento para debug
     console.info('📋 [Webhook Asaas] Detalhes completos do evento:', JSON.stringify(body, null, 2));
 
-    // Se não há payment (ex.: SUBSCRIPTION_CREATED), ainda processamos para vincular IDs
+  // Se não há payment (ex.: SUBSCRIPTION_*), ainda processamos para vincular/atualizar
     const hasPayment = !!body.payment;
 
     // Ignorar se payment existe mas não tem ID

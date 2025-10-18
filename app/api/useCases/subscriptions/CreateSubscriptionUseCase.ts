@@ -106,6 +106,11 @@ export class CreateSubscriptionUseCase {
       console.info('📊 [CreateSubscriptionUseCase] Verificando profile existente...');
       const existingProfile = await prisma.profile.findFirst({ where: { email: input.email } })
       console.info('📊 [CreateSubscriptionUseCase] Profile encontrado:', !!existingProfile);
+      // Se autenticado, buscar o profile por supabaseId (pode não bater email em edge cases)
+      let authProfile: typeof existingProfile | null = null;
+      if (input.supabaseId) {
+        authProfile = await prisma.profile.findFirst({ where: { supabaseId: input.supabaseId } });
+      }
       
       if (existingProfile && existingProfile.subscriptionId) {
         console.warn('⚠️ [CreateSubscriptionUseCase] Profile já tem assinatura:', existingProfile.subscriptionId);
@@ -241,6 +246,8 @@ export class CreateSubscriptionUseCase {
           phone: phone?.substring(0, 4) + '***'
         });
         
+        // externalReference: preferir UUID do Profile quando existir
+        const externalReference = (authProfile?.id || existingProfile?.id || input.email);
         const customer = await this.customerService.createCustomer({
           name: input.fullName,
           email: input.email,
@@ -251,7 +258,7 @@ export class CreateSubscriptionUseCase {
           addressNumber: input.addressNumber,
           complement: input.complement,
           province: input.province,
-          externalReference: input.email // Usar email como referência temporária
+          externalReference
         })
         
         customerId = customer.customerId;
@@ -262,13 +269,15 @@ export class CreateSubscriptionUseCase {
       console.info('💰 [CreateSubscriptionUseCase] Criando assinatura Manager...');
       console.info('💰 [CreateSubscriptionUseCase] Tipo de pagamento:', input.billingType);
       
+      // externalReference: preferir UUID do Profile quando existir
+      const subscriptionExternalRef = (authProfile?.id || existingProfile?.id || input.email);
       const subscription = await this.subscriptionService.createManagerSubscription({
         customer: customerId,
         billingType: input.billingType,
         value: 59.90,
         cycle: 'MONTHLY',
         description: 'Lead Flow - Plano Manager',
-        externalReference: input.email // Usar email como referência temporária
+        externalReference: subscriptionExternalRef
       })
       
       console.info('✅ [CreateSubscriptionUseCase] Assinatura criada:', subscription.subscriptionId);

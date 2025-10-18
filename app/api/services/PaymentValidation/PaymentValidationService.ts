@@ -83,8 +83,9 @@ export class PaymentValidationService implements IPaymentValidationService {
     try {
       console.info(`🔔 [PaymentValidationService] Processando webhook: ${event}`);
 
-      // SUBSCRIPTION_CREATED (sem payment): payload é subscription
-      if (event === 'SUBSCRIPTION_CREATED' && paymentData && isAsaasSubscription(paymentData as any)) {
+      // SUBSCRIPTION_* (sem payment): payload é subscription
+      const subscriptionEvents = ['SUBSCRIPTION_CREATED', 'SUBSCRIPTION_UPDATED', 'SUBSCRIPTION_DELETED', 'SUBSCRIPTION_ACTIVATED', 'SUBSCRIPTION_INACTIVATED', 'SUBSCRIPTION_SUSPENDED', 'SUBSCRIPTION_CANCELED'];
+      if (subscriptionEvents.includes(event) && paymentData && isAsaasSubscription(paymentData as any)) {
         const sub = paymentData as AsaasSubscription;
         console.info('[PaymentValidationService] SUBSCRIPTION_CREATED recebido', {
           subscriptionId: sub.id,
@@ -96,18 +97,36 @@ export class PaymentValidationService implements IPaymentValidationService {
           return { success: true, isPaid: false, message: 'SUBSCRIPTION_CREATED sem dados suficientes para vincular' };
         }
 
-        const profile = await this.paymentRepository.findByEmail(sub.externalReference);
+        // externalReference agora pode ser o UUID do Profile; se não achar por id, tentar por email (compatibilidade)
+        let profile = await this.paymentRepository.findById(sub.externalReference);
+        if (!profile) {
+          profile = await this.paymentRepository.findByEmail(sub.externalReference);
+        }
         if (!profile) {
           console.warn('[PaymentValidationService] Profile não encontrado por email no SUBSCRIPTION_CREATED');
           return { success: true, isPaid: false, message: 'Profile não encontrado para SUBSCRIPTION_CREATED' };
         }
 
+        // Mapear status da assinatura para nosso enum
+        const mapStatus = (status: string | undefined): string | undefined => {
+          if (!status) return undefined;
+          const s = status.toUpperCase();
+          if (s === 'ACTIVE') return 'active';
+          if (s === 'SUSPENDED' || s === 'INACTIVATED') return 'suspended';
+          if (s === 'CANCELLED' || s === 'CANCELED') return 'canceled';
+          return undefined;
+        };
+
+        const mappedStatus = mapStatus(sub.status);
+        const endDate = mappedStatus === 'canceled' ? new Date() : undefined;
+
         await this.paymentRepository.updateSubscriptionData(profile.id, {
           asaasCustomerId: sub.customer,
           subscriptionId: sub.id,
           subscriptionPlan: 'manager_base',
-          subscriptionStatus: 'active',
+          subscriptionStatus: mappedStatus ?? 'active',
           subscriptionStartDate: new Date(),
+          subscriptionEndDate: endDate,
         });
 
         console.info(`[PaymentValidationService] ✅ Profile vinculado no SUBSCRIPTION_CREATED: ${profile.id}`);
@@ -125,8 +144,8 @@ export class PaymentValidationService implements IPaymentValidationService {
 
       // (bloco SUBSCRIPTION_CREATED já tratado acima com tipagem forte)
 
-      // Eventos que indicam pagamento confirmado
-      const confirmedEvents = ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'];
+  // Eventos que indicam pagamento confirmado
+  const confirmedEvents = ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'];
 
       // Validação rigorosa: evento E status devem estar corretos
       const isConfirmedEvent = confirmedEvents.includes(event);

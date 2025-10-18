@@ -23,6 +23,11 @@ export interface IPaymentRepository {
   findByEmail(email: string): Promise<Profile | null>;
 
   /**
+   * Busca um Profile pelo ID (UUID)
+   */
+  findById(id: string): Promise<Profile | null>;
+
+  /**
    * Atualiza o status da assinatura de um Profile
    * @param profileId - ID do Profile
    * @param subscriptionStatus - Novo status da assinatura
@@ -46,6 +51,7 @@ export interface IPaymentRepository {
       subscriptionPlan?: string;
       subscriptionStatus?: string;
       subscriptionStartDate?: Date;
+      subscriptionEndDate?: Date;
     }
   ): Promise<Profile>;
 }

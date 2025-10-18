@@ -27,6 +27,10 @@ export class PaymentRepository implements IPaymentRepository {
     });
   }
 
+  async findById(id: string): Promise<Profile | null> {
+    return prisma.profile.findFirst({ where: { id } });
+  }
+
   async updateSubscriptionStatus(
     profileId: string,
     subscriptionStatus: string,
@@ -56,6 +60,7 @@ export class PaymentRepository implements IPaymentRepository {
       subscriptionPlan?: string;
       subscriptionStatus?: string;
       subscriptionStartDate?: Date;
+      subscriptionEndDate?: Date;
     }
   ): Promise<Profile> {
     const mapped: any = {};
@@ -64,6 +69,7 @@ export class PaymentRepository implements IPaymentRepository {
     if (data.subscriptionPlan !== undefined) mapped.subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
     if (data.subscriptionStatus !== undefined) mapped.subscriptionStatus = data.subscriptionStatus as SubscriptionStatus;
     if (data.subscriptionStartDate !== undefined) mapped.subscriptionStartDate = data.subscriptionStartDate;
+    if (data.subscriptionEndDate !== undefined) mapped.subscriptionEndDate = data.subscriptionEndDate;
 
     return prisma.profile.update({ where: { id: profileId }, data: mapped });
   }
