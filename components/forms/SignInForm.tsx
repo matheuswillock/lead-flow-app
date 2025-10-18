@@ -44,7 +44,7 @@ export function SignInForm({
               <span className="sr-only">Lead Flow</span>
             </Link>
             {fromSubscribe && (
-              <Badge variant="secondary" className="mt-1">Assinatura</Badge>
+              <Badge variant="outline" className="mt-1 border-primary/30 text-primary">Assinatura</Badge>
             )}
             <h1 className="text-xl font-bold">Welcome to Lead Flow.</h1>
             {fromSubscribe && (
