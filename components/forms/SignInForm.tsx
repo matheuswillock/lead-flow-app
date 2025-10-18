@@ -1,4 +1,4 @@
-import { GalleryVerticalEnd } from "lucide-react"
+import { GalleryVerticalEnd, Info } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -6,6 +6,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { UseFormReturn } from "react-hook-form"
 import { loginFormData } from "@/lib/validations/validationForms"
 
@@ -44,7 +45,26 @@ export function SignInForm({
               <span className="sr-only">Lead Flow</span>
             </Link>
             {fromSubscribe && (
-              <Badge variant="outline" className="mt-1 border-primary/30 text-primary">Assinatura</Badge>
+              <>
+                <Badge variant="outline" className="mt-1 border-primary/30 text-primary">Assinatura</Badge>
+                <TooltipProvider>
+                  <div className="mt-1 flex items-start gap-2 p-2 rounded-md border border-primary/20 bg-primary/5">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button type="button" className="pt-0.5 text-primary" aria-label="Mais detalhes">
+                          <Info className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Você será redirecionado para a página de assinatura após entrar.
+                      </TooltipContent>
+                    </Tooltip>
+                    <p className="text-sm text-muted-foreground">
+                      Fluxo de assinatura ativo.
+                    </p>
+                  </div>
+                </TooltipProvider>
+              </>
             )}
             <h1 className="text-xl font-bold">Welcome to Lead Flow.</h1>
             {fromSubscribe && (
