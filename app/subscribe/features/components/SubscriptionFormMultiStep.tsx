@@ -24,6 +24,7 @@ import { SubscriptionService } from '../services/SubscriptionService';
 import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from '@/lib/masks';
 // Legacy payment-first flow removed: no pendingSignUp/session storage
 import { createSupabaseBrowser } from '@/lib/supabase/browser';
+import { useWebhookListener } from '@/hooks/useWebhookListener';
 
 interface SubscriptionFormMultiStepProps {
   onSuccess: (
@@ -155,6 +156,21 @@ export function SubscriptionFormMultiStep({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Prefill from sign-up handoff (sessionStorage), then clear it
+  useEffect(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? sessionStorage.getItem('subscribePrefill') : null;
+      if (!raw) return;
+      const prefill = JSON.parse(raw) as Partial<SubscriptionFormSchema> & { fullName?: string; email?: string; phone?: string };
+      if (prefill.fullName && !form.getValues('fullName')) form.setValue('fullName', prefill.fullName);
+      if (prefill.email && !form.getValues('email')) form.setValue('email', prefill.email);
+      if (prefill.phone && !form.getValues('phone')) form.setValue('phone', prefill.phone);
+      sessionStorage.removeItem('subscribePrefill');
+    } catch (_) {
+      // ignore
+    }
+  }, [form]);
 
   const validateStep = async (step: number): Promise<boolean> => {
     let fieldsToValidate: (keyof SubscriptionFormSchema)[] = [];
@@ -424,6 +440,16 @@ export function SubscriptionFormMultiStep({
       setLoading(false);
     }
   };
+
+  // Auto-redirect when webhook confirms payment
+  useWebhookListener({
+    subscriptionId: subscriptionData?.subscriptionId ?? null,
+    enabled: currentStep === 3,
+    onPaymentConfirmed: () => {
+      toast.success('Pagamento confirmado! Sua assinatura foi ativada.');
+      router.push('/sign-in?from=subscribe');
+    },
+  });
 
   return (
     <div className="w-full max-w-4xl mx-auto">

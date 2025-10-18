@@ -30,6 +30,15 @@ export function SignUpFormContainer() {
                 toast.success('Cadastro concluído!', {
                     description: 'Agora escolha o plano e finalize sua assinatura.',
                 });
+                // Handoff: enviar dados básicos para a tela de assinatura
+                try {
+                    const prefill = {
+                        fullName: data.fullName,
+                        email: data.email,
+                        phone: data.phone,
+                    };
+                    sessionStorage.setItem('subscribePrefill', JSON.stringify(prefill));
+                } catch (_) {/* ignore */}
                 setTimeout(() => {
                     window.location.href = `/subscribe`;
                 }, 900);
