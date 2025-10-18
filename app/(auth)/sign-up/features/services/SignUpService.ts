@@ -10,19 +10,40 @@ export class SignUpService implements ISignUpService {
    */
   async registerUser(requestData: RequestToRegisterUserProfile): Promise<Output> {
     try {
-      let validatedData: RequestToRegisterUserProfile;
+      let validatedCore: RequestToRegisterUserProfile;
       try {
-        validatedData = validateRegisterProfileRequest(requestData);
+        // Valida apenas os campos obrigatórios e básicos
+        validatedCore = validateRegisterProfileRequest(requestData);
       } catch (validationError) {
         return new Output(false, [], [(validationError as Error).message], null);
       }
+
+      // Recompõe o payload incluindo os campos opcionais de assinatura/endereço
+      const payload: RequestToRegisterUserProfile = {
+        ...validatedCore,
+        asaasCustomerId: (requestData as any).asaasCustomerId,
+        subscriptionId: (requestData as any).subscriptionId,
+        cpfCnpj: (requestData as any).cpfCnpj,
+        subscriptionStatus: (requestData as any).subscriptionStatus,
+        subscriptionPlan: (requestData as any).subscriptionPlan,
+        role: (requestData as any).role,
+        operatorCount: (requestData as any).operatorCount,
+        subscriptionStartDate: (requestData as any).subscriptionStartDate,
+        trialEndDate: (requestData as any).trialEndDate,
+        postalCode: (requestData as any).postalCode,
+        address: (requestData as any).address,
+        addressNumber: (requestData as any).addressNumber,
+        complement: (requestData as any).complement,
+        city: (requestData as any).city,
+        state: (requestData as any).state,
+      };
 
       const response = await fetch("/api/v1/profiles/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(validatedData),
+        body: JSON.stringify(payload),
       });
 
       const result = await response.json();
