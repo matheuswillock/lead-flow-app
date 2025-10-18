@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form"
 import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData } from "@/lib/validations/validationForms"
@@ -48,6 +49,9 @@ export function SignupForm({
               </div>
               <span className="sr-only">Lead Flow</span>
             </Link>
+            {fromSubscribe && (
+              <Badge variant="secondary" className="mt-1">Assinatura</Badge>
+            )}
             <h1 className="text-xl font-bold">Criar conta</h1>
             {fromSubscribe && (
               <p className="text-center text-sm text-muted-foreground max-w-sm">
