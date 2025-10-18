@@ -445,8 +445,16 @@ export function SubscriptionFormMultiStep({
   useWebhookListener({
     subscriptionId: subscriptionData?.subscriptionId ?? null,
     enabled: currentStep === 3,
-    onPaymentConfirmed: () => {
+    onPaymentConfirmed: async () => {
       toast.success('Pagamento confirmado! Sua assinatura foi ativada.');
+      try {
+        const supabase = createSupabaseBrowser();
+        const { data: { user } } = await (supabase?.auth.getUser() || { data: { user: null } });
+        if (user?.id) {
+          router.push(`/${user.id}/board`);
+          return;
+        }
+      } catch (_) { /* ignore */ }
       router.push('/sign-in?from=subscribe');
     },
   });
