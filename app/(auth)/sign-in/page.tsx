@@ -10,6 +10,7 @@ export default function SignInPage() {
   const form = useLoginForm();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const searchParams = useSearchParams();
+  const isFromSubscription = searchParams.get('from') === 'subscribe';
 
   async function onSubmit(data: loginFormData) {
     const formData = new FormData();
@@ -38,7 +39,8 @@ export default function SignInPage() {
         <SignInForm 
           form={form}
           errors={errors}
-          onSubmit={onSubmit} 
+          onSubmit={onSubmit}
+          fromSubscribe={isFromSubscription}
         />
       </div>
     </main>
