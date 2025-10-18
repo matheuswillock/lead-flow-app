@@ -42,7 +42,7 @@ export async function signin(formData: FormData) {
   // Se o login foi bem-sucedido, redirecionar para o board com supabaseId
   if (data.user) {
     if (from === 'subscribe') {
-      redirect('/subscribe');
+      redirect(`/${data.user.id}/board?welcome=subscribe`);
     }
     redirect(`/${data.user.id}/board`);
   }
