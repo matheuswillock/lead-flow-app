@@ -67,7 +67,7 @@ export function SignupForm({
             </div>
           </div>
           <div className="flex flex-col gap-6">
-            {readonly && (
+            {fromSubscribe && (form.getValues("fullName") || form.getValues("email") || form.getValues("phone")) && (
               <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <p className="text-sm text-blue-700 dark:text-blue-300">
                   ✓ Seus dados foram pré-preenchidos da assinatura. Complete apenas com sua senha.
