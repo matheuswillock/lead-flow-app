@@ -446,7 +446,10 @@ export function SubscriptionFormMultiStep({
     subscriptionId: subscriptionData?.subscriptionId ?? null,
     enabled: currentStep === 3,
     onPaymentConfirmed: async () => {
-      toast.success('Pagamento confirmado! Sua assinatura foi ativada.');
+      toast.success('Assinatura ativada 🎉', {
+        description: 'Pagamento confirmado! Redirecionando para sua área.',
+        duration: 5000,
+      });
       try {
         const supabase = createSupabaseBrowser();
         const { data: { user } } = await (supabase?.auth.getUser() || { data: { user: null } });

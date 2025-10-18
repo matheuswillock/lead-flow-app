@@ -27,8 +27,9 @@ export function SignUpFormContainer() {
         if (result.isValid && result.result?.supabaseId) {
             const from = searchParams.get('from');
             if (from === 'subscribe') {
-                toast.success('Cadastro concluído!', {
+                toast.success('Cadastro concluído', {
                     description: 'Agora escolha o plano e finalize sua assinatura.',
+                    duration: 5000,
                 });
                 // Handoff: enviar dados básicos para a tela de assinatura
                 try {
@@ -43,8 +44,9 @@ export function SignUpFormContainer() {
                     window.location.href = `/subscribe`;
                 }, 900);
             } else {
-                toast.success('Cadastro concluído!', {
+                toast.success('Cadastro concluído', {
                     description: 'Redirecionando para sua área de trabalho...',
+                    duration: 5000,
                 });
                 setTimeout(() => {
                     window.location.href = `/${result.result.supabaseId}/board`;

@@ -16,15 +16,17 @@ export default function BoardPage() {
       const flag = sessionStorage.getItem('subscriptionJustActivated');
       if (flag) {
         sessionStorage.removeItem('subscriptionJustActivated');
-        toast.success('Bem-vindo(a)!', {
-          description: 'Sua assinatura foi ativada com sucesso. Bom trabalho!'
+        toast.success('Assinatura ativada 🎉', {
+          description: 'Bem-vindo(a)! Sua assinatura está ativa. Vamos começar?',
+          duration: 5000,
         });
       }
       // Alternativa: bem-vindo via parâmetro após login (fallback quando não havia sessão)
       const welcome = searchParams.get('welcome');
       if (welcome === 'subscribe') {
-        toast.success('Bem-vindo(a)!', {
-          description: 'Sua assinatura foi confirmada. Vamos começar?'
+        toast.success('Assinatura ativada 🎉', {
+          description: 'Bem-vindo(a)! Sua assinatura está ativa. Vamos começar?',
+          duration: 5000,
         });
         // evitar repetir em navegações subsequentes
         const url = new URL(window.location.href);
