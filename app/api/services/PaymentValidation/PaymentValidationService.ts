@@ -107,8 +107,24 @@ export class PaymentValidationService implements IPaymentValidationService {
           return { success: true, isPaid: false, message: 'Profile não encontrado para SUBSCRIPTION_CREATED' };
         }
 
-        // Mapear status da assinatura para nosso enum
-        const mapStatus = (status: string | undefined): string | undefined => {
+        // Mapear status considerando primeiro o próprio evento e depois o status vindo do Asaas
+        const mapStatusFromEvent = (evt: string): 'active' | 'suspended' | 'canceled' | undefined => {
+          switch (evt) {
+            case 'SUBSCRIPTION_ACTIVATED':
+            case 'SUBSCRIPTION_CREATED':
+              return 'active';
+            case 'SUBSCRIPTION_SUSPENDED':
+            case 'SUBSCRIPTION_INACTIVATED':
+              return 'suspended';
+            case 'SUBSCRIPTION_CANCELED':
+            case 'SUBSCRIPTION_DELETED':
+              return 'canceled';
+            default:
+              return undefined;
+          }
+        };
+
+        const mapStatusFromPayload = (status: string | undefined): 'active' | 'suspended' | 'canceled' | undefined => {
           if (!status) return undefined;
           const s = status.toUpperCase();
           if (s === 'ACTIVE') return 'active';
@@ -117,15 +133,19 @@ export class PaymentValidationService implements IPaymentValidationService {
           return undefined;
         };
 
-        const mappedStatus = mapStatus(sub.status);
+        const mappedFromEvent = mapStatusFromEvent(event);
+        const mappedFromPayload = mapStatusFromPayload(sub.status);
+        const mappedStatus = mappedFromEvent ?? mappedFromPayload ?? 'active';
+
         const endDate = mappedStatus === 'canceled' ? new Date() : undefined;
+        const startDate = mappedStatus === 'active' ? new Date() : undefined;
 
         await this.paymentRepository.updateSubscriptionData(profile.id, {
           asaasCustomerId: sub.customer,
           subscriptionId: sub.id,
           subscriptionPlan: 'manager_base',
-          subscriptionStatus: mappedStatus ?? 'active',
-          subscriptionStartDate: new Date(),
+          subscriptionStatus: mappedStatus,
+          subscriptionStartDate: startDate,
           subscriptionEndDate: endDate,
         });
 
@@ -143,6 +163,41 @@ export class PaymentValidationService implements IPaymentValidationService {
       console.info(`💳 [PaymentValidationService] Status do pagamento: ${payment.status}`);
 
       // (bloco SUBSCRIPTION_CREATED já tratado acima com tipagem forte)
+
+  // Tratar pagamentos em atraso (OVERDUE) -> marcar como past_due
+  if (event === 'PAYMENT_OVERDUE' || payment.status === 'OVERDUE') {
+        try {
+          let profile: Awaited<ReturnType<IPaymentRepository['findBySubscriptionId']>> = null;
+          if (payment.subscription) {
+            profile = await this.paymentRepository.findBySubscriptionId(payment.subscription);
+          }
+          if (!profile) {
+            profile = await this.paymentRepository.findByAsaasCustomerId(payment.customer);
+          }
+          if (profile) {
+            await this.paymentRepository.updateSubscriptionData(profile.id, {
+              subscriptionStatus: 'past_due',
+            });
+            console.info(`[PaymentValidationService] 🔶 Profile marcado como past_due por OVERDUE: ${profile.id}`);
+            return {
+              success: true,
+              isPaid: false,
+              paymentStatus: payment.status,
+              profileUpdated: true,
+              message: 'Pagamento em atraso. Status marcado como past_due.',
+            };
+          }
+        } catch (e) {
+          console.error('[PaymentValidationService] Erro ao marcar past_due:', e);
+        }
+        // Mesmo sem profile, retornar sucesso para não bloquear o webhook
+        return {
+          success: true,
+          isPaid: false,
+          paymentStatus: payment.status,
+          message: 'Pagamento em atraso processado',
+        };
+      }
 
   // Eventos que indicam pagamento confirmado
   const confirmedEvents = ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'];
@@ -177,7 +232,7 @@ export class PaymentValidationService implements IPaymentValidationService {
 
       console.info('✅ [PaymentValidationService] Pagamento CONFIRMADO! Atualizando profile...');
 
-      // Atualizar profile com dados completos de assinatura
+  // Atualizar profile com dados completos de assinatura
       const profileUpdated = await this.updateProfileStatus(payment.customer, payment.subscription);
 
       return {
