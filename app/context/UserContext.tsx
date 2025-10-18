@@ -79,9 +79,11 @@ export const UserProvider: React.FC<UserProviderProps> = ({
         setUser(output.result);
         
         // Atualizar status da assinatura
+        // Prisma enum SubscriptionStatus: 'trial' | 'active' | 'past_due' | 'suspended' | 'canceled'
+        // Regra de acesso: active, trial e past_due têm acesso; suspended/canceled não.
+        const status = (output.result.subscriptionStatus || '').toString().toLowerCase();
         const hasActive = !!(
-          output.result.subscriptionId && 
-          (output.result.subscriptionStatus === 'ACTIVE' || output.result.subscriptionStatus === 'RECEIVED')
+          output.result.subscriptionId && ['active', 'trial', 'past_due'].includes(status)
         );
         setHasActiveSubscription(hasActive);
       } else {

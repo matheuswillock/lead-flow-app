@@ -69,7 +69,7 @@ export function SignupForm({
             </div>
           </div>
           <div className="flex flex-col gap-6">
-            {fromSubscribe && (form.getValues("fullName") || form.getValues("email") || form.getValues("phone")) && (
+            {/* {fromSubscribe && (form.getValues("fullName") || form.getValues("email") || form.getValues("phone")) && (
               <TooltipProvider>
                 <div className="flex items-start gap-2 p-2 rounded-md border border-primary/20 bg-primary/5">
                   <Tooltip>
@@ -87,7 +87,7 @@ export function SignupForm({
                   </p>
                 </div>
               </TooltipProvider>
-            )}
+            )} */}
             
             <FormField
               control={form.control}

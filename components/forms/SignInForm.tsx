@@ -47,7 +47,7 @@ export function SignInForm({
             {fromSubscribe && (
               <>
                 <Badge variant="outline" className="mt-1 border-primary/30 text-primary">Assinatura</Badge>
-                <TooltipProvider>
+                {/* <TooltipProvider>
                   <div className="mt-1 flex items-start gap-2 p-2 rounded-md border border-primary/20 bg-primary/5">
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -63,7 +63,7 @@ export function SignInForm({
                       Fluxo de assinatura ativo.
                     </p>
                   </div>
-                </TooltipProvider>
+                </TooltipProvider> */}
               </>
             )}
             <h1 className="text-xl font-bold">Welcome to Lead Flow.</h1>
