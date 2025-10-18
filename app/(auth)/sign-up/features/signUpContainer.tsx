@@ -45,7 +45,7 @@ export function SignUpFormContainer() {
         // Os erros já são gerenciados pelo context
     }
 
-    // Verificar se veio do fluxo de assinatura
+    // Verificar se veio do fluxo de assinatura (apenas para copy/UX)
     const isFromSubscription = searchParams.get('from') === 'subscribe';
 
     // Se dados expiraram, mostrar mensagem
@@ -59,7 +59,8 @@ export function SignUpFormContainer() {
                     errors={errors} 
                     onSubmit={onSubmit}
                     isLoading={isLoading}
-                    readonly={isFromSubscription}
+                    // Não desabilitar campos no fluxo auth-first
+                    readonly={false}
                     fromSubscribe={isFromSubscription}
                 />
             </div>
