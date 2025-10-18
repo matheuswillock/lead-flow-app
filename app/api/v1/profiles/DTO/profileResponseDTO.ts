@@ -19,6 +19,10 @@ export interface ProfileResponseDTO {
   managerId: string | null;
   profileIconId: string | null;
   profileIconUrl: string | null;
+  subscriptionId: string | null;
+  subscriptionStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
   usersAssociated: UserAssociated[];
 }
 
@@ -64,6 +68,10 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     managerId: profile.managerId,
     profileIconId: profile.profileIconId,
     profileIconUrl: profile.profileIconUrl,
+    subscriptionId: profile.subscriptionId ?? null,
+    subscriptionStatus: profile.subscriptionStatus ?? null,
+    createdAt: (profile.createdAt instanceof Date ? profile.createdAt.toISOString() : profile.createdAt) as string,
+    updatedAt: (profile.updatedAt instanceof Date ? profile.updatedAt.toISOString() : profile.updatedAt) as string,
     usersAssociated,
   };
 }
