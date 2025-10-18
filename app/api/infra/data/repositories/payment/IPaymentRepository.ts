@@ -18,6 +18,11 @@ export interface IPaymentRepository {
   findByAsaasCustomerId(asaasCustomerId: string): Promise<Profile | null>;
 
   /**
+   * Busca um Profile pelo email
+   */
+  findByEmail(email: string): Promise<Profile | null>;
+
+  /**
    * Atualiza o status da assinatura de um Profile
    * @param profileId - ID do Profile
    * @param subscriptionStatus - Novo status da assinatura

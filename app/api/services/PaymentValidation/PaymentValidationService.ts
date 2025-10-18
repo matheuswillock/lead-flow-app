@@ -85,6 +85,46 @@ export class PaymentValidationService implements IPaymentValidationService {
       console.info(`🔔 [PaymentValidationService] Processando webhook: ${event}`);
       console.info(`💳 [PaymentValidationService] Status do pagamento: ${paymentData.status}`);
 
+      // Suporte a SUBSCRIPTION_CREATED (sem payment): usar externalReference do subscription
+      if (event === 'SUBSCRIPTION_CREATED' && !paymentData?.id) {
+        const sub = (paymentData as any)?.subscription || (paymentData as any);
+        const subscriptionId = sub?.id || (paymentData as any)?.id;
+        const customerId = sub?.customer;
+        const externalRef = sub?.externalReference; // no nosso fluxo atual: email
+
+        console.info('[PaymentValidationService] SUBSCRIPTION_CREATED recebido', {
+          subscriptionId,
+          customerId,
+          externalRef,
+        });
+
+        if (!externalRef || !subscriptionId || !customerId) {
+          return {
+            success: true,
+            isPaid: false,
+            message: 'SUBSCRIPTION_CREATED sem dados suficientes para vincular',
+          };
+        }
+
+        // Tentar localizar Profile pelo email (externalReference)
+        let profile = await this.paymentRepository.findByEmail(externalRef);
+        if (!profile) {
+          console.warn('[PaymentValidationService] Profile não encontrado por email no SUBSCRIPTION_CREATED');
+          return { success: true, isPaid: false, message: 'Profile não encontrado para SUBSCRIPTION_CREATED' };
+        }
+
+        await this.paymentRepository.updateSubscriptionData(profile.id, {
+          asaasCustomerId: customerId,
+          subscriptionId: subscriptionId,
+          subscriptionPlan: 'manager_base',
+          subscriptionStatus: 'active',
+          subscriptionStartDate: new Date(),
+        });
+
+        console.info(`[PaymentValidationService] ✅ Profile vinculado no SUBSCRIPTION_CREATED: ${profile.id}`);
+        return { success: true, isPaid: false, paymentStatus: 'PENDING', profileUpdated: true, message: 'Assinatura vinculada ao Profile' };
+      }
+
       // Eventos que indicam pagamento confirmado
       const confirmedEvents = ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'];
 

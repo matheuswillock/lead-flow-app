@@ -21,6 +21,12 @@ export class PaymentRepository implements IPaymentRepository {
     });
   }
 
+  async findByEmail(email: string): Promise<Profile | null> {
+    return prisma.profile.findFirst({
+      where: { email },
+    });
+  }
+
   async updateSubscriptionStatus(
     profileId: string,
     subscriptionStatus: string,

@@ -41,17 +41,11 @@ export async function POST(request: NextRequest) {
     // Log completo do evento para debug
     console.info('📋 [Webhook Asaas] Detalhes completos do evento:', JSON.stringify(body, null, 2));
 
-    // Ignorar eventos que não têm payment (como SUBSCRIPTION_CREATED)
-    if (!body.payment) {
-      console.info('[Webhook Asaas] Evento sem payment - ignorando:', body.event);
-      return NextResponse.json(
-        { success: true, message: 'Evento sem payment - ignorado' },
-        { status: 200 }
-      );
-    }
+    // Se não há payment (ex.: SUBSCRIPTION_CREATED), ainda processamos para vincular IDs
+    const hasPayment = !!body.payment;
 
-    // Ignorar se não tiver o campo obrigatório 'id' no payment
-    if (!body.payment.id) {
+    // Ignorar se payment existe mas não tem ID
+    if (hasPayment && !body.payment.id) {
       console.warn('[Webhook Asaas] Payment sem ID - ignorando');
       return NextResponse.json(
         { success: true, message: 'Payment sem ID - ignorado' },
@@ -71,13 +65,13 @@ export async function POST(request: NextRequest) {
     // Process webhook
     const result = await paymentValidationUseCase.processWebhook({
       event: body.event,
-      payment: body.payment,
+      payment: hasPayment ? body.payment : body.subscription,
     });
 
     console.info('[Webhook Asaas] Resultado:', result);
 
     // Se o pagamento foi confirmado, notificar o frontend via endpoint público
-    if (result.isPaid && body.payment?.subscription) {
+    if (result.isPaid && body?.payment?.subscription) {
       const subscriptionId = body.payment.subscription;
       console.info('💾 [Webhook Asaas] Notificando frontend para subscriptionId:', subscriptionId);
       
