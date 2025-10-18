@@ -179,14 +179,24 @@ export function SignUpFormContainer() {
         const result = await registerUser(data);
 
         if (result.isValid && result.result?.supabaseId) {
-            // Sucesso - redirecionar para board com supabaseId
-            toast.success('Cadastro concluído!', {
-                description: 'Redirecionando para sua área de trabalho...',
-            });
-            
-            setTimeout(() => {
-                window.location.href = `/${result.result.supabaseId}/board`;
-            }, 1500);
+            // Sucesso
+            if (pendingData) {
+                // Já pagou: ir para o board
+                toast.success('Cadastro concluído!', {
+                    description: 'Redirecionando para sua área de trabalho...',
+                });
+                setTimeout(() => {
+                    window.location.href = `/${result.result.supabaseId}/board`;
+                }, 1200);
+            } else {
+                // Fluxo auth-first: direcionar para a assinatura
+                toast.success('Cadastro concluído!', {
+                    description: 'Agora escolha o plano e finalize sua assinatura.',
+                });
+                setTimeout(() => {
+                    window.location.href = `/subscribe`;
+                }, 900);
+            }
         }
         // Os erros já são gerenciados pelo context
     }

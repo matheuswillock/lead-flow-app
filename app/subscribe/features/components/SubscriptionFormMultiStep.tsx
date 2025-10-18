@@ -24,6 +24,7 @@ import { SubscriptionService } from '../services/SubscriptionService';
 import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from '@/lib/masks';
 import { useWebhookListener } from '@/hooks/useWebhookListener';
 import { saveEncryptedData, removeEncryptedData, getEncryptedData } from '@/lib/crypto';
+import { createSupabaseBrowser } from '@/lib/supabase/browser';
 
 interface SubscriptionFormMultiStepProps {
   onSuccess: (
@@ -210,6 +211,31 @@ export function SubscriptionFormMultiStep({
   useEffect(() => {
     checkStepValidity();
   }, [currentStep]);
+
+  // Prefill with logged-in user's profile when available
+  useEffect(() => {
+    (async () => {
+      try {
+        const supabase = createSupabaseBrowser();
+        const { data: { user } } = await (supabase?.auth.getUser() || { data: { user: null } });
+        if (!user) return;
+
+        const res = await fetch(`/api/v1/profiles/${user.id}`);
+        if (!res.ok) return;
+        const payload = await res.json();
+        if (!payload?.isValid || !payload?.result) return;
+        const p = payload.result;
+        // Set values only if field is empty to avoid overriding user input
+        if (!form.getValues('fullName') && p.fullName) form.setValue('fullName', p.fullName);
+        if (!form.getValues('email') && p.email) form.setValue('email', p.email);
+        if (!form.getValues('phone') && p.phone) form.setValue('phone', p.phone);
+        if (!form.getValues('cpfCnpj') && p.cpfCnpj) form.setValue('cpfCnpj', p.cpfCnpj);
+      } catch (e) {
+        console.warn('Prefill profile skipped:', e);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const validateStep = async (step: number): Promise<boolean> => {
     let fieldsToValidate: (keyof SubscriptionFormSchema)[] = [];

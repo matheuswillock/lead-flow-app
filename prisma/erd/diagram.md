@@ -69,6 +69,13 @@ with_operators with_operators
     String supabaseId "❓"
     String fullName "❓"
     String phone "❓"
+    String cpfCnpj "❓"
+    String postalCode "❓"
+    String address "❓"
+    String addressNumber "❓"
+    String complement "❓"
+    String city "❓"
+    String state "❓"
     String profileIconId "❓"
     String profileIconUrl "❓"
     UserRole role 

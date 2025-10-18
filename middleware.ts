@@ -64,9 +64,12 @@ export async function middleware(request: NextRequest) {
   const pathSegments = pathname.split('/').filter(Boolean)
   
   // If accessing old format route (without supabaseId), redirect to new format
+  // EXCEPTION: keep "/subscribe" at root-level (no tenantized path)
   if (protectedPrefixes.some(prefix => pathname.startsWith(prefix))) {
     const routeName = pathSegments[0]
-    return NextResponse.redirect(new URL(`/${user.id}/${routeName}`, request.url))
+    if (routeName !== 'subscribe') {
+      return NextResponse.redirect(new URL(`/${user.id}/${routeName}`, request.url))
+    }
   }
 
   // If accessing route with supabaseId, verify it matches the current user
