@@ -4,15 +4,20 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form"
 import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+// import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData } from "@/lib/validations/validationForms"
+import { maskPhone, unmask } from "@/lib/masks"
 
 interface SignUpFormProps {
   form: UseFormReturn<signUpFormData>;
   errors: Record<string, string>;
   onSubmit: (data: signUpFormData) => void | Promise<void>;
   isLoading?: boolean;
+  readonly?: boolean;
+  fromSubscribe?: boolean;
 }
 
 export function SignupForm({
@@ -21,6 +26,8 @@ export function SignupForm({
   errors,
   onSubmit,
   isLoading = false,
+  readonly = false,
+  fromSubscribe = false,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignUpFormProps) {
 
@@ -43,15 +50,44 @@ export function SignupForm({
               </div>
               <span className="sr-only">Lead Flow</span>
             </Link>
+            {fromSubscribe && (
+              <Badge variant="outline" className="mt-1 border-primary/30 text-primary">Assinatura</Badge>
+            )}
             <h1 className="text-xl font-bold">Criar conta</h1>
+            {fromSubscribe && (
+              <p className="text-center text-sm text-muted-foreground max-w-sm">
+                Para assinar a plataforma, primeiro crie sua conta. Após entrar, você será direcionado para a página de assinatura.
+              </p>
+            )}
             <div className="text-center text-sm">
               Já tem uma conta? 
-              <Link href="/sign-in" className="underline underline-offset-4 text-lg">
+              {' '}
+              <Link href={fromSubscribe ? "/sign-in?from=subscribe" : "/sign-in"} className="underline underline-offset-4 text-lg">
                 Entrar
               </Link>
             </div>
           </div>
           <div className="flex flex-col gap-6">
+            {/* {fromSubscribe && (form.getValues("fullName") || form.getValues("email") || form.getValues("phone")) && (
+              <TooltipProvider>
+                <div className="flex items-start gap-2 p-2 rounded-md border border-primary/20 bg-primary/5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button type="button" className="pt-0.5 text-primary" aria-label="Mais detalhes">
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Dados pré-preenchidos a partir da intenção de assinatura.
+                    </TooltipContent>
+                  </Tooltip>
+                  <p className="text-sm text-muted-foreground">
+                    Seus dados foram importados; revise e crie sua senha.
+                  </p>
+                </div>
+              </TooltipProvider>
+            )} */}
+            
             <FormField
               control={form.control}
               name="fullName"
@@ -63,6 +99,7 @@ export function SignupForm({
                       placeholder="Seu nome"
                       {...field}
                       className="border-2 border-gray-300 rounded-md p-2"
+                      disabled={readonly}
                     />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.fullName}</FormMessage>
@@ -76,7 +113,12 @@ export function SignupForm({
                 <FormItem className="grid gap-2">
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input placeholder="email@exemplo.com" {...field} className="border-2 border-gray-300 rounded-md p-2"/>
+                    <Input 
+                      placeholder="email@exemplo.com" 
+                      {...field} 
+                      className="border-2 border-gray-300 rounded-md p-2"
+                      disabled={readonly}
+                    />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.email}</FormMessage>
                 </FormItem>
@@ -90,7 +132,18 @@ export function SignupForm({
                 <FormItem className="grid gap-2">
                   <FormLabel>Telefone</FormLabel>
                   <FormControl>
-                    <Input placeholder="(11) 99999-9999" {...field} className="border-2 border-gray-300 rounded-md p-2" />
+                    <Input 
+                      placeholder="(11) 99999-9999" 
+                      {...field}
+                      value={maskPhone(field.value)}
+                      onChange={(e) => {
+                        const masked = maskPhone(e.target.value);
+                        const unmasked = unmask(masked);
+                        field.onChange(unmasked);
+                      }}
+                      className="border-2 border-gray-300 rounded-md p-2"
+                      disabled={readonly}
+                    />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.phone}</FormMessage>
                 </FormItem>

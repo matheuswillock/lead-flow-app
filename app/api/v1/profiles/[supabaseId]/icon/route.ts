@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
-import { ProfileIconService } from "@/app/api/services/ProfileIconService";
 import { Output } from "@/lib/output";
+import { profileIconService } from "@/app/api/services/profile/ProfileIconService";
 
 const profileUseCase = new RegisterNewUserProfile();
 
@@ -39,7 +39,7 @@ export async function POST(
     }
 
     // Fazer upload do arquivo
-    const uploadResult = await ProfileIconService.uploadProfileIcon(file, supabaseId);
+    const uploadResult = await profileIconService.uploadProfileIcon(file, supabaseId);
 
     if (!uploadResult.success) {
       const output = new Output(false, [], [uploadResult.error || "Upload failed"], null);
@@ -52,7 +52,7 @@ export async function POST(
     if (!updateResult.isValid) {
       // Se falhou ao atualizar o banco, tentar remover o arquivo enviado
       if (uploadResult.iconId) {
-        await ProfileIconService.deleteProfileIcon(uploadResult.iconId);
+        await profileIconService.deleteProfileIcon(uploadResult.iconId);
       }
       return NextResponse.json(updateResult, { status: 400 });
     }
@@ -101,7 +101,7 @@ export async function DELETE(
     }
 
     // Remover arquivo do storage
-    const deleteResult = await ProfileIconService.deleteProfileIcon(profile.profileIconId);
+    const deleteResult = await profileIconService.deleteProfileIcon(profile.profileIconId);
 
     if (!deleteResult.success) {
       const output = new Output(false, [], [deleteResult.error || "Failed to delete icon"], null);

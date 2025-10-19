@@ -22,15 +22,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 function ManagerUserItem({ supabaseId }: { supabaseId?: string }) {
   const { isManager } = useUserRole();
-  
+
   if (!isManager) return null;
-  
+
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild>
         <Link href={`/${supabaseId}/manager-users`}>
           <Users />
-          <span>Manager users</span>
+          <span>Manager operators</span>
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>

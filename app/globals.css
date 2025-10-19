@@ -118,6 +118,11 @@ body {
   color: var(--foreground); 
   font-family: 'Inter', sans-serif; 
 }
+
+html {
+  scroll-behavior: smooth;
+}
+
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Poppins', sans-serif;
 }

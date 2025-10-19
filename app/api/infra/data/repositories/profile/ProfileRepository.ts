@@ -81,9 +81,37 @@ class PrismaProfileRepository implements IProfileRepository {
     phone: string,
     password: string,
     email: string,
-    role: UserRole
+    role: UserRole,
+    asaasCustomerId?: string,
+    subscriptionId?: string,
+    cpfCnpj?: string,
+    subscriptionStatus?: string,
+    subscriptionPlan?: string,
+    operatorCount?: number,
+    subscriptionStartDate?: Date,
+    trialEndDate?: Date,
+    postalCode?: string,
+    address?: string,
+    addressNumber?: string,
+    complement?: string,
+    city?: string,
+    state?: string
   ): Promise<{ profileId: string; supabaseId: string } | null> {
     try {
+      console.info('💾 [ProfileRepository] createProfile iniciado');
+      console.info('📦 [ProfileRepository] Parâmetros recebidos:', {
+        hasSubscriptionId: !!subscriptionId,
+        hasAsaasCustomerId: !!asaasCustomerId,
+        hasSubscriptionPlan: !!subscriptionPlan,
+        hasOperatorCount: operatorCount !== undefined,
+        subscriptionId,
+        asaasCustomerId,
+        subscriptionPlan,
+        operatorCount,
+        subscriptionStatus,
+        role
+      });
+      
       const supabase = createSupabaseClient();
       if (!supabase) {
         console.error("Failed to initialize Supabase client");
@@ -104,15 +132,77 @@ class PrismaProfileRepository implements IProfileRepository {
 
       const supabaseId = user.user.id;
 
+      // Preparar dados do profile
+      const profileData: any = {
+        supabaseId,
+        fullName,
+        phone,
+        email,
+        role,
+      };
+
+      // Adicionar CPF/CNPJ se fornecido
+      if (cpfCnpj) {
+        profileData.cpfCnpj = cpfCnpj;
+      }
+
+      // Adicionar dados do Asaas se fornecidos
+      if (asaasCustomerId) {
+        profileData.asaasCustomerId = asaasCustomerId;
+      }
+      if (subscriptionId) {
+        profileData.subscriptionId = subscriptionId;
+      }
+      if (subscriptionStatus) {
+        profileData.subscriptionStatus = subscriptionStatus;
+      }
+      if (subscriptionPlan) {
+        profileData.subscriptionPlan = subscriptionPlan;
+      }
+      if (operatorCount !== undefined) {
+        profileData.operatorCount = operatorCount;
+      }
+      if (subscriptionStartDate) {
+        profileData.subscriptionStartDate = subscriptionStartDate;
+      }
+      if (trialEndDate) {
+        profileData.trialEndDate = trialEndDate;
+      }
+
+      // Adicionar endereço se fornecido
+      if (postalCode) profileData.postalCode = postalCode;
+      if (address) profileData.address = address;
+      if (addressNumber) profileData.addressNumber = addressNumber;
+      if (complement) profileData.complement = complement;
+      if (city) profileData.city = city;
+      if (state) profileData.state = state;
+
+      console.info('📝 [ProfileRepository] profileData final:', {
+        hasSubscriptionId: !!profileData.subscriptionId,
+        hasAsaasCustomerId: !!profileData.asaasCustomerId,
+        hasSubscriptionPlan: !!profileData.subscriptionPlan,
+        hasOperatorCount: profileData.operatorCount !== undefined,
+        subscriptionId: profileData.subscriptionId,
+        subscriptionPlan: profileData.subscriptionPlan,
+        operatorCount: profileData.operatorCount,
+        subscriptionStatus: profileData.subscriptionStatus,
+        hasSubscriptionStartDate: !!profileData.subscriptionStartDate,
+        subscriptionStartDate: profileData.subscriptionStartDate
+      });
+
       // Criar profile no banco
       const profile = await prisma.profile.create({
-        data: {
-          supabaseId,
-          fullName,
-          phone,
-          email,
-          role
-        }
+        data: profileData
+      });
+
+      console.info('✅ [ProfileRepository] Profile criado com sucesso:', {
+        profileId: profile.id,
+        hasSubscriptionId: !!profile.subscriptionId,
+        subscriptionId: profile.subscriptionId,
+        subscriptionStatus: profile.subscriptionStatus,
+        subscriptionPlan: profile.subscriptionPlan,
+        subscriptionStartDate: profile.subscriptionStartDate,
+        asaasCustomerId: profile.asaasCustomerId
       });
 
       return { profileId: profile.id, supabaseId };

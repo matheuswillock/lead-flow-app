@@ -8,6 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Eye, EyeOff } from "lucide-react";
 import { useState, useEffect } from "react";
 import { updateAccountFormData } from "@/lib/validations/validationForms";
+import { maskPhone, unmask } from "@/lib/masks";
 
 interface AccountFormProps {
   form: UseFormReturn<updateAccountFormData>;
@@ -112,6 +113,12 @@ export function AccountForm({
                   className="h-11"
                   disabled={isLoading || isUpdating}
                   {...field}
+                  value={maskPhone(field.value)}
+                  onChange={(e) => {
+                    const masked = maskPhone(e.target.value);
+                    const unmasked = unmask(masked);
+                    field.onChange(unmasked);
+                  }}
                 />
               </FormControl>
               <FormMessage />

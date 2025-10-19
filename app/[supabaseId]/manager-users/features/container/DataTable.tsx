@@ -182,7 +182,7 @@ export function DataTable<TData, TValue>({
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  Nenhum usuário encontrado.
+                  Nenhum operador encontrado.
                 </TableCell>
               </TableRow>
             )}
@@ -191,7 +191,7 @@ export function DataTable<TData, TValue>({
       </div>
       <div className="flex items-center justify-end space-x-2 py-4">
         <div className="flex-1 text-sm text-muted-foreground">
-          {table.getFilteredRowModel().rows.length} usuário(s) encontrado(s).
+          {table.getFilteredRowModel().rows.length} operador(es) encontrado(s).
         </div>
         <div className="space-x-2">
           <Button
