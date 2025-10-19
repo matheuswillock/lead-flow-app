@@ -1,12 +1,12 @@
 "use client"
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { signin } from "./actions"
 import { useLoginForm } from "@/hooks/useForms"
 import { SignInForm } from "@/components/forms/SignInForm"
 import { loginFormData } from "@/lib/validations/validationForms"
 
-export default function SignInPage() {
+function SignInInner() {
   const form = useLoginForm();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const searchParams = useSearchParams();
@@ -22,7 +22,7 @@ export default function SignInPage() {
     const result = await signin(formData);
     if (!result.success) {
       // TODO: Mapear erros para string simples
-  console.error(result.errors);
+      console.error(result.errors);
       const fe: Record<string, string> = {};
       Object.entries(result.errors || {}).forEach(([k, v]) => {
         fe[k] = Array.isArray(v) ? v.join(", ") : String(v);
@@ -30,8 +30,6 @@ export default function SignInPage() {
       setErrors(fe);
     }
   }
-
-  // TODO: Implementar login social (Google) – função removida para evitar variável não usada
 
   return (
     <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-6 md:p-10">
@@ -44,5 +42,13 @@ export default function SignInPage() {
         />
       </div>
     </main>
-  )
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignInInner />
+    </Suspense>
+  );
 }
