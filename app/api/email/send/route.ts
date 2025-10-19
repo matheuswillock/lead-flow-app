@@ -43,8 +43,25 @@ export async function POST(request: NextRequest) {
         result = await emailService.sendEmail(data);
         break;
 
+      case 'subscription-confirmation':
+        // required: userName, userEmail; optional: subscriptionId, planName, value, nextDueDate, manageUrl
+        if (!data.userName || !data.userEmail) {
+          const output = new Output(false, [], ["userName e userEmail são obrigatórios"], null);
+          return NextResponse.json(output, { status: 400 });
+        }
+        result = await emailService.sendSubscriptionConfirmationEmail({
+          userName: data.userName,
+          userEmail: data.userEmail,
+          subscriptionId: data.subscriptionId,
+          planName: data.planName,
+          value: data.value,
+          nextDueDate: data.nextDueDate,
+          manageUrl: data.manageUrl,
+        });
+        break;
+
       default:
-        const output = new Output(false, [], ["Tipo de email inválido. Use: welcome, lead-notification, password-reset ou custom"], null);
+  const output = new Output(false, [], ["Tipo de email inválido. Use: welcome, lead-notification, password-reset, subscription-confirmation ou custom"], null);
         return NextResponse.json(output, { status: 400 });
     }
 

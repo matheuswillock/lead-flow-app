@@ -22,6 +22,16 @@ export interface LeadNotificationData {
   managerEmail: string;
 }
 
+export interface SubscriptionConfirmationData {
+  userName: string;
+  userEmail: string;
+  subscriptionId?: string;
+  planName?: string;
+  value?: number; // BRL
+  nextDueDate?: string; // ISO
+  manageUrl?: string; // URL para gerenciar assinatura
+}
+
 export class EmailService {
   private resend?: ReturnType<typeof assertResend>;
 
@@ -42,7 +52,7 @@ export class EmailService {
       const resend = this.getResend();
       
       const emailData: any = {
-        from: options.from || "Lead Flow <noreply@leadflow.com>",
+        from: options.from || "Lead Flow <no-reply@corretorstudio.com.br>",
         to: options.to,
         subject: options.subject,
       };
@@ -92,6 +102,53 @@ export class EmailService {
     return this.sendEmail({
       to: [data.userEmail],
       subject: "Bem-vindo ao Lead Flow - Sua conta foi criada!",
+      html,
+    });
+  }
+
+  // Confirmação de assinatura
+  async sendSubscriptionConfirmationEmail(data: SubscriptionConfirmationData) {
+    const fmtCurrency = (v?: number) =>
+      typeof v === 'number'
+        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+        : undefined;
+
+    const price = fmtCurrency(data.value);
+    const nextDue = data.nextDueDate ? new Date(data.nextDueDate).toLocaleDateString('pt-BR') : undefined;
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const manageUrl = data.manageUrl || `${appUrl}/sign-in`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #333; text-align: center;">Assinatura Confirmada 🎉</h1>
+        <p>Olá <strong>${data.userName}</strong>,</p>
+        <p>Sua assinatura no <strong>Lead Flow</strong> foi confirmada com sucesso.</p>
+
+        <div style="background-color: #f8f9fa; padding: 16px; border-radius: 8px; margin: 20px 0;">
+          ${data.subscriptionId ? `<p style="margin: 4px 0;"><strong>ID da Assinatura:</strong> ${data.subscriptionId}</p>` : ''}
+          ${data.planName ? `<p style="margin: 4px 0;"><strong>Plano:</strong> ${data.planName}</p>` : ''}
+          ${price ? `<p style="margin: 4px 0;"><strong>Valor:</strong> ${price}/mês</p>` : ''}
+          ${nextDue ? `<p style="margin: 4px 0;"><strong>Próximo vencimento:</strong> ${nextDue}</p>` : ''}
+        </div>
+
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${manageUrl}"
+             style="background-color: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Gerenciar Assinatura
+          </a>
+        </div>
+
+        <p>Obrigado por escolher o Lead Flow! Estamos prontos para impulsionar seu processo comercial.</p>
+
+        <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
+          <p>Este é um email automático do Lead Flow.</p>
+        </div>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to: [data.userEmail],
+      subject: 'Lead Flow — Assinatura confirmada',
       html,
     });
   }
