@@ -6,7 +6,7 @@
  */
 export function encryptData(data: any): string {
   const jsonString = JSON.stringify(data);
-  const key = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'lead-flow-default-key-2025';
+  const key = process.env.ENCRYPTION_KEY || 'lead-flow-default-key-2025';
   
   // XOR encryption
   let encrypted = '';
@@ -24,7 +24,7 @@ export function encryptData(data: any): string {
  */
 export function decryptData<T>(encryptedData: string): T | null {
   try {
-    const key = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'lead-flow-default-key-2025';
+    const key = process.env.ENCRYPTION_KEY || 'lead-flow-default-key-2025';
     
     // Decode from Base64
     const encrypted = atob(encryptedData);
