@@ -282,7 +282,7 @@ export default function SignUpPage() {
 // XOR + Base64 encryption
 export function encryptData(data: any): string {
   const jsonString = JSON.stringify(data);
-  const key = process.env.NEXT_PUBLIC_ENCRYPTION_KEY || 'default-key';
+  const key = process.env.ENCRYPTION_KEY || 'default-key';
   
   let encrypted = '';
   for (let i = 0; i < jsonString.length; i++) {
@@ -298,7 +298,7 @@ export function encryptData(data: any): string {
 ### Configuração
 ```env
 # .env.local
-NEXT_PUBLIC_ENCRYPTION_KEY=sua-chave-secreta-aqui-2025
+ENCRYPTION_KEY=sua-chave-secreta-aqui-2025
 ```
 
 ## ⚠️ Considerações Importantes
