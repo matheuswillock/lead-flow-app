@@ -101,7 +101,7 @@ export function PricingSection() {
             </div>
 
             <div className="grid md:grid-cols-2 gap-6 mb-8">
-              {additionalInfo.map((info, idx) => (
+              {additionalInfo.map((info) => (
                 <div
                   key={info.title}
                   className="flex items-start gap-4 p-6 rounded-xl border"

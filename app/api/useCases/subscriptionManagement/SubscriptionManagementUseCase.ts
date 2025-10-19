@@ -137,6 +137,8 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
   async cancelSubscription(supabaseId: string, reason?: string): Promise<Output> {
     try {
+      // Mark optional param as intentionally unused for now
+      void reason;
       // Validação
       if (!supabaseId) {
         return new Output(

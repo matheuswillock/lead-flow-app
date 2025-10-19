@@ -5,8 +5,8 @@ import { NextRequest, NextResponse } from 'next/server';
  * Endpoint simples para testar se webhooks estão chegando
  * Teste com: curl -X POST https://seu-ngrok.ngrok-free.dev/api/webhooks/test
  */
-export async function GET(request: NextRequest) {
-  console.log('✅ [Webhook Test] GET recebido!');
+export async function GET(_request: NextRequest) {
+  console.info('✅ [Webhook Test] GET recebido!');
   
   return NextResponse.json({
     success: true,
@@ -17,12 +17,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  console.log('✅ [Webhook Test] POST recebido!');
+  console.info('✅ [Webhook Test] POST recebido!');
   
   try {
     const body = await request.json();
-    console.log('📦 [Webhook Test] Body:', body);
-    
+    console.info('📦 [Webhook Test] Body:', body);
+
     return NextResponse.json({
       success: true,
       message: 'Webhook received successfully!',

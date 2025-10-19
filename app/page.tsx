@@ -7,7 +7,7 @@ import { PricingSection } from "@/components/landing/PricingSection";
 import { div as MotionDiv, h1 as MotionH1, p as MotionP } from "framer-motion/client";
 import { ArrowRight } from "lucide-react";
 import { HeartIcon } from "@/components/ui/heart"
-import Link from "next/link";
+// import Link from "next/link";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 export default function Home() {

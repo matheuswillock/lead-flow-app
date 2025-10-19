@@ -11,10 +11,12 @@ console.info('🔍 [ASAAS] ASAAS_ENV:', process.env.ASAAS_ENV);
 console.info('🔍 [ASAAS] ASAAS_URL:', process.env.ASAAS_URL);
 console.info('🔍 [ASAAS] ASAAS_API_KEY exists:', !!ASAAS_API_KEY);
 console.info('🔍 [ASAAS] ASAAS_API_KEY length:', ASAAS_API_KEY?.length || 0);
-console.info('🔍 [ASAAS] ASAAS_API_KEY completa:', ASAAS_API_KEY);
-console.info('🔍 [ASAAS] Verificação de caracteres especiais:');
-console.info('🔍 [ASAAS] Contém $aact:', ASAAS_API_KEY?.includes('$aact'));
-console.info('🔍 [ASAAS] Contém $aach:', ASAAS_API_KEY?.includes('$aach'));
+// Avoid logging full keys in production logs
+if (ASAAS_API_KEY) {
+  const start = ASAAS_API_KEY.slice(0, 6);
+  const end = ASAAS_API_KEY.slice(-6);
+  console.info('🔍 [ASAAS] ASAAS_API_KEY preview:', `${start}...${end}`);
+}
 
 if (!ASAAS_API_KEY) {
   console.warn('⚠️ ASAAS_API_KEY não configurada - funcionalidades de pagamento estarão desabilitadas');
@@ -44,26 +46,27 @@ export async function asaasFetch(endpoint: string, options?: RequestInit) {
   }
 
   // Log detalhado da requisição
-  console.log('🔑 [ASAAS] Fazendo requisição:');
-  console.log('🔑 [ASAAS] Endpoint:', endpoint);
-  console.log('🔑 [ASAAS] access_token length:', asaasHeaders.access_token.length);
-  console.log('🔑 [ASAAS] access_token (primeiros 30 chars):', asaasHeaders.access_token.substring(0, 30));
-  console.log('🔑 [ASAAS] access_token (últimos 30 chars):', asaasHeaders.access_token.substring(asaasHeaders.access_token.length - 30));
-  
+  console.info('🔑 [ASAAS] Fazendo requisição:');
+  console.info('🔑 [ASAAS] Endpoint:', endpoint);
+  console.info('🔑 [ASAAS] access_token length:', asaasHeaders.access_token.length);
+  // Do not print full secrets; show only length for diagnostics
+
   // Log do body se existir
   if (options?.body) {
     try {
       const bodyString = options.body as string;
-      console.log('🔑 [ASAAS] Body RAW (string):', bodyString);
-      
-      const bodyObj = JSON.parse(bodyString);
-      console.log('🔑 [ASAAS] Body parsed:', {
-        ...bodyObj,
-        cpfCnpj: bodyObj.cpfCnpj ? `${bodyObj.cpfCnpj.substring(0, 3)}*** (length: ${bodyObj.cpfCnpj.length})` : undefined,
-        cpfCnpjActual: bodyObj.cpfCnpj, // Show actual value
-      });
-    } catch (e) {
-      console.log('🔑 [ASAAS] Body (não-JSON):', options.body);
+      // Redact potential sensitive fields before logging
+      try {
+        const bodyObj = JSON.parse(bodyString);
+        const safe = { ...bodyObj };
+        if (safe.cpfCnpj) safe.cpfCnpj = `${String(safe.cpfCnpj).slice(0,3)}***`;
+        if (safe.creditCard) safe.creditCard = { ...safe.creditCard, number: '****', ccv: '***' };
+        console.info('🔑 [ASAAS] Body parsed (redacted):', safe);
+      } catch {
+        console.info('🔑 [ASAAS] Body (string)');
+      }
+    } catch {
+  console.info('🔑 [ASAAS] Body (não-JSON)');
     }
   }
 

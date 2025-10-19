@@ -154,7 +154,6 @@ export function SubscriptionFormMultiStep({
         console.warn('Prefill profile skipped:', e);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Prefill from sign-up handoff (sessionStorage), then clear it

@@ -19,7 +19,6 @@ interface ActiveSubscriptionMessageProps {
 
 export function ActiveSubscriptionMessage({
   userExists,
-  userId,
   matchSource,
   matchedIdentifier,
   subscription,

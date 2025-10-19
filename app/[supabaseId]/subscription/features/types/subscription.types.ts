@@ -75,7 +75,7 @@ export interface UseSubscriptionHookProps {
   service: ISubscriptionService;
 }
 
-export interface UseSubscriptionHookReturn extends ISubscriptionContext {}
+export type UseSubscriptionHookReturn = ISubscriptionContext;
 
 // Service Interface
 export interface ISubscriptionService {

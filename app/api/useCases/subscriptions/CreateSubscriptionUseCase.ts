@@ -229,8 +229,8 @@ export class CreateSubscriptionUseCase {
       }
 
       // Verificar se já existe profile (se sim, reutilizar)
-      let customerId: string;
-      let existingAsaasCustomerId = existingProfile?.asaasCustomerId;
+  let customerId: string;
+  const existingAsaasCustomerId = existingProfile?.asaasCustomerId;
 
       if (existingAsaasCustomerId) {
         // Reutilizar cliente Asaas existente

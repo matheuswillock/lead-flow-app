@@ -27,7 +27,7 @@ export function StepIndicator({ currentStep, steps }: StepIndicatorProps) {
         </div>
 
         {/* Steps */}
-        {steps.map((step, index) => {
+  {steps.map((step) => {
           const isCompleted = currentStep > step.number;
           const isCurrent = currentStep === step.number;
           
