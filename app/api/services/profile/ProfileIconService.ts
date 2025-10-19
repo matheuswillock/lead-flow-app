@@ -1,16 +1,13 @@
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { ProfileIconUploadResult } from "./DTOs/ProfileIconUploadResult";
+import { DeleteProfileIconResult } from "./DTOs/DeleteProfileIconResult";
+import { IProfileIconService } from "./IProfileIconService";
 
-export interface ProfileIconUploadResult {
-  success: boolean;
-  iconId?: string;
-  publicUrl?: string;
-  error?: string;
-}
-
-export class ProfileIconService {
-  private static readonly BUCKET_NAME = "profile-icons";
-  private static readonly MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-  private static readonly ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+// TODO: Implementar em uma usecase a service não deve ser chamada diretamente por controllers
+export class ProfileIconService implements IProfileIconService {
+  private readonly BUCKET_NAME = "profile-icons";
+  private readonly MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+  private readonly ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
   /**
    * Faz upload de um ícone de perfil para o Supabase Storage
@@ -18,7 +15,7 @@ export class ProfileIconService {
    * @param userId - ID do usuário (supabaseId)
    * @returns Resultado do upload
    */
-  static async uploadProfileIcon(file: File, userId: string): Promise<ProfileIconUploadResult> {
+  async uploadProfileIcon(file: File, userId: string): Promise<ProfileIconUploadResult> {
     try {
       // Validações
       const validation = this.validateFile(file);
@@ -78,7 +75,7 @@ export class ProfileIconService {
    * @param iconId - ID do ícone (caminho do arquivo)
    * @returns Sucesso ou erro
    */
-  static async deleteProfileIcon(iconId: string): Promise<{ success: boolean; error?: string }> {
+  async deleteProfileIcon(iconId: string): Promise<DeleteProfileIconResult> {
     try {
       const supabase = await createSupabaseServer();
       if (!supabase) {
@@ -106,7 +103,7 @@ export class ProfileIconService {
    * @param iconId - ID do ícone (caminho do arquivo)
    * @returns URL pública ou null
    */
-  static async getProfileIconUrl(iconId: string): Promise<string | null> {
+  async getProfileIconUrl(iconId: string): Promise<string | null> {
     try {
       const supabase = await createSupabaseServer();
       if (!supabase) return null;
@@ -127,7 +124,7 @@ export class ProfileIconService {
    * @param file - Arquivo a ser validado
    * @returns Resultado da validação
    */
-  private static validateFile(file: File): { isValid: boolean; error?: string } {
+  private validateFile(file: File): { isValid: boolean; error?: string } {
     // Verificar tamanho
     if (file.size > this.MAX_FILE_SIZE) {
       return { isValid: false, error: "File size must be less than 5MB" };
@@ -151,7 +148,7 @@ export class ProfileIconService {
    * @param userId - ID do usuário
    * @returns Lista de arquivos
    */
-  static async listUserIcons(userId: string): Promise<string[]> {
+  async listUserIcons(userId: string): Promise<string[]> {
     try {
       const supabase = await createSupabaseServer();
       if (!supabase) return [];
@@ -175,3 +172,5 @@ export class ProfileIconService {
     }
   }
 }
+
+export const profileIconService = new ProfileIconService();

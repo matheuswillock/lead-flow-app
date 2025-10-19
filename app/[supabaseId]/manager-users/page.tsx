@@ -4,6 +4,8 @@ import { use } from "react";
 import { ManagerUsersContainer } from "./features/container/ManagerUsersContainer";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SubscriptionGuard } from "@/components/subscription-guard";
+import { useUserContext } from "@/app/context/UserContext";
 
 interface ManagerUsersPageProps {
   params: Promise<{
@@ -13,6 +15,7 @@ interface ManagerUsersPageProps {
 
 function ManagerUsersPageContent({ supabaseId }: { supabaseId: string }) {
   const { role, loading } = useUserRole();
+  const { hasActiveSubscription } = useUserContext();
 
   if (loading) {
     return (
@@ -32,10 +35,12 @@ function ManagerUsersPageContent({ supabaseId }: { supabaseId: string }) {
   }
 
   return (
-    <ManagerUsersContainer 
-      supabaseId={supabaseId}
-      currentUserRole={role || "operator"}
-    />
+    <SubscriptionGuard hasActiveSubscription={hasActiveSubscription}>
+      <ManagerUsersContainer 
+        supabaseId={supabaseId}
+        currentUserRole={role || "operator"}
+      />
+    </SubscriptionGuard>
   );
 }
 

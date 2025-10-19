@@ -68,6 +68,24 @@ enum AgeRange {
   RANGE_61_PLUS @map("61+")
 }
 
+enum SubscriptionStatus {
+  trial // Período de teste (7-30 dias)
+  active // Ativa e paga
+  past_due // Pagamento atrasado (ainda com acesso)
+  suspended // Suspensa por falta de pagamento
+  canceled // Cancelada pelo usuário
+
+  @@map("subscription_status")
+}
+
+enum SubscriptionPlan {
+  free_trial // Trial gratuito
+  manager_base // R$ 59,90 - Somente Manager
+  with_operators // R$ 59,90 + (N × R$ 19,90)
+
+  @@map("subscription_plan")
+}
+
 // -----------------------------
 // PROFILES (public.profiles)
 // - Primary key is also a FK to auth.users.id (1:1)
@@ -75,17 +93,33 @@ enum AgeRange {
 // -----------------------------
 
 model Profile {
-  id             String   @id @unique @default(uuid()) @db.Uuid
-  email          String   @unique @db.Text
-  supabaseId     String?  @unique @db.Uuid
-  fullName       String?  @db.Text
-  phone          String?  @db.Text
-  profileIconId  String?  @db.Text
-  profileIconUrl String?  @db.Text
-  role           UserRole @default(manager)
-  managerId      String?  @db.Uuid
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+  id                    String              @id @unique @default(uuid()) @db.Uuid
+  email                 String              @unique @db.Text
+  supabaseId            String?             @unique @db.Uuid
+  fullName              String?             @db.Text
+  phone                 String?             @db.Text
+  cpfCnpj               String?             @db.Text
+  postalCode            String?             @db.Text
+  address               String?             @db.Text
+  addressNumber         String?             @db.Text
+  complement            String?             @db.Text
+  city                  String?             @db.Text
+  state                 String?             @db.Text
+  profileIconId         String?             @db.Text
+  profileIconUrl        String?             @db.Text
+  role                  UserRole            @default(manager)
+  managerId             String?             @db.Uuid
+  asaasCustomerId       String?             @db.Text
+  subscriptionId        String?             @db.Text
+  subscriptionStatus    SubscriptionStatus?
+  subscriptionPlan      SubscriptionPlan?
+  operatorCount         Int                 @default(0)
+  subscriptionStartDate DateTime?           @db.Timestamptz(6)
+  subscriptionEndDate   DateTime?           @db.Timestamptz(6)
+  trialEndDate          DateTime?           @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   // Relations
   manager   Profile?  @relation("ManagerOperators", fields: [managerId], references: [id], onDelete: Restrict)
@@ -100,6 +134,7 @@ model Profile {
 
   @@index([role])
   @@index([managerId])
+  @@index([cpfCnpj])
   @@map("profiles")
 }
 

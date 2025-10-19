@@ -1,9 +1,14 @@
 "use client"
 
 import { LandingHeader } from "@/components/landing/landingHeader";
+import { FeaturesSection } from "@/components/landing/FeaturesSection";
+import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
+import { PricingSection } from "@/components/landing/PricingSection";
 import { div as MotionDiv, h1 as MotionH1, p as MotionP } from "framer-motion/client";
-import { ArrowRight, } from "lucide-react";
-import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { HeartIcon } from "@/components/ui/heart"
+// import Link from "next/link";
+import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 export default function Home() {
   return (
@@ -29,15 +34,18 @@ export default function Home() {
             >
               <figure
                 className="relative rounded-2xl border shadow-xl backdrop-blur overflow-hidden"
-                style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--card) 70%, transparent)" }}
-              >                
+                style={{
+                  borderColor: "var(--border)",
+                  background: "color-mix(in oklab, var(--card) 70%, transparent)",
+                }}
+              >
                 <div className="relative aspect-[4/3] w-full">
                   <img
                     src="/images/product-banner.svg"
                     alt="Interface do produto"
                     className="absolute inset-0 h-full w-full object-cover"
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = "/window.svg"
+                      ;(e.currentTarget as HTMLImageElement).src = "/window.svg"
                     }}
                   />
                 </div>
@@ -52,11 +60,14 @@ export default function Home() {
                 className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1 text-xs sm:text-sm text-muted-foreground shadow-sm backdrop-blur"
                 style={{ background: "color-mix(in oklab, var(--card) 60%, transparent)" }}
               >
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--primary)" }} />
+                <span
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ background: "var(--primary)" }}
+                />
                 Lançamento — experiência mais rápida e clara
               </MotionDiv>
 
-                <MotionH1
+              <MotionH1
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.05 }}
@@ -88,8 +99,18 @@ export default function Home() {
                 transition={{ duration: 0.6, delay: 0.15 }}
                 className="mt-8 flex justify-end"
               >
-                <Link
-                  href="/subscribe"
+                <button
+                  onClick={async () => {
+                    try {
+                      const sb = createSupabaseBrowser();
+                      const { data: { user } } = await (sb?.auth.getUser() || { data: { user: null } });
+                      if (user?.id) {
+                        window.location.href = "/subscribe";
+                        return;
+                      }
+                    } catch (_) {}
+                    window.location.href = "/sign-up?from=subscribe";
+                  }}
                   className="group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
                   style={{
                     background: "var(--primary)",
@@ -100,12 +121,37 @@ export default function Home() {
                 >
                   Assinar
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />
-                </Link>
+                </button>
               </MotionDiv>
             </div>
           </div>
         </div>
       </section>
+
+      {/* Features Section */}
+      <FeaturesSection />
+
+      {/* How It Works Section */}
+      <HowItWorksSection />
+
+      {/* Pricing Section */}
+      <PricingSection />
+
+      {/* Simple Footer */}
+      <footer className="relative border-t" style={{ borderColor: "var(--border)" }}>
+        <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
+            <p>© {new Date().getFullYear()} Lead Flow. Todos os direitos reservados.</p>
+            <div className="flex items-center gap-2">
+              <span>Made with</span>
+              <HeartIcon style={{ color: "var(--primary)" }} />
+              <span className="font-semibold" style={{ color: "var(--primary)" }}>
+                Willock's House
+              </span>
+            </div>
+          </div>
+        </div>
+      </footer>
     </main>
   )
 }

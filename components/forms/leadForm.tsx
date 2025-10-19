@@ -11,34 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
-
-const formatCNPJ = (value: string): string => {
-    const cleanValue = value.replace(/\D/g, '');
-    if (cleanValue.length <= 14) {
-        return cleanValue
-            .replace(/^(\d{2})(\d)/, '$1.$2')
-            .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-            .replace(/\.(\d{3})(\d)/, '.$1/$2')
-            .replace(/(\d{4})(\d)/, '$1-$2');
-    }
-    return cleanValue.slice(0, 14)
-        .replace(/^(\d{2})(\d)/, '$1.$2')
-        .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-        .replace(/\.(\d{3})(\d)/, '.$1/$2')
-        .replace(/(\d{4})(\d)/, '$1-$2');
-};
-
-const formatPhone = (value: string): string => {
-    const cleanValue = value.replace(/\D/g, '');
-    if (cleanValue.length <= 11) {
-        return cleanValue
-            .replace(/^(\d{2})(\d)/, '($1) $2')
-            .replace(/(\d{5})(\d)/, '$1-$2');
-    }
-    return cleanValue.slice(0, 11)
-        .replace(/^(\d{2})(\d)/, '($1) $2')
-        .replace(/(\d{5})(\d)/, '$1-$2');
-};
+import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
 
 const formatCurrency = (value: string): string => {
     const cleanValue = value.replace(/\D/g, '');
@@ -159,10 +132,11 @@ export function LeadForm({
                         <FormLabel className="block text-sm font-medium mb-1">Telefone*</FormLabel>
                         <FormControl>
                             <Input
-                                value={field.value || ''}
+                                value={maskPhone(field.value || '')}
                                 onChange={(e) => {
-                                    const formatted = formatPhone(e.target.value);
-                                    field.onChange(formatted);
+                                    const masked = maskPhone(e.target.value);
+                                    const unmasked = unmask(masked);
+                                    field.onChange(unmasked);
                                 }}
                                 type="tel"
                                 placeholder="(11) 91234-1234"
@@ -202,10 +176,11 @@ export function LeadForm({
                         <FormLabel className="block text-sm font-medium mb-1">CNPJ</FormLabel>
                         <FormControl>
                             <Input
-                                value={field.value || ''}
+                                value={maskCNPJ(field.value || '')}
                                 onChange={(e) => {
-                                    const formatted = formatCNPJ(e.target.value);
-                                    field.onChange(formatted);
+                                    const masked = maskCNPJ(e.target.value);
+                                    const unmasked = unmask(masked);
+                                    field.onChange(unmasked);
                                 }}
                                 type="text"
                                 placeholder="00.000.000/0000-00"

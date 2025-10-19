@@ -13,6 +13,20 @@ export class RegisterNewUserProfile implements IProfileUseCase {
 
     async registerUserProfile(input: RequestToRegisterUserProfile): Promise<Output> {
         try {
+            console.info('🎯 [ProfileUseCase] registerUserProfile iniciado');
+            console.info('📦 [ProfileUseCase] Input recebido:', {
+                hasSubscriptionId: !!input.subscriptionId,
+                hasAsaasCustomerId: !!input.asaasCustomerId,
+                hasSubscriptionPlan: !!input.subscriptionPlan,
+                hasOperatorCount: input.operatorCount !== undefined,
+                subscriptionId: input.subscriptionId,
+                asaasCustomerId: input.asaasCustomerId,
+                subscriptionPlan: input.subscriptionPlan,
+                operatorCount: input.operatorCount,
+                subscriptionStatus: input.subscriptionStatus,
+                role: input.role
+            });
+            
             if (!input || !input.fullname || !input.email || !input.phone || !input.password) {
                 return new Output(false, [], ["Invalid input data"], {
                     fullName: !input?.fullname ? "Full name is required" : undefined,
@@ -32,7 +46,21 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 input.phone,
                 input.password,
                 input.email,
-                UserRole.manager,
+                input.role || UserRole.manager,
+                input.asaasCustomerId,
+                input.subscriptionId,
+                input.cpfCnpj,
+                input.subscriptionStatus,
+                input.subscriptionPlan,
+                input.operatorCount,
+                input.subscriptionStartDate,
+                input.trialEndDate,
+                input.postalCode,
+                input.address,
+                input.addressNumber,
+                input.complement,
+                input.city,
+                input.state
             );
 
             if (!result) {

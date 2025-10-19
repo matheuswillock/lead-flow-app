@@ -5,13 +5,19 @@ import { updateSession } from "@/lib/supabase/auth-sessions"
 export const runtime = 'nodejs'
 
 // Define protected route prefixes (actual URL paths)
-const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users"]
+const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users", ]
 
 // Routes that require manager role
 const managerOnlyRoutes = ["/manager-users"]
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  
+  // Skip middleware completely for webhook routes
+  if (pathname.startsWith('/api/webhooks')) {
+    console.info('[middleware] Webhook route - skipping auth');
+    return NextResponse.next();
+  }
   
   // Always refresh Supabase session cookies via helper
   const { user, response } = await updateSession(request)
@@ -58,9 +64,12 @@ export async function middleware(request: NextRequest) {
   const pathSegments = pathname.split('/').filter(Boolean)
   
   // If accessing old format route (without supabaseId), redirect to new format
+  // EXCEPTION: keep "/subscribe" at root-level (no tenantized path)
   if (protectedPrefixes.some(prefix => pathname.startsWith(prefix))) {
     const routeName = pathSegments[0]
-    return NextResponse.redirect(new URL(`/${user.id}/${routeName}`, request.url))
+    if (routeName !== 'subscribe') {
+      return NextResponse.redirect(new URL(`/${user.id}/${routeName}`, request.url))
+    }
   }
 
   // If accessing route with supabaseId, verify it matches the current user

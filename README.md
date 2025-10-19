@@ -47,6 +47,8 @@ O **Lead Flow** é uma plataforma moderna e elegante desenvolvida para otimizar 
 
 ## 🚀 Getting Started
 
+> 📖 **Guia de Início Rápido**: Veja o [`docs/QUICK_START.md`](./docs/QUICK_START.md) para um passo a passo detalhado (5-10 minutos)
+
 ### Pré-requisitos
 
 - **Node.js** >= 20
@@ -88,7 +90,8 @@ RESEND_API_KEY=your_resend_key
 
 # Pagamentos (Asaas)
 ASAAS_API_KEY=your_asaas_key
-ASAAS_ENV=sandbox
+ASAAS_API_URL=https://sandbox.asaas.com/api/v3
+ASAAS_WEBHOOK_TOKEN=your_webhook_secret_token
 
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -112,6 +115,68 @@ bun run dev
 ```
 
 Acesse [http://localhost:3000](http://localhost:3000) para ver a aplicação.
+
+### 🌐 Configuração do Ngrok (Para Webhooks em Desenvolvimento)
+
+O **Ngrok** é necessário para testar webhooks do Asaas localmente, pois cria um túnel seguro que expõe seu `localhost` para a internet.
+
+#### Para que serve?
+- ✅ Permite que o Asaas envie webhooks de pagamento para sua máquina local
+- ✅ Útil para testar fluxo completo de pagamento PIX
+- ✅ Evita necessidade de deploy apenas para testes
+
+#### Instalação e Configuração
+
+1. **Instale o Ngrok**
+```bash
+npm install -g ngrok
+```
+
+2. **Crie uma conta gratuita**
+   - Acesse: [https://dashboard.ngrok.com/signup](https://dashboard.ngrok.com/signup)
+   - Faça login e copie seu authtoken
+
+3. **Configure o Authtoken**
+```bash
+ngrok config add-authtoken SEU_TOKEN_AQUI
+```
+
+4. **Inicie o Ngrok** (em um terminal separado)
+```bash
+ngrok http 3000
+```
+
+Você verá uma saída como:
+```
+Session Status                online
+Account                       seu-email@gmail.com (Plan: Free)
+Region                        South America (sa)
+Web Interface                 http://127.0.0.1:4040
+Forwarding                    https://abc123xyz.ngrok-free.app -> http://localhost:3000
+```
+
+**🎯 URLs Geradas:**
+- 🌐 **URL Pública**: `https://abc123xyz.ngrok-free.app` (use no webhook do Asaas)
+- 🔍 **Dashboard**: `http://127.0.0.1:4040` (monitore requisições em tempo real)
+
+5. **Configure o Webhook no Asaas**
+   - Acesse: [https://sandbox.asaas.com](https://sandbox.asaas.com) (ou produção)
+   - Vá em **Menu do usuário** > **Integrações** > **Webhooks**
+   - Clique em **Criar Webhook**
+   - **URL**: `https://sua-url.ngrok-free.app/api/webhooks/asaas`
+   - **Eventos**: Selecione `PAYMENT_RECEIVED` e `PAYMENT_CONFIRMED`
+   - **Token**: Use o mesmo valor da variável `ASAAS_WEBHOOK_TOKEN` do seu `.env`
+
+6. **Monitore as requisições**
+   - Abra [http://127.0.0.1:4040](http://127.0.0.1:4040) para ver o dashboard do Ngrok
+   - Você verá todas as requisições HTTP em tempo real
+
+#### ⚠️ Importante
+- A URL do Ngrok muda toda vez que você reinicia (plano gratuito)
+- Sempre atualize a URL no painel do Asaas quando reiniciar o Ngrok
+- Use apenas em desenvolvimento - nunca em produção!
+
+Para mais detalhes, consulte: [`docs/WEBHOOK_SETUP.md`](./docs/WEBHOOK_SETUP.md)
 
 ## 📁 Estrutura do Projeto
 
@@ -164,6 +229,28 @@ Acesse [http://localhost:3000](http://localhost:3000) para ver a aplicação.
 - Tempo médio por estágio
 - Taxa de conversão detalhada
 - Exportação de relatórios
+
+### 💳 Pagamentos e Assinaturas
+- Integração completa com Asaas
+- Checkout PIX, Boleto e Cartão
+- Validação automática via Webhooks
+- Gestão de assinaturas mensais
+
+## 🔗 Webhooks
+
+O sistema utiliza webhooks do Asaas para processar pagamentos automaticamente:
+
+- **Endpoint**: `/api/webhooks/asaas`
+- **Eventos monitorados**: `PAYMENT_RECEIVED`, `PAYMENT_CONFIRMED`
+- **Segurança**: Validação via token (`ASAAS_WEBHOOK_TOKEN`)
+
+Quando um pagamento PIX é confirmado:
+1. Webhook atualiza automaticamente o status da assinatura
+2. Usuário é redirecionado para completar cadastro
+3. Dados da assinatura são pré-preenchidos
+4. Acesso à plataforma é liberado instantaneamente
+
+**Documentação completa**: [`docs/WEBHOOK_SETUP.md`](./docs/WEBHOOK_SETUP.md)
 
 ## 🧪 Scripts Disponíveis
 
@@ -242,6 +329,36 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para ma
 ## 📞 Suporte
 
 Para suporte, entre em contato através do GitHub Issues ou LinkedIn.
+
+## 🐛 Troubleshooting
+
+### Ngrok não conecta
+```bash
+# Erro: authentication failed
+# Solução: Configure o authtoken
+ngrok config add-authtoken SEU_TOKEN
+
+# Erro: version '3' invalid
+# Solução: Delete o arquivo de configuração corrompido
+rm ~/AppData/Local/ngrok/ngrok.yml  # Windows
+rm ~/.ngrok2/ngrok.yml              # Linux/Mac
+```
+
+### Webhook não recebe eventos
+1. Verifique se o Ngrok está rodando
+2. Confirme que a URL no Asaas está correta
+3. Verifique se o token no Asaas é o mesmo do `.env`
+4. Monitore o dashboard do Ngrok: `http://127.0.0.1:4040`
+
+### Erro ao criar assinatura
+1. Verifique se `ASAAS_API_KEY` está configurada
+2. Confirme que está usando a URL correta (sandbox/produção)
+3. Verifique logs do servidor: terminal onde está `bun run dev`
+
+### Database connection failed
+1. Verifique se as URLs do Supabase estão corretas
+2. Confirme que o projeto Supabase está ativo
+3. Execute as migrações: `bun run prisma:migrate`
 
 ---
 

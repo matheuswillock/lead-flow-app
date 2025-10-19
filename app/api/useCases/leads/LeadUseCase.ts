@@ -13,7 +13,7 @@ import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedu
 export class LeadUseCase implements ILeadUseCase {
   constructor(
     private leadRepository: ILeadRepository,
-    private profileUseCase: IProfileUseCase
+    private profileUseCase: IProfileUseCase,
   ) {}
 
   async createLead(supabaseId: string, data: CreateLeadRequest): Promise<Output> {

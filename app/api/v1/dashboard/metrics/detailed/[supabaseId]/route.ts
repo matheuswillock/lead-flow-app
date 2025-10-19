@@ -1,5 +1,11 @@
+import { IDashboardInfosService } from '@/app/api/services';
+import { DashboardInfosService } from '@/app/api/services/DashboardInfos/DashboardInfosService';
+import { IMetricsUseCase } from '@/app/api/useCases';
+import { MetricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
 import { NextRequest, NextResponse } from 'next/server';
-import { metricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
+
+const dashboardInfosService : IDashboardInfosService = new DashboardInfosService();
+const metricsUseCase : IMetricsUseCase = new MetricsUseCase(dashboardInfosService);
 
 export async function GET(
   request: NextRequest,

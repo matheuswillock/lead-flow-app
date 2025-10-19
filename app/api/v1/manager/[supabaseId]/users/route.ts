@@ -10,7 +10,6 @@ import {
 } from "./types";
 import { getEmailService } from "@/lib/services/EmailService";
 
-// Instâncias dos casos de uso
 const managerUserRepository = new ManagerUserRepository();
 const profileUseCase = new RegisterNewUserProfile();
 const managerUserUseCase = new ManagerUserUseCase(managerUserRepository);

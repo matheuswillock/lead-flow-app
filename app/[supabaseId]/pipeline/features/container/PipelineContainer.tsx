@@ -24,15 +24,12 @@ export function PipelineContainer() {
               <p className="text-sm text-muted-foreground">Carregando...</p>
             ) : user ? (
               <p className="text-sm text-muted-foreground">
-                {user.email} ({user.role}) • {isLoading ? 'Carregando...' : `${totalLeads} leads`}
+                {user.email} ({user.role}) • {isLoading ? "Carregando..." : `${totalLeads} leads`}
               </p>
             ) : null}
           </div>
         </div>
-        <Button 
-          onClick={openNewLeadDialog}
-          size="default"
-        >
+        <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
           <Plus className="mr-2 size-4" />
           Adicionar novo lead
         </Button>
@@ -40,9 +37,9 @@ export function PipelineContainer() {
 
       {/* Table */}
       <PipelineTable />
-      
+
       {/* Dialog */}
       <PipelineDialog />
     </div>
-  );
+  )
 }

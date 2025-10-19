@@ -52,11 +52,28 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
     setErrors({});
 
     try {
+      // Monta o payload preservando possíveis campos adicionais da assinatura/endereço
       const requestData: RequestToRegisterUserProfile = {
         email: data.email,
         password: data.password,
         fullname: data.fullName,
-        phone: data.phone
+        phone: data.phone,
+        // Campos opcionais (preenchidos quando veio do fluxo de assinatura)
+        asaasCustomerId: (data as any).asaasCustomerId,
+        subscriptionId: (data as any).subscriptionId,
+        cpfCnpj: (data as any).cpfCnpj,
+        subscriptionStatus: (data as any).subscriptionStatus,
+        subscriptionPlan: (data as any).subscriptionPlan,
+        role: (data as any).role,
+        operatorCount: (data as any).operatorCount,
+        subscriptionStartDate: (data as any).subscriptionStartDate,
+        trialEndDate: (data as any).trialEndDate,
+        postalCode: (data as any).postalCode,
+        address: (data as any).address,
+        addressNumber: (data as any).addressNumber,
+        complement: (data as any).complement,
+        city: (data as any).city,
+        state: (data as any).state,
       };
 
       const result = await signUpService.registerUser(requestData);
