@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { SignUpFormContainer } from "./features/signUpContainer";
 import { SignUpProvider } from "./features/signUpContext"
+import { PageLoading } from "@/components/global-loading";
 
 export default function SignUpPage() {
 	// Log para debug - executado no servidor
@@ -8,7 +9,7 @@ export default function SignUpPage() {
 	
 	return (
 		<SignUpProvider>
-			<Suspense fallback={null}>
+			<Suspense fallback={<PageLoading />}>
 				<SignUpFormContainer />
 			</Suspense>
 		</SignUpProvider>

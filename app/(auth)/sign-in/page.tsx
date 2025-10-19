@@ -5,6 +5,7 @@ import { signin } from "./actions"
 import { useLoginForm } from "@/hooks/useForms"
 import { SignInForm } from "@/components/forms/SignInForm"
 import { loginFormData } from "@/lib/validations/validationForms"
+import { PageLoading } from "@/components/global-loading";
 
 function SignInInner() {
   const form = useLoginForm();
@@ -47,7 +48,7 @@ function SignInInner() {
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<PageLoading />}>
       <SignInInner />
     </Suspense>
   );
