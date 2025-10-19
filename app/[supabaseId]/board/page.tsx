@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
 
 export default function BoardPage() {
-  const { hasActiveSubscription } = useUserContext();
+  const { hasActiveSubscription, isLoading } = useUserContext();
   const searchParams = useSearchParams();
   useEffect(() => {
     try {
@@ -38,7 +38,7 @@ export default function BoardPage() {
   
   return (
     <BoardProvider>
-      <SubscriptionGuard hasActiveSubscription={hasActiveSubscription}>
+      <SubscriptionGuard hasActiveSubscription={hasActiveSubscription} isLoading={isLoading}>
         <BoardContainer />
       </SubscriptionGuard>
     </BoardProvider>

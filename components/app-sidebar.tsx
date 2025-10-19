@@ -30,7 +30,7 @@ function ManagerUserItem({ supabaseId }: { supabaseId?: string }) {
       <SidebarMenuButton asChild>
         <Link href={`/${supabaseId}/manager-users`}>
           <Users />
-          <span>Manager users</span>
+          <span>Manager operators</span>
         </Link>
       </SidebarMenuButton>
     </SidebarMenuItem>

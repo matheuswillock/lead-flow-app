@@ -9,11 +9,17 @@ import { useParams } from "next/navigation"
 interface SubscriptionGuardProps {
   children: React.ReactNode
   hasActiveSubscription: boolean
+  isLoading?: boolean
 }
 
-export function SubscriptionGuard({ children, hasActiveSubscription }: SubscriptionGuardProps) {
+export function SubscriptionGuard({ children, hasActiveSubscription, isLoading }: SubscriptionGuardProps) {
   const params = useParams()
   const supabaseId = params.supabaseId as string
+
+  // Enquanto carrega, não bloquear a UI para evitar falso negativo
+  if (isLoading) {
+    return <>{children}</>
+  }
 
   if (hasActiveSubscription) {
     return <>{children}</>
