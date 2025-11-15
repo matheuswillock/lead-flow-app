@@ -19,7 +19,7 @@ export function LandingHeader() {
                     className="cursor-pointer inline-flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-lg font-semibold text-foreground/80 hover:text-foreground "
                     variant="link"
                 >
-                    <Link href="/sign-in" className="inline-flex items-center gap-2 text-white">
+                    <Link href="/sign-in" className="inline-flex items-center gap-2 text-foreground">
                         <LogIn className="h-8 w-8" /> Entrar
                     </Link>
                 </Button>
