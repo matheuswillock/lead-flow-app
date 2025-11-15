@@ -199,45 +199,62 @@ export function LeadForm({
                     <FormItem className="sm:col-span-2">
                         <FormLabel className="block text-sm font-medium mb-1">Faixas Etárias*</FormLabel>
                         <FormControl>
-                            <div className="space-y-3">
-                                {/* Input que mostra as seleções */}
+                            <div className="space-y-2">
                                 <Input
-                                    value={field.value?.join(", ") || ""}
-                                    placeholder="Selecione as faixas etárias abaixo"
-                                    readOnly
-                                    disabled={isLoading || isUpdating}
-                                    className="bg-gray-50"
-                                />
-                                
-                                {/* Checkboxes para seleção múltipla */}
-                                <div className="grid grid-cols-2 gap-2">
-                                    {[
-                                        { value: "0-18", label: "0-18 anos" },
-                                        { value: "19-25", label: "19-25 anos" },
-                                        { value: "26-35", label: "26-35 anos" },
-                                        { value: "36-45", label: "36-45 anos" },
-                                        { value: "46-60", label: "46-60 anos" },
-                                        { value: "61+", label: "61+ anos" }
-                                    ].map((option) => (
-                                        <label key={option.value} className="flex items-center gap-2 text-sm">
-                                            <input
-                                                type="checkbox"
-                                                checked={field.value?.includes(option.value as any) || false}
-                                                onChange={(e) => {
-                                                    const currentValues = field.value || [];
-                                                    if (e.target.checked) {
-                                                        field.onChange([...currentValues, option.value]);
-                                                    } else {
-                                                        field.onChange(currentValues.filter(v => v !== option.value));
+                                    value={field.value || ""}
+                                    onChange={(e) => {
+                                        let value = e.target.value;
+                                        
+                                        // Remove caracteres que não são números, vírgulas ou espaços
+                                        value = value.replace(/[^0-9,\s]/g, '');
+                                        
+                                        // Remove vírgulas e espaços para processar
+                                        const cleanValue = value.replace(/[,\s]/g, '');
+                                        
+                                        // Divide em grupos de idades
+                                        const groups: string[] = [];
+                                        let currentGroup = '';
+                                        
+                                        for (let i = 0; i < cleanValue.length; i++) {
+                                            const char = cleanValue[i];
+                                            currentGroup += char;
+                                            
+                                            // Se o primeiro dígito é 1, permite até 3 dígitos (100-120)
+                                            if (currentGroup[0] === '1') {
+                                                if (currentGroup.length === 3) {
+                                                    // Valida se não ultrapassa 120
+                                                    const age = parseInt(currentGroup);
+                                                    if (age > 120) {
+                                                        currentGroup = '120';
                                                     }
-                                                }}
-                                                disabled={isLoading || isUpdating}
-                                                className="rounded"
-                                            />
-                                            {option.label}
-                                        </label>
-                                    ))}
-                                </div>
+                                                    groups.push(currentGroup);
+                                                    currentGroup = '';
+                                                }
+                                            } else {
+                                                // Para outros números, aceita apenas 2 dígitos
+                                                if (currentGroup.length === 2) {
+                                                    groups.push(currentGroup);
+                                                    currentGroup = '';
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Adiciona o último grupo se existir
+                                        if (currentGroup) {
+                                            groups.push(currentGroup);
+                                        }
+                                        
+                                        // Junta os grupos com vírgula e espaço
+                                        const formattedValue = groups.join(', ');
+                                        
+                                        field.onChange(formattedValue);
+                                    }}
+                                    placeholder="Ex: 36, 32, 13"
+                                    disabled={isLoading || isUpdating}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Exemplo: 36, 32, 13, 100, 120 (idades até 120 anos, separadas automaticamente)
+                                </p>
                             </div>
                         </FormControl>
                     </FormItem>

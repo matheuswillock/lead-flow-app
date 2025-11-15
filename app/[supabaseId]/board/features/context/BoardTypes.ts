@@ -1,4 +1,4 @@
-import { LeadStatus, AgeRange } from "@prisma/client";
+import { LeadStatus } from "@prisma/client";
 
 export type Lead = {
   id: string;
@@ -9,7 +9,7 @@ export type Lead = {
   email: string | null;
   phone: string | null;
   cnpj: string | null;
-  age: AgeRange[];
+  age: string | null;
   hasHealthPlan: boolean | null;
   currentHealthPlan: string | null;
   currentValue: number | null;

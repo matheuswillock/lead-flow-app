@@ -28,19 +28,6 @@ export default function BoardDialog() {
 
   // Função para transformar os dados do formulário para criação de lead
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
-    // Mapear strings do formulário para enum AgeRange
-    const mapAgeStringToEnum = (ageString: string) => {
-      const ageMap: Record<string, string> = {
-        "0-18": "RANGE_0_18",
-        "19-25": "RANGE_19_25", 
-        "26-35": "RANGE_26_35",
-        "36-45": "RANGE_36_45",
-        "46-60": "RANGE_46_60",
-        "61+": "RANGE_61_PLUS"
-      };
-      return ageMap[ageString];
-    };
-
     const parseCurrentValue = (value: string): number | undefined => {
       if (!value || value.trim() === '') return undefined;
       const cleanValue = value.replace(/[^\d.,]/g, '').replace(',', '.');
@@ -76,7 +63,7 @@ export default function BoardDialog() {
       name: data.name,
       email: data.email || undefined,
       phone: data.phone || undefined,
-      age: data.age.map(mapAgeStringToEnum).filter(Boolean) as any[],
+      age: data.age || undefined,
       hasHealthPlan: data.hasPlan === "sim",
       currentHealthPlan: data.currentHealthPlan || undefined,
       currentValue: parseCurrentValue(data.currentValue),
@@ -92,19 +79,6 @@ export default function BoardDialog() {
 
   // Função para transformar os dados do formulário para atualização de lead
   const transformToUpdateRequest = (data: leadFormData): UpdateLeadRequest => {
-    // Mapear strings do formulário para enum AgeRange
-    const mapAgeStringToEnum = (ageString: string) => {
-      const ageMap: Record<string, string> = {
-        "0-18": "RANGE_0_18",
-        "19-25": "RANGE_19_25", 
-        "26-35": "RANGE_26_35",
-        "36-45": "RANGE_36_45",
-        "46-60": "RANGE_46_60",
-        "61+": "RANGE_61_PLUS"
-      };
-      return ageMap[ageString];
-    };
-
     // Helper para converter valor para número ou undefined
     const parseCurrentValue = (value: string): number | undefined => {
       if (!value || value.trim() === '') return undefined;
@@ -141,7 +115,7 @@ export default function BoardDialog() {
       name: data.name,
       email: data.email || undefined,
       phone: data.phone || undefined,
-      age: data.age.map(mapAgeStringToEnum).filter(Boolean) as any[],
+      age: data.age || undefined,
       hasHealthPlan: data.hasPlan === "sim",
       currentHealthPlan: data.currentHealthPlan || undefined,
       currentValue: parseCurrentValue(data.currentValue),
@@ -278,19 +252,6 @@ export default function BoardDialog() {
 
   useEffect(() => {
     if (lead && open) {
-      // Mapear enum AgeRange para strings do formulário
-      const mapEnumToAgeString = (ageEnum: string): string => {
-        const enumMap: Record<string, string> = {
-          "RANGE_0_18": "0-18",
-          "RANGE_19_25": "19-25",
-          "RANGE_26_35": "26-35", 
-          "RANGE_36_45": "36-45",
-          "RANGE_46_60": "46-60",
-          "RANGE_61_PLUS": "61+"
-        };
-        return enumMap[ageEnum] || ageEnum;
-      };
-
       // Função para formatar valor como moeda
       const formatCurrency = (value: number): string => {
         if (value === null || value === undefined) return "";
@@ -322,7 +283,7 @@ export default function BoardDialog() {
         phone: formatPhone(lead.phone || ""),
         email: lead.email || "",
         cnpj: formatCNPJ(lead.cnpj || ""),
-        age: lead.age?.map(mapEnumToAgeString).filter(Boolean) as ("0-18" | "19-25" | "26-35" | "36-45" | "46-60" | "61+")[] || [],
+        age: lead.age || "",
         hasPlan: lead.hasHealthPlan ? "sim" : "nao",
         currentHealthPlan: lead.currentHealthPlan || "",
         currentValue: lead.currentValue ? formatCurrency(lead.currentValue) : "",
@@ -338,7 +299,7 @@ export default function BoardDialog() {
         phone: "",
         email: "",
         cnpj: "",
-        age: [],
+        age: "",
         hasPlan: undefined,
         currentHealthPlan: "",
         currentValue: "",

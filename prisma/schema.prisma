@@ -59,14 +59,7 @@ enum ActivityType {
   status_change
 }
 
-enum AgeRange {
-  RANGE_0_18    @map("0-18")
-  RANGE_19_25   @map("19-25")
-  RANGE_26_35   @map("26-35")
-  RANGE_36_45   @map("36-45")
-  RANGE_46_60   @map("46-60")
-  RANGE_61_PLUS @map("61+")
-}
+// AgeRange foi alterado para String - formato livre: "36, 32, 13"
 
 enum SubscriptionStatus {
   trial // Período de teste (7-30 dias)
@@ -153,7 +146,7 @@ model Lead {
   email             String?    @db.Text
   phone             String?    @db.Text
   cnpj              String?    @db.Text
-  age               AgeRange[]
+  age               String?    @db.Text
   hasHealthPlan     Boolean?   @default(false)
   currentHealthPlan String?    @db.Text
   currentValue      Decimal?   @db.Decimal(12, 2)

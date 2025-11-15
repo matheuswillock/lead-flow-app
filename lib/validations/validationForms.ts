@@ -56,15 +56,15 @@ export const leadFormSchema = z.object({
   phone: z.string().min(8, "Telefone inválido").max(20, "Telefone inválido"),
   email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
   cnpj: z.string().min(0).optional(),
-  age: z.array(z.enum([
-    "0-18",
-    "19-25",
-    "26-35",
-    "36-45",
-    "46-60",
-    "61+"
-  ], { message: "Selecione uma faixa de idade" }))
-    .min(1, "Selecione pelo menos uma faixa de idade"),
+  age: z.string()
+    .min(1, "Informe as idades")
+    .regex(/^[0-9,\s]+$/, "Use apenas números, vírgulas e espaços")
+    .refine((val) => {
+      // Extrai todos os números da string
+      const ages = val.split(',').map(age => parseInt(age.trim())).filter(age => !isNaN(age));
+      // Verifica se todas as idades são <= 120
+      return ages.every(age => age <= 120);
+    }, "Todas as idades devem ser no máximo 120 anos"),
   hasPlan: z.enum(["sim", "nao"], { message: "Selecione uma opção" }),
   currentHealthPlan: z.string().min(0).optional(),
   currentValue: z.string().min(1, "O valor atual é obrigatório"),

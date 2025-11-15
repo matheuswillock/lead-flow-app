@@ -28,19 +28,6 @@ export default function PipelineDialog() {
 
   // Função para transformar os dados do formulário para criação de lead
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
-    // Mapear strings do formulário para enum AgeRange
-    const mapAgeStringToEnum = (ageString: string) => {
-      const ageMap: Record<string, string> = {
-        "0-18": "RANGE_0_18",
-        "19-25": "RANGE_19_25", 
-        "26-35": "RANGE_26_35",
-        "36-45": "RANGE_36_45",
-        "46-60": "RANGE_46_60",
-        "61+": "RANGE_61_PLUS"
-      };
-      return ageMap[ageString];
-    };
-
     const parseCurrentValue = (value: string): number | undefined => {
       if (!value || value.trim() === '') return undefined;
       const cleanValue = value.replace(/[^\d.,]/g, '').replace(',', '.');
@@ -70,7 +57,7 @@ export default function PipelineDialog() {
       name: data.name,
       email: data.email || undefined,
       phone: data.phone || undefined,
-      age: data.age.map(mapAgeStringToEnum).filter(Boolean) as any[],
+      age: data.age || undefined,
       hasHealthPlan: data.hasPlan === "sim",
       currentHealthPlan: data.currentHealthPlan || undefined,
       currentValue: parseCurrentValue(data.currentValue),
@@ -86,18 +73,6 @@ export default function PipelineDialog() {
 
   // Função para transformar os dados do formulário para atualização de lead
   const transformToUpdateRequest = (data: leadFormData): UpdateLeadRequest => {
-    const mapAgeStringToEnum = (ageString: string) => {
-      const ageMap: Record<string, string> = {
-        "0-18": "RANGE_0_18",
-        "19-25": "RANGE_19_25", 
-        "26-35": "RANGE_26_35",
-        "36-45": "RANGE_36_45",
-        "46-60": "RANGE_46_60",
-        "61+": "RANGE_61_PLUS"
-      };
-      return ageMap[ageString];
-    };
-
     const parseCurrentValue = (value: string): number | undefined => {
       if (!value || value.trim() === '') return undefined;
       const cleanValue = value.replace(/[^\d.,]/g, '').replace(',', '.');
@@ -127,7 +102,7 @@ export default function PipelineDialog() {
       name: data.name,
       email: data.email || undefined,
       phone: data.phone || undefined,
-      age: data.age.map(mapAgeStringToEnum).filter(Boolean) as any[],
+      age: data.age || undefined,
       hasHealthPlan: data.hasPlan === "sim",
       currentHealthPlan: data.currentHealthPlan || undefined,
       currentValue: parseCurrentValue(data.currentValue),
@@ -149,18 +124,6 @@ export default function PipelineDialog() {
     }
 
     if (lead) {
-      const mapEnumToAgeString = (enumValue: string) => {
-        const ageMap: Record<string, string> = {
-          "RANGE_0_18": "0-18",
-          "RANGE_19_25": "19-25",
-          "RANGE_26_35": "26-35",
-          "RANGE_36_45": "36-45",
-          "RANGE_46_60": "46-60",
-          "RANGE_61_PLUS": "61+"
-        };
-        return ageMap[enumValue] || enumValue;
-      };
-
       const formatMeetingDate = (dateString: string | null): string => {
         if (!dateString) return '';
         try {
@@ -184,7 +147,7 @@ export default function PipelineDialog() {
         email: lead.email || "",
         phone: lead.phone || "",
         cnpj: lead.cnpj || "",
-        age: (lead.age?.map(mapEnumToAgeString) || []) as ("0-18" | "19-25" | "26-35" | "36-45" | "46-60" | "61+")[],
+        age: lead.age || "",
         hasPlan: lead.hasHealthPlan ? "sim" : "nao",
         currentHealthPlan: lead.currentHealthPlan || "",
         currentValue: lead.currentValue?.toString() || "",
@@ -200,7 +163,7 @@ export default function PipelineDialog() {
         email: "",
         phone: "",
         cnpj: "",
-        age: [],
+        age: "",
         hasPlan: "nao",
         currentHealthPlan: "",
         currentValue: "",
