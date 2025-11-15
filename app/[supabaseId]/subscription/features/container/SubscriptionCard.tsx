@@ -112,9 +112,9 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
 
         {/* Ações */}
         <div className="flex gap-2 pt-4 border-t">
-          <Button variant="outline" size="sm">
+          {/* <Button variant="outline" size="sm">
             Atualizar Método de Pagamento
-          </Button>
+          </Button> */}
           {subscription.status !== 'canceled' && (
             <Button 
               variant="destructive" 

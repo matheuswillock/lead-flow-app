@@ -4,6 +4,7 @@ import { IPaymentValidationService, PaymentValidationResult } from './IPaymentVa
 import { IPaymentRepository } from '../../infra/data/repositories/payment/IPaymentRepository';
 import type { AsaasPayment, AsaasSubscription } from './AsaasWebhookTypes';
 import { isAsaasPayment, isAsaasSubscription } from './AsaasWebhookTypes';
+import { createEmailService } from '@/lib/services/EmailService';
 
 export class PaymentValidationService implements IPaymentValidationService {
   constructor(private paymentRepository: IPaymentRepository) {}
@@ -159,7 +160,7 @@ export class PaymentValidationService implements IPaymentValidationService {
         return { success: true, isPaid: false, message: 'Payload não reconhecido' };
       }
 
-      const payment = paymentData as AsaasPayment;
+  const payment = paymentData as AsaasPayment;
       console.info(`💳 [PaymentValidationService] Status do pagamento: ${payment.status}`);
 
       // (bloco SUBSCRIPTION_CREATED já tratado acima com tipagem forte)
@@ -203,12 +204,13 @@ export class PaymentValidationService implements IPaymentValidationService {
   const confirmedEvents = ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED'];
 
       // Validação rigorosa: evento E status devem estar corretos
-      const isConfirmedEvent = confirmedEvents.includes(event);
+    const isConfirmedEvent = confirmedEvents.includes(event);
   const isConfirmedStatus = ['RECEIVED', 'CONFIRMED'].includes(payment.status);
+  const isCardApproved = payment.billingType === 'CREDIT_CARD' && (payment.status === 'APPROVED' || event === 'PAYMENT_APPROVED');
 
-      if (!isConfirmedEvent) {
+      if (!isConfirmedEvent && !isCardApproved) {
         console.warn(
-          `⚠️ [PaymentValidationService] Evento NÃO é de confirmação: ${event} (esperado: PAYMENT_RECEIVED ou PAYMENT_CONFIRMED)`
+          `⚠️ [PaymentValidationService] Evento NÃO é de confirmação: ${event} (esperado: PAYMENT_RECEIVED, PAYMENT_CONFIRMED ou cartão APPROVED)`
         );
         return {
           success: true,
@@ -218,9 +220,9 @@ export class PaymentValidationService implements IPaymentValidationService {
         };
       }
 
-      if (!isConfirmedStatus) {
+      if (!isConfirmedStatus && !isCardApproved) {
         console.warn(
-          `⚠️ [PaymentValidationService] Status do pagamento NÃO confirmado: ${payment.status} (esperado: RECEIVED ou CONFIRMED)`
+          `⚠️ [PaymentValidationService] Status do pagamento NÃO confirmado: ${payment.status} (esperado: RECEIVED, CONFIRMED ou cartão APPROVED)`
         );
         return {
           success: true,
@@ -234,6 +236,53 @@ export class PaymentValidationService implements IPaymentValidationService {
 
   // Atualizar profile com dados completos de assinatura
       const profileUpdated = await this.updateProfileStatus(payment.customer, payment.subscription);
+
+      // Disparar e-mail de confirmação de assinatura (PIX confirmado ou cartão aprovado)
+      try {
+        // Encontrar o profile para obter email/nome
+        let profile = null as Awaited<ReturnType<IPaymentRepository['findBySubscriptionId']>>;
+        if (payment.subscription) {
+          profile = await this.paymentRepository.findBySubscriptionId(payment.subscription);
+        }
+        if (!profile) {
+          profile = await this.paymentRepository.findByAsaasCustomerId(payment.customer);
+        }
+
+        // Fallback: se não encontrar profile, tentar usar externalReference como email
+        const userEmail = profile?.email || (payment.externalReference && payment.externalReference.includes('@') ? payment.externalReference : undefined);
+
+        if (userEmail) {
+          const userName = profile?.fullName || userEmail.split('@')[0];
+          const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+          const manageUrl = profile?.supabaseId ? `${appUrl}/${profile.supabaseId}/account` : `${appUrl}/sign-in`;
+
+          const emailService = createEmailService();
+          emailService
+            .sendSubscriptionConfirmationEmail({
+              userName,
+              userEmail,
+              subscriptionId: payment.subscription,
+              planName: profile?.subscriptionPlan || 'manager_base',
+              value: payment.value,
+              nextDueDate: payment.dueDate,
+              manageUrl,
+            })
+            .then((res) => {
+              if (res.success) {
+                console.info('📧 [PaymentValidationService] Email de confirmação de assinatura enviado');
+              } else {
+                console.warn('📧 [PaymentValidationService] Falha ao enviar email de confirmação:', res.error);
+              }
+            })
+            .catch((err) => {
+              console.error('📧 [PaymentValidationService] Erro ao enviar email de confirmação:', err);
+            });
+        } else {
+          console.warn('📧 [PaymentValidationService] Email do usuário não encontrado para envio de confirmação');
+        }
+      } catch (emailErr) {
+        console.error('📧 [PaymentValidationService] Erro inesperado no fluxo de email:', emailErr);
+      }
 
       return {
         success: true,
