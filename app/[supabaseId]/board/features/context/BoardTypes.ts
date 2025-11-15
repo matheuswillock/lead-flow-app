@@ -1,4 +1,4 @@
-import { LeadStatus } from "@prisma/client";
+import type { LeadStatus, HealthPlan } from '@prisma/client';
 
 export type Lead = {
   id: string;
@@ -10,8 +10,7 @@ export type Lead = {
   phone: string | null;
   cnpj: string | null;
   age: string | null;
-  hasHealthPlan: boolean | null;
-  currentHealthPlan: string | null;
+  currentHealthPlan: HealthPlan | null;
   currentValue: number | null;
   referenceHospital: string | null;
   currentTreatment: string | null;

@@ -36,13 +36,20 @@ status_change status_change
     
 
 
-        AgeRange {
-            RANGE_0_18 0-18
-RANGE_19_25 19-25
-RANGE_26_35 26-35
-RANGE_36_45 36-45
-RANGE_46_60 46-60
-RANGE_61_PLUS 61+
+        HealthPlan {
+            NOVA_ADESAO Nova Adesão
+AMIL Amil
+BRADESCO Bradesco
+HAPVIDA Hapvida
+MEDSENIOR MedSênior
+GNDI NotreDame Intermédica (GNDI)
+OMINT Omint
+PLENA Plena
+PORTO_SEGURO Porto Seguro
+PREVENT_SENIOR Prevent Senior
+SULAMERICA SulAmérica
+UNIMED Unimed
+OUTROS Outros
         }
     
 
@@ -99,9 +106,8 @@ with_operators with_operators
     String email "❓"
     String phone "❓"
     String cnpj "❓"
-    AgeRange age 
-    Boolean hasHealthPlan "❓"
-    String currentHealthPlan "❓"
+    String age "❓"
+    HealthPlan currentHealthPlan "❓"
     Decimal currentValue "❓"
     String referenceHospital "❓"
     String currentTreatment "❓"
@@ -152,7 +158,7 @@ with_operators with_operators
     "profiles" o{--}o "leads" : "leadsAsUpdater"
     "profiles" o{--}o "lead_activities" : "activities"
     "leads" o|--|| "LeadStatus" : "enum:status"
-    "leads" o|--}o "AgeRange" : "enum:age"
+    "leads" o|--|o "HealthPlan" : "enum:currentHealthPlan"
     "leads" o|--|| "profiles" : "manager"
     "leads" o|--|o "profiles" : "assignee"
     "leads" o|--|o "profiles" : "creator"

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LeadStatus } from "@prisma/client";
+import { LeadStatus, HealthPlan } from "@prisma/client";
 
 export const UpdateLeadRequestSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").optional(),
@@ -7,8 +7,7 @@ export const UpdateLeadRequestSchema = z.object({
   phone: z.string().min(10, "Telefone deve ter pelo menos 10 dígitos").nullish().transform(val => val || undefined),
   cnpj: z.string().nullish().transform(val => val || undefined),
   age: z.string().nullish().transform(val => val || undefined),
-  hasHealthPlan: z.boolean().optional(),
-  currentHealthPlan: z.string().nullish().transform(val => val || undefined),
+  currentHealthPlan: z.nativeEnum(HealthPlan).nullish().transform(val => val || undefined),
   currentValue: z.number().min(0, "Valor deve ser maior ou igual a zero").nullish().transform(val => val || undefined),
   referenceHospital: z.string().nullish().transform(val => val || undefined),
   currentTreatment: z.string().nullish().transform(val => val || undefined),

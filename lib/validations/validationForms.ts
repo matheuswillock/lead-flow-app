@@ -65,22 +65,27 @@ export const leadFormSchema = z.object({
       // Verifica se todas as idades são <= 120
       return ages.every(age => age <= 120);
     }, "Todas as idades devem ser no máximo 120 anos"),
-  hasPlan: z.enum(["sim", "nao"], { message: "Selecione uma opção" }),
-  currentHealthPlan: z.string().min(0).optional(),
+  currentHealthPlan: z.enum([
+    "NOVA_ADESAO",
+    "AMIL",
+    "BRADESCO",
+    "HAPVIDA",
+    "MEDSENIOR",
+    "GNDI",
+    "OMINT",
+    "PLENA",
+    "PORTO_SEGURO",
+    "PREVENT_SENIOR",
+    "SULAMERICA",
+    "UNIMED",
+    "OUTROS"
+  ], { message: "Selecione um plano de saúde" }),
   currentValue: z.string().min(1, "O valor atual é obrigatório"),
   referenceHospital: z.string().min(2, "O hospital de referência é obrigatório"),
   ongoingTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
   additionalNotes: z.string().min(0).optional(),
   meetingDate: z.string().min(0).optional(),
   responsible: z.string().min(2, "O responsável é obrigatório"),
-}).refine((data) => {
-  if (data.hasPlan === "sim" && (!data.currentHealthPlan || data.currentHealthPlan.trim() === "")) {
-    return false;
-  }
-  return true;
-}, {
-  message: "O plano de saúde atual é obrigatório quando possui plano",
-  path: ["currentHealthPlan"],
 });
 
 export type leadFormData = z.infer<typeof leadFormSchema>;

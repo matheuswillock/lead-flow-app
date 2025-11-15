@@ -59,7 +59,6 @@ export function LeadForm({
                 (watchedValues.phone && watchedValues.phone.trim() !== '') ||
                 (watchedValues.cnpj && watchedValues.cnpj.trim() !== '') ||
                 (watchedValues.age && watchedValues.age.length > 0) ||
-                (watchedValues.hasPlan && watchedValues.hasPlan !== undefined) ||
                 (watchedValues.currentHealthPlan && watchedValues.currentHealthPlan.trim() !== '') ||
                 (watchedValues.currentValue && watchedValues.currentValue.trim() !== '') ||
                 (watchedValues.referenceHospital && watchedValues.referenceHospital.trim() !== '') ||
@@ -79,7 +78,6 @@ export function LeadForm({
             watchedValues.phone !== initialData.phone ||
             watchedValues.cnpj !== initialData.cnpj ||
             watchedValues.age !== initialData.age ||
-            watchedValues.hasPlan !== initialData.hasPlan ||
             watchedValues.currentHealthPlan !== initialData.currentHealthPlan ||
             watchedValues.currentValue !== initialData.currentValue ||
             watchedValues.referenceHospital !== initialData.referenceHospital ||
@@ -264,68 +262,42 @@ export function LeadForm({
             <div className="sm:col-span-2">
                 <FormField
                     control={form.control}
-                    name="hasPlan"
+                    name="currentHealthPlan"
                     render={({ field }) => (
                         <FormItem>
                             <FormLabel className="block text-sm font-medium mb-1">
-                                Possui plano atualmente?*
+                                Qual o plano de saúde?*
                             </FormLabel>
                             <FormControl>
-                                <div className="flex gap-4">
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="radio"
-                                            value="sim"
-                                            checked={field.value === "sim"}
-                                            onChange={() => field.onChange("sim")}
-                                            disabled={isLoading || isUpdating}
-                                            required
-                                            name={field.name}
-                                        />
-                                        Sim
-                                    </label>
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="radio"
-                                            value="nao"
-                                            checked={field.value === "nao"}
-                                            onChange={() => field.onChange("nao")}
-                                            disabled={isLoading || isUpdating}
-                                            name={field.name}
-                                        />
-                                        Não
-                                    </label>
-                                </div>
+                                <Select
+                                    value={field.value}
+                                    onValueChange={field.onChange}
+                                    disabled={isLoading || isUpdating}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione o plano atual ou 'Nova Adesão' se não possui" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="NOVA_ADESAO">Nova Adesão</SelectItem>
+                                        <SelectItem value="AMIL">Amil</SelectItem>
+                                        <SelectItem value="BRADESCO">Bradesco</SelectItem>
+                                        <SelectItem value="HAPVIDA">Hapvida</SelectItem>
+                                        <SelectItem value="MEDSENIOR">MedSênior</SelectItem>
+                                        <SelectItem value="GNDI">NotreDame Intermédica (GNDI)</SelectItem>
+                                        <SelectItem value="OMINT">Omint</SelectItem>
+                                        <SelectItem value="PLENA">Plena</SelectItem>
+                                        <SelectItem value="PORTO_SEGURO">Porto Seguro</SelectItem>
+                                        <SelectItem value="PREVENT_SENIOR">Prevent Senior</SelectItem>
+                                        <SelectItem value="SULAMERICA">SulAmérica</SelectItem>
+                                        <SelectItem value="UNIMED">Unimed</SelectItem>
+                                        <SelectItem value="OUTROS">Outros</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </FormControl>
                         </FormItem>
                     )}
                 />
             </div>
-
-            {watchedValues.hasPlan === "sim" && (
-                <div className="sm:col-span-2">
-                    <FormField
-                        control={form.control}
-                        name="currentHealthPlan"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="block text-sm font-medium mb-1">
-                                    Qual o plano de saúde atual?*
-                                </FormLabel>
-                                <FormControl>
-                                    <Input
-                                        {...field}
-                                        value={field.value || ''}
-                                        placeholder="Ex: Unimed, Bradesco Saúde, etc."
-                                        required={watchedValues.hasPlan === "sim"}
-                                        disabled={isLoading || isUpdating}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                </div>
-            )}
 
             <FormField 
                 control={form.control}

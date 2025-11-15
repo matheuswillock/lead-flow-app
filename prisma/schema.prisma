@@ -61,6 +61,22 @@ enum ActivityType {
 
 // AgeRange foi alterado para String - formato livre: "36, 32, 13"
 
+enum HealthPlan {
+  NOVA_ADESAO       @map("Nova Ades\u00e3o")
+  AMIL              @map("Amil")
+  BRADESCO          @map("Bradesco")
+  HAPVIDA           @map("Hapvida")
+  MEDSENIOR         @map("MedS\u00eanior")
+  GNDI              @map("NotreDame Interm\u00e9dica (GNDI)")
+  OMINT             @map("Omint")
+  PLENA             @map("Plena")
+  PORTO_SEGURO      @map("Porto Seguro")
+  PREVENT_SENIOR    @map("Prevent Senior")
+  SULAMERICA        @map("SulAm\u00e9rica")
+  UNIMED            @map("Unimed")
+  OUTROS            @map("Outros")
+}
+
 enum SubscriptionStatus {
   trial // Período de teste (7-30 dias)
   active // Ativa e paga
@@ -145,10 +161,9 @@ model Lead {
   name              String     @db.Text
   email             String?    @db.Text
   phone             String?    @db.Text
-  cnpj              String?    @db.Text
-  age               String?    @db.Text
-  hasHealthPlan     Boolean?   @default(false)
-  currentHealthPlan String?    @db.Text
+  cnpj              String?             @db.Text
+  age               String?             @db.Text
+  currentHealthPlan HealthPlan?
   currentValue      Decimal?   @db.Decimal(12, 2)
   referenceHospital String?    @db.Text
   currentTreatment  String?    @db.Text
