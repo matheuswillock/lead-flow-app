@@ -59,6 +59,24 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(`/${user.id}/board`, request.url))
   }
 
+  // For API routes, handle authentication and add user ID to headers
+  if (pathname.startsWith('/api')) {
+    // API routes don't need protection check - they handle their own auth
+    const requestHeaders = new Headers(request.headers)
+    if (user) {
+      requestHeaders.set('x-supabase-user-id', user.id)
+      console.info(`[middleware] API route: ${pathname} - User ID: ${user.id}`);
+    } else {
+      console.warn(`[middleware] API route: ${pathname} - No user authenticated`);
+    }
+    
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    })
+  }
+
   // If route is not protected, let it pass while preserving any updated cookies
   if (!isProtectedRoute) return response
 
@@ -91,7 +109,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Additional check for manager-only routes
+  // Additional check for manager-only routes (ONLY for page routes, not API)
   if (isManagerOnlyRoute && user) {
     try {
       // Verificar role do usuário via API
@@ -120,21 +138,6 @@ export async function middleware(request: NextRequest) {
   }
 
   // User is authenticated and accessing correct route; continue with refreshed cookies
-  
-  // For API routes, add the user ID to headers
-  if (pathname.startsWith('/api')) {
-    const requestHeaders = new Headers(request.headers)
-    if (user) {
-      requestHeaders.set('x-supabase-user-id', user.id)
-    }
-    
-    return NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    })
-  }
-  
   return response
 }
 

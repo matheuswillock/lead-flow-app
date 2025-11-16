@@ -42,10 +42,14 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    console.info('[API /leads] Received GET request');
+    
     // Extrair supabaseId dos headers
     const supabaseId = request.headers.get('x-supabase-user-id');
+    console.info('[API /leads] Supabase ID from header:', supabaseId);
     
     if (!supabaseId) {
+      console.warn('[API /leads] No supabaseId in headers');
       const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
       return NextResponse.json(output, { status: 401 });
     }
@@ -58,7 +62,10 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
+    console.info('[API /leads] Query params:', { role, status, assignedTo, search, startDate, endDate });
+
     if (!role) {
+      console.warn('[API /leads] No role in query params');
       const output = new Output(false, [], ["Role do usuário é obrigatório"], null);
       return NextResponse.json(output, { status: 400 });
     }
@@ -72,11 +79,14 @@ export async function GET(request: NextRequest) {
       role, // Adiciona o role nas opções
     };
 
+    console.info('[API /leads] Calling LeadUseCase with options:', options);
     const output = await leadUseCase.getAllLeadsByUserRole(supabaseId, options);
+    console.info('[API /leads] LeadUseCase result:', { isValid: output.isValid, resultCount: output.result?.length });
+    
     return NextResponse.json(output);
 
   } catch (error) {
-    console.error("Erro ao buscar leads:", error);
+    console.error("[API /leads] Erro ao buscar leads:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }

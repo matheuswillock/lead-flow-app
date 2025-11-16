@@ -31,7 +31,11 @@ export class BoardService implements IBoardService {
             const searchParams = new URLSearchParams();
             searchParams.append('role', role);
 
-            const response = await fetch(`${API_BASE_URL}/leads?${searchParams.toString()}`, {
+            const url = `${API_BASE_URL}/leads?${searchParams.toString()}`;
+            console.info('[BoardService] Fetching leads from:', url);
+            console.info('[BoardService] Headers:', { supabaseId, role });
+
+            const response = await fetch(url, {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
@@ -39,12 +43,28 @@ export class BoardService implements IBoardService {
                 },
             });
 
+            console.info('[BoardService] Response status:', response.status);
+            console.info('[BoardService] Response ok:', response.ok);
+
+            // Check if response is ok before parsing
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('[BoardService] Error response:', errorText);
+                return new Output(
+                    false,
+                    [],
+                    [`Erro ao carregar leads: ${response.status} - ${errorText}`],
+                    null
+                );
+            }
+
             const data = await response.json();
+            console.info('[BoardService] Response data:', data);
 
             return data as Output;
             
         } catch (error) {
-            console.error("Error fetching leads:", error);
+            console.error("[BoardService] Error fetching leads:", error);
 
             return new Output(
                 false,
