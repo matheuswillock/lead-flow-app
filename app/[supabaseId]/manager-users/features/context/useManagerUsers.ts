@@ -83,43 +83,16 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     }
   }, [managerUsersService]);
 
-  // Criar usuário - agora abre dialog de pagamento para operators
+  // Criar usuário - sempre abre dialog de pagamento (R$ 19,90 por usuário adicional)
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
-    // Se for operator, abrir dialog de pagamento
-    if (userData.role === "operator") {
-      setState(prev => ({ 
-        ...prev, 
-        pendingOperatorData: userData,
-        isCreateModalOpen: false,
-        isPaymentDialogOpen: true
-      }));
-      return;
-    }
-
-    // Se for manager, criar direto (sem pagamento)
-    try {
-      setState(prev => ({ ...prev, loading: true }));
-      
-      const response = await managerUsersService.createUser(userData);
-      
-      if (response.isValid && response.result) {
-        toast.success("Usuário criado com sucesso!");
-        setState(prev => ({ 
-          ...prev, 
-          isCreateModalOpen: false,
-          loading: false 
-        }));
-        await loadUsers(); // Recarregar lista
-      } else {
-        toast.error(response.errorMessages.join(", ") || "Erro ao criar usuário");
-        setState(prev => ({ ...prev, loading: false }));
-      }
-    } catch (error) {
-      console.error("Erro ao criar usuário:", error);
-      toast.error("Erro ao criar usuário");
-      setState(prev => ({ ...prev, loading: false }));
-    }
-  }, [managerUsersService, loadUsers]);
+    // Tanto operator quanto manager precisam de pagamento (R$ 19,90 cada)
+    setState(prev => ({ 
+      ...prev, 
+      pendingOperatorData: userData,
+      isCreateModalOpen: false,
+      isPaymentDialogOpen: true
+    }));
+  }, []);
 
   // Atualizar usuário
   const updateUser = useCallback(async (userId: string, userData: UpdateManagerUserFormData) => {

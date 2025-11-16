@@ -163,10 +163,10 @@ export function PaymentDialog({
 
         <div className="space-y-6">{!paymentData ? (
             <>
-              {/* Detalhes do operador */}
+              {/* Detalhes do usuário */}
               <Card>
                 <CardContent className="pt-6">
-                  <h3 className="font-semibold mb-3">Detalhes do Operador</h3>
+                  <h3 className="font-semibold mb-3">Detalhes do Novo Usuário</h3>
                   <div className="text-sm space-y-2 text-muted-foreground">
                     <div className="flex justify-between">
                       <span>Nome:</span>
@@ -175,6 +175,12 @@ export function PaymentDialog({
                     <div className="flex justify-between">
                       <span>Email:</span>
                       <span className="font-medium text-foreground">{operatorData?.email}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Tipo:</span>
+                      <span className="font-medium text-foreground">
+                        {operatorData?.role === 'operator' ? 'Operador' : 'Manager'}
+                      </span>
                     </div>
                     <div className="flex justify-between border-t pt-2 mt-2">
                       <span className="font-semibold">Valor:</span>
