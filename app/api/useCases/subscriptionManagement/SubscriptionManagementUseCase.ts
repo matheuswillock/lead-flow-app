@@ -42,14 +42,22 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
+      // Calcular valor total: plano base + operadores
+      const basePrice = 59.90;
+      const operatorPrice = 19.90;
+      const operatorCount = profile.operatorCount || 0;
+      
+      let totalValue = 0;
+      if (profile.subscriptionPlan !== 'free_trial') {
+        totalValue = basePrice + (operatorCount * operatorPrice);
+      }
+
       // Formatar dados da assinatura
       const subscriptionData = {
         id: profile.subscriptionId,
         subscriptionAsaasId: profile.subscriptionId,
         status: profile.subscriptionStatus,
-        value: profile.subscriptionPlan === 'free_trial' ? 0 : 
-               profile.subscriptionPlan === 'manager_base' ? 59.90 :
-               59.90 + (profile.operatorCount * 19.90),
+        value: totalValue,
         nextDueDate: profile.subscriptionEndDate?.toISOString() || '',
         cycle: 'MONTHLY',
         description: profile.subscriptionPlan === 'free_trial' ? 'Período de teste' :

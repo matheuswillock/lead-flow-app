@@ -124,7 +124,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
       };
 
     } catch (error: any) {
-      console.error('❌ Erro ao adicionar operador:', error);
+      console.error('❌ Erro ao adicionar usuário:', error);
       throw error;
     }
   }

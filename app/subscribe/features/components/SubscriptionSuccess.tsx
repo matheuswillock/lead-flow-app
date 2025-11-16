@@ -117,7 +117,9 @@ export function SubscriptionSuccess({ subscriptionId, paymentUrl, paymentId, pix
             </Link>
           </Button>
           
-          <Button asChild variant="outline" size="lg">
+          <Button asChild variant="outline" size="lg" 
+                    className="cursor-pointer"
+          >
             <Link href="/">
               Voltar para Home
             </Link>

@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasFetch } from "@/lib/asaas";
+import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { 
   ISubscriptionUpgradeUseCase, 
   AddOperatorPaymentData,
@@ -24,7 +25,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       }
 
       if (manager.role !== 'manager') {
-        return new Output(false, [], ['Apenas managers podem adicionar operadores'], null);
+        return new Output(false, [], ['Apenas managers podem adicionar usuário'], null);
       }
 
       if (!manager.subscriptionStatus || manager.subscriptionStatus === 'canceled') {
@@ -47,8 +48,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         return new Output(false, [], ['Cliente Asaas não encontrado'], null);
       }
 
-      // 4. Criar cobrança no Asaas (R$ 20,00 por operador adicional)
-      const operatorPrice = 20.00;
+      // 4. Criar cobrança no Asaas (R$ 19,90 por operador adicional)
+      const operatorPrice = 19.90;
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 7); // 7 dias para pagamento
 
@@ -77,6 +78,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           paymentMethod: data.paymentMethod,
         }
       });
+
+      console.info('💾 [createOperatorPayment] PendingOperator criado:', pendingOperator.id);
 
       // 6. Preparar resultado
       const result: SubscriptionUpgradeResult = {
@@ -107,6 +110,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
    */
   async confirmPaymentAndCreateOperator(paymentId: string): Promise<Output> {
     try {
+      console.info('🔄 [confirmPaymentAndCreateOperator] Iniciando processamento para paymentId:', paymentId);
+
       // 1. Buscar operador pendente
       const pendingOperator = await prisma.pendingOperator.findUnique({
         where: { paymentId },
@@ -116,31 +121,60 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       if (!pendingOperator) {
+        console.warn('⚠️ [confirmPaymentAndCreateOperator] PendingOperator não encontrado para paymentId:', paymentId);
         return new Output(false, [], ['Pagamento não encontrado'], null);
       }
 
+      console.info('✅ [confirmPaymentAndCreateOperator] PendingOperator encontrado:', {
+        id: pendingOperator.id,
+        email: pendingOperator.email,
+        name: pendingOperator.name,
+        operatorCreated: pendingOperator.operatorCreated
+      });
+
       if (pendingOperator.operatorCreated) {
+        console.info('ℹ️ [confirmPaymentAndCreateOperator] Operador já foi criado anteriormente');
         return new Output(false, [], ['Operador já foi criado'], null);
       }
 
       // 2. Verificar status do pagamento no Asaas
+      console.info('🔍 [confirmPaymentAndCreateOperator] Verificando status no Asaas...');
       const paymentStatus = await this.checkAsaasPaymentStatus(paymentId);
+      console.info('📊 [confirmPaymentAndCreateOperator] Status Asaas:', paymentStatus);
       
-      if (!paymentStatus.success || paymentStatus.status !== 'CONFIRMED') {
+      if (!paymentStatus.success || (paymentStatus.status !== 'CONFIRMED' && paymentStatus.status !== 'RECEIVED')) {
+        console.warn('⚠️ [confirmPaymentAndCreateOperator] Pagamento não confirmado. Status:', paymentStatus.status);
         return new Output(false, [], ['Pagamento ainda não foi confirmado'], null);
       }
 
       // 3. Criar usuário no Supabase Auth
+      console.info('👤 [confirmPaymentAndCreateOperator] Criando usuário no Supabase...');
       const supabaseUser = await this.createSupabaseUser(
         pendingOperator.email,
         pendingOperator.name
       );
 
+      console.info('📝 [confirmPaymentAndCreateOperator] Resultado criação Supabase:', {
+        success: supabaseUser.success,
+        userId: supabaseUser.userId,
+        error: supabaseUser.error
+      });
+
       if (!supabaseUser.success) {
+        console.error('❌ [confirmPaymentAndCreateOperator] Falha ao criar usuário no Supabase:', supabaseUser.error);
         return new Output(false, [], [supabaseUser.error || 'Erro ao criar usuário'], null);
       }
 
       // 4. Criar perfil do operador no banco
+      console.info('💾 [confirmPaymentAndCreateOperator] Criando perfil do operador no banco...');
+      console.info('📋 [confirmPaymentAndCreateOperator] Dados do perfil:', {
+        supabaseId: supabaseUser.userId,
+        fullName: pendingOperator.name,
+        email: pendingOperator.email,
+        role: pendingOperator.role,
+        managerId: pendingOperator.managerId
+      });
+
       const operator = await prisma.profile.create({
         data: {
           supabaseId: supabaseUser.userId!,
@@ -151,7 +185,17 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         }
       });
 
+      console.info('✅ [confirmPaymentAndCreateOperator] Perfil criado:', {
+        id: operator.id,
+        supabaseId: operator.supabaseId,
+        fullName: operator.fullName,
+        email: operator.email,
+        role: operator.role,
+        managerId: operator.managerId
+      });
+
       // 5. Atualizar status do operador pendente
+      console.info('🔄 [confirmPaymentAndCreateOperator] Atualizando PendingOperator...');
       await prisma.pendingOperator.update({
         where: { id: pendingOperator.id },
         data: {
@@ -162,6 +206,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // 6. Incrementar contador de operadores no manager
+      console.info('📊 [confirmPaymentAndCreateOperator] Incrementando contador do manager...');
       await prisma.profile.update({
         where: { id: pendingOperator.managerId },
         data: {
@@ -179,6 +224,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         operatorId: operator.id,
       };
 
+      console.info('🎉 [confirmPaymentAndCreateOperator] SUCESSO! Operador criado:', result);
+
       return new Output(
         true,
         ['Pagamento confirmado e operador criado com sucesso!'],
@@ -187,7 +234,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       );
 
     } catch (error) {
-      console.error('Erro ao confirmar pagamento e criar operador:', error);
+      console.error('❌ [confirmPaymentAndCreateOperator] ERRO CRÍTICO:', error);
+      console.error('Stack trace:', error instanceof Error ? error.stack : 'N/A');
       return new Output(false, [], ['Erro interno ao criar operador'], null);
     }
   }
@@ -325,25 +373,53 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
   private async createSupabaseUser(email: string, name: string): Promise<any> {
     try {
-      // Implementação com Supabase Admin API
-      // Por enquanto, retorna mock (você deve implementar com createSupabaseServer)
+      console.info('🔐 [createSupabaseUser] Iniciando criação de usuário:', { email, name });
+
+      // Gerar senha aleatória segura
       const randomPassword = Math.random().toString(36).slice(-8) + 'Aa1!';
-      
-      // TODO: Implementar criação real no Supabase
-      // const { data, error } = await supabase.auth.admin.createUser({
-      //   email,
-      //   password: randomPassword,
-      //   email_confirm: true,
-      //   user_metadata: { name }
-      // });
+      console.info('🔑 [createSupabaseUser] Senha temporária gerada');
+
+      // Criar cliente Supabase Admin (Service Role)
+      const supabase = createSupabaseAdmin();
+      if (!supabase) {
+        console.error('❌ [createSupabaseUser] Falha ao criar cliente Supabase Admin');
+        return { success: false, error: 'Falha ao conectar com sistema de autenticação' };
+      }
+
+      console.info('✅ [createSupabaseUser] Cliente Supabase Admin criado');
+
+      // Criar usuário no Supabase Auth
+      const { data: user, error: authError } = await supabase.auth.admin.createUser({
+        email,
+        password: randomPassword,
+        email_confirm: true,
+        user_metadata: { name }
+      });
+
+      if (authError || !user.user) {
+        console.error('❌ [createSupabaseUser] Erro ao criar usuário no Supabase:', authError);
+        return { 
+          success: false, 
+          error: authError?.message || 'Erro ao criar usuário no sistema de autenticação' 
+        };
+      }
+
+      console.info('✅ [createSupabaseUser] Usuário criado com sucesso:', {
+        userId: user.user.id,
+        email: user.user.email
+      });
 
       return {
         success: true,
-        userId: `temp-${Date.now()}`, // Mock - substituir por ID real do Supabase
+        userId: user.user.id,
         temporaryPassword: randomPassword,
       };
     } catch (error) {
-      return { success: false, error: 'Erro ao criar usuário no sistema de autenticação' };
+      console.error('❌ [createSupabaseUser] Erro inesperado:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Erro ao criar usuário no sistema de autenticação' 
+      };
     }
   }
 }

@@ -1,6 +1,5 @@
-"use server"
-
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
+import { createClient } from "@supabase/supabase-js"
 import { cookies } from "next/headers"
 
 export const createSupabaseServer = async () => {
@@ -31,4 +30,25 @@ export const createSupabaseServer = async () => {
       },
     }
   )
+}
+
+/**
+ * Cria um cliente Supabase com Service Role Key para operações administrativas
+ * Use apenas no servidor para criar/deletar usuários, etc.
+ */
+export const createSupabaseAdmin = () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!url || !serviceRoleKey) {
+    console.error('[supabase-admin] Variáveis NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY ausentes')
+    return null
+  }
+
+  return createClient(url, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
 }

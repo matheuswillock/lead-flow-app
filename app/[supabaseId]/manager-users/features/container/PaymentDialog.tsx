@@ -155,9 +155,9 @@ export function PaymentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Adicionar Operador - Pagamento</DialogTitle>
+          <DialogTitle>Adicionar usuário - Pagamento</DialogTitle>
           <DialogDescription>
-            Complete o pagamento para adicionar o novo operador
+            Complete o pagamento para adicionar o novo usuário
           </DialogDescription>
         </DialogHeader>
 
@@ -178,7 +178,7 @@ export function PaymentDialog({
                     </div>
                     <div className="flex justify-between border-t pt-2 mt-2">
                       <span className="font-semibold">Valor:</span>
-                      <span className="font-semibold text-foreground text-lg">R$ 20,00/mês</span>
+                      <span className="font-semibold text-foreground text-lg">R$ 19,90/mês</span>
                     </div>
                   </div>
                 </CardContent>

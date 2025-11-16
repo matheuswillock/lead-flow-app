@@ -154,7 +154,7 @@ export function SubscriptionContainer() {
         <div className="mb-8">
           <Link
             href="/"
-            className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
+            className="cursor-pointer inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Voltar para home
