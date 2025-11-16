@@ -5,7 +5,7 @@ import { IProfileIconService } from "./IProfileIconService";
 
 // TODO: Implementar em uma usecase a service não deve ser chamada diretamente por controllers
 export class ProfileIconService implements IProfileIconService {
-  private readonly BUCKET_NAME = "profile-icons";
+  private readonly BUCKET_NAME = process.env.SUPABASE_PROFILE_ICONS_BUCKET || "";
   private readonly MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
   private readonly ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 

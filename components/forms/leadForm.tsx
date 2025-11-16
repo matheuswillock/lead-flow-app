@@ -470,12 +470,44 @@ export function LeadForm({
                 />
             </div>
 
-            {/* Seção de Attachments - exibir apenas em modo de edição */}
-            {leadId && (
-                <div className="sm:col-span-2 pt-4 border-t">
-                    <AttachmentList leadId={leadId} />
+            {/* Seção de Attachments */}
+            <div className="sm:col-span-2 pt-4 border-t">
+                <div className="mb-2">
+                    <h3 className="text-sm font-medium">Anexos</h3>
+                    <p className="text-xs text-muted-foreground">
+                        {leadId 
+                            ? "Adicione documentos, imagens ou arquivos relacionados a este lead" 
+                            : "Você poderá adicionar anexos após salvar o lead"}
+                    </p>
                 </div>
-            )}
+                {leadId ? (
+                    <AttachmentList leadId={leadId} />
+                ) : (
+                    <div className="flex items-center justify-center p-8 border border-dashed rounded-lg bg-muted/20">
+                        <div className="text-center space-y-2">
+                            <div className="flex justify-center">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="48"
+                                    height="48"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className="text-muted-foreground/50"
+                                >
+                                    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                                </svg>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                                Salve o lead primeiro para adicionar anexos
+                            </p>
+                        </div>
+                    </div>
+                )}
+            </div>
 
             <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
                 <Button 

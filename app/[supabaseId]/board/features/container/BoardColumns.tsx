@@ -82,6 +82,7 @@ export default function BoardColumns({ onFinalizeContract, onScheduleMeeting }: 
                                         handleCardClick={handleCardClick}
                                         onFinalizeContract={onFinalizeContract}
                                         onScheduleMeeting={onScheduleMeeting}
+                                        attachmentCount={lead.attachmentCount || 0}
                                     />
                                 ))}
                             </div>

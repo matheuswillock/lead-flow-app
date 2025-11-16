@@ -5,6 +5,8 @@ import { ColumnKey } from "../context/BoardTypes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 import { CheckCircle, Calendar } from "lucide-react";
+import { Paperclip } from "@/components/ui/paperclip";
+import { Badge } from "@/components/ui/badge";
 
 interface LeadCardProps {
     lead: LeadResponseDTO;
@@ -14,6 +16,7 @@ interface LeadCardProps {
     handleCardClick: (lead: LeadResponseDTO) => void;
     onFinalizeContract?: (lead: LeadResponseDTO) => void;
     onScheduleMeeting?: (lead: LeadResponseDTO) => void;
+    attachmentCount?: number;
 }
 
 export function LeadCard({
@@ -24,6 +27,7 @@ export function LeadCard({
     handleCardClick,
     onFinalizeContract,
     onScheduleMeeting,
+    attachmentCount = 0,
 }: LeadCardProps) {
     // Verifica se o lead está em uma coluna que permite finalizar contrato
     const canFinalizeContract = columnKey === 'invoicePayment' || 
@@ -45,6 +49,11 @@ export function LeadCard({
         if (onScheduleMeeting) {
             onScheduleMeeting(lead);
         }
+    };
+
+    const handleAttachmentClick = (e: React.MouseEvent) => {
+        e.stopPropagation(); // Evita que o card seja clicado
+        handleCardClick(lead); // Abre o dialog para ver/adicionar anexos
     };
 
     return (
@@ -88,7 +97,24 @@ export function LeadCard({
                     </Button>
                 )}
             </CardContent>
-            <CardFooter className="w-full flex justify-end">
+            <CardFooter className="w-full flex justify-between items-center">
+                <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0 relative cursor-pointer hover:bg-accent/50"
+                    onClick={handleAttachmentClick}
+                    title="Anexos"
+                >
+                    <Paperclip animateOnHover className="h-4 w-4" />
+                    {attachmentCount > 0 && (
+                        <Badge 
+                            variant="secondary" 
+                            className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px]"
+                        >
+                            {attachmentCount}
+                        </Badge>
+                    )}
+                </Button>
                 <Avatar className="h-6 w-6">
                     <AvatarImage src={lead?.assignee?.avatarUrl || ""} alt={`@${lead?.assignee?.fullName || ""}`} />
                     <AvatarFallback>

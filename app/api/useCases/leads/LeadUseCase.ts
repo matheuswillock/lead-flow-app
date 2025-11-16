@@ -37,7 +37,6 @@ export class LeadUseCase implements ILeadUseCase {
         phone: data.phone || null,
         cnpj: data.cnpj || null,
         age: data.age || [],
-        hasHealthPlan: data.hasHealthPlan || null,
         currentHealthPlan: data.currentHealthPlan || null,
         currentValue: data.currentValue || null,
         referenceHospital: data.referenceHospital || null,
@@ -232,7 +231,6 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.phone !== undefined) updateData.phone = data.phone || null;
       if (data.cnpj !== undefined) updateData.cnpj = data.cnpj || null;
       if (data.age !== undefined) updateData.age = data.age;
-      if (data.hasHealthPlan !== undefined) updateData.hasHealthPlan = data.hasHealthPlan;
       if (data.currentHealthPlan !== undefined) updateData.currentHealthPlan = data.currentHealthPlan || null;
       if (data.currentValue !== undefined) updateData.currentValue = data.currentValue;
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
@@ -447,7 +445,6 @@ export class LeadUseCase implements ILeadUseCase {
       phone: lead.phone,
       cnpj: lead.cnpj,
       age: lead.age,
-      hasHealthPlan: lead.hasHealthPlan,
       currentHealthPlan: lead.currentHealthPlan,
       currentValue: lead.currentValue ? Number(lead.currentValue) : null,
       referenceHospital: lead.referenceHospital,
@@ -458,6 +455,7 @@ export class LeadUseCase implements ILeadUseCase {
       updatedBy: lead.updatedBy,
       createdAt: lead.createdAt.toISOString(),
       updatedAt: lead.updatedAt.toISOString(),
+      attachmentCount: lead._count?.attachments || lead.attachments?.length || 0,
       ...(lead.manager && {
         manager: {
           id: lead.manager.id,

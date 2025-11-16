@@ -22,6 +22,11 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        _count: {
+          select: {
+            attachments: true,
+          },
+        },
       },
     });
   }
@@ -57,6 +62,11 @@ export class LeadRepository implements ILeadRepository {
           },
           orderBy: {
             createdAt: 'desc',
+          },
+        },
+        _count: {
+          select: {
+            attachments: true,
           },
         },
       },
@@ -123,6 +133,11 @@ export class LeadRepository implements ILeadRepository {
               profileIconUrl: true,
             },
           },
+          _count: {
+            select: {
+              attachments: true,
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
@@ -156,6 +171,11 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        _count: {
+          select: {
+            attachments: true,
+          },
+        },
       },
     });
   }
@@ -186,6 +206,11 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        _count: {
+          select: {
+            attachments: true,
+          },
+        },
       },
     });
   }
@@ -208,6 +233,11 @@ export class LeadRepository implements ILeadRepository {
             fullName: true,
             email: true,
             profileIconUrl: true,
+          },
+        },
+        _count: {
+          select: {
+            attachments: true,
           },
         },
       },

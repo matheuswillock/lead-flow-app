@@ -74,7 +74,6 @@ export function SignInForm({
             )}
             <div className="text-center text-sm">
               Não tem uma conta?{" "}
-              {/* TODO: Add sign up link */}
               <Link href={fromSubscribe ? "/sign-up?from=subscribe" : "/sign-up"} className="underline underline-offset-4">
                 Criar conta
               </Link>

@@ -20,6 +20,7 @@ export interface LeadResponseDTO {
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
+  attachmentCount?: number;
   manager?: {
     id: string;
     fullName: string | null;
