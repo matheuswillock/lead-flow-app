@@ -277,6 +277,7 @@ export default function PipelineDialog() {
             isLoading={isSubmitting}
             onCancel={() => setOpen(false)}
             usersToAssign={user?.usersAssociated || []}
+            leadId={lead?.id}
           />
         </DialogContent>
       </Dialog>

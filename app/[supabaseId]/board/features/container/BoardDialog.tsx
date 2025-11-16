@@ -357,6 +357,7 @@ export default function BoardDialog() {
               isLoading={isSubmitting}
               onCancel={() => setOpen(false)}
               usersToAssign={user.usersAssociated || []}
+              leadId={lead?.id}
             />
           )}
         </DialogContent>

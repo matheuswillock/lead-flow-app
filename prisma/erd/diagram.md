@@ -147,6 +147,16 @@ with_operators with_operators
     DateTime updatedAt 
     }
   
+
+  "lead_attachments" {
+    String id "🗝️"
+    String fileName 
+    String fileUrl 
+    String fileType 
+    Int fileSize 
+    DateTime uploadedAt 
+    }
+  
     "profiles" o|--|| "UserRole" : "enum:role"
     "profiles" o|--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "profiles" o|--|o "SubscriptionPlan" : "enum:subscriptionPlan"
@@ -157,6 +167,7 @@ with_operators with_operators
     "profiles" o{--}o "leads" : "leadsAsCreator"
     "profiles" o{--}o "leads" : "leadsAsUpdater"
     "profiles" o{--}o "lead_activities" : "activities"
+    "profiles" o{--}o "lead_attachments" : "attachments"
     "leads" o|--|| "LeadStatus" : "enum:status"
     "leads" o|--|o "HealthPlan" : "enum:currentHealthPlan"
     "leads" o|--|| "profiles" : "manager"
@@ -166,9 +177,12 @@ with_operators with_operators
     "leads" o{--}o "lead_activities" : "activities"
     "leads" o{--}o "leads_schedule" : "LeadsSchedule"
     "leads" o{--}o "lead_finalized" : "LeadFinalized"
+    "leads" o{--}o "lead_attachments" : "attachments"
     "lead_activities" o|--|| "ActivityType" : "enum:type"
     "lead_activities" o|--|| "leads" : "lead"
     "lead_activities" o|--|o "profiles" : "author"
     "leads_schedule" o|--|| "leads" : "lead"
     "lead_finalized" o|--|| "leads" : "lead"
+    "lead_attachments" o|--|| "leads" : "lead"
+    "lead_attachments" o|--|| "profiles" : "uploader"
 ```

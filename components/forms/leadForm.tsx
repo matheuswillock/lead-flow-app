@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
+import { AttachmentList } from "../ui/attachment-list";
 
 const formatCurrency = (value: string): string => {
     const cleanValue = value.replace(/\D/g, '');
@@ -33,6 +34,7 @@ export interface ILeadFormProps {
     className?: string;
     initialData?: leadFormData;
     usersToAssign: UserAssociated[];
+    leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
 }
 
 export function LeadForm({
@@ -43,7 +45,8 @@ export function LeadForm({
     onCancel,
     className,
     initialData,
-    usersToAssign
+    usersToAssign,
+    leadId
 }: ILeadFormProps) {
     const [hasChanges, setHasChanges] = useState(false);
 
@@ -466,6 +469,13 @@ export function LeadForm({
                     }}
                 />
             </div>
+
+            {/* Seção de Attachments - exibir apenas em modo de edição */}
+            {leadId && (
+                <div className="sm:col-span-2 pt-4 border-t">
+                    <AttachmentList leadId={leadId} />
+                </div>
+            )}
 
             <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
                 <Button 
