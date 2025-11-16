@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { asaasFetch } from "@/lib/asaas";
 import type { 
   ISubscriptionUpgradeUseCase, 
   AddOperatorPaymentData,
@@ -33,10 +34,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       // 2. Verificar se email do operador já existe
       const existingUser = await prisma.profile.findFirst({
         where: { 
-          OR: [
-            { email: data.operatorData.email },
-            { supabaseId: data.operatorData.email } // caso seja supabaseId
-          ]
+          email: data.operatorData.email
         }
       });
 
@@ -241,21 +239,17 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
   private async createAsaasPayment(data: any): Promise<any> {
     try {
-      const response = await fetch(`${process.env.ASAAS_URL}/v3/payments`, {
+      console.info('[Asaas] Criando pagamento com dados:', data);
+
+      const payment = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/payments`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'access_token': process.env.ASAAS_API_KEY || '',
-        },
         body: JSON.stringify(data),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        return { success: false, error: error.errors?.[0]?.description || 'Erro ao criar pagamento' };
-      }
-
-      const payment = await response.json();
+      console.info('[Asaas] Pagamento criado com sucesso:', { 
+        id: payment.id, 
+        status: payment.status 
+      });
 
       return {
         success: true,
@@ -264,31 +258,27 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         pixQrCode: payment.pixQrCode,
         pixCopyPaste: payment.pixCopyPaste,
       };
-    } catch (error) {
-      console.error('Erro na API Asaas:', error);
-      return { success: false, error: 'Erro ao comunicar com gateway de pagamento' };
+    } catch (error: any) {
+      console.error('[Asaas] Erro ao criar pagamento:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Erro ao comunicar com gateway de pagamento' 
+      };
     }
   }
 
   private async checkAsaasPaymentStatus(paymentId: string): Promise<any> {
     try {
-      const response = await fetch(`${process.env.ASAAS_URL}/v3/payments/${paymentId}`, {
-        headers: {
-          'access_token': process.env.ASAAS_API_KEY || '',
-        },
+      const payment = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/payments/${paymentId}`, {
+        method: 'GET',
       });
-
-      if (!response.ok) {
-        return { success: false };
-      }
-
-      const payment = await response.json();
 
       return {
         success: true,
         status: payment.status,
       };
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[Asaas] Erro ao verificar status:', error);
       return { success: false };
     }
   }
