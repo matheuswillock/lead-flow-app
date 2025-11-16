@@ -34,23 +34,24 @@ export function DeleteUserDialog({
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="text-destructive">Remover Usuário</DialogTitle>
-          <DialogDescription className="space-y-2">
-            <p>
-              Tem certeza de que deseja remover o usuário{" "}
-              <span className="font-semibold">{user.name}</span>?
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Esta ação não pode ser desfeita. O usuário será permanentemente
-              removido do sistema e perderá acesso a todas as funcionalidades.
-            </p>
-            {user.role === "manager" && (
-              <p className="text-sm text-orange-600 dark:text-orange-400">
-                ⚠️ Atenção: Este usuário é um Manager e pode ter operators
-                associados.
-              </p>
-            )}
+          <DialogDescription>
+            Tem certeza de que deseja remover o usuário{" "}
+            <span className="font-semibold">{user.fullName || user.email}</span>?
           </DialogDescription>
         </DialogHeader>
+        
+        <div className="space-y-3 py-4">
+          <p className="text-sm text-muted-foreground">
+            Esta ação não pode ser desfeita. O usuário será permanentemente
+            removido do sistema e perderá acesso a todas as funcionalidades.
+          </p>
+          {user.role === "manager" && (
+            <p className="text-sm text-orange-600 dark:text-orange-400">
+              ⚠️ Atenção: Este usuário é um Manager e pode ter operators
+              associados.
+            </p>
+          )}
+        </div>
         <DialogFooter className="gap-2">
             <Button
                 variant="outline"

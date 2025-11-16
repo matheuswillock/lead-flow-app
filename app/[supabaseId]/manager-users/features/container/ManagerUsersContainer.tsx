@@ -12,6 +12,7 @@ import { DataTable } from "./DataTable";
 import { createColumns } from "./columns";
 import { UserFormDialog } from "./UserFormDialog";
 import { DeleteUserDialog } from "./DeleteUserDialog";
+import { PaymentDialog } from "./PaymentDialog";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;
@@ -30,6 +31,8 @@ export function ManagerUsersContainer({
     isCreateModalOpen,
     isEditModalOpen,
     isDeleteDialogOpen,
+    isPaymentDialogOpen,
+    pendingOperatorData,
     stats,
     
     // Ações
@@ -44,6 +47,9 @@ export function ManagerUsersContainer({
     closeEditModal,
     openDeleteDialog,
     closeDeleteDialog,
+    closePaymentDialog,
+    handlePaymentCreated,
+    handlePaymentConfirmed,
   } = useManagerUsers({ supabaseId, currentUserRole });
 
   // Verificar se é manager
@@ -182,6 +188,15 @@ export function ManagerUsersContainer({
         onConfirm={() => selectedUser ? deleteUser(selectedUser.id) : undefined}
         user={selectedUser}
         loading={loading}
+      />
+
+      <PaymentDialog
+        open={isPaymentDialogOpen}
+        onOpenChange={closePaymentDialog}
+        operatorData={pendingOperatorData}
+        managerId={supabaseId}
+        onPaymentCreated={handlePaymentCreated}
+        onPaymentConfirmed={handlePaymentConfirmed}
       />
     </div>
   );

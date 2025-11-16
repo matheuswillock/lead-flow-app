@@ -8,7 +8,8 @@ import {
   CreateManagerUserFormData, 
   UpdateManagerUserFormData,
   UserPermissions,
-  ManagerUserTableRow 
+  ManagerUserTableRow,
+  OperatorPaymentData
 } from "../types";
 import { ManagerUsersService } from "../services/ManagerUsersService";
 
@@ -26,6 +27,9 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     isCreateModalOpen: false,
     isEditModalOpen: false,
     isDeleteDialogOpen: false,
+    isPaymentDialogOpen: false,
+    pendingOperatorData: null,
+    currentPayment: null,
   });
 
   const [permissions] = useState<UserPermissions>({
@@ -79,8 +83,20 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     }
   }, [managerUsersService]);
 
-  // Criar usuário
+  // Criar usuário - agora abre dialog de pagamento para operators
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
+    // Se for operator, abrir dialog de pagamento
+    if (userData.role === "operator") {
+      setState(prev => ({ 
+        ...prev, 
+        pendingOperatorData: userData,
+        isCreateModalOpen: false,
+        isPaymentDialogOpen: true
+      }));
+      return;
+    }
+
+    // Se for manager, criar direto (sem pagamento)
     try {
       setState(prev => ({ ...prev, loading: true }));
       
@@ -173,6 +189,8 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     ...user,
     canEdit: permissions.canEditUser && managerUsersService.canEditUser(supabaseId, user.id, user.role),
     canDelete: permissions.canDeleteUser && (user.id !== supabaseId), // Não pode deletar a si mesmo
+    status: 'active' as const, // TODO: Verificar pendingOperators no futuro
+    pendingPayment: undefined
   }));
 
   // Ações de UI
@@ -216,6 +234,36 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     }));
   }, []);
 
+  // Ações de pagamento
+  const openPaymentDialog = useCallback((operatorData: CreateManagerUserFormData) => {
+    setState(prev => ({ 
+      ...prev, 
+      pendingOperatorData: operatorData,
+      isPaymentDialogOpen: true 
+    }));
+  }, []);
+
+  const closePaymentDialog = useCallback(() => {
+    setState(prev => ({ 
+      ...prev, 
+      isPaymentDialogOpen: false,
+      pendingOperatorData: null,
+      currentPayment: null
+    }));
+  }, []);
+
+  const handlePaymentCreated = useCallback((paymentData: OperatorPaymentData) => {
+    setState(prev => ({ 
+      ...prev, 
+      currentPayment: paymentData
+    }));
+  }, []);
+
+  const handlePaymentConfirmed = useCallback(() => {
+    toast.success("Operador criado com sucesso!");
+    loadUsers(); // Recarregar lista
+  }, [loadUsers]);
+
   // Carregar dados no mount
   useEffect(() => {
     loadUsers();
@@ -240,5 +288,9 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     closeEditModal,
     openDeleteDialog,
     closeDeleteDialog,
+    openPaymentDialog,
+    closePaymentDialog,
+    handlePaymentCreated,
+    handlePaymentConfirmed,
   };
 }

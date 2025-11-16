@@ -271,8 +271,17 @@ export async function DELETE(
   try {
     const requesterId = request.headers.get('x-supabase-user-id');
     const { supabaseId } = await params;
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    
+    // Tentar pegar userId do body ou query param
+    let userId: string | null = null;
+    try {
+      const body = await request.json();
+      userId = body.userId;
+    } catch {
+      // Se não conseguir parsear o body, tentar query param
+      const { searchParams } = new URL(request.url);
+      userId = searchParams.get('userId');
+    }
     
     if (!requesterId) {
       const output = new Output(false, [], ["Header x-supabase-user-id é obrigatório"], null);

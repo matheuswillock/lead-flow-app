@@ -157,6 +157,21 @@ with_operators with_operators
     DateTime uploadedAt 
     }
   
+
+  "pending_operators" {
+    String id "🗝️"
+    String name 
+    String email 
+    String role 
+    String paymentId 
+    String paymentStatus 
+    String paymentMethod 
+    Boolean operatorCreated 
+    String operatorId "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "profiles" o|--|| "UserRole" : "enum:role"
     "profiles" o|--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "profiles" o|--|o "SubscriptionPlan" : "enum:subscriptionPlan"
@@ -168,6 +183,7 @@ with_operators with_operators
     "profiles" o{--}o "leads" : "leadsAsUpdater"
     "profiles" o{--}o "lead_activities" : "activities"
     "profiles" o{--}o "lead_attachments" : "attachments"
+    "profiles" o{--}o "pending_operators" : "pendingOperators"
     "leads" o|--|| "LeadStatus" : "enum:status"
     "leads" o|--|o "HealthPlan" : "enum:currentHealthPlan"
     "leads" o|--|| "profiles" : "manager"
@@ -185,4 +201,5 @@ with_operators with_operators
     "lead_finalized" o|--|| "leads" : "lead"
     "lead_attachments" o|--|| "leads" : "lead"
     "lead_attachments" o|--|| "profiles" : "uploader"
+    "pending_operators" o|--|| "profiles" : "manager"
 ```

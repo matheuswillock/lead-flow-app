@@ -142,6 +142,9 @@ model Profile {
   activities      LeadActivity[]
   attachments     LeadAttachment[] @relation("AttachmentUploader")
 
+  // Pending Operators relations
+  pendingOperators PendingOperator[] @relation("PendingOperatorManager")
+
   @@index([role])
   @@index([managerId])
   @@index([cpfCnpj])
@@ -272,4 +275,30 @@ model LeadAttachment {
   @@index([leadId])
   @@index([uploadedBy])
   @@map("lead_attachments")
+}
+
+// -----------------------------
+// PENDING OPERATOR (Operador aguardando pagamento)
+// -----------------------------
+model PendingOperator {
+  id              String   @id @default(uuid()) @db.Uuid
+  managerId       String   @db.Uuid
+  name            String   @db.Text
+  email           String   @db.Text
+  role            String   @db.Text // "operator" geralmente
+  paymentId       String   @unique @db.Text // ID do pagamento no Asaas
+  paymentStatus   String   @db.Text // PENDING, CONFIRMED, FAILED
+  paymentMethod   String   @db.Text // PIX, CREDIT_CARD
+  operatorCreated Boolean  @default(false)
+  operatorId      String?  @db.Uuid // ID do operador criado (quando confirmado)
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  manager Profile @relation("PendingOperatorManager", fields: [managerId], references: [id], onDelete: Cascade)
+
+  @@index([managerId])
+  @@index([paymentId])
+  @@index([email])
+  @@map("pending_operators")
 }

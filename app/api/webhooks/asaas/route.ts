@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PaymentRepository } from '@/app/api/infra/data/repositories/payment/PaymentRepository';
 import { PaymentValidationService } from '@/app/api/services/PaymentValidation/PaymentValidationService';
 import { PaymentValidationUseCase } from '@/app/api/useCases/payments/PaymentValidationUseCase';
+import { subscriptionUpgradeUseCase } from '@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase';
 
 export async function POST(request: NextRequest) {
   try {
@@ -69,6 +70,27 @@ export async function POST(request: NextRequest) {
     });
 
     console.info('[Webhook Asaas] Resultado:', result);
+
+    // NOVO: Verificar se é pagamento de operador
+    if (result.isPaid && body?.payment?.id) {
+      const paymentId = body.payment.id;
+      
+      // Tentar confirmar pagamento de operador (se existir PendingOperator)
+      try {
+        console.info('🔄 [Webhook Asaas] Verificando se é pagamento de operador:', paymentId);
+        
+        const operatorResult = await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId);
+        
+        if (operatorResult.isValid && operatorResult.result?.operatorCreated) {
+          console.info('✅ [Webhook Asaas] Operador criado automaticamente:', operatorResult.result.operatorId);
+        } else {
+          console.info('ℹ️ [Webhook Asaas] Não é pagamento de operador ou já foi processado');
+        }
+      } catch (error) {
+        console.error('❌ [Webhook Asaas] Erro ao processar pagamento de operador:', error);
+        // Não bloquear o fluxo principal
+      }
+    }
 
     // Se o pagamento foi confirmado, notificar o frontend via endpoint público
     if (result.isPaid && body?.payment?.subscription) {

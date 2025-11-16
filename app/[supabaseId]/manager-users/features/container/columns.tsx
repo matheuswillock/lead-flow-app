@@ -19,6 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Settings } from "@/components/ui/settings";
 
 interface CreateColumnsProps {
   onEdit: (user: ManagerUserTableRow) => void;
@@ -88,11 +89,7 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
         return (
           <div className="flex items-center gap-2">
             <div className="text-muted-foreground">{email}</div>
-            {email !== "Email não informado" && (
-                
-
-
-            
+            {email !== "Email não informado" && (                    
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <Button
@@ -133,6 +130,51 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
         return (
           <Badge variant={role === "manager" ? "default" : "secondary"}>
             {role === "manager" ? "MANAGER" : "OPERATOR"}
+          </Badge>
+        );
+      },
+    },
+    {
+      accessorKey: "status",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="h-auto p-0 font-semibold"
+          >
+            Status
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        const user = row.original;
+        const status = user.status || "active";
+        
+        const statusConfig = {
+          active: { 
+            label: "Ativo", 
+            variant: "default" as const,
+            className: "bg-green-100 text-green-800 border-green-200"
+          },
+          pending_payment: { 
+            label: "Aguardando Pagamento", 
+            variant: "secondary" as const,
+            className: "bg-yellow-100 text-yellow-800 border-yellow-200"
+          },
+          payment_failed: { 
+            label: "Pagamento Falhou", 
+            variant: "destructive" as const,
+            className: "bg-red-100 text-red-800 border-red-200"
+          }
+        };
+
+        const config = statusConfig[status] || statusConfig.active;
+
+        return (
+          <Badge variant={config.variant} className={config.className}>
+            {config.label}
           </Badge>
         );
       },
@@ -198,7 +240,7 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel >Ações</DropdownMenuLabel>
+              <DropdownMenuLabel>Ações</DropdownMenuLabel>
                 <DropdownMenuItem
                   onClick={() => onEdit(user)}
                   className="flex items-center gap-2"

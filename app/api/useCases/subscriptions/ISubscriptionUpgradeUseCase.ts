@@ -1,0 +1,46 @@
+import type { Output } from "@/lib/output";
+
+export interface AddOperatorPaymentData {
+  managerId: string;
+  operatorData: {
+    name: string;
+    email: string;
+    role: string;
+  };
+  paymentMethod: "PIX" | "CREDIT_CARD";
+  creditCardData?: {
+    holderName: string;
+    number: string;
+    expiryMonth: string;
+    expiryYear: string;
+    ccv: string;
+  };
+}
+
+export interface SubscriptionUpgradeResult {
+  paymentId: string;
+  paymentStatus: string;
+  paymentMethod: string;
+  dueDate?: string;
+  pixQrCode?: string;
+  pixCopyPaste?: string;
+  operatorCreated: boolean;
+  operatorId?: string;
+}
+
+export interface ISubscriptionUpgradeUseCase {
+  /**
+   * Cria pagamento para adicionar novo operador
+   */
+  createOperatorPayment(data: AddOperatorPaymentData): Promise<Output>;
+  
+  /**
+   * Confirma pagamento e cria operador
+   */
+  confirmPaymentAndCreateOperator(paymentId: string): Promise<Output>;
+  
+  /**
+   * Verifica status do pagamento do operador
+   */
+  checkOperatorPaymentStatus(paymentId: string): Promise<Output>;
+}

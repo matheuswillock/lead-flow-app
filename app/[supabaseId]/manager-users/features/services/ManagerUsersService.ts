@@ -75,7 +75,7 @@ class ManagerUsersService {
   ): Promise<ManagerUserApiResponse> {
     return this.makeRequest<ManagerUserApiResponse>(`/${this.supabaseId}/users`, {
       method: "DELETE",
-      body: JSON.stringify({ id: userId }),
+      body: JSON.stringify({ userId }),
     });
   }
 

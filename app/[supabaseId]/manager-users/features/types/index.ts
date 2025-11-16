@@ -13,9 +13,37 @@ export interface ManagerUser {
   updatedAt: Date;
 }
 
+export interface PendingOperator {
+  id: string;
+  managerId: string;
+  name: string;
+  email: string;
+  role: string;
+  paymentId: string;
+  paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED';
+  paymentMethod: 'PIX' | 'CREDIT_CARD';
+  operatorCreated: boolean;
+  operatorId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OperatorPaymentData {
+  paymentId: string;
+  paymentStatus: string;
+  paymentMethod: string;
+  dueDate?: string;
+  pixQrCode?: string;
+  pixCopyPaste?: string;
+  operatorCreated: boolean;
+  operatorId?: string;
+}
+
 export interface ManagerUserTableRow extends ManagerUser {
   canEdit: boolean;
   canDelete: boolean;
+  status: 'active' | 'pending_payment' | 'payment_failed';
+  pendingPayment?: PendingOperator;
 }
 
 // Schemas de validação para formulários
@@ -48,6 +76,9 @@ export interface ManagerUsersState {
   isCreateModalOpen: boolean;
   isEditModalOpen: boolean;
   isDeleteDialogOpen: boolean;
+  isPaymentDialogOpen: boolean;
+  pendingOperatorData: CreateManagerUserFormData | null;
+  currentPayment: OperatorPaymentData | null;
   stats?: {
     totalOperators: number;
     totalManagers: number;
