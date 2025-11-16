@@ -4,9 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form"
 import Link from "next/link"
-import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-// import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData } from "@/lib/validations/validationForms"
 import { maskPhone, unmask } from "@/lib/masks"
@@ -17,7 +15,6 @@ interface SignUpFormProps {
   onSubmit: (data: signUpFormData) => void | Promise<void>;
   isLoading?: boolean;
   readonly?: boolean;
-  fromSubscribe?: boolean;
 }
 
 export function SignupForm({
@@ -27,7 +24,6 @@ export function SignupForm({
   onSubmit,
   isLoading = false,
   readonly = false,
-  fromSubscribe = false,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignUpFormProps) {
 
@@ -40,7 +36,6 @@ export function SignupForm({
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col items-center gap-2">
-            {/* TODO: Add link to return intial page */}
             <Link
               href="/"
               className="flex flex-col items-center gap-2 font-medium"
@@ -50,19 +45,14 @@ export function SignupForm({
               </div>
               <span className="sr-only">Lead Flow</span>
             </Link>
-            {fromSubscribe && (
-              <Badge variant="outline" className="mt-1 border-primary/30 text-primary">Assinatura</Badge>
-            )}
             <h1 className="text-xl font-bold">Criar conta</h1>
-            {fromSubscribe && (
-              <p className="text-center text-sm text-muted-foreground max-w-sm">
-                Para assinar a plataforma, primeiro crie sua conta. Após entrar, você será direcionado para a página de assinatura.
-              </p>
-            )}
+            <p className="text-center text-sm text-muted-foreground max-w-sm">
+              Crie sua conta para começar a usar o Lead Flow
+            </p>
             <div className="text-center text-sm">
               Já tem uma conta? 
               {' '}
-              <Link href={fromSubscribe ? "/sign-in?from=subscribe" : "/sign-in"} className="underline underline-offset-4 text-lg">
+              <Link href="/sign-in" className="underline underline-offset-4 text-lg">
                 Entrar
               </Link>
             </div>

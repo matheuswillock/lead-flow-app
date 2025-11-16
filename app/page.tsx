@@ -101,15 +101,18 @@ export default function Home() {
               >
                 <button
                   onClick={async () => {
+                    // Verificar se usuário já está logado
                     try {
                       const sb = createSupabaseBrowser();
                       const { data: { user } } = await (sb?.auth.getUser() || { data: { user: null } });
                       if (user?.id) {
+                        // Se já logado, vai direto para subscribe
                         window.location.href = "/subscribe";
                         return;
                       }
-                    } catch (_) {}
-                    window.location.href = "/sign-up?from=subscribe";
+                    } catch (_) {/* ignore */}
+                    // Se não logado, vai para sign-up (que depois vai para subscribe)
+                    window.location.href = "/sign-up";
                   }}
                   className="group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
                   style={{
@@ -119,7 +122,7 @@ export default function Home() {
                       "0 10px 25px -10px color-mix(in oklab, var(--primary) 55%, transparent)",
                   }}
                 >
-                  Assinar
+                  Começar Agora
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />
                 </button>
               </MotionDiv>
