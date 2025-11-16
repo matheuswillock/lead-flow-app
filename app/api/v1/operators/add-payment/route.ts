@@ -9,7 +9,14 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const { managerId, operatorData, paymentMethod, creditCardData } = body;
+    const { 
+      managerId, 
+      operatorData, 
+      paymentMethod, 
+      creditCard,
+      creditCardHolderInfo,
+      remoteIp 
+    } = body;
 
     // Validações básicas
     if (!managerId || !operatorData || !paymentMethod) {
@@ -24,12 +31,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validações específicas para cartão de crédito
+    if (paymentMethod === 'CREDIT_CARD') {
+      if (!creditCard || !creditCardHolderInfo) {
+        return NextResponse.json(
+          {
+            isValid: false,
+            successMessages: [],
+            errorMessages: ['Dados do cartão de crédito são obrigatórios'],
+            result: null
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Criar pagamento
     const result = await subscriptionUpgradeUseCase.createOperatorPayment({
       managerId,
       operatorData,
       paymentMethod,
-      creditCardData
+      creditCard,
+      creditCardHolderInfo,
+      remoteIp
     });
 
     const statusCode = result.isValid ? 201 : 400;

@@ -53,20 +53,98 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 7); // 7 dias para pagamento
 
-      const asaasPayment = await this.createAsaasPayment({
+      const paymentData: any = {
         customer: manager.asaasCustomerId,
         billingType: data.paymentMethod,
         value: operatorPrice,
         dueDate: dueDate.toISOString().split('T')[0],
-        description: `Adição de operador: ${data.operatorData.name}`,
+        description: `Adição de usuário: ${data.operatorData.name}`,
         externalReference: `operator-${manager.id}-${Date.now()}`,
-      });
+      };
+
+      // Adicionar dados do cartão de crédito se for o método selecionado
+      if (data.paymentMethod === 'CREDIT_CARD') {
+        if (!data.creditCard || !data.creditCardHolderInfo) {
+          return new Output(false, [], ['Dados do cartão de crédito são obrigatórios'], null);
+        }
+
+        paymentData.creditCard = data.creditCard;
+        paymentData.creditCardHolderInfo = data.creditCardHolderInfo;
+        paymentData.remoteIp = data.remoteIp || '127.0.0.1';
+      }
+
+      const asaasPayment = await this.createAsaasPayment(paymentData);
 
       if (!asaasPayment.success) {
         return new Output(false, [], [asaasPayment.error || 'Erro ao criar pagamento'], null);
       }
 
-      // 5. Salvar dados temporários do operador no banco (pending)
+      // Para cartão de crédito, verificar se foi aprovado imediatamente
+      if (data.paymentMethod === 'CREDIT_CARD') {
+        const isApproved = asaasPayment.status === 'CONFIRMED' || asaasPayment.status === 'RECEIVED';
+        
+        if (isApproved) {
+          console.info('💳 [createOperatorPayment] Cartão aprovado imediatamente, criando usuário...');
+          
+          // Criar usuário Supabase imediatamente
+          const userCreation = await this.createSupabaseUser(
+            data.operatorData.email,
+            data.operatorData.name
+          );
+
+          if (!userCreation.success) {
+            console.error('❌ [createOperatorPayment] Falha ao criar usuário:', userCreation.error);
+            return new Output(
+              false,
+              [],
+              ['Pagamento aprovado mas falha ao criar usuário. Contate o suporte.'],
+              null
+            );
+          }
+
+          // Criar perfil no banco
+          const profile = await prisma.profile.create({
+            data: {
+              supabaseId: userCreation.userId,
+              fullName: data.operatorData.name,
+              email: data.operatorData.email,
+              role: data.operatorData.role as 'operator' | 'manager',
+              managerId: manager.id,
+            }
+          });
+
+          console.info('✅ [createOperatorPayment] Usuário criado com sucesso:', profile.id);
+
+          // Retornar sucesso imediato
+          const result: SubscriptionUpgradeResult = {
+            paymentId: asaasPayment.paymentId,
+            paymentStatus: 'CONFIRMED',
+            paymentMethod: data.paymentMethod,
+            dueDate: asaasPayment.dueDate,
+            pixQrCode: undefined,
+            pixCopyPaste: undefined,
+            operatorCreated: true,
+          };
+
+          return new Output(
+            true,
+            ['Pagamento aprovado! Usuário criado com sucesso.'],
+            [],
+            result
+          );
+        } else {
+          // Cartão negado
+          console.warn('⚠️ [createOperatorPayment] Cartão negado:', asaasPayment.status);
+          return new Output(
+            false,
+            [],
+            ['Transação negada. Verifique os dados do cartão e tente novamente.'],
+            null
+          );
+        }
+      }
+
+      // 5. Para PIX: Salvar dados temporários do operador no banco (pending)
       const pendingOperator = await prisma.pendingOperator.create({
         data: {
           managerId: manager.id,
@@ -81,7 +159,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       console.info('💾 [createOperatorPayment] PendingOperator criado:', pendingOperator.id);
 
-      // 6. Preparar resultado
+      // 6. Preparar resultado para PIX
       const result: SubscriptionUpgradeResult = {
         paymentId: asaasPayment.paymentId,
         paymentStatus: 'PENDING',
@@ -301,8 +379,15 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
   private async createAsaasPayment(data: any): Promise<any> {
     try {
-      console.info('[Asaas] Criando pagamento com dados:', data);
+      console.info('[Asaas] Criando pagamento com dados:', {
+        customer: data.customer,
+        billingType: data.billingType,
+        value: data.value,
+        hasCreditCard: !!data.creditCard,
+        hasCreditCardHolderInfo: !!data.creditCardHolderInfo,
+      });
 
+      // Conforme doc Asaas: POST /v3/payments
       const payment = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/payments`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -310,8 +395,30 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       console.info('[Asaas] Pagamento criado com sucesso:', { 
         id: payment.id, 
-        status: payment.status 
+        status: payment.status,
+        billingType: payment.billingType
       });
+
+      // Para cartão de crédito, a captura é imediata
+      // Status será CONFIRMED ou RECEIVED se aprovado, ou erro HTTP 400 se negado
+      if (data.billingType === 'CREDIT_CARD') {
+        console.info('[Asaas] Pagamento com cartão processado:', {
+          status: payment.status,
+          confirmedDate: payment.confirmedDate,
+          creditCardBrand: payment.creditCard?.creditCardBrand,
+          creditCardNumber: payment.creditCard?.creditCardNumber
+        });
+
+        return {
+          success: true,
+          paymentId: payment.id,
+          dueDate: payment.dueDate,
+          status: payment.status,
+          creditCardToken: payment.creditCard?.creditCardToken, // Para futuras transações
+          pixQrCode: null,
+          pixCopyPaste: null,
+        };
+      }
 
       // Se for PIX, buscar QR Code
       let pixQrCode = null;
@@ -343,14 +450,31 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         success: true,
         paymentId: payment.id,
         dueDate: payment.dueDate,
+        status: payment.status,
         pixQrCode,
         pixCopyPaste,
       };
     } catch (error: any) {
-      console.error('[Asaas] Erro ao criar pagamento:', error);
+      console.error('[Asaas] Erro ao criar pagamento:', {
+        message: error.message,
+        response: error.response,
+        status: error.status
+      });
+      
+      // Extrair mensagem de erro mais específica se disponível
+      let errorMessage = 'Erro ao comunicar com gateway de pagamento';
+      
+      if (error.response?.errors && Array.isArray(error.response.errors)) {
+        errorMessage = error.response.errors
+          .map((e: any) => e.description || e.message)
+          .join(', ');
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       return { 
         success: false, 
-        error: error.message || 'Erro ao comunicar com gateway de pagamento' 
+        error: errorMessage
       };
     }
   }

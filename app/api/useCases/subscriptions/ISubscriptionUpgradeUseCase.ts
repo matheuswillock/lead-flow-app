@@ -8,13 +8,23 @@ export interface AddOperatorPaymentData {
     role: string;
   };
   paymentMethod: "PIX" | "CREDIT_CARD";
-  creditCardData?: {
+  creditCard?: {
     holderName: string;
     number: string;
     expiryMonth: string;
     expiryYear: string;
     ccv: string;
   };
+  creditCardHolderInfo?: {
+    name: string;
+    email: string;
+    cpfCnpj: string;
+    postalCode: string;
+    addressNumber: string;
+    phone: string;
+    mobilePhone: string;
+  };
+  remoteIp?: string;
 }
 
 export interface SubscriptionUpgradeResult {

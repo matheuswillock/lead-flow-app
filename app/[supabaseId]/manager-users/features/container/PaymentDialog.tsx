@@ -4,12 +4,14 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, CreditCard, QrCode, CheckCircle2, XCircle, Clock, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { OperatorPaymentData } from "../types";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { CreditCardForm, type CreditCardFormData } from "./CreditCardForm";
 
 interface PaymentDialogProps {
   open: boolean;
@@ -36,6 +38,10 @@ export function PaymentDialog({
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<OperatorPaymentData | null>(null);
   const [pollingStatus, setPollingStatus] = useState<'idle' | 'polling' | 'confirmed' | 'failed'>('idle');
+  
+  // Dados do formulário de cartão de crédito (gerenciados pelo form interno)
+  const [creditCardFormData, setCreditCardFormData] = useState<CreditCardFormData | null>(null);
+  const [isCreditCardFormValid, setIsCreditCardFormValid] = useState(false);
 
   // Resetar estado quando fechar
   useEffect(() => {
@@ -43,6 +49,8 @@ export function PaymentDialog({
       setPaymentData(null);
       setPollingStatus('idle');
       setPaymentMethod("PIX");
+      setCreditCardFormData(null);
+      setIsCreditCardFormValid(false);
     }
   }, [open]);
 
@@ -84,31 +92,90 @@ export function PaymentDialog({
   const handleCreatePayment = async () => {
     if (!operatorData) return;
 
+    // Validação específica para cartão de crédito
+    if (paymentMethod === "CREDIT_CARD") {
+      if (!isCreditCardFormValid || !creditCardFormData) {
+        toast.error('Preencha todos os campos obrigatórios do cartão de crédito');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
+      const payload: any = {
+        managerId,
+        operatorData: {
+          name: operatorData.name,
+          email: operatorData.email,
+          role: operatorData.role
+        },
+        paymentMethod
+      };
+
+      // Adicionar dados do cartão se for CREDIT_CARD
+      if (paymentMethod === "CREDIT_CARD" && creditCardFormData) {
+        payload.creditCard = {
+          holderName: creditCardFormData.holderName,
+          number: creditCardFormData.number,
+          expiryMonth: creditCardFormData.expiryMonth,
+          expiryYear: creditCardFormData.expiryYear,
+          ccv: creditCardFormData.ccv
+        };
+
+        payload.creditCardHolderInfo = {
+          name: creditCardFormData.name,
+          email: operatorData.email,
+          cpfCnpj: creditCardFormData.cpfCnpj,
+          postalCode: creditCardFormData.postalCode,
+          addressNumber: creditCardFormData.addressNumber,
+          phone: creditCardFormData.phone || creditCardFormData.mobilePhone,
+          mobilePhone: creditCardFormData.mobilePhone
+        };
+
+        // IP pode ser 127.0.0.1 para sandbox
+        payload.remoteIp = '127.0.0.1';
+      }
+
       const response = await fetch('/api/v1/operators/add-payment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          managerId,
-          operatorData: {
-            name: operatorData.name,
-            email: operatorData.email,
-            role: operatorData.role
-          },
-          paymentMethod
-        })
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+        // Timeout de 60s recomendado pela Asaas para evitar duplicidade
+        signal: AbortSignal.timeout(60000)
       });
 
       const result = await response.json();
       
       if (result.isValid && result.result) {
         setPaymentData(result.result);
-        setPollingStatus('polling');
+        
+        // Para cartão de crédito, verificar se já foi confirmado
+        if (paymentMethod === "CREDIT_CARD") {
+          // Se operatorCreated === true, usuário foi criado imediatamente
+          if (result.result.operatorCreated) {
+            setPollingStatus('confirmed');
+            toast.success('Pagamento aprovado! Usuário criado com sucesso.');
+            onPaymentConfirmed();
+            setTimeout(() => {
+              onOpenChange(false);
+            }, 2000);
+          } else {
+            // Cartão pode ter sido negado ou outro status
+            setPollingStatus('failed');
+            toast.error('Pagamento não aprovado. Verifique os dados do cartão.');
+          }
+        } else {
+          // Para PIX, inicia polling
+          setPollingStatus('polling');
+          toast.success('Pagamento criado! Aguardando confirmação...');
+        }
+        
         onPaymentCreated(result.result);
-        toast.success('Pagamento criado! Aguardando confirmação...');
       } else {
-        toast.error(result.errorMessages?.join(', ') || 'Erro ao criar pagamento');
+        const errorMsg = result.errorMessages?.join(', ') || 'Erro ao criar pagamento';
+        toast.error(errorMsg);
       }
     } catch (error) {
       console.error('Erro ao criar pagamento:', error);
@@ -230,6 +297,19 @@ export function PaymentDialog({
                   </Card>
                 </RadioGroup>
               </div>
+
+              {/* Formulário de Cartão de Crédito */}
+              {paymentMethod === "CREDIT_CARD" && (
+                <CreditCardForm
+                  initialData={{
+                    name: operatorData?.name || "",
+                  }}
+                  onFormChange={(data, isValid) => {
+                    setCreditCardFormData(data);
+                    setIsCreditCardFormValid(isValid);
+                  }}
+                />
+              )}
 
               {/* Botão de criar pagamento */}
               <Button 
