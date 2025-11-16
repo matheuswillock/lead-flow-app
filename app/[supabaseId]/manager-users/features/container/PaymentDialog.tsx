@@ -58,7 +58,8 @@ export function PaymentDialog({
         if (result.isValid && result.result) {
           const status = result.result.paymentStatus;
           
-          if (status === 'CONFIRMED') {
+          // Asaas retorna "RECEIVED" ou "CONFIRMED" para pagamentos bem-sucedidos
+          if (status === 'CONFIRMED' || status === 'RECEIVED') {
             setPollingStatus('confirmed');
             toast.success('Pagamento confirmado! Operador criado com sucesso.');
             onPaymentConfirmed();
@@ -152,7 +153,7 @@ export function PaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[550px]">
+      <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Adicionar Operador - Pagamento</DialogTitle>
           <DialogDescription>
@@ -160,8 +161,7 @@ export function PaymentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {!paymentData ? (
+        <div className="space-y-6">{!paymentData ? (
             <>
               {/* Detalhes do operador */}
               <Card>
@@ -245,47 +245,68 @@ export function PaymentDialog({
               {paymentMethod === "PIX" && paymentData.pixCopyPaste && (
                 <Card>
                   <CardContent className="pt-6 space-y-4">
-                    <div>
-                      <Label className="text-sm font-semibold mb-2 block">Código PIX Copia e Cola</Label>
-                      <div className="flex gap-2">
-                        <input 
-                          readOnly 
-                          value={paymentData.pixCopyPaste}
-                          className="flex-1 text-xs p-3 border rounded bg-muted font-mono"
-                        />
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => copyToClipboard(paymentData.pixCopyPaste!)}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-
+                    {/* QR Code (prioridade visual) */}
                     {paymentData.pixQrCode && (
-                      <div className="text-center space-y-2">
-                        <Label className="text-sm font-semibold">QR Code</Label>
-                        <div className="bg-white p-4 rounded-lg inline-block border">
+                      <div className="flex flex-col items-center gap-3">
+                        <Label className="text-sm font-semibold">QR Code PIX</Label>
+                        <div className="relative p-4 bg-white rounded-lg shadow-md border-2">
                           <img 
-                            src={paymentData.pixQrCode} 
+                            src={`data:image/png;base64,${paymentData.pixQrCode}`}
                             alt="QR Code PIX"
-                            className="w-48 h-48 mx-auto"
+                            className="w-64 h-64"
                           />
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          Escaneie o QR Code com o app do seu banco
+                        <p className="text-xs text-muted-foreground text-center">
+                          📱 Escaneie o QR Code com o app do seu banco
                         </p>
                       </div>
                     )}
 
+                    {/* Código Copia e Cola */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-semibold">Código PIX (Copia e Cola)</Label>
+                      <div className="flex gap-2">
+                        <div className="flex-1 p-3 bg-muted rounded-lg overflow-x-auto">
+                          <code className="text-xs break-all">{paymentData.pixCopyPaste}</code>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => copyToClipboard(paymentData.pixCopyPaste!)}
+                          className="shrink-0"
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        💡 Copie e cole no seu app de pagamento
+                      </p>
+                    </div>
+
+                    {/* Instruções */}
+                    <div className="space-y-2 text-sm text-muted-foreground border-t pt-4">
+                      <h4 className="font-semibold text-foreground">Como pagar:</h4>
+                      <ol className="list-decimal list-inside space-y-1 text-xs">
+                        <li>Abra o app do seu banco</li>
+                        <li>Escolha pagar com Pix</li>
+                        <li>Escaneie o QR Code ou cole o código</li>
+                        <li>Confirme o pagamento</li>
+                      </ol>
+                      <p className="text-xs pt-2 font-medium text-primary">
+                        ⚡ Confirmação automática em segundos!
+                      </p>
+                    </div>
+
+                    {/* Data de validade */}
                     {paymentData.dueDate && (
                       <div className="text-center pt-2 border-t">
                         <p className="text-xs text-muted-foreground">
-                          Válido até: {new Date(paymentData.dueDate).toLocaleDateString('pt-BR', {
+                          📅 Válido até: {new Date(paymentData.dueDate).toLocaleDateString('pt-BR', {
                             day: '2-digit',
                             month: 'long',
-                            year: 'numeric'
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
                           })}
                         </p>
                       </div>

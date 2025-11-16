@@ -197,16 +197,26 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
    */
   async checkOperatorPaymentStatus(paymentId: string): Promise<Output> {
     try {
+      console.info('[checkOperatorPaymentStatus] Verificando status para paymentId:', paymentId);
+
       const pendingOperator = await prisma.pendingOperator.findUnique({
         where: { paymentId }
       });
 
       if (!pendingOperator) {
+        console.info('[checkOperatorPaymentStatus] PendingOperator não encontrado');
         return new Output(false, [], ['Pagamento não encontrado'], null);
       }
 
+      console.info('[checkOperatorPaymentStatus] PendingOperator encontrado:', {
+        paymentStatus: pendingOperator.paymentStatus,
+        operatorCreated: pendingOperator.operatorCreated,
+        operatorId: pendingOperator.operatorId
+      });
+
       // Verificar status no Asaas
       const asaasStatus = await this.checkAsaasPaymentStatus(paymentId);
+      console.info('[checkOperatorPaymentStatus] Status do Asaas:', asaasStatus);
 
       if (asaasStatus.success) {
         // Atualizar status local
@@ -215,22 +225,26 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           data: { paymentStatus: asaasStatus.status }
         });
 
+        console.info('[checkOperatorPaymentStatus] Retornando status:', asaasStatus.status);
+
         return new Output(
           true,
           ['Status verificado'],
           [],
           {
             paymentId,
-            status: asaasStatus.status,
+            paymentStatus: asaasStatus.status, // Mudado de 'status' para 'paymentStatus'
             operatorCreated: pendingOperator.operatorCreated,
+            operatorId: pendingOperator.operatorId,
           }
         );
       }
 
+      console.info('[checkOperatorPaymentStatus] Asaas retornou falha');
       return new Output(false, [], ['Erro ao verificar status'], null);
 
     } catch (error) {
-      console.error('Erro ao verificar status do pagamento:', error);
+      console.error('[checkOperatorPaymentStatus] Erro:', error);
       return new Output(false, [], ['Erro ao verificar status'], null);
     }
   }
@@ -251,12 +265,38 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         status: payment.status 
       });
 
+      // Se for PIX, buscar QR Code
+      let pixQrCode = null;
+      let pixCopyPaste = null;
+
+      if (data.billingType === 'PIX') {
+        try {
+          console.info('[Asaas] Buscando QR Code PIX para payment:', payment.id);
+          
+          const qrCodeData = await asaasFetch(
+            `${process.env.ASAAS_URL}/api/v3/payments/${payment.id}/pixQrCode`,
+            { method: 'GET' }
+          );
+
+          console.info('[Asaas] QR Code obtido:', { 
+            hasEncodedImage: !!qrCodeData.encodedImage,
+            hasPayload: !!qrCodeData.payload 
+          });
+
+          pixQrCode = qrCodeData.encodedImage;
+          pixCopyPaste = qrCodeData.payload;
+        } catch (error: any) {
+          console.error('[Asaas] Erro ao buscar QR Code:', error);
+          // Continua mesmo se falhar o QR Code
+        }
+      }
+
       return {
         success: true,
         paymentId: payment.id,
         dueDate: payment.dueDate,
-        pixQrCode: payment.pixQrCode,
-        pixCopyPaste: payment.pixCopyPaste,
+        pixQrCode,
+        pixCopyPaste,
       };
     } catch (error: any) {
       console.error('[Asaas] Erro ao criar pagamento:', error);
