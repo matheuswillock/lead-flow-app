@@ -65,7 +65,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       const checkoutLink = await this.createAsaasCheckoutLink({
         customer: manager.asaasCustomerId!,
         value: 19.90,
-        description: `Assinatura operador: ${data.operatorData.name}`,
+        description: `Licença adicional de operador - ${data.operatorData.name} (${data.operatorData.email}) - Acesso completo à plataforma Corretor Studio com gestão de leads, pipeline de vendas e métricas em tempo real`,
         pendingOperatorId: pendingOperator.id,
         managerId: manager.supabaseId,
         operatorName: data.operatorData.name,
@@ -105,15 +105,54 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
    */
   async confirmPaymentAndCreateOperator(paymentId: string): Promise<Output> {
     try {
+      console.info('🔄 [confirmPaymentAndCreateOperator] ============================================');
       console.info('🔄 [confirmPaymentAndCreateOperator] Iniciando processamento para paymentId:', paymentId);
 
-      // 1. Buscar operador pendente
-      const pendingOperator = await prisma.pendingOperator.findUnique({
+      // 1. Buscar operador pendente por paymentId
+      let pendingOperator = await prisma.pendingOperator.findUnique({
         where: { paymentId },
         include: {
           manager: true
         }
       });
+
+      console.info('🔍 [confirmPaymentAndCreateOperator] Resultado busca por paymentId:', {
+        found: !!pendingOperator,
+        id: pendingOperator?.id || 'não encontrado',
+        email: pendingOperator?.email || 'não encontrado'
+      });
+
+      // 2. Se não encontrou por paymentId, buscar pelo externalReference do Asaas
+      if (!pendingOperator) {
+        console.info('ℹ️ [confirmPaymentAndCreateOperator] Não encontrado por paymentId, verificando no Asaas...');
+        
+        const paymentStatus = await this.checkAsaasPaymentStatus(paymentId);
+        
+        if (paymentStatus.success && paymentStatus.externalReference) {
+          const externalRef = paymentStatus.externalReference;
+          console.info('🔍 [confirmPaymentAndCreateOperator] ExternalReference encontrado:', externalRef);
+          
+          // Extrair ID do externalReference (formato: pending-operator-{uuid})
+          if (externalRef.startsWith('pending-operator-')) {
+            const pendingOperatorId = externalRef.replace('pending-operator-', '');
+            console.info('🆔 [confirmPaymentAndCreateOperator] Buscando por ID:', pendingOperatorId);
+            
+            pendingOperator = await prisma.pendingOperator.findUnique({
+              where: { id: pendingOperatorId },
+              include: { manager: true }
+            });
+            
+            // Atualizar paymentId no PendingOperator
+            if (pendingOperator) {
+              console.info('✅ [confirmPaymentAndCreateOperator] PendingOperator encontrado por externalReference');
+              await prisma.pendingOperator.update({
+                where: { id: pendingOperatorId },
+                data: { paymentId }
+              });
+            }
+          }
+        }
+      }
 
       if (!pendingOperator) {
         console.warn('⚠️ [confirmPaymentAndCreateOperator] PendingOperator não encontrado para paymentId:', paymentId);
@@ -169,112 +208,160 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       id: pendingOperator.id,
       email: pendingOperator.email,
       name: pendingOperator.name,
-      operatorCreated: pendingOperator.operatorCreated
+      operatorCreated: pendingOperator.operatorCreated,
+      managerId: pendingOperator.managerId
     });
 
-    if (pendingOperator.operatorCreated) {
-      console.info('ℹ️ [createOperatorFromPending] Operador já foi criado anteriormente');
-      return new Output(false, [], ['Operador já foi criado'], null);
-    }
+    try {
+      if (pendingOperator.operatorCreated) {
+        console.info('ℹ️ [createOperatorFromPending] Operador já foi criado anteriormente');
+        return new Output(false, [], ['Operador já foi criado'], null);
+      }
 
-    // 2. Verificar status do pagamento no Asaas
-    console.info('🔍 [createOperatorFromPending] Verificando status no Asaas...');
-    const paymentStatus = await this.checkAsaasPaymentStatus(paymentId);
-    console.info('📊 [createOperatorFromPending] Status Asaas:', paymentStatus);
-    
-    if (!paymentStatus.success || (paymentStatus.status !== 'CONFIRMED' && paymentStatus.status !== 'RECEIVED')) {
-      console.warn('⚠️ [createOperatorFromPending] Pagamento não confirmado. Status:', paymentStatus.status);
-      return new Output(false, [], ['Pagamento ainda não foi confirmado'], null);
-    }
+      // 2. Verificar status do pagamento no Asaas
+      console.info('🔍 [createOperatorFromPending] Verificando status no Asaas...');
+      let paymentStatus;
+      try {
+        paymentStatus = await this.checkAsaasPaymentStatus(paymentId);
+        console.info('📊 [createOperatorFromPending] Status Asaas:', paymentStatus);
+      } catch (error) {
+        console.error('❌ [createOperatorFromPending] Erro ao verificar status no Asaas:', error);
+        return new Output(false, [], ['Erro ao verificar status do pagamento'], null);
+      }
+      
+      if (!paymentStatus.success || (paymentStatus.status !== 'CONFIRMED' && paymentStatus.status !== 'RECEIVED')) {
+        console.warn('⚠️ [createOperatorFromPending] Pagamento não confirmado. Status:', paymentStatus.status);
+        return new Output(false, [], ['Pagamento ainda não foi confirmado'], null);
+      }
 
-    // 3. Criar usuário no Supabase Auth
-    console.info('👤 [createOperatorFromPending] Criando usuário no Supabase...');
-    const supabaseUser = await this.createSupabaseUser(
-      pendingOperator.email,
-      pendingOperator.name
-    );
+      // 3. Criar usuário no Supabase Auth
+      console.info('👤 [createOperatorFromPending] Criando usuário no Supabase...');
+      console.info('📋 [createOperatorFromPending] Dados do usuário:', {
+        email: pendingOperator.email,
+        name: pendingOperator.name
+      });
+      
+      let supabaseUser;
+      try {
+        supabaseUser = await this.createSupabaseUser(
+          pendingOperator.email,
+          pendingOperator.name
+        );
 
-    console.info('📝 [createOperatorFromPending] Resultado criação Supabase:', {
-      success: supabaseUser.success,
-      userId: supabaseUser.userId,
-      error: supabaseUser.error
-    });
+        console.info('📝 [createOperatorFromPending] Resultado criação Supabase:', {
+          success: supabaseUser.success,
+          userId: supabaseUser.userId,
+          error: supabaseUser.error
+        });
+      } catch (error) {
+        console.error('❌ [createOperatorFromPending] Erro ao criar usuário no Supabase:', error);
+        return new Output(false, [], ['Erro ao criar usuário no sistema de autenticação'], null);
+      }
 
-    if (!supabaseUser.success) {
-      console.error('❌ [createOperatorFromPending] Falha ao criar usuário no Supabase:', supabaseUser.error);
-      return new Output(false, [], [supabaseUser.error || 'Erro ao criar usuário'], null);
-    }
+      if (!supabaseUser.success || !supabaseUser.userId) {
+        console.error('❌ [createOperatorFromPending] Falha ao criar usuário no Supabase:', supabaseUser.error);
+        return new Output(false, [], [supabaseUser.error || 'Erro ao criar usuário'], null);
+      }
 
-    // 4. Criar perfil do operador no banco (com subscriptionId se disponível)
-    console.info('💾 [createOperatorFromPending] Criando perfil do operador no banco...');
-    console.info('📋 [createOperatorFromPending] Dados do perfil:', {
-      supabaseId: supabaseUser.userId,
-      fullName: pendingOperator.name,
-      email: pendingOperator.email,
-      role: pendingOperator.role,
-      managerId: pendingOperator.managerId,
-      asaasSubscriptionId: pendingOperator.subscriptionId || null
-    });
-
-    const operator = await prisma.profile.create({
-      data: {
-        supabaseId: supabaseUser.userId!,
+      // 4. Criar perfil do operador no banco (com subscriptionId se disponível)
+      console.info('💾 [createOperatorFromPending] Criando perfil do operador no banco...');
+      console.info('📋 [createOperatorFromPending] Dados do perfil:', {
+        supabaseId: supabaseUser.userId,
         fullName: pendingOperator.name,
         email: pendingOperator.email,
-        role: pendingOperator.role as any,
+        role: pendingOperator.role,
         managerId: pendingOperator.managerId,
-        asaasSubscriptionId: pendingOperator.subscriptionId || undefined,
-        subscriptionCycle: pendingOperator.subscriptionId ? 'MONTHLY' : undefined,
+        asaasSubscriptionId: pendingOperator.subscriptionId || null
+      });
+
+      let operator;
+      try {
+        operator = await prisma.profile.create({
+          data: {
+            supabaseId: supabaseUser.userId,
+            fullName: pendingOperator.name,
+            email: pendingOperator.email,
+            role: pendingOperator.role as any,
+            managerId: pendingOperator.managerId,
+            asaasSubscriptionId: pendingOperator.subscriptionId || undefined,
+            subscriptionCycle: pendingOperator.subscriptionId ? 'MONTHLY' : undefined,
+          }
+        });
+
+        console.info('✅ [createOperatorFromPending] Perfil criado:', {
+          id: operator.id,
+          supabaseId: operator.supabaseId,
+          fullName: operator.fullName,
+          email: operator.email,
+          role: operator.role,
+          managerId: operator.managerId
+        });
+      } catch (error) {
+        console.error('❌ [createOperatorFromPending] Erro ao criar perfil no banco:', error);
+        console.error('Stack:', error instanceof Error ? error.stack : 'N/A');
+        return new Output(false, [], ['Erro ao criar perfil do operador'], null);
       }
-    });
 
-    console.info('✅ [createOperatorFromPending] Perfil criado:', {
-      id: operator.id,
-      supabaseId: operator.supabaseId,
-      fullName: operator.fullName,
-      email: operator.email,
-      role: operator.role,
-      managerId: operator.managerId
-    });
+      // 5. Atualizar status do operador pendente
+      console.info('🔄 [createOperatorFromPending] Atualizando PendingOperator...');
+      try {
+        await prisma.pendingOperator.update({
+          where: { id: pendingOperator.id },
+          data: {
+            operatorCreated: true,
+            operatorId: operator.id,
+            paymentStatus: 'CONFIRMED',
+          }
+        });
+        console.info('✅ [createOperatorFromPending] PendingOperator atualizado com sucesso');
+      } catch (error) {
+        console.error('❌ [createOperatorFromPending] Erro ao atualizar PendingOperator:', error);
+        // Não retorna erro pois o operador já foi criado
+      }
 
-    // 5. Atualizar status do operador pendente
-    console.info('🔄 [createOperatorFromPending] Atualizando PendingOperator...');
-    await prisma.pendingOperator.update({
-      where: { id: pendingOperator.id },
-      data: {
+      // 6. Incrementar contador de operadores no manager
+      console.info('📊 [createOperatorFromPending] Incrementando contador do manager...');
+      try {
+        await prisma.profile.update({
+          where: { id: pendingOperator.managerId },
+          data: {
+            operatorCount: {
+              increment: 1
+            }
+          }
+        });
+        console.info('✅ [createOperatorFromPending] Contador do manager incrementado');
+      } catch (error) {
+        console.error('❌ [createOperatorFromPending] Erro ao incrementar contador:', error);
+        // Não retorna erro pois o operador já foi criado
+      }
+
+      const result: SubscriptionUpgradeResult = {
+        paymentId,
+        paymentStatus: 'CONFIRMED',
+        paymentMethod: pendingOperator.paymentMethod,
         operatorCreated: true,
         operatorId: operator.id,
-        paymentStatus: 'CONFIRMED',
-      }
-    });
+      };
 
-    // 6. Incrementar contador de operadores no manager
-    console.info('📊 [createOperatorFromPending] Incrementando contador do manager...');
-    await prisma.profile.update({
-      where: { id: pendingOperator.managerId },
-      data: {
-        operatorCount: {
-          increment: 1
-        }
-      }
-    });
+      console.info('🎉 [createOperatorFromPending] SUCESSO! Operador criado:', result);
 
-    const result: SubscriptionUpgradeResult = {
-      paymentId,
-      paymentStatus: 'CONFIRMED',
-      paymentMethod: pendingOperator.paymentMethod,
-      operatorCreated: true,
-      operatorId: operator.id,
-    };
-
-    console.info('🎉 [createOperatorFromPending] SUCESSO! Operador criado:', result);
-
-    return new Output(
-      true,
-      ['Pagamento confirmado e operador criado com sucesso!'],
-      [],
-      result
-    );
+      return new Output(
+        true,
+        ['Pagamento confirmado e operador criado com sucesso!'],
+        [],
+        result
+      );
+    } catch (error) {
+      console.error('❌ [createOperatorFromPending] ERRO CRÍTICO NÃO TRATADO:', error);
+      console.error('Stack:', error instanceof Error ? error.stack : 'N/A');
+      console.error('PendingOperator:', {
+        id: pendingOperator.id,
+        email: pendingOperator.email,
+        managerId: pendingOperator.managerId
+      });
+      return new Output(false, [], ['Erro crítico ao processar operador'], null);
+    }
   }
 
   /**
@@ -516,6 +603,9 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       return {
         success: true,
         status: payment.status,
+        externalReference: payment.externalReference,
+        value: payment.value,
+        billingType: payment.billingType,
       };
     } catch (error: any) {
       console.error('[Asaas] Erro ao verificar status:', error);
