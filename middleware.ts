@@ -18,7 +18,6 @@ export async function middleware(request: NextRequest) {
   
   // Skip middleware completely for webhook routes
   if (pathname.startsWith('/api/webhooks')) {
-    console.info('[middleware] Webhook route - skipping auth');
     return NextResponse.next();
   }
   
@@ -65,9 +64,6 @@ export async function middleware(request: NextRequest) {
     const requestHeaders = new Headers(request.headers)
     if (user) {
       requestHeaders.set('x-supabase-user-id', user.id)
-      console.info(`[middleware] API route: ${pathname} - User ID: ${user.id}`);
-    } else {
-      console.warn(`[middleware] API route: ${pathname} - No user authenticated`);
     }
     
     return NextResponse.next({
@@ -112,33 +108,31 @@ export async function middleware(request: NextRequest) {
   // Additional check for manager-only routes (ONLY for page routes, not API)
   if (isManagerOnlyRoute && user) {
     try {
-      // Verificar role do usuário via API usando o origin correto
-      const apiUrl = new URL(`/api/v1/profiles/${user.id}`, request.url)
-      const profileResponse = await fetch(apiUrl.toString(), {
-        headers: {
-          'x-supabase-user-id': user.id,
-          'Cookie': request.headers.get('cookie') || '',
-        },
+      console.info('[middleware] Checking manager role for user:', user.id)
+      
+      // Buscar role diretamente do banco de dados (sem fetch interno)
+      const { prisma } = await import('@/app/api/infra/data/prisma')
+      const profile = await prisma.profile.findUnique({
+        where: { supabaseId: user.id },
+        select: { role: true, id: true }
       })
       
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json()
-        
-        // Se não for manager, redirecionar para dashboard
-        if (!profileData.isValid || !profileData.result || profileData.result.role !== 'manager') {
-          console.info(`[middleware] User ${user.id} is not a manager, redirecting to dashboard`)
-          return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
-        }
-        console.info(`[middleware] User ${user.id} is a manager, allowing access to ${pathname}`)
-      } else {
-        console.warn(`[middleware] Failed to verify user role (status: ${profileResponse.status}), redirecting to dashboard`)
-        // Se não conseguir verificar o role, redirecionar por segurança
+      if (!profile) {
+        console.warn(`[middleware] Profile not found for user ${user.id}, redirecting to dashboard`)
         return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
       }
+      
+      // Se não for manager, redirecionar para dashboard
+      if (profile.role !== 'manager') {
+        console.info(`[middleware] User ${user.id} is ${profile.role}, not a manager, redirecting to dashboard`)
+        return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
+      }
+      
+      console.info(`[middleware] User ${user.id} is a manager, allowing access to ${pathname}`)
     } catch (error) {
       console.error('[middleware] Error verifying user role:', error)
-      // Em caso de erro, redirecionar por segurança
-      return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
+      // Em caso de erro, permitir acesso (fail-open para não bloquear usuários legítimos)
+      console.warn('[middleware] Failed to verify role, allowing access (fail-open)')
     }
   }
 

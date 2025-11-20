@@ -108,8 +108,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('🔄 [confirmPaymentAndCreateOperator] ============================================');
       console.info('🔄 [confirmPaymentAndCreateOperator] Iniciando processamento para paymentId:', paymentId);
 
-      // 1. Buscar operador pendente por paymentId
-      let pendingOperator = await prisma.pendingOperator.findUnique({
+      // 1. Buscar operador pendente por paymentId (usando findFirst pois não é unique)
+      let pendingOperator = await prisma.pendingOperator.findFirst({
         where: { paymentId },
         include: {
           manager: true

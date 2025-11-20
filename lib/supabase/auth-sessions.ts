@@ -13,7 +13,6 @@ export async function updateSession(request: NextRequest) {
 
   const env = getSupabaseEnv();
   if (!env) {
-    if (isDev) console.warn("[middleware] Supabase env vars ausentes; ignorando atualização de sessão.");
     return { supabase: null, response, user: null };
   }
 
@@ -37,16 +36,12 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  if (isDev) console.info("[middleware] Fetching user from Supabase")
   const {
     data: { user },
     error: userError,
   } = await supabase.auth.getUser();
 
   if (userError && isDev) console.error("[middleware] Error fetching user:", userError)
-
-  if (user && isDev) console.info("[middleware] User found:", { id: user.id, email: user.email })
-  if (!user && isDev) console.info("[middleware] No user found")
 
   return {
     supabase,
