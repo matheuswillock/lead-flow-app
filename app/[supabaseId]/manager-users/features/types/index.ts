@@ -11,6 +11,14 @@ export interface ManagerUser {
   leadsCount?: number; // Contador de leads
   createdAt: Date;
   updatedAt: Date;
+  isPending?: boolean; // Indica se é um operador pendente
+  pendingPayment?: {
+    id: string;
+    paymentId: string;
+    paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED';
+    paymentMethod: 'PIX' | 'CREDIT_CARD' | 'UNDEFINED';
+    operatorCreated: boolean;
+  };
 }
 
 export interface PendingOperator {
@@ -42,7 +50,7 @@ export interface OperatorPaymentData {
 export interface ManagerUserTableRow extends ManagerUser {
   canEdit: boolean;
   canDelete: boolean;
-  status: 'active' | 'pending_payment' | 'payment_failed';
+  status: 'active' | 'pending_payment' | 'payment_confirmed' | 'payment_failed' | 'pending_creation';
   pendingPayment?: PendingOperator;
 }
 

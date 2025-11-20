@@ -191,13 +191,32 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
   }, [supabaseId, loadUsers]);
 
   // Preparar dados da tabela com permissões
-  const tableData: ManagerUserTableRow[] = state.users.map(user => ({
-    ...user,
-    canEdit: permissions.canEditUser && managerUsersService.canEditUser(supabaseId, user.id, user.role),
-    canDelete: permissions.canDeleteUser && (user.id !== supabaseId), // Não pode deletar a si mesmo
-    status: 'active' as const, // TODO: Verificar pendingOperators no futuro
-    pendingPayment: undefined
-  }));
+  const tableData: ManagerUserTableRow[] = state.users.map(user => {
+    // Determinar status baseado em isPending e pendingPayment
+    let status: ManagerUserTableRow['status'] = 'active';
+    
+    if (user.isPending && user.pendingPayment) {
+      const { paymentStatus, operatorCreated } = user.pendingPayment;
+      
+      if (paymentStatus === 'PENDING') {
+        status = 'pending_payment';
+      } else if (paymentStatus === 'CONFIRMED' && !operatorCreated) {
+        status = 'pending_creation';
+      } else if (paymentStatus === 'CONFIRMED' && operatorCreated) {
+        status = 'payment_confirmed';
+      } else if (paymentStatus === 'FAILED') {
+        status = 'payment_failed';
+      }
+    }
+    
+    return {
+      ...user,
+      canEdit: permissions.canEditUser && managerUsersService.canEditUser(supabaseId, user.id, user.role) && !user.isPending,
+      canDelete: permissions.canDeleteUser && (user.id !== supabaseId) && !user.isPending,
+      status,
+      pendingPayment: user.pendingPayment
+    };
+  });
 
   // Ações de UI
   const openCreateModal = useCallback(() => {
@@ -243,7 +262,53 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
   // Carregar dados no mount
   useEffect(() => {
     loadUsers();
+    
+    // Verificar se retornou do checkout com sucesso
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentSuccess = urlParams.get('payment');
+      const operatorId = urlParams.get('operatorId');
+      
+      if (paymentSuccess === 'success' && operatorId) {
+        toast.success('Pagamento em processamento! O operador será ativado após confirmação.', {
+          description: 'Você pode acompanhar o status na tabela abaixo.',
+          duration: 5000,
+        });
+        
+        // Limpar parâmetros da URL
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, '', cleanUrl);
+      }
+    }
   }, [loadUsers]);
+
+  // Auto-refresh a cada 10 segundos se houver operadores pendentes
+  useEffect(() => {
+    const hasPendingOperators = state.users.some(user => user.isPending);
+    
+    if (!hasPendingOperators) return;
+    
+    const intervalId = setInterval(() => {
+      console.log('🔄 Auto-refresh: Verificando status de operadores pendentes...');
+      loadUsers();
+    }, 10000); // 10 segundos
+    
+    return () => clearInterval(intervalId);
+  }, [state.users, loadUsers]);
+
+  // Auto-refresh a cada 10 segundos se houver operadores pendentes
+  useEffect(() => {
+    const hasPendingOperators = state.users.some(user => user.isPending);
+    
+    if (!hasPendingOperators) return;
+    
+    const intervalId = setInterval(() => {
+      console.log('🔄 Auto-refresh: Verificando status de operadores pendentes...');
+      loadUsers();
+    }, 10000); // 10 segundos
+    
+    return () => clearInterval(intervalId);
+  }, [state.users, loadUsers]);
 
   return {
     // Estado

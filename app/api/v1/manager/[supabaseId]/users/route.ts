@@ -159,11 +159,45 @@ export async function GET(
       const output = new Output(true, [], [], operators);
       return NextResponse.json(output, { status: 200 });
     } else {
-      // Return operators and include stats in metadata
+      // Return operators and pending operators with stats
       const operators = await managerUserRepository.getOperatorsByManager(requesterProfile.id);
       const stats = await managerUserRepository.getManagerStats(requesterProfile.id);
       
-      const output = new Output(true, [], [], operators);
+      // Buscar operadores pendentes (pagamento não confirmado)
+      const { prisma } = await import('../../../../infra/data/prisma');
+      const pendingOperators = await prisma.pendingOperator.findMany({
+        where: { 
+          managerId: requesterProfile.id,
+          operatorCreated: false,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      
+      // Mapear operadores pendentes para formato de tabela
+      const pendingAsUsers = pendingOperators.map(pending => ({
+        id: pending.id,
+        name: pending.name,
+        email: pending.email,
+        role: pending.role,
+        profileIconUrl: null,
+        managerId: requesterProfile.id,
+        leadsCount: 0,
+        createdAt: pending.createdAt,
+        updatedAt: pending.updatedAt,
+        isPending: true,
+        pendingPayment: {
+          id: pending.id,
+          paymentId: pending.paymentId,
+          paymentStatus: pending.paymentStatus,
+          paymentMethod: pending.paymentMethod,
+          operatorCreated: pending.operatorCreated,
+        },
+      }));
+      
+      // Combinar operadores ativos e pendentes
+      const allUsers = [...operators, ...pendingAsUsers];
+      
+      const output = new Output(true, [], [], allUsers);
       // Add stats to the response
       const responseWithStats = {
         ...output,

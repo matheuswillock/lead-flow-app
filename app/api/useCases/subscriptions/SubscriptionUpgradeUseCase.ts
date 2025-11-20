@@ -358,10 +358,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       // Gerar URLs de callback
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       
-      // Simplificar parâmetros - passar apenas pendingOperatorId
-      // Com o ID podemos buscar todos os dados no banco
+      // Simplificar parâmetros - redirecionar direto para manager-users
+      // O status do operador será exibido na tabela com badges
       const successParams = new URLSearchParams({
-        id: data.pendingOperatorId,
+        payment: 'success',
+        operatorId: data.pendingOperatorId,
       });
 
       // Criar checkout com redirecionamento automático
@@ -373,7 +374,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         description: data.description,
         externalReference: `pending-operator-${data.pendingOperatorId}`,
         callback: {
-          successUrl: `${appUrl}/operator-confirmed?${successParams.toString()}`,
+          successUrl: `${appUrl}/${data.managerId}/manager-users?${successParams.toString()}`,
         },
       };
 

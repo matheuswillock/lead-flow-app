@@ -156,17 +156,27 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
           active: { 
             label: "Ativo", 
             variant: "default" as const,
-            className: "bg-green-100 text-green-800 border-green-200"
+            className: "bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-200"
           },
           pending_payment: { 
             label: "Aguardando Pagamento", 
             variant: "secondary" as const,
-            className: "bg-yellow-100 text-yellow-800 border-yellow-200"
+            className: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900 dark:text-yellow-200 animate-pulse"
+          },
+          payment_confirmed: { 
+            label: "Pagamento Confirmado", 
+            variant: "secondary" as const,
+            className: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900 dark:text-blue-200"
+          },
+          pending_creation: { 
+            label: "Criando Conta...", 
+            variant: "secondary" as const,
+            className: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900 dark:text-purple-200 animate-pulse"
           },
           payment_failed: { 
             label: "Pagamento Falhou", 
             variant: "destructive" as const,
-            className: "bg-red-100 text-red-800 border-red-200"
+            className: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900 dark:text-red-200"
           }
         };
 
@@ -241,21 +251,29 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => onEdit(user)}
-                  className="flex items-center gap-2"
-                >
-                  <Pencil className="h-4 w-4" />
-                  Editar usuário
+              {user.status === 'active' ? (
+                <>
+                  <DropdownMenuItem
+                    onClick={() => onEdit(user)}
+                    className="flex items-center gap-2"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Editar usuário
+                  </DropdownMenuItem>
+                
+                  <DropdownMenuItem
+                    onClick={() => onDelete(user)}
+                    className="flex items-center gap-2 text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remover usuário
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <DropdownMenuItem disabled className="flex items-center gap-2 text-muted-foreground">
+                  Aguarde conclusão do pagamento
                 </DropdownMenuItem>
-              
-                <DropdownMenuItem
-                  onClick={() => onDelete(user)}
-                  className="flex items-center gap-2 text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Remover usuário
-                </DropdownMenuItem>
+              )}
               
             </DropdownMenuContent>
           </DropdownMenu>
