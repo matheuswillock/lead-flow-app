@@ -1,4 +1,4 @@
-import { GalleryVerticalEnd } from "lucide-react"
+import { GalleryVerticalEnd, Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator"
 import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData } from "@/lib/validations/validationForms"
 import { maskPhone, maskCPFOrCNPJ, unmask } from "@/lib/masks"
+import { useState } from "react"
 
 interface SignUpFormProps {
   form: UseFormReturn<signUpFormData>;
@@ -26,6 +27,8 @@ export function SignupForm({
   readonly = false,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignUpFormProps) {
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   return (
     <Form {...form}>
@@ -172,8 +175,31 @@ export function SignupForm({
                 <FormItem className="grid gap-2">
                   <FormLabel>Senha</FormLabel>
                   <FormControl>
-                    <Input type="password" {...field} className="border-2 border-gray-300 rounded-md p-2" />
+                    <div className="relative">
+                      <Input 
+                        type={showPassword ? "text" : "password"} 
+                        {...field} 
+                        className="border-2 border-gray-300 rounded-md p-2 pr-10" 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </FormControl>
+                  <div className="text-xs text-muted-foreground border border-muted rounded-md p-3 bg-muted/30 space-y-1">
+                    <p className="font-medium text-foreground mb-1">A senha deve conter:</p>
+                    <ul className="space-y-0.5 ml-1">
+                      <li>• Mínimo de 6 caracteres</li>
+                      <li>• Pelo menos uma letra maiúscula</li>
+                      <li>• Pelo menos uma letra minúscula</li>
+                      <li>• Pelo menos um número</li>
+                      <li>• Pelo menos um caractere especial (@, #, $, etc.)</li>
+                    </ul>
+                  </div>
                   <FormMessage className="text-red-500">{errors.password}</FormMessage>
                 </FormItem>
               )}
@@ -186,7 +212,20 @@ export function SignupForm({
                 <FormItem className="grid gap-2">
                   <FormLabel>Confirmar Senha</FormLabel>
                   <FormControl>
-                    <Input type="password" {...field} className="border-2 border-gray-300 rounded-md p-2" />
+                    <div className="relative">
+                      <Input 
+                        type={showConfirmPassword ? "text" : "password"} 
+                        {...field} 
+                        className="border-2 border-gray-300 rounded-md p-2 pr-10" 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.confirmPassword || errors.apiError}</FormMessage>
                 </FormItem>
@@ -201,7 +240,7 @@ export function SignupForm({
               {form.formState.isSubmitting || isLoading ? "Cadastrando..." : "Criar conta"}
             </Button>
           </div>
-          <div className="flex items-center gap-4">
+          {/* <div className="flex items-center gap-4">
             <Separator className="flex-1 shrink w-auto h-px bg-[var(--border)] opacity-60" />
             <span className="text-xs text-muted-foreground">Ou continue com</span>
             <Separator className="flex-1 shrink w-auto h-px bg-[var(--border)] opacity-60" />
@@ -216,7 +255,7 @@ export function SignupForm({
               </svg>
               Continuar com Google
             </Button>
-          </div>
+          </div> */}
         </div>
       </form>
     </Form>
