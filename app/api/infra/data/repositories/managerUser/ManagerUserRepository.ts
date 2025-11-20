@@ -60,12 +60,14 @@ export class ManagerUserRepository implements IManagerUserRepository {
         });
 
         console.info('📊 [getOperatorsByManager] Operadores encontrados:', operators.length);
-        console.info('👥 [getOperatorsByManager] Detalhes:', operators.map(op => ({
+        console.info('👥 [getOperatorsByManager] Detalhes RAW do Prisma:', JSON.stringify(operators, null, 2));
+        console.info('👥 [getOperatorsByManager] Detalhes simplificados:', operators.map(op => ({
             id: op.id,
             name: op.fullName,
             email: op.email,
             managerId: op.managerId,
-            leadsCount: op._count.leadsAsAssignee
+            leadsCount: op._count?.leadsAsAssignee ?? 0,
+            _countObject: op._count
         })));
 
         return operators.map(op => ({
@@ -75,7 +77,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
             role: 'operator' as const,
             profileIconUrl: op.profileIconUrl,
             managerId: op.managerId,
-            leadsCount: op._count.leadsAsAssignee, // Incluir contagem de leads
+            leadsCount: op._count?.leadsAsAssignee ?? 0, // Usar 0 como fallback
             createdAt: op.createdAt,
             updatedAt: op.updatedAt
         }));
