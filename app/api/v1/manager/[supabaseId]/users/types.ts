@@ -1,4 +1,4 @@
-// DTOs para os endpoints de Manager Operators
+// DTOs para os endpoints de Manager Users
 import { z } from "zod";
 import { UserRole } from "@prisma/client";
 

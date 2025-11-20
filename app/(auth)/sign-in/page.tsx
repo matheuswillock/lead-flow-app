@@ -60,7 +60,7 @@ function SignInInner() {
                   Pagamento realizado com sucesso!
                 </p>
                 <p className="text-sm text-green-800 dark:text-green-300">
-                  Faça login para acessar sua conta. Você receberá um email quando o pagamento for confirmado.
+                  Faça login para acessar sua conta.
                 </p>
               </div>
             </div>

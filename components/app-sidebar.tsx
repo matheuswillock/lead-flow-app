@@ -16,17 +16,18 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { NavUser } from "./nav-user"
-import { useUserRole } from "@/hooks/useUserRole"
+import { useUserContext } from "@/app/context/UserContext"
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
-  const { isManager } = useUserRole();
+  const { user } = useUserContext();
+  const isManager = user?.role === 'manager';
 
   const items = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "Board", url: `/${supabaseId}/board`, icon: KanbanSquare },
     { title: "Pipeline", url: `/${supabaseId}/pipeline`, icon: ChartBarBig },
     { 
-      title: "Manager operators", 
+      title: "Manager Users", 
       url: `/${supabaseId}/manager-users`, 
       icon: Users,
       managerOnly: true 

@@ -76,9 +76,6 @@ export interface ManagerUsersState {
   isCreateModalOpen: boolean;
   isEditModalOpen: boolean;
   isDeleteDialogOpen: boolean;
-  isPaymentDialogOpen: boolean;
-  pendingOperatorData: CreateManagerUserFormData | null;
-  currentPayment: OperatorPaymentData | null;
   stats?: {
     totalOperators: number;
     totalManagers: number;

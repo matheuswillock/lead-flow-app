@@ -89,10 +89,50 @@ export const UserProvider: React.FC<UserProviderProps> = ({
         // Prisma enum SubscriptionStatus: 'trial' | 'active' | 'past_due' | 'suspended' | 'canceled'
         // Regra de acesso: active, trial e past_due têm acesso; suspended/canceled não.
         const status = (output.result.subscriptionStatus || '').toString().toLowerCase();
-        const hasActive = !!(
-          output.result.subscriptionId && ['active', 'trial', 'past_due'].includes(status)
-        );
-        setHasActiveSubscription(hasActive);
+        
+        // Verificar se tem subscriptionId OU asaasCustomerId
+        const hasSubscriptionId = !!output.result.subscriptionId;
+        const hasCustomerId = !!output.result.asaasCustomerId;
+        
+        // Se tem subscriptionId, validar pelo status
+        if (hasSubscriptionId) {
+          const hasActive = ['active', 'trial', 'past_due'].includes(status);
+          setHasActiveSubscription(hasActive);
+        }
+        // Se não tem subscriptionId mas tem customerId, verificar no Asaas
+        else if (hasCustomerId && !hasSubscriptionId) {
+          console.info('🔍 [UserContext] Usuario tem customerId mas não tem subscriptionId. Verificando no Asaas...');
+          
+          // Chamar endpoint para sincronizar assinatura do Asaas
+          const syncResponse = await fetch(`/api/v1/subscriptions/sync/${supabaseId}`, {
+            method: 'POST',
+          });
+          
+          const syncOutput: Output = await syncResponse.json();
+          
+          if (syncOutput.isValid && syncOutput.result) {
+            // Atualizar user com dados sincronizados
+            setUser(syncOutput.result);
+            
+            const syncedStatus = (syncOutput.result.subscriptionStatus || '').toString().toLowerCase();
+            const hasActive = ['active', 'trial', 'past_due'].includes(syncedStatus);
+            setHasActiveSubscription(hasActive);
+            
+            console.info('✅ [UserContext] Assinatura sincronizada:', {
+              subscriptionId: syncOutput.result.subscriptionId,
+              status: syncOutput.result.subscriptionStatus,
+              hasActive
+            });
+          } else {
+            // Falha ao sincronizar, considerar sem assinatura ativa
+            setHasActiveSubscription(false);
+            console.warn('⚠️ [UserContext] Falha ao sincronizar assinatura do Asaas');
+          }
+        }
+        // Não tem nem subscriptionId nem customerId
+        else {
+          setHasActiveSubscription(false);
+        }
       } else {
         setError(output.errorMessages?.join(", ") || "Failed to fetch user data");
       }

@@ -27,9 +27,6 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     isCreateModalOpen: false,
     isEditModalOpen: false,
     isDeleteDialogOpen: false,
-    isPaymentDialogOpen: false,
-    pendingOperatorData: null,
-    currentPayment: null,
   });
 
   const [permissions] = useState<UserPermissions>({
@@ -83,16 +80,52 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     }
   }, [managerUsersService]);
 
-  // Criar usuário - sempre abre dialog de pagamento (R$ 19,90 por usuário adicional)
+  // Criar usuário - redireciona para checkout do Asaas (R$ 19,90 por usuário adicional)
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
-    // Tanto operator quanto manager precisam de pagamento (R$ 19,90 cada)
-    setState(prev => ({ 
-      ...prev, 
-      pendingOperatorData: userData,
-      isCreateModalOpen: false,
-      isPaymentDialogOpen: true
-    }));
-  }, []);
+    try {
+      setState(prev => ({ ...prev, loading: true }));
+
+      // Fechar modal
+      setState(prev => ({ ...prev, isCreateModalOpen: false }));
+
+      toast.loading("Gerando link de pagamento...");
+
+      // Chamar API para criar checkout
+      const response = await fetch('/api/v1/operators/add-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          managerId: supabaseId,
+          operatorData: {
+            name: userData.name,
+            email: userData.email,
+            role: userData.role || 'operator',
+          },
+          paymentMethod: 'UNDEFINED', // Permite escolher no checkout
+        }),
+      });
+
+      const result = await response.json();
+
+      toast.dismiss();
+
+      if (result.isValid && result.result?.checkoutUrl) {
+        toast.success("Redirecionando para checkout...");
+        
+        // Redirecionar para o checkout hospedado do Asaas
+        setTimeout(() => {
+          window.location.href = result.result.checkoutUrl;
+        }, 1000);
+      } else {
+        toast.error(result.errorMessages?.join(', ') || 'Erro ao gerar checkout');
+        setState(prev => ({ ...prev, loading: false }));
+      }
+    } catch (error) {
+      console.error("Erro ao criar checkout:", error);
+      toast.error("Erro ao gerar checkout");
+      setState(prev => ({ ...prev, loading: false }));
+    }
+  }, [supabaseId]);
 
   // Atualizar usuário
   const updateUser = useCallback(async (userId: string, userData: UpdateManagerUserFormData) => {
@@ -207,36 +240,6 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     }));
   }, []);
 
-  // Ações de pagamento
-  const openPaymentDialog = useCallback((operatorData: CreateManagerUserFormData) => {
-    setState(prev => ({ 
-      ...prev, 
-      pendingOperatorData: operatorData,
-      isPaymentDialogOpen: true 
-    }));
-  }, []);
-
-  const closePaymentDialog = useCallback(() => {
-    setState(prev => ({ 
-      ...prev, 
-      isPaymentDialogOpen: false,
-      pendingOperatorData: null,
-      currentPayment: null
-    }));
-  }, []);
-
-  const handlePaymentCreated = useCallback((paymentData: OperatorPaymentData) => {
-    setState(prev => ({ 
-      ...prev, 
-      currentPayment: paymentData
-    }));
-  }, []);
-
-  const handlePaymentConfirmed = useCallback(() => {
-    toast.success("Operador criado com sucesso!");
-    loadUsers(); // Recarregar lista
-  }, [loadUsers]);
-
   // Carregar dados no mount
   useEffect(() => {
     loadUsers();
@@ -261,9 +264,5 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     closeEditModal,
     openDeleteDialog,
     closeDeleteDialog,
-    openPaymentDialog,
-    closePaymentDialog,
-    handlePaymentCreated,
-    handlePaymentConfirmed,
   };
 }

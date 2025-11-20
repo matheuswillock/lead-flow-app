@@ -8,7 +8,7 @@ export const runtime = 'nodejs'
 const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users"]
 
 // Public routes that don't require authentication
-const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe", "/checkout-return"]
+const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe", "/checkout-return", "/operator-confirmed", "/pix-confirmed"]
 
 // Routes that require manager role
 const managerOnlyRoutes = ["/manager-users"]
@@ -112,10 +112,12 @@ export async function middleware(request: NextRequest) {
   // Additional check for manager-only routes (ONLY for page routes, not API)
   if (isManagerOnlyRoute && user) {
     try {
-      // Verificar role do usuário via API
-      const profileResponse = await fetch(`${request.nextUrl.origin}/api/v1/profiles/${user.id}`, {
+      // Verificar role do usuário via API usando o origin correto
+      const apiUrl = new URL(`/api/v1/profiles/${user.id}`, request.url)
+      const profileResponse = await fetch(apiUrl.toString(), {
         headers: {
           'x-supabase-user-id': user.id,
+          'Cookie': request.headers.get('cookie') || '',
         },
       })
       
@@ -124,14 +126,17 @@ export async function middleware(request: NextRequest) {
         
         // Se não for manager, redirecionar para dashboard
         if (!profileData.isValid || !profileData.result || profileData.result.role !== 'manager') {
+          console.info(`[middleware] User ${user.id} is not a manager, redirecting to dashboard`)
           return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
         }
+        console.info(`[middleware] User ${user.id} is a manager, allowing access to ${pathname}`)
       } else {
+        console.warn(`[middleware] Failed to verify user role (status: ${profileResponse.status}), redirecting to dashboard`)
         // Se não conseguir verificar o role, redirecionar por segurança
         return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
       }
     } catch (error) {
-      console.error('Erro ao verificar role do usuário:', error)
+      console.error('[middleware] Error verifying user role:', error)
       // Em caso de erro, redirecionar por segurança
       return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
     }

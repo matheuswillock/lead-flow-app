@@ -34,80 +34,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         return new Output(false, [], ['Manager não possui assinatura ativa'], null);
       }
 
-      // 2. Verificar se manager já possui assinatura master
-      // Se sim, apenas atualizar a assinatura ao invés de criar nova individual
-      if (manager.asaasSubscriptionId && manager.subscriptionNextDueDate) {
-        console.info('📋 [createOperatorPayment] Manager já possui assinatura master. Atualizando...');
-        
-        // Verificar email antes
-        const existingUser = await prisma.profile.findFirst({
-          where: { email: data.operatorData.email }
-        });
-
-        if (existingUser) {
-          return new Output(false, [], ['Email já está em uso'], null);
-        }
-
-        // Criar usuário primeiro
-        const userCreation = await this.createSupabaseUser(
-          data.operatorData.email,
-          data.operatorData.name
-        );
-
-        if (!userCreation.success) {
-          return new Output(
-            false,
-            [],
-            ['Falha ao criar usuário: ' + (userCreation.error || 'Erro desconhecido')],
-            null
-          );
-        }
-
-        // Criar perfil no banco
-        const profile = await prisma.profile.create({
-          data: {
-            supabaseId: userCreation.userId,
-            fullName: data.operatorData.name,
-            email: data.operatorData.email,
-            role: data.operatorData.role as 'operator' | 'manager',
-            managerId: manager.id,
-          }
-        });
-
-        console.info('✅ [createOperatorPayment] Usuário operador criado:', profile.id);
-
-        // Incrementar contador do manager
-        await prisma.profile.update({
-          where: { id: manager.id },
-          data: {
-            operatorCount: {
-              increment: 1
-            }
-          }
-        });
-
-        // Atualizar assinatura do manager
-        const updateResult = await this.updateManagerSubscription(manager.id);
-
-        if (!updateResult.isValid) {
-          console.warn('⚠️ [createOperatorPayment] Falha ao atualizar assinatura mas usuário foi criado');
-          // Usuário já foi criado, não retornar erro
-        }
-
-        return new Output(
-          true,
-          ['Operador criado com sucesso! Assinatura do manager atualizada.'],
-          [],
-          {
-            operatorId: profile.id,
-            operatorCreated: true,
-            subscriptionUpdated: updateResult.isValid,
-            subscriptionUpdate: updateResult.result
-          }
-        );
-      }
-
-      // 3. Verificar se email do operador já existe (legacy flow)
+      // 2. Verificar se email do operador já existe
       const existingUser = await prisma.profile.findFirst({
         where: { 
           email: data.operatorData.email
@@ -118,159 +45,52 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         return new Output(false, [], ['Email já está em uso'], null);
       }
 
-      // 4. Buscar cliente Asaas do manager
-      if (!manager.asaasCustomerId) {
-        return new Output(false, [], ['Cliente Asaas não encontrado'], null);
-      }
-
-      // 5. Criar assinatura recorrente no Asaas (R$ 19,90/mês por operador adicional)
-      const operatorPrice = 19.90;
-      const nextDueDate = new Date();
-      nextDueDate.setDate(nextDueDate.getDate() + 7); // Primeira cobrança em 7 dias
-
-      const subscriptionData: any = {
-        customer: manager.asaasCustomerId,
-        billingType: data.paymentMethod,
-        value: operatorPrice,
-        nextDueDate: nextDueDate.toISOString().split('T')[0], // Data da primeira cobrança
-        cycle: 'MONTHLY', // Cobrança mensal recorrente
-        description: `Assinatura operador: ${data.operatorData.name}`,
-        externalReference: `operator-${manager.id}-${Date.now()}`,
-      };
-
-      // Adicionar dados do cartão de crédito se for o método selecionado
-      if (data.paymentMethod === 'CREDIT_CARD') {
-        if (!data.creditCard || !data.creditCardHolderInfo) {
-          return new Output(false, [], ['Dados do cartão de crédito são obrigatórios'], null);
-        }
-
-        subscriptionData.creditCard = data.creditCard;
-        subscriptionData.creditCardHolderInfo = data.creditCardHolderInfo;
-        subscriptionData.remoteIp = data.remoteIp || '127.0.0.1';
-      }
-
-      const asaasSubscription = await this.createAsaasSubscription(subscriptionData);
-
-      if (!asaasSubscription.success) {
-        return new Output(false, [], [asaasSubscription.error || 'Erro ao criar assinatura'], null);
-      }
-
-      console.info('✅ [createOperatorPayment] Assinatura criada:', {
-        subscriptionId: asaasSubscription.subscriptionId,
-        status: asaasSubscription.status,
-        nextDueDate: asaasSubscription.nextDueDate
-      });
-
-      // Para cartão de crédito: cartão é validado na criação da assinatura
-      // Cobrança ocorrerá automaticamente no nextDueDate
-      if (data.paymentMethod === 'CREDIT_CARD') {
-        // Assinatura com cartão foi criada e validada com sucesso
-        // Criar usuário imediatamente pois a assinatura já está ativa
-        console.info('💳 [createOperatorPayment] Assinatura com cartão validada, criando usuário...');
-        
-        // Criar usuário Supabase imediatamente
-        const userCreation = await this.createSupabaseUser(
-          data.operatorData.email,
-          data.operatorData.name
-        );
-
-        if (!userCreation.success) {
-          console.error('❌ [createOperatorPayment] Falha ao criar usuário:', userCreation.error);
-          return new Output(
-            false,
-            [],
-            ['Assinatura criada mas falha ao criar usuário. Contate o suporte.'],
-            null
-          );
-        }
-
-        // Criar perfil no banco com subscriptionId
-        const profile = await prisma.profile.create({
-          data: {
-            supabaseId: userCreation.userId,
-            fullName: data.operatorData.name,
-            email: data.operatorData.email,
-            role: data.operatorData.role as 'operator' | 'manager',
-            managerId: manager.id,
-            asaasSubscriptionId: asaasSubscription.subscriptionId,
-            subscriptionNextDueDate: new Date(asaasSubscription.nextDueDate),
-            subscriptionCycle: 'MONTHLY',
-          }
-        });
-
-        console.info('✅ [createOperatorPayment] Usuário criado com assinatura:', profile.id);
-
-        // Retornar sucesso imediato
-        const result: SubscriptionUpgradeResult = {
-          paymentId: asaasSubscription.subscriptionId, // subscriptionId como referência
-          paymentStatus: 'CONFIRMED',
-          paymentMethod: data.paymentMethod,
-          dueDate: asaasSubscription.nextDueDate,
-          pixQrCode: undefined,
-          pixCopyPaste: undefined,
-          operatorCreated: true,
-        };
-
-        return new Output(
-          true,
-          ['Assinatura criada! Usuário ativado com sucesso. Primeira cobrança no cartão em ' + asaasSubscription.nextDueDate],
-          [],
-          result
-        );
-      }
-
-      // 5. Para PIX: Salvar dados temporários do operador no banco (pending)
-      // A assinatura foi criada mas aguarda pagamento da primeira cobrança
-      // Buscar a primeira cobrança gerada pela assinatura
-      const subscriptionPayments = await AsaasSubscriptionService.getSubscriptionPayments(
-        asaasSubscription.subscriptionId
-      );
-
-      if (!subscriptionPayments.data || subscriptionPayments.data.length === 0) {
-        return new Output(false, [], ['Erro: Nenhuma cobrança gerada para a assinatura'], null);
-      }
-
-      const firstPayment = subscriptionPayments.data[0];
-      const firstPaymentId = firstPayment.id;
-
-      // Buscar QR Code do PIX
-      const pixQrCode = await AsaasSubscriptionService.getPixQrCode(firstPaymentId);
-
+      // 3. Salvar dados temporários do operador no banco (pending)
       const pendingOperator = await prisma.pendingOperator.create({
         data: {
           managerId: manager.id,
           name: data.operatorData.name,
           email: data.operatorData.email,
           role: data.operatorData.role,
-          paymentId: firstPaymentId, // ID da primeira cobrança
-          subscriptionId: asaasSubscription.subscriptionId, // ID da assinatura
+          paymentId: 'pending', // Será atualizado após criação do checkout
+          subscriptionId: null,
           paymentStatus: 'PENDING',
           paymentMethod: data.paymentMethod,
         }
       });
 
-      console.info('💾 [createOperatorPayment] PendingOperator criado com assinatura:', {
-        id: pendingOperator.id,
-        subscriptionId: asaasSubscription.subscriptionId,
-        paymentId: firstPaymentId
+      console.info('💾 [createOperatorPayment] PendingOperator criado:', pendingOperator.id);
+
+      // 4. Gerar link de checkout hospedado do Asaas
+      const checkoutLink = await this.createAsaasCheckoutLink({
+        customer: manager.asaasCustomerId!,
+        value: 19.90,
+        description: `Assinatura operador: ${data.operatorData.name}`,
+        pendingOperatorId: pendingOperator.id,
+        managerId: manager.supabaseId,
+        operatorName: data.operatorData.name,
+        operatorEmail: data.operatorData.email,
       });
 
-      // 6. Preparar resultado para PIX com QR Code
-      const result: SubscriptionUpgradeResult = {
-        paymentId: firstPaymentId,
-        paymentStatus: 'PENDING',
-        paymentMethod: data.paymentMethod,
-        dueDate: asaasSubscription.nextDueDate,
-        pixQrCode: pixQrCode.encodedImage,
-        pixCopyPaste: pixQrCode.payload,
-        operatorCreated: false,
-      };
+      if (!checkoutLink.success) {
+        // Deletar pendingOperator se falhar
+        await prisma.pendingOperator.delete({
+          where: { id: pendingOperator.id }
+        });
+        return new Output(false, [], [checkoutLink.error || 'Erro ao criar checkout'], null);
+      }
 
+      console.info('✅ [createOperatorPayment] Checkout link criado:', checkoutLink.checkoutUrl);
+
+      // 5. Retornar link de checkout
       return new Output(
         true,
-        ['Assinatura criada com sucesso. Aguardando pagamento da primeira cobrança via PIX.'],
+        ['Checkout criado com sucesso'],
         [],
-        result
+        {
+          checkoutUrl: checkoutLink.checkoutUrl,
+          pendingOperatorId: pendingOperator.id,
+        }
       );
 
     } catch (error) {
@@ -515,6 +335,95 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
   }
 
   // ========== Métodos auxiliares ==========
+
+  /**
+   * Cria link de checkout hospedado no Asaas
+   */
+  private async createAsaasCheckoutLink(data: {
+    customer: string;
+    value: number;
+    description: string;
+    pendingOperatorId: string;
+    managerId: string;
+    operatorName: string;
+    operatorEmail: string;
+  }): Promise<any> {
+    try {
+      console.info('[Asaas] Criando checkout link com dados:', {
+        customer: data.customer,
+        value: data.value,
+        description: data.description,
+      });
+
+      // Gerar URLs de callback
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      
+      // Simplificar parâmetros - passar apenas pendingOperatorId
+      // Com o ID podemos buscar todos os dados no banco
+      const successParams = new URLSearchParams({
+        id: data.pendingOperatorId,
+      });
+
+      // Criar checkout com redirecionamento automático
+      const checkoutPayload = {
+        customer: data.customer,
+        billingType: 'UNDEFINED', // Permite escolher no checkout
+        value: data.value,
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 dias
+        description: data.description,
+        externalReference: `pending-operator-${data.pendingOperatorId}`,
+        callback: {
+          successUrl: `${appUrl}/operator-confirmed?${successParams.toString()}`,
+        },
+      };
+
+      // Criar payment link no Asaas
+      const payment = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/payments`, {
+        method: 'POST',
+        body: JSON.stringify(checkoutPayload),
+      });
+
+      console.info('[Asaas] Payment criado:', {
+        id: payment.id,
+        status: payment.status,
+        invoiceUrl: payment.invoiceUrl,
+      });
+
+      // Atualizar pendingOperator com paymentId
+      await prisma.pendingOperator.update({
+        where: { id: data.pendingOperatorId },
+        data: { paymentId: payment.id },
+      });
+
+      // Retornar URL do checkout
+      return {
+        success: true,
+        checkoutUrl: payment.invoiceUrl, // URL do checkout hospedado
+        paymentId: payment.id,
+      };
+    } catch (error: any) {
+      console.error('[Asaas] Erro ao criar checkout link:', {
+        message: error.message,
+        response: error.response,
+        status: error.status,
+      });
+
+      let errorMessage = 'Erro ao criar checkout';
+
+      if (error.response?.errors && Array.isArray(error.response.errors)) {
+        errorMessage = error.response.errors
+          .map((e: any) => e.description || e.message)
+          .join(', ');
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
 
   /**
    * Cria assinatura recorrente no Asaas

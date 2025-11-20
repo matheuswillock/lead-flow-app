@@ -17,7 +17,7 @@ export function SiteHeader() {
     pipeline: 'Pipeline',
     account: 'Account',
     subscription: 'Assinatura',
-    'manager-operators': 'Manager Operators',
+    'manager-users': 'Manager Users',
   }
   const currentTitle = titleMap[routeName] ?? 'Dashboard'
   return (

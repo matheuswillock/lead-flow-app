@@ -71,9 +71,19 @@ export function PaymentDialog({
             setPollingStatus('confirmed');
             toast.success('Pagamento confirmado! Operador criado com sucesso.');
             onPaymentConfirmed();
+            
+            // Redirecionar para página de confirmação
+            const confirmationUrl = new URLSearchParams({
+              status: 'confirmed',
+              name: operatorData?.name || '',
+              email: operatorData?.email || '',
+              paymentId: paymentData.paymentId,
+              supabaseId: managerId
+            });
+            
             setTimeout(() => {
-              onOpenChange(false);
-            }, 2000);
+              window.location.href = `/operator-confirmed?${confirmationUrl.toString()}`;
+            }, 1500);
           } else if (status === 'FAILED') {
             setPollingStatus('failed');
             toast.error('Pagamento falhou. Tente novamente.');
@@ -87,7 +97,7 @@ export function PaymentDialog({
     const interval = setInterval(checkPaymentStatus, 5000); // Check a cada 5 segundos
 
     return () => clearInterval(interval);
-  }, [paymentData?.paymentId, pollingStatus, onPaymentConfirmed, onOpenChange]);
+  }, [paymentData?.paymentId, pollingStatus, onPaymentConfirmed, operatorData, managerId]);
 
   const handleCreatePayment = async () => {
     if (!operatorData) return;
@@ -158,9 +168,19 @@ export function PaymentDialog({
             setPollingStatus('confirmed');
             toast.success('Pagamento aprovado! Usuário criado com sucesso.');
             onPaymentConfirmed();
+            
+            // Redirecionar para página de confirmação
+            const confirmationUrl = new URLSearchParams({
+              status: 'confirmed',
+              name: operatorData?.name || '',
+              email: operatorData?.email || '',
+              paymentId: result.result.paymentId,
+              supabaseId: managerId
+            });
+            
             setTimeout(() => {
-              onOpenChange(false);
-            }, 2000);
+              window.location.href = `/operator-confirmed?${confirmationUrl.toString()}`;
+            }, 1500);
           } else {
             // Cartão pode ter sido negado ou outro status
             setPollingStatus('failed');

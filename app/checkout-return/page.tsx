@@ -37,7 +37,7 @@ function CheckoutReturnContent() {
             <CheckCircle2 className="h-20 w-20 text-green-500 animate-pulse" />
           </div>
           <div className="space-y-2">
-            <CardTitle className="text-2xl font-bold">Pagamento Iniciado!</CardTitle>
+            <CardTitle className="text-2xl font-bold">Pagamento Realizado!</CardTitle>
             <CardDescription className="text-base">
               Estamos processando seu pagamento. Você receberá uma confirmação por email em breve.
             </CardDescription>
