@@ -34,6 +34,13 @@ export function useUpdateAccountForm(): UseFormReturn<updateAccountFormData> {
       fullName: "",
       email: "",
       phone: "",
+      cpfCnpj: "",
+      postalCode: "",
+      address: "",
+      addressNumber: "",
+      complement: "",
+      city: "",
+      state: "",
       password: "",
     },
   });

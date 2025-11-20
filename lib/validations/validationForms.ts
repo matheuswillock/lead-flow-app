@@ -83,6 +83,20 @@ export const updateAccountFormSchema = z.object({
     .string()
     .min(8, "Telefone inválido")
     .max(20, "Telefone inválido"),
+  cpfCnpj: z
+    .string()
+    .optional()
+    .refine((val) => {
+      if (!val) return true;
+      const numbers = val.replace(/\D/g, '');
+      return numbers.length === 11 || numbers.length === 14;
+    }, "CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos"),
+  postalCode: z.string().optional(),
+  address: z.string().optional(),
+  addressNumber: z.string().optional(),
+  complement: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
   password: z.string().min(0).optional()
     .refine((val) => !val || val.length >= 6, "A senha deve ter no mínimo 6 caracteres")
     .refine((val) => !val || val.length <= 50, "A senha deve ter no máximo 50 caracteres")

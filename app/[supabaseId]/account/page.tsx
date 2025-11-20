@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Upload, Camera } from "lucide-react";
+import { Upload, Camera, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,6 +18,8 @@ export default function AccountProfilePage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUploadingIcon, setIsUploadingIcon] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const form = useUpdateAccountForm();
   
@@ -35,6 +37,13 @@ export default function AccountProfilePage() {
         fullName: user.fullName || "",
         email: user.email || "",
         phone: user.phone || "",
+        cpfCnpj: user.cpfCnpj || "",
+        postalCode: user.postalCode || "",
+        address: user.address || "",
+        addressNumber: user.addressNumber || "",
+        complement: user.complement || "",
+        city: user.city || "",
+        state: user.state || "",
       });
     }
   }, [user, form]);
@@ -143,6 +152,34 @@ export default function AccountProfilePage() {
         updates.phone = data.phone;
         hasChanges = true;
       }
+      if (data.cpfCnpj !== (user?.cpfCnpj || "")) {
+        updates.cpfCnpj = data.cpfCnpj;
+        hasChanges = true;
+      }
+      if (data.postalCode !== (user?.postalCode || "")) {
+        updates.postalCode = data.postalCode;
+        hasChanges = true;
+      }
+      if (data.address !== (user?.address || "")) {
+        updates.address = data.address;
+        hasChanges = true;
+      }
+      if (data.addressNumber !== (user?.addressNumber || "")) {
+        updates.addressNumber = data.addressNumber;
+        hasChanges = true;
+      }
+      if (data.complement !== (user?.complement || "")) {
+        updates.complement = data.complement;
+        hasChanges = true;
+      }
+      if (data.city !== (user?.city || "")) {
+        updates.city = data.city;
+        hasChanges = true;
+      }
+      if (data.state !== (user?.state || "")) {
+        updates.state = data.state;
+        hasChanges = true;
+      }
 
       if (!hasChanges) {
         toast.info("Nenhuma alteração detectada");
@@ -180,7 +217,11 @@ export default function AccountProfilePage() {
       if (result.isValid) {
         toast.success("Senha atualizada com sucesso!");
         // Limpar os campos de senha
-        passwordForm.reset();
+        setPasswordForm({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: ""
+        });
       } else {
         toast.error(result.errorMessages?.join(", ") || "Erro ao atualizar senha");
       }
@@ -198,6 +239,13 @@ export default function AccountProfilePage() {
         fullName: user.fullName || "",
         email: user.email || "",
         phone: user.phone || "",
+        cpfCnpj: user.cpfCnpj || "",
+        postalCode: user.postalCode || "",
+        address: user.address || "",
+        addressNumber: user.addressNumber || "",
+        complement: user.complement || "",
+        city: user.city || "",
+        state: user.state || "",
       });
     }
   }
@@ -352,6 +400,13 @@ export default function AccountProfilePage() {
                       fullName: user?.fullName || "",
                       email: user?.email || "",
                       phone: user?.phone || "",
+                      cpfCnpj: user?.cpfCnpj || "",
+                      postalCode: user?.postalCode || "",
+                      address: user?.address || "",
+                      addressNumber: user?.addressNumber || "",
+                      complement: user?.complement || "",
+                      city: user?.city || "",
+                      state: user?.state || "",
                     }}
                   />
                 </TabsContent>
@@ -382,17 +437,23 @@ export default function AccountProfilePage() {
                         <div className="relative">
                           <input
                             id="newPassword"
-                            type="password"
+                            type={showNewPassword ? "text" : "password"}
                             placeholder="••••••••"
                             value={passwordForm.newPassword}
                             onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
-                            className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 pr-11 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isUpdating}
                           />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground hover:text-foreground transition-colors"
+                            aria-label={showNewPassword ? "Ocultar senha" : "Mostrar senha"}
+                            disabled={isUpdating}
+                          >
+                            {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          A senha deve ter pelo menos 6 caracteres, 1 número, 1 caractere especial e 1 maiúsculo.
-                        </p>
                       </div>
 
                       <div className="space-y-2">
@@ -402,14 +463,50 @@ export default function AccountProfilePage() {
                         <div className="relative">
                           <input
                             id="confirmPassword"
-                            type="password"
+                            type={showConfirmPassword ? "text" : "password"}
                             placeholder="••••••••"
                             value={passwordForm.confirmPassword}
                             onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                            className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 pr-11 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isUpdating}
                           />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground hover:text-foreground transition-colors"
+                            aria-label={showConfirmPassword ? "Ocultar senha" : "Mostrar senha"}
+                            disabled={isUpdating}
+                          >
+                            {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
                         </div>
+                      </div>
+
+                      {/* Requisitos da senha */}
+                      <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-2">
+                        <p className="text-sm font-medium text-foreground">Requisitos da senha:</p>
+                        <ul className="text-xs text-muted-foreground space-y-1 ml-1">
+                          <li className="flex items-start gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>Mínimo de 6 caracteres</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>Pelo menos 1 letra maiúscula (A-Z)</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>Pelo menos 1 letra minúscula (a-z)</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>Pelo menos 1 número (0-9)</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>Pelo menos 1 caractere especial (!@#$%^&*)</span>
+                          </li>
+                        </ul>
                       </div>
 
                       <div className="flex items-center justify-end gap-3 pt-2">

@@ -13,6 +13,13 @@ export interface UserData {
   supabaseId: string | null;
   fullName: string | null;
   phone: string | null;
+  cpfCnpj: string | null;
+  postalCode: string | null;
+  address: string | null;
+  addressNumber: string | null;
+  complement: string | null;
+  city: string | null;
+  state: string | null;
   profileIconId: string | null;
   profileIconUrl: string | null;
   role: UserRole;
