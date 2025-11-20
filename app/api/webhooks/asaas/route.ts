@@ -21,12 +21,12 @@ export async function POST(request: NextRequest) {
     console.info('🔑 [Webhook Asaas] Token esperado:', expectedToken ? 'configurado' : 'não configurado');
 
     // TEMPORÁRIO: Permitir sem token para debug
-    if (expectedToken && asaasToken && asaasToken !== expectedToken) {
+    if (asaasToken !== expectedToken) {
       console.warn('⚠️ [Webhook Asaas] Token inválido (mas permitindo para debug)');
-      // return NextResponse.json(
-      //   { error: 'Unauthorized' },
-      //   { status: 401 }
-      // );
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
     const body = await request.json();
@@ -97,6 +97,20 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error('❌ [Webhook Asaas] Erro ao processar pagamento de operador:', error);
         // Não bloquear o fluxo principal
+      }
+    }
+
+    // ATIVAR ASSINATURA APÓS PAGAMENTO CONFIRMADO (SIGN-UP FLOW)
+    if (result.isPaid && body?.payment?.subscription) {
+      try {
+        const { checkoutAsaasUseCase } = await import('@/app/api/useCases/subscriptions/CheckoutAsaasUseCase');
+        const activationResult = await checkoutAsaasUseCase.processCheckoutPaid(body.payment.id);
+        
+        if (activationResult.isValid) {
+          console.info('✅ [Webhook Asaas] Assinatura ativada após pagamento:', body.payment.subscription);
+        }
+      } catch (error) {
+        console.error('❌ [Webhook Asaas] Erro ao ativar assinatura:', error);
       }
     }
 

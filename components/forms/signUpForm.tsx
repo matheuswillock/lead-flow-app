@@ -7,7 +7,7 @@ import Link from "next/link"
 import { Separator } from "@/components/ui/separator"
 import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData } from "@/lib/validations/validationForms"
-import { maskPhone, unmask } from "@/lib/masks"
+import { maskPhone, maskCPFOrCNPJ, unmask } from "@/lib/masks"
 
 interface SignUpFormProps {
   form: UseFormReturn<signUpFormData>;
@@ -136,6 +136,31 @@ export function SignupForm({
                     />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.phone}</FormMessage>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="cpfCnpj"
+              render={({ field }) => (
+                <FormItem className="grid gap-2">
+                  <FormLabel>CPF ou CNPJ</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="000.000.000-00 ou 00.000.000/0000-00" 
+                      {...field}
+                      value={maskCPFOrCNPJ(field.value || '')}
+                      onChange={(e) => {
+                        const masked = maskCPFOrCNPJ(e.target.value);
+                        const unmasked = unmask(masked);
+                        field.onChange(unmasked);
+                      }}
+                      className="border-2 border-gray-300 rounded-md p-2"
+                      disabled={readonly}
+                    />
+                  </FormControl>
+                  <FormMessage className="text-red-500">{errors.cpfCnpj}</FormMessage>
                 </FormItem>
               )}
             />

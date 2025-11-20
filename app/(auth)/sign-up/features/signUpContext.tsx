@@ -58,10 +58,10 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
         password: data.password,
         fullname: data.fullName,
         phone: data.phone,
+        cpfCnpj: data.cpfCnpj, // Campo do formulário
         // Campos opcionais (preenchidos quando veio do fluxo de assinatura)
         asaasCustomerId: (data as any).asaasCustomerId,
         subscriptionId: (data as any).subscriptionId,
-        cpfCnpj: (data as any).cpfCnpj,
         subscriptionStatus: (data as any).subscriptionStatus,
         subscriptionPlan: (data as any).subscriptionPlan,
         role: (data as any).role,

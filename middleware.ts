@@ -8,7 +8,7 @@ export const runtime = 'nodejs'
 const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users"]
 
 // Public routes that don't require authentication
-const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe"]
+const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe", "/checkout-return"]
 
 // Routes that require manager role
 const managerOnlyRoutes = ["/manager-users"]

@@ -25,25 +25,52 @@ export function SignUpFormContainer() {
         const result = await registerUser(data);
 
         if (result.isValid && result.result?.supabaseId) {
-            // Novo fluxo: sempre redirecionar para página de assinatura
+            // Novo fluxo: criar checkout Asaas e redirecionar
             toast.success('Cadastro concluído', {
-                description: 'Agora escolha seu plano e finalize sua assinatura.',
-                duration: 5000,
+                description: 'Criando sua assinatura...',
+                duration: 3000,
             });
-            
-            // Armazenar dados para prefill na página de assinatura
+
             try {
-                const prefill = {
-                    fullName: data.fullName,
-                    email: data.email,
-                    phone: data.phone,
-                };
-                sessionStorage.setItem('subscribePrefill', JSON.stringify(prefill));
-            } catch (_) {/* ignore */}
-            
-            setTimeout(() => {
-                window.location.href = `/subscribe`;
-            }, 900);
+                // Chamar API para criar checkout
+                const checkoutResponse = await fetch('/api/v1/checkout/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        supabaseId: result.result.supabaseId,
+                        fullName: data.fullName,
+                        email: data.email,
+                        phone: data.phone,
+                        cpfCnpj: data.cpfCnpj,
+                    }),
+                });
+
+                const checkoutResult = await checkoutResponse.json();
+
+                if (checkoutResult.isValid && checkoutResult.result?.checkoutUrl) {
+                    toast.success('Redirecionando para pagamento', {
+                        description: 'Você será redirecionado para finalizar sua assinatura.',
+                        duration: 2000,
+                    });
+
+                    // Aguardar toast aparecer
+                    setTimeout(() => {
+                        // Redirecionar para checkout Asaas
+                        window.location.href = checkoutResult.result.checkoutUrl;
+                    }, 1500);
+                } else {
+                    toast.error('Erro ao criar checkout', {
+                        description: checkoutResult.errorMessages?.join(', ') || 'Tente novamente.',
+                        duration: 5000,
+                    });
+                }
+            } catch (error) {
+                console.error('❌ [SignUpFormContainer] Erro ao criar checkout:', error);
+                toast.error('Erro ao processar assinatura', {
+                    description: 'Entre em contato com o suporte.',
+                    duration: 5000,
+                });
+            }
         }
         // Os erros já são gerenciados pelo context
     }
