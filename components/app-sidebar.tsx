@@ -48,7 +48,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                             style={{ background: "var(--primary)" }}
                             aria-hidden
                         />
-                        <span className="text-base font-semibold">Lead flow</span>
+                        <span className="text-base font-semibold">Corretor Studio</span>
                     </a>
                 </SidebarMenuButton>
             </SidebarMenuItem>

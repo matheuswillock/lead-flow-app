@@ -161,7 +161,7 @@ export function SubscriptionContainer() {
           </Link>
           
           <h1 className="text-3xl font-bold tracking-tight">
-            Assine o Lead Flow
+            Assine o Corretor Studio
           </h1>
           <p className="mt-2 text-muted-foreground">
             Comece a gerenciar seus leads de forma profissional

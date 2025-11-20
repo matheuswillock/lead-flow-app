@@ -12,7 +12,7 @@ export function LandingHeader() {
                         style={{ background: "var(--primary)" }}
                         aria-hidden
                     />
-                    <span>Lead Flow</span>
+                    <span>Corretor Studio</span>
                 </Link>
 
                 <Button

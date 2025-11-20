@@ -46,11 +46,11 @@ export function SignupForm({
               <div className="flex h-8 w-8 items-center justify-center rounded-md">
                 <GalleryVerticalEnd className="size-6" />
               </div>
-              <span className="sr-only">Lead Flow</span>
+              <span className="sr-only">Corretor Studio</span>
             </Link>
             <h1 className="text-xl font-bold">Criar conta</h1>
             <p className="text-center text-sm text-muted-foreground max-w-sm">
-              Crie sua conta para começar a usar o Lead Flow
+              Crie sua conta para começar a usar o Corretor Studio
             </p>
             <div className="text-center text-sm">
               Já tem uma conta? 

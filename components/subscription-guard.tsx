@@ -49,7 +49,7 @@ export function SubscriptionGuard({ children, hasActiveSubscription, isLoading }
           <CardContent className="space-y-4">
             <div className="space-y-2 text-sm text-muted-foreground text-center">
               <p>
-                Para desbloquear todas as funcionalidades do Lead Flow, você precisa de uma assinatura ativa.
+                Para desbloquear todas as funcionalidades do Corretor Studio, você precisa de uma assinatura ativa.
               </p>
               <p className="font-semibold text-foreground">
                 Assine agora e tenha acesso completo!

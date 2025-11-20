@@ -66,7 +66,7 @@ export function HowItWorksSection() {
                 color: "transparent",
               }}
             >
-              Lead Flow
+              Corretor Studio
             </span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">

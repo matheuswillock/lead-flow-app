@@ -144,7 +144,7 @@ export default function Home() {
       <footer className="relative border-t" style={{ borderColor: "var(--border)" }}>
         <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
-            <p>© {new Date().getFullYear()} Lead Flow. Todos os direitos reservados.</p>
+            <p>© {new Date().getFullYear()} Corretor Studio. Todos os direitos reservados.</p>
             <div className="flex items-center gap-2">
               <span>Made with</span>
               <HeartIcon style={{ color: "var(--primary)" }} />

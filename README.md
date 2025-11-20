@@ -1,4 +1,4 @@
-# 🚀 Lead Flow
+# 🚀 Corretor Studio
 
 > Sistema de gestão de leads inteligente para corretores de planos de saúde
 
@@ -10,7 +10,7 @@
 
 ## 📋 Sobre o Projeto
 
-O **Lead Flow** é uma plataforma moderna e elegante desenvolvida para otimizar o fluxo de trabalho de corretores de planos de saúde. Combina funcionalidades de CRM com uma interface intuitiva em formato Kanban, permitindo o gerenciamento eficiente de leads desde a captação até o fechamento.
+O **Corretor Studio** é uma plataforma moderna e elegante desenvolvida para otimizar o fluxo de trabalho de corretores de planos de saúde. Combina funcionalidades de CRM com uma interface intuitiva em formato Kanban, permitindo o gerenciamento eficiente de leads desde a captação até o fechamento.
 
 ### ✨ Características Principais
 

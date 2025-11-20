@@ -45,7 +45,7 @@ export function NavUser({
     name: user.fullName || "Usuário",
     email: user.email,
     avatar: user.profileIconUrl ?? `https://avatar.vercel.sh/${user.email}.png`,
-    initials: getInitials(user.fullName || "Lead Flow"),
+    initials: getInitials(user.fullName || "Corretor Studio"),
   } : {
     name: "Carregando...",
     email: "carregando@example.com",

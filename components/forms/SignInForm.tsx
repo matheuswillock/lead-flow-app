@@ -44,7 +44,7 @@ export function SignInForm({
               <div className="flex h-8 w-8 items-center justify-center rounded-md">
                 <GalleryVerticalEnd className="size-6" />
               </div>
-              <span className="sr-only">Lead Flow</span>
+              <span className="sr-only">Corretor Studio</span>
             </Link>
             {fromSubscribe && (
               <>
@@ -68,7 +68,7 @@ export function SignInForm({
                 </TooltipProvider> */}
               </>
             )}
-            <h1 className="text-xl font-bold">Welcome to Lead Flow.</h1>
+            <h1 className="text-xl font-bold">Bem-vindo ao Corretor Studio</h1>
             {fromSubscribe && (
               <p className="text-center text-sm text-muted-foreground max-w-sm">
                 Para assinar a plataforma, entre com sua conta. Se ainda não tiver uma, crie seu cadastro para seguir para a assinatura.

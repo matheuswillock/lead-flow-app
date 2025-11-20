@@ -94,7 +94,7 @@ export function PricingSection() {
             </div>
 
             <div className="text-center mb-8">
-              <h3 className="text-3xl font-bold mb-2">Lead Flow Professional</h3>
+              <h3 className="text-3xl font-bold mb-2">Corretor Studio Professional</h3>
               <p className="text-muted-foreground">
                 Tudo que você precisa para gerenciar seu time de vendas
               </p>
