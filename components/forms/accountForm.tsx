@@ -18,6 +18,7 @@ interface AccountFormProps {
   onCancel?: () => void;
   className?: string;
   initialData?: updateAccountFormData;
+  showPasswordField?: boolean;
 }
 
 export function AccountForm({
@@ -28,6 +29,7 @@ export function AccountForm({
   isUpdating = false,
   onCancel,
   initialData,
+  showPasswordField = false,
 }: AccountFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -41,10 +43,10 @@ export function AccountForm({
       watchedValues.fullName !== initialData.fullName ||
       watchedValues.email !== initialData.email ||
       watchedValues.phone !== initialData.phone ||
-      Boolean(watchedValues.password && watchedValues.password.length > 0);
+      (showPasswordField && Boolean(watchedValues.password && watchedValues.password.length > 0));
 
     setHasChanges(hasFormChanges);
-  }, [watchedValues, initialData]);
+  }, [watchedValues, initialData, showPasswordField]);
 
   const isFormValid = form.formState.isValid;
   
@@ -126,39 +128,41 @@ export function AccountForm({
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem className="space-y-2">
-              <FormLabel>Nova Senha (opcional)</FormLabel>
-              <FormControl>
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    autoComplete="new-password"
-                    className="h-11 pr-12"
-                    disabled={isLoading || isUpdating}
-                    {...field}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground hover:text-foreground"
-                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                  >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                  </button>
-                </div>
-              </FormControl>
-              <FormMessage />
-              <p className="text-xs text-muted-foreground">
-                A senha deve ter pelo menos 6 caracteres, 1 número, 1 caractere especial e 1 maiúsculo.
-              </p>
-            </FormItem>
-          )}
-        />
+        {showPasswordField && (
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Nova Senha (opcional)</FormLabel>
+                <FormControl>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      className="h-11 pr-12"
+                      disabled={isLoading || isUpdating}
+                      {...field}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground hover:text-foreground"
+                      aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    >
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
+                </FormControl>
+                <FormMessage />
+                <p className="text-xs text-muted-foreground">
+                  A senha deve ter pelo menos 6 caracteres, 1 número, 1 caractere especial e 1 maiúsculo.
+                </p>
+              </FormItem>
+            )}
+          />
+        )}
 
         <div className="flex items-center justify-end gap-3">
           <Button 
