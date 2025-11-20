@@ -143,7 +143,7 @@ export function HowItWorksSection() {
             </p>
             <a
               href="/subscribe"
-              className="inline-flex items-center justify-center rounded-xl px-6 py-3 font-semibold shadow-lg transition-all hover:shadow-xl"
+              className="cursor-pointer inline-flex items-center justify-center rounded-xl px-6 py-3 font-semibold shadow-lg transition-all hover:shadow-xl"
               style={{
                 background: "var(--primary)",
                 color: "var(--primary-foreground)",

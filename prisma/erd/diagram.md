@@ -94,6 +94,9 @@ with_operators with_operators
     DateTime subscriptionStartDate "❓"
     DateTime subscriptionEndDate "❓"
     DateTime trialEndDate "❓"
+    String asaasSubscriptionId "❓"
+    DateTime subscriptionNextDueDate "❓"
+    String subscriptionCycle "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -163,7 +166,8 @@ with_operators with_operators
     String name 
     String email 
     String role 
-    String paymentId 
+    String paymentId "❓"
+    String subscriptionId "❓"
     String paymentStatus 
     String paymentMethod 
     Boolean operatorCreated 

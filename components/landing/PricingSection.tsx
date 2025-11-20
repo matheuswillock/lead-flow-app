@@ -152,7 +152,7 @@ export function PricingSection() {
             <div className="text-center">
               <Link
                 href="/sign-up"
-                className="inline-flex items-center justify-center rounded-xl px-8 py-4 text-lg font-semibold shadow-xl transition-all hover:shadow-2xl hover:scale-105"
+                className="cursor-pointer inline-flex items-center justify-center rounded-xl px-8 py-4 text-lg font-semibold shadow-xl transition-all hover:shadow-2xl hover:scale-105"
                 style={{
                   background: "var(--primary)",
                   color: "var(--primary-foreground)",

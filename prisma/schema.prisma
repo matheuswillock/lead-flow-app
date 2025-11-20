@@ -102,30 +102,33 @@ enum SubscriptionPlan {
 // -----------------------------
 
 model Profile {
-  id                    String              @id @unique @default(uuid()) @db.Uuid
-  email                 String              @unique @db.Text
-  supabaseId            String?             @unique @db.Uuid
-  fullName              String?             @db.Text
-  phone                 String?             @db.Text
-  cpfCnpj               String?             @db.Text
-  postalCode            String?             @db.Text
-  address               String?             @db.Text
-  addressNumber         String?             @db.Text
-  complement            String?             @db.Text
-  city                  String?             @db.Text
-  state                 String?             @db.Text
-  profileIconId         String?             @db.Text
-  profileIconUrl        String?             @db.Text
-  role                  UserRole            @default(manager)
-  managerId             String?             @db.Uuid
-  asaasCustomerId       String?             @db.Text
-  subscriptionId        String?             @db.Text
-  subscriptionStatus    SubscriptionStatus?
-  subscriptionPlan      SubscriptionPlan?
-  operatorCount         Int                 @default(0)
-  subscriptionStartDate DateTime?           @db.Timestamptz(6)
-  subscriptionEndDate   DateTime?           @db.Timestamptz(6)
-  trialEndDate          DateTime?           @db.Timestamptz(6)
+  id                       String              @id @unique @default(uuid()) @db.Uuid
+  email                    String              @unique @db.Text
+  supabaseId               String?             @unique @db.Uuid
+  fullName                 String?             @db.Text
+  phone                    String?             @db.Text
+  cpfCnpj                  String?             @db.Text
+  postalCode               String?             @db.Text
+  address                  String?             @db.Text
+  addressNumber            String?             @db.Text
+  complement               String?             @db.Text
+  city                     String?             @db.Text
+  state                    String?             @db.Text
+  profileIconId            String?             @db.Text
+  profileIconUrl           String?             @db.Text
+  role                     UserRole            @default(manager)
+  managerId                String?             @db.Uuid
+  asaasCustomerId          String?             @db.Text
+  subscriptionId           String?             @db.Text
+  subscriptionStatus       SubscriptionStatus?
+  subscriptionPlan         SubscriptionPlan?
+  operatorCount            Int                 @default(0)
+  subscriptionStartDate    DateTime?           @db.Timestamptz(6)
+  subscriptionEndDate      DateTime?           @db.Timestamptz(6)
+  trialEndDate             DateTime?           @db.Timestamptz(6)
+  asaasSubscriptionId      String?             @db.Text // ID da assinatura no Asaas
+  subscriptionNextDueDate  DateTime?           @db.Timestamptz(6) // Próxima data de vencimento
+  subscriptionCycle        String?             @db.Text // MONTHLY, QUARTERLY, etc
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -281,24 +284,26 @@ model LeadAttachment {
 // PENDING OPERATOR (Operador aguardando pagamento)
 // -----------------------------
 model PendingOperator {
-  id              String   @id @default(uuid()) @db.Uuid
-  managerId       String   @db.Uuid
-  name            String   @db.Text
-  email           String   @db.Text
-  role            String   @db.Text // "operator" geralmente
-  paymentId       String   @unique @db.Text // ID do pagamento no Asaas
-  paymentStatus   String   @db.Text // PENDING, CONFIRMED, FAILED
-  paymentMethod   String   @db.Text // PIX, CREDIT_CARD
-  operatorCreated Boolean  @default(false)
-  operatorId      String?  @db.Uuid // ID do operador criado (quando confirmado)
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+  id                 String   @id @default(uuid()) @db.Uuid
+  managerId          String   @db.Uuid
+  name               String   @db.Text
+  email              String   @db.Text
+  role               String   @db.Text // "operator" geralmente
+  paymentId          String?  @db.Text // ID do pagamento no Asaas (opcional para assinaturas)
+  subscriptionId     String?  @db.Text // ID da assinatura no Asaas
+  paymentStatus      String   @db.Text // PENDING, CONFIRMED, FAILED
+  paymentMethod      String   @db.Text // PIX, CREDIT_CARD
+  operatorCreated    Boolean  @default(false)
+  operatorId         String?  @db.Uuid // ID do operador criado (quando confirmado)
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(6)
 
   // Relations
   manager Profile @relation("PendingOperatorManager", fields: [managerId], references: [id], onDelete: Cascade)
 
   @@index([managerId])
   @@index([paymentId])
+  @@index([subscriptionId])
   @@index([email])
   @@map("pending_operators")
 }

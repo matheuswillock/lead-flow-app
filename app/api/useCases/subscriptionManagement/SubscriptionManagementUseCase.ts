@@ -33,7 +33,8 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      if (!profile.subscriptionId || !profile.subscriptionStatus) {
+      // Verificar se tem asaasSubscriptionId (campo mais confiável)
+      if (!profile.asaasSubscriptionId) {
         return new Output(
           true,
           ['Nenhuma assinatura ativa encontrada'],
@@ -54,15 +55,15 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
       // Formatar dados da assinatura
       const subscriptionData = {
-        id: profile.subscriptionId,
-        subscriptionAsaasId: profile.subscriptionId,
-        status: profile.subscriptionStatus,
+        id: profile.asaasSubscriptionId,
+        subscriptionAsaasId: profile.asaasSubscriptionId,
+        status: profile.subscriptionStatus || 'active',
         value: totalValue,
-        nextDueDate: profile.subscriptionEndDate?.toISOString() || '',
-        cycle: 'MONTHLY',
+        nextDueDate: profile.subscriptionNextDueDate?.toISOString() || profile.subscriptionEndDate?.toISOString() || '',
+        cycle: profile.subscriptionCycle || 'MONTHLY',
         description: profile.subscriptionPlan === 'free_trial' ? 'Período de teste' :
                      profile.subscriptionPlan === 'manager_base' ? 'Plano Manager Base' :
-                     'Plano com Operadores',
+                     `Plano Manager + ${operatorCount} Operador${operatorCount > 1 ? 'es' : ''}`,
         billingType: 'CREDIT_CARD',
         customer: {
           name: profile.fullName || 'Usuário',

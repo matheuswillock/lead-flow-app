@@ -28,6 +28,7 @@ export class SubscriptionService implements ISubscriptionService {
       throw new Error(result.errorMessages.join(', '));
     }
 
+    // Backend retorna null quando não há assinatura (comportamento esperado)
     return result.result;
   }
 

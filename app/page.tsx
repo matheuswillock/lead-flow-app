@@ -114,7 +114,7 @@ export default function Home() {
                     // Se não logado, vai para sign-up (que depois vai para subscribe)
                     window.location.href = "/sign-up";
                   }}
-                  className="group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
+                  className="cursor-pointer group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
                   style={{
                     background: "var(--primary)",
                     color: "var(--primary-foreground)",

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     // Log completo do evento para debug
     console.info('📋 [Webhook Asaas] Detalhes completos do evento:', JSON.stringify(body, null, 2));
 
-  // Se não há payment (ex.: SUBSCRIPTION_*), ainda processamos para vincular/atualizar
+    // Se não há payment (ex.: SUBSCRIPTION_*), ainda processamos para vincular/atualizar
     const hasPayment = !!body.payment;
 
     // Ignorar se payment existe mas não tem ID
@@ -71,15 +71,23 @@ export async function POST(request: NextRequest) {
 
     console.info('[Webhook Asaas] Resultado:', result);
 
-    // NOVO: Verificar se é pagamento de operador
+    // VERIFICAR SE É PAGAMENTO DE ASSINATURA DE OPERADOR
     if (result.isPaid && body?.payment?.id) {
       const paymentId = body.payment.id;
+      const subscriptionId = body.payment.subscription; // ID da assinatura se existir
       
       // Tentar confirmar pagamento de operador (se existir PendingOperator)
       try {
-        console.info('🔄 [Webhook Asaas] Verificando se é pagamento de operador:', paymentId);
+        console.info('🔄 [Webhook Asaas] Verificando pagamento de operador:', {
+          paymentId,
+          subscriptionId: subscriptionId || 'não é assinatura'
+        });
         
-        const operatorResult = await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId);
+        // Prioridade: buscar por subscriptionId se disponível (assinatura)
+        // Senão, buscar por paymentId (payment único antigo)
+        const operatorResult = subscriptionId
+          ? await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperatorBySubscription(subscriptionId, paymentId)
+          : await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId);
         
         if (operatorResult.isValid && operatorResult.result?.operatorCreated) {
           console.info('✅ [Webhook Asaas] Operador criado automaticamente:', operatorResult.result.operatorId);
@@ -89,6 +97,56 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error('❌ [Webhook Asaas] Erro ao processar pagamento de operador:', error);
         // Não bloquear o fluxo principal
+      }
+    }
+
+    // SINCRONIZAR EVENTOS DE ASSINATURA (SUBSCRIPTION_CREATED, SUBSCRIPTION_UPDATED)
+    // Usado quando assinatura do manager é atualizada (add/remove operadores)
+    if (body.event === 'SUBSCRIPTION_CREATED' || body.event === 'SUBSCRIPTION_UPDATED') {
+      const subscription = body.subscription;
+      
+      if (subscription?.id && subscription?.customer) {
+        try {
+          console.info('🔄 [Webhook Asaas] Sincronizando assinatura:', {
+            event: body.event,
+            subscriptionId: subscription.id,
+            customerId: subscription.customer,
+            value: subscription.value,
+            nextDueDate: subscription.nextDueDate
+          });
+
+          // Buscar manager pelo asaasCustomerId
+          const { prisma } = await import('@/app/api/infra/data/prisma');
+          const manager = await prisma.profile.findFirst({
+            where: { 
+              asaasCustomerId: subscription.customer,
+              role: 'manager'
+            }
+          });
+
+          if (manager) {
+            // Atualizar subscriptionId e nextDueDate no Profile
+            await prisma.profile.update({
+              where: { id: manager.id },
+              data: {
+                asaasSubscriptionId: subscription.id,
+                subscriptionNextDueDate: new Date(subscription.nextDueDate),
+                subscriptionCycle: subscription.cycle || 'MONTHLY',
+              }
+            });
+
+            console.info('✅ [Webhook Asaas] Assinatura sincronizada para manager:', {
+              managerId: manager.id,
+              email: manager.email,
+              newSubscriptionId: subscription.id
+            });
+          } else {
+            console.warn('⚠️ [Webhook Asaas] Manager não encontrado para customerId:', subscription.customer);
+          }
+        } catch (error) {
+          console.error('❌ [Webhook Asaas] Erro ao sincronizar assinatura:', error);
+          // Não bloquear o fluxo principal
+        }
       }
     }
 
