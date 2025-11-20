@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { updateAccountFormData } from "@/lib/validations/validationForms";
 
 export default function AccountProfilePage() {
-  const { user, isLoading, updateUser, uploadProfileIcon, deleteProfileIcon } = useUser();
+  const { user, isLoading, updateUser, updatePassword, uploadProfileIcon, deleteProfileIcon } = useUser();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -211,8 +211,8 @@ export default function AccountProfilePage() {
         return;
       }
 
-      // Atualizar apenas a senha
-      const result = await updateUser({ password: data.newPassword });
+      // Atualizar apenas a senha usando o método específico
+      const result = await updatePassword(data.newPassword);
       
       if (result.isValid) {
         toast.success("Senha atualizada com sucesso!");
