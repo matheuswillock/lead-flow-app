@@ -47,7 +47,12 @@ export class ManagerUserRepository implements IManagerUserRepository {
                 profileIconUrl: true,
                 managerId: true,
                 createdAt: true,
-                updatedAt: true
+                updatedAt: true,
+                _count: {
+                    select: {
+                        leadsAsAssignee: true  // Conta leads atribuídos ao operador
+                    }
+                }
             },
             orderBy: {
                 fullName: 'asc'
@@ -59,7 +64,8 @@ export class ManagerUserRepository implements IManagerUserRepository {
             id: op.id,
             name: op.fullName,
             email: op.email,
-            managerId: op.managerId
+            managerId: op.managerId,
+            leadsCount: op._count.leadsAsAssignee
         })));
 
         return operators.map(op => ({
@@ -69,6 +75,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
             role: 'operator' as const,
             profileIconUrl: op.profileIconUrl,
             managerId: op.managerId,
+            leadsCount: op._count.leadsAsAssignee, // Incluir contagem de leads
             createdAt: op.createdAt,
             updatedAt: op.updatedAt
         }));
