@@ -39,11 +39,14 @@ export async function signin(formData: FormData) {
     };
   }
 
-  // Se o login foi bem-sucedido, redirecionar para o board com supabaseId
+  // Se o login foi bem-sucedido, redirecionar
   if (data.user) {
-    if (from === 'subscribe') {
-      redirect(`/${data.user.id}/board?welcome=subscribe`);
+    // Redirect de subscription ou checkout
+    if (from === 'subscribe' || from === 'checkout') {
+      redirect(`/${data.user.id}/dashboard`);
     }
+    
+    // Redirect padrão
     redirect(`/${data.user.id}/board`);
   }
   redirect("/board");

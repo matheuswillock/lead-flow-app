@@ -83,13 +83,10 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         value: 59.90, // Plano base sem operadores
         cycle: 'MONTHLY',
         description: 'Plano Manager Lead Flow',
-        // CALLBACK DESABILITADO: Requer configuração de domínio no Asaas
-        // Usuário precisa acessar manualmente /checkout-return após pagamento
-        // Para habilitar: Configure domínio em Minha Conta > Informações no painel Asaas
-        // callback: {
-        //   successUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout-return`,
-        //   autoRedirect: true,
-        // },
+        callback: {
+          successUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout-return`,
+          autoRedirect: true,
+        },
       };
 
       const subscription = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/subscriptions`, {
