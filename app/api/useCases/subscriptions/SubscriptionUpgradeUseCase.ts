@@ -204,12 +204,17 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
    * Método auxiliar compartilhado entre payment e subscription
    */
   private async createOperatorFromPending(pendingOperator: any, paymentId: string): Promise<Output> {
-    console.info('✅ [createOperatorFromPending] PendingOperator encontrado:', {
-      id: pendingOperator.id,
+    console.info('🎯 [createOperatorFromPending] ============================================');
+    console.info('🎯 [createOperatorFromPending] INICIANDO CRIAÇÃO DE OPERADOR');
+    console.info('📋 [createOperatorFromPending] Dados de entrada:', {
+      pendingOperatorId: pendingOperator.id,
       email: pendingOperator.email,
       name: pendingOperator.name,
       operatorCreated: pendingOperator.operatorCreated,
-      managerId: pendingOperator.managerId
+      managerId: pendingOperator.managerId,
+      paymentId: paymentId,
+      currentPaymentIdInDB: pendingOperator.paymentId,
+      paymentStatus: pendingOperator.paymentStatus
     });
 
     try {
@@ -302,21 +307,33 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         return new Output(false, [], ['Erro ao criar perfil do operador'], null);
       }
 
-      // 5. Atualizar status do operador pendente
+      // 5. Atualizar status do operador pendente (CRÍTICO - deve ser bem-sucedido)
       console.info('🔄 [createOperatorFromPending] Atualizando PendingOperator...');
       try {
-        await prisma.pendingOperator.update({
+        const updated = await prisma.pendingOperator.update({
           where: { id: pendingOperator.id },
           data: {
             operatorCreated: true,
             operatorId: operator.id,
             paymentStatus: 'CONFIRMED',
+            updatedAt: new Date()
           }
         });
-        console.info('✅ [createOperatorFromPending] PendingOperator atualizado com sucesso');
+        console.info('✅ [createOperatorFromPending] PendingOperator atualizado com sucesso:', {
+          id: updated.id,
+          operatorCreated: updated.operatorCreated,
+          operatorId: updated.operatorId,
+          paymentStatus: updated.paymentStatus
+        });
       } catch (error) {
-        console.error('❌ [createOperatorFromPending] Erro ao atualizar PendingOperator:', error);
-        // Não retorna erro pois o operador já foi criado
+        console.error('❌ [createOperatorFromPending] ERRO CRÍTICO ao atualizar PendingOperator:', error);
+        console.error('⚠️ [createOperatorFromPending] ATENÇÃO: Operador foi criado mas PendingOperator não foi marcado como criado!');
+        console.error('🔧 [createOperatorFromPending] Dados para debug:', {
+          pendingOperatorId: pendingOperator.id,
+          operatorId: operator.id,
+          errorMessage: error instanceof Error ? error.message : 'Erro desconhecido'
+        });
+        // Não retorna erro pois o operador já foi criado, mas loga claramente o problema
       }
 
       // 6. Incrementar contador de operadores no manager

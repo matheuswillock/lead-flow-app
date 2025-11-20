@@ -156,27 +156,39 @@ export async function POST(request: NextRequest) {
             if (pendingOperator.operatorCreated) {
               console.info('ℹ️ [Webhook Asaas] Operador já foi criado anteriormente - ignorando webhook');
             } else {
-              // Atualizar paymentId no PendingOperator ANTES de criar operador
-              await prisma.pendingOperator.update({
+              // Atualizar paymentId E paymentStatus no PendingOperator ANTES de criar operador
+              console.info('💾 [Webhook Asaas] Atualizando PendingOperator antes de criar operador...');
+              
+              const updatedPendingOperator = await prisma.pendingOperator.update({
                 where: { id: pendingOperatorId },
-                data: { paymentId }
+                data: { 
+                  paymentId,
+                  paymentStatus: 'CONFIRMED'
+                }
               });
               
-              console.info('💾 [Webhook Asaas] PaymentId atualizado no PendingOperator');
+              console.info('✅ [Webhook Asaas] PendingOperator atualizado:', {
+                id: updatedPendingOperator.id,
+                paymentId: updatedPendingOperator.paymentId,
+                paymentStatus: updatedPendingOperator.paymentStatus
+              });
               
               // Confirmar pagamento e criar operador
+              console.info('🚀 [Webhook Asaas] Iniciando criação do operador...');
               const operatorResult = await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId);
               
               if (operatorResult.isValid && operatorResult.result?.operatorCreated) {
-                console.info('🎉 [Webhook Asaas] Operador criado automaticamente:', {
+                console.info('🎉 [Webhook Asaas] ✅ OPERADOR CRIADO COM SUCESSO:', {
                   operatorId: operatorResult.result.operatorId,
-                  paymentId: operatorResult.result.paymentId
+                  paymentId: operatorResult.result.paymentId,
+                  email: pendingOperator.email
                 });
               } else {
-                console.error('❌ [Webhook Asaas] Falha ao criar operador:', {
+                console.error('❌ [Webhook Asaas] ❌ FALHA AO CRIAR OPERADOR:', {
                   errorMessages: operatorResult.errorMessages,
                   pendingOperatorId,
-                  paymentId
+                  paymentId,
+                  email: pendingOperator.email
                 });
               }
             }
