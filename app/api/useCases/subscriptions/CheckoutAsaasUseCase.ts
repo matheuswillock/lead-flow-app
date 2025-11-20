@@ -80,9 +80,9 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         customer: asaasCustomerId,
         billingType: 'UNDEFINED', // Cliente escolhe forma de pagamento
         nextDueDate: nextDueDateStr,
-        value: 59.90, // Plano base sem operadores
+        value: 59.90,
         cycle: 'MONTHLY',
-        description: 'Plano Manager Lead Flow',
+        description: 'Corretor Studio - Plano Professional | Gerencie leads, equipe e resultados em um só lugar. Pipeline Kanban completo, analytics em tempo real, automações inteligentes e gestão de operadores. Leads ilimitados, relatórios personalizados e atualizações automáticas. R$ 59,90/mês - Assinatura base para gerenciar sua operação de vendas com eficiência e escala.',
         callback: {
           successUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout-return`,
           autoRedirect: true,
