@@ -21,6 +21,7 @@ import { useUserContext } from "@/app/context/UserContext"
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const { user } = useUserContext();
   const isManager = user?.role === 'manager';
+  const isMaster = user?.isMaster === true;
 
   const items = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
@@ -30,7 +31,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       title: "Manager Users", 
       url: `/${supabaseId}/manager-users`, 
       icon: Users,
-      managerOnly: true 
+      masterOnly: true // Apenas masters podem gerenciar usuários
     },
   ];
 
@@ -61,8 +62,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 <SidebarGroupContent>
                     <SidebarMenu>
                         {items.map((item) => {
-                          // Se o item é apenas para managers e o usuário não é manager, não renderizar
-                          if (item.managerOnly && !isManager) {
+                          // Se o item é apenas para masters e o usuário não é master, não renderizar
+                          if (item.masterOnly && !isMaster) {
                             return null;
                           }
 

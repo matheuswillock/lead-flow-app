@@ -23,6 +23,7 @@ export interface UserData {
   profileIconId: string | null;
   profileIconUrl: string | null;
   role: UserRole;
+  isMaster: boolean;
   managerId: string | null;
   subscriptionStatus: string | null;
   subscriptionId: string | null;
