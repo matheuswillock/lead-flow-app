@@ -1,4 +1,4 @@
-import { GalleryVerticalEnd, Eye, EyeOff } from "lucide-react"
+import { GalleryVerticalEnd, Eye, EyeOff, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -29,6 +29,55 @@ export function SignupForm({
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignUpFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null);
+
+  const calculatePasswordStrength = (pwd: string): 'weak' | 'medium' | 'strong' => {
+    let strength = 0;
+    if (pwd.length >= 6) strength++;
+    if (pwd.length >= 10) strength++;
+    if (/[A-Z]/.test(pwd)) strength++;
+    if (/[a-z]/.test(pwd)) strength++;
+    if (/[0-9]/.test(pwd)) strength++;
+    if (/[^A-Za-z0-9]/.test(pwd)) strength++; // caracteres especiais
+
+    if (strength <= 2) return 'weak';
+    if (strength <= 4) return 'medium';
+    return 'strong';
+  };
+
+  const generateStrongPassword = (): string => {
+    const length = 12;
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const numbers = '0123456789';
+    const symbols = '!@#$%&*';
+    
+    const allChars = uppercase + lowercase + numbers + symbols;
+    let password = '';
+    
+    // Garantir que tenha pelo menos um de cada tipo
+    password += uppercase[Math.floor(Math.random() * uppercase.length)];
+    password += lowercase[Math.floor(Math.random() * lowercase.length)];
+    password += numbers[Math.floor(Math.random() * numbers.length)];
+    password += symbols[Math.floor(Math.random() * symbols.length)];
+    
+    // Preencher o resto aleatoriamente
+    for (let i = password.length; i < length; i++) {
+      password += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+    
+    // Embaralhar
+    return password.split('').sort(() => Math.random() - 0.5).join('');
+  };
+
+  const handleGeneratePassword = () => {
+    const newPassword = generateStrongPassword();
+    form.setValue('password', newPassword);
+    form.setValue('confirmPassword', newPassword);
+    setPasswordStrength('strong');
+    setShowPassword(true);
+    setShowConfirmPassword(true);
+  };
 
   return (
     <Form {...form}>
@@ -173,12 +222,31 @@ export function SignupForm({
               name="password"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>Senha</FormLabel>
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Senha</FormLabel>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleGeneratePassword}
+                      className="h-auto py-1 px-2 text-xs"
+                    >
+                      Gerar senha forte
+                    </Button>
+                  </div>
                   <FormControl>
                     <div className="relative">
                       <Input 
                         type={showPassword ? "text" : "password"} 
-                        {...field} 
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          if (e.target.value) {
+                            setPasswordStrength(calculatePasswordStrength(e.target.value));
+                          } else {
+                            setPasswordStrength(null);
+                          }
+                        }}
                         className="border-2 border-gray-300 rounded-md p-2 pr-10" 
                       />
                       <button
@@ -190,6 +258,44 @@ export function SignupForm({
                       </button>
                     </div>
                   </FormControl>
+                  
+                  {/* Indicador de força da senha */}
+                  {passwordStrength && (
+                    <div className="space-y-1">
+                      <div className="flex gap-1">
+                        <div className={`h-1 flex-1 rounded ${
+                          passwordStrength === 'weak' ? 'bg-red-500' :
+                          passwordStrength === 'medium' ? 'bg-yellow-500' :
+                          'bg-green-500'
+                        }`} />
+                        <div className={`h-1 flex-1 rounded ${
+                          passwordStrength === 'medium' || passwordStrength === 'strong' ? 
+                          (passwordStrength === 'medium' ? 'bg-yellow-500' : 'bg-green-500') : 
+                          'bg-muted'
+                        }`} />
+                        <div className={`h-1 flex-1 rounded ${
+                          passwordStrength === 'strong' ? 'bg-green-500' : 'bg-muted'
+                        }`} />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <ShieldCheck className={`h-3 w-3 ${
+                          passwordStrength === 'weak' ? 'text-red-500' :
+                          passwordStrength === 'medium' ? 'text-yellow-500' :
+                          'text-green-500'
+                        }`} />
+                        <p className={`text-xs font-medium ${
+                          passwordStrength === 'weak' ? 'text-red-500' :
+                          passwordStrength === 'medium' ? 'text-yellow-500' :
+                          'text-green-500'
+                        }`}>
+                          {passwordStrength === 'weak' ? 'Senha fraca' :
+                           passwordStrength === 'medium' ? 'Senha média' :
+                           'Senha forte'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
                   <div className="text-xs text-muted-foreground border border-muted rounded-md p-3 bg-muted/30 space-y-1">
                     <p className="font-medium text-foreground mb-1">A senha deve conter:</p>
                     <ul className="space-y-0.5 ml-1">

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Eye, EyeOff, Lock, Mail, CheckCircle2 } from 'lucide-react'
+import { Eye, EyeOff, Lock, Mail, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react'
 
 export default function SetPasswordPage() {
   const router = useRouter()
@@ -22,6 +22,22 @@ export default function SetPasswordPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [email, setEmail] = useState<string | null>(null)
+  const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null)
+  const [isTokenError, setIsTokenError] = useState(false)
+
+  const calculatePasswordStrength = (pwd: string): 'weak' | 'medium' | 'strong' => {
+    let strength = 0
+    if (pwd.length >= 8) strength++
+    if (pwd.length >= 12) strength++
+    if (/[A-Z]/.test(pwd)) strength++
+    if (/[a-z]/.test(pwd)) strength++
+    if (/[0-9]/.test(pwd)) strength++
+    if (/[^A-Za-z0-9]/.test(pwd)) strength++ // caracteres especiais
+
+    if (strength <= 2) return 'weak'
+    if (strength <= 4) return 'medium'
+    return 'strong'
+  }
 
   useEffect(() => {
     // Verificar e estabelecer sessão com o token da URL
@@ -69,6 +85,7 @@ export default function SetPasswordPage() {
         if (sessionError) {
           console.error('❌ Erro ao estabelecer sessão:', sessionError);
           setError('Token inválido ou expirado. Solicite um novo link.');
+          setIsTokenError(true);
           setIsInitializing(false);
           return;
         }
@@ -85,11 +102,13 @@ export default function SetPasswordPage() {
         } else {
           console.error('❌ Sessão não estabelecida');
           setError('Não foi possível estabelecer a sessão. Solicite um novo link.');
+          setIsTokenError(true);
           setIsInitializing(false);
         }
       } catch (err) {
         console.error('❌ Erro ao inicializar sessão:', err);
         setError('Erro inesperado ao processar o link. Tente novamente.');
+        setIsTokenError(true);
         setIsInitializing(false);
       }
     };
@@ -111,6 +130,74 @@ export default function SetPasswordPage() {
       return 'A senha deve conter pelo menos um número'
     }
     return null
+  }
+
+  const translateSupabaseError = (errorMessage: string): string => {
+    const errorMap: Record<string, string> = {
+      'New password should be different from the old password.': 
+        '⚠️ A nova senha deve ser diferente da senha anterior.\n\n💡 Dica: Tente adicionar números, símbolos ou modificar a estrutura da senha.',
+      'Password should be at least 6 characters': 
+        'A senha deve ter pelo menos 8 caracteres.',
+      'Invalid token': 
+        'Link inválido ou expirado. Solicite um novo link de redefinição.',
+      'Token has expired': 
+        'Este link expirou. Por favor, solicite um novo link de redefinição de senha.',
+      'Unable to validate email address: invalid format': 
+        'Formato de e-mail inválido.',
+      'User not found': 
+        'Usuário não encontrado.',
+      'Invalid login credentials': 
+        'Credenciais inválidas.',
+    }
+
+    // Tentar encontrar correspondência exata
+    if (errorMap[errorMessage]) {
+      return errorMap[errorMessage]
+    }
+
+    // Tentar correspondência parcial
+    for (const [key, value] of Object.entries(errorMap)) {
+      if (errorMessage.toLowerCase().includes(key.toLowerCase())) {
+        return value
+      }
+    }
+
+    // Retornar mensagem genérica se não encontrar correspondência
+    return 'Erro ao processar sua solicitação. Tente novamente ou solicite um novo link.'
+  }
+
+  const generateStrongPassword = (): string => {
+    const length = 12
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz'
+    const numbers = '0123456789'
+    const symbols = '!@#$%&*'
+    
+    const allChars = uppercase + lowercase + numbers + symbols
+    let password = ''
+    
+    // Garantir que tenha pelo menos um de cada tipo
+    password += uppercase[Math.floor(Math.random() * uppercase.length)]
+    password += lowercase[Math.floor(Math.random() * lowercase.length)]
+    password += numbers[Math.floor(Math.random() * numbers.length)]
+    password += symbols[Math.floor(Math.random() * symbols.length)]
+    
+    // Preencher o resto aleatoriamente
+    for (let i = password.length; i < length; i++) {
+      password += allChars[Math.floor(Math.random() * allChars.length)]
+    }
+    
+    // Embaralhar
+    return password.split('').sort(() => Math.random() - 0.5).join('')
+  }
+
+  const handleGeneratePassword = () => {
+    const newPassword = generateStrongPassword()
+    setPassword(newPassword)
+    setConfirmPassword(newPassword)
+    setPasswordStrength('strong')
+    setShowPassword(true)
+    setShowConfirmPassword(true)
   }
 
   const handleSetPassword = async (e: React.FormEvent) => {
@@ -146,7 +233,9 @@ export default function SetPasswordPage() {
 
       if (updateError) {
         console.error('Erro ao definir senha:', updateError)
-        setError(updateError.message || 'Erro ao definir senha')
+        const friendlyMessage = translateSupabaseError(updateError.message)
+        setError(friendlyMessage)
+        setIsLoading(false)
         return
       }
 
@@ -195,6 +284,36 @@ export default function SetPasswordPage() {
     )
   }
 
+  // Mostrar erro de token com opção de voltar
+  if (isTokenError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center mb-4">
+              <AlertCircle className="w-6 h-6 text-destructive" />
+            </div>
+            <CardTitle className="text-2xl">Link Inválido ou Expirado</CardTitle>
+            <CardDescription>
+              {error}
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="flex flex-col gap-3">
+            <Button 
+              onClick={() => router.push('/sign-in')}
+              className="w-full"
+            >
+              Voltar para Login
+            </Button>
+            <p className="text-xs text-center text-muted-foreground">
+              Solicite um novo link de redefinição de senha ao seu administrador.
+            </p>
+          </CardFooter>
+        </Card>
+      </div>
+    )
+  }
+
   // Mostrar loading enquanto inicializa a sessão
   if (isInitializing) {
     return (
@@ -237,19 +356,48 @@ export default function SetPasswordPage() {
             )}
 
             {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
+              <Alert variant="destructive" className="border-destructive/50">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="ml-2">
+                  <div className="space-y-1">
+                    {error.split('\n').map((line, index) => (
+                      line.trim() && (
+                        <p key={index} className={index === 0 ? 'font-medium' : 'text-sm'}>
+                          {line}
+                        </p>
+                      )
+                    ))}
+                  </div>
+                </AlertDescription>
               </Alert>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="password">Nova Senha</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Nova Senha</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleGeneratePassword}
+                  className="h-auto py-1 px-2 text-xs"
+                >
+                  Gerar senha forte
+                </Button>
+              </div>
               <div className="relative">
                 <Input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    if (e.target.value) {
+                      setPasswordStrength(calculatePasswordStrength(e.target.value))
+                    } else {
+                      setPasswordStrength(null)
+                    }
+                  }}
                   placeholder="Digite sua senha"
                   required
                   className="pr-10"
@@ -262,6 +410,44 @@ export default function SetPasswordPage() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              
+              {/* Indicador de força da senha */}
+              {passwordStrength && (
+                <div className="space-y-1">
+                  <div className="flex gap-1">
+                    <div className={`h-1 flex-1 rounded ${
+                      passwordStrength === 'weak' ? 'bg-red-500' :
+                      passwordStrength === 'medium' ? 'bg-yellow-500' :
+                      'bg-green-500'
+                    }`} />
+                    <div className={`h-1 flex-1 rounded ${
+                      passwordStrength === 'medium' || passwordStrength === 'strong' ? 
+                      (passwordStrength === 'medium' ? 'bg-yellow-500' : 'bg-green-500') : 
+                      'bg-muted'
+                    }`} />
+                    <div className={`h-1 flex-1 rounded ${
+                      passwordStrength === 'strong' ? 'bg-green-500' : 'bg-muted'
+                    }`} />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <ShieldCheck className={`h-3 w-3 ${
+                      passwordStrength === 'weak' ? 'text-red-500' :
+                      passwordStrength === 'medium' ? 'text-yellow-500' :
+                      'text-green-500'
+                    }`} />
+                    <p className={`text-xs font-medium ${
+                      passwordStrength === 'weak' ? 'text-red-500' :
+                      passwordStrength === 'medium' ? 'text-yellow-500' :
+                      'text-green-500'
+                    }`}>
+                      {passwordStrength === 'weak' ? 'Senha fraca' :
+                       passwordStrength === 'medium' ? 'Senha média' :
+                       'Senha forte'}
+                    </p>
+                  </div>
+                </div>
+              )}
+              
               <p className="text-xs text-muted-foreground">
                 Mínimo 8 caracteres, com letras maiúsculas, minúsculas e números
               </p>
@@ -293,7 +479,7 @@ export default function SetPasswordPage() {
           <CardFooter>
             <Button 
               type="submit" 
-              className="w-full mt-4" 
+              className="w-full mt-4 cursor-pointer" 
               disabled={isLoading || !password || !confirmPassword}
             >
               {isLoading ? 'Definindo senha...' : 'Definir Senha e Acessar'}
