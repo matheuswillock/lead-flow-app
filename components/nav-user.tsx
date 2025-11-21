@@ -33,6 +33,8 @@ export function NavUser({
   const { user } = useUser();
   const { isMobile } = useSidebar()
   const [isPending, startTransition] = useTransition()
+  
+  const isMaster = user?.isMaster === true;
 
   const getInitials = (name: string) => {
     const words = name.trim().split(' ').filter(word => word.length > 0);
@@ -101,10 +103,12 @@ export function NavUser({
                 <CircleUser />
                 <Link href={`/${supabaseId}/account`}>Account</Link>
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <CreditCard />
-                <Link href={`/${supabaseId}/subscription`}>Assinatura</Link>
-              </DropdownMenuItem>
+              {isMaster && (
+                <DropdownMenuItem>
+                  <CreditCard />
+                  <Link href={`/${supabaseId}/subscription`}>Assinatura</Link>
+                </DropdownMenuItem>
+              )}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem
