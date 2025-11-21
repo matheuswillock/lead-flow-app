@@ -19,7 +19,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           <AuthProvider>
             {children}
-            <Toaster position="top-center" />
+            <Toaster 
+              position="top-center" 
+              richColors 
+              closeButton
+              expand={true}
+              toastOptions={{
+                style: {
+                  zIndex: 9999,
+                },
+              }}
+            />
           </AuthProvider>
         </ThemeProvider>
         <Analytics />

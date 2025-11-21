@@ -19,6 +19,16 @@ function createSupabaseClient() {
 }
 
 class PrismaProfileRepository implements IProfileRepository {
+    async findById(id: string): Promise<Profile | null> {
+        try {
+            const profile = await prisma.profile.findUnique({ where: { id } });
+            return profile ?? null;
+        } catch (error) {
+            console.error("Error fetching profile by id:", error);
+            return null;
+        }
+    }
+
     async findBySupabaseId(supabaseId: string): Promise<Profile | null> {
         try {
             const profile = await prisma.profile.findUnique({ where: { supabaseId } });
@@ -55,6 +65,34 @@ class PrismaProfileRepository implements IProfileRepository {
                     }
                 }
             });
+
+            if (!profile) {
+                return null;
+            }
+
+            // Se o usuário é um manager não-master, buscar todos os usuários do master
+            if (profile.role === 'manager' && !profile.isMaster && profile.managerId) {
+                // Buscar todos os usuários associados ao master (incluindo o próprio master)
+                const allTeamMembers = await prisma.profile.findMany({
+                    where: {
+                        OR: [
+                            { id: profile.managerId }, // O master
+                            { managerId: profile.managerId }, // Todos os usuários do master
+                        ]
+                    },
+                    select: {
+                        id: true,
+                        fullName: true,
+                        profileIconUrl: true,
+                        email: true,
+                        role: true
+                    }
+                });
+
+                // Substituir operators pelos membros da equipe completa
+                (profile as any).operators = allTeamMembers;
+            }
+
             console.info("Fetched profile with relations:", profile);
             return profile ?? null;
         } catch (error) {

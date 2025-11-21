@@ -1,6 +1,7 @@
 import type { Profile, UserRole } from "@prisma/client";
 
 export interface IProfileRepository {
+  findById(id: string): Promise<Profile | null>;
   findBySupabaseId(supabaseId: string): Promise<Profile | null>;
   findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null>;
   existingByEmailOrPhone(email: string, phone: string): Promise<boolean>;

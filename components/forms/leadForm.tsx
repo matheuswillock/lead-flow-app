@@ -13,6 +13,7 @@ import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
+import { Loader2 } from "lucide-react";
 
 const formatCurrency = (value: string): string => {
     const cleanValue = value.replace(/\D/g, '');
@@ -525,6 +526,7 @@ export function LeadForm({
                     className="cursor-pointer" 
                     disabled={isSubmitDisabled}
                 >
+                    {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {isUpdating ? "Salvando..." : "Salvar"}
                 </Button>
             </div>

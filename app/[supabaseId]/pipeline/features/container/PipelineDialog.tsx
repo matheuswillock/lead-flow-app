@@ -216,6 +216,7 @@ export default function PipelineDialog() {
         console.info("[PipelineDialog] Creating new lead:", createData);
 
         const result = await createLead(createData);
+        console.info("[PipelineDialog] Create result:", result);
 
         if (result.success) {
           toast.success("Lead criado com sucesso!");
@@ -223,13 +224,15 @@ export default function PipelineDialog() {
           setOpen(false);
         } else {
           const errorMsg = result.message || "Erro ao criar lead";
+          console.error("[PipelineDialog] Showing error toast:", errorMsg);
           toast.error(errorMsg);
           console.error("[PipelineDialog] Error creating lead:", result.message);
         }
       }
     } catch (error) {
       console.error("[PipelineDialog] Exception:", error);
-      toast.error("Erro inesperado ao salvar lead");
+      const errorMessage = error instanceof Error ? error.message : "Erro inesperado ao salvar lead";
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }

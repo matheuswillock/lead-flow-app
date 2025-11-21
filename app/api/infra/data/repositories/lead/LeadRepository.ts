@@ -402,7 +402,10 @@ export class LeadRepository implements ILeadRepository {
     } = options || {};
 
     const where: Prisma.LeadWhereInput = {
-      assignedTo: operatorId, // Filtra apenas leads atribuídos ao operator
+      OR: [
+        { assignedTo: operatorId }, // Leads atribuídos ao operator
+        { createdBy: operatorId },   // Leads criados pelo operator
+      ],
       ...(status && { status }),
       ...(search && {
         OR: [
@@ -444,5 +447,34 @@ export class LeadRepository implements ILeadRepository {
     });
 
     return { leads };
+  }
+
+  async reassignLeadsToMaster(deletedUserId: string, masterId: string): Promise<number> {
+    // Atualizar todos os leads onde o usuário deletado é o assignedTo
+    const resultAssigned = await prisma.lead.updateMany({
+      where: {
+        assignedTo: deletedUserId,
+      },
+      data: {
+        assignedTo: masterId,
+      },
+    });
+
+    // Atualizar todos os leads onde o usuário deletado é o createdBy
+    // (não mudamos o createdBy, mas reatribuímos o assignedTo se estiver null ou for o próprio deletado)
+    const resultCreated = await prisma.lead.updateMany({
+      where: {
+        createdBy: deletedUserId,
+        OR: [
+          { assignedTo: null },
+          { assignedTo: deletedUserId },
+        ],
+      },
+      data: {
+        assignedTo: masterId,
+      },
+    });
+
+    return resultAssigned.count + resultCreated.count;
   }
 }

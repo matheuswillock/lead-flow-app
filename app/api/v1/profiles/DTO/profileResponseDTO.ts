@@ -16,6 +16,7 @@ export interface ProfileResponseDTO {
   phone: string | null;
   fullName: string | null;
   role: UserRole;
+  isMaster: boolean;
   managerId: string | null;
   profileIconId: string | null;
   profileIconUrl: string | null;
@@ -40,15 +41,17 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
   
   usersAssociated.push(currentUser);
   
-  // Se for manager, incluir TAMBÉM todos os operadores
+  // Se for manager, incluir TAMBÉM todos os operadores (evitando duplicatas)
   if (profile.role === 'manager' && profile.operators && profile.operators.length > 0) {
-    const operators = profile.operators.map((operator: any) => ({
-      id: operator.id,
-      name: operator.fullName || 'N/A',
-      avatarImageUrl: operator.profileIconUrl || '',
-      email: operator.email,
-      role: operator.role
-    }));
+    const operators = profile.operators
+      .filter((operator: any) => operator.id !== profile.id) // Evitar duplicar o próprio usuário
+      .map((operator: any) => ({
+        id: operator.id,
+        name: operator.fullName || 'N/A',
+        avatarImageUrl: operator.profileIconUrl || '',
+        email: operator.email,
+        role: operator.role
+      }));
     
     usersAssociated.push(...operators);
   }
@@ -65,6 +68,7 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     phone: profile.phone,
     fullName: profile.fullName,
     role: profile.role,
+    isMaster: profile.isMaster ?? false,
     managerId: profile.managerId,
     profileIconId: profile.profileIconId,
     profileIconUrl: profile.profileIconUrl,

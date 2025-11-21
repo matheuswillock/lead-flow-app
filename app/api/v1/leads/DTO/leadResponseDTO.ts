@@ -58,13 +58,13 @@ export interface LeadListResponseDTO {
 
 export interface CreateLeadResponseDTO {
   success: boolean;
-  lead: LeadResponseDTO;
+  lead: LeadResponseDTO | null;
   message: string;
 }
 
 export interface UpdateLeadResponseDTO {
   success: boolean;
-  lead: LeadResponseDTO;
+  lead: LeadResponseDTO | null;
   message: string;
 }
 

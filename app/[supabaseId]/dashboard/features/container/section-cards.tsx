@@ -183,6 +183,31 @@ export function SectionCards(props: DashboardMetricsData) {
           </div> */}
         </CardFooter>
       </Card>
+
+      {/* Cadência */}
+      <Card className="@container/card">
+        <CardHeader>
+          <CardDescription>Cadência</CardDescription>
+          <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
+            ${props.cadencia.toFixed(2)}
+          </CardTitle>
+          <CardAction>
+            {/* TODO: Implementar serviço que irá avaliar a variação ao logo do tempo */}
+            {/* <Badge variant="outline">
+              <TrendingUp />
+              +12.5%
+            </Badge> */}
+          </CardAction>
+        </CardHeader>
+        <CardFooter className="flex-col items-start gap-1.5 text-sm">
+          {/* <div className="line-clamp-1 flex gap-2 font-medium">
+            Soma dos valores atuais dos leads
+          </div>
+          <div className="text-muted-foreground">
+            Total pipeline value
+          </div> */}
+        </CardFooter>
+      </Card>
     </div>
   )
 }

@@ -106,6 +106,8 @@ export const useLeads = () => {
     setError(null);
 
     try {
+      console.log('[useLeads] Creating lead with data:', leadData);
+      
       const response = await fetch('/api/v1/leads', {
         method: 'POST',
         headers: {
@@ -116,15 +118,8 @@ export const useLeads = () => {
       });
 
       const apiResult = await response.json();
+      console.log('[useLeads] API Response:', { status: response.status, apiResult });
 
-      // Se a resposta não for OK, extrair mensagem de erro específica
-      if (!response.ok) {
-        const errorMessage = apiResult.errorMessages?.join(', ') || 
-                           apiResult.message || 
-                           'Erro ao criar lead';
-        throw new Error(errorMessage);
-      }
-      
       // Transform API response to DTO format expected by frontend
       const result: CreateLeadResponseDTO = {
         success: apiResult.isValid,
@@ -134,11 +129,26 @@ export const useLeads = () => {
           : apiResult.errorMessages?.join(', ') || 'Erro ao criar lead'
       };
       
+      console.log('[useLeads] Transformed result:', result);
+      
+      // Se não for válido, definir erro mas retornar resultado para tratamento no componente
+      if (!apiResult.isValid) {
+        console.error('[useLeads] Lead creation failed:', result.message);
+        setError(result.message);
+      }
+      
       return result;
     } catch (err) {
-      const error = err instanceof Error ? err.message : 'Erro desconhecido';
+      const error = err instanceof Error ? err.message : 'Erro de comunicação com o servidor';
+      console.error('[useLeads] Exception during createLead:', err);
       setError(error);
-      throw new Error(error);
+      
+      // Retornar resultado de erro ao invés de lançar exceção
+      return {
+        success: false,
+        lead: null,
+        message: error
+      };
     } finally {
       setLoading(false);
     }
@@ -158,10 +168,6 @@ export const useLeads = () => {
         body: JSON.stringify(leadData),
       });
 
-      if (!response.ok) {
-        throw new Error('Erro ao atualizar lead');
-      }
-
       const apiResult = await response.json();
       
       // Transform API response to DTO format expected by frontend
@@ -169,15 +175,26 @@ export const useLeads = () => {
         success: apiResult.isValid,
         lead: apiResult.result,
         message: apiResult.isValid 
-          ? apiResult.successMessages.join(', ') || 'Lead atualizado com sucesso'
-          : apiResult.errorMessages.join(', ') || 'Erro ao atualizar lead'
+          ? apiResult.successMessages?.join(', ') || 'Lead atualizado com sucesso'
+          : apiResult.errorMessages?.join(', ') || 'Erro ao atualizar lead'
       };
+      
+      // Se não for válido, definir erro mas retornar resultado para tratamento no componente
+      if (!apiResult.isValid) {
+        setError(result.message);
+      }
       
       return result;
     } catch (err) {
-      const error = err instanceof Error ? err.message : 'Erro desconhecido';
+      const error = err instanceof Error ? err.message : 'Erro de comunicação com o servidor';
       setError(error);
-      throw new Error(error);
+      
+      // Retornar resultado de erro ao invés de lançar exceção
+      return {
+        success: false,
+        lead: null,
+        message: error
+      };
     } finally {
       setLoading(false);
     }
@@ -195,25 +212,31 @@ export const useLeads = () => {
         },
       });
 
-      if (!response.ok) {
-        throw new Error('Erro ao excluir lead');
-      }
-
       const apiResult = await response.json();
       
       // Transform API response to DTO format expected by frontend
       const result: DeleteLeadResponseDTO = {
         success: apiResult.isValid,
         message: apiResult.isValid 
-          ? apiResult.successMessages.join(', ') || 'Lead excluído com sucesso'
-          : apiResult.errorMessages.join(', ') || 'Erro ao excluir lead'
+          ? apiResult.successMessages?.join(', ') || 'Lead excluído com sucesso'
+          : apiResult.errorMessages?.join(', ') || 'Erro ao excluir lead'
       };
+      
+      // Se não for válido, definir erro mas retornar resultado para tratamento no componente
+      if (!apiResult.isValid) {
+        setError(result.message);
+      }
       
       return result;
     } catch (err) {
-      const error = err instanceof Error ? err.message : 'Erro desconhecido';
+      const error = err instanceof Error ? err.message : 'Erro de comunicação com o servidor';
       setError(error);
-      throw new Error(error);
+      
+      // Retornar resultado de erro ao invés de lançar exceção
+      return {
+        success: false,
+        message: error
+      };
     } finally {
       setLoading(false);
     }

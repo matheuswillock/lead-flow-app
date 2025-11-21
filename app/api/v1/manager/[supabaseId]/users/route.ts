@@ -9,10 +9,13 @@ import {
   DissociateOperatorSchema 
 } from "./types";
 import { getEmailService } from "@/lib/services/EmailService";
+import { LeadRepository } from "../../../../infra/data/repositories/lead/LeadRepository";
+import { profileRepository } from "../../../../infra/data/repositories/profile/ProfileRepository";
 
 const managerUserRepository = new ManagerUserRepository();
+const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
-const managerUserUseCase = new ManagerUserUseCase(managerUserRepository);
+const managerUserUseCase = new ManagerUserUseCase(managerUserRepository, leadRepository, profileRepository);
 
 /**
  * POST /api/v1/manager/[supabaseId]/users

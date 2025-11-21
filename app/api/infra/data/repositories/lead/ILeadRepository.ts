@@ -40,4 +40,5 @@ export interface ILeadRepository {
   assignToOperator(id: string, operatorId: string): Promise<Lead>;
   transferToManager(id: string, newManagerId: string, reason?: string): Promise<Lead>;
   getLeadsByStatus(managerId: string, status: LeadStatus): Promise<Lead[]>;
+  reassignLeadsToMaster(deletedUserId: string, masterId: string): Promise<number>;
 }
