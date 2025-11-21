@@ -23,7 +23,8 @@ export interface IProfileRepository {
     addressNumber?: string,
     complement?: string,
     city?: string,
-    state?: string
+    state?: string,
+    managerId?: string
   ): Promise<{ profileId: string; supabaseId: string } | null>;
   updateProfile(
     supabaseId: string,

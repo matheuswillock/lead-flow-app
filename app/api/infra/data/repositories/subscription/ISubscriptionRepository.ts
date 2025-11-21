@@ -9,4 +9,11 @@ export interface ISubscriptionRepository {
    * @returns Profile ou null se não encontrado
    */
   findProfileByEmailOrPhone(email?: string, phone?: string, cpfCnpj?: string): Promise<Profile | null>;
+  
+  /**
+   * Busca um perfil por ID
+   * @param id ID do perfil
+   * @returns Profile ou null se não encontrado
+   */
+  findProfileById(id: string): Promise<Profile | null>;
 }

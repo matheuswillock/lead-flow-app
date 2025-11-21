@@ -95,7 +95,8 @@ class PrismaProfileRepository implements IProfileRepository {
     addressNumber?: string,
     complement?: string,
     city?: string,
-    state?: string
+    state?: string,
+    managerId?: string
   ): Promise<{ profileId: string; supabaseId: string } | null> {
     try {
       console.info('💾 [ProfileRepository] createProfile iniciado');
@@ -139,7 +140,16 @@ class PrismaProfileRepository implements IProfileRepository {
         phone,
         email,
         role,
+        // isMaster = true apenas se:
+        // 1. É manager/operator E
+        // 2. NÃO tem managerId (não foi criado por outro usuário)
+        isMaster: !managerId,
       };
+
+      // Se tem managerId, adicionar ao profileData
+      if (managerId) {
+        profileData.managerId = managerId;
+      }
 
       // Adicionar CPF/CNPJ se fornecido
       if (cpfCnpj) {
@@ -187,7 +197,10 @@ class PrismaProfileRepository implements IProfileRepository {
         operatorCount: profileData.operatorCount,
         subscriptionStatus: profileData.subscriptionStatus,
         hasSubscriptionStartDate: !!profileData.subscriptionStartDate,
-        subscriptionStartDate: profileData.subscriptionStartDate
+        subscriptionStartDate: profileData.subscriptionStartDate,
+        isMaster: profileData.isMaster,
+        hasManagerId: !!profileData.managerId,
+        role: profileData.role
       });
 
       // Criar profile no banco

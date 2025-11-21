@@ -13,7 +13,7 @@ interface ManagerUsersPageProps {
 }
 
 function ManagerUsersPageContent({ supabaseId }: { supabaseId: string }) {
-  const { user, isLoading, hasActiveSubscription } = useUserContext();
+  const { user, isLoading, hasActiveSubscription, userRole } = useUserContext();
 
   if (isLoading) {
     return (
@@ -33,7 +33,7 @@ function ManagerUsersPageContent({ supabaseId }: { supabaseId: string }) {
   }
 
   return (
-    <SubscriptionGuard hasActiveSubscription={hasActiveSubscription}>
+    <SubscriptionGuard hasActiveSubscription={hasActiveSubscription} userRole={userRole ?? undefined}>
       <ManagerUsersContainer 
         supabaseId={supabaseId}
         currentUserRole={user?.role || "operator"}

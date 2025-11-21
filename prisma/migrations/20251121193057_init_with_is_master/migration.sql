@@ -33,6 +33,7 @@ CREATE TABLE "profiles" (
     "profileIconId" TEXT,
     "profileIconUrl" TEXT,
     "role" "UserRole" NOT NULL DEFAULT 'manager',
+    "isMaster" BOOLEAN NOT NULL DEFAULT false,
     "managerId" UUID,
     "asaasCustomerId" TEXT,
     "subscriptionId" TEXT,
@@ -42,6 +43,9 @@ CREATE TABLE "profiles" (
     "subscriptionStartDate" TIMESTAMPTZ(6),
     "subscriptionEndDate" TIMESTAMPTZ(6),
     "trialEndDate" TIMESTAMPTZ(6),
+    "asaasSubscriptionId" TEXT,
+    "subscriptionNextDueDate" TIMESTAMPTZ(6),
+    "subscriptionCycle" TEXT,
     "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMPTZ(6) NOT NULL,
 
@@ -113,6 +117,39 @@ CREATE TABLE "lead_finalized" (
     CONSTRAINT "lead_finalized_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "lead_attachments" (
+    "id" UUID NOT NULL,
+    "leadId" UUID NOT NULL,
+    "fileName" TEXT NOT NULL,
+    "fileUrl" TEXT NOT NULL,
+    "fileType" TEXT NOT NULL,
+    "fileSize" INTEGER NOT NULL,
+    "uploadedBy" UUID NOT NULL,
+    "uploadedAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "lead_attachments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "pending_operators" (
+    "id" UUID NOT NULL,
+    "managerId" UUID NOT NULL,
+    "name" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "role" TEXT NOT NULL,
+    "paymentId" TEXT,
+    "subscriptionId" TEXT,
+    "paymentStatus" TEXT NOT NULL,
+    "paymentMethod" TEXT NOT NULL,
+    "operatorCreated" BOOLEAN NOT NULL DEFAULT false,
+    "operatorId" UUID,
+    "createdAt" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(6) NOT NULL,
+
+    CONSTRAINT "pending_operators_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "profiles_id_key" ON "profiles"("id");
 
@@ -170,6 +207,24 @@ CREATE INDEX "leads_schedule_leadId_idx" ON "leads_schedule"("leadId");
 -- CreateIndex
 CREATE INDEX "lead_finalized_leadId_idx" ON "lead_finalized"("leadId");
 
+-- CreateIndex
+CREATE INDEX "lead_attachments_leadId_idx" ON "lead_attachments"("leadId");
+
+-- CreateIndex
+CREATE INDEX "lead_attachments_uploadedBy_idx" ON "lead_attachments"("uploadedBy");
+
+-- CreateIndex
+CREATE INDEX "pending_operators_managerId_idx" ON "pending_operators"("managerId");
+
+-- CreateIndex
+CREATE INDEX "pending_operators_paymentId_idx" ON "pending_operators"("paymentId");
+
+-- CreateIndex
+CREATE INDEX "pending_operators_subscriptionId_idx" ON "pending_operators"("subscriptionId");
+
+-- CreateIndex
+CREATE INDEX "pending_operators_email_idx" ON "pending_operators"("email");
+
 -- AddForeignKey
 ALTER TABLE "profiles" ADD CONSTRAINT "profiles_managerId_fkey" FOREIGN KEY ("managerId") REFERENCES "profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
@@ -196,3 +251,12 @@ ALTER TABLE "leads_schedule" ADD CONSTRAINT "leads_schedule_leadId_fkey" FOREIGN
 
 -- AddForeignKey
 ALTER TABLE "lead_finalized" ADD CONSTRAINT "lead_finalized_leadId_fkey" FOREIGN KEY ("leadId") REFERENCES "leads"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "lead_attachments" ADD CONSTRAINT "lead_attachments_leadId_fkey" FOREIGN KEY ("leadId") REFERENCES "leads"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "lead_attachments" ADD CONSTRAINT "lead_attachments_uploadedBy_fkey" FOREIGN KEY ("uploadedBy") REFERENCES "profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "pending_operators" ADD CONSTRAINT "pending_operators_managerId_fkey" FOREIGN KEY ("managerId") REFERENCES "profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;

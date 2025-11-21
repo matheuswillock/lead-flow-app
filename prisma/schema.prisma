@@ -117,6 +117,7 @@ model Profile {
   profileIconId            String?             @db.Text
   profileIconUrl           String?             @db.Text
   role                     UserRole            @default(manager)
+  isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   managerId                String?             @db.Uuid
   asaasCustomerId          String?             @db.Text
   subscriptionId           String?             @db.Text

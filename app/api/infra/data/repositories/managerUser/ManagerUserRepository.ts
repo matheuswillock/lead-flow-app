@@ -38,12 +38,14 @@ export class ManagerUserRepository implements IManagerUserRepository {
         const operators = await prisma.profile.findMany({
             where: { 
                 managerId: managerId,
-                role: UserRole.operator
+                // Buscar todos os usuários gerenciados, independente do role
+                // Tanto operators quanto managers podem ser gerenciados por um master
             },
             select: {
                 id: true,
                 fullName: true,
                 email: true,
+                role: true,
                 profileIconUrl: true,
                 managerId: true,
                 createdAt: true,
@@ -65,6 +67,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
             id: op.id,
             name: op.fullName,
             email: op.email,
+            role: op.role,
             managerId: op.managerId,
             leadsCount: op._count?.leadsAsAssignee ?? 0,
             _countObject: op._count
@@ -72,9 +75,9 @@ export class ManagerUserRepository implements IManagerUserRepository {
 
         return operators.map(op => ({
             id: op.id,
-            name: op.fullName || 'Operator',
+            name: op.fullName || 'Usuário',
             email: op.email,
-            role: 'operator' as const,
+            role: op.role.toLowerCase() as 'operator' | 'manager',
             profileIconUrl: op.profileIconUrl,
             managerId: op.managerId,
             leadsCount: op._count?.leadsAsAssignee ?? 0, // Usar 0 como fallback

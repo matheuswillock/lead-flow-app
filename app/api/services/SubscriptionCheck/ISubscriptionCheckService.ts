@@ -3,6 +3,7 @@ export interface CheckSubscriptionResult {
   hasActiveSubscription: boolean;
   userExists: boolean;
   userId?: string | null;
+  userRole?: string; // 'manager' ou 'operator'
   // Where/how we found the user match
   matchSource?: 'email' | 'phone' | 'document';
   matchedIdentifier?: string; // raw value; UI may mask it

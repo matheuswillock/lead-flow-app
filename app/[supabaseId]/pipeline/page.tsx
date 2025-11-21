@@ -6,11 +6,11 @@ import { SubscriptionGuard } from "@/components/subscription-guard";
 import { useUserContext } from "@/app/context/UserContext";
 
 export default function Pipeline() {
-  const { hasActiveSubscription } = useUserContext();
+  const { hasActiveSubscription, userRole } = useUserContext();
   
   return (
     <PipelineProvider>
-      <SubscriptionGuard hasActiveSubscription={hasActiveSubscription}>
+      <SubscriptionGuard hasActiveSubscription={hasActiveSubscription} userRole={userRole ?? undefined}>
         <PipelineContainer />
       </SubscriptionGuard>
     </PipelineProvider>
