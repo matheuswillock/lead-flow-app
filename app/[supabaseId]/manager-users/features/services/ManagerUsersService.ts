@@ -116,6 +116,29 @@ class ManagerUsersService {
     }
     return true;
   }
+
+  // Reenviar convite por e-mail para operador
+  async resendInvite(email: string, userId?: string): Promise<{ isValid: boolean; successMessages: string[]; errorMessages: string[] }> {
+    try {
+      const response = await fetch('/api/v1/operators/resend-invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, userId }),
+      });
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error('Erro ao reenviar convite:', error);
+      return {
+        isValid: false,
+        successMessages: [],
+        errorMessages: ['Erro ao reenviar convite'],
+      };
+    }
+  }
 }
 
 export { ManagerUsersService };

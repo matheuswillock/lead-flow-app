@@ -310,6 +310,24 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     return () => clearInterval(intervalId);
   }, [state.users, loadUsers]);
 
+  // Reenviar convite por e-mail
+  const resendInvite = useCallback(async (email: string, userId?: string) => {
+    try {
+      toast.loading('Reenviando convite...');
+      
+      const result = await managerUsersService.resendInvite(email, userId);
+      
+      if (result.isValid) {
+        toast.success('Convite reenviado com sucesso!');
+      } else {
+        toast.error(result.errorMessages.join(', ') || 'Erro ao reenviar convite');
+      }
+    } catch (error) {
+      console.error('Erro ao reenviar convite:', error);
+      toast.error('Erro ao reenviar convite');
+    }
+  }, [managerUsersService]);
+
   return {
     // Estado
     ...state,
@@ -321,6 +339,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     createUser,
     updateUser,
     deleteUser,
+    resendInvite,
     
     // Controle de UI
     openCreateModal,

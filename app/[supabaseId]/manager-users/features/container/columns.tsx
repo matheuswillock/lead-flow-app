@@ -1,7 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowUpDown, MoreHorizontal, Pencil, Trash2, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -24,9 +24,10 @@ import { Settings } from "@/components/ui/settings";
 interface CreateColumnsProps {
   onEdit: (user: ManagerUserTableRow) => void;
   onDelete: (user: ManagerUserTableRow) => void;
+  onResendInvite: (email: string, userId?: string) => void;
 }
 
-export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
+export function createColumns({ onEdit, onDelete, onResendInvite }: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
   return [
     {
       accessorKey: "profileIconUrl",
@@ -253,6 +254,14 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
               <DropdownMenuLabel>Ações</DropdownMenuLabel>
               {user.status === 'active' ? (
                 <>
+                  <DropdownMenuItem
+                    onClick={() => onResendInvite(user.email, user.id)}
+                    className="flex items-center gap-2"
+                  >
+                    <Mail className="h-4 w-4" />
+                    Reenviar convite
+                  </DropdownMenuItem>
+                  
                   <DropdownMenuItem
                     onClick={() => onEdit(user)}
                     className="flex items-center gap-2"

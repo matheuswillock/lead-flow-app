@@ -38,6 +38,7 @@ export function ManagerUsersContainer({
     createUser,
     updateUser,
     deleteUser,
+    resendInvite,
     
     // Controle de UI
     openCreateModal,
@@ -76,6 +77,7 @@ export function ManagerUsersContainer({
   const columns = createColumns({
     onEdit: openEditModal,
     onDelete: openDeleteDialog,
+    onResendInvite: resendInvite,
   });
 
   return (

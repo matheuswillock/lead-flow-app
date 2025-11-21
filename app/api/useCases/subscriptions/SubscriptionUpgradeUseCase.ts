@@ -634,10 +634,6 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     try {
       console.info('🔐 [createSupabaseUser] Iniciando criação de usuário:', { email, name });
 
-      // Gerar senha aleatória segura
-      const randomPassword = Math.random().toString(36).slice(-8) + 'Aa1!';
-      console.info('🔑 [createSupabaseUser] Senha temporária gerada');
-
       // Criar cliente Supabase Admin (Service Role)
       const supabase = createSupabaseAdmin();
       if (!supabase) {
@@ -647,23 +643,30 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       console.info('✅ [createSupabaseUser] Cliente Supabase Admin criado');
 
-      // Criar usuário no Supabase Auth
-      const { data: user, error: authError } = await supabase.auth.admin.createUser({
-        email,
-        password: randomPassword,
-        email_confirm: true,
-        user_metadata: { name }
+      // Enviar convite por e-mail (usuário define senha no primeiro acesso)
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const redirectTo = `${appUrl}/set-password`;
+      console.info('📧 [createSupabaseUser] Enviando convite para:', email);
+      console.info('🔗 [createSupabaseUser] Redirect URL:', redirectTo);
+
+      const { data: user, error: authError } = await supabase.auth.admin.inviteUserByEmail(email, {
+        redirectTo,
+        data: { 
+          name,
+          invited: true,
+          first_access: true 
+        }
       });
 
       if (authError || !user.user) {
-        console.error('❌ [createSupabaseUser] Erro ao criar usuário no Supabase:', authError);
+        console.error('❌ [createSupabaseUser] Erro ao enviar convite:', authError);
         return { 
           success: false, 
-          error: authError?.message || 'Erro ao criar usuário no sistema de autenticação' 
+          error: authError?.message || 'Erro ao enviar convite de acesso' 
         };
       }
 
-      console.info('✅ [createSupabaseUser] Usuário criado com sucesso:', {
+      console.info('✅ [createSupabaseUser] Convite enviado com sucesso:', {
         userId: user.user.id,
         email: user.user.email
       });
@@ -671,7 +674,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       return {
         success: true,
         userId: user.user.id,
-        temporaryPassword: randomPassword,
+        invited: true,
       };
     } catch (error) {
       console.error('❌ [createSupabaseUser] Erro inesperado:', error);
@@ -947,7 +950,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       console.info('👤 [reactivateSubscription] Manager encontrado:', {
         id: manager.id,
-        name: manager.name,
+        fullName: manager.fullName,
         asaasCustomerId: manager.asaasCustomerId,
         oldSubscriptionId: manager.asaasSubscriptionId
       });
