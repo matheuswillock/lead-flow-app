@@ -18,27 +18,84 @@ export default function SetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isInitializing, setIsInitializing] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [email, setEmail] = useState<string | null>(null)
 
   useEffect(() => {
-    // Verificar se há um token de recuperação/convite na URL
-    const hashParams = new URLSearchParams(window.location.hash.substring(1))
-    const accessToken = hashParams.get('access_token')
-    const type = hashParams.get('type')
-
-    if (type === 'invite' || type === 'recovery') {
-      // Usuário veio do email de convite
-      const emailParam = searchParams.get('email')
-      if (emailParam) {
-        setEmail(emailParam)
+    // Verificar e estabelecer sessão com o token da URL
+    const initializeSession = async () => {
+      if (typeof window === 'undefined') return;
+      
+      const hash = window.location.hash;
+      console.info('🔍 Hash completo:', hash);
+      
+      if (!hash) {
+        console.info('❌ Sem hash na URL, redirecionando para login');
+        router.push('/sign-in');
+        return;
       }
-    } else if (!accessToken) {
-      // Sem token válido, redirecionar para login
-      router.push('/sign-in')
-    }
-  }, [router, searchParams])
+
+      const hashParams = new URLSearchParams(hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+      const type = hashParams.get('type');
+      
+      console.info('🔐 Token encontrado:', { accessToken: !!accessToken, type });
+
+      if (!accessToken || (type !== 'invite' && type !== 'recovery')) {
+        console.info('❌ Token inválido ou tipo incorreto, redirecionando para login');
+        router.push('/sign-in');
+        return;
+      }
+
+      try {
+        const supabase = createSupabaseBrowser();
+        
+        if (!supabase) {
+          setError('Erro ao conectar com o sistema de autenticação');
+          setIsInitializing(false);
+          return;
+        }
+
+        // Estabelecer a sessão usando o access token
+        console.info('🔄 Estabelecendo sessão com o token...');
+        const { data, error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken || ''
+        });
+
+        if (sessionError) {
+          console.error('❌ Erro ao estabelecer sessão:', sessionError);
+          setError('Token inválido ou expirado. Solicite um novo link.');
+          setIsInitializing(false);
+          return;
+        }
+
+        if (data.session) {
+          console.info('✅ Sessão estabelecida com sucesso');
+          
+          // Extrair email do usuário
+          if (data.session.user?.email) {
+            setEmail(data.session.user.email);
+          }
+          
+          setIsInitializing(false);
+        } else {
+          console.error('❌ Sessão não estabelecida');
+          setError('Não foi possível estabelecer a sessão. Solicite um novo link.');
+          setIsInitializing(false);
+        }
+      } catch (err) {
+        console.error('❌ Erro ao inicializar sessão:', err);
+        setError('Erro inesperado ao processar o link. Tente novamente.');
+        setIsInitializing(false);
+      }
+    };
+
+    initializeSession();
+  }, [router, searchParams]);
 
   const validatePassword = (pwd: string): string | null => {
     if (pwd.length < 8) {
@@ -138,6 +195,25 @@ export default function SetPasswordPage() {
     )
   }
 
+  // Mostrar loading enquanto inicializa a sessão
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
+              <Lock className="w-6 h-6 text-primary animate-pulse" />
+            </div>
+            <CardTitle className="text-2xl">Verificando link...</CardTitle>
+            <CardDescription>
+              Aguarde enquanto validamos seu acesso.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
       <Card className="w-full max-w-md">
@@ -217,7 +293,7 @@ export default function SetPasswordPage() {
           <CardFooter>
             <Button 
               type="submit" 
-              className="w-full" 
+              className="w-full mt-4" 
               disabled={isLoading || !password || !confirmPassword}
             >
               {isLoading ? 'Definindo senha...' : 'Definir Senha e Acessar'}

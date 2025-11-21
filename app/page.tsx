@@ -1,5 +1,7 @@
 "use client"
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { LandingHeader } from "@/components/landing/landingHeader";
 import { FeaturesSection } from "@/components/landing/FeaturesSection";
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
@@ -11,6 +13,26 @@ import { HeartIcon } from "@/components/ui/heart"
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Verificar se há token de recovery/invite no hash da URL
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash) {
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const type = hashParams.get('type');
+        const accessToken = hashParams.get('access_token');
+
+        // Se é recovery ou invite, redirecionar para /set-password
+        if ((type === 'recovery' || type === 'invite') && accessToken) {
+          console.log('🔐 Token detectado, redirecionando para /set-password');
+          router.push(`/set-password${hash}`);
+        }
+      }
+    }
+  }, [router]);
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <LandingHeader />

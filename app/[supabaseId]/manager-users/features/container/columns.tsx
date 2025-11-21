@@ -259,7 +259,7 @@ export function createColumns({ onEdit, onDelete, onResendInvite }: CreateColumn
                     className="flex items-center gap-2"
                   >
                     <Mail className="h-4 w-4" />
-                    Reenviar convite
+                    Enviar reset de senha
                   </DropdownMenuItem>
                   
                   <DropdownMenuItem

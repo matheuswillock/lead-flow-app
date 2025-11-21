@@ -313,18 +313,18 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
   // Reenviar convite por e-mail
   const resendInvite = useCallback(async (email: string, userId?: string) => {
     try {
-      toast.loading('Reenviando convite...');
+      toast.loading('Enviando email de reset de senha...');
       
       const result = await managerUsersService.resendInvite(email, userId);
       
       if (result.isValid) {
-        toast.success('Convite reenviado com sucesso!');
+        toast.success('Email de reset de senha enviado com sucesso!');
       } else {
-        toast.error(result.errorMessages.join(', ') || 'Erro ao reenviar convite');
+        toast.error(result.errorMessages.join(', ') || 'Erro ao enviar email');
       }
     } catch (error) {
-      console.error('Erro ao reenviar convite:', error);
-      toast.error('Erro ao reenviar convite');
+      console.error('Erro ao enviar email de reset:', error);
+      toast.error('Erro ao enviar email');
     }
   }, [managerUsersService]);
 
