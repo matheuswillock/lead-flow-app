@@ -17,11 +17,13 @@ import { PendingOperatorsAlert } from "./PendingOperatorsAlert";
 interface ManagerUsersContainerProps {
   supabaseId: string;
   currentUserRole: string;
+  currentUserIsMaster?: boolean;
 }
 
 export function ManagerUsersContainer({
   supabaseId,
   currentUserRole,
+  currentUserIsMaster = false,
 }: ManagerUsersContainerProps) {
   const {
     // Estado
@@ -39,6 +41,7 @@ export function ManagerUsersContainer({
     updateUser,
     deleteUser,
     resendInvite,
+    togglePermanentSubscription,
     
     // Controle de UI
     openCreateModal,
@@ -78,6 +81,8 @@ export function ManagerUsersContainer({
     onEdit: openEditModal,
     onDelete: openDeleteDialog,
     onResendInvite: resendInvite,
+    onTogglePermanentSubscription: togglePermanentSubscription,
+    currentUserIsMaster,
   });
 
   return (

@@ -1,7 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal, Pencil, Trash2, Mail } from "lucide-react";
+import { ArrowUpDown, MoreHorizontal, Pencil, Trash2, Mail, Crown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,9 +25,17 @@ interface CreateColumnsProps {
   onEdit: (user: ManagerUserTableRow) => void;
   onDelete: (user: ManagerUserTableRow) => void;
   onResendInvite: (email: string, userId?: string) => void;
+  onTogglePermanentSubscription?: (userId: string, currentValue: boolean) => void;
+  currentUserIsMaster?: boolean;
 }
 
-export function createColumns({ onEdit, onDelete, onResendInvite }: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
+export function createColumns({ 
+  onEdit, 
+  onDelete, 
+  onResendInvite,
+  onTogglePermanentSubscription,
+  currentUserIsMaster = false
+}: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
   return [
     {
       accessorKey: "profileIconUrl",
@@ -237,6 +245,39 @@ export function createColumns({ onEdit, onDelete, onResendInvite }: CreateColumn
       },
     },
     {
+      accessorKey: "hasPermanentSubscription",
+      header: "Assinatura",
+      cell: ({ row }) => {
+        const user = row.original;
+        const hasPermanent = user.hasPermanentSubscription || false;
+        
+        if (!hasPermanent) {
+          return (
+            <div className="text-center text-muted-foreground text-sm">
+              Asaas
+            </div>
+          );
+        }
+
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center justify-center gap-1">
+                <Crown className="h-4 w-4 text-yellow-500" />
+                <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-300">
+                  Permanente
+                </Badge>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Assinatura permanente ativa (bypass Asaas)</p>
+            </TooltipContent>
+          </Tooltip>
+        );
+      },
+      enableSorting: false,
+    },
+    {
       id: "actions",
       header: "Ações",
       cell: ({ row }) => {
@@ -254,6 +295,18 @@ export function createColumns({ onEdit, onDelete, onResendInvite }: CreateColumn
               <DropdownMenuLabel>Ações</DropdownMenuLabel>
               {user.status === 'active' ? (
                 <>
+                  {currentUserIsMaster && onTogglePermanentSubscription && (
+                    <DropdownMenuItem
+                      onClick={() => onTogglePermanentSubscription(user.id, user.hasPermanentSubscription || false)}
+                      className="flex items-center gap-2"
+                    >
+                      <Crown className="h-4 w-4" />
+                      {user.hasPermanentSubscription 
+                        ? 'Desativar assinatura permanente' 
+                        : 'Ativar assinatura permanente'}
+                    </DropdownMenuItem>
+                  )}
+                  
                   <DropdownMenuItem
                     onClick={() => onResendInvite(user.email, user.id)}
                     className="flex items-center gap-2"

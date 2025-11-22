@@ -4,6 +4,7 @@ export interface CheckSubscriptionResult {
   userExists: boolean;
   userId?: string | null;
   userRole?: string; // 'manager' ou 'operator'
+  isPermanent?: boolean; // Indica se é assinatura permanente (bypass Asaas)
   // Where/how we found the user match
   matchSource?: 'email' | 'phone' | 'document';
   matchedIdentifier?: string; // raw value; UI may mask it

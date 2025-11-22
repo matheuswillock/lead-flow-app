@@ -9,6 +9,7 @@ export interface ManagerUser {
   profileIconUrl?: string;
   managerId?: string; // Para operators
   leadsCount?: number; // Contador de leads
+  hasPermanentSubscription?: boolean; // Indica assinatura permanente
   createdAt: Date;
   updatedAt: Date;
   isPending?: boolean; // Indica se é um operador pendente

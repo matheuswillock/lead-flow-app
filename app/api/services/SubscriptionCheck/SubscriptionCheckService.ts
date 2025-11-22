@@ -24,6 +24,26 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
       };
     }
 
+    // Verificar se tem assinatura permanente (BYPASS ASAAS)
+    if (profile.hasPermanentSubscription) {
+      console.info('✅ [SubscriptionCheckService] Usuário com assinatura PERMANENTE (bypass Asaas)');
+      return {
+        success: true,
+        hasActiveSubscription: true,
+        userExists: true,
+        isPermanent: true,
+        matchSource: email && profile.email === email ? 'email' : phone && profile.phone === phone ? 'phone' : 'document',
+        matchedIdentifier: email || phone || cpfCnpj,
+        userId: profile.supabaseId,
+        userRole: profile.isMaster ? 'master' : profile.role,
+        subscription: {
+          id: 'PERMANENT',
+          status: 'active',
+          plan: 'Assinatura Permanente',
+        },
+      };
+    }
+
     // Determinar origem do match
     let matchSource: 'email' | 'phone' | 'document' | undefined;
     let matchedIdentifier: string | undefined;

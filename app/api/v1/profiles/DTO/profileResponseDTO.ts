@@ -17,6 +17,7 @@ export interface ProfileResponseDTO {
   fullName: string | null;
   role: UserRole;
   isMaster: boolean;
+  hasPermanentSubscription: boolean;
   managerId: string | null;
   profileIconId: string | null;
   profileIconUrl: string | null;
@@ -69,6 +70,7 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     fullName: profile.fullName,
     role: profile.role,
     isMaster: profile.isMaster ?? false,
+    hasPermanentSubscription: profile.hasPermanentSubscription ?? false,
     managerId: profile.managerId,
     profileIconId: profile.profileIconId,
     profileIconUrl: profile.profileIconUrl,

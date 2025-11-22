@@ -87,6 +87,7 @@ with_operators with_operators
     String profileIconUrl "❓"
     UserRole role 
     Boolean isMaster 
+    Boolean hasPermanentSubscription 
     String asaasCustomerId "❓"
     String subscriptionId "❓"
     SubscriptionStatus subscriptionStatus "❓"

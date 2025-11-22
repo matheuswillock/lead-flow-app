@@ -24,6 +24,7 @@ export interface UserData {
   profileIconUrl: string | null;
   role: UserRole;
   isMaster: boolean;
+  hasPermanentSubscription: boolean;
   managerId: string | null;
   subscriptionStatus: string | null;
   subscriptionId: string | null;
