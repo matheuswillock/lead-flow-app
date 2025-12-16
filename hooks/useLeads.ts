@@ -106,7 +106,7 @@ export const useLeads = () => {
     setError(null);
 
     try {
-      console.log('[useLeads] Creating lead with data:', leadData);
+      console.info('[useLeads] Creating lead with data:', leadData);
       
       const response = await fetch('/api/v1/leads', {
         method: 'POST',
@@ -118,7 +118,7 @@ export const useLeads = () => {
       });
 
       const apiResult = await response.json();
-      console.log('[useLeads] API Response:', { status: response.status, apiResult });
+      console.info('[useLeads] API Response:', { status: response.status, apiResult });
 
       // Transform API response to DTO format expected by frontend
       const result: CreateLeadResponseDTO = {
@@ -129,7 +129,7 @@ export const useLeads = () => {
           : apiResult.errorMessages?.join(', ') || 'Erro ao criar lead'
       };
       
-      console.log('[useLeads] Transformed result:', result);
+      console.info('[useLeads] Transformed result:', result);
       
       // Se não for válido, definir erro mas retornar resultado para tratamento no componente
       if (!apiResult.isValid) {
