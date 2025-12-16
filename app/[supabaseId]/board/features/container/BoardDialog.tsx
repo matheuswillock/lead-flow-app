@@ -282,7 +282,7 @@ export default function BoardDialog() {
         email: lead.email || "",
         cnpj: formatCNPJ(lead.cnpj || ""),
         age: lead.age || "",
-        currentHealthPlan: lead.currentHealthPlan || "",
+        currentHealthPlan: lead.currentHealthPlan || undefined,
         currentValue: lead.currentValue ? formatCurrency(lead.currentValue) : "",
         referenceHospital: lead.referenceHospital || "",
         ongoingTreatment: lead.currentTreatment || "",
@@ -297,7 +297,7 @@ export default function BoardDialog() {
         email: "",
         cnpj: "",
         age: "",
-        currentHealthPlan: "",
+        currentHealthPlan: undefined,
         currentValue: "",
         referenceHospital: "",
         ongoingTreatment: "",
@@ -352,7 +352,7 @@ export default function BoardDialog() {
             </div>
           ) : (
             <LeadForm
-              form={form}
+              form={form as any}
               onSubmit={onSubmit}
               isLoading={isSubmitting}
               onCancel={() => setOpen(false)}

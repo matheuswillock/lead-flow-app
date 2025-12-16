@@ -36,7 +36,7 @@ export function DeleteUserDialog({
           <DialogTitle className="text-destructive">Remover Usuário</DialogTitle>
           <DialogDescription>
             Tem certeza de que deseja remover o usuário{" "}
-            <span className="font-semibold">{user.fullName || user.email}</span>?
+            <span className="font-semibold">{user.name || user.email}</span>?
           </DialogDescription>
         </DialogHeader>
         

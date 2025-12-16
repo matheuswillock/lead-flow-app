@@ -5,10 +5,11 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 // GET /api/v1/leads/[id]/attachments - List all attachments for a lead
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const leadId = params.id;
+    const resolvedParams = await params;
+    const leadId = resolvedParams.id;
 
     // Verificar autenticação
     const supabase = await createSupabaseServer();
@@ -51,10 +52,11 @@ export async function GET(
 // POST /api/v1/leads/[id]/attachments - Upload a new attachment
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const leadId = params.id;
+    const resolvedParams = await params;
+    const leadId = resolvedParams.id;
 
     // Verificar autenticação
     const supabase = await createSupabaseServer();

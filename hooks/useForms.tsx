@@ -46,7 +46,7 @@ export function useUpdateAccountForm(): UseFormReturn<updateAccountFormData> {
   });
 }
 
-export function useLeadForm(): UseFormReturn<leadFormData> {
+export function useLeadForm() {
   return useForm<leadFormData>({
     resolver: zodResolver(leadFormSchema),
     defaultValues: {
@@ -54,8 +54,8 @@ export function useLeadForm(): UseFormReturn<leadFormData> {
       phone: "",
       email: "",
       cnpj: "",
-      age: [],
-      hasPlan: undefined,
+      age: "",
+      currentHealthPlan: "NOVA_ADESAO",
       currentValue: "",
       referenceHospital: "",
       ongoingTreatment: "",

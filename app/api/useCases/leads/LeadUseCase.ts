@@ -36,7 +36,7 @@ export class LeadUseCase implements ILeadUseCase {
         email: data.email || null,
         phone: data.phone || null,
         cnpj: data.cnpj || null,
-        age: data.age || [],
+        age: data.age || null,
         currentHealthPlan: data.currentHealthPlan || null,
         currentValue: data.currentValue || null,
         referenceHospital: data.referenceHospital || null,

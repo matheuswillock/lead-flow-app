@@ -26,7 +26,7 @@ const formatCurrency = (value: string): string => {
 };
 
 export interface ILeadFormProps {
-    form: UseFormReturn<leadFormData>;
+    form: UseFormReturn<leadFormData, any, undefined>;
     onSubmit: (data: leadFormData) => void | Promise<void>;
     isLoading?: boolean;
     isUpdating?: boolean;
@@ -102,11 +102,11 @@ export function LeadForm({
     return (
       <Form {...form}>
         <form
-            onSubmit={form.handleSubmit(onSubmit)}
+            onSubmit={form.handleSubmit(onSubmit as any)}
             className={cn("grid gap-4 grid-cols-1 sm:grid-cols-2", className)}
         >            
             <FormField
-                control={form.control}
+                control={form.control as any}
                 name="name"
                 render={({ field }) => (
                   <FormItem className="sm:col-span-2">
@@ -126,7 +126,7 @@ export function LeadForm({
             />
 
             <FormField
-                control={form.control}
+                control={form.control as any}
                 name="phone"
                 render={({ field }) => (
                     <FormItem>
@@ -151,7 +151,7 @@ export function LeadForm({
             />
 
             <FormField 
-                control={form.control}
+                control={form.control as any}
                 name="email"
                 render={({ field }) => (
                     <FormItem>
@@ -170,7 +170,7 @@ export function LeadForm({
             />
 
             <FormField 
-                control={form.control}
+                control={form.control as any}
                 name="cnpj"
                 render={({ field }) => (
                     <FormItem>
@@ -194,7 +194,7 @@ export function LeadForm({
             />
 
             <FormField
-                control={form.control}
+                control={form.control as any}
                 name="age"
                 render={({ field }) => (
                     <FormItem className="sm:col-span-2">
@@ -264,7 +264,7 @@ export function LeadForm({
 
             <div className="sm:col-span-2">
                 <FormField
-                    control={form.control}
+                    control={form.control as any}
                     name="currentHealthPlan"
                     render={({ field }) => (
                         <FormItem>
@@ -303,7 +303,7 @@ export function LeadForm({
             </div>
 
             <FormField 
-                control={form.control}
+                control={form.control as any}
                 name="currentValue"
                 render={({ field }) => (
                     <FormItem>
@@ -326,7 +326,7 @@ export function LeadForm({
             />
 
             <FormField
-                control={form.control}
+                control={form.control as any}
                 name="referenceHospital"
                 render={({ field }) => (
                     <FormItem>
@@ -346,7 +346,7 @@ export function LeadForm({
             />
 
             <FormField
-                control={form.control}
+                control={form.control as any}
                 name="ongoingTreatment"
                 render={({ field }) => (
                     <FormItem className="sm:col-span-2">
@@ -366,7 +366,7 @@ export function LeadForm({
             />
 
             <FormField
-                control={form.control}
+                control={form.control as any}
                 name="additionalNotes"
                 render={({ field }) => (
                     <FormItem className="sm:col-span-2">
@@ -385,7 +385,7 @@ export function LeadForm({
             {/* Data, Horário e Responsável em uma linha no desktop */}
             <div className="sm:col-span-2 flex flex-col sm:flex-row gap-4">
                 <FormField
-                    control={form.control}
+                    control={form.control as any}
                     name="meetingDate"
                     render={({ field }) => (
                         <FormItem className="sm:flex-shrink-0">
@@ -405,7 +405,7 @@ export function LeadForm({
                 />
 
                 <FormField
-                    control={form.control}
+                    control={form.control as any}
                     name="responsible"
                     render={({ field }) => {
                         const selectedValue = field.value || (usersToAssign?.[0]?.id ?? "");

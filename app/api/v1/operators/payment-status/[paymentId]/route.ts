@@ -7,10 +7,10 @@ import { subscriptionUpgradeUseCase } from "@/app/api/useCases/subscriptions/Sub
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { paymentId: string } }
+  { params }: { params: Promise<{ paymentId: string }> }
 ) {
   try {
-    const { paymentId } = params;
+    const { paymentId } = await params;
 
     if (!paymentId) {
       return NextResponse.json(

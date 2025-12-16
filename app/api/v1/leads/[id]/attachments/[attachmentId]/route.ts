@@ -5,10 +5,10 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 // DELETE /api/v1/leads/[id]/attachments/[attachmentId] - Delete an attachment
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; attachmentId: string } }
+  { params }: { params: Promise<{ id: string; attachmentId: string }> }
 ) {
   try {
-    const { id: leadId, attachmentId } = params;
+    const { id: leadId, attachmentId } = await params;
 
     // Verificar autenticação
     const supabase = await createSupabaseServer();

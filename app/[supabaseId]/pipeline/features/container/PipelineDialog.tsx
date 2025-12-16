@@ -146,7 +146,7 @@ export default function PipelineDialog() {
         phone: lead.phone || "",
         cnpj: lead.cnpj || "",
         age: lead.age || "",
-        currentHealthPlan: lead.currentHealthPlan || "",
+        currentHealthPlan: lead.currentHealthPlan || undefined,
         currentValue: lead.currentValue?.toString() || "",
         referenceHospital: lead.referenceHospital || "",
         ongoingTreatment: lead.currentTreatment || "",
@@ -161,7 +161,7 @@ export default function PipelineDialog() {
         phone: "",
         cnpj: "",
         age: "",
-        currentHealthPlan: "",
+        currentHealthPlan: undefined,
         currentValue: "",
         referenceHospital: "",
         ongoingTreatment: "",
@@ -272,7 +272,7 @@ export default function PipelineDialog() {
           )}
 
           <LeadForm 
-            form={form} 
+            form={form as any} 
             onSubmit={onSubmit} 
             isLoading={isSubmitting}
             onCancel={() => setOpen(false)}

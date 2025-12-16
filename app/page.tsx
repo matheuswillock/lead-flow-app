@@ -26,7 +26,7 @@ export default function Home() {
 
         // Se é recovery ou invite, redirecionar para /set-password
         if ((type === 'recovery' || type === 'invite') && accessToken) {
-          console.log('🔐 Token detectado, redirecionando para /set-password');
+          console.info('🔐 Token detectado, redirecionando para /set-password');
           router.push(`/set-password${hash}`);
         }
       }

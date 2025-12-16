@@ -289,21 +289,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     if (!hasPendingOperators) return;
     
     const intervalId = setInterval(() => {
-      console.log('🔄 Auto-refresh: Verificando status de operadores pendentes...');
-      loadUsers();
-    }, 10000); // 10 segundos
-    
-    return () => clearInterval(intervalId);
-  }, [state.users, loadUsers]);
-
-  // Auto-refresh a cada 10 segundos se houver operadores pendentes
-  useEffect(() => {
-    const hasPendingOperators = state.users.some(user => user.isPending);
-    
-    if (!hasPendingOperators) return;
-    
-    const intervalId = setInterval(() => {
-      console.log('🔄 Auto-refresh: Verificando status de operadores pendentes...');
+      console.info('🔄 Auto-refresh: Verificando status de operadores pendentes...');
       loadUsers();
     }, 10000); // 10 segundos
     

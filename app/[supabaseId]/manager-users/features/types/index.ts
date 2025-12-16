@@ -51,7 +51,6 @@ export interface ManagerUserTableRow extends ManagerUser {
   canEdit: boolean;
   canDelete: boolean;
   status: 'active' | 'pending_payment' | 'payment_confirmed' | 'payment_failed' | 'pending_creation';
-  pendingPayment?: PendingOperator;
 }
 
 // Schemas de validação para formulários

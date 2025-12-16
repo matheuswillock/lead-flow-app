@@ -13,7 +13,9 @@ import {
 
 import { cn } from '@/lib/utils';
 import { useIsInView } from '@/hooks/use-is-in-view';
-import { Slot, type WithAsChild } from '@/components/animate-ui/primitives/animate/slot';
+import { Slot } from '@radix-ui/react-slot';
+
+type WithAsChild<T = Record<string, unknown>> = T & { asChild?: boolean };
 
 const staticAnimations = {
   path: {
@@ -120,7 +122,6 @@ function composeEventHandlers<E extends React.SyntheticEvent<unknown>>(
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyProps = Record<string, any>;
 
 function AnimateIcon({
@@ -209,7 +210,6 @@ function AnimateIcon({
     setCurrentAnimation(typeof animate === 'string' ? animate : animation);
     if (animate) startAnimation(animate as TriggerProp);
     else stopAnimation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animate]);
 
   React.useEffect(() => {
@@ -219,11 +219,10 @@ function AnimateIcon({
     };
   }, []);
 
-  const viewOuterRef = React.useRef<HTMLElement>(null);
-  const { ref: inViewRef, isInView } = useIsInView(viewOuterRef, {
-    inView: !!animateOnView,
-    inViewOnce: animateOnViewOnce,
-    inViewMargin: animateOnViewMargin,
+  const { ref: inViewRef, isInView } = useIsInView({
+    threshold: 0,
+    rootMargin: animateOnViewMargin || '0px',
+    triggerOnce: animateOnViewOnce,
   });
 
   const startAnim = React.useCallback(
@@ -368,7 +367,6 @@ function AnimateIcon({
         loopDelayRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localAnimate, controls]);
 
   const childProps = (
@@ -403,16 +401,14 @@ function AnimateIcon({
   );
 
   const content = asChild ? (
-    <Slot
-      ref={inViewRef}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      {...props}
-    >
-      {children}
-    </Slot>
+    React.cloneElement(children as React.ReactElement, {
+      ref: inViewRef,
+      onMouseEnter: handleMouseEnter,
+      onMouseLeave: handleMouseLeave,
+      onPointerDown: handlePointerDown,
+      onPointerUp: handlePointerUp,
+      ...props,
+    })
   ) : (
     <motion.span
       ref={inViewRef}
@@ -618,7 +614,6 @@ function getVariants<
   V extends { default: T; [key: string]: T },
   T extends Record<string, Variants>,
 >(animations: V): T {
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   const { animation: animationType } = useAnimateIconContext();
 
   let result: T;
