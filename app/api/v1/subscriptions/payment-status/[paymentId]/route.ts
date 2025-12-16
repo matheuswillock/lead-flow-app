@@ -4,10 +4,10 @@ import { Output } from '@/lib/output';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { paymentId: string } }
+  { params }: { params: Promise<{ paymentId: string }> }
 ) {
   try {
-    const { paymentId } = params;
+    const { paymentId } = await params;
 
     if (!paymentId) {
       const error = new Output(false, [], ['paymentId é obrigatório'], null);

@@ -214,7 +214,20 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
       canEdit: permissions.canEditUser && managerUsersService.canEditUser(supabaseId, user.id, user.role) && !user.isPending,
       canDelete: permissions.canDeleteUser && (user.id !== supabaseId) && !user.isPending,
       status,
-      pendingPayment: user.pendingPayment
+      pendingPayment: user.pendingPayment ? {
+        id: user.pendingPayment.id,
+        managerId: user.managerId || supabaseId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        paymentId: user.pendingPayment.paymentId,
+        paymentStatus: user.pendingPayment.paymentStatus,
+        paymentMethod: user.pendingPayment.paymentMethod,
+        operatorCreated: user.pendingPayment.operatorCreated,
+        operatorId: user.id,
+        createdAt: user.createdAt.toISOString(),
+        updatedAt: user.updatedAt.toISOString(),
+      } : undefined
     };
   });
 
@@ -289,7 +302,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     if (!hasPendingOperators) return;
     
     const intervalId = setInterval(() => {
-      console.log('🔄 Auto-refresh: Verificando status de operadores pendentes...');
+      console.info('🔄 Auto-refresh: Verificando status de operadores pendentes...');
       loadUsers();
     }, 10000); // 10 segundos
     
@@ -303,7 +316,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     if (!hasPendingOperators) return;
     
     const intervalId = setInterval(() => {
-      console.log('🔄 Auto-refresh: Verificando status de operadores pendentes...');
+      console.info('🔄 Auto-refresh: Verificando status de operadores pendentes...');
       loadUsers();
     }, 10000); // 10 segundos
     

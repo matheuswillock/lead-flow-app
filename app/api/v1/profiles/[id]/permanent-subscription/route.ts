@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { UpdatePermanentSubscriptionUseCase } from '@/app/api/useCases/profiles/UpdatePermanentSubscriptionUseCase';
 import { profileRepository } from '@/app/api/infra/data/repositories/profile/ProfileRepository';
-import { createClient } from '@/lib/supabase/server';
+import { createSupabaseServer } from '@/lib/supabase/server';
 
 /**
  * PUT /api/v1/profiles/[id]/permanent-subscription
@@ -10,11 +10,25 @@ import { createClient } from '@/lib/supabase/server';
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     // 1. Verificar autenticação
-    const supabase = await createClient();
+    const supabase = await createSupabaseServer();
+    
+    if (!supabase) {
+      return NextResponse.json(
+        {
+          isValid: false,
+          successMessages: [],
+          errorMessages: ['Erro ao criar cliente Supabase'],
+          result: null
+        },
+        { status: 500 }
+      );
+    }
+    
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
@@ -63,7 +77,7 @@ export async function PUT(
     // 4. Executar UseCase
     const useCase = new UpdatePermanentSubscriptionUseCase(profileRepository);
     const result = await useCase.updatePermanentSubscription(
-      params.id,
+      id,
       hasPermanentSubscription,
       requestingUser.id
     );

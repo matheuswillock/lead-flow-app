@@ -7,10 +7,10 @@ import { subscriptionUpgradeUseCase } from '@/app/api/useCases/subscriptions/Sub
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { operatorId: string } }
+  { params }: { params: Promise<{ operatorId: string }> }
 ) {
   try {
-    const { operatorId } = params;
+    const { operatorId } = await params;
 
     console.info('📞 [POST /api/v1/operators/:operatorId/remove] Requisição recebida:', {
       operatorId

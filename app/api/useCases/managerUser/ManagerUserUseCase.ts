@@ -256,7 +256,7 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
             // Transferir todos os leads do usuário para o master
             const leadsTransferred = await this.leadRepository.reassignLeadsToMaster(operatorId, finalMasterId);
             
-            console.log(`Transferidos ${leadsTransferred} leads do usuário ${operatorId} para o master ${finalMasterId}`);
+            console.info(`Transferidos ${leadsTransferred} leads do usuário ${operatorId} para o master ${finalMasterId}`);
 
             // Deletar o usuário
             await this.managerUserRepository.deleteOperator(operatorId);

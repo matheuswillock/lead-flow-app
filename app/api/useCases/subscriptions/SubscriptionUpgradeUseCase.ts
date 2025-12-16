@@ -67,7 +67,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         value: 19.90,
         description: `Licença adicional de operador - ${data.operatorData.name} (${data.operatorData.email}) - Acesso completo à plataforma Corretor Studio com gestão de leads, pipeline de vendas e métricas em tempo real`,
         pendingOperatorId: pendingOperator.id,
-        managerId: manager.supabaseId,
+        managerId: manager.supabaseId || manager.id,
         operatorName: data.operatorData.name,
         operatorEmail: data.operatorData.email,
       });
@@ -1002,21 +1002,21 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       const newSubscription = await AsaasSubscriptionService.createSubscription(subscriptionPayload);
 
-      if (!newSubscription || !newSubscription.id) {
+      if (!newSubscription || !newSubscription.data?.id) {
         return new Output(false, [], ['Erro ao criar nova assinatura no Asaas'], null);
       }
 
       console.info('✅ [reactivateSubscription] Nova assinatura criada:', {
-        subscriptionId: newSubscription.id,
-        value: newSubscription.value,
-        status: newSubscription.status
+        subscriptionId: newSubscription.data.id,
+        value: newSubscription.data.value,
+        status: newSubscription.data.status
       });
 
       // 6. Atualizar Profile no banco
       await prisma.profile.update({
         where: { id: manager.id },
         data: {
-          asaasSubscriptionId: newSubscription.id,
+          asaasSubscriptionId: newSubscription.data.id,
           subscriptionNextDueDate: nextDueDate,
           subscriptionCycle: 'MONTHLY',
           operatorCount: data.operatorCount,
@@ -1028,9 +1028,9 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       // 7. Preparar resposta com dados PIX se necessário
       const resultData: any = {
-        subscriptionId: newSubscription.id,
-        status: newSubscription.status,
-        value: newSubscription.value,
+        subscriptionId: newSubscription.data.id,
+        status: newSubscription.data.status,
+        value: newSubscription.data.value,
         nextDueDate: nextDueDateStr,
         operatorCount: data.operatorCount
       };
@@ -1039,7 +1039,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       if (data.paymentMethod === 'PIX') {
         try {
           // Buscar primeira cobrança da assinatura
-          const payments = await asaasFetch(`/subscriptions/${newSubscription.id}/payments`);
+          const payments = await asaasFetch(`/subscriptions/${newSubscription.data.id}/payments`);
           if (payments.data && payments.data.length > 0) {
             const firstPayment = payments.data[0];
             resultData.paymentId = firstPayment.id;

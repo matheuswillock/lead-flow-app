@@ -4,6 +4,7 @@ import { z } from "zod";
 export interface ManagerUser {
   id: string;
   name: string;
+  fullName?: string; // Alias para name
   email: string;
   role: "manager" | "operator";
   profileIconUrl?: string;
@@ -30,7 +31,7 @@ export interface PendingOperator {
   role: string;
   paymentId: string;
   paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED';
-  paymentMethod: 'PIX' | 'CREDIT_CARD';
+  paymentMethod: 'PIX' | 'CREDIT_CARD' | 'UNDEFINED';
   operatorCreated: boolean;
   operatorId?: string;
   createdAt: string;
