@@ -34,12 +34,19 @@ export function useUpdateAccountForm(): UseFormReturn<updateAccountFormData> {
       fullName: "",
       email: "",
       phone: "",
+      cpfCnpj: "",
+      postalCode: "",
+      address: "",
+      addressNumber: "",
+      complement: "",
+      city: "",
+      state: "",
       password: "",
     },
   });
 }
 
-export function useLeadForm(): UseFormReturn<leadFormData> {
+export function useLeadForm() {
   return useForm<leadFormData>({
     resolver: zodResolver(leadFormSchema),
     defaultValues: {
@@ -47,8 +54,7 @@ export function useLeadForm(): UseFormReturn<leadFormData> {
       phone: "",
       email: "",
       cnpj: "",
-      age: [],
-      hasPlan: undefined,
+      age: "",
       currentValue: "",
       referenceHospital: "",
       ongoingTreatment: "",

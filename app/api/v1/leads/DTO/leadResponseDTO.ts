@@ -1,4 +1,4 @@
-import { LeadStatus, AgeRange } from "@prisma/client";
+import type { LeadStatus, HealthPlan } from '@prisma/client';
 
 export interface LeadResponseDTO {
   id: string;
@@ -9,9 +9,8 @@ export interface LeadResponseDTO {
   email: string | null;
   phone: string | null;
   cnpj: string | null;
-  age: AgeRange[];
-  hasHealthPlan: boolean | null;
-  currentHealthPlan: string | null;
+  age: string | null;
+  currentHealthPlan: HealthPlan | null;
   currentValue: number | null;
   referenceHospital: string | null;
   currentTreatment: string | null;
@@ -21,6 +20,7 @@ export interface LeadResponseDTO {
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
+  attachmentCount?: number;
   manager?: {
     id: string;
     fullName: string | null;
@@ -58,13 +58,13 @@ export interface LeadListResponseDTO {
 
 export interface CreateLeadResponseDTO {
   success: boolean;
-  lead: LeadResponseDTO;
+  lead: LeadResponseDTO | null;
   message: string;
 }
 
 export interface UpdateLeadResponseDTO {
   success: boolean;
-  lead: LeadResponseDTO;
+  lead: LeadResponseDTO | null;
   message: string;
 }
 

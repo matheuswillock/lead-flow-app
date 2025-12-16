@@ -5,6 +5,7 @@ export interface ProfileInfo {
   id: string;
   role: 'manager' | 'operator';
   managerId: string | null;
+  isMaster: boolean;
   fullName: string | null;
   email: string;
 }

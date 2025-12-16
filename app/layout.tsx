@@ -5,7 +5,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "./context/AuthContext"
 import { Toaster } from "sonner";
 
-export const metadata: Metadata = { title: "Lead Flow", description: "Pré-CRM para corretores de saúde" }
+export const metadata: Metadata = { title: "Corretor Studio", description: "Uma plataforma de gestão de leads para corretores de saúde" }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -19,7 +19,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           <AuthProvider>
             {children}
-            <Toaster position="top-center" />
+            <Toaster 
+              position="top-center" 
+              richColors 
+              closeButton
+              expand={true}
+              toastOptions={{
+                style: {
+                  zIndex: 9999,
+                },
+              }}
+            />
           </AuthProvider>
         </ThemeProvider>
         <Analytics />

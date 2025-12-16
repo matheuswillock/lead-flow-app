@@ -1,15 +1,14 @@
-import { GalleryVerticalEnd } from "lucide-react"
+import { GalleryVerticalEnd, Eye, EyeOff, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form"
 import Link from "next/link"
-import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-// import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData } from "@/lib/validations/validationForms"
-import { maskPhone, unmask } from "@/lib/masks"
+import { maskPhone, maskCPFOrCNPJ, unmask } from "@/lib/masks"
+import { useState } from "react"
 
 interface SignUpFormProps {
   form: UseFormReturn<signUpFormData>;
@@ -17,7 +16,6 @@ interface SignUpFormProps {
   onSubmit: (data: signUpFormData) => void | Promise<void>;
   isLoading?: boolean;
   readonly?: boolean;
-  fromSubscribe?: boolean;
 }
 
 export function SignupForm({
@@ -27,9 +25,59 @@ export function SignupForm({
   onSubmit,
   isLoading = false,
   readonly = false,
-  fromSubscribe = false,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignUpFormProps) {
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null);
+
+  const calculatePasswordStrength = (pwd: string): 'weak' | 'medium' | 'strong' => {
+    let strength = 0;
+    if (pwd.length >= 6) strength++;
+    if (pwd.length >= 10) strength++;
+    if (/[A-Z]/.test(pwd)) strength++;
+    if (/[a-z]/.test(pwd)) strength++;
+    if (/[0-9]/.test(pwd)) strength++;
+    if (/[^A-Za-z0-9]/.test(pwd)) strength++; // caracteres especiais
+
+    if (strength <= 2) return 'weak';
+    if (strength <= 4) return 'medium';
+    return 'strong';
+  };
+
+  const generateStrongPassword = (): string => {
+    const length = 12;
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const numbers = '0123456789';
+    const symbols = '!@#$%&*';
+    
+    const allChars = uppercase + lowercase + numbers + symbols;
+    let password = '';
+    
+    // Garantir que tenha pelo menos um de cada tipo
+    password += uppercase[Math.floor(Math.random() * uppercase.length)];
+    password += lowercase[Math.floor(Math.random() * lowercase.length)];
+    password += numbers[Math.floor(Math.random() * numbers.length)];
+    password += symbols[Math.floor(Math.random() * symbols.length)];
+    
+    // Preencher o resto aleatoriamente
+    for (let i = password.length; i < length; i++) {
+      password += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+    
+    // Embaralhar
+    return password.split('').sort(() => Math.random() - 0.5).join('');
+  };
+
+  const handleGeneratePassword = () => {
+    const newPassword = generateStrongPassword();
+    form.setValue('password', newPassword);
+    form.setValue('confirmPassword', newPassword);
+    setPasswordStrength('strong');
+    setShowPassword(true);
+    setShowConfirmPassword(true);
+  };
 
   return (
     <Form {...form}>
@@ -40,7 +88,6 @@ export function SignupForm({
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col items-center gap-2">
-            {/* TODO: Add link to return intial page */}
             <Link
               href="/"
               className="flex flex-col items-center gap-2 font-medium"
@@ -48,21 +95,16 @@ export function SignupForm({
               <div className="flex h-8 w-8 items-center justify-center rounded-md">
                 <GalleryVerticalEnd className="size-6" />
               </div>
-              <span className="sr-only">Lead Flow</span>
+              <span className="sr-only">Corretor Studio</span>
             </Link>
-            {fromSubscribe && (
-              <Badge variant="outline" className="mt-1 border-primary/30 text-primary">Assinatura</Badge>
-            )}
             <h1 className="text-xl font-bold">Criar conta</h1>
-            {fromSubscribe && (
-              <p className="text-center text-sm text-muted-foreground max-w-sm">
-                Para assinar a plataforma, primeiro crie sua conta. Após entrar, você será direcionado para a página de assinatura.
-              </p>
-            )}
+            <p className="text-center text-sm text-muted-foreground max-w-sm">
+              Crie sua conta para começar a usar o Corretor Studio
+            </p>
             <div className="text-center text-sm">
               Já tem uma conta? 
               {' '}
-              <Link href={fromSubscribe ? "/sign-in?from=subscribe" : "/sign-in"} className="underline underline-offset-4 text-lg">
+              <Link href="/sign-in" className="underline underline-offset-4 text-lg">
                 Entrar
               </Link>
             </div>
@@ -152,13 +194,118 @@ export function SignupForm({
 
             <FormField
               control={form.control}
+              name="cpfCnpj"
+              render={({ field }) => (
+                <FormItem className="grid gap-2">
+                  <FormLabel>CPF ou CNPJ</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="000.000.000-00 ou 00.000.000/0000-00" 
+                      {...field}
+                      value={maskCPFOrCNPJ(field.value || '')}
+                      onChange={(e) => {
+                        const masked = maskCPFOrCNPJ(e.target.value);
+                        const unmasked = unmask(masked);
+                        field.onChange(unmasked);
+                      }}
+                      className="border-2 border-gray-300 rounded-md p-2"
+                      disabled={readonly}
+                    />
+                  </FormControl>
+                  <FormMessage className="text-red-500">{errors.cpfCnpj}</FormMessage>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="password"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>Senha</FormLabel>
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Senha</FormLabel>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleGeneratePassword}
+                      className="h-auto py-1 px-2 text-xs"
+                    >
+                      Gerar senha forte
+                    </Button>
+                  </div>
                   <FormControl>
-                    <Input type="password" {...field} className="border-2 border-gray-300 rounded-md p-2" />
+                    <div className="relative">
+                      <Input 
+                        type={showPassword ? "text" : "password"} 
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          if (e.target.value) {
+                            setPasswordStrength(calculatePasswordStrength(e.target.value));
+                          } else {
+                            setPasswordStrength(null);
+                          }
+                        }}
+                        className="border-2 border-gray-300 rounded-md p-2 pr-10" 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </FormControl>
+                  
+                  {/* Indicador de força da senha */}
+                  {passwordStrength && (
+                    <div className="space-y-1">
+                      <div className="flex gap-1">
+                        <div className={`h-1 flex-1 rounded ${
+                          passwordStrength === 'weak' ? 'bg-red-500' :
+                          passwordStrength === 'medium' ? 'bg-yellow-500' :
+                          'bg-green-500'
+                        }`} />
+                        <div className={`h-1 flex-1 rounded ${
+                          passwordStrength === 'medium' || passwordStrength === 'strong' ? 
+                          (passwordStrength === 'medium' ? 'bg-yellow-500' : 'bg-green-500') : 
+                          'bg-muted'
+                        }`} />
+                        <div className={`h-1 flex-1 rounded ${
+                          passwordStrength === 'strong' ? 'bg-green-500' : 'bg-muted'
+                        }`} />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <ShieldCheck className={`h-3 w-3 ${
+                          passwordStrength === 'weak' ? 'text-red-500' :
+                          passwordStrength === 'medium' ? 'text-yellow-500' :
+                          'text-green-500'
+                        }`} />
+                        <p className={`text-xs font-medium ${
+                          passwordStrength === 'weak' ? 'text-red-500' :
+                          passwordStrength === 'medium' ? 'text-yellow-500' :
+                          'text-green-500'
+                        }`}>
+                          {passwordStrength === 'weak' ? 'Senha fraca' :
+                           passwordStrength === 'medium' ? 'Senha média' :
+                           'Senha forte'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="text-xs text-muted-foreground border border-muted rounded-md p-3 bg-muted/30 space-y-1">
+                    <p className="font-medium text-foreground mb-1">A senha deve conter:</p>
+                    <ul className="space-y-0.5 ml-1">
+                      <li>• Mínimo de 6 caracteres</li>
+                      <li>• Pelo menos uma letra maiúscula</li>
+                      <li>• Pelo menos uma letra minúscula</li>
+                      <li>• Pelo menos um número</li>
+                      <li>• Pelo menos um caractere especial (@, #, $, etc.)</li>
+                    </ul>
+                  </div>
                   <FormMessage className="text-red-500">{errors.password}</FormMessage>
                 </FormItem>
               )}
@@ -171,7 +318,20 @@ export function SignupForm({
                 <FormItem className="grid gap-2">
                   <FormLabel>Confirmar Senha</FormLabel>
                   <FormControl>
-                    <Input type="password" {...field} className="border-2 border-gray-300 rounded-md p-2" />
+                    <div className="relative">
+                      <Input 
+                        type={showConfirmPassword ? "text" : "password"} 
+                        {...field} 
+                        className="border-2 border-gray-300 rounded-md p-2 pr-10" 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.confirmPassword || errors.apiError}</FormMessage>
                 </FormItem>
@@ -186,7 +346,7 @@ export function SignupForm({
               {form.formState.isSubmitting || isLoading ? "Cadastrando..." : "Criar conta"}
             </Button>
           </div>
-          <div className="flex items-center gap-4">
+          {/* <div className="flex items-center gap-4">
             <Separator className="flex-1 shrink w-auto h-px bg-[var(--border)] opacity-60" />
             <span className="text-xs text-muted-foreground">Ou continue com</span>
             <Separator className="flex-1 shrink w-auto h-px bg-[var(--border)] opacity-60" />
@@ -201,7 +361,7 @@ export function SignupForm({
               </svg>
               Continuar com Google
             </Button>
-          </div>
+          </div> */}
         </div>
       </form>
     </Form>

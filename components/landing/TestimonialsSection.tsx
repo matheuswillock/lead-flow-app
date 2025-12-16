@@ -10,7 +10,7 @@ const testimonials = [
     company: "Vida Plena Corretora",
     avatar: "CS",
     rating: 5,
-    text: "O Lead Flow transformou minha forma de trabalhar. Antes eu perdia leads no WhatsApp, agora tudo está organizado e consigo acompanhar cada cliente até o fechamento."
+    text: "O Corretor Studio transformou minha forma de trabalhar. Antes eu perdia leads no WhatsApp, agora tudo está organizado e consigo acompanhar cada cliente até o fechamento."
   },
   {
     name: "Mariana Costa",
@@ -18,7 +18,7 @@ const testimonials = [
     company: "MedSaúde Corretora",
     avatar: "MC",
     rating: 5,
-    text: "Com 5 operadores na equipe, era caótico gerenciar tudo. O Lead Flow trouxe clareza total: sei exatamente quem está fazendo o quê e nosso fechamento aumentou 40%."
+    text: "Com 5 operadores na equipe, era caótico gerenciar tudo. O Corretor Studio trouxe clareza total: sei exatamente quem está fazendo o quê e nosso fechamento aumentou 40%."
   },
   {
     name: "Roberto Mendes",
@@ -71,7 +71,7 @@ export function TestimonialsSection() {
             </span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            Veja o que nossos usuários dizem sobre a experiência com o Lead Flow.
+            Veja o que nossos usuários dizem sobre a experiência com o Corretor Studio.
           </p>
         </MotionDiv>
 

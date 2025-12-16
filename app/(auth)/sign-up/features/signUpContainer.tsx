@@ -25,42 +25,58 @@ export function SignUpFormContainer() {
         const result = await registerUser(data);
 
         if (result.isValid && result.result?.supabaseId) {
-            const from = searchParams.get('from');
-            if (from === 'subscribe') {
-                toast.success('Cadastro concluído', {
-                    description: 'Agora escolha o plano e finalize sua assinatura.',
-                    duration: 5000,
-                });
-                // Handoff: enviar dados básicos para a tela de assinatura
-                try {
-                    const prefill = {
+            // Novo fluxo: criar checkout Asaas e redirecionar
+            toast.success('Cadastro concluído', {
+                description: 'Criando sua assinatura...',
+                duration: 3000,
+            });
+
+            try {
+                // Chamar API para criar checkout
+                const checkoutResponse = await fetch('/api/v1/checkout/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        supabaseId: result.result.supabaseId,
                         fullName: data.fullName,
                         email: data.email,
                         phone: data.phone,
-                    };
-                    sessionStorage.setItem('subscribePrefill', JSON.stringify(prefill));
-                } catch (_) {/* ignore */}
-                setTimeout(() => {
-                    window.location.href = `/subscribe`;
-                }, 900);
-            } else {
-                toast.success('Cadastro concluído', {
-                    description: 'Redirecionando para sua área de trabalho...',
+                        cpfCnpj: data.cpfCnpj,
+                    }),
+                });
+
+                const checkoutResult = await checkoutResponse.json();
+
+                if (checkoutResult.isValid && checkoutResult.result?.checkoutUrl) {
+                    toast.success('Redirecionando para pagamento', {
+                        description: 'Você será redirecionado para finalizar sua assinatura.',
+                        duration: 2000,
+                    });
+
+                    // Aguardar toast aparecer
+                    setTimeout(() => {
+                        // Redirecionar para checkout Asaas
+                        window.location.href = checkoutResult.result.checkoutUrl;
+                    }, 1500);
+                } else {
+                    toast.error('Erro ao criar checkout', {
+                        description: checkoutResult.errorMessages?.join(', ') || 'Tente novamente.',
+                        duration: 5000,
+                    });
+                }
+            } catch (error) {
+                console.error('❌ [SignUpFormContainer] Erro ao criar checkout:', error);
+                toast.error('Erro ao processar assinatura', {
+                    description: 'Entre em contato com o suporte.',
                     duration: 5000,
                 });
-                setTimeout(() => {
-                    window.location.href = `/${result.result.supabaseId}/board`;
-                }, 900);
             }
         }
         // Os erros já são gerenciados pelo context
     }
 
     // Verificar se veio do fluxo de assinatura (apenas para copy/UX)
-    const isFromSubscription = searchParams.get('from') === 'subscribe';
-
-    // Se dados expiraram, mostrar mensagem
-    // No expiration state in auth-first only flow
+    // REMOVIDO: Agora todos os cadastros vão para /subscribe, então não precisa de lógica condicional
 
     return (
         <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-6 md:p-10">
@@ -70,9 +86,7 @@ export function SignUpFormContainer() {
                     errors={errors} 
                     onSubmit={onSubmit}
                     isLoading={isLoading}
-                    // Não desabilitar campos no fluxo auth-first
                     readonly={false}
-                    fromSubscribe={isFromSubscription}
                 />
             </div>
         </main>

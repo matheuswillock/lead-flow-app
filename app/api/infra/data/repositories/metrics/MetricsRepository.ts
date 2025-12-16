@@ -13,7 +13,8 @@ export class MetricsRepository implements IMetricsRepository {
   
   /**
    * Busca leads básicos para cálculo de métricas
-   * - Se supabaseId for de um Manager: busca leads do manager + operators dele
+   * - Se supabaseId for de um Manager master: busca leads do manager + operators dele
+   * - Se supabaseId for de um Manager não-master: busca leads do master (todos da equipe)
    * - Se supabaseId for de um Operator: busca apenas os leads do operator
    */
   async findLeadsForMetrics(filters: MetricsFilters): Promise<LeadMetricsData[]> {
@@ -25,6 +26,8 @@ export class MetricsRepository implements IMetricsRepository {
       select: { 
         id: true, 
         role: true,
+        isMaster: true,
+        managerId: true,
         operators: {
           select: { id: true }
         }
@@ -39,13 +42,16 @@ export class MetricsRepository implements IMetricsRepository {
     let whereClause: any;
 
     if (profile.role === 'manager') {
-      // Manager: buscar leads do manager E de seus operators
-      const operatorIds = profile.operators.map(op => op.id);
+      // Determinar o masterId
+      const masterId = profile.isMaster ? profile.id : profile.managerId;
+      
+      if (!masterId) {
+        throw new Error('Master ID não encontrado');
+      }
+
+      // Buscar leads do master (todos da equipe)
       whereClause = {
-        OR: [
-          { managerId: profile.id },
-          { assignedTo: { in: operatorIds } }
-        ],
+        managerId: masterId,
         ...(startDate && endDate && {
           createdAt: {
             gte: startDate,
@@ -54,9 +60,12 @@ export class MetricsRepository implements IMetricsRepository {
         }),
       };
     } else {
-      // Operator: buscar apenas leads atribuídos a ele
+      // Operator: buscar apenas leads atribuídos a ele OU criados por ele
       whereClause = {
-        assignedTo: profile.id,
+        OR: [
+          { assignedTo: profile.id },
+          { createdBy: profile.id }
+        ],
         ...(startDate && endDate && {
           createdAt: {
             gte: startDate,
@@ -79,7 +88,8 @@ export class MetricsRepository implements IMetricsRepository {
 
   /**
    * Busca métricas detalhadas por status
-   * - Se supabaseId for de um Manager: busca leads do manager + operators dele
+   * - Se supabaseId for de um Manager master: busca leads do manager + operators dele
+   * - Se supabaseId for de um Manager não-master: busca leads do master (todos da equipe)
    * - Se supabaseId for de um Operator: busca apenas os leads do operator
    */
   async getStatusMetrics(supabaseId: string): Promise<StatusMetricsData[]> {
@@ -89,6 +99,8 @@ export class MetricsRepository implements IMetricsRepository {
       select: { 
         id: true, 
         role: true,
+        isMaster: true,
+        managerId: true,
         operators: {
           select: { id: true }
         }
@@ -103,18 +115,24 @@ export class MetricsRepository implements IMetricsRepository {
     let whereClause: any;
 
     if (profile.role === 'manager') {
-      // Manager: buscar leads do manager E de seus operators
-      const operatorIds = profile.operators.map(op => op.id);
+      // Determinar o masterId
+      const masterId = profile.isMaster ? profile.id : profile.managerId;
+      
+      if (!masterId) {
+        throw new Error('Master ID não encontrado');
+      }
+
+      // Buscar leads do master (todos da equipe)
       whereClause = {
-        OR: [
-          { managerId: profile.id },
-          { assignedTo: { in: operatorIds } }
-        ],
+        managerId: masterId,
       };
     } else {
-      // Operator: buscar apenas leads atribuídos a ele
+      // Operator: buscar apenas leads atribuídos a ele OU criados por ele
       whereClause = {
-        assignedTo: profile.id,
+        OR: [
+          { assignedTo: profile.id },
+          { createdBy: profile.id }
+        ],
       };
     }
 
@@ -144,7 +162,8 @@ export class MetricsRepository implements IMetricsRepository {
 
   /**
    * Busca leads agrupados por período
-   * - Se supabaseId for de um Manager: busca leads do manager + operators dele
+   * - Se supabaseId for de um Manager master: busca leads do manager + operators dele
+   * - Se supabaseId for de um Manager não-master: busca leads do master (todos da equipe)
    * - Se supabaseId for de um Operator: busca apenas os leads do operator
    */
   async getLeadsByPeriod(supabaseId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]> {
@@ -154,6 +173,8 @@ export class MetricsRepository implements IMetricsRepository {
       select: { 
         id: true, 
         role: true,
+        isMaster: true,
+        managerId: true,
         operators: {
           select: { id: true }
         }
@@ -168,22 +189,28 @@ export class MetricsRepository implements IMetricsRepository {
     let whereClause: any;
 
     if (profile.role === 'manager') {
-      // Manager: buscar leads do manager E de seus operators
-      const operatorIds = profile.operators.map(op => op.id);
+      // Determinar o masterId
+      const masterId = profile.isMaster ? profile.id : profile.managerId;
+      
+      if (!masterId) {
+        throw new Error('Master ID não encontrado');
+      }
+
+      // Buscar leads do master (todos da equipe)
       whereClause = {
-        OR: [
-          { managerId: profile.id },
-          { assignedTo: { in: operatorIds } }
-        ],
+        managerId: masterId,
         createdAt: {
           gte: startDate,
           lte: endDate,
         },
       };
     } else {
-      // Operator: buscar apenas leads atribuídos a ele
+      // Operator: buscar apenas leads atribuídos a ele OU criados por ele
       whereClause = {
-        assignedTo: profile.id,
+        OR: [
+          { assignedTo: profile.id },
+          { createdBy: profile.id }
+        ],
         createdAt: {
           gte: startDate,
           lte: endDate,
@@ -212,7 +239,8 @@ export class MetricsRepository implements IMetricsRepository {
 
   /**
    * Busca agendamentos da tabela LeadsSchedule
-   * - Se supabaseId for de um Manager: busca agendamentos do manager + operators dele
+   * - Se supabaseId for de um Manager master: busca agendamentos do manager + operators dele
+   * - Se supabaseId for de um Manager não-master: busca agendamentos do master (todos da equipe)
    * - Se supabaseId for de um Operator: busca apenas agendamentos do operator
    */
   async getScheduledLeads(filters: MetricsFilters): Promise<ScheduleMetricsData[]> {
@@ -224,6 +252,8 @@ export class MetricsRepository implements IMetricsRepository {
       select: { 
         id: true, 
         role: true,
+        isMaster: true,
+        managerId: true,
         operators: {
           select: { id: true }
         }
@@ -238,14 +268,17 @@ export class MetricsRepository implements IMetricsRepository {
     let whereClause: any;
 
     if (profile.role === 'manager') {
-      // Manager: buscar agendamentos do manager E de seus operators
-      const operatorIds = profile.operators.map(op => op.id);
+      // Determinar o masterId
+      const masterId = profile.isMaster ? profile.id : profile.managerId;
+      
+      if (!masterId) {
+        throw new Error('Master ID não encontrado');
+      }
+
+      // Buscar agendamentos do master (todos da equipe)
       whereClause = {
         lead: {
-          OR: [
-            { managerId: profile.id },
-            { assignedTo: { in: operatorIds } }
-          ],
+          managerId: masterId,
         },
         ...(startDate && endDate && {
           createdAt: {
@@ -255,10 +288,13 @@ export class MetricsRepository implements IMetricsRepository {
         }),
       };
     } else {
-      // Operator: buscar apenas agendamentos atribuídos a ele
+      // Operator: buscar apenas agendamentos atribuídos a ele OU criados por ele
       whereClause = {
         lead: {
-          assignedTo: profile.id,
+          OR: [
+            { assignedTo: profile.id },
+            { createdBy: profile.id }
+          ],
         },
         ...(startDate && endDate && {
           createdAt: {
@@ -282,7 +318,8 @@ export class MetricsRepository implements IMetricsRepository {
 
   /**
    * Busca vendas finalizadas da tabela LeadFinalized
-   * - Se supabaseId for de um Manager: busca vendas do manager + operators dele
+   * - Se supabaseId for de um Manager master: busca vendas do manager + operators dele
+   * - Se supabaseId for de um Manager não-master: busca vendas do master (todos da equipe)
    * - Se supabaseId for de um Operator: busca apenas vendas do operator
    */
   async getFinalizedLeads(filters: MetricsFilters): Promise<SaleMetricsData[]> {
@@ -294,6 +331,8 @@ export class MetricsRepository implements IMetricsRepository {
       select: { 
         id: true, 
         role: true,
+        isMaster: true,
+        managerId: true,
         operators: {
           select: { id: true }
         }
@@ -308,14 +347,17 @@ export class MetricsRepository implements IMetricsRepository {
     let whereClause: any;
 
     if (profile.role === 'manager') {
-      // Manager: buscar vendas do manager E de seus operators
-      const operatorIds = profile.operators.map(op => op.id);
+      // Determinar o masterId
+      const masterId = profile.isMaster ? profile.id : profile.managerId;
+      
+      if (!masterId) {
+        throw new Error('Master ID não encontrado');
+      }
+
+      // Buscar vendas do master (todos da equipe)
       whereClause = {
         lead: {
-          OR: [
-            { managerId: profile.id },
-            { assignedTo: { in: operatorIds } }
-          ],
+          managerId: masterId,
         },
         ...(startDate && endDate && {
           createdAt: {
@@ -325,10 +367,13 @@ export class MetricsRepository implements IMetricsRepository {
         }),
       };
     } else {
-      // Operator: buscar apenas vendas atribuídas a ele
+      // Operator: buscar apenas vendas atribuídas a ele OU criadas por ele
       whereClause = {
         lead: {
-          assignedTo: profile.id,
+          OR: [
+            { assignedTo: profile.id },
+            { createdBy: profile.id }
+          ],
         },
         ...(startDate && endDate && {
           createdAt: {

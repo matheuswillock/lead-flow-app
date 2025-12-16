@@ -33,7 +33,8 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      if (!profile.subscriptionId || !profile.subscriptionStatus) {
+      // Verificar se tem asaasSubscriptionId (campo mais confiável)
+      if (!profile.asaasSubscriptionId) {
         return new Output(
           true,
           ['Nenhuma assinatura ativa encontrada'],
@@ -42,19 +43,27 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
+      // Calcular valor total: plano base + operadores
+      const basePrice = 59.90;
+      const operatorPrice = 19.90;
+      const operatorCount = profile.operatorCount || 0;
+      
+      let totalValue = 0;
+      if (profile.subscriptionPlan !== 'free_trial') {
+        totalValue = basePrice + (operatorCount * operatorPrice);
+      }
+
       // Formatar dados da assinatura
       const subscriptionData = {
-        id: profile.subscriptionId,
-        subscriptionAsaasId: profile.subscriptionId,
-        status: profile.subscriptionStatus,
-        value: profile.subscriptionPlan === 'free_trial' ? 0 : 
-               profile.subscriptionPlan === 'manager_base' ? 59.90 :
-               59.90 + (profile.operatorCount * 19.90),
-        nextDueDate: profile.subscriptionEndDate?.toISOString() || '',
-        cycle: 'MONTHLY',
+        id: profile.asaasSubscriptionId,
+        subscriptionAsaasId: profile.asaasSubscriptionId,
+        status: profile.subscriptionStatus || 'active',
+        value: totalValue,
+        nextDueDate: profile.subscriptionNextDueDate?.toISOString() || profile.subscriptionEndDate?.toISOString() || '',
+        cycle: profile.subscriptionCycle || 'MONTHLY',
         description: profile.subscriptionPlan === 'free_trial' ? 'Período de teste' :
                      profile.subscriptionPlan === 'manager_base' ? 'Plano Manager Base' :
-                     'Plano com Operadores',
+                     `Plano Manager + ${operatorCount} Operador${operatorCount > 1 ? 'es' : ''}`,
         billingType: 'CREDIT_CARD',
         customer: {
           name: profile.fullName || 'Usuário',

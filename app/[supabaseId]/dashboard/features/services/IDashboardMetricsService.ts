@@ -7,6 +7,7 @@ export interface DashboardMetricsData {
   taxaConversao: number;
   receitaTotal: number;
   churnRate: number;
+  cadencia: number;
   leadsPorPeriodo: Array<{
     periodo: string;
     leads: number;

@@ -1022,6 +1022,7 @@ export function SubscriptionFormMultiStep({
               variant="outline"
               onClick={handleBack}
               disabled={currentStep === 1 || loading || loadingNext}
+              className="cursor-pointer"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Voltar

@@ -20,4 +20,12 @@ export class SubscriptionRepository implements ISubscriptionRepository {
       },
     });
   }
+
+  async findProfileById(id: string): Promise<Profile | null> {
+    return await prisma.profile.findUnique({
+      where: {
+        id,
+      },
+    });
+  }
 }

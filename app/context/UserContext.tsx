@@ -13,9 +13,18 @@ export interface UserData {
   supabaseId: string | null;
   fullName: string | null;
   phone: string | null;
+  cpfCnpj: string | null;
+  postalCode: string | null;
+  address: string | null;
+  addressNumber: string | null;
+  complement: string | null;
+  city: string | null;
+  state: string | null;
   profileIconId: string | null;
   profileIconUrl: string | null;
   role: UserRole;
+  isMaster: boolean;
+  hasPermanentSubscription: boolean;
   managerId: string | null;
   subscriptionStatus: string | null;
   subscriptionId: string | null;
@@ -31,6 +40,7 @@ interface UserContextState {
   isLoading: boolean;
   error: string | null;
   hasActiveSubscription: boolean;
+  userRole: string | null; // 'master', 'manager', 'operator'
   refreshUser: () => Promise<void>;
   updateUser: (updates: Partial<UserData>) => Promise<Output>;
   updatePassword: (newPassword: string) => Promise<Output>;
@@ -63,6 +73,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   /**
    * Busca dados do usuário na API
@@ -78,14 +89,37 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       if (output.isValid && output.result) {
         setUser(output.result);
         
-        // Atualizar status da assinatura
-        // Prisma enum SubscriptionStatus: 'trial' | 'active' | 'past_due' | 'suspended' | 'canceled'
-        // Regra de acesso: active, trial e past_due têm acesso; suspended/canceled não.
-        const status = (output.result.subscriptionStatus || '').toString().toLowerCase();
-        const hasActive = !!(
-          output.result.subscriptionId && ['active', 'trial', 'past_due'].includes(status)
-        );
-        setHasActiveSubscription(hasActive);
+        // Usar o SubscriptionCheckService para validar assinatura
+        // Ele já implementa a lógica master/operator
+        console.info('🔍 [UserContext] Verificando assinatura via SubscriptionCheckService');
+        
+        const checkResponse = await fetch('/api/v1/subscriptions/check', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: output.result.email,
+            phone: output.result.phone,
+            cpfCnpj: output.result.cpfCnpj,
+          }),
+        });
+        
+        const checkResult = await checkResponse.json();
+        
+        if (checkResult.userExists) {
+          setHasActiveSubscription(checkResult.hasActiveSubscription);
+          setUserRole(checkResult.userRole || null);
+          
+          console.info('✅ [UserContext] Verificação de assinatura concluída:', {
+            hasActiveSubscription: checkResult.hasActiveSubscription,
+            userRole: checkResult.userRole,
+          });
+        } else {
+          setHasActiveSubscription(false);
+          setUserRole(null);
+          console.warn('⚠️ [UserContext] Usuário não encontrado no check de assinatura');
+        }
       } else {
         setError(output.errorMessages?.join(", ") || "Failed to fetch user data");
       }
@@ -267,6 +301,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
     isLoading,
     error,
     hasActiveSubscription,
+    userRole,
     refreshUser,
     updateUser,
     updatePassword,

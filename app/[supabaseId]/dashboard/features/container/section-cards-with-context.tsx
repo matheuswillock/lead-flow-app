@@ -169,6 +169,23 @@ export function SectionCardsWithContext() {
         </CardFooter>
       </Card>
 
+      {/* Cadência */}
+      <Card className="@container/card">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Cadência
+          </CardTitle>
+          <CardDescription className="text-3xl font-bold text-foreground">
+            R$ {metrics.cadencia.toLocaleString('pt-BR')}
+          </CardDescription>
+        </CardHeader>
+        <CardFooter className="pt-0">
+          <CardAction className="text-xs text-muted-foreground">
+            Soma dos valores dos leads
+          </CardAction>
+        </CardFooter>
+      </Card>
+
     </div>
   );
 }

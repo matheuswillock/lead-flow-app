@@ -33,15 +33,14 @@ export function SubscriptionSuccess({ subscriptionId, paymentUrl, paymentId, pix
   });
 
   const handlePaymentConfirmed = async () => {
+    console.info('✅ [SubscriptionSuccess] Pagamento confirmado - redirecionando para login');
+    
+    // Limpar dados de sessão
     try {
-      const supabase = createSupabaseBrowser();
-      const { data: { user } } = await (supabase?.auth.getUser() || { data: { user: null } });
-      if (user?.id) {
-        router.push(`/${user.id}/board`);
-        return;
-      }
-    } catch (_) {}
-    // Fallback: send to sign-in
+      sessionStorage.removeItem('subscribePrefill');
+    } catch (_) {/* ignore */}
+    
+    // Sempre redirecionar para página de login após pagamento
     router.push('/sign-in');
   };
 
@@ -118,7 +117,9 @@ export function SubscriptionSuccess({ subscriptionId, paymentUrl, paymentId, pix
             </Link>
           </Button>
           
-          <Button asChild variant="outline" size="lg">
+          <Button asChild variant="outline" size="lg" 
+                    className="cursor-pointer"
+          >
             <Link href="/">
               Voltar para Home
             </Link>

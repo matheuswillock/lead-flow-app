@@ -1,7 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { ArrowUpDown, MoreHorizontal, Pencil, Trash2, Mail, Crown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -19,13 +19,23 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Settings } from "@/components/ui/settings";
 
 interface CreateColumnsProps {
   onEdit: (user: ManagerUserTableRow) => void;
   onDelete: (user: ManagerUserTableRow) => void;
+  onResendInvite: (email: string, userId?: string) => void;
+  onTogglePermanentSubscription?: (userId: string, currentValue: boolean) => void;
+  currentUserIsMaster?: boolean;
 }
 
-export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
+export function createColumns({ 
+  onEdit, 
+  onDelete, 
+  onResendInvite,
+  onTogglePermanentSubscription,
+  currentUserIsMaster = false
+}: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
   return [
     {
       accessorKey: "profileIconUrl",
@@ -88,11 +98,7 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
         return (
           <div className="flex items-center gap-2">
             <div className="text-muted-foreground">{email}</div>
-            {email !== "Email não informado" && (
-                
-
-
-            
+            {email !== "Email não informado" && (                    
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <Button
@@ -133,6 +139,61 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
         return (
           <Badge variant={role === "manager" ? "default" : "secondary"}>
             {role === "manager" ? "MANAGER" : "OPERATOR"}
+          </Badge>
+        );
+      },
+    },
+    {
+      accessorKey: "status",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="h-auto p-0 font-semibold"
+          >
+            Status
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        const user = row.original;
+        const status = user.status || "active";
+        
+        const statusConfig = {
+          active: { 
+            label: "Ativo", 
+            variant: "default" as const,
+            className: "bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-200"
+          },
+          pending_payment: { 
+            label: "Aguardando Pagamento", 
+            variant: "secondary" as const,
+            className: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900 dark:text-yellow-200 animate-pulse"
+          },
+          payment_confirmed: { 
+            label: "Pagamento Confirmado", 
+            variant: "secondary" as const,
+            className: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900 dark:text-blue-200"
+          },
+          pending_creation: { 
+            label: "Criando Conta...", 
+            variant: "secondary" as const,
+            className: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900 dark:text-purple-200 animate-pulse"
+          },
+          payment_failed: { 
+            label: "Pagamento Falhou", 
+            variant: "destructive" as const,
+            className: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900 dark:text-red-200"
+          }
+        };
+
+        const config = statusConfig[status] || statusConfig.active;
+
+        return (
+          <Badge variant={config.variant} className={config.className}>
+            {config.label}
           </Badge>
         );
       },
@@ -184,6 +245,39 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
       },
     },
     {
+      accessorKey: "hasPermanentSubscription",
+      header: "Assinatura",
+      cell: ({ row }) => {
+        const user = row.original;
+        const hasPermanent = user.hasPermanentSubscription || false;
+        
+        if (!hasPermanent) {
+          return (
+            <div className="text-center text-muted-foreground text-sm">
+              Asaas
+            </div>
+          );
+        }
+
+        return (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center justify-center gap-1">
+                <Crown className="h-4 w-4 text-yellow-500" />
+                <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-300">
+                  Permanente
+                </Badge>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Assinatura permanente ativa (bypass Asaas)</p>
+            </TooltipContent>
+          </Tooltip>
+        );
+      },
+      enableSorting: false,
+    },
+    {
       id: "actions",
       header: "Ações",
       cell: ({ row }) => {
@@ -198,22 +292,50 @@ export function createColumns({ onEdit, onDelete }: CreateColumnsProps): ColumnD
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel >Ações</DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => onEdit(user)}
-                  className="flex items-center gap-2"
-                >
-                  <Pencil className="h-4 w-4" />
-                  Editar usuário
+              <DropdownMenuLabel>Ações</DropdownMenuLabel>
+              {user.status === 'active' ? (
+                <>
+                  {currentUserIsMaster && onTogglePermanentSubscription && (
+                    <DropdownMenuItem
+                      onClick={() => onTogglePermanentSubscription(user.id, user.hasPermanentSubscription || false)}
+                      className="flex items-center gap-2"
+                    >
+                      <Crown className="h-4 w-4" />
+                      {user.hasPermanentSubscription 
+                        ? 'Desativar assinatura permanente' 
+                        : 'Ativar assinatura permanente'}
+                    </DropdownMenuItem>
+                  )}
+                  
+                  <DropdownMenuItem
+                    onClick={() => onResendInvite(user.email, user.id)}
+                    className="flex items-center gap-2"
+                  >
+                    <Mail className="h-4 w-4" />
+                    Enviar reset de senha
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuItem
+                    onClick={() => onEdit(user)}
+                    className="flex items-center gap-2"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Editar usuário
+                  </DropdownMenuItem>
+                
+                  <DropdownMenuItem
+                    onClick={() => onDelete(user)}
+                    className="flex items-center gap-2 text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remover usuário
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <DropdownMenuItem disabled className="flex items-center gap-2 text-muted-foreground">
+                  Aguarde conclusão do pagamento
                 </DropdownMenuItem>
-              
-                <DropdownMenuItem
-                  onClick={() => onDelete(user)}
-                  className="flex items-center gap-2 text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Remover usuário
-                </DropdownMenuItem>
+              )}
               
             </DropdownMenuContent>
           </DropdownMenu>

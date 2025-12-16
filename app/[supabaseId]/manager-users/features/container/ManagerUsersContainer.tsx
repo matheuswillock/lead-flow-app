@@ -12,15 +12,18 @@ import { DataTable } from "./DataTable";
 import { createColumns } from "./columns";
 import { UserFormDialog } from "./UserFormDialog";
 import { DeleteUserDialog } from "./DeleteUserDialog";
+import { PendingOperatorsAlert } from "./PendingOperatorsAlert";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;
   currentUserRole: string;
+  currentUserIsMaster?: boolean;
 }
 
 export function ManagerUsersContainer({
   supabaseId,
   currentUserRole,
+  currentUserIsMaster = false,
 }: ManagerUsersContainerProps) {
   const {
     // Estado
@@ -31,11 +34,14 @@ export function ManagerUsersContainer({
     isEditModalOpen,
     isDeleteDialogOpen,
     stats,
+    users,
     
     // Ações
     createUser,
     updateUser,
     deleteUser,
+    resendInvite,
+    togglePermanentSubscription,
     
     // Controle de UI
     openCreateModal,
@@ -45,6 +51,10 @@ export function ManagerUsersContainer({
     openDeleteDialog,
     closeDeleteDialog,
   } = useManagerUsers({ supabaseId, currentUserRole });
+
+  // Verificar se há operadores pendentes
+  const hasPendingOperators = users.some(user => user.isPending);
+  const pendingCount = users.filter(user => user.isPending).length;
 
   // Verificar se é manager
   if (currentUserRole !== "manager") {
@@ -70,6 +80,9 @@ export function ManagerUsersContainer({
   const columns = createColumns({
     onEdit: openEditModal,
     onDelete: openDeleteDialog,
+    onResendInvite: resendInvite,
+    onTogglePermanentSubscription: togglePermanentSubscription,
+    currentUserIsMaster,
   });
 
   return (
@@ -80,6 +93,11 @@ export function ManagerUsersContainer({
             <h1 className="text-3xl font-bold tracking-tight">Gerenciar Operadores</h1>
             <p className="text-muted-foreground">
                 Gerencie operadores do seu sistema
+                {hasPendingOperators && (
+                  <span className="inline-flex items-center gap-1 ml-2 text-yellow-600 dark:text-yellow-400">
+                    • {pendingCount} operador{pendingCount > 1 ? 'es' : ''} pendente{pendingCount > 1 ? 's' : ''}
+                  </span>
+                )}
             </p>
             </div>
 
@@ -89,15 +107,18 @@ export function ManagerUsersContainer({
                 variant="outline"
             >
                 <UserRoundPlusIcon />
-                Adicionar Operador
+                Adicionar Usuário
             </Button>
         </div>
+
+      {/* Alerta de operadores pendentes */}
+      <PendingOperatorsAlert count={pendingCount} />
 
       {/* Cards de Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Operadores</CardTitle>
+            <CardTitle className="text-sm font-medium">Total de Usuários</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>

@@ -12,7 +12,7 @@ import { useUserContext } from "@/app/context/UserContext";
 
 function DashboardContent() {
   const { isLoading, error, metrics } = useDashboardContext();
-  const { hasActiveSubscription } = useUserContext();
+  const { hasActiveSubscription, userRole } = useUserContext();
   const params = useParams();
   const supabaseId = params.supabaseId as string;
 
@@ -65,7 +65,7 @@ function DashboardContent() {
   );
   
   return (
-    <SubscriptionGuard hasActiveSubscription={hasActiveSubscription}>
+    <SubscriptionGuard hasActiveSubscription={hasActiveSubscription} userRole={userRole ?? undefined}>
       {dashboardContent}
     </SubscriptionGuard>
   );

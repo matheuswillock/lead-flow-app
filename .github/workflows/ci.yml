@@ -93,9 +93,9 @@ jobs:
 
       - name: Build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' && secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY != '' && secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
         run: bun run build
 
       - name: Upload build artifact
@@ -197,6 +197,8 @@ jobs:
         with:
           github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
+            const { execSync } = require('child_process');
+            
             const fromDispatch = context.eventName === 'workflow_dispatch'
             const inputBranch = fromDispatch ? (context.payload?.inputs?.branch || '') : ''
             const branchRef = fromDispatch ? `refs/heads/${inputBranch}` : context.ref // e.g., refs/heads/feat/my-branch
@@ -237,15 +239,54 @@ jobs:
               return
             }
 
+            // Generate PR description from commits
+            let commits = [];
+            let commitList = '';
+            try {
+              // Get commits between base and current branch
+              const comparison = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base,
+                head: branch,
+              });
+              
+              commits = comparison.data.commits || [];
+              
+              if (commits.length > 0) {
+                commitList = commits.map(commit => {
+                  const msg = commit.commit.message.split('\n')[0]; // First line only
+                  const shortSha = commit.sha.substring(0, 7);
+                  return `- ${msg} (\`${shortSha}\`)`;
+                }).join('\n');
+              }
+            } catch (err) {
+              core.warning(`Could not fetch commits: ${err.message}`);
+              commitList = '*(Could not fetch commit list)*';
+            }
+
             const clean = branch.replace(/^feat\//, '').replace(/^feature\//, '')
             const title = `feat: ${clean}`
             const body = [
-              'This pull request was opened automatically by CI.',
+              '## 🚀 Feature',
               '',
-              `- Branch: ${branch}`,
-              `- Base: ${base}`,
+              `**Branch:** \`${branch}\``,
+              `**Target:** \`${base}\``,
+              `**Commits:** ${commits.length}`,
               '',
-              'Edit the title/description as needed.'
+              '## 📝 Changes',
+              '',
+              commitList || '*(No commits found)*',
+              '',
+              '## ✅ Checklist',
+              '',
+              '- [ ] Code follows project conventions',
+              '- [ ] All tests are passing',
+              '- [ ] No console errors',
+              '- [ ] Documentation updated if needed',
+              '',
+              '---',
+              '*This pull request was opened automatically by CI.*'
             ].join('\n')
 
             try {
@@ -356,47 +397,118 @@ jobs:
               }
 
               console.log(`Develop is ${comparison.data.ahead_by} commits ahead of main.`);
+              
+              // Generate commit list for PR description
+              const commits = comparison.data.commits || [];
+              const commitList = commits.map(commit => {
+                const msg = commit.commit.message.split('\n')[0]; // First line only
+                const shortSha = commit.sha.substring(0, 7);
+                const author = commit.commit.author.name;
+                return `- ${msg} (\`${shortSha}\`) - @${author}`;
+              }).join('\n');
+              
+              // Group commits by type if they follow conventional commits
+              const groupedCommits = {
+                feat: [],
+                fix: [],
+                chore: [],
+                docs: [],
+                refactor: [],
+                test: [],
+                other: []
+              };
+              
+              commits.forEach(commit => {
+                const msg = commit.commit.message.split('\n')[0];
+                const shortSha = commit.sha.substring(0, 7);
+                const author = commit.commit.author.name;
+                const line = `- ${msg} (\`${shortSha}\`) - @${author}`;
+                
+                if (msg.startsWith('feat')) groupedCommits.feat.push(line);
+                else if (msg.startsWith('fix')) groupedCommits.fix.push(line);
+                else if (msg.startsWith('chore')) groupedCommits.chore.push(line);
+                else if (msg.startsWith('docs')) groupedCommits.docs.push(line);
+                else if (msg.startsWith('refactor')) groupedCommits.refactor.push(line);
+                else if (msg.startsWith('test')) groupedCommits.test.push(line);
+                else groupedCommits.other.push(line);
+              });
+              
+              // Build organized commit section
+              let organizedCommits = '';
+              if (groupedCommits.feat.length > 0) {
+                organizedCommits += '\n### ✨ Features\n' + groupedCommits.feat.join('\n') + '\n';
+              }
+              if (groupedCommits.fix.length > 0) {
+                organizedCommits += '\n### 🐛 Bug Fixes\n' + groupedCommits.fix.join('\n') + '\n';
+              }
+              if (groupedCommits.refactor.length > 0) {
+                organizedCommits += '\n### ♻️ Refactors\n' + groupedCommits.refactor.join('\n') + '\n';
+              }
+              if (groupedCommits.docs.length > 0) {
+                organizedCommits += '\n### 📝 Documentation\n' + groupedCommits.docs.join('\n') + '\n';
+              }
+              if (groupedCommits.test.length > 0) {
+                organizedCommits += '\n### 🧪 Tests\n' + groupedCommits.test.join('\n') + '\n';
+              }
+              if (groupedCommits.chore.length > 0) {
+                organizedCommits += '\n### 🔧 Chores\n' + groupedCommits.chore.join('\n') + '\n';
+              }
+              if (groupedCommits.other.length > 0) {
+                organizedCommits += '\n### 📦 Other Changes\n' + groupedCommits.other.join('\n') + '\n';
+              }
+
+              // Create the PR with enhanced description
+              const title = 'chore: release develop to main';
+              const body = [
+                '## 🚀 Release to Production',
+                '',
+                `**Changes:** ${comparison.data.ahead_by} commits`,
+                `**Branch:** \`${head}\` → \`${base}\``,
+                '',
+                '## 📝 Changes',
+                organizedCommits,
+                '',
+                '## ✅ Review Checklist',
+                '',
+                '- [ ] All tests are passing ✅',
+                '- [ ] Build is successful ✅',
+                '- [ ] No breaking changes',
+                '- [ ] Documentation updated',
+                '- [ ] Ready for production deployment',
+                '',
+                '## 🎯 Deploy Instructions',
+                '',
+                '1. Review all changes carefully',
+                '2. Ensure CI checks pass',
+                '3. Merge to trigger production deployment',
+                '',
+                '---',
+                '*This PR was created automatically after feature branches were merged into develop.*'
+              ].join('\n');
+
+              try {
+                const res = await github.rest.pulls.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  head,
+                  base,
+                  title,
+                  body,
+                  maintainer_can_modify: true,
+                });
+                core.info(`Created PR #${res.data.number}: ${res.data.html_url}`);
+              } catch (err) {
+                if (err.status === 403) {
+                  core.setFailed('Permission denied to create PR. Ensure proper permissions are configured.');
+                } else if (err.status === 404) {
+                  core.setFailed('Not Found creating PR. Check repository access and token permissions.');
+                } else if (err.status === 422) {
+                  core.info('PR could not be created - likely no differences between branches or validation error.');
+                } else {
+                  throw err;
+                }
+              }
+              
             } catch (err) {
               core.warning(`Could not compare branches: ${err.message}. Proceeding with PR creation.`);
-            }
-
-            // Create the PR
-            const title = 'chore: release develop to main';
-            const body = [
-              'This pull request was opened automatically after feature branches were merged into develop.',
-              '',
-              '## Changes',
-              'This PR contains all the accumulated changes from feature branches that were merged into develop.',
-              '',
-              '## Review Instructions',
-              '1. Review the commits and changes included',
-              '2. Ensure all tests are passing',
-              '3. Verify the build is successful',
-              '4. Merge when ready to deploy to production',
-              '',
-              '---',
-              '*This PR was created automatically by CI workflow*'
-            ].join('\n');
-
-            try {
-              const res = await github.rest.pulls.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                head,
-                base,
-                title,
-                body,
-                maintainer_can_modify: true,
-              });
-              core.info(`Created PR #${res.data.number}: ${res.data.html_url}`);
-            } catch (err) {
-              if (err.status === 403) {
-                core.setFailed('Permission denied to create PR. Ensure proper permissions are configured.');
-              } else if (err.status === 404) {
-                core.setFailed('Not Found creating PR. Check repository access and token permissions.');
-              } else if (err.status === 422) {
-                core.info('PR could not be created - likely no differences between branches or validation error.');
-              } else {
-                throw err;
-              }
             }

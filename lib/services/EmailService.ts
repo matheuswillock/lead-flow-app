@@ -52,7 +52,7 @@ export class EmailService {
       const resend = this.getResend();
       
       const emailData: any = {
-        from: options.from || "Lead Flow <no-reply@corretorstudio.com.br>",
+        from: options.from || "Corretor Studio <no-reply@corretorstudio.com.br>",
         to: options.to,
         subject: options.subject,
       };
@@ -76,11 +76,11 @@ export class EmailService {
   async sendWelcomeEmail(data: WelcomeEmailData) {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #333; text-align: center;">Bem-vindo ao Lead Flow!</h1>
+        <h1 style="color: #333; text-align: center;">Bem-vindo ao Corretor Studio!</h1>
         
         <p>Olá <strong>${data.userName}</strong>,</p>
         
-        <p>Sua conta foi criada com sucesso no Lead Flow. Agora você pode começar a gerenciar seus leads de forma eficiente.</p>
+        <p>Sua conta foi criada com sucesso no Corretor Studio. Agora você pode começar a gerenciar seus leads de forma eficiente.</p>
         
         ${data.loginUrl ? `
           <div style="text-align: center; margin: 30px 0;">
@@ -101,7 +101,7 @@ export class EmailService {
 
     return this.sendEmail({
       to: [data.userEmail],
-      subject: "Bem-vindo ao Lead Flow - Sua conta foi criada!",
+      subject: "Bem-vindo ao Corretor Studio - Sua conta foi criada!",
       html,
     });
   }
@@ -122,7 +122,7 @@ export class EmailService {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h1 style="color: #333; text-align: center;">Assinatura Confirmada 🎉</h1>
         <p>Olá <strong>${data.userName}</strong>,</p>
-        <p>Sua assinatura no <strong>Lead Flow</strong> foi confirmada com sucesso.</p>
+        <p>Sua assinatura no <strong>Corretor Studio</strong> foi confirmada com sucesso.</p>
 
         <div style="background-color: #f8f9fa; padding: 16px; border-radius: 8px; margin: 20px 0;">
           ${data.subscriptionId ? `<p style="margin: 4px 0;"><strong>ID da Assinatura:</strong> ${data.subscriptionId}</p>` : ''}
@@ -138,17 +138,17 @@ export class EmailService {
           </a>
         </div>
 
-        <p>Obrigado por escolher o Lead Flow! Estamos prontos para impulsionar seu processo comercial.</p>
+        <p>Obrigado por escolher o Corretor Studio! Estamos prontos para impulsionar seu processo comercial.</p>
 
         <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
-          <p>Este é um email automático do Lead Flow.</p>
+          <p>Este é um email automático do Corretor Studio.</p>
         </div>
       </div>
     `;
 
     return this.sendEmail({
       to: [data.userEmail],
-      subject: 'Lead Flow — Assinatura confirmada',
+      subject: 'Corretor Studio — Assinatura confirmada',
       html,
     });
   }
@@ -180,7 +180,7 @@ export class EmailService {
         <p>Entre na plataforma para visualizar e gerenciar este novo lead.</p>
         
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
-          <p>Este é um email automático do Lead Flow.</p>
+          <p>Este é um email automático do Corretor Studio.</p>
         </div>
       </div>
     `;
@@ -200,7 +200,7 @@ export class EmailService {
         
         <p>Olá <strong>${userName}</strong>,</p>
         
-        <p>Você solicitou a redefinição de sua senha no Lead Flow.</p>
+        <p>Você solicitou a redefinição de sua senha no Corretor Studio.</p>
         
         <div style="text-align: center; margin: 30px 0;">
           <a href="${resetUrl}" 
@@ -214,14 +214,14 @@ export class EmailService {
         <p>Se você não solicitou esta redefinição, ignore este email.</p>
         
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
-          <p>Este é um email automático do Lead Flow.</p>
+          <p>Este é um email automático do Corretor Studio.</p>
         </div>
       </div>
     `;
 
     return this.sendEmail({
       to: [userEmail],
-      subject: "Redefinição de Senha - Lead Flow",
+      subject: "Redefinição de Senha - Corretor Studio",
       html,
     });
   }

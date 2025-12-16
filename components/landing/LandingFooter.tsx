@@ -46,7 +46,7 @@ const socialLinks = [
   { icon: Twitter, href: "#", label: "Twitter" },
   { icon: Linkedin, href: "#", label: "LinkedIn" },
   { icon: Github, href: "#", label: "GitHub" },
-  { icon: Mail, href: "mailto:contato@leadflow.com", label: "Email" }
+  { icon: Mail, href: "mailto:contato@corretorstudio.com", label: "Email" }
 ]
 
 export function LandingFooter() {
@@ -75,7 +75,7 @@ export function LandingFooter() {
               >
                 L
               </div>
-              <span className="text-lg font-bold">Lead Flow</span>
+              <span className="text-lg font-bold">Corretor Studio</span>
             </Link>
             <p className="text-sm text-muted-foreground mb-4 max-w-xs">
               A plataforma completa para gestão de leads e equipes de vendas.
@@ -124,7 +124,7 @@ export function LandingFooter() {
           style={{ borderColor: "var(--border)" }}
         >
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Lead Flow. Todos os direitos reservados.
+            © {new Date().getFullYear()} Corretor Studio. Todos os direitos reservados.
           </p>
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
             <span>🇧🇷 Feito no Brasil</span>

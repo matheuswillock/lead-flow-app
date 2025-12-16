@@ -50,7 +50,7 @@ export function ActiveSubscriptionMessage({
           </div>
           <CardTitle className="text-2xl">Assinatura Ativa Encontrada</CardTitle>
           <CardDescription className="text-base mt-2">
-            Identificamos que você já possui uma assinatura ativa no Lead Flow
+            Identificamos que você já possui uma assinatura ativa no Corretor Studio
           </CardDescription>
           {renderMatchText()}
         </CardHeader>

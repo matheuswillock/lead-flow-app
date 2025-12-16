@@ -1,5 +1,7 @@
 "use client"
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { LandingHeader } from "@/components/landing/landingHeader";
 import { FeaturesSection } from "@/components/landing/FeaturesSection";
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
@@ -11,6 +13,26 @@ import { HeartIcon } from "@/components/ui/heart"
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Verificar se há token de recovery/invite no hash da URL
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash) {
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const type = hashParams.get('type');
+        const accessToken = hashParams.get('access_token');
+
+        // Se é recovery ou invite, redirecionar para /set-password
+        if ((type === 'recovery' || type === 'invite') && accessToken) {
+          console.info('🔐 Token detectado, redirecionando para /set-password');
+          router.push(`/set-password${hash}`);
+        }
+      }
+    }
+  }, [router]);
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <LandingHeader />
@@ -101,17 +123,20 @@ export default function Home() {
               >
                 <button
                   onClick={async () => {
+                    // Verificar se usuário já está logado
                     try {
                       const sb = createSupabaseBrowser();
                       const { data: { user } } = await (sb?.auth.getUser() || { data: { user: null } });
                       if (user?.id) {
+                        // Se já logado, vai direto para subscribe
                         window.location.href = "/subscribe";
                         return;
                       }
-                    } catch (_) {}
-                    window.location.href = "/sign-up?from=subscribe";
+                    } catch (_) {/* ignore */}
+                    // Se não logado, vai para sign-up (que depois vai para subscribe)
+                    window.location.href = "/sign-up";
                   }}
-                  className="group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
+                  className="cursor-pointer group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
                   style={{
                     background: "var(--primary)",
                     color: "var(--primary-foreground)",
@@ -119,7 +144,7 @@ export default function Home() {
                       "0 10px 25px -10px color-mix(in oklab, var(--primary) 55%, transparent)",
                   }}
                 >
-                  Assinar
+                  Começar Agora
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />
                 </button>
               </MotionDiv>
@@ -141,7 +166,7 @@ export default function Home() {
       <footer className="relative border-t" style={{ borderColor: "var(--border)" }}>
         <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
-            <p>© {new Date().getFullYear()} Lead Flow. Todos os direitos reservados.</p>
+            <p>© {new Date().getFullYear()} Corretor Studio. Todos os direitos reservados.</p>
             <div className="flex items-center gap-2">
               <span>Made with</span>
               <HeartIcon style={{ color: "var(--primary)" }} />
