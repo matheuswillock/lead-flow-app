@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Upload, Camera } from "lucide-react";
+import { Upload, Camera, Eye, EyeOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/app/context/UserContext";
 import { toast } from "sonner";
 import { useUpdateAccountForm } from "@/hooks/useForms";
@@ -12,13 +13,22 @@ import { useEffect, useRef, useState } from "react";
 import { updateAccountFormData } from "@/lib/validations/validationForms";
 
 export default function AccountProfilePage() {
-  const { user, isLoading, updateUser, uploadProfileIcon, deleteProfileIcon } = useUser();
+  const { user, isLoading, updateUser, updatePassword, uploadProfileIcon, deleteProfileIcon } = useUser();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUploadingIcon, setIsUploadingIcon] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const form = useUpdateAccountForm();
+  
+  // Form separado para senha
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: ""
+  });
 
   // Atualizar form quando dados do usuário carregarem
   useEffect(() => {
@@ -27,7 +37,13 @@ export default function AccountProfilePage() {
         fullName: user.fullName || "",
         email: user.email || "",
         phone: user.phone || "",
-        password: "",
+        cpfCnpj: user.cpfCnpj || "",
+        postalCode: user.postalCode || "",
+        address: user.address || "",
+        addressNumber: user.addressNumber || "",
+        complement: user.complement || "",
+        city: user.city || "",
+        state: user.state || "",
       });
     }
   }, [user, form]);
@@ -136,10 +152,32 @@ export default function AccountProfilePage() {
         updates.phone = data.phone;
         hasChanges = true;
       }
-      
-      // Incluir senha se fornecida (mesmo que vazia)
-      if (data.password && data.password.length > 0) {
-        updates.password = data.password;
+      if (data.cpfCnpj !== (user?.cpfCnpj || "")) {
+        updates.cpfCnpj = data.cpfCnpj;
+        hasChanges = true;
+      }
+      if (data.postalCode !== (user?.postalCode || "")) {
+        updates.postalCode = data.postalCode;
+        hasChanges = true;
+      }
+      if (data.address !== (user?.address || "")) {
+        updates.address = data.address;
+        hasChanges = true;
+      }
+      if (data.addressNumber !== (user?.addressNumber || "")) {
+        updates.addressNumber = data.addressNumber;
+        hasChanges = true;
+      }
+      if (data.complement !== (user?.complement || "")) {
+        updates.complement = data.complement;
+        hasChanges = true;
+      }
+      if (data.city !== (user?.city || "")) {
+        updates.city = data.city;
+        hasChanges = true;
+      }
+      if (data.state !== (user?.state || "")) {
+        updates.state = data.state;
         hasChanges = true;
       }
 
@@ -148,15 +186,11 @@ export default function AccountProfilePage() {
         return;
       }
 
-      // Usar uma única chamada para atualizar todos os dados incluindo senha
+      // Atualizar dados do perfil (sem senha)
       const result = await updateUser(updates);
       
       if (result.isValid) {
         toast.success("Dados atualizados com sucesso!");
-        // Limpar o campo de senha após sucesso
-        if (updates.password) {
-          form.setValue("password", "");
-        }
       } else {
         toast.error(result.errorMessages?.join(", ") || "Erro ao atualizar dados");
       }
@@ -168,15 +202,60 @@ export default function AccountProfilePage() {
     }
   }
 
+  async function onPasswordSubmit(data: { currentPassword: string; newPassword: string; confirmPassword: string }) {
+    setIsUpdating(true);
+
+    try {
+      if (data.newPassword !== data.confirmPassword) {
+        toast.error("As senhas não coincidem");
+        return;
+      }
+
+      // Atualizar apenas a senha usando o método específico
+      const result = await updatePassword(data.newPassword);
+      
+      if (result.isValid) {
+        toast.success("Senha atualizada com sucesso!");
+        // Limpar os campos de senha
+        setPasswordForm({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: ""
+        });
+      } else {
+        toast.error(result.errorMessages?.join(", ") || "Erro ao atualizar senha");
+      }
+    } catch (error) {
+      console.error("Erro ao atualizar senha:", error);
+      toast.error("Erro inesperado ao atualizar senha");
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
   function onCancel() {
     if (user) {
       form.reset({
         fullName: user.fullName || "",
         email: user.email || "",
         phone: user.phone || "",
-        password: "",
+        cpfCnpj: user.cpfCnpj || "",
+        postalCode: user.postalCode || "",
+        address: user.address || "",
+        addressNumber: user.addressNumber || "",
+        complement: user.complement || "",
+        city: user.city || "",
+        state: user.state || "",
       });
     }
+  }
+
+  function onPasswordCancel() {
+    setPasswordForm({
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: ""
+    });
   }
 
   return (
@@ -186,23 +265,30 @@ export default function AccountProfilePage() {
           <CardHeader className="space-y-2">
             <CardTitle className="text-2xl">Minha conta</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Atualize seu ícone de perfil e suas informações básicas.
+              Gerencie seu perfil e configurações de segurança.
             </p>
           </CardHeader>
-          <CardContent className="space-y-8">
+          <CardContent className="space-y-6">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                 <span className="ml-3 text-muted-foreground">Carregando dados...</span>
               </div>
             ) : (
-              <>
-                <section aria-labelledby="avatar-title" className="space-y-4">
-                  <h2 id="avatar-title" className="text-base font-medium">
-                    Ícone de perfil
-                  </h2>
+              <Tabs defaultValue="profile" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-6">
+                  <TabsTrigger value="profile">Perfil</TabsTrigger>
+                  <TabsTrigger value="security">Segurança</TabsTrigger>
+                </TabsList>
 
-                  <div className="flex items-center gap-6">
+                {/* Aba de Perfil */}
+                <TabsContent value="profile" className="space-y-6">
+                  <section aria-labelledby="avatar-title" className="space-y-4">
+                    <h2 id="avatar-title" className="text-base font-medium">
+                      Ícone de perfil
+                    </h2>
+
+                    <div className="flex items-center gap-6">
                     <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full border border-border">
                       {avatarPreview ? (
                         <img
@@ -301,22 +387,149 @@ export default function AccountProfilePage() {
                   </div>
                 </section>
 
-                <Separator />
+                  <Separator />
 
-                <AccountForm 
-                  form={form}
-                  onSubmit={onSubmit}
-                  isLoading={isLoading}
-                  isUpdating={isUpdating}
-                  onCancel={onCancel}
-                  initialData={{
-                    fullName: user?.fullName || "",
-                    email: user?.email || "",
-                    phone: user?.phone || "",
-                    password: "",
-                  }}
-                />
-              </>
+                  <AccountForm 
+                    form={form}
+                    onSubmit={onSubmit}
+                    isLoading={isLoading}
+                    isUpdating={isUpdating}
+                    onCancel={onCancel}
+                    showPasswordField={false}
+                    initialData={{
+                      fullName: user?.fullName || "",
+                      email: user?.email || "",
+                      phone: user?.phone || "",
+                      cpfCnpj: user?.cpfCnpj || "",
+                      postalCode: user?.postalCode || "",
+                      address: user?.address || "",
+                      addressNumber: user?.addressNumber || "",
+                      complement: user?.complement || "",
+                      city: user?.city || "",
+                      state: user?.state || "",
+                    }}
+                  />
+                </TabsContent>
+
+                {/* Aba de Segurança */}
+                <TabsContent value="security" className="space-y-6">
+                  <div className="space-y-4">
+                    <div>
+                      <h2 className="text-base font-medium">Alterar senha</h2>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Atualize sua senha para manter sua conta segura.
+                      </p>
+                    </div>
+
+                    <Separator />
+
+                    <form 
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        onPasswordSubmit(passwordForm);
+                      }}
+                      className="space-y-4"
+                    >
+                      <div className="space-y-2">
+                        <label htmlFor="newPassword" className="text-sm font-medium">
+                          Nova senha
+                        </label>
+                        <div className="relative">
+                          <input
+                            id="newPassword"
+                            type={showNewPassword ? "text" : "password"}
+                            placeholder="••••••••"
+                            value={passwordForm.newPassword}
+                            onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                            className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 pr-11 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isUpdating}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground hover:text-foreground transition-colors"
+                            aria-label={showNewPassword ? "Ocultar senha" : "Mostrar senha"}
+                            disabled={isUpdating}
+                          >
+                            {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label htmlFor="confirmPassword" className="text-sm font-medium">
+                          Confirmar nova senha
+                        </label>
+                        <div className="relative">
+                          <input
+                            id="confirmPassword"
+                            type={showConfirmPassword ? "text" : "password"}
+                            placeholder="••••••••"
+                            value={passwordForm.confirmPassword}
+                            onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                            className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 pr-11 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={isUpdating}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground hover:text-foreground transition-colors"
+                            aria-label={showConfirmPassword ? "Ocultar senha" : "Mostrar senha"}
+                            disabled={isUpdating}
+                          >
+                            {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Requisitos da senha */}
+                      <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-2">
+                        <p className="text-sm font-medium text-foreground">Requisitos da senha:</p>
+                        <ul className="text-xs text-muted-foreground space-y-1 ml-1">
+                          <li className="flex items-start gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>Mínimo de 6 caracteres</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>Pelo menos 1 letra maiúscula (A-Z)</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>Pelo menos 1 letra minúscula (a-z)</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>Pelo menos 1 número (0-9)</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>Pelo menos 1 caractere especial (!@#$%^&*)</span>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={onPasswordCancel}
+                          disabled={isUpdating}
+                          className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-11 px-6 cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isUpdating || !passwordForm.newPassword || !passwordForm.confirmPassword}
+                          className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-11 px-6"
+                        >
+                          {isUpdating ? "Atualizando..." : "Atualizar senha"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </TabsContent>
+              </Tabs>
             )}
           </CardContent>
         </Card>

@@ -1,6 +1,7 @@
 import type { Profile, UserRole } from "@prisma/client";
 
 export interface IProfileRepository {
+  findById(id: string): Promise<Profile | null>;
   findBySupabaseId(supabaseId: string): Promise<Profile | null>;
   findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null>;
   existingByEmailOrPhone(email: string, phone: string): Promise<boolean>;
@@ -23,7 +24,8 @@ export interface IProfileRepository {
     addressNumber?: string,
     complement?: string,
     city?: string,
-    state?: string
+    state?: string,
+    managerId?: string
   ): Promise<{ profileId: string; supabaseId: string } | null>;
   updateProfile(
     supabaseId: string,

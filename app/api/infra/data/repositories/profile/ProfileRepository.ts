@@ -19,6 +19,16 @@ function createSupabaseClient() {
 }
 
 class PrismaProfileRepository implements IProfileRepository {
+    async findById(id: string): Promise<Profile | null> {
+        try {
+            const profile = await prisma.profile.findUnique({ where: { id } });
+            return profile ?? null;
+        } catch (error) {
+            console.error("Error fetching profile by id:", error);
+            return null;
+        }
+    }
+
     async findBySupabaseId(supabaseId: string): Promise<Profile | null> {
         try {
             const profile = await prisma.profile.findUnique({ where: { supabaseId } });
@@ -55,6 +65,34 @@ class PrismaProfileRepository implements IProfileRepository {
                     }
                 }
             });
+
+            if (!profile) {
+                return null;
+            }
+
+            // Se o usuário é um manager não-master, buscar todos os usuários do master
+            if (profile.role === 'manager' && !profile.isMaster && profile.managerId) {
+                // Buscar todos os usuários associados ao master (incluindo o próprio master)
+                const allTeamMembers = await prisma.profile.findMany({
+                    where: {
+                        OR: [
+                            { id: profile.managerId }, // O master
+                            { managerId: profile.managerId }, // Todos os usuários do master
+                        ]
+                    },
+                    select: {
+                        id: true,
+                        fullName: true,
+                        profileIconUrl: true,
+                        email: true,
+                        role: true
+                    }
+                });
+
+                // Substituir operators pelos membros da equipe completa
+                (profile as any).operators = allTeamMembers;
+            }
+
             console.info("Fetched profile with relations:", profile);
             return profile ?? null;
         } catch (error) {
@@ -95,7 +133,8 @@ class PrismaProfileRepository implements IProfileRepository {
     addressNumber?: string,
     complement?: string,
     city?: string,
-    state?: string
+    state?: string,
+    managerId?: string
   ): Promise<{ profileId: string; supabaseId: string } | null> {
     try {
       console.info('💾 [ProfileRepository] createProfile iniciado');
@@ -139,7 +178,16 @@ class PrismaProfileRepository implements IProfileRepository {
         phone,
         email,
         role,
+        // isMaster = true apenas se:
+        // 1. É manager/operator E
+        // 2. NÃO tem managerId (não foi criado por outro usuário)
+        isMaster: !managerId,
       };
+
+      // Se tem managerId, adicionar ao profileData
+      if (managerId) {
+        profileData.managerId = managerId;
+      }
 
       // Adicionar CPF/CNPJ se fornecido
       if (cpfCnpj) {
@@ -187,7 +235,10 @@ class PrismaProfileRepository implements IProfileRepository {
         operatorCount: profileData.operatorCount,
         subscriptionStatus: profileData.subscriptionStatus,
         hasSubscriptionStartDate: !!profileData.subscriptionStartDate,
-        subscriptionStartDate: profileData.subscriptionStartDate
+        subscriptionStartDate: profileData.subscriptionStartDate,
+        isMaster: profileData.isMaster,
+        hasManagerId: !!profileData.managerId,
+        role: profileData.role
       });
 
       // Criar profile no banco

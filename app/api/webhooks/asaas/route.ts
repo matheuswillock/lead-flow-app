@@ -4,29 +4,66 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PaymentRepository } from '@/app/api/infra/data/repositories/payment/PaymentRepository';
 import { PaymentValidationService } from '@/app/api/services/PaymentValidation/PaymentValidationService';
 import { PaymentValidationUseCase } from '@/app/api/useCases/payments/PaymentValidationUseCase';
+import { subscriptionUpgradeUseCase } from '@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase';
 
 export async function POST(request: NextRequest) {
   try {
+    console.info('🎯 [Webhook Asaas] ============================================');
     console.info('🎯 [Webhook Asaas] Requisição recebida');
-    console.info('🔍 [Webhook Asaas] Headers:', Object.fromEntries(request.headers.entries()));
     console.info('🔍 [Webhook Asaas] URL:', request.url);
     console.info('🔍 [Webhook Asaas] Method:', request.method);
+    console.info('🔍 [Webhook Asaas] Headers (full):', JSON.stringify(Object.fromEntries(request.headers.entries()), null, 2));
     
-    // Verificar token de autenticação do Asaas (opcional mas recomendado)
+    // Verificar token de autenticação do Asaas
     const asaasToken = request.headers.get('asaas-access-token');
     const expectedToken = process.env.ASAAS_WEBHOOK_TOKEN;
+    
+    console.info('🔐 [Webhook Asaas] ============================================');
+    console.info('🔐 [Webhook Asaas] VALIDAÇÃO DE TOKEN:');
 
-    console.info('🔑 [Webhook Asaas] Token recebido:', asaasToken ? 'presente' : 'ausente');
-    console.info('🔑 [Webhook Asaas] Token esperado:', expectedToken ? 'configurado' : 'não configurado');
+    console.info('🔑 [Webhook Asaas] Token recebido:', asaasToken || 'NULO/AUSENTE');
+    console.info('🔑 [Webhook Asaas] Token esperado:', expectedToken || 'NULO/AUSENTE');
+    console.info('🔑 [Webhook Asaas] Token recebido (length):', asaasToken?.length || 0);
+    console.info('🔑 [Webhook Asaas] Token esperado (length):', expectedToken?.length || 0);
+    console.info('🔑 [Webhook Asaas] Tokens match (===):', asaasToken === expectedToken);
+    console.info('🔑 [Webhook Asaas] Tokens match (trim):', asaasToken?.trim() === expectedToken?.trim());
+    console.info('🔐 [Webhook Asaas] ============================================');
 
-    // TEMPORÁRIO: Permitir sem token para debug
-    if (expectedToken && asaasToken && asaasToken !== expectedToken) {
-      console.warn('⚠️ [Webhook Asaas] Token inválido (mas permitindo para debug)');
-      // return NextResponse.json(
-      //   { error: 'Unauthorized' },
-      //   { status: 401 }
-      // );
+    // Validar token (trim para remover espaços)
+    const receivedToken = asaasToken?.trim();
+    const expectedTokenTrimmed = expectedToken?.trim();
+    
+    if (!receivedToken) {
+      console.error('❌ [Webhook Asaas] Token não fornecido no header');
+      console.error('❌ [Webhook Asaas] Headers recebidos:', Object.keys(Object.fromEntries(request.headers.entries())));
+      return NextResponse.json(
+        { error: 'Unauthorized: Token não fornecido' },
+        { status: 401 }
+      );
     }
+
+    if (!expectedTokenTrimmed) {
+      console.error('❌ [Webhook Asaas] ASAAS_WEBHOOK_TOKEN não configurado no .env');
+      console.error('❌ [Webhook Asaas] process.env.ASAAS_WEBHOOK_TOKEN:', process.env.ASAAS_WEBHOOK_TOKEN);
+      return NextResponse.json(
+        { error: 'Internal Server Error: Webhook token não configurado' },
+        { status: 500 }
+      );
+    }
+
+    if (receivedToken !== expectedTokenTrimmed) {
+      console.error('❌ [Webhook Asaas] Token inválido');
+      console.error('   Recebido (trim):', receivedToken);
+      console.error('   Esperado (trim):', expectedTokenTrimmed);
+      console.error('   Recebido (raw):', asaasToken);
+      console.error('   Esperado (raw):', expectedToken);
+      return NextResponse.json(
+        { error: 'Unauthorized: Token inválido' },
+        { status: 401 }
+      );
+    }
+
+    console.info('✅ [Webhook Asaas] Token validado com sucesso');
 
     const body = await request.json();
 
@@ -41,7 +78,7 @@ export async function POST(request: NextRequest) {
     // Log completo do evento para debug
     console.info('📋 [Webhook Asaas] Detalhes completos do evento:', JSON.stringify(body, null, 2));
 
-  // Se não há payment (ex.: SUBSCRIPTION_*), ainda processamos para vincular/atualizar
+    // Se não há payment (ex.: SUBSCRIPTION_*), ainda processamos para vincular/atualizar
     const hasPayment = !!body.payment;
 
     // Ignorar se payment existe mas não tem ID
@@ -69,6 +106,167 @@ export async function POST(request: NextRequest) {
     });
 
     console.info('[Webhook Asaas] Resultado:', result);
+
+    // VERIFICAR SE É PAGAMENTO DE OPERADOR (PAYMENT_CONFIRMED ou outros eventos)
+    // Detectar através do externalReference que contém "pending-operator-{id}"
+    if (body?.payment?.id) {
+      const paymentId = body.payment.id;
+      const externalReference = body.payment.externalReference;
+      const paymentStatus = body.payment.status;
+      
+      console.info('💳 [Webhook Asaas] Detalhes do pagamento:', {
+        event: body.event,
+        paymentId,
+        status: paymentStatus,
+        externalReference: externalReference || 'não definido',
+        isPaid: result.isPaid
+      });
+      
+      // Verificar se é pagamento de operador através do externalReference
+      const isOperatorPayment = externalReference && externalReference.startsWith('pending-operator-');
+      
+      if (isOperatorPayment && (result.isPaid || paymentStatus === 'CONFIRMED')) {
+        try {
+          // Extrair pendingOperatorId do externalReference
+          const pendingOperatorId = externalReference.replace('pending-operator-', '');
+          
+          console.info('🔄 [Webhook Asaas] Processando pagamento de operador:', {
+            pendingOperatorId,
+            paymentId,
+            status: paymentStatus
+          });
+          
+          // Buscar PendingOperator diretamente pelo ID
+          const { prisma } = await import('@/app/api/infra/data/prisma');
+          const pendingOperator = await prisma.pendingOperator.findUnique({
+            where: { id: pendingOperatorId },
+            include: { manager: true }
+          });
+          
+          if (pendingOperator) {
+            console.info('✅ [Webhook Asaas] PendingOperator encontrado:', {
+              id: pendingOperator.id,
+              name: pendingOperator.name,
+              email: pendingOperator.email,
+              operatorCreated: pendingOperator.operatorCreated,
+              currentPaymentId: pendingOperator.paymentId
+            });
+            
+            // Se operador já foi criado, não processar novamente
+            if (pendingOperator.operatorCreated) {
+              console.info('ℹ️ [Webhook Asaas] Operador já foi criado anteriormente - ignorando webhook');
+            } else {
+              // Atualizar paymentId E paymentStatus no PendingOperator ANTES de criar operador
+              console.info('💾 [Webhook Asaas] Atualizando PendingOperator antes de criar operador...');
+              
+              const updatedPendingOperator = await prisma.pendingOperator.update({
+                where: { id: pendingOperatorId },
+                data: { 
+                  paymentId,
+                  paymentStatus: 'CONFIRMED'
+                }
+              });
+              
+              console.info('✅ [Webhook Asaas] PendingOperator atualizado:', {
+                id: updatedPendingOperator.id,
+                paymentId: updatedPendingOperator.paymentId,
+                paymentStatus: updatedPendingOperator.paymentStatus
+              });
+              
+              // Confirmar pagamento e criar operador
+              console.info('🚀 [Webhook Asaas] Iniciando criação do operador...');
+              const operatorResult = await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId);
+              
+              if (operatorResult.isValid && operatorResult.result?.operatorCreated) {
+                console.info('🎉 [Webhook Asaas] ✅ OPERADOR CRIADO COM SUCESSO:', {
+                  operatorId: operatorResult.result.operatorId,
+                  paymentId: operatorResult.result.paymentId,
+                  email: pendingOperator.email
+                });
+              } else {
+                console.error('❌ [Webhook Asaas] ❌ FALHA AO CRIAR OPERADOR:', {
+                  errorMessages: operatorResult.errorMessages,
+                  pendingOperatorId,
+                  paymentId,
+                  email: pendingOperator.email
+                });
+              }
+            }
+          } else {
+            console.warn('⚠️ [Webhook Asaas] PendingOperator não encontrado para ID:', pendingOperatorId);
+          }
+        } catch (error) {
+          console.error('❌ [Webhook Asaas] Erro ao processar pagamento de operador:', error);
+          // Não bloquear o fluxo principal
+        }
+      } else if (!isOperatorPayment) {
+        console.info('ℹ️ [Webhook Asaas] Não é pagamento de operador (externalReference diferente)');
+      }
+    }
+
+    // ATIVAR ASSINATURA APÓS PAGAMENTO CONFIRMADO (SIGN-UP FLOW)
+    if (result.isPaid && body?.payment?.subscription) {
+      try {
+        const { checkoutAsaasUseCase } = await import('@/app/api/useCases/subscriptions/CheckoutAsaasUseCase');
+        const activationResult = await checkoutAsaasUseCase.processCheckoutPaid(body.payment.id);
+        
+        if (activationResult.isValid) {
+          console.info('✅ [Webhook Asaas] Assinatura ativada após pagamento:', body.payment.subscription);
+        }
+      } catch (error) {
+        console.error('❌ [Webhook Asaas] Erro ao ativar assinatura:', error);
+      }
+    }
+
+    // SINCRONIZAR EVENTOS DE ASSINATURA (SUBSCRIPTION_CREATED, SUBSCRIPTION_UPDATED)
+    // Usado quando assinatura do manager é atualizada (add/remove operadores)
+    if (body.event === 'SUBSCRIPTION_CREATED' || body.event === 'SUBSCRIPTION_UPDATED') {
+      const subscription = body.subscription;
+      
+      if (subscription?.id && subscription?.customer) {
+        try {
+          console.info('🔄 [Webhook Asaas] Sincronizando assinatura:', {
+            event: body.event,
+            subscriptionId: subscription.id,
+            customerId: subscription.customer,
+            value: subscription.value,
+            nextDueDate: subscription.nextDueDate
+          });
+
+          // Buscar manager pelo asaasCustomerId
+          const { prisma } = await import('@/app/api/infra/data/prisma');
+          const manager = await prisma.profile.findFirst({
+            where: { 
+              asaasCustomerId: subscription.customer,
+              role: 'manager'
+            }
+          });
+
+          if (manager) {
+            // Atualizar subscriptionId e nextDueDate no Profile
+            await prisma.profile.update({
+              where: { id: manager.id },
+              data: {
+                asaasSubscriptionId: subscription.id,
+                subscriptionNextDueDate: new Date(subscription.nextDueDate),
+                subscriptionCycle: subscription.cycle || 'MONTHLY',
+              }
+            });
+
+            console.info('✅ [Webhook Asaas] Assinatura sincronizada para manager:', {
+              managerId: manager.id,
+              email: manager.email,
+              newSubscriptionId: subscription.id
+            });
+          } else {
+            console.warn('⚠️ [Webhook Asaas] Manager não encontrado para customerId:', subscription.customer);
+          }
+        } catch (error) {
+          console.error('❌ [Webhook Asaas] Erro ao sincronizar assinatura:', error);
+          // Não bloquear o fluxo principal
+        }
+      }
+    }
 
     // Se o pagamento foi confirmado, notificar o frontend via endpoint público
     if (result.isPaid && body?.payment?.subscription) {

@@ -12,6 +12,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
+import { AttachmentList } from "../ui/attachment-list";
+import { Loader2 } from "lucide-react";
 
 const formatCurrency = (value: string): string => {
     const cleanValue = value.replace(/\D/g, '');
@@ -33,6 +35,7 @@ export interface ILeadFormProps {
     className?: string;
     initialData?: leadFormData;
     usersToAssign: UserAssociated[];
+    leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
 }
 
 export function LeadForm({
@@ -43,7 +46,8 @@ export function LeadForm({
     onCancel,
     className,
     initialData,
-    usersToAssign
+    usersToAssign,
+    leadId
 }: ILeadFormProps) {
     const [hasChanges, setHasChanges] = useState(false);
 
@@ -59,7 +63,6 @@ export function LeadForm({
                 (watchedValues.phone && watchedValues.phone.trim() !== '') ||
                 (watchedValues.cnpj && watchedValues.cnpj.trim() !== '') ||
                 (watchedValues.age && watchedValues.age.length > 0) ||
-                (watchedValues.hasPlan && watchedValues.hasPlan !== undefined) ||
                 (watchedValues.currentHealthPlan && watchedValues.currentHealthPlan.trim() !== '') ||
                 (watchedValues.currentValue && watchedValues.currentValue.trim() !== '') ||
                 (watchedValues.referenceHospital && watchedValues.referenceHospital.trim() !== '') ||
@@ -79,7 +82,6 @@ export function LeadForm({
             watchedValues.phone !== initialData.phone ||
             watchedValues.cnpj !== initialData.cnpj ||
             watchedValues.age !== initialData.age ||
-            watchedValues.hasPlan !== initialData.hasPlan ||
             watchedValues.currentHealthPlan !== initialData.currentHealthPlan ||
             watchedValues.currentValue !== initialData.currentValue ||
             watchedValues.referenceHospital !== initialData.referenceHospital ||
@@ -199,45 +201,62 @@ export function LeadForm({
                     <FormItem className="sm:col-span-2">
                         <FormLabel className="block text-sm font-medium mb-1">Faixas Etárias*</FormLabel>
                         <FormControl>
-                            <div className="space-y-3">
-                                {/* Input que mostra as seleções */}
+                            <div className="space-y-2">
                                 <Input
-                                    value={field.value?.join(", ") || ""}
-                                    placeholder="Selecione as faixas etárias abaixo"
-                                    readOnly
-                                    disabled={isLoading || isUpdating}
-                                    className="bg-gray-50"
-                                />
-                                
-                                {/* Checkboxes para seleção múltipla */}
-                                <div className="grid grid-cols-2 gap-2">
-                                    {[
-                                        { value: "0-18", label: "0-18 anos" },
-                                        { value: "19-25", label: "19-25 anos" },
-                                        { value: "26-35", label: "26-35 anos" },
-                                        { value: "36-45", label: "36-45 anos" },
-                                        { value: "46-60", label: "46-60 anos" },
-                                        { value: "61+", label: "61+ anos" }
-                                    ].map((option) => (
-                                        <label key={option.value} className="flex items-center gap-2 text-sm">
-                                            <input
-                                                type="checkbox"
-                                                checked={field.value?.includes(option.value as any) || false}
-                                                onChange={(e) => {
-                                                    const currentValues = field.value || [];
-                                                    if (e.target.checked) {
-                                                        field.onChange([...currentValues, option.value]);
-                                                    } else {
-                                                        field.onChange(currentValues.filter(v => v !== option.value));
+                                    value={field.value || ""}
+                                    onChange={(e) => {
+                                        let value = e.target.value;
+                                        
+                                        // Remove caracteres que não são números, vírgulas ou espaços
+                                        value = value.replace(/[^0-9,\s]/g, '');
+                                        
+                                        // Remove vírgulas e espaços para processar
+                                        const cleanValue = value.replace(/[,\s]/g, '');
+                                        
+                                        // Divide em grupos de idades
+                                        const groups: string[] = [];
+                                        let currentGroup = '';
+                                        
+                                        for (let i = 0; i < cleanValue.length; i++) {
+                                            const char = cleanValue[i];
+                                            currentGroup += char;
+                                            
+                                            // Se o primeiro dígito é 1, permite até 3 dígitos (100-120)
+                                            if (currentGroup[0] === '1') {
+                                                if (currentGroup.length === 3) {
+                                                    // Valida se não ultrapassa 120
+                                                    const age = parseInt(currentGroup);
+                                                    if (age > 120) {
+                                                        currentGroup = '120';
                                                     }
-                                                }}
-                                                disabled={isLoading || isUpdating}
-                                                className="rounded"
-                                            />
-                                            {option.label}
-                                        </label>
-                                    ))}
-                                </div>
+                                                    groups.push(currentGroup);
+                                                    currentGroup = '';
+                                                }
+                                            } else {
+                                                // Para outros números, aceita apenas 2 dígitos
+                                                if (currentGroup.length === 2) {
+                                                    groups.push(currentGroup);
+                                                    currentGroup = '';
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Adiciona o último grupo se existir
+                                        if (currentGroup) {
+                                            groups.push(currentGroup);
+                                        }
+                                        
+                                        // Junta os grupos com vírgula e espaço
+                                        const formattedValue = groups.join(', ');
+                                        
+                                        field.onChange(formattedValue);
+                                    }}
+                                    placeholder="Ex: 36, 32, 13"
+                                    disabled={isLoading || isUpdating}
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Exemplo: 36, 32, 13, 100, 120 (idades até 120 anos, separadas automaticamente)
+                                </p>
                             </div>
                         </FormControl>
                     </FormItem>
@@ -247,68 +266,42 @@ export function LeadForm({
             <div className="sm:col-span-2">
                 <FormField
                     control={form.control}
-                    name="hasPlan"
+                    name="currentHealthPlan"
                     render={({ field }) => (
                         <FormItem>
                             <FormLabel className="block text-sm font-medium mb-1">
-                                Possui plano atualmente?*
+                                Qual o plano de saúde?*
                             </FormLabel>
                             <FormControl>
-                                <div className="flex gap-4">
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="radio"
-                                            value="sim"
-                                            checked={field.value === "sim"}
-                                            onChange={() => field.onChange("sim")}
-                                            disabled={isLoading || isUpdating}
-                                            required
-                                            name={field.name}
-                                        />
-                                        Sim
-                                    </label>
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="radio"
-                                            value="nao"
-                                            checked={field.value === "nao"}
-                                            onChange={() => field.onChange("nao")}
-                                            disabled={isLoading || isUpdating}
-                                            name={field.name}
-                                        />
-                                        Não
-                                    </label>
-                                </div>
+                                <Select
+                                    value={field.value}
+                                    onValueChange={field.onChange}
+                                    disabled={isLoading || isUpdating}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Selecione o plano atual ou 'Nova Adesão' se não possui" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="NOVA_ADESAO">Nova Adesão</SelectItem>
+                                        <SelectItem value="AMIL">Amil</SelectItem>
+                                        <SelectItem value="BRADESCO">Bradesco</SelectItem>
+                                        <SelectItem value="HAPVIDA">Hapvida</SelectItem>
+                                        <SelectItem value="MEDSENIOR">MedSênior</SelectItem>
+                                        <SelectItem value="GNDI">NotreDame Intermédica (GNDI)</SelectItem>
+                                        <SelectItem value="OMINT">Omint</SelectItem>
+                                        <SelectItem value="PLENA">Plena</SelectItem>
+                                        <SelectItem value="PORTO_SEGURO">Porto Seguro</SelectItem>
+                                        <SelectItem value="PREVENT_SENIOR">Prevent Senior</SelectItem>
+                                        <SelectItem value="SULAMERICA">SulAmérica</SelectItem>
+                                        <SelectItem value="UNIMED">Unimed</SelectItem>
+                                        <SelectItem value="OUTROS">Outros</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </FormControl>
                         </FormItem>
                     )}
                 />
             </div>
-
-            {watchedValues.hasPlan === "sim" && (
-                <div className="sm:col-span-2">
-                    <FormField
-                        control={form.control}
-                        name="currentHealthPlan"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel className="block text-sm font-medium mb-1">
-                                    Qual o plano de saúde atual?*
-                                </FormLabel>
-                                <FormControl>
-                                    <Input
-                                        {...field}
-                                        value={field.value || ''}
-                                        placeholder="Ex: Unimed, Bradesco Saúde, etc."
-                                        required={watchedValues.hasPlan === "sim"}
-                                        disabled={isLoading || isUpdating}
-                                    />
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
-                </div>
-            )}
 
             <FormField 
                 control={form.control}
@@ -478,6 +471,45 @@ export function LeadForm({
                 />
             </div>
 
+            {/* Seção de Attachments */}
+            <div className="sm:col-span-2 pt-4 border-t">
+                <div className="mb-2">
+                    <h3 className="text-sm font-medium">Anexos</h3>
+                    <p className="text-xs text-muted-foreground">
+                        {leadId 
+                            ? "Adicione documentos, imagens ou arquivos relacionados a este lead" 
+                            : "Você poderá adicionar anexos após salvar o lead"}
+                    </p>
+                </div>
+                {leadId ? (
+                    <AttachmentList leadId={leadId} />
+                ) : (
+                    <div className="flex items-center justify-center p-8 border border-dashed rounded-lg bg-muted/20">
+                        <div className="text-center space-y-2">
+                            <div className="flex justify-center">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="48"
+                                    height="48"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    className="text-muted-foreground/50"
+                                >
+                                    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                                </svg>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                                Salve o lead primeiro para adicionar anexos
+                            </p>
+                        </div>
+                    </div>
+                )}
+            </div>
+
             <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
                 <Button 
                     className="cursor-pointer" 
@@ -494,6 +526,7 @@ export function LeadForm({
                     className="cursor-pointer" 
                     disabled={isSubmitDisabled}
                 >
+                    {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     {isUpdating ? "Salvando..." : "Salvar"}
                 </Button>
             </div>

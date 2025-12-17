@@ -128,6 +128,7 @@ export function DataTable<TData, TValue>({
                     {column.id === "name" && "Nome"}
                     {column.id === "email" && "Email"}
                     {column.id === "role" && "Papel"}
+                    {column.id === "status" && "Status"}
                     {column.id === "leadsCount" && "Leads"}
                     {column.id === "createdAt" && "Criado em"}
                   </DropdownMenuCheckboxItem>

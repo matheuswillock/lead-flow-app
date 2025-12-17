@@ -94,7 +94,7 @@ export function PricingSection() {
             </div>
 
             <div className="text-center mb-8">
-              <h3 className="text-3xl font-bold mb-2">Lead Flow Professional</h3>
+              <h3 className="text-3xl font-bold mb-2">Corretor Studio Professional</h3>
               <p className="text-muted-foreground">
                 Tudo que você precisa para gerenciar seu time de vendas
               </p>
@@ -151,8 +151,8 @@ export function PricingSection() {
 
             <div className="text-center">
               <Link
-                href="/subscribe"
-                className="inline-flex items-center justify-center rounded-xl px-8 py-4 text-lg font-semibold shadow-xl transition-all hover:shadow-2xl hover:scale-105"
+                href="/sign-up"
+                className="cursor-pointer inline-flex items-center justify-center rounded-xl px-8 py-4 text-lg font-semibold shadow-xl transition-all hover:shadow-2xl hover:scale-105"
                 style={{
                   background: "var(--primary)",
                   color: "var(--primary-foreground)",

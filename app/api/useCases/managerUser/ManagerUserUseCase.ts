@@ -1,10 +1,14 @@
 import { Output } from "@/lib/output";
 import { IManagerUserUseCase } from "./IManagerUserUseCase";
 import { IManagerUserRepository } from "../../infra/data/repositories/managerUser/IManagerUserRepository";
+import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
+import { IProfileRepository } from "../../infra/data/repositories/profile/IProfileRepository";
 
 export class ManagerUserUseCase implements IManagerUserUseCase {
     constructor(
-        private managerUserRepository: IManagerUserRepository
+        private managerUserRepository: IManagerUserRepository,
+        private leadRepository: ILeadRepository,
+        private profileRepository: IProfileRepository
     ) {}
 
     async associateOperatorToManager(managerId: string, operatorId: string): Promise<Output> {
@@ -216,10 +220,50 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 );
             }
 
+            // Buscar informações do usuário que será deletado
+            const userToDelete = await this.profileRepository.findById(operatorId);
+            
+            if (!userToDelete) {
+                return new Output(
+                    false,
+                    [],
+                    ["Usuário não encontrado"],
+                    null
+                );
+            }
+
+            // Determinar o masterId
+            const masterId = userToDelete.isMaster ? userToDelete.id : userToDelete.managerId;
+            
+            if (!masterId) {
+                return new Output(
+                    false,
+                    [],
+                    ["Não foi possível identificar o master do usuário"],
+                    null
+                );
+            }
+
+            // Se o usuário não é o próprio master, buscar o master
+            let finalMasterId = masterId;
+            if (!userToDelete.isMaster && userToDelete.managerId) {
+                const masterUser = await this.profileRepository.findById(userToDelete.managerId);
+                if (masterUser && masterUser.isMaster) {
+                    finalMasterId = masterUser.id;
+                }
+            }
+
+            // Transferir todos os leads do usuário para o master
+            const leadsTransferred = await this.leadRepository.reassignLeadsToMaster(operatorId, finalMasterId);
+            
+            console.info(`Transferidos ${leadsTransferred} leads do usuário ${operatorId} para o master ${finalMasterId}`);
+
+            // Deletar o usuário
             await this.managerUserRepository.deleteOperator(operatorId);
+            
             return new Output(
                 true,
-                ["Operator excluído com sucesso"],
+                [`Operator excluído com sucesso. ${leadsTransferred} lead(s) transferido(s) para o master.`],
                 [],
                 null
             );

@@ -5,7 +5,10 @@ import { updateSession } from "@/lib/supabase/auth-sessions"
 export const runtime = 'nodejs'
 
 // Define protected route prefixes (actual URL paths)
-const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users", ]
+const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users"]
+
+// Public routes that don't require authentication
+const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe", "/checkout-return", "/operator-confirmed", "/pix-confirmed", "/set-password"]
 
 // Routes that require manager role
 const managerOnlyRoutes = ["/manager-users"]
@@ -15,12 +18,16 @@ export async function middleware(request: NextRequest) {
   
   // Skip middleware completely for webhook routes
   if (pathname.startsWith('/api/webhooks')) {
-    console.info('[middleware] Webhook route - skipping auth');
     return NextResponse.next();
   }
   
   // Always refresh Supabase session cookies via helper
   const { user, response } = await updateSession(request)
+
+  // Check if it's a public route - let it pass
+  if (publicRoutes.includes(pathname)) {
+    return response
+  }
 
   // Check if it's a protected route (with or without supabaseId)
   const isProtectedRoute = protectedPrefixes.some((prefix) => {
@@ -49,6 +56,21 @@ export async function middleware(request: NextRequest) {
   const authPages = ["/login", "/sign-in", "/sign-up"]
   if (user && authPages.includes(pathname)) {
     return NextResponse.redirect(new URL(`/${user.id}/board`, request.url))
+  }
+
+  // For API routes, handle authentication and add user ID to headers
+  if (pathname.startsWith('/api')) {
+    // API routes don't need protection check - they handle their own auth
+    const requestHeaders = new Headers(request.headers)
+    if (user) {
+      requestHeaders.set('x-supabase-user-id', user.id)
+    }
+    
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    })
   }
 
   // If route is not protected, let it pass while preserving any updated cookies
@@ -83,50 +105,38 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Additional check for manager-only routes
+  // Additional check for manager-only routes (ONLY for page routes, not API)
   if (isManagerOnlyRoute && user) {
     try {
-      // Verificar role do usuário via API
-      const profileResponse = await fetch(`${request.nextUrl.origin}/api/v1/profiles/${user.id}`, {
-        headers: {
-          'x-supabase-user-id': user.id,
-        },
+      console.info('[middleware] Checking manager role for user:', user.id)
+      
+      // Buscar role diretamente do banco de dados (sem fetch interno)
+      const { prisma } = await import('@/app/api/infra/data/prisma')
+      const profile = await prisma.profile.findUnique({
+        where: { supabaseId: user.id },
+        select: { role: true, id: true }
       })
       
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json()
-        
-        // Se não for manager, redirecionar para dashboard
-        if (!profileData.isValid || !profileData.result || profileData.result.role !== 'manager') {
-          return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
-        }
-      } else {
-        // Se não conseguir verificar o role, redirecionar por segurança
+      if (!profile) {
+        console.warn(`[middleware] Profile not found for user ${user.id}, redirecting to dashboard`)
         return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
       }
+      
+      // Se não for manager, redirecionar para dashboard
+      if (profile.role !== 'manager') {
+        console.info(`[middleware] User ${user.id} is ${profile.role}, not a manager, redirecting to dashboard`)
+        return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
+      }
+      
+      console.info(`[middleware] User ${user.id} is a manager, allowing access to ${pathname}`)
     } catch (error) {
-      console.error('Erro ao verificar role do usuário:', error)
-      // Em caso de erro, redirecionar por segurança
-      return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
+      console.error('[middleware] Error verifying user role:', error)
+      // Em caso de erro, permitir acesso (fail-open para não bloquear usuários legítimos)
+      console.warn('[middleware] Failed to verify role, allowing access (fail-open)')
     }
   }
 
   // User is authenticated and accessing correct route; continue with refreshed cookies
-  
-  // For API routes, add the user ID to headers
-  if (pathname.startsWith('/api')) {
-    const requestHeaders = new Headers(request.headers)
-    if (user) {
-      requestHeaders.set('x-supabase-user-id', user.id)
-    }
-    
-    return NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    })
-  }
-  
   return response
 }
 

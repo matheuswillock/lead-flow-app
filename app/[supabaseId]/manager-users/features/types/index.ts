@@ -4,18 +4,56 @@ import { z } from "zod";
 export interface ManagerUser {
   id: string;
   name: string;
+  fullName?: string; // Alias para name
   email: string;
   role: "manager" | "operator";
   profileIconUrl?: string;
   managerId?: string; // Para operators
   leadsCount?: number; // Contador de leads
+  hasPermanentSubscription?: boolean; // Indica assinatura permanente
   createdAt: Date;
   updatedAt: Date;
+  isPending?: boolean; // Indica se é um operador pendente
+  pendingPayment?: {
+    id: string;
+    paymentId: string;
+    paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED';
+    paymentMethod: 'PIX' | 'CREDIT_CARD' | 'UNDEFINED';
+    operatorCreated: boolean;
+  };
+}
+
+export interface PendingOperator {
+  id: string;
+  managerId: string;
+  name: string;
+  email: string;
+  role: string;
+  paymentId: string;
+  paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED';
+  paymentMethod: 'PIX' | 'CREDIT_CARD' | 'UNDEFINED';
+  operatorCreated: boolean;
+  operatorId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OperatorPaymentData {
+  paymentId: string;
+  paymentStatus: string;
+  paymentMethod: string;
+  dueDate?: string;
+  pixQrCode?: string;
+  pixCopyPaste?: string;
+  operatorCreated: boolean;
+  operatorId?: string;
 }
 
 export interface ManagerUserTableRow extends ManagerUser {
   canEdit: boolean;
   canDelete: boolean;
+  status: 'active' | 'pending_payment' | 'payment_confirmed' | 'payment_failed' | 'pending_creation';
+  pendingPayment?: PendingOperator;
 }
 
 // Schemas de validação para formulários

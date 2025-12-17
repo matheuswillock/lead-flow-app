@@ -3,9 +3,19 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Calendar, CreditCard, Users, AlertCircle } from 'lucide-react';
 import type { SubscriptionData } from '../types/subscription.types';
 import { toast } from 'sonner';
+import { useState } from 'react';
 
 interface SubscriptionCardProps {
   subscription: SubscriptionData;
@@ -13,6 +23,8 @@ interface SubscriptionCardProps {
 }
 
 export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardProps) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
   
   const getStatusBadge = (status: string) => {
     const statusMap = {
@@ -39,14 +51,33 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
     }).format(value);
   };
 
+  // Calcular breakdown do preço
+  const calculatePriceBreakdown = () => {
+    const basePrice = 59.90;
+    const operatorPrice = 19.90;
+    const operatorCount = subscription.planDetails?.operatorCount || 0;
+    
+    return {
+      basePrice,
+      operatorPrice,
+      operatorCount,
+      operatorTotal: operatorCount * operatorPrice,
+      total: basePrice + (operatorCount * operatorPrice)
+    };
+  };
+
+  const priceBreakdown = calculatePriceBreakdown();
+
   const handleCancel = async () => {
-    if (confirm('Tem certeza que deseja cancelar sua assinatura?')) {
-      try {
-        await onCancel();
-        toast.success('Assinatura cancelada com sucesso');
-      } catch (error) {
-        toast.error('Erro ao cancelar assinatura');
-      }
+    setIsCanceling(true);
+    try {
+      await onCancel();
+      toast.success('Assinatura cancelada com sucesso');
+      setIsDialogOpen(false);
+    } catch (error) {
+      toast.error('Erro ao cancelar assinatura');
+    } finally {
+      setIsCanceling(false);
     }
   };
 
@@ -70,8 +101,24 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm">
               <CreditCard className="h-4 w-4 text-muted-foreground" />
-              <span className="text-muted-foreground">Valor Mensal:</span>
-              <span className="font-semibold">{formatCurrency(subscription.value)}</span>
+              <span className="text-muted-foreground">Plano Manager Base:</span>
+              <span className="font-semibold">{formatCurrency(priceBreakdown.basePrice)}</span>
+            </div>
+
+            {priceBreakdown.operatorCount > 0 && (
+              <div className="flex items-center gap-2 text-sm">
+                <Users className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">
+                  {priceBreakdown.operatorCount} Operador{priceBreakdown.operatorCount > 1 ? 'es' : ''} × {formatCurrency(priceBreakdown.operatorPrice)}:
+                </span>
+                <span className="font-semibold">{formatCurrency(priceBreakdown.operatorTotal)}</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 text-sm pt-2 border-t">
+              <CreditCard className="h-4 w-4 text-muted-foreground" />
+              <span className="text-muted-foreground">Valor Mensal Total:</span>
+              <span className="font-bold text-lg">{formatCurrency(priceBreakdown.total)}</span>
             </div>
             
             <div className="flex items-center gap-2 text-sm">
@@ -79,14 +126,6 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
               <span className="text-muted-foreground">Próximo Vencimento:</span>
               <span className="font-semibold">{formatDate(subscription.nextDueDate)}</span>
             </div>
-
-            {subscription.planDetails?.operatorCount !== undefined && (
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">Operadores:</span>
-                <span className="font-semibold">{subscription.planDetails.operatorCount}</span>
-              </div>
-            )}
           </div>
 
           <div className="space-y-2">
@@ -116,13 +155,42 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
             Atualizar Método de Pagamento
           </Button> */}
           {subscription.status !== 'canceled' && (
-            <Button 
-              variant="destructive" 
-              size="sm"
-              onClick={handleCancel}
-            >
-              Cancelar Assinatura
-            </Button>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="destructive" className="cursor-pointer" size="sm">
+                  Cancelar Assinatura
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Cancelar Assinatura</DialogTitle>
+                  <DialogDescription>
+                    Tem certeza que deseja cancelar sua assinatura?
+                    <br />
+                    <br />
+                    Ao cancelar, você perderá acesso aos recursos premium e seus operadores não poderão mais usar o sistema.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsDialogOpen(false)}
+                    disabled={isCanceling}
+                    className="cursor-pointer"
+                  >
+                    Voltar
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleCancel}
+                    disabled={isCanceling}
+                    className="cursor-pointer"
+                  >
+                    {isCanceling ? 'Cancelando...' : 'Confirmar Cancelamento'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           )}
         </div>
       </CardContent>

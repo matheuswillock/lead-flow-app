@@ -33,32 +33,54 @@ export class ManagerUserRepository implements IManagerUserRepository {
     }
 
     async getOperatorsByManager(managerId: string): Promise<any[]> {
+        console.info('🔍 [getOperatorsByManager] Buscando operadores para managerId:', managerId);
+        
         const operators = await prisma.profile.findMany({
             where: { 
                 managerId: managerId,
-                role: UserRole.operator
+                // Buscar todos os usuários gerenciados, independente do role
+                // Tanto operators quanto managers podem ser gerenciados por um master
             },
             select: {
                 id: true,
                 fullName: true,
                 email: true,
+                role: true,
                 profileIconUrl: true,
                 managerId: true,
                 createdAt: true,
-                updatedAt: true
+                updatedAt: true,
+                _count: {
+                    select: {
+                        leadsAsAssignee: true  // Conta leads atribuídos ao operador
+                    }
+                }
             },
             orderBy: {
                 fullName: 'asc'
             }
         });
 
+        console.info('📊 [getOperatorsByManager] Operadores encontrados:', operators.length);
+        console.info('👥 [getOperatorsByManager] Detalhes RAW do Prisma:', JSON.stringify(operators, null, 2));
+        console.info('👥 [getOperatorsByManager] Detalhes simplificados:', operators.map(op => ({
+            id: op.id,
+            name: op.fullName,
+            email: op.email,
+            role: op.role,
+            managerId: op.managerId,
+            leadsCount: op._count?.leadsAsAssignee ?? 0,
+            _countObject: op._count
+        })));
+
         return operators.map(op => ({
             id: op.id,
-            name: op.fullName || 'Operator',
+            name: op.fullName || 'Usuário',
             email: op.email,
-            role: 'operator' as const,
+            role: op.role.toLowerCase() as 'operator' | 'manager',
             profileIconUrl: op.profileIconUrl,
             managerId: op.managerId,
+            leadsCount: op._count?.leadsAsAssignee ?? 0, // Usar 0 como fallback
             createdAt: op.createdAt,
             updatedAt: op.updatedAt
         }));

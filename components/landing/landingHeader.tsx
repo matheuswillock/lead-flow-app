@@ -12,14 +12,14 @@ export function LandingHeader() {
                         style={{ background: "var(--primary)" }}
                         aria-hidden
                     />
-                    <span>Lead Flow</span>
+                    <span>Corretor Studio</span>
                 </Link>
 
                 <Button
                     className="cursor-pointer inline-flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-lg font-semibold text-foreground/80 hover:text-foreground "
                     variant="link"
                 >
-                    <Link href="/sign-in" className="inline-flex items-center gap-2 text-white">
+                    <Link href="/sign-in" className="inline-flex items-center gap-2 text-foreground">
                         <LogIn className="h-8 w-8" /> Entrar
                     </Link>
                 </Button>

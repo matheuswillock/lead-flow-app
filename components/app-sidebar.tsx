@@ -2,7 +2,6 @@
 
 import Link from "next/link"  
 import { LayoutDashboard, KanbanSquare, ChartBarBig, Users } from "lucide-react"
-import { Suspense } from "react"
 
 import {
   Sidebar,
@@ -17,42 +16,23 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { NavUser } from "./nav-user"
-import { useUserRole } from "@/hooks/useUserRole"
-import { Skeleton } from "@/components/ui/skeleton"
-
-function ManagerUserItem({ supabaseId }: { supabaseId?: string }) {
-  const { isManager } = useUserRole();
-
-  if (!isManager) return null;
-
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton asChild>
-        <Link href={`/${supabaseId}/manager-users`}>
-          <Users />
-          <span>Manager operators</span>
-        </Link>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
-}
-
-function ManagerUserItemSkeleton() {
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton disabled>
-        <Skeleton className="h-4 w-4 rounded" />
-        <Skeleton className="h-4 w-24" />
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
-}
+import { useUserContext } from "@/app/context/UserContext"
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
-  const baseItems = [
+  const { user } = useUserContext();
+  const isManager = user?.role === 'manager';
+  const isMaster = user?.isMaster === true;
+
+  const items = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "Board", url: `/${supabaseId}/board`, icon: KanbanSquare },
     { title: "Pipeline", url: `/${supabaseId}/pipeline`, icon: ChartBarBig },
+    { 
+      title: "Manager Users", 
+      url: `/${supabaseId}/manager-users`, 
+      icon: Users,
+      masterOnly: true // Apenas masters podem gerenciar usuários
+    },
   ];
 
   return (
@@ -70,7 +50,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                             style={{ background: "var(--primary)" }}
                             aria-hidden
                         />
-                        <span className="text-base font-semibold">Lead flow</span>
+                        <span className="text-base font-semibold">Corretor Studio</span>
                     </a>
                 </SidebarMenuButton>
             </SidebarMenuItem>
@@ -81,20 +61,23 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 <SidebarGroupLabel>Navegação</SidebarGroupLabel>
                 <SidebarGroupContent>
                     <SidebarMenu>
-                        {baseItems.map((item) => (
-                          <SidebarMenuItem key={item.title}>
-                            <SidebarMenuButton asChild>
-                              <Link href={item.url}>
-                                <item.icon />
-                                <span>{item.title}</span>
-                              </Link>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        ))}
-                        
-                        <Suspense fallback={<ManagerUserItemSkeleton />}>
-                          <ManagerUserItem supabaseId={supabaseId} />
-                        </Suspense>
+                        {items.map((item) => {
+                          // Se o item é apenas para masters e o usuário não é master, não renderizar
+                          if (item.masterOnly && !isMaster) {
+                            return null;
+                          }
+
+                          return (
+                            <SidebarMenuItem key={item.title}>
+                              <SidebarMenuButton asChild>
+                                <Link href={item.url}>
+                                  <item.icon />
+                                  <span>{item.title}</span>
+                                </Link>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          );
+                        })}
                     </SidebarMenu>
                 </SidebarGroupContent>
             </SidebarGroup>

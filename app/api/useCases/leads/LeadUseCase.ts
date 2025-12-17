@@ -25,19 +25,26 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      const managerId = profileInfo.role === 'manager' ? profileInfo.id : profileInfo.managerId;
+      // O managerId do lead deve sempre apontar para o master
+      const managerId = profileInfo.isMaster ? profileInfo.id : profileInfo.managerId;
       
       if (!managerId) {
-        return new Output(false, [], ["Manager não identificado"], null);
+        return new Output(false, [], ["Master não identificado"], null);
       }
+
+      // Se for operator e não foi definido assignedTo, atribuir automaticamente ao próprio operator
+      let assignedTo = data.assignedTo;
+      if (profileInfo.role === 'operator' && !assignedTo) {
+        assignedTo = profileInfo.id;
+      }
+
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
         name: data.name,
         email: data.email || null,
         phone: data.phone || null,
         cnpj: data.cnpj || null,
-        age: data.age || [],
-        hasHealthPlan: data.hasHealthPlan || null,
+        age: data.age || null,
         currentHealthPlan: data.currentHealthPlan || null,
         currentValue: data.currentValue || null,
         referenceHospital: data.referenceHospital || null,
@@ -47,8 +54,8 @@ export class LeadUseCase implements ILeadUseCase {
         status: data.status || LeadStatus.new_opportunity,
         creator: { connect: { id: profileInfo.id } },
         updater: { connect: { id: profileInfo.id } },
-        ...(data.assignedTo && {
-          assignee: { connect: { id: data.assignedTo } }
+        ...(assignedTo && {
+          assignee: { connect: { id: assignedTo } }
         }),
         activities: {
           create: {
@@ -175,14 +182,19 @@ export class LeadUseCase implements ILeadUseCase {
       let leads: any[] = [];
 
       if (options?.role === 'manager') {
-        // Se for manager, busca todos os leads do manager (incluindo dos operators)
-        const managerId = profileInfo.role === 'manager' ? profileInfo.id : profileInfo.managerId;
+        // Determinar o managerId base (master)
+        // Se o usuário é master, usa o próprio ID
+        // Se não é master, usa o managerId (aponta para o master)
+        const baseMasterId = profileInfo.isMaster 
+          ? profileInfo.id 
+          : profileInfo.managerId;
         
-        if (!managerId) {
-          return new Output(false, [], ["Manager não identificado"], null);
+        if (!baseMasterId) {
+          return new Output(false, [], ["Master não identificado"], null);
         }
 
-        const result = await this.leadRepository.findAllByManagerId(managerId, {
+        // Manager (master ou não-master) vê todos os leads do master
+        const result = await this.leadRepository.findAllByManagerId(baseMasterId, {
           status: options.status,
           assignedTo: options.assignedTo,
           search: options.search,
@@ -192,7 +204,7 @@ export class LeadUseCase implements ILeadUseCase {
         
         leads = result.leads;
       } else if (options?.role === 'operator') {
-        // Se for operator, busca apenas os leads atribuídos a ele
+        // Operator vê apenas leads criados por ele OU atribuídos a ele
         if (profileInfo.role !== 'operator') {
           return new Output(false, [], ["Usuário não é um operator"], null);
         }
@@ -225,6 +237,28 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
+      // Verificar permissões para operators
+      if (profileInfo.role === 'operator') {
+        const existingLead = await this.leadRepository.findById(id);
+        
+        if (!existingLead) {
+          return new Output(false, [], ["Lead não encontrado"], null);
+        }
+        
+        // Operator só pode editar se criou o lead OU se está atribuído a ele
+        const canEdit = existingLead.createdBy === profileInfo.id || 
+                       existingLead.assignedTo === profileInfo.id;
+        
+        if (!canEdit) {
+          return new Output(false, [], ["Você não tem permissão para editar este lead"], null);
+        }
+        
+        // Operator não pode alterar o assignedTo
+        if (data.assignedTo !== undefined) {
+          return new Output(false, [], ["Você não tem permissão para alterar o responsável pelo lead"], null);
+        }
+      }
+
       const updateData: any = {};
       
       if (data.name !== undefined) updateData.name = data.name;
@@ -232,7 +266,6 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.phone !== undefined) updateData.phone = data.phone || null;
       if (data.cnpj !== undefined) updateData.cnpj = data.cnpj || null;
       if (data.age !== undefined) updateData.age = data.age;
-      if (data.hasHealthPlan !== undefined) updateData.hasHealthPlan = data.hasHealthPlan;
       if (data.currentHealthPlan !== undefined) updateData.currentHealthPlan = data.currentHealthPlan || null;
       if (data.currentValue !== undefined) updateData.currentValue = data.currentValue;
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
@@ -267,6 +300,20 @@ export class LeadUseCase implements ILeadUseCase {
       
       if (!profileInfo) {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
+      }
+
+      // Verificar permissões para operators
+      if (profileInfo.role === 'operator') {
+        const existingLead = await this.leadRepository.findById(id);
+        
+        if (!existingLead) {
+          return new Output(false, [], ["Lead não encontrado"], null);
+        }
+        
+        // Operator só pode deletar se criou o lead
+        if (existingLead.createdBy !== profileInfo.id) {
+          return new Output(false, [], ["Você só pode deletar leads que você criou"], null);
+        }
       }
 
       await this.leadRepository.delete(id);
@@ -447,7 +494,6 @@ export class LeadUseCase implements ILeadUseCase {
       phone: lead.phone,
       cnpj: lead.cnpj,
       age: lead.age,
-      hasHealthPlan: lead.hasHealthPlan,
       currentHealthPlan: lead.currentHealthPlan,
       currentValue: lead.currentValue ? Number(lead.currentValue) : null,
       referenceHospital: lead.referenceHospital,
@@ -458,6 +504,7 @@ export class LeadUseCase implements ILeadUseCase {
       updatedBy: lead.updatedBy,
       createdAt: lead.createdAt.toISOString(),
       updatedAt: lead.updatedAt.toISOString(),
+      attachmentCount: lead._count?.attachments || lead.attachments?.length || 0,
       ...(lead.manager && {
         manager: {
           id: lead.manager.id,

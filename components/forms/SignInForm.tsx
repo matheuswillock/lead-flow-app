@@ -1,4 +1,4 @@
-import { GalleryVerticalEnd } from "lucide-react"
+import { GalleryVerticalEnd, Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -6,6 +6,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { useState } from "react"
 // import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { UseFormReturn } from "react-hook-form"
 import { loginFormData } from "@/lib/validations/validationForms"
@@ -25,6 +26,7 @@ export function SignInForm({
   fromSubscribe = false,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignInFormProps) {
+  const [showPassword, setShowPassword] = useState(false);
 
   return (
     <Form {...form}>
@@ -42,7 +44,7 @@ export function SignInForm({
               <div className="flex h-8 w-8 items-center justify-center rounded-md">
                 <GalleryVerticalEnd className="size-6" />
               </div>
-              <span className="sr-only">Lead Flow</span>
+              <span className="sr-only">Corretor Studio</span>
             </Link>
             {fromSubscribe && (
               <>
@@ -66,17 +68,16 @@ export function SignInForm({
                 </TooltipProvider> */}
               </>
             )}
-            <h1 className="text-xl font-bold">Welcome to Lead Flow.</h1>
+            <h1 className="text-xl font-bold">Bem-vindo ao Corretor Studio</h1>
             {fromSubscribe && (
               <p className="text-center text-sm text-muted-foreground max-w-sm">
                 Para assinar a plataforma, entre com sua conta. Se ainda não tiver uma, crie seu cadastro para seguir para a assinatura.
               </p>
             )}
             <div className="text-center text-sm">
-              Don&apos;t have an account?{" "}
-              {/* TODO: Add sign up link */}
+              Não tem uma conta?{" "}
               <Link href={fromSubscribe ? "/sign-up?from=subscribe" : "/sign-up"} className="underline underline-offset-4">
-                Sign up
+                Criar conta
               </Link>
             </div>
           </div>
@@ -102,7 +103,20 @@ export function SignInForm({
                 <FormItem className="grid gap-2">
                   <FormLabel>Senha</FormLabel>
                   <FormControl>
-                    <Input type="password" {...field} className="border-2 border-gray-300 rounded-md p-2" />
+                    <div className="relative">
+                      <Input 
+                        type={showPassword ? "text" : "password"} 
+                        {...field} 
+                        className="border-2 border-gray-300 rounded-md p-2 pr-10" 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.password || errors.apiError}</FormMessage>
                 </FormItem>
@@ -117,7 +131,7 @@ export function SignInForm({
               {form.formState.isSubmitting ? "Entrando..." : "Entrar"}
             </Button>
           </div>
-          <div className="flex items-center gap-4">
+          {/* <div className="flex items-center gap-4">
             <Separator className="flex-1 shrink w-auto h-px bg-[var(--border)] opacity-60" />
             <span className="text-xs text-muted-foreground">Ou continue com</span>
             <Separator className="flex-1 shrink w-auto h-px bg-[var(--border)] opacity-60" />
@@ -130,9 +144,9 @@ export function SignInForm({
                 fill="currentColor"
               />
               </svg>
-              Continue with Google
+              Continuar com Google
             </Button>
-          </div>
+          </div> */}
         </div>
       </form>
     </Form>

@@ -108,6 +108,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 id: profile.id,
                 role: profile.role as 'manager' | 'operator',
                 managerId: profile.managerId,
+                isMaster: profile.isMaster,
                 fullName: profile.fullName,
                 email: profile.email
             };

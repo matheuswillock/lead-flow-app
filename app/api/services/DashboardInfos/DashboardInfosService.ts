@@ -79,6 +79,11 @@ export class DashboardInfosService implements IDashboardInfosService {
       total + Number(sale.amount || 0), 0
     );
 
+    // Calcular cadência: soma de todos os valores atuais dos leads
+    const cadencia = leads.reduce((total: number, lead) => 
+      total + Number(lead.currentValue || 0), 0
+    );
+
     // Dados por período
     const leadsPorPeriodo = await this.getLeadsByPeriod(filters);
 
@@ -91,6 +96,7 @@ export class DashboardInfosService implements IDashboardInfosService {
       receitaTotal,
       churnRate: Math.round(churnRate * 100) / 100,
       noShowRate: Math.round(noShowRate * 100) / 100,
+      cadencia,
       leadsPorPeriodo,
       statusCount,
     };
