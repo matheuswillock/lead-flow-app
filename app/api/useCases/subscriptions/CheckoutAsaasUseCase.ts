@@ -1,6 +1,7 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasFetch } from "@/lib/asaas";
+import { getEmailService } from "@/lib/services/EmailService";
 
 export interface CreateCheckoutData {
   supabaseId: string;
@@ -205,6 +206,24 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       });
 
       console.info('✅ [processCheckoutPaid] Assinatura ativada para:', profile.email);
+
+      // Enviar e-mail de boas-vindas
+      try {
+        const emailService = getEmailService();
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const loginUrl = `${appUrl}/sign-in`;
+
+        await emailService.sendWelcomeEmail({
+          userName: profile.fullName || profile.email,
+          userEmail: profile.email,
+          loginUrl,
+        });
+
+        console.info('✅ [processCheckoutPaid] E-mail de boas-vindas enviado para:', profile.email);
+      } catch (emailError) {
+        console.error('⚠️ [processCheckoutPaid] Erro ao enviar e-mail de boas-vindas:', emailError);
+        // Não bloqueia o fluxo principal
+      }
 
       return new Output(
         true,
