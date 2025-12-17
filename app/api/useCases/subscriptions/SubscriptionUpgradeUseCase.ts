@@ -3,6 +3,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasFetch } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
+import { getEmailService } from "@/lib/services/EmailService";
 import type { 
   ISubscriptionUpgradeUseCase, 
   AddOperatorPaymentData,
@@ -250,7 +251,9 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       try {
         supabaseUser = await this.createSupabaseUser(
           pendingOperator.email,
-          pendingOperator.name
+          pendingOperator.name,
+          pendingOperator.role,
+          pendingOperator.manager.fullName
         );
 
         console.info('📝 [createOperatorFromPending] Resultado criação Supabase:', {
@@ -630,9 +633,9 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     }
   }
 
-  private async createSupabaseUser(email: string, name: string): Promise<any> {
+  private async createSupabaseUser(email: string, name: string, role: string, managerName: string): Promise<any> {
     try {
-      console.info('🔐 [createSupabaseUser] Iniciando criação de usuário:', { email, name });
+      console.info('🔐 [createSupabaseUser] Iniciando criação de usuário:', { email, name, role });
 
       // Criar cliente Supabase Admin (Service Role)
       const supabase = createSupabaseAdmin();
@@ -643,37 +646,64 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       console.info('✅ [createSupabaseUser] Cliente Supabase Admin criado');
 
-      // Enviar convite por e-mail (usuário define senha no primeiro acesso)
+      // Gerar link de convite SEM enviar e-mail do Supabase
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       const redirectTo = `${appUrl}/set-password`;
-      console.info('📧 [createSupabaseUser] Enviando convite para:', email);
+      console.info('🔗 [createSupabaseUser] Gerando link de convite para:', email);
       console.info('🔗 [createSupabaseUser] Redirect URL:', redirectTo);
 
-      const { data: user, error: authError } = await supabase.auth.admin.inviteUserByEmail(email, {
-        redirectTo,
-        data: { 
-          name,
-          invited: true,
-          first_access: true 
+      // Usar generateLink ao invés de inviteUserByEmail para não enviar e-mail do Supabase
+      const { data, error: linkError } = await supabase.auth.admin.generateLink({
+        type: 'invite',
+        email: email,
+        options: {
+          redirectTo,
+          data: { 
+            name,
+            invited: true,
+            first_access: true 
+          }
         }
       });
 
-      if (authError || !user.user) {
-        console.error('❌ [createSupabaseUser] Erro ao enviar convite:', authError);
+      if (linkError || !data.properties?.action_link) {
+        console.error('❌ [createSupabaseUser] Erro ao gerar link de convite:', linkError);
         return { 
           success: false, 
-          error: authError?.message || 'Erro ao enviar convite de acesso' 
+          error: linkError?.message || 'Erro ao gerar link de convite' 
         };
       }
 
-      console.info('✅ [createSupabaseUser] Convite enviado com sucesso:', {
-        userId: user.user.id,
-        email: user.user.email
+      const inviteLink = data.properties.action_link;
+      const userId = data.user.id;
+
+      console.info('✅ [createSupabaseUser] Link de convite gerado com sucesso:', {
+        userId,
+        email: data.user.email
       });
+
+      // Enviar e-mail personalizado APENAS via Resend
+      try {
+        const emailService = getEmailService();
+        await emailService.sendOperatorInviteEmail({
+          operatorName: name,
+          operatorEmail: email,
+          operatorRole: role,
+          managerName: managerName,
+          inviteUrl: inviteLink, // Usar o link gerado pelo Supabase
+        });
+        console.info('✅ [createSupabaseUser] E-mail enviado via Resend com sucesso');
+      } catch (emailError) {
+        console.error('❌ [createSupabaseUser] Erro ao enviar e-mail via Resend:', emailError);
+        return {
+          success: false,
+          error: 'Erro ao enviar e-mail de convite'
+        };
+      }
 
       return {
         success: true,
-        userId: user.user.id,
+        userId: userId,
         invited: true,
       };
     } catch (error) {

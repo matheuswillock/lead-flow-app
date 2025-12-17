@@ -6,20 +6,14 @@ const ASAAS_API_URL = process.env.ASAAS_ENV === "production"
 // const ASAAS_API_KEY = "$aact_hmlg_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OmFmZjY1NWMwLTAzODUtNGIyZC1hZTVlLThlZTRmZWM1ZjEzNTo6JGFhY2hfZTU4NDhlY2ItZTMyZS00YjE4LWJlNTgtNDlkZGEwYWZkYmNk";
 
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
-console.info('🔍 [ASAAS] Carregando configuração:');
-console.info('🔍 [ASAAS] ASAAS_ENV:', process.env.ASAAS_ENV);
-console.info('🔍 [ASAAS] ASAAS_URL:', process.env.ASAAS_URL);
-console.info('🔍 [ASAAS] ASAAS_API_KEY exists:', !!ASAAS_API_KEY);
-console.info('🔍 [ASAAS] ASAAS_API_KEY length:', ASAAS_API_KEY?.length || 0);
-// Avoid logging full keys in production logs
-if (ASAAS_API_KEY) {
-  const start = ASAAS_API_KEY.slice(0, 6);
-  const end = ASAAS_API_KEY.slice(-6);
-  console.info('🔍 [ASAAS] ASAAS_API_KEY preview:', `${start}...${end}`);
-}
 
-if (!ASAAS_API_KEY) {
-  console.warn('⚠️ ASAAS_API_KEY não configurada - funcionalidades de pagamento estarão desabilitadas');
+// Logs de configuração do ASAAS
+console.info('🔍 [ASAAS] Configuração carregada');
+console.info('🔍 [ASAAS] Environment:', process.env.ASAAS_ENV || 'sandbox');
+console.info('🔍 [ASAAS] API URL:', ASAAS_API_URL);
+console.info('🔍 [ASAAS] ASAAS_API_KEY exists:', !!ASAAS_API_KEY);
+if (ASAAS_API_KEY) {
+  console.info('🔍 [ASAAS] API Key preview:', `${ASAAS_API_KEY.slice(0, 10)}...${ASAAS_API_KEY.slice(-8)}`);
 }
 
 // Headers padrão para requisições ao Asaas
@@ -27,8 +21,6 @@ export const asaasHeaders = {
   'Content-Type': 'application/json',
   'access_token': `$${ASAAS_API_KEY}` || '',
 };
-
-console.info('🔑 [ASAAS] asaasHeaders.access_token length:', asaasHeaders.access_token);
 
 // Endpoints da API Asaas
 export const asaasApi = {
