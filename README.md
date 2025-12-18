@@ -2,11 +2,12 @@
 
 > Sistema de gestão de leads inteligente para corretores de planos de saúde
 
-[![Next.js](https://img.shields.io/badge/Next.js-15.5.2-black)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-15.5.9-black)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
-[![Prisma](https://img.shields.io/badge/Prisma-6.16.1-2D3748)](https://www.prisma.io/)
+[![Prisma](https://img.shields.io/badge/Prisma-6.19.1-2D3748)](https://www.prisma.io/)
 [![Supabase](https://img.shields.io/badge/Supabase-Latest-3FCF8E)](https://supabase.com/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-38B2AC)](https://tailwindcss.com/)
+[![Bun](https://img.shields.io/badge/Bun-1.2.16-000000)](https://bun.sh/)
 
 ## 📋 Sobre o Projeto
 
@@ -25,25 +26,31 @@ O **Corretor Studio** é uma plataforma moderna e elegante desenvolvida para oti
 ## 🛠️ Stack Tecnológica
 
 ### Frontend
-- **Next.js 15.5.2** - Framework React com App Router
-- **TypeScript** - Tipagem estática 
+- **Next.js 15.5.9** - Framework React com App Router
+- **React 19.1.0** - Biblioteca UI
+- **TypeScript 5** - Tipagem estática 
 - **Tailwind CSS 4** - Estilização utilitária
 - **Radix UI** - Componentes acessíveis
+- **Shadcn/ui** - Biblioteca de componentes
 - **Framer Motion** - Animações fluidas
 - **React Hook Form** - Gerenciamento de formulários
-- **Zod** - Validação de schemas
+- **Zod 4** - Validação de schemas
+- **Recharts** - Gráficos e visualizações
 
 ### Backend & Database
-- **Supabase** - Backend as a Service
+- **Supabase** - Backend as a Service (Auth + Storage)
 - **PostgreSQL** - Banco de dados relacional
-- **Prisma ORM** - Type-safe database client
+- **Prisma ORM 6.19.1** - Type-safe database client
 - **Next.js API Routes** - Endpoints serverless
+- **Asaas** - Gateway de pagamento (PIX, Boleto, Cartão)
+- **Resend** - Serviço de email transacional
 
 ### DevOps & Tools
 - **Vercel** - Deploy e hosting
 - **GitHub Actions** - CI/CD automatizado
 - **ESLint & Prettier** - Code quality
-- **Bun** - Runtime e package manager
+- **Bun 1.2.16** - Runtime e package manager
+- **Ngrok** - Túneis para webhooks em desenvolvimento
 
 ## 🚀 Getting Started
 
@@ -69,33 +76,46 @@ bun install
 ```
 
 3. **Configure as variáveis de ambiente**
-```bash
-cp .env.example .env
-```
 
-Configure as seguintes variáveis no `.env`:
+Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
 
 ```env
 # Supabase
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 
-# Database
-DATABASE_URL="postgresql://..."
-DIRECT_URL="postgresql://..."
+# Database PostgreSQL
+POSTGRES_USER=postgres.your-project
+POSTGRES_PASSWORD=your_password
+POSTGRES_HOST=aws-1-sa-east-1.pooler.supabase.com
+POSTGRES_PORT=5432
+POSTGRES_DB=postgres
+DATABASE_URL=postgresql://postgres.your-project:${POSTGRES_PASSWORD}@aws-1-sa-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true
+DIRECT_URL=postgresql://postgres.your-project:${POSTGRES_PASSWORD}@aws-1-sa-east-1.pooler.supabase.com:5432/postgres
 
-# Email (Resend)
-RESEND_API_KEY=your_resend_key
+# Resend (Email)
+RESEND_API_KEY=re_your_resend_api_key_here
 
-# Pagamentos (Asaas)
-ASAAS_API_KEY=your_asaas_key
-ASAAS_API_URL=https://sandbox.asaas.com/api/v3
-ASAAS_WEBHOOK_TOKEN=your_webhook_secret_token
+# Asaas (Pagamento)
+ASAAS_API_KEY=aact_hmlg_your_sandbox_key_here  # ou aact_prod_ para produção
+ASAAS_URL=https://sandbox.asaas.com             # ou https://www.asaas.com para produção
+ASAAS_ENV=sandbox                               # ou production
+ASAAS_WEBHOOK_TOKEN=your_webhook_secret_token_here
 
 # App
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000       # ou sua URL de produção
+NEXT_API_BASE_URL=/api/v1
+NEXT_PUBLIC_ENCRYPTION_KEY=generate_with_openssl_rand_hex_32
 ```
+
+**📝 Como obter as credenciais:**
+- **Supabase**: [Criar projeto](https://supabase.com/dashboard) → Settings → API
+- **Resend**: [Criar conta](https://resend.com/api-keys) → API Keys
+- **Asaas**: [Criar conta](https://sandbox.asaas.com) → Configurações → Integrações → API Key
+- **Encryption Key**: Execute `openssl rand -hex 32`
+
+**📖 Para mais detalhes sobre configuração do Asaas**: [`docs/ASAAS_CONFIGURATION.md`](./docs/ASAAS_CONFIGURATION.md)
 
 4. **Configure o banco de dados**
 ```bash
@@ -118,158 +138,174 @@ Acesse [http://localhost:3000](http://localhost:3000) para ver a aplicação.
 
 ### 🌐 Configuração do Ngrok (Para Webhooks em Desenvolvimento)
 
-O **Ngrok** é necessário para testar webhooks do Asaas localmente, pois cria um túnel seguro que expõe seu `localhost` para a internet.
+O **Ngrok** é necessário para testar webhooks do Asaas localmente.
 
-#### Para que serve?
-- ✅ Permite que o Asaas envie webhooks de pagamento para sua máquina local
-- ✅ Útil para testar fluxo completo de pagamento PIX
-- ✅ Evita necessidade de deploy apenas para testes
+#### Instalação
 
-#### Instalação e Configuração
-
-1. **Instale o Ngrok**
+No Windows com Chocolatey:
 ```bash
-npm install -g ngrok
+choco install ngrok
 ```
 
-2. **Crie uma conta gratuita**
-   - Acesse: [https://dashboard.ngrok.com/signup](https://dashboard.ngrok.com/signup)
-   - Faça login e copie seu authtoken
+Ou baixe diretamente: [https://ngrok.com/download](https://ngrok.com/download)
 
-3. **Configure o Authtoken**
+#### Configuração
+
+1. **Crie uma conta** em [https://dashboard.ngrok.com/signup](https://dashboard.ngrok.com/signup)
+
+2. **Configure o authtoken**:
 ```bash
 ngrok config add-authtoken SEU_TOKEN_AQUI
 ```
 
-4. **Inicie o Ngrok** (em um terminal separado)
+3. **Inicie o Ngrok** (terminal separado):
 ```bash
-ngrok http 3000
+bun run ngrok
+# ou manualmente: ngrok http --domain=your-domain.ngrok-free.dev 3000
 ```
 
-Você verá uma saída como:
-```
-Session Status                online
-Account                       seu-email@gmail.com (Plan: Free)
-Region                        South America (sa)
-Web Interface                 http://127.0.0.1:4040
-Forwarding                    https://abc123xyz.ngrok-free.app -> http://localhost:3000
-```
+4. **Configure o Webhook no Asaas**:
+   - Acesse [https://sandbox.asaas.com](https://sandbox.asaas.com)
+   - **Configurações** → **Integrações** → **Webhooks** → **Criar Webhook**
+   - **URL**: `https://your-domain.ngrok-free.dev/api/webhooks/asaas`
+   - **Token**: O mesmo valor de `ASAAS_WEBHOOK_TOKEN` do `.env`
+   - **Eventos**: Marque todos, principalmente `PAYMENT_CONFIRMED` e `PAYMENT_RECEIVED`
 
-**🎯 URLs Geradas:**
-- 🌐 **URL Pública**: `https://abc123xyz.ngrok-free.app` (use no webhook do Asaas)
-- 🔍 **Dashboard**: `http://127.0.0.1:4040` (monitore requisições em tempo real)
+5. **Monitore**: Acesse [http://127.0.0.1:4040](http://127.0.0.1:4040) para ver requisições em tempo real
 
-5. **Configure o Webhook no Asaas**
-   - Acesse: [https://sandbox.asaas.com](https://sandbox.asaas.com) (ou produção)
-   - Vá em **Menu do usuário** > **Integrações** > **Webhooks**
-   - Clique em **Criar Webhook**
-   - **URL**: `https://sua-url.ngrok-free.app/api/webhooks/asaas`
-   - **Eventos**: Selecione `PAYMENT_RECEIVED` e `PAYMENT_CONFIRMED`
-   - **Token**: Use o mesmo valor da variável `ASAAS_WEBHOOK_TOKEN` do seu `.env`
+⚠️ **Importante**: 
+- A URL do Ngrok (plano gratuito) muda a cada reinício
+- Sempre atualize a URL no painel do Asaas quando necessário
+- Para atualizar o ngrok execute `ngrok update` como Administrador no PowerShell
 
-6. **Monitore as requisições**
-   - Abra [http://127.0.0.1:4040](http://127.0.0.1:4040) para ver o dashboard do Ngrok
-   - Você verá todas as requisições HTTP em tempo real
-
-#### ⚠️ Importante
-- A URL do Ngrok muda toda vez que você reinicia (plano gratuito)
-- Sempre atualize a URL no painel do Asaas quando reiniciar o Ngrok
-- Use apenas em desenvolvimento - nunca em produção!
-
-Para mais detalhes, consulte: [`docs/WEBHOOK_SETUP.md`](./docs/WEBHOOK_SETUP.md)
+**📖 Documentação completa**: [`docs/NGROK_WEBHOOK_SETUP.md`](./docs/NGROK_WEBHOOK_SETUP.md)
 
 ## 📁 Estrutura do Projeto
 
 ```
-├── app/                    # App Router (Next.js 13+)
-│   ├── (auth)/            # Rotas de autenticação
-│   ├── (protected)/       # Rotas protegidas
-│   │   ├── dashboard/     # Dashboard principal
-│   │   ├── board/         # Kanban board
-│   │   ├── pipeline/      # Pipeline analytics
-│   │   └── account/       # Configurações da conta
+├── app/                    # App Router (Next.js 15+)
+│   ├── (auth)/            # Rotas de autenticação (sign-in, sign-up)
+│   ├── [supabaseId]/      # Rotas protegidas dinâmicas
+│   │   ├── dashboard/     # Dashboard com métricas
+│   │   ├── board/         # Kanban board de leads
+│   │   ├── pipeline/      # Funil de vendas
+│   │   ├── manager-users/ # Gestão de operadores
+│   │   ├── account/       # Configurações da conta
+│   │   └── subscription/  # Gerenciar assinatura
 │   ├── api/               # API Routes
-│   └── context/           # React Contexts
+│   │   ├── useCases/      # Camada de lógica de negócio
+│   │   ├── services/      # Camada de domínio
+│   │   ├── infra/         # Infraestrutura (DB, repositories)
+│   │   ├── v1/            # Endpoints REST versionados
+│   │   └── webhooks/      # Webhooks externos (Asaas)
+│   ├── subscribe/         # Fluxo de assinatura pública
+│   └── context/           # React Contexts globais
 ├── components/            # Componentes reutilizáveis
 │   ├── ui/               # Componentes base (shadcn/ui)
-│   ├── forms/            # Formulários
+│   ├── forms/            # Formulários específicos
 │   ├── kanban/           # Componentes do Kanban
-│   └── landing/          # Landing page
+│   └── landing/          # Landing page components
 ├── lib/                  # Utilitários e configurações
-├── prisma/              # Schema e migrações do banco
+│   ├── supabase/         # Cliente Supabase (server/browser)
+│   ├── services/         # Services (Email, etc)
+│   ├── output/           # Padrão de resposta Output
+│   └── validations/      # Schemas de validação
+├── prisma/              # Schema, migrations e seed
+│   ├── schema.prisma    # Modelo de dados
+│   ├── migrations/      # Histórico de migrações
+│   └── seed.ts          # Dados iniciais
 ├── hooks/               # React Hooks customizados
+├── types/               # TypeScript types globais
+├── docs/                # Documentação técnica
 └── public/              # Assets estáticos
 ```
 
 ## 🎯 Funcionalidades
 
 ### 🔐 Autenticação e Autorização
-- Login/Registro seguro via Supabase
-- Controle de acesso baseado em roles
-- Gestão de perfis e preferências
+- Login/Registro seguro via Supabase Auth
+- Controle de acesso baseado em roles (Manager/Operator)
+- Gestão de perfis com upload de foto
+- Sistema de convite para novos operadores
 
 ### 📊 Dashboard Inteligente  
 - Métricas de conversão em tempo real
-- Gráficos interativos de performance
+- Gráficos interativos de performance (Recharts)
 - Visão geral dos leads por status
+- Análise de NoShow e agendamentos
+- Comparativos de período
 
 ### 🎨 Kanban Board
 - Drag & drop para mover leads entre estágios
 - Filtros avançados (período, responsável, busca)
-- Cards detalhados com informações relevantes
-- Adição rápida de novos leads
+- Cards detalhados com informações do lead
+- Adição e edição rápida de leads
+- Upload de anexos e documentos
+- Sistema de agendamentos
 
 ### 👥 Gestão de Equipe
 - Hierarquia Manager/Operator
 - Atribuição de leads por responsável
+- Sistema de pagamento para adicionar operadores
+- Envio de convites via email personalizado
 - Histórico de atividades por usuário
 
 ### 📈 Pipeline Analytics
 - Funil de vendas visual
 - Tempo médio por estágio
 - Taxa de conversão detalhada
-- Exportação de relatórios
+- Métricas de agendamentos e NoShow
 
 ### 💳 Pagamentos e Assinaturas
 - Integração completa com Asaas
-- Checkout PIX, Boleto e Cartão
+- Checkout PIX, Boleto e Cartão de Crédito
 - Validação automática via Webhooks
 - Gestão de assinaturas mensais
+- Assinatura permanente para contas especiais
+- Reativação de assinaturas canceladas
 
 ## 🔗 Webhooks
 
 O sistema utiliza webhooks do Asaas para processar pagamentos automaticamente:
 
 - **Endpoint**: `/api/webhooks/asaas`
-- **Eventos monitorados**: `PAYMENT_RECEIVED`, `PAYMENT_CONFIRMED`
-- **Segurança**: Validação via token (`ASAAS_WEBHOOK_TOKEN`)
+- **Eventos monitorados**: `PAYMENT_RECEIVED`, `PAYMENT_CONFIRMED`, `PAYMENT_CREATED`
+- **Segurança**: Validação via token no header (`asaas-access-token`)
 
-Quando um pagamento PIX é confirmado:
-1. Webhook atualiza automaticamente o status da assinatura
-2. Usuário é redirecionado para completar cadastro
-3. Dados da assinatura são pré-preenchidos
-4. Acesso à plataforma é liberado instantaneamente
+**Fluxo de Webhook:**
+1. Asaas envia webhook quando pagamento é confirmado
+2. Sistema valida o token de autenticação
+3. Atualiza status da assinatura/pagamento no banco
+4. Ativa acesso do usuário automaticamente
+5. Envia email de confirmação via Resend
 
-**Documentação completa**: [`docs/WEBHOOK_SETUP.md`](./docs/WEBHOOK_SETUP.md)
+**Documentação completa**:
+- [`docs/WEBHOOK_SETUP.md`](./docs/WEBHOOK_SETUP.md)
+- [`docs/ASAAS_CONFIGURATION.md`](./docs/ASAAS_CONFIGURATION.md)
+- [`docs/WEBHOOK_DRIVEN_PAYMENT_FLOW.md`](./docs/WEBHOOK_DRIVEN_PAYMENT_FLOW.md)
 
 ## 🧪 Scripts Disponíveis
 
 ```bash
 # Desenvolvimento
-bun run dev                 # Servidor de desenvolvimento
-bun run build              # Build de produção
-bun run start              # Servidor de produção
+bun run dev                 # Servidor de desenvolvimento (localhost:3000)
+bun run ngrok               # Inicia ngrok com domínio configurado
+bun run build               # Build de produção
+bun run start               # Servidor de produção
 
 # Qualidade de código
-bun run typecheck          # Verificação de tipos
-bun run lint               # Linting
-bun run format             # Formatação
+bun run typecheck           # Verificação de tipos TypeScript
+bun run lint                # ESLint - Verificar problemas
+bun run eslint:fix          # ESLint - Corrigir automaticamente
+bun run format              # Prettier - Formatar código
 
 # Database
-bun run prisma:studio      # Interface visual do banco
-bun run prisma:migrate     # Aplicar migrações
-bun run prisma:generate    # Gerar cliente
-bun run prisma:seed        # Popular banco com dados de teste
+bun run prisma:studio       # Interface visual do banco (localhost:5555)
+bun run prisma:migrate      # Aplicar migrações pendentes
+bun run prisma:generate     # Gerar Prisma Client
+bun run prisma:seed         # Popular banco com dados de teste
+bun run prisma:db:push      # Push schema sem criar migration
+bun run prisma:db:pull      # Pull schema do banco existente
 ```
 
 ## 🚀 Deploy
@@ -292,18 +328,41 @@ bun run start
 
 ## 🔧 Configuração Avançada
 
-### Customização de Temas
-O projeto usa Tailwind CSS com variáveis CSS customizadas. Edite `app/globals.css` para personalizar cores e estilos.
+### Arquitetura da API
 
-### Adicionando Novos Status
-1. Atualize o enum `LeadStatus` em `prisma/schema.prisma`
+O projeto segue **Clean Architecture** com separação clara de responsabilidades:
+
+```
+Route (HTTP) → UseCase (Business Logic) → Service (Domain) → Prisma (Data)
+```
+
+- **Routes** (`app/api/v1/`): HTTP handling, parsing, status codes
+- **UseCases** (`app/api/useCases/`): Validações, orquestração, retorna `Output`
+- **Services** (`app/api/services/`): Lógica complexa de domínio
+- **Repositories** (`app/api/infra/data/repositories/`): Acesso a dados
+
+**📖 Documentação completa**: [`docs/ARCHITECTURE_GUIDE.md`](./docs/ARCHITECTURE_GUIDE.md)
+
+### Customização de Temas
+
+O projeto usa Tailwind CSS 4 com variáveis CSS customizadas:
+- Edite `app/globals.css` para personalizar cores
+- Suporte a modo claro/escuro via `next-themes`
+- Componentes Shadcn/ui totalmente personalizáveis
+
+### Adicionando Novos Status de Leads
+
+1. Atualize o enum `LeadStatus` em [`prisma/schema.prisma`](prisma/schema.prisma)
 2. Execute `bun run prisma:migrate`
-3. Atualize as constantes em `app/[supabaseId]/board/page.tsx`
+3. Atualize constantes em [`app/[supabaseId]/board/features/context/BoardTypes.ts`](app/[supabaseId]/board/features/context/BoardTypes.ts)
 
 ### Integrações Externas
-- **Email**: Configurado com Resend para notificações
-- **Pagamentos**: Integração com Asaas para faturamento
+
+- **Email**: Resend para emails transacionais (convites, confirmações)
+- **Pagamentos**: Asaas para faturamento e assinaturas
+- **Storage**: Supabase Storage para upload de arquivos
 - **Analytics**: Vercel Analytics habilitado
+- **Auth**: Supabase Auth com JWT
 
 ## 🧑‍💻 Autor
 
@@ -338,27 +397,84 @@ Para suporte, entre em contato através do GitHub Issues ou LinkedIn.
 # Solução: Configure o authtoken
 ngrok config add-authtoken SEU_TOKEN
 
-# Erro: version '3' invalid
-# Solução: Delete o arquivo de configuração corrompido
-rm ~/AppData/Local/ngrok/ngrok.yml  # Windows
-rm ~/.ngrok2/ngrok.yml              # Linux/Mac
+# Erro: version too old
+# Solução: Atualizar ngrok (PowerShell como Admin)
+ngrok update
+
+# Erro: Access denied ao atualizar
+# Solução: Abra PowerShell como Administrador
 ```
 
 ### Webhook não recebe eventos
-1. Verifique se o Ngrok está rodando
+1. Verifique se o Ngrok está rodando (`bun run ngrok`)
 2. Confirme que a URL no Asaas está correta
 3. Verifique se o token no Asaas é o mesmo do `.env`
 4. Monitore o dashboard do Ngrok: `http://127.0.0.1:4040`
+5. Verifique logs do servidor no terminal
 
 ### Erro ao criar assinatura
 1. Verifique se `ASAAS_API_KEY` está configurada
 2. Confirme que está usando a URL correta (sandbox/produção)
-3. Verifique logs do servidor: terminal onde está `bun run dev`
+3. Verifique se o ambiente (`ASAAS_ENV`) está correto
+4. Verifique logs do servidor: terminal onde rodou `bun run dev`
+5. Teste a API Key no Postman com a collection fornecida
 
 ### Database connection failed
-1. Verifique se as URLs do Supabase estão corretas
+```bash
+# Erro: Can't reach database server
+# Soluções:
+1. Verifique se as URLs do Supabase estão corretas no .env
 2. Confirme que o projeto Supabase está ativo
-3. Execute as migrações: `bun run prisma:migrate`
+3. Execute: bun run prisma:generate
+4. Execute: bun run prisma:migrate
+5. Teste conexão direta: psql $DATABASE_URL
+
+# Erro: SSL connection error
+# Solução: Adicione ?sslmode=require na DATABASE_URL
+```
+
+### Prisma generate falha
+```bash
+# Erro: Could not convert engine type
+# Solução: Remover runtime do schema.prisma
+generator client {
+  provider = "prisma-client-js"
+  # remover: runtime  = "bun"
+}
+
+# Reinstalar dependências
+bun install
+bun run prisma:generate
+```
+
+### Build falha com erros ESLint
+```bash
+# Console.log errors
+# Solução: Substituir console.log por console.info/warn/error
+
+# Imports não utilizados
+# Solução automática: bun run eslint:fix
+```
+
+### Supabase não conecta
+```bash
+# Erro: ENOTFOUND ncpzzfeiumvhvsapebxy.supabase.co
+# Soluções:
+1. Verificar conexão com internet
+2. Limpar cache DNS: ipconfig /flushdns (Windows)
+3. Testar DNS: ping ncpzzfeiumvhvsapebxy.supabase.co
+4. Usar DNS público (8.8.8.8 / 8.8.4.4)
+5. Verificar firewall/antivírus
+```
+
+### Email não envia
+```bash
+# Verificar configuração Resend
+1. Confirme RESEND_API_KEY no .env
+2. Verifique domínio verificado no Resend
+3. Cheque logs: lib/services/EmailService.ts
+4. Teste API Key no dashboard Resend
+```
 
 ---
 

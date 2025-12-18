@@ -4,16 +4,16 @@ import { profileRepository } from '@/app/api/infra/data/repositories/profile/Pro
 import { createSupabaseServer } from '@/lib/supabase/server';
 
 /**
- * PUT /api/v1/profiles/[id]/permanent-subscription
+ * PUT /api/v1/profiles/[supabaseId]/permanent-subscription
  * Atualiza a flag de assinatura permanente de um perfil
  * Apenas usuários master podem fazer essa operação
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ supabaseId: string }> }
 ) {
   try {
-    const { id } = await params;
+    const { supabaseId: id } = await params;
     // 1. Verificar autenticação
     const supabase = await createSupabaseServer();
     
@@ -87,7 +87,7 @@ export async function PUT(
     return NextResponse.json(result, { status: statusCode });
 
   } catch (error) {
-    console.error('❌ [PUT /api/v1/profiles/[id]/permanent-subscription] Erro:', error);
+    console.error('❌ [PUT /api/v1/profiles/[supabaseId]/permanent-subscription] Erro:', error);
     
     return NextResponse.json(
       {
