@@ -44,11 +44,9 @@ function SignInInner() {
       setErrors(fe);
       
       // Exibir erro amigável no toast
-      if (result.errors?.apiError) {
-        toast.error(Array.isArray(result.errors.apiError) 
-          ? result.errors.apiError[0] 
-          : result.errors.apiError
-        );
+      if ('apiError' in (result.errors || {})) {
+        const apiError = (result.errors as { apiError: string }).apiError;
+        toast.error(apiError);
       } else {
         toast.error('Verifique os campos do formulário');
       }
