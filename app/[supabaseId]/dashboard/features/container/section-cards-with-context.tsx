@@ -227,7 +227,7 @@ export function SectionCardsWithContext() {
           </Card>
 
           {/* Churn Rate */}
-          <Card className="@container/card border-red-500/20">
+          <Card className="@container/card border-red-500/20 bg-gradient-to-br from-red-500/5 to-transparent">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-red-500" />
