@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
             });
         } catch (validationError) {
             console.error('❌ [RegisterProfile Route] Erro de validação:', validationError);
-            const output = new Output(false, [], [(validationError as Error).message], null);
+            const output = new Output(false, [], ["Dados inválidos. Verifique os campos e tente novamente."], null);
             return NextResponse.json(output, { status: 400 });
         }
 
@@ -69,8 +69,8 @@ export async function POST(req: NextRequest) {
         
         return NextResponse.json(output, { status });
     } catch (error) {
-        console.error("Error creating user profile:", error);
-        const output = new Output(false, [], ["Failed to create user profile"], null);
+        console.error("Erro ao criar perfil do usuário:", error);
+        const output = new Output(false, [], ["Falha ao criar perfil do usuário"], null);
         return NextResponse.json(output, { status: 500 });
     }
 }

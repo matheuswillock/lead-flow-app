@@ -28,17 +28,17 @@ export class RegisterNewUserProfile implements IProfileUseCase {
             });
             
             if (!input || !input.fullname || !input.email || !input.phone || !input.password) {
-                return new Output(false, [], ["Invalid input data"], {
-                    fullName: !input?.fullname ? "Full name is required" : undefined,
-                    email: !input?.email ? "Email is required" : undefined,
-                    phone: !input?.phone ? "Phone number is required" : undefined,
-                    password: !input?.password ? "Password is required" : undefined,
+                return new Output(false, [], ["Dados inválidos"], {
+                    fullName: !input?.fullname ? "Nome completo é obrigatório" : undefined,
+                    email: !input?.email ? "E-mail é obrigatório" : undefined,
+                    phone: !input?.phone ? "Telefone é obrigatório" : undefined,
+                    password: !input?.password ? "Senha é obrigatória" : undefined,
                 });
             }
 
             const alreadyExists = await this.repo.existingByEmailOrPhone(input.email, input.phone);
             if (alreadyExists) {
-                return new Output(false, [], ["User already exists with the same email or phone"], null);
+                return new Output(false, [], ["Usuário já cadastrado com este e-mail ou telefone"], null);
             }
 
             const result = await this.repo.createProfile(
@@ -64,16 +64,19 @@ export class RegisterNewUserProfile implements IProfileUseCase {
             );
 
             if (!result) {
-                return new Output(false, [], ["Failed to create user profile"], null);
+                return new Output(false, [], ["Falha ao criar perfil do usuário"], null);
             }
 
-            return new Output(true, ["User profile registered successfully"], [], { 
+            return new Output(true, ["Perfil de usuário registrado com sucesso"], [], { 
                 profileId: result.profileId,
                 supabaseId: result.supabaseId 
             });
-        } catch (error) {
-            console.error("Error registering user profile:", error);
-            return new Output(false, [], ["Failed to register user profile"], null);
+        } catch (error: any) {
+            console.error("Erro ao registrar perfil do usuário:", error);
+            
+            // Retornar mensagem do erro se estiver traduzida
+            const errorMessage = error.message || "Falha ao registrar perfil do usuário";
+            return new Output(false, [], [errorMessage], null);
         }
     }
 
