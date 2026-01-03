@@ -4,8 +4,6 @@ const prisma = new PrismaClient();
 
 async function checkUserStatus() {
   try {
-    console.log('🔍 Buscando usuário Chffia.tech...\n');
-
     // Buscar por e-mail similar
     const users = await prisma.profile.findMany({
       where: {
