@@ -2,6 +2,25 @@ import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasFetch } from "@/lib/asaas";
 import { getEmailService } from "@/lib/services/EmailService";
+import { createClient } from "@supabase/supabase-js";
+
+// Função para criar cliente Supabase admin
+function createSupabaseAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceKey) {
+    console.error('[Supabase Admin] Credenciais não configuradas');
+    return null;
+  }
+
+  return createClient(url, serviceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+}
 
 export interface CreateCheckoutData {
   supabaseId: string;
@@ -23,6 +42,11 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
    * Retorna URL para redirecionar o cliente
    */
   async createSubscriptionCheckout(data: CreateCheckoutData): Promise<Output> {
+    let asaasCustomerId: string | null = null;
+    let customerWasCreated = false;
+    let isFirstCheckoutAttempt = false;
+    let profileId: string | null = null;
+
     try {
       console.info('🛒 [createSubscriptionCheckout] Iniciando criação de checkout:', {
         supabaseId: data.supabaseId,
@@ -38,7 +62,17 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         return new Output(false, [], ['Usuário não encontrado'], null);
       }
 
-      let asaasCustomerId = profile.asaasCustomerId;
+      profileId = profile.id;
+      
+      // Verificar se é a primeira tentativa de checkout (processo de registro)
+      // Se não tem asaasCustomerId e não tem subscriptionId, é a primeira vez
+      isFirstCheckoutAttempt = !profile.asaasCustomerId && !profile.subscriptionId;
+      
+      if (isFirstCheckoutAttempt) {
+        console.info('🆕 [createSubscriptionCheckout] Primeira tentativa de checkout - rollback ativo');
+      }
+
+      asaasCustomerId = profile.asaasCustomerId;
 
       // Criar cliente no Asaas se não existir
       if (!asaasCustomerId) {
@@ -54,20 +88,31 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           customerData.cpfCnpj = data.cpfCnpj.replace(/\D/g, '');
         }
 
-        const customer = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/customers`, {
-          method: 'POST',
-          body: JSON.stringify(customerData),
-        });
+        try {
+          const customer = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/customers`, {
+            method: 'POST',
+            body: JSON.stringify(customerData),
+          });
 
-        asaasCustomerId = customer.id;
+          asaasCustomerId = customer.id;
+          customerWasCreated = true;
 
-        // Salvar customer ID no profile
-        await prisma.profile.update({
-          where: { supabaseId: data.supabaseId },
-          data: { asaasCustomerId }
-        });
+          // Salvar customer ID no profile
+          await prisma.profile.update({
+            where: { supabaseId: data.supabaseId },
+            data: { asaasCustomerId }
+          });
 
-        console.info('✅ [createSubscriptionCheckout] Cliente Asaas criado:', asaasCustomerId);
+          console.info('✅ [createSubscriptionCheckout] Cliente Asaas criado:', asaasCustomerId);
+        } catch (customerError: any) {
+          console.error('❌ [createSubscriptionCheckout] Erro ao criar cliente Asaas:', customerError);
+          return new Output(
+            false, 
+            [], 
+            [`Erro ao criar cliente no sistema de pagamentos: ${customerError.message}`], 
+            null
+          );
+        }
       }
 
       // 2. Criar assinatura no Asaas
@@ -149,11 +194,89 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
     } catch (error: any) {
       console.error('❌ [createSubscriptionCheckout] Erro:', error);
+
+      // Traduzir mensagens de erro comuns do Asaas
+      let errorMessage = error.message || 'Erro desconhecido';
+      
+      if (errorMessage.includes('domínio')) {
+        errorMessage = 'Configure um domínio na sua conta Asaas para criar checkouts. Acesse: Minha Conta → Informações';
+      }
+
+      // ROLLBACK COMPLETO: Se é a primeira tentativa de checkout, deletar o usuário
+      if (isFirstCheckoutAttempt && data.supabaseId) {
+        console.warn('⚠️ [createSubscriptionCheckout] Primeira tentativa falhou - iniciando rollback completo do usuário');
+        
+        try {
+          // 1. Deletar profile do banco de dados
+          if (profileId) {
+            console.info('🗑️ [createSubscriptionCheckout] Rollback: Deletando profile do banco...');
+            await prisma.profile.delete({
+              where: { id: profileId }
+            });
+            console.info('✅ [createSubscriptionCheckout] Profile deletado');
+          }
+
+          // 2. Deletar usuário do Supabase Auth
+          const supabaseAdmin = createSupabaseAdminClient();
+          if (supabaseAdmin) {
+            console.info('🗑️ [createSubscriptionCheckout] Rollback: Deletando usuário do Supabase Auth...');
+            const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(
+              data.supabaseId
+            );
+            
+            if (deleteError) {
+              console.error('❌ [createSubscriptionCheckout] Erro ao deletar usuário do Auth:', deleteError);
+            } else {
+              console.info('✅ [createSubscriptionCheckout] Usuário deletado do Auth');
+            }
+          }
+
+          console.info('✅ [createSubscriptionCheckout] Rollback completo concluído');
+          
+          return new Output(
+            false,
+            [],
+            [
+              'Erro no processo de registro. Por favor, tente criar sua conta novamente.',
+              `Detalhes: ${errorMessage}`
+            ],
+            null
+          );
+          
+        } catch (rollbackError: any) {
+          console.error('❌ [createSubscriptionCheckout] Erro crítico no rollback:', rollbackError);
+          
+          return new Output(
+            false,
+            [],
+            [
+              'Erro crítico no processo de registro.',
+              'Entre em contato com o suporte informando este erro.',
+              `Detalhes: ${errorMessage}`
+            ],
+            null
+          );
+        }
+      }
+
+      // Rollback parcial: Se não é primeira tentativa, apenas limpar asaasCustomerId
+      if (customerWasCreated && asaasCustomerId) {
+        try {
+          console.warn('🔄 [createSubscriptionCheckout] Rollback parcial: Removendo asaasCustomerId...');
+          await prisma.profile.update({
+            where: { supabaseId: data.supabaseId },
+            data: { asaasCustomerId: null }
+          });
+          console.info('✅ [createSubscriptionCheckout] Rollback parcial concluído');
+        } catch (rollbackError) {
+          console.error('❌ [createSubscriptionCheckout] Erro no rollback parcial:', rollbackError);
+        }
+      }
       
       return new Output(
         false,
         [],
-        ['Erro ao criar checkout: ' + (error.message || 'Erro desconhecido')],
+        [`Erro ao criar checkout: ${errorMessage}`],
         null
       );
     }

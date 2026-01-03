@@ -172,16 +172,18 @@ jobs:
 
   auto-pr:
     name: Create Pull Request
-    # Run on push to feat*/feature* OR manual dispatch with a matching branch input
+    # Run on push to feat*/feature*/develop OR manual dispatch with a matching branch input
     if: >-
       ${{
         (github.event_name == 'push' &&
           (startsWith(github.ref, 'refs/heads/feat/') ||
-           startsWith(github.ref, 'refs/heads/feature/')))
+           startsWith(github.ref, 'refs/heads/feature/') ||
+           github.ref == 'refs/heads/develop'))
         ||
         (github.event_name == 'workflow_dispatch' &&
           (startsWith(github.event.inputs.branch, 'feat/') ||
-           startsWith(github.event.inputs.branch, 'feature/')))
+           startsWith(github.event.inputs.branch, 'feature/') ||
+           github.event.inputs.branch == 'develop'))
       }}
     needs: build
     runs-on: ubuntu-latest
@@ -207,7 +209,8 @@ jobs:
               core.setFailed('No branch provided in workflow_dispatch inputs.')
               return
             }
-            const base = 'develop';
+            // If branch is develop, target main; otherwise target develop
+            const base = branch === 'develop' ? 'main' : 'develop';
 
             if (branch === base) {
               core.info(`Branch '${branch}' is the base branch. Skipping PR creation.`)
@@ -266,8 +269,30 @@ jobs:
             }
 
             const clean = branch.replace(/^feat\//, '').replace(/^feature\//, '')
-            const title = `feat: ${clean}`
-            const body = [
+            const isRelease = branch === 'develop'
+            const title = isRelease ? 'chore: release develop to main' : `feat: ${clean}`
+            const body = isRelease ? [
+              '## 🚀 Release to Production',
+              '',
+              `**Branch:** \`${branch}\``,
+              `**Target:** \`${base}\``,
+              `**Commits:** ${commits.length}`,
+              '',
+              '## 📝 Changes',
+              '',
+              commitList || '*(No commits found)*',
+              '',
+              '## ✅ Review Checklist',
+              '',
+              '- [ ] All tests are passing',
+              '- [ ] Build is successful',
+              '- [ ] No breaking changes',
+              '- [ ] Documentation updated',
+              '- [ ] Ready for production deployment',
+              '',
+              '---',
+              '*This pull request was opened automatically by CI.*'
+            ].join('\n') : [
               '## 🚀 Feature',
               '',
               `**Branch:** \`${branch}\``,

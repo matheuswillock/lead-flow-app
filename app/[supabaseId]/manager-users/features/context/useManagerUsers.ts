@@ -325,10 +325,12 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
 
   // Reenviar convite por e-mail
   const resendInvite = useCallback(async (email: string, userId?: string) => {
+    const toastId = toast.loading('Enviando email de reset de senha...');
+    
     try {
-      toast.loading('Enviando email de reset de senha...');
-      
       const result = await managerUsersService.resendInvite(email, userId);
+      
+      toast.dismiss(toastId);
       
       if (result.isValid) {
         toast.success('Email de reset de senha enviado com sucesso!');
@@ -336,6 +338,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
         toast.error(result.errorMessages.join(', ') || 'Erro ao enviar email');
       }
     } catch (error) {
+      toast.dismiss(toastId);
       console.error('Erro ao enviar email de reset:', error);
       toast.error('Erro ao enviar email');
     }

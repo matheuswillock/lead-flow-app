@@ -109,8 +109,21 @@ export function useDashboardHook({
 
   // Ação para refresh (alias para fetchMetrics)
   const refreshMetrics = useCallback(async () => {
+    // Limpar cache antes de fazer refresh
+    if ('clearCache' in dashboardService && typeof dashboardService.clearCache === 'function') {
+      const finalFilters = customDateRange 
+        ? {
+            ...filters,
+            startDate: customDateRange.startDate,
+            endDate: customDateRange.endDate,
+          }
+        : filters;
+      
+      dashboardService.clearCache(supabaseId, finalFilters);
+    }
+    
     await fetchMetrics();
-  }, [fetchMetrics]);
+  }, [fetchMetrics, dashboardService, supabaseId, filters, customDateRange]);
 
   return {
     // Estado

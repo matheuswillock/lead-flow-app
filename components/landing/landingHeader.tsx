@@ -1,17 +1,15 @@
 import Link from "next/link";
 import { Button } from "../ui/button";
-import { LogIn } from "lucide-react";
+import { LogIn, HeartPulse } from "lucide-react";
 
 export function LandingHeader() {
     return (
         <header className="sticky top-0 z-20 border-b bg-background" style={{ borderColor: "var(--border)" }}>
             <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">
                 <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
-                    <span
-                        className="inline-block h-6 w-6 rounded-md"
-                        style={{ background: "var(--primary)" }}
-                        aria-hidden
-                    />
+                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+                        <HeartPulse className="h-5 w-5 text-primary-foreground" />
+                    </div>
                     <span>Corretor Studio</span>
                 </Link>
 

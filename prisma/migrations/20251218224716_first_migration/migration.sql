@@ -34,6 +34,7 @@ CREATE TABLE "profiles" (
     "profileIconUrl" TEXT,
     "role" "UserRole" NOT NULL DEFAULT 'manager',
     "isMaster" BOOLEAN NOT NULL DEFAULT false,
+    "hasPermanentSubscription" BOOLEAN NOT NULL DEFAULT false,
     "managerId" UUID,
     "asaasCustomerId" TEXT,
     "subscriptionId" TEXT,
@@ -214,10 +215,10 @@ CREATE INDEX "lead_attachments_leadId_idx" ON "lead_attachments"("leadId");
 CREATE INDEX "lead_attachments_uploadedBy_idx" ON "lead_attachments"("uploadedBy");
 
 -- CreateIndex
-CREATE INDEX "pending_operators_managerId_idx" ON "pending_operators"("managerId");
+CREATE UNIQUE INDEX "pending_operators_paymentId_key" ON "pending_operators"("paymentId");
 
 -- CreateIndex
-CREATE INDEX "pending_operators_paymentId_idx" ON "pending_operators"("paymentId");
+CREATE INDEX "pending_operators_managerId_idx" ON "pending_operators"("managerId");
 
 -- CreateIndex
 CREATE INDEX "pending_operators_subscriptionId_idx" ON "pending_operators"("subscriptionId");

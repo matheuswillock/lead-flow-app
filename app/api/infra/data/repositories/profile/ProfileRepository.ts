@@ -154,22 +154,31 @@ class PrismaProfileRepository implements IProfileRepository {
       const supabase = createSupabaseClient();
       if (!supabase) {
         console.error("Failed to initialize Supabase client");
-        return null;
+        throw new Error("Erro ao inicializar serviço de autenticação");
       }
 
-      // Criar usuário no Supabase
-      const { data: user, error: authError } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true
-      });
+      let supabaseUserId: string | null = null;
 
-      if (authError || !user.user) {
-        console.error("Erro ao criar usuário no Supabase:", authError);
-        return null;
-      }
+      try {
+        // Criar usuário no Supabase Auth
+        const { data: user, error: authError } = await supabase.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true
+        });
 
-      const supabaseId = user.user.id;
+        if (authError || !user.user) {
+          console.error("Erro ao criar usuário no Supabase:", authError);
+          
+          // Traduzir erro para português
+          if (authError?.message.includes('already registered')) {
+            throw new Error("Este e-mail já está cadastrado");
+          }
+          throw new Error("Erro ao criar conta de acesso");
+        }
+
+        supabaseUserId = user.user.id;
+        const supabaseId = user.user.id;
 
       // Preparar dados do profile
       const profileData: any = {
@@ -241,13 +250,13 @@ class PrismaProfileRepository implements IProfileRepository {
         role: profileData.role
       });
 
-      // Criar profile no banco
-      const profile = await prisma.profile.create({
-        data: profileData
-      });
+        // Criar profile no banco
+        const profile = await prisma.profile.create({
+          data: profileData
+        });
 
-      console.info('✅ [ProfileRepository] Profile criado com sucesso:', {
-        profileId: profile.id,
+        console.info('✅ [ProfileRepository] Profile criado com sucesso:', {
+          profileId: profile.id,
         hasSubscriptionId: !!profile.subscriptionId,
         subscriptionId: profile.subscriptionId,
         subscriptionStatus: profile.subscriptionStatus,
@@ -256,10 +265,55 @@ class PrismaProfileRepository implements IProfileRepository {
         asaasCustomerId: profile.asaasCustomerId
       });
 
-      return { profileId: profile.id, supabaseId };
-    } catch (error) {
-      console.error("Erro ao criar profile:", error);
-      return null;
+        return { profileId: profile.id, supabaseId };
+        
+      } catch (error: any) {
+        console.error("❌ [ProfileRepository] Erro ao criar profile:", error);
+        
+        // ROLLBACK: Limpar dados criados
+        if (supabaseUserId) {
+          console.warn('🔄 [ProfileRepository] Iniciando rollback...');
+          
+          try {
+            // 1. Deletar profile do banco se foi criado
+            const existingProfile = await prisma.profile.findUnique({
+              where: { supabaseId: supabaseUserId }
+            });
+            
+            if (existingProfile) {
+              await prisma.profile.delete({
+                where: { supabaseId: supabaseUserId }
+              });
+              console.info('✅ [ProfileRepository] Profile deletado do banco');
+            }
+            
+            // 2. Deletar usuário do Supabase Auth
+            await supabase.auth.admin.deleteUser(supabaseUserId);
+            console.info('✅ [ProfileRepository] Usuário deletado do Supabase Auth');
+            
+            console.info('✅ [ProfileRepository] Rollback concluído com sucesso');
+          } catch (rollbackError) {
+            console.error('❌ [ProfileRepository] Erro durante rollback:', rollbackError);
+            // Não lançar erro, apenas logar
+          }
+        }
+        
+        // Traduzir erros para português
+        if (error.message.includes('Unique constraint failed on the fields: (`email`)')) {
+          throw new Error("Este e-mail já está cadastrado");
+        }
+        if (error.message.includes('Unique constraint failed on the fields: (`phone`)')) {
+          throw new Error("Este telefone já está cadastrado");
+        }
+        if (error.message && error.message.includes('já está cadastrado')) {
+          throw error; // Já está traduzido
+        }
+        
+        throw new Error("Erro ao criar conta. Tente novamente em alguns instantes.");
+      }
+    } catch (outerError: any) {
+      console.error("❌ [ProfileRepository] Erro geral ao criar profile:", outerError);
+      throw outerError;
     }
   }
 
