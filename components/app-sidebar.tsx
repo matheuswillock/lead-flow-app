@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"  
-import { LayoutDashboard, KanbanSquare, ChartBarBig, Users } from "lucide-react"
+import { LayoutDashboard, KanbanSquare, ChartBarBig, Users, HeartPulse } from "lucide-react"
 
 import {
   Sidebar,
@@ -45,11 +45,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                     className="data-[slot=sidebar-menu-button]:!p-1.5"
                 >
                     <a href="#">
-                        <span
-                            className="inline-block h-6 w-6 rounded-md"
-                            style={{ background: "var(--primary)" }}
-                            aria-hidden
-                        />
+                        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+                            <HeartPulse className="h-5 w-5 text-primary-foreground" />
+                        </div>
                         <span className="text-base font-semibold">Corretor Studio</span>
                     </a>
                 </SidebarMenuButton>

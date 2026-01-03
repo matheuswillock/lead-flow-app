@@ -1,4 +1,4 @@
-import { GalleryVerticalEnd, Eye, EyeOff, ShieldCheck } from "lucide-react"
+import { HeartPulse, Eye, EyeOff, ShieldCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -92,8 +92,8 @@ export function SignupForm({
               href="/"
               className="flex flex-col items-center gap-2 font-medium"
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-md">
-                <GalleryVerticalEnd className="size-6" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary">
+                <HeartPulse className="h-6 w-6 text-primary-foreground" />
               </div>
               <span className="sr-only">Corretor Studio</span>
             </Link>
