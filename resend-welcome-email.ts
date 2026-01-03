@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 async function resendWelcomeEmail(emailOrName: string) {
   try {
-    console.log(`🔍 Buscando usuário: ${emailOrName}...\n`);
+    console.info(`🔍 Buscando usuário: ${emailOrName}...\n`);
 
     const user = await prisma.profile.findFirst({
       where: {
@@ -17,21 +17,21 @@ async function resendWelcomeEmail(emailOrName: string) {
     });
 
     if (!user) {
-      console.log('❌ Usuário não encontrado\n');
+      console.info('❌ Usuário não encontrado\n');
       return;
     }
 
-    console.log('✅ Usuário encontrado:');
-    console.log(`   Nome: ${user.fullName}`);
-    console.log(`   E-mail: ${user.email}`);
-    console.log(`   Status: ${user.subscriptionStatus || 'pending'}\n`);
+    console.info('✅ Usuário encontrado:');
+    console.info(`   Nome: ${user.fullName}`);
+    console.info(`   E-mail: ${user.email}`);
+    console.info(`   Status: ${user.subscriptionStatus || 'pending'}\n`);
 
     // Enviar e-mail de boas-vindas
     const emailService = getEmailService();
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const loginUrl = `${appUrl}/sign-in`;
 
-    console.log('📧 Enviando e-mail de boas-vindas...\n');
+    console.info('📧 Enviando e-mail de boas-vindas...\n');
 
     const result = await emailService.sendWelcomeEmail({
       userName: user.fullName || user.email,
@@ -40,11 +40,11 @@ async function resendWelcomeEmail(emailOrName: string) {
     });
 
     if (result.success) {
-      console.log('✅ E-mail enviado com sucesso!');
-      console.log('📨 ID do e-mail:', result.data);
+      console.info('✅ E-mail enviado com sucesso!');
+      console.info('📨 ID do e-mail:', result.data);
     } else {
-      console.log('❌ Erro ao enviar e-mail:');
-      console.log('   ', result.error);
+      console.info('❌ Erro ao enviar e-mail:');
+      console.info('   ', result.error);
     }
 
   } catch (error) {
