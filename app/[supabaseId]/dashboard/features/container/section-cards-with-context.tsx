@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 
 export function SectionCardsWithContext() {
-  const { metrics, isLoading, error } = useDashboardContext();
+  const { metrics, isLoading, error, filters, customDateRange } = useDashboardContext();
 
   if (isLoading) {
     return <DashboardCardsSkeleton />;
@@ -40,6 +40,30 @@ export function SectionCardsWithContext() {
   if (!metrics) {
     return null;
   }
+
+  // Função para obter o texto do período
+  const getPeriodText = () => {
+    if (customDateRange) {
+      return `período customizado`;
+    }
+    
+    switch (filters.period) {
+      case '7d':
+        return 'últimos 7 dias';
+      case '30d':
+        return 'últimos 30 dias';
+      case '3m':
+        return 'últimos 3 meses';
+      case '6m':
+        return 'últimos 6 meses';
+      case '1y':
+        return 'último ano';
+      default:
+        return 'período selecionado';
+    }
+  };
+
+  const periodText = getPeriodText();
 
   return (
     <div className="space-y-6 px-4 lg:px-6">
@@ -64,7 +88,7 @@ export function SectionCardsWithContext() {
           </CardHeader>
           <CardFooter className="pt-0">
             <CardAction className="text-xs font-medium text-green-600 dark:text-green-400">
-              Total faturado no período
+              Total faturado nos {periodText}
             </CardAction>
           </CardFooter>
         </Card>
