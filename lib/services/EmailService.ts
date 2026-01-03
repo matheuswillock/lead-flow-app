@@ -68,32 +68,33 @@ export class EmailService {
       // NOTA: Resend sem domínio verificado só envia para o e-mail do owner da conta
       // Para produção, verificar domínio em: https://resend.com/domains
       // 
-      // MODO DESENVOLVIMENTO: Enviar todos os e-mails para o owner em vez do destinatário real
-      const isDevelopment = process.env.NODE_ENV === 'development';
+      // MODO TESTE: Enviar todos os e-mails para o owner em vez do destinatário real
+      // Use EMAIL_TEST_MODE=true para ativar modo de teste (útil para testes em produção)
+      const isTestMode = process.env.EMAIL_TEST_MODE === 'true';
       const resendOwnerEmail = process.env.RESEND_OWNER_EMAIL || 'matheuswillock@gmail.com';
       
       const emailData: any = {
         from: options.from || "Corretor Studio <onboarding@resend.dev>",
-        to: isDevelopment ? [resendOwnerEmail] : options.to,
-        subject: isDevelopment 
-          ? `[DEV - Para: ${options.to.join(', ')}] ${options.subject}`
+        to: isTestMode ? [resendOwnerEmail] : options.to,
+        subject: isTestMode 
+          ? `[TESTE - Para: ${options.to.join(', ')}] ${options.subject}`
           : options.subject,
       };
 
       if (options.html) {
-        // Adicionar banner de desenvolvimento no topo do e-mail
-        if (isDevelopment) {
-          const devBanner = `
+        // Adicionar banner de teste no topo do e-mail
+        if (isTestMode) {
+          const testBanner = `
             <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-bottom: 20px;">
               <p style="margin: 0; color: #92400e; font-weight: 600;">
-                🧪 MODO DESENVOLVIMENTO
+                🧪 MODO TESTE
               </p>
               <p style="margin: 4px 0 0 0; color: #92400e; font-size: 14px;">
                 Este e-mail seria enviado para: <strong>${options.to.join(', ')}</strong>
               </p>
             </div>
           `;
-          emailData.html = devBanner + options.html;
+          emailData.html = testBanner + options.html;
         } else {
           emailData.html = options.html;
         }
