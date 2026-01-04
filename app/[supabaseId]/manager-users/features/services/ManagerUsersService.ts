@@ -79,13 +79,6 @@ class ManagerUsersService {
     });
   }
 
-  // Buscar contagem de leads por usuário (simulado por enquanto)
-  async getUserLeadsCount(): Promise<number> {
-    // TODO: Implementar endpoint real quando disponível
-    // Por enquanto retorna um número aleatório para demonstração
-    return Math.floor(Math.random() * 50);
-  }
-
   // Verificar se usuário pode ser deletado
   async canDeleteUser(userId: string): Promise<boolean> {
     try {

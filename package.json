@@ -27,7 +27,8 @@
     "prisma:db:pull": "npx prisma db pull",
     "prisma:db:push": "npx prisma db push",
     "prisma:db:reset": "npx prisma migrate reset --force",
-    "prisma:db:deploy": "npx prisma migrate deploy"
+    "prisma:db:deploy": "npx prisma migrate deploy",
+    "db:check": "bunx tsx check-database.ts"
   },
   "prisma": {
     "seed": "bunx tsx prisma/seed.ts"

@@ -245,39 +245,6 @@ export function createColumns({
       },
     },
     {
-      accessorKey: "hasPermanentSubscription",
-      header: "Assinatura",
-      cell: ({ row }) => {
-        const user = row.original;
-        const hasPermanent = user.hasPermanentSubscription || false;
-        
-        if (!hasPermanent) {
-          return (
-            <div className="text-center text-muted-foreground text-sm">
-              Asaas
-            </div>
-          );
-        }
-
-        return (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center justify-center gap-1">
-                <Crown className="h-4 w-4 text-yellow-500" />
-                <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-300">
-                  Permanente
-                </Badge>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Assinatura permanente ativa (bypass Asaas)</p>
-            </TooltipContent>
-          </Tooltip>
-        );
-      },
-      enableSorting: false,
-    },
-    {
       id: "actions",
       header: "Ações",
       cell: ({ row }) => {

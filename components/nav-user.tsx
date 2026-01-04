@@ -20,10 +20,10 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { CircleUser, CreditCard, EllipsisVertical, LogOut } from "lucide-react"
-import Link from "next/link"
 import { useTransition } from "react"
 import { signout } from "@/app/actions/auth"
 import { useUser } from "@/app/context/UserContext"
+import { NavLink } from "@/components/ui/nav-link"
 
 export function NavUser({
   supabaseId,
@@ -70,9 +70,7 @@ export function NavUser({
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{userData.name}</span>
-                <span className="text-muted-foreground truncate text-xs">
-                  {userData.email}
-                </span>
+                <span className="text-muted-foreground truncate text-xs">{userData.email}</span>
               </div>
               <EllipsisVertical className="ml-auto size-4" />
             </SidebarMenuButton>
@@ -91,27 +89,28 @@ export function NavUser({
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{userData.name}</span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {userData.email}
-                  </span>
+                  <span className="text-muted-foreground truncate text-xs">{userData.email}</span>
                 </div>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <CircleUser />
-                <Link href={`/${supabaseId}/account`}>Account</Link>
+              <DropdownMenuItem className="cursor-pointer">
+                <NavLink icon={CircleUser} href={`/${supabaseId}/account`} text="Minha Conta" />
               </DropdownMenuItem>
               {isMaster && (
-                <DropdownMenuItem>
-                  <CreditCard />
-                  <Link href={`/${supabaseId}/subscription`}>Assinatura</Link>
+                <DropdownMenuItem className="cursor-pointer">
+                  <NavLink
+                    icon={CreditCard}
+                    href={`/${supabaseId}/subscription`}
+                    text="Assinatura"
+                  />
                 </DropdownMenuItem>
               )}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem
+              className="cursor-pointer"
               disabled={isPending}
               onSelect={(e) => {
                 e.preventDefault()

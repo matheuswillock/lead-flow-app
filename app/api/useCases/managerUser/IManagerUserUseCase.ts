@@ -6,6 +6,7 @@ export interface IManagerUserUseCase {
     getOperatorsByManager(managerId: string): Promise<Output>;
     createManager(data: { fullName: string; email: string }): Promise<Output>;
     createOperator(data: { fullName: string; email: string; managerId: string }): Promise<Output>;
+    updateOperator(userId: string, data: { fullName?: string; email?: string; role?: string }): Promise<Output>;
     deleteManager(managerId: string): Promise<Output>;
     deleteOperator(operatorId: string): Promise<Output>;
 }

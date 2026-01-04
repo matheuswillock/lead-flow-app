@@ -121,6 +121,32 @@ export class RegisterNewUserProfile implements IProfileUseCase {
         }
     }
 
+    async getProfileById(profileId: string): Promise<ProfileInfo | null> {
+        try {
+            if (!profileId) {
+                return null;
+            }
+
+            const profile = await this.repo.findById(profileId);
+            
+            if (!profile) {
+                return null;
+            }
+
+            return {
+                id: profile.id,
+                role: profile.role as 'manager' | 'operator',
+                managerId: profile.managerId,
+                isMaster: profile.isMaster,
+                fullName: profile.fullName,
+                email: profile.email
+            };
+        } catch (error) {
+            console.error("Error getting profile by id:", error);
+            return null;
+        }
+    }
+
     async updateProfile(supabaseId: string, updates: { fullName?: string; phone?: string; email?: string; password?: string }): Promise<Output> {
         try {
             if (!supabaseId) {

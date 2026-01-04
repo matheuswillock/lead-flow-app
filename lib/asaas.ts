@@ -1,18 +1,54 @@
 // lib/asaas.ts
-const ASAAS_API_URL = process.env.ASAAS_ENV === "production"
+
+// Detectar ambiente automaticamente
+// Prioridade: ASAAS_ENV > NODE_ENV > 'sandbox'
+const detectEnvironment = () => {
+  // Se ASAAS_ENV está definido, use ele
+  if (process.env.ASAAS_ENV) {
+    return process.env.ASAAS_ENV === 'production' ? 'production' : 'sandbox';
+  }
+  
+  // Se NODE_ENV é production, use produção do Asaas
+  if (process.env.NODE_ENV === 'production') {
+    return 'production';
+  }
+  
+  // Default: sandbox para desenvolvimento
+  return 'sandbox';
+};
+
+const ASAAS_ENVIRONMENT = detectEnvironment();
+const IS_PRODUCTION = ASAAS_ENVIRONMENT === 'production';
+
+// URLs da API Asaas
+const ASAAS_API_URL = IS_PRODUCTION
   ? "https://www.asaas.com/api/v3"
   : "https://sandbox.asaas.com/api/v3";
 
-// const ASAAS_API_KEY = "$aact_hmlg_000MzkwODA2MWY2OGM3MWRlMDU2NWM3MzJlNzZmNGZhZGY6OmFmZjY1NWMwLTAzODUtNGIyZC1hZTVlLThlZTRmZWM1ZjEzNTo6JGFhY2hfZTU4NDhlY2ItZTMyZS00YjE4LWJlNTgtNDlkZGEwYWZkYmNk";
-
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
+
+// Validação: API Key de produção não deve conter '_hmlg_'
+if (IS_PRODUCTION && ASAAS_API_KEY?.includes('_hmlg_')) {
+  console.warn('⚠️ [ASAAS] ATENÇÃO: Usando chave de SANDBOX em ambiente de PRODUÇÃO!');
+  console.warn('⚠️ [ASAAS] Configure uma chave de produção válida em ASAAS_API_KEY');
+}
+
+// Validação: API Key de sandbox deve conter '_hmlg_'
+if (!IS_PRODUCTION && ASAAS_API_KEY && !ASAAS_API_KEY.includes('_hmlg_')) {
+  console.warn('⚠️ [ASAAS] ATENÇÃO: Usando chave de PRODUÇÃO em ambiente de DESENVOLVIMENTO!');
+  console.warn('⚠️ [ASAAS] Para testes, use uma chave de sandbox (contém _hmlg_)');
+}
 
 // Logs de configuração do ASAAS
 console.info('🔍 [ASAAS] Configuração carregada');
-console.info('🔍 [ASAAS] Environment:', process.env.ASAAS_ENV || 'sandbox');
+console.info('🔍 [ASAAS] NODE_ENV:', process.env.NODE_ENV || 'development');
+console.info('🔍 [ASAAS] ASAAS_ENV:', process.env.ASAAS_ENV || 'auto');
+console.info('🔍 [ASAAS] Environment detectado:', ASAAS_ENVIRONMENT);
 console.info('🔍 [ASAAS] API URL:', ASAAS_API_URL);
 console.info('🔍 [ASAAS] ASAAS_API_KEY exists:', !!ASAAS_API_KEY);
 if (ASAAS_API_KEY) {
+  const keyType = ASAAS_API_KEY.includes('_hmlg_') ? 'SANDBOX' : 'PRODUCTION';
+  console.info('🔍 [ASAAS] API Key type:', keyType);
   console.info('🔍 [ASAAS] API Key preview:', `${ASAAS_API_KEY.slice(0, 10)}...${ASAAS_API_KEY.slice(-8)}`);
 }
 

@@ -51,6 +51,78 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
         }
     }
 
+    async updateOperator(userId: string, data: { fullName?: string; email?: string; role?: string }): Promise<Output> {
+        try {
+            console.info("🔄 [ManagerUserUseCase.updateOperator] Iniciando atualização");
+            console.info("📦 [ManagerUserUseCase.updateOperator] Dados recebidos:", {
+                userId,
+                fullName: data.fullName,
+                email: data.email,
+                role: data.role
+            });
+
+            // Validações
+            if (data.fullName && data.fullName.trim().length < 2) {
+                return new Output(
+                    false,
+                    [],
+                    ["Nome completo deve ter pelo menos 2 caracteres"],
+                    null
+                );
+            }
+
+            if (data.email && !this.isValidEmail(data.email)) {
+                return new Output(
+                    false,
+                    [],
+                    ["Email inválido"],
+                    null
+                );
+            }
+
+            // Atualizar usuário via ProfileRepository (por ID, não supabaseId)
+            const updateData: any = {};
+            if (data.fullName) updateData.fullName = data.fullName;
+            if (data.email) updateData.email = data.email;
+            if (data.role) updateData.role = data.role;
+
+            console.info("🚀 [ManagerUserUseCase.updateOperator] Chamando ProfileRepository.updateProfileById com:", updateData);
+
+            const updatedUser = await this.profileRepository.updateProfileById(userId, updateData);
+
+            if (!updatedUser) {
+                return new Output(
+                    false,
+                    [],
+                    ["Falha ao atualizar usuário"],
+                    null
+                );
+            }
+
+            console.info("✅ [ManagerUserUseCase.updateOperator] Usuário atualizado:", {
+                id: updatedUser.id,
+                fullName: updatedUser.fullName,
+                email: updatedUser.email,
+                role: updatedUser.role
+            });
+
+            return new Output(
+                true,
+                ["Usuário atualizado com sucesso"],
+                [],
+                updatedUser
+            );
+        } catch (error) {
+            console.error("❌ [ManagerUserUseCase.updateOperator] Erro ao atualizar usuário:", error);
+            return new Output(
+                false,
+                [],
+                [error instanceof Error ? error.message : "Erro interno do servidor"],
+                null
+            );
+        }
+    }
+
     async getOperatorsByManager(managerId: string): Promise<Output> {
         try {
             const operators = await this.managerUserRepository.getOperatorsByManager(managerId);

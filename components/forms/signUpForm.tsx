@@ -1,4 +1,4 @@
-import { HeartPulse, Eye, EyeOff, ShieldCheck } from "lucide-react"
+import { HeartPulse, Eye, EyeOff, ShieldCheck, Check, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,16 @@ export function SignupForm({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null);
+  const [currentPassword, setCurrentPassword] = useState('');
+
+  // Validações individuais da senha
+  const passwordValidations = {
+    minLength: currentPassword.length >= 6,
+    hasUppercase: /[A-Z]/.test(currentPassword),
+    hasLowercase: /[a-z]/.test(currentPassword),
+    hasNumber: /[0-9]/.test(currentPassword),
+    hasSpecialChar: /[^A-Za-z0-9]/.test(currentPassword),
+  };
 
   const calculatePasswordStrength = (pwd: string): 'weak' | 'medium' | 'strong' => {
     let strength = 0;
@@ -241,6 +251,7 @@ export function SignupForm({
                         {...field}
                         onChange={(e) => {
                           field.onChange(e);
+                          setCurrentPassword(e.target.value);
                           if (e.target.value) {
                             setPasswordStrength(calculatePasswordStrength(e.target.value));
                           } else {
@@ -296,14 +307,84 @@ export function SignupForm({
                     </div>
                   )}
                   
-                  <div className="text-xs text-muted-foreground border border-muted rounded-md p-3 bg-muted/30 space-y-1">
-                    <p className="font-medium text-foreground mb-1">A senha deve conter:</p>
-                    <ul className="space-y-0.5 ml-1">
-                      <li>• Mínimo de 6 caracteres</li>
-                      <li>• Pelo menos uma letra maiúscula</li>
-                      <li>• Pelo menos uma letra minúscula</li>
-                      <li>• Pelo menos um número</li>
-                      <li>• Pelo menos um caractere especial (@, #, $, etc.)</li>
+                  {/* Regras de validação com feedback visual dinâmico */}
+                  <div className="border border-muted rounded-md p-3 bg-muted/30 space-y-2">
+                    <p className="font-medium text-foreground text-sm">A senha deve conter:</p>
+                    <ul className="space-y-1.5">
+                      <li className={cn(
+                        "flex items-center gap-2 text-sm transition-colors",
+                        currentPassword.length === 0 ? "text-muted-foreground" :
+                        passwordValidations.minLength ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                      )}>
+                        {currentPassword.length === 0 ? (
+                          <span className="w-4 h-4 flex items-center justify-center">•</span>
+                        ) : passwordValidations.minLength ? (
+                          <Check className="w-4 h-4 flex-shrink-0" />
+                        ) : (
+                          <X className="w-4 h-4 flex-shrink-0" />
+                        )}
+                        <span>Mínimo de 6 caracteres</span>
+                      </li>
+                      
+                      <li className={cn(
+                        "flex items-center gap-2 text-sm transition-colors",
+                        currentPassword.length === 0 ? "text-muted-foreground" :
+                        passwordValidations.hasUppercase ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                      )}>
+                        {currentPassword.length === 0 ? (
+                          <span className="w-4 h-4 flex items-center justify-center">•</span>
+                        ) : passwordValidations.hasUppercase ? (
+                          <Check className="w-4 h-4 flex-shrink-0" />
+                        ) : (
+                          <X className="w-4 h-4 flex-shrink-0" />
+                        )}
+                        <span>Pelo menos uma letra maiúscula</span>
+                      </li>
+                      
+                      <li className={cn(
+                        "flex items-center gap-2 text-sm transition-colors",
+                        currentPassword.length === 0 ? "text-muted-foreground" :
+                        passwordValidations.hasLowercase ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                      )}>
+                        {currentPassword.length === 0 ? (
+                          <span className="w-4 h-4 flex items-center justify-center">•</span>
+                        ) : passwordValidations.hasLowercase ? (
+                          <Check className="w-4 h-4 flex-shrink-0" />
+                        ) : (
+                          <X className="w-4 h-4 flex-shrink-0" />
+                        )}
+                        <span>Pelo menos uma letra minúscula</span>
+                      </li>
+                      
+                      <li className={cn(
+                        "flex items-center gap-2 text-sm transition-colors",
+                        currentPassword.length === 0 ? "text-muted-foreground" :
+                        passwordValidations.hasNumber ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                      )}>
+                        {currentPassword.length === 0 ? (
+                          <span className="w-4 h-4 flex items-center justify-center">•</span>
+                        ) : passwordValidations.hasNumber ? (
+                          <Check className="w-4 h-4 flex-shrink-0" />
+                        ) : (
+                          <X className="w-4 h-4 flex-shrink-0" />
+                        )}
+                        <span>Pelo menos um número</span>
+                      </li>
+                      
+                      <li className={cn(
+                        "flex items-center gap-2 text-sm transition-colors",
+                        currentPassword.length === 0 ? "text-muted-foreground" :
+                        passwordValidations.hasSpecialChar ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                      )}>
+                        {currentPassword.length === 0 ? (
+                          <span className="w-4 h-4 flex items-center justify-center">•</span>
+                        ) : passwordValidations.hasSpecialChar ? (
+                          <Check className="w-4 h-4 flex-shrink-0" />
+                        ) : (
+                          <X className="w-4 h-4 flex-shrink-0" />
+                        )}
+                        <span>Pelo menos um caractere especial (@, #, $, etc.)</span>
+                      </li>
                     </ul>
                   </div>
                   <FormMessage className="text-red-500">{errors.password}</FormMessage>

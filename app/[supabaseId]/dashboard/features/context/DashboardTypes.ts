@@ -17,6 +17,9 @@ export interface IDashboardState {
     startDate: string;
     endDate: string;
   } | null;
+  
+  // Controle de privacidade
+  isBlurred: boolean;
 }
 
 export interface IDashboardActions {
@@ -33,6 +36,9 @@ export interface IDashboardActions {
   // Ações de controle
   clearError: () => void;
   resetFilters: () => void;
+  
+  // Ação de privacidade
+  toggleBlur: () => void;
 }
 
 export interface IDashboardContext extends IDashboardState, IDashboardActions {}

@@ -19,11 +19,15 @@ import {
   DollarSign, 
   Settings, 
   TrendingDown,
-  Wallet
+  Wallet,
+  Eye,
+  EyeOff
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export function SectionCardsWithContext() {
-  const { metrics, isLoading, error, filters, customDateRange } = useDashboardContext();
+  const { metrics, isLoading, error, filters, customDateRange, isBlurred, toggleBlur } = useDashboardContext();
 
   if (isLoading) {
     return <DashboardCardsSkeleton />;
@@ -67,12 +71,27 @@ export function SectionCardsWithContext() {
 
   return (
     <div className="space-y-6 px-4 lg:px-6">
-      
+      {/* Toggle de Blur para Privacidade */}
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={toggleBlur} className="gap-2">
+          {isBlurred ? (
+            <>
+              <EyeOff className="h-4 w-4" />
+              <span className="text-xs">Mostrar valores</span>
+            </>
+          ) : (
+            <>
+              <Eye className="h-4 w-4" />
+              <span className="text-xs">Ocultar valores</span>
+            </>
+          )}
+        </Button>
+      </div>
+
       {/* SEÇÃO 1: MÉTRICAS PRINCIPAIS - Destaque Visual */}
       <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-3">
-        
-        {/* Receita Total - DESTAQUE */}
-        <Card className="@container/card border-primary/20 bg-gradient-to-br from-primary/5 via-primary/3 to-transparent shadow-md">
+        {/* Receita Total - DESTAQUE VERDE */}
+        <Card className="@container/card border-green-500/30 bg-gradient-to-br from-green-50 via-green-50/50 to-transparent shadow-md dark:from-green-900/20 dark:via-green-900/10">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -82,8 +101,13 @@ export function SectionCardsWithContext() {
                 <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
               </div>
             </div>
-            <CardDescription className="text-4xl font-bold text-foreground">
-              R$ {metrics.receitaTotal.toLocaleString('pt-BR')}
+            <CardDescription
+              className={cn(
+                "text-4xl font-bold text-foreground transition-all duration-200",
+                isBlurred && "blur-sm select-none",
+              )}
+            >
+              R$ {metrics.receitaTotal.toLocaleString("pt-BR")}
             </CardDescription>
           </CardHeader>
           <CardFooter className="pt-0">
@@ -104,7 +128,12 @@ export function SectionCardsWithContext() {
                 <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
-            <CardDescription className="text-4xl font-bold text-foreground">
+            <CardDescription
+              className={cn(
+                "text-4xl font-bold text-foreground transition-all duration-200",
+                isBlurred && "blur-sm select-none",
+              )}
+            >
               {metrics.taxaConversao}%
             </CardDescription>
           </CardHeader>
@@ -126,8 +155,13 @@ export function SectionCardsWithContext() {
                 <Wallet className="h-5 w-5 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
-            <CardDescription className="text-4xl font-bold text-foreground">
-              R$ {metrics.cadencia.toLocaleString('pt-BR')}
+            <CardDescription
+              className={cn(
+                "text-4xl font-bold text-foreground transition-all duration-200",
+                isBlurred && "blur-sm select-none",
+              )}
+            >
+              R$ {metrics.cadencia.toLocaleString("pt-BR")}
             </CardDescription>
           </CardHeader>
           <CardFooter className="pt-0">
@@ -142,7 +176,6 @@ export function SectionCardsWithContext() {
       <div>
         <h3 className="mb-3 text-sm font-semibold text-muted-foreground">📊 Funil de Vendas</h3>
         <div className="grid grid-cols-2 gap-4 @xl/main:grid-cols-4">
-          
           {/* Agendamentos */}
           <Card className="@container/card">
             <CardHeader className="pb-3">
@@ -152,14 +185,17 @@ export function SectionCardsWithContext() {
                   Agendamentos
                 </CardTitle>
               </div>
-              <CardDescription className="text-2xl font-bold text-foreground">
+              <CardDescription
+                className={cn(
+                  "text-2xl font-bold text-foreground transition-all duration-200",
+                  isBlurred && "blur-sm select-none",
+                )}
+              >
                 {metrics.agendamentos}
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">
-                Leads agendados
-              </CardAction>
+              <CardAction className="text-xs text-muted-foreground">Leads agendados</CardAction>
             </CardFooter>
           </Card>
 
@@ -172,14 +208,17 @@ export function SectionCardsWithContext() {
                   Negociação
                 </CardTitle>
               </div>
-              <CardDescription className="text-2xl font-bold text-foreground">
+              <CardDescription
+                className={cn(
+                  "text-2xl font-bold text-foreground transition-all duration-200",
+                  isBlurred && "blur-sm select-none",
+                )}
+              >
                 {metrics.negociacao}
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">
-                Em negociação
-              </CardAction>
+              <CardAction className="text-xs text-muted-foreground">Em negociação</CardAction>
             </CardFooter>
           </Card>
 
@@ -192,34 +231,38 @@ export function SectionCardsWithContext() {
                   Implementação
                 </CardTitle>
               </div>
-              <CardDescription className="text-2xl font-bold text-foreground">
+              <CardDescription
+                className={cn(
+                  "text-2xl font-bold text-foreground transition-all duration-200",
+                  isBlurred && "blur-sm select-none",
+                )}
+              >
                 {metrics.implementacao}
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">
-                Em implementação
-              </CardAction>
+              <CardAction className="text-xs text-muted-foreground">Em implementação</CardAction>
             </CardFooter>
           </Card>
 
-          {/* Vendas */}
-          <Card className="@container/card border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">
+          {/* Vendas - BG SÓBRIO PADRÃO */}
+          <Card className="@container/card">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-green-500" />
-                <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Vendas
-                </CardTitle>
+                <CardTitle className="text-xs font-medium text-muted-foreground">Vendas</CardTitle>
               </div>
-              <CardDescription className="text-2xl font-bold text-green-600 dark:text-green-400">
+              <CardDescription
+                className={cn(
+                  "text-2xl font-bold text-green-600 dark:text-green-400 transition-all duration-200",
+                  isBlurred && "blur-sm select-none",
+                )}
+              >
                 {metrics.vendas}
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
-              <CardAction className="text-xs font-medium text-green-600 dark:text-green-400">
-                ✅ Concluídas
-              </CardAction>
+              <CardAction className="text-xs text-muted-foreground">Concluídas</CardAction>
             </CardFooter>
           </Card>
         </div>
@@ -227,26 +270,28 @@ export function SectionCardsWithContext() {
 
       {/* SEÇÃO 3: INDICADORES DE PERFORMANCE */}
       <div>
-        <h3 className="mb-3 text-sm font-semibold text-muted-foreground">📈 Indicadores de Performance</h3>
+        <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+          📈 Indicadores de Performance
+        </h3>
         <div className="grid grid-cols-2 gap-4 @xl/main:grid-cols-2">
-          
-          {/* No-Show */}
-          <Card className="@container/card border-amber-500/20">
+          {/* No-Show - BG AMARELO */}
+          <Card className="@container/card border-yellow-500/30 bg-gradient-to-br from-yellow-50 via-yellow-50/50 to-transparent dark:from-yellow-900/20 dark:via-yellow-900/10">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
-                <UserX className="h-4 w-4 text-amber-500" />
-                <CardTitle className="text-xs font-medium text-muted-foreground">
-                  No-Show
-                </CardTitle>
+                <UserX className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
+                <CardTitle className="text-xs font-medium text-muted-foreground">No-Show</CardTitle>
               </div>
-              <CardDescription className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+              <CardDescription
+                className={cn(
+                  "text-2xl font-bold text-yellow-600 dark:text-yellow-400 transition-all duration-200",
+                  isBlurred && "blur-sm select-none",
+                )}
+              >
                 {metrics.noShowRate?.toFixed(1)}%
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">
-                Taxa de ausência
-              </CardAction>
+              <CardAction className="text-xs text-muted-foreground">Taxa de ausência</CardAction>
             </CardFooter>
           </Card>
 
@@ -259,7 +304,12 @@ export function SectionCardsWithContext() {
                   Churn Rate
                 </CardTitle>
               </div>
-              <CardDescription className="text-2xl font-bold text-red-600 dark:text-red-400">
+              <CardDescription
+                className={cn(
+                  "text-2xl font-bold text-red-600 dark:text-red-400 transition-all duration-200",
+                  isBlurred && "blur-sm select-none",
+                )}
+              >
                 {metrics.churnRate}%
               </CardDescription>
             </CardHeader>
@@ -271,8 +321,7 @@ export function SectionCardsWithContext() {
           </Card>
         </div>
       </div>
-
     </div>
-  );
+  )
 }
 

@@ -31,6 +31,10 @@ export interface IProfileRepository {
     supabaseId: string,
     updates: { fullName?: string; phone?: string; email?: string }
   ): Promise<Profile | null>;
+  updateProfileById(
+    profileId: string,
+    updates: { fullName?: string; phone?: string; email?: string; role?: string }
+  ): Promise<Profile | null>;
   updateProfileIcon(
     supabaseId: string,
     profileIconId: string | null,

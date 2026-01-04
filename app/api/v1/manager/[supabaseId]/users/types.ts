@@ -12,6 +12,16 @@ export const CreateUserSchema = z.object({
   profileIconUrl: z.string().url("URL do ícone deve ser válida").optional()
 });
 
+export const UpdateUserSchema = z.object({
+  id: z.string().uuid("ID do usuário deve ser um UUID válido"),
+  name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").optional(),
+  email: z.string().email("Email inválido").optional(),
+  role: z.enum(["manager", "operator"], { 
+    message: "Role deve ser 'manager' ou 'operator'"
+  }).optional(),
+  profileIconUrl: z.string().url("URL do ícone deve ser válida").optional().nullable()
+});
+
 export const AssociateOperatorSchema = z.object({
   action: z.literal("associate"),
   managerId: z.string().uuid("ID do manager deve ser um UUID válido"),
@@ -47,5 +57,6 @@ export interface OperatorResponseDTO extends UserResponseDTO {
 
 // Request Types
 export type CreateUserRequest = z.infer<typeof CreateUserSchema>;
+export type UpdateUserRequest = z.infer<typeof UpdateUserSchema>;
 export type AssociateOperatorRequest = z.infer<typeof AssociateOperatorSchema>;
 export type DissociateOperatorRequest = z.infer<typeof DissociateOperatorSchema>;
