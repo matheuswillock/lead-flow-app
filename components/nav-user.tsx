@@ -70,9 +70,7 @@ export function NavUser({
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-medium">{userData.name}</span>
-                <span className="text-muted-foreground truncate text-xs">
-                  {userData.email}
-                </span>
+                <span className="text-muted-foreground truncate text-xs">{userData.email}</span>
               </div>
               <EllipsisVertical className="ml-auto size-4" />
             </SidebarMenuButton>
@@ -91,21 +89,21 @@ export function NavUser({
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{userData.name}</span>
-                  <span className="text-muted-foreground truncate text-xs">
-                    {userData.email}
-                  </span>
+                  <span className="text-muted-foreground truncate text-xs">{userData.email}</span>
                 </div>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem>
-                <CircleUser />
-                <Link href={`/${supabaseId}/account`}>Account</Link>
+                <Link href={`/${supabaseId}/account`}>
+                  <CircleUser />
+                  Minha Conta
+                </Link>
               </DropdownMenuItem>
               {isMaster && (
                 <DropdownMenuItem>
-                  <CreditCard />
+                  
                   <Link href={`/${supabaseId}/subscription`}>Assinatura</Link>
                 </DropdownMenuItem>
               )}

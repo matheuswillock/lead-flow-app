@@ -72,7 +72,7 @@ export function SubscriptionContainer() {
             <p className="text-center text-muted-foreground">
               Crie sua assinatura agora e comece a gerenciar seus leads com eficiência
             </p>
-            <Button 
+            <Button
               size="lg"
               onClick={() => router.push(`/${supabaseId}/account`)}
             >
@@ -99,8 +99,8 @@ export function SubscriptionContainer() {
             <span>
               Sua assinatura foi cancelada. Reative para continuar usando a plataforma.
             </span>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
               onClick={handleReactivate}
               className="ml-4"
@@ -111,7 +111,6 @@ export function SubscriptionContainer() {
           </AlertDescription>
         </Alert>
       )}
-      
       <div className="grid gap-6 md:grid-cols-2">
         <SubscriptionCard 
           subscription={subscription}
