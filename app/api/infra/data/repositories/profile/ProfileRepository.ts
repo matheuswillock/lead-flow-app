@@ -382,6 +382,123 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
+    async updateProfileById(
+        profileId: string,
+        updates: { fullName?: string; phone?: string; email?: string; role?: string }
+    ): Promise<Profile | null> {
+        try {
+            console.info("🔄 [updateProfileById] Iniciando atualização para profileId:", profileId);
+            
+            // PASSO 1: Buscar o profile pelo ID para obter o supabaseId
+            const existingProfile = await prisma.profile.findUnique({
+                where: { id: profileId },
+                select: { 
+                    supabaseId: true, 
+                    email: true,
+                    fullName: true,
+                    role: true 
+                }
+            });
+
+            if (!existingProfile) {
+                console.error("❌ [updateProfileById] Profile não encontrado:", profileId);
+                return null;
+            }
+
+            console.info("✅ [updateProfileById] Profile encontrado:", {
+                hasSupabaseId: !!existingProfile.supabaseId,
+                supabaseId: existingProfile.supabaseId || 'null',
+                currentEmail: existingProfile.email,
+                currentRole: existingProfile.role
+            });
+
+            // PASSO 2: Verificar se deve atualizar o Supabase Auth
+            // Só atualiza se:
+            // - O email está sendo alterado
+            // - O profile TEM um supabaseId válido
+            // - O novo email é diferente do atual
+            const shouldUpdateAuth = updates.email !== undefined && 
+                                    existingProfile.supabaseId !== null && 
+                                    updates.email !== existingProfile.email;
+
+            if (shouldUpdateAuth) {
+                console.info("🔐 [updateProfileById] Atualizando Supabase Auth...");
+                
+                try {
+                    const supabase = createSupabaseClient();
+                    if (!supabase) {
+                        console.error("❌ [updateProfileById] Falha ao inicializar Supabase client");
+                        console.warn("⚠️ [updateProfileById] Continuando apenas com atualização do banco");
+                    } else {
+                        const { error: authError } = await supabase.auth.admin.updateUserById(
+                            existingProfile.supabaseId!,
+                            {
+                                email: updates.email,
+                                email_confirm: true,
+                            }
+                        );
+
+                        if (authError) {
+                            console.error("❌ [updateProfileById] Erro ao atualizar Supabase Auth:", authError.message);
+                            console.warn("⚠️ [updateProfileById] Continuando apenas com atualização do banco");
+                        } else {
+                            console.info("✅ [updateProfileById] Email atualizado no Supabase Auth");
+                        }
+                    }
+                } catch (authUpdateError) {
+                    console.error("❌ [updateProfileById] Exceção ao atualizar Supabase Auth:", authUpdateError);
+                    console.warn("⚠️ [updateProfileById] Continuando apenas com atualização do banco");
+                }
+            } else if (updates.email !== undefined && !existingProfile.supabaseId) {
+                console.info("ℹ️ [updateProfileById] Pulando atualização do Auth - usuário sem supabaseId (criado via checkout)");
+            } else if (updates.email === existingProfile.email) {
+                console.info("ℹ️ [updateProfileById] Email não foi alterado, pulando atualização do Auth");
+            }
+
+            // PASSO 3: Atualizar na tabela Profile (banco de dados)
+            console.info("💾 [updateProfileById] Atualizando banco de dados...");
+            
+            const updateData: any = {};
+            
+            if (updates.fullName !== undefined) {
+                updateData.fullName = updates.fullName;
+                console.info("📝 [updateProfileById] Atualizando fullName:", updates.fullName);
+            }
+            
+            if (updates.phone !== undefined) {
+                updateData.phone = updates.phone;
+                console.info("📞 [updateProfileById] Atualizando phone:", updates.phone);
+            }
+            
+            if (updates.email !== undefined) {
+                updateData.email = updates.email;
+                console.info("📧 [updateProfileById] Atualizando email:", updates.email);
+            }
+
+            if (updates.role !== undefined) {
+                updateData.role = updates.role;
+                console.info("👤 [updateProfileById] Atualizando role:", `${existingProfile.role} → ${updates.role}`);
+            }
+
+            const profile = await prisma.profile.update({
+                where: { id: profileId },
+                data: updateData,
+            });
+            
+            console.info("✅ [updateProfileById] Profile atualizado com sucesso no banco:", {
+                profileId: profile.id,
+                newFullName: profile.fullName,
+                newEmail: profile.email,
+                newRole: profile.role
+            });
+            
+            return profile;
+        } catch (error) {
+            console.error("❌ [updateProfileById] Erro ao atualizar profile:", error);
+            return null;
+        }
+    }
+
     async updatePassword(supabaseId: string, newPassword: string): Promise<boolean> {
         try {
             const supabase = createSupabaseClient();

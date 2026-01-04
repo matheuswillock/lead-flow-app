@@ -4,7 +4,8 @@ import { ManagerUserUseCase } from "../../../../useCases/managerUser/ManagerUser
 import { RegisterNewUserProfile } from "../../../../useCases/profiles/ProfileUseCase";
 import { Output } from "@/lib/output";
 import { 
-  CreateUserSchema, 
+  CreateUserSchema,
+  UpdateUserSchema, 
   AssociateOperatorSchema, 
   DissociateOperatorSchema 
 } from "./types";
@@ -219,7 +220,7 @@ export async function GET(
 
 /**
  * PUT /api/v1/manager/[supabaseId]/users
- * Associa ou desassocia operator de manager
+ * Atualiza usuário ou Associa/desassocia operator de manager
  */
 export async function PUT(
   request: NextRequest,
@@ -249,6 +250,67 @@ export async function PUT(
 
     const { action } = body;
 
+    // Se não tiver action, é uma atualização de usuário
+    if (!action) {
+      console.info("🔄 [PUT /users] Iniciando atualização de usuário");
+      console.info("📦 [PUT /users] Body recebido:", JSON.stringify(body, null, 2));
+      
+      // Validar dados de atualização
+      let validatedData;
+      try {
+        validatedData = UpdateUserSchema.parse(body);
+        console.info("✅ [PUT /users] Dados validados:", JSON.stringify(validatedData, null, 2));
+      } catch (validationError: any) {
+        console.error("❌ [PUT /users] Erro de validação:", validationError);
+        const errors = validationError.errors?.map((err: any) => err.message) || [validationError.message];
+        const output = new Output(false, [], errors, null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      // Verificar se o usuário sendo atualizado pertence ao manager
+      const userToUpdate = await profileUseCase.getProfileById(validatedData.id);
+      if (!userToUpdate) {
+        const output = new Output(false, [], ["Usuário não encontrado"], null);
+        return NextResponse.json(output, { status: 404 });
+      }
+
+      console.info("👤 [PUT /users] Usuário atual:", {
+        id: userToUpdate.id,
+        currentRole: userToUpdate.role,
+        managerId: userToUpdate.managerId
+      });
+
+      // Se for operator, verificar se pertence ao manager
+      if (userToUpdate.role === 'operator' && userToUpdate.managerId !== requesterProfile.id) {
+        const output = new Output(false, [], ["Você só pode atualizar seus próprios operadores"], null);
+        return NextResponse.json(output, { status: 403 });
+      }
+
+      // Atualizar usuário
+      console.info("🚀 [PUT /users] Chamando updateOperator com:", {
+        userId: validatedData.id,
+        fullName: validatedData.name,
+        email: validatedData.email,
+        role: validatedData.role
+      });
+      
+      const output = await managerUserUseCase.updateOperator(validatedData.id, {
+        fullName: validatedData.name,
+        email: validatedData.email,
+        role: validatedData.role
+      });
+
+      console.info("📤 [PUT /users] Resultado:", {
+        isValid: output.isValid,
+        successMessages: output.successMessages,
+        errorMessages: output.errorMessages,
+        result: output.result ? { id: output.result.id, role: output.result.role } : null
+      });
+
+      return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
+    }
+
+    // Ações de associação/dissociação
     if (action === 'associate') {
       // Validar dados para associação
       let validatedData;
