@@ -52,7 +52,11 @@ export class ManagerUserRepository implements IManagerUserRepository {
                 updatedAt: true,
                 _count: {
                     select: {
-                        leadsAsAssignee: true  // Conta leads atribuídos ao operador
+                        leadsAsAssignee: {
+                            where: {
+                                managerId: managerId  // Filtrar leads do próprio manager
+                            }
+                        }
                     }
                 }
             },
