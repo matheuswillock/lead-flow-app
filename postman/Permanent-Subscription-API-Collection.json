@@ -1,0 +1,67 @@
+{
+  "info": {
+    "name": "Permanent Subscription API",
+    "description": "API para gerenciar assinaturas permanentes (vitalícias)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Ativar Assinatura Permanente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"profileId\": \"{{PROFILE_ID}}\",\n  \"enable\": true\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/v1/profiles/permanent-subscription",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "v1", "profiles", "permanent-subscription"]
+        },
+        "description": "Torna um usuário vitalício. Ele nunca mais passará por validação de assinatura no Asaas."
+      },
+      "response": []
+    },
+    {
+      "name": "Desativar Assinatura Permanente",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"profileId\": \"{{PROFILE_ID}}\",\n  \"enable\": false\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/v1/profiles/permanent-subscription",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "v1", "profiles", "permanent-subscription"]
+        },
+        "description": "Remove a assinatura permanente. O usuário voltará a passar por validação de assinatura no Asaas."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "https://www.corretorstudio.com.br",
+      "type": "string"
+    },
+    {
+      "key": "PROFILE_ID",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
