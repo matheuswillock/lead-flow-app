@@ -20,10 +20,10 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { CircleUser, CreditCard, EllipsisVertical, LogOut } from "lucide-react"
-import Link from "next/link"
 import { useTransition } from "react"
 import { signout } from "@/app/actions/auth"
 import { useUser } from "@/app/context/UserContext"
+import { NavLink } from "@/components/ui/nav-link"
 
 export function NavUser({
   supabaseId,
@@ -95,21 +95,22 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <Link href={`/${supabaseId}/account`}>
-                  <CircleUser />
-                  Minha Conta
-                </Link>
+              <DropdownMenuItem className="cursor-pointer">
+                <NavLink icon={CircleUser} href={`/${supabaseId}/account`} text="Minha Conta" />
               </DropdownMenuItem>
               {isMaster && (
-                <DropdownMenuItem>
-                  
-                  <Link href={`/${supabaseId}/subscription`}>Assinatura</Link>
+                <DropdownMenuItem className="cursor-pointer">
+                  <NavLink
+                    icon={CreditCard}
+                    href={`/${supabaseId}/subscription`}
+                    text="Assinatura"
+                  />
                 </DropdownMenuItem>
               )}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem
+              className="cursor-pointer"
               disabled={isPending}
               onSelect={(e) => {
                 e.preventDefault()
