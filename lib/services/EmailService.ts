@@ -400,57 +400,120 @@ export class EmailService {
     };
 
     const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #2563eb; margin: 0;">🎉 Bem-vindo ao Corretor Studio!</h1>
-        </div>
-        
-        <p style="font-size: 16px; color: #333;">Olá <strong>${data.operatorName}</strong>,</p>
-        
-        <p style="font-size: 15px; color: #555; line-height: 1.6;">
-          Você foi convidado por <strong>${data.managerName}</strong> para fazer parte da equipe no <strong>Corretor Studio</strong>.
-        </p>
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                
+                <!-- Header -->
+                <tr>
+                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
+                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Gestão Inteligente de Leads</p>
+                  </td>
+                </tr>
+                
+                <!-- Conteúdo -->
+                <tr>
+                  <td style="padding: 48px 32px;">
+                    <div style="text-align: center; margin-bottom: 32px;">
+                      <div style="display: inline-block; width: 72px; height: 72px; background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border-radius: 50%; border: 2px solid #ff6900; text-align: center; line-height: 72px; margin-bottom: 16px;">
+                        <span style="font-size: 32px;">🎉</span>
+                      </div>
+                    </div>
 
-        <div style="background-color: #f0f9ff; padding: 16px; border-left: 4px solid #2563eb; border-radius: 4px; margin: 20px 0;">
-          <p style="margin: 0; color: #1e40af; font-weight: 600;">Sua função: ${roleDescription[data.operatorRole] || data.operatorRole}</p>
-        </div>
+                    <h2 style="margin: 0 0 24px 0; color: #171717; font-size: 24px; font-weight: 600; text-align: center;">Bem-vindo ao Corretor Studio!</h2>
+                    
+                    <p style="margin: 0 0 16px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
+                      Olá <strong>${data.operatorName}</strong>,
+                    </p>
 
-        ${roleCapabilities[data.operatorRole] || ''}
+                    <p style="margin: 0 0 24px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
+                      Você foi convidado por <strong>${data.managerName}</strong> para fazer parte da equipe no <strong>Corretor Studio</strong>.
+                    </p>
 
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 30px 0;">
-          <h3 style="color: #333; margin-top: 0;">🚀 Por que usar o Corretor Studio?</h3>
-          <ul style="color: #555; line-height: 1.8;">
-            <li>📊 Dashboard com métricas em tempo real</li>
-            <li>🎯 Funil de vendas visual e intuitivo</li>
-            <li>📱 Interface responsiva para qualquer dispositivo</li>
-            <li>🔔 Notificações automáticas de leads</li>
-            <li>📎 Gestão de documentos anexados</li>
-            <li>⚡ Atualizações instantâneas</li>
-          </ul>
-        </div>
+                    <div style="background-color: #fff7ed; border-left: 4px solid #ff6900; padding: 16px; border-radius: 8px; margin: 20px 0;">
+                      <p style="margin: 0; color: #ea580c; font-weight: 600;">Sua função: ${roleDescription[data.operatorRole] || data.operatorRole}</p>
+                    </div>
 
-        <div style="text-align: center; margin: 40px 0;">
-          <a href="${data.inviteUrl}" 
-             style="background-color: #2563eb; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: 600; font-size: 16px;">
-            🔐 Acessar Plataforma e Definir Senha
-          </a>
-        </div>
+                    ${roleCapabilities[data.operatorRole] || ''}
 
-        <div style="background-color: #fef3c7; padding: 12px; border-radius: 6px; margin: 20px 0;">
-          <p style="margin: 0; color: #92400e; font-size: 14px;">
-            ⚠️ <strong>Importante:</strong> Este link expira em 24 horas. Clique no botão acima para definir sua senha e começar a usar a plataforma.
-          </p>
-        </div>
+                    <div style="background-color: #f9fafb; border-radius: 12px; padding: 24px; margin: 24px 0;">
+                      <h3 style="margin: 0 0 16px 0; color: #171717; font-size: 18px; font-weight: 600;">🚀 Por que usar o Corretor Studio?</h3>
+                      <ul style="margin: 0; padding: 0; list-style: none;">
+                        <li style="margin-bottom: 12px; color: #525252; font-size: 15px; display: flex; align-items: start;">
+                          <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
+                          <span>Dashboard com métricas em tempo real</span>
+                        </li>
+                        <li style="margin-bottom: 12px; color: #525252; font-size: 15px; display: flex; align-items: start;">
+                          <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
+                          <span>Funil de vendas visual e intuitivo</span>
+                        </li>
+                        <li style="margin-bottom: 12px; color: #525252; font-size: 15px; display: flex; align-items: start;">
+                          <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
+                          <span>Interface responsiva para qualquer dispositivo</span>
+                        </li>
+                        <li style="margin-bottom: 12px; color: #525252; font-size: 15px; display: flex; align-items: start;">
+                          <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
+                          <span>Notificações automáticas de leads</span>
+                        </li>
+                        <li style="margin-bottom: 12px; color: #525252; font-size: 15px; display: flex; align-items: start;">
+                          <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
+                          <span>Gestão de documentos anexados</span>
+                        </li>
+                        <li style="margin-bottom: 0; color: #525252; font-size: 15px; display: flex; align-items: start;">
+                          <span style="color: #10b981; margin-right: 8px; font-size: 18px;">✓</span>
+                          <span>Atualizações instantâneas</span>
+                        </li>
+                      </ul>
+                    </div>
 
-        <p style="color: #666; font-size: 14px; margin-top: 30px;">
-          Se você tiver alguma dúvida, entre em contato com <strong>${data.managerName}</strong> ou com o suporte do Corretor Studio.
-        </p>
-        
-        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #999; font-size: 12px; text-align: center;">
-          <p>Este é um email automático do Corretor Studio.</p>
-          <p>Se você não esperava este convite, por favor ignore este email.</p>
-        </div>
-      </div>
+                    <!-- Botão CTA -->
+                    <div style="text-align: center; margin: 32px 0;">
+                      <a href="${data.inviteUrl}" style="display: inline-block; background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(255, 105, 0, 0.3);">
+                        🔐 Acessar Plataforma e Definir Senha
+                      </a>
+                    </div>
+
+                    <!-- Aviso de Segurança -->
+                    <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px; margin: 24px 0;">
+                      <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">
+                        <strong>⚠️ Importante:</strong> Este link expira em 24 horas. Clique no botão acima para definir sua senha e começar a usar a plataforma.
+                      </p>
+                    </div>
+
+                    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 32px 0;" />
+
+                    <p style="margin: 0; color: #737373; font-size: 14px; line-height: 1.6; text-align: center;">
+                      Se você tiver alguma dúvida, entre em contato com <strong>${data.managerName}</strong> ou com o suporte do Corretor Studio.
+                    </p>
+                  </td>
+                </tr>
+                
+                <!-- Footer -->
+                <tr>
+                  <td style="background-color: #f9fafb; padding: 24px 32px; text-align: center; border-top: 1px solid #e5e5e5;">
+                    <p style="margin: 0; color: #737373; font-size: 12px;">
+                      Este é um e-mail automático do Corretor Studio
+                    </p>
+                    <p style="margin: 8px 0 0 0; color: #a3a3a3; font-size: 11px;">
+                      © 2026 Corretor Studio. Todos os direitos reservados.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
     `;
 
     return this.sendEmail({
