@@ -52,13 +52,14 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
         // A API já retorna leadsCount para cada usuário, usar diretamente
         setState(prev => ({ 
           ...prev, 
-          users: response.result, 
+          users: response.result || [], 
           stats: response.stats,
           loading: false 
         }));
       } else {
         setState(prev => ({ 
           ...prev, 
+          users: [],
           error: response.errorMessages.join(", ") || "Erro ao carregar usuários",
           loading: false 
         }));

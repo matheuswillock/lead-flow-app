@@ -100,7 +100,7 @@ async function checkDatabase() {
     console.log('\n⚠️  === VERIFICAÇÃO DE INTEGRIDADE ===')
     
     // Como não há leads, pular verificação de integridade
-    if (totalLeads === 0) {
+    if (leads.length === 0) {
       console.log('✅ Nenhum lead no banco - verificação de integridade não necessária')
     } else {
       // Verificar operadores com leads de outro manager
