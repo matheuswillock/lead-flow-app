@@ -28,6 +28,9 @@ export function useDashboardHook({
     initialFilters || { period: '30d' }
   );
   const [customDateRange, setCustomDateRange] = useState<IDashboardState['customDateRange']>(null);
+  
+  // Estado de privacidade
+  const [isBlurred, setIsBlurred] = useState<boolean>(false);
 
   // Ação para buscar métricas
   const fetchMetrics = useCallback(async () => {
@@ -124,6 +127,11 @@ export function useDashboardHook({
     
     await fetchMetrics();
   }, [fetchMetrics, dashboardService, supabaseId, filters, customDateRange]);
+  
+  // Ação para toggle de blur
+  const toggleBlur = useCallback(() => {
+    setIsBlurred(prev => !prev);
+  }, []);
 
   return {
     // Estado
@@ -133,6 +141,7 @@ export function useDashboardHook({
     error,
     filters,
     customDateRange,
+    isBlurred,
     
     // Ações
     fetchMetrics,
@@ -143,5 +152,6 @@ export function useDashboardHook({
     clearCustomDateRange,
     clearError,
     resetFilters,
+    toggleBlur,
   };
 }
