@@ -3,11 +3,11 @@ import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function checkDatabase() {
-  console.log('\n🔍 ===== DIAGNÓSTICO DO BANCO DE DADOS =====\n')
+  console.info('\n🔍 ===== DIAGNÓSTICO DO BANCO DE DADOS =====\n')
 
   try {
     // 1. Verificar Profiles
-    console.log('📋 === PROFILES (Usuários) ===')
+    console.info('📋 === PROFILES (Usuários) ===')
     const profiles = await prisma.profile.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
@@ -26,19 +26,19 @@ async function checkDatabase() {
         }
       }
     })
-    console.log(`Total de profiles: ${profiles.length}\n`)
+    console.info(`Total de profiles: ${profiles.length}\n`)
     profiles.forEach(p => {
-      console.log(`  • ${p.fullName} (${p.email})`)
-      console.log(`    Role: ${p.role} | Master: ${p.isMaster}`)
-      console.log(`    Manager ID: ${p.managerId || 'N/A'}`)
-      console.log(`    Leads como Manager: ${p._count.leadsAsManager}`)
-      console.log(`    Leads Atribuídos: ${p._count.leadsAsAssignee}`)
-      console.log(`    Criado: ${p.createdAt.toLocaleString('pt-BR')}`)
-      console.log('')
+      console.info(`  • ${p.fullName} (${p.email})`)
+      console.info(`    Role: ${p.role} | Master: ${p.isMaster}`)
+      console.info(`    Manager ID: ${p.managerId || 'N/A'}`)
+      console.info(`    Leads como Manager: ${p._count.leadsAsManager}`)
+      console.info(`    Leads Atribuídos: ${p._count.leadsAsAssignee}`)
+      console.info(`    Criado: ${p.createdAt.toLocaleString('pt-BR')}`)
+      console.info('')
     })
 
     // 2. Verificar Leads
-    console.log('\n📊 === LEADS ===')
+    console.info('\n📊 === LEADS ===')
     const leads = await prisma.lead.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
@@ -50,23 +50,23 @@ async function checkDatabase() {
         }
       }
     })
-    console.log(`Total de leads: ${leads.length}\n`)
+    console.info(`Total de leads: ${leads.length}\n`)
     
     if (leads.length === 0) {
-      console.log('  ⚠️  Nenhum lead encontrado no banco de dados!\n')
+      console.info('  ⚠️  Nenhum lead encontrado no banco de dados!\n')
     } else {
       leads.forEach(l => {
-        console.log(`  • ${l.name} (${l.email || 'sem email'})`)
-        console.log(`    Status: ${l.status}`)
-        console.log(`    Manager: ${l.manager.fullName} (${l.manager.email})`)
-        console.log(`    Atribuído a: ${l.assignee?.fullName || 'Não atribuído'}`)
-        console.log(`    Criado: ${l.createdAt.toLocaleString('pt-BR')}`)
-        console.log('')
+        console.info(`  • ${l.name} (${l.email || 'sem email'})`)
+        console.info(`    Status: ${l.status}`)
+        console.info(`    Manager: ${l.manager.fullName} (${l.manager.email})`)
+        console.info(`    Atribuído a: ${l.assignee?.fullName || 'Não atribuído'}`)
+        console.info(`    Criado: ${l.createdAt.toLocaleString('pt-BR')}`)
+        console.info('')
       })
     }
 
     // 3. Verificar Pending Operators
-    console.log('\n⏳ === PENDING OPERATORS ===')
+    console.info('\n⏳ === PENDING OPERATORS ===')
     const pendingOps = await prisma.pendingOperator.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
@@ -75,33 +75,33 @@ async function checkDatabase() {
         }
       }
     })
-    console.log(`Total de operadores pendentes: ${pendingOps.length}\n`)
+    console.info(`Total de operadores pendentes: ${pendingOps.length}\n`)
     pendingOps.forEach(po => {
-      console.log(`  • ${po.name} (${po.email})`)
-      console.log(`    Status Pagamento: ${po.paymentStatus}`)
-      console.log(`    Operador Criado: ${po.operatorCreated}`)
-      console.log(`    Manager: ${po.manager.fullName}`)
-      console.log('')
+      console.info(`  • ${po.name} (${po.email})`)
+      console.info(`    Status Pagamento: ${po.paymentStatus}`)
+      console.info(`    Operador Criado: ${po.operatorCreated}`)
+      console.info(`    Manager: ${po.manager.fullName}`)
+      console.info('')
     })
 
     // 4. Resumo Geral
-    console.log('\n📈 === RESUMO GERAL ===')
+    console.info('\n📈 === RESUMO GERAL ===')
     const managers = profiles.filter(p => p.role === 'manager').length
     const operators = profiles.filter(p => p.role === 'operator').length
     const masters = profiles.filter(p => p.isMaster).length
     
-    console.log(`  Managers: ${managers}`)
-    console.log(`  Operators: ${operators}`)
-    console.log(`  Masters: ${masters}`)
-    console.log(`  Total Leads: ${leads.length}`)
-    console.log(`  Pending Operators: ${pendingOps.length}`)
+    console.info(`  Managers: ${managers}`)
+    console.info(`  Operators: ${operators}`)
+    console.info(`  Masters: ${masters}`)
+    console.info(`  Total Leads: ${leads.length}`)
+    console.info(`  Pending Operators: ${pendingOps.length}`)
 
     // 5. Verificar problemas de integridade
-    console.log('\n⚠️  === VERIFICAÇÃO DE INTEGRIDADE ===')
+    console.info('\n⚠️  === VERIFICAÇÃO DE INTEGRIDADE ===')
     
     // Como não há leads, pular verificação de integridade
     if (leads.length === 0) {
-      console.log('✅ Nenhum lead no banco - verificação de integridade não necessária')
+      console.info('✅ Nenhum lead no banco - verificação de integridade não necessária')
     } else {
       // Verificar operadores com leads de outro manager
       const allOperators = await prisma.profile.findMany({
@@ -136,16 +136,16 @@ async function checkDatabase() {
         
         if (wrongLeads.length > 0) {
           hasIntegrityIssues = true
-          console.log(`  ⚠️  ${op.fullName} tem ${wrongLeads.length} leads de outro manager:`)
+          console.info(`  ⚠️  ${op.fullName} tem ${wrongLeads.length} leads de outro manager:`)
           wrongLeads.forEach(l => {
-            console.log(`      - Lead: ${l.name} (Manager ID: ${l.managerId})`)
+            console.info(`      - Lead: ${l.name} (Manager ID: ${l.managerId})`)
           })
-          console.log(`      Manager esperado: ${op.managerId}\n`)
+          console.info(`      Manager esperado: ${op.managerId}\n`)
         }
       })
 
       if (!hasIntegrityIssues) {
-        console.log('  ✅ Nenhum problema de integridade encontrado!\n')
+        console.info('  ✅ Nenhum problema de integridade encontrado!\n')
       }
     }
 
