@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { assertResend } from "@/lib/email"
+import { emailService } from "@/lib/services/EmailService"
 import { Output } from "@/lib/output"
 
 interface EmailRequest {
@@ -30,26 +30,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
-    const resend = assertResend();
-    
-    // Preparar dados do email
-    const emailData: any = {
-      from: body.from || "Lead Flow <noreply@leadflow.com>",
+    // Usar EmailService para respeitar EMAIL_TEST_MODE
+    const result = await emailService.sendEmail({
+      from: body.from || "Corretor Studio <no-reply@corretorstudio.com>",
       to: body.to,
       subject: body.subject,
-    };
+      html: body.html,
+      text: body.text,
+    });
 
-    // Adicionar conteúdo (html ou text)
-    if (body.html) {
-      emailData.html = body.html;
+    if (!result.success) {
+      const output = new Output(false, [], [result.error || "Erro ao enviar email"], null);
+      return NextResponse.json(output, { status: 500 });
     }
-    if (body.text) {
-      emailData.text = body.text;
-    }
 
-    const data = await resend.emails.send(emailData);
-
-    const output = new Output(true, ["Email enviado com sucesso"], [], data);
+    const output = new Output(true, ["Email enviado com sucesso"], [], result.data);
     return NextResponse.json(output, { status: 200 });
     
   } catch (e: any) {

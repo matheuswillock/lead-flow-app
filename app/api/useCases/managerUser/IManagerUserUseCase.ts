@@ -9,4 +9,5 @@ export interface IManagerUserUseCase {
     updateOperator(userId: string, data: { fullName?: string; email?: string; role?: string }): Promise<Output>;
     deleteManager(managerId: string): Promise<Output>;
     deleteOperator(operatorId: string): Promise<Output>;
+    deleteOperatorWithSubscriptionUpdate(operatorId: string): Promise<Output>;
 }

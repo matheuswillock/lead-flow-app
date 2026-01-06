@@ -410,7 +410,21 @@ export async function DELETE(
       return NextResponse.json(output, { status: 400 });
     }
 
-    // Tentar deletar como manager primeiro, se falhar, tentar como operator
+    // Verificar se o usuário a ser deletado é um operador do manager
+    const userToDelete = await profileUseCase.getProfileById(userId);
+    
+    if (!userToDelete) {
+      const output = new Output(false, [], ["Usuário não encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    // Se for operador, usar o novo método com atualização de assinatura
+    if (userToDelete.role === 'operator' && userToDelete.managerId === requesterProfile.id) {
+      const output = await managerUserUseCase.deleteOperatorWithSubscriptionUpdate(userId);
+      return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
+    }
+
+    // Para outros casos (manager), usar métodos antigos
     let output = await managerUserUseCase.deleteManager(userId);
     
     if (!output.isValid) {

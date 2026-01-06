@@ -117,7 +117,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       // 2. Criar assinatura no Asaas
       const nextDueDate = new Date();
-      nextDueDate.setDate(nextDueDate.getDate() + 7); // 7 dias para primeira cobrança
+      nextDueDate.setMonth(nextDueDate.getMonth() + 1); // 1 mês de prazo para primeira cobrança
       const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
 
       console.info('📝 [createSubscriptionCheckout] Criando assinatura no Asaas...');

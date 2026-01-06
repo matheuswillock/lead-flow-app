@@ -183,6 +183,14 @@ export class ManagerUserRepository implements IManagerUserRepository {
         });
     }
 
+    async deleteOperatorHard(operatorId: string): Promise<void> {
+        // Hard delete - deleta sem verificações de leads
+        // Os leads devem ter sido transferidos antes desta chamada
+        await prisma.profile.delete({
+            where: { id: operatorId }
+        });
+    }
+
     async getManagerStats(managerId: string): Promise<{
         totalOperators: number;
         totalManagers: number;
