@@ -265,20 +265,19 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
 
   // Extrair lista de responsáveis únicos
   const taskOwners = useMemo(() => {
-    const ownersMap = new Map<string, { name: string; avatarUrl?: string | null }>();
+    // Usar todos os usuários associados ao invés de apenas aqueles com leads atribuídos
+    if (!user?.usersAssociated || user.usersAssociated.length === 0) {
+      return [];
+    }
     
-    allLeads.forEach((lead) => {
-      if (lead.assignedTo && lead.assignee) {
-        const displayName = lead.assignee.fullName || lead.assignee.email || lead.assignedTo;
-        const avatarUrl = lead.assignee.avatarUrl;
-        ownersMap.set(lead.assignedTo, { name: displayName, avatarUrl });
-      }
-    });
-    
-    return Array.from(ownersMap.entries())
-      .map(([id, data]) => ({ id, name: data.name, avatarUrl: data.avatarUrl }))
+    return user.usersAssociated
+      .map((u) => ({
+        id: u.id,
+        name: u.name || u.email,
+        avatarUrl: u.avatarImageUrl || null
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allLeads]);
+  }, [user]);
 
   const value: IPipelineContextState = {
     isLoading,
