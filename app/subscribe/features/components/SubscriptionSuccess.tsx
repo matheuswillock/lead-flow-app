@@ -1,13 +1,11 @@
 'use client';
 
 // app/subscribe/features/components/SubscriptionSuccess.tsx
-import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { PixPayment } from './PixPayment';
-import { createSupabaseBrowser } from '@/lib/supabase/browser';
 
 interface SubscriptionSuccessProps {
   subscriptionId: string;

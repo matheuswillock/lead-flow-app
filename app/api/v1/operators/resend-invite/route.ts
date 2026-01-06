@@ -10,7 +10,7 @@ import { getEmailService } from '@/lib/services/EmailService';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, userId } = body;
+    const { email } = body;
 
     if (!email) {
       return NextResponse.json(
