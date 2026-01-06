@@ -50,12 +50,42 @@ export function FinalizeContractDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
 
+  // Formatar valor como moeda brasileira
+  const formatCurrencyDisplay = (value: string): string => {
+    // Remove tudo exceto números
+    const numbers = value.replace(/\D/g, '');
+    
+    if (!numbers) return '';
+    
+    // Converte para número e divide por 100 para ter os centavos
+    const numberValue = parseInt(numbers) / 100;
+    
+    // Formata no padrão brasileiro
+    return numberValue.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
+  // Converter valor formatado de volta para número
+  const parseFormattedValue = (formattedValue: string): number => {
+    const numbers = formattedValue.replace(/\D/g, '');
+    return parseInt(numbers || '0') / 100;
+  };
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCurrencyDisplay(e.target.value);
+    setAmount(formatted);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
+    const numericAmount = parseFormattedValue(amount);
+
     // Validações
-    if (!amount || parseFloat(amount) <= 0) {
+    if (!amount || numericAmount <= 0) {
       toast.error('Por favor, insira um valor válido para o contrato.');
       setError('Por favor, insira um valor válido para o contrato.');
       return;
@@ -88,14 +118,14 @@ export function FinalizeContractDialog({
 
     try {
       await onFinalize({
-        amount: parseFloat(amount),
+        amount: parseFormattedValue(amount),
         startDateAt: startDate,
         finalizedDateAt: finalizedDate,
         notes: notes.trim() || undefined,
       });
 
       // ✅ Sucesso - Toast detalhado com informações do contrato
-      toast.success(`Contrato finalizado com sucesso! Valor: R$ ${parseFloat(amount).toLocaleString('pt-BR', {
+      toast.success(`Contrato finalizado com sucesso! Valor: R$ ${parseFormattedValue(amount).toLocaleString('pt-BR', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
       })}`, {
@@ -150,16 +180,21 @@ export function FinalizeContractDialog({
             {/* Campo de Valor do Contrato */}
             <div className="grid gap-2">
               <Label htmlFor="amount">Valor do Contrato (R$)</Label>
-              <Input
-                id="amount"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                disabled={isLoading}
-              />
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                  R$
+                </span>
+                <Input
+                  id="amount"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0,00"
+                  value={amount}
+                  onChange={handleAmountChange}
+                  disabled={isLoading}
+                  className="pl-10"
+                />
+              </div>
             </div>
 
             {/* Data de Início */}

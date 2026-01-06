@@ -19,7 +19,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { Settings } from "@/components/ui/settings";
 
 interface CreateColumnsProps {
   onEdit: (user: ManagerUserTableRow) => void;

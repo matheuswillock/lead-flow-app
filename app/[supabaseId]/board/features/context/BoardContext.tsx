@@ -411,22 +411,19 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   }, [data, query, assignedUser, periodStart, periodEnd]);
 
   const responsaveis = useMemo(() => {
-    const responsaveisMap = new Map<string, { name: string; avatarUrl?: string | null }>();
-    COLUMNS.forEach(({ key }) => {
-      const columnData = data[key] || []; // Fallback para array vazio se não existir
-      columnData.forEach((l) => {
-        if (l.assignedTo && l.assignee) {
-          // Usar o nome completo se disponível, senão o email, senão o ID
-          const displayName = l.assignee.fullName || l.assignee.email || l.assignedTo;
-          const avatarUrl = l.assignee.avatarUrl;
-          responsaveisMap.set(l.assignedTo, { name: displayName, avatarUrl });
-        }
-      });
-    });
-    return Array.from(responsaveisMap.entries())
-      .map(([id, data]) => ({ id, name: data.name, avatarUrl: data.avatarUrl }))
+    // Usar todos os usuários associados ao invés de apenas aqueles com leads atribuídos
+    if (!user?.usersAssociated || user.usersAssociated.length === 0) {
+      return [];
+    }
+    
+    return user.usersAssociated
+      .map((u) => ({
+        id: u.id,
+        name: u.name || u.email,
+        avatarUrl: u.avatarImageUrl || null
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [data]);
+  }, [user]);
 
   const value: IBoardContextState = {
     isLoading,

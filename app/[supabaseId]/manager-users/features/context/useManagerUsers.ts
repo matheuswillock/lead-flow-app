@@ -8,8 +8,7 @@ import {
   CreateManagerUserFormData, 
   UpdateManagerUserFormData,
   UserPermissions,
-  ManagerUserTableRow,
-  OperatorPaymentData
+  ManagerUserTableRow
 } from "../types";
 import { ManagerUsersService } from "../services/ManagerUsersService";
 
