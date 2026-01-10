@@ -12,6 +12,7 @@ import {
 import { getEmailService } from "@/lib/services/EmailService";
 import { LeadRepository } from "../../../../infra/data/repositories/lead/LeadRepository";
 import { profileRepository } from "../../../../infra/data/repositories/profile/ProfileRepository";
+import { createSupabaseAdmin } from "@/lib/supabase/server";
 
 const managerUserRepository = new ManagerUserRepository();
 const leadRepository = new LeadRepository();
@@ -66,18 +67,53 @@ export async function POST(
         email: validatedData.email
       });
       
-      // Enviar email de boas-vindas se criação foi bem-sucedida
+      // Se criação foi bem-sucedida, criar usuário no Supabase Auth e enviar convite
       if (output.isValid && output.result) {
         try {
+          // Criar usuário no Supabase Auth com link de convite
+          const supabaseAdmin = createSupabaseAdmin();
+          if (!supabaseAdmin) {
+            throw new Error('Falha ao criar cliente Supabase Admin');
+          }
+
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const redirectTo = `${appUrl}/set-password`;
+
+          const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'invite',
+            email: validatedData.email,
+            options: {
+              redirectTo,
+              data: { 
+                name: validatedData.name,
+                invited: true,
+                first_access: true 
+              }
+            }
+          });
+
+          if (linkError || !data.properties?.action_link) {
+            console.error('Erro ao gerar link de convite:', linkError);
+            throw new Error('Erro ao gerar link de convite');
+          }
+
+          const inviteLink = data.properties.action_link;
+
+          // Enviar email personalizado com link de convite
           const emailService = getEmailService();
-          await emailService.sendWelcomeEmail({
-            userName: validatedData.name,
-            userEmail: validatedData.email,
-            loginUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/sign-in`
+          await emailService.sendOperatorInviteEmail({
+            operatorName: validatedData.name,
+            operatorEmail: validatedData.email,
+            operatorRole: role,
+            managerName: requesterProfile.fullName || requesterProfile.email,
+            inviteUrl: inviteLink,
           });
         } catch (emailError) {
-          console.error("Erro ao enviar email de boas-vindas:", emailError);
-          // Não falha a criação do usuário se o email falhar
+          console.error("Erro ao criar usuário Supabase ou enviar email:", emailError);
+          // Reverter criação do perfil se falhar
+          await managerUserUseCase.deleteManager(output.result.id);
+          const failureOutput = new Output(false, [], ["Erro ao enviar convite. Tente novamente."], null);
+          return NextResponse.json(failureOutput, { status: 500 });
         }
       }
       
@@ -91,18 +127,53 @@ export async function POST(
         managerId: requesterProfile.id // Use the manager who is creating the operator
       });
       
-      // Enviar email de boas-vindas se criação foi bem-sucedida
+      // Se criação foi bem-sucedida, criar usuário no Supabase Auth e enviar convite
       if (output.isValid && output.result) {
         try {
+          // Criar usuário no Supabase Auth com link de convite
+          const supabaseAdmin = createSupabaseAdmin();
+          if (!supabaseAdmin) {
+            throw new Error('Falha ao criar cliente Supabase Admin');
+          }
+
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const redirectTo = `${appUrl}/set-password`;
+
+          const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'invite',
+            email: validatedData.email,
+            options: {
+              redirectTo,
+              data: { 
+                name: validatedData.name,
+                invited: true,
+                first_access: true 
+              }
+            }
+          });
+
+          if (linkError || !data.properties?.action_link) {
+            console.error('Erro ao gerar link de convite:', linkError);
+            throw new Error('Erro ao gerar link de convite');
+          }
+
+          const inviteLink = data.properties.action_link;
+
+          // Enviar email personalizado com link de convite
           const emailService = getEmailService();
-          await emailService.sendWelcomeEmail({
-            userName: validatedData.name,
-            userEmail: validatedData.email,
-            loginUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/sign-in`
+          await emailService.sendOperatorInviteEmail({
+            operatorName: validatedData.name,
+            operatorEmail: validatedData.email,
+            operatorRole: role,
+            managerName: requesterProfile.fullName || requesterProfile.email,
+            inviteUrl: inviteLink,
           });
         } catch (emailError) {
-          console.error("Erro ao enviar email de boas-vindas:", emailError);
-          // Não falha a criação do usuário se o email falhar
+          console.error("Erro ao criar usuário Supabase ou enviar email:", emailError);
+          // Reverter criação do perfil se falhar
+          await managerUserUseCase.deleteOperator(output.result.id);
+          const failureOutput = new Output(false, [], ["Erro ao enviar convite. Tente novamente."], null);
+          return NextResponse.json(failureOutput, { status: 500 });
         }
       }
       

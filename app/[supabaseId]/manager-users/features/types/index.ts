@@ -11,8 +11,8 @@ export interface ManagerUser {
   managerId?: string; // Para operators
   leadsCount?: number; // Contador de leads
   hasPermanentSubscription?: boolean; // Indica assinatura permanente
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: Date | string; // Pode vir como Date do Prisma ou string do JSON
+  updatedAt: Date | string; // Pode vir como Date do Prisma ou string do JSON
   isPending?: boolean; // Indica se é um operador pendente
   pendingPayment?: {
     id: string;

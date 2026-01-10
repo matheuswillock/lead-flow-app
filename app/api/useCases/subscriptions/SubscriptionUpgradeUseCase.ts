@@ -597,6 +597,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         },
       };
 
+      console.info('[Asaas] URL:', process.env.ASAAS_URL);
+
       // Criar payment link no Asaas
       const payment = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/payments`, {
         method: 'POST',
