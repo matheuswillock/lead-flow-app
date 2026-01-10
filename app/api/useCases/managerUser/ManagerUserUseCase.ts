@@ -516,15 +516,17 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
             // 7. Deletar do Supabase Auth
             if (userToDelete.supabaseId) {
                 try {
-                    const { createServerClient } = await import('@/lib/supabase/server');
-                    const supabase = await createServerClient();
+                    const { createSupabaseAdmin } = await import('@/lib/supabase/server');
+                    const supabase = createSupabaseAdmin();
                     
-                    const { error } = await supabase.auth.admin.deleteUser(userToDelete.supabaseId);
-                    
-                    if (error) {
-                        console.error(`❌ [deleteOperatorWithSubscriptionUpdate] Erro ao deletar do Supabase Auth:`, error);
-                    } else {
-                        console.info(`🔐 [deleteOperatorWithSubscriptionUpdate] Usuário deletado do Supabase Auth`);
+                    if (supabase) {
+                        const { error } = await supabase.auth.admin.deleteUser(userToDelete.supabaseId);
+                        
+                        if (error) {
+                            console.error(`❌ [deleteOperatorWithSubscriptionUpdate] Erro ao deletar do Supabase Auth:`, error);
+                        } else {
+                            console.info(`🔐 [deleteOperatorWithSubscriptionUpdate] Usuário deletado do Supabase Auth`);
+                        }
                     }
                 } catch (supabaseError) {
                     console.error(`❌ [deleteOperatorWithSubscriptionUpdate] Erro ao deletar do Supabase:`, supabaseError);
