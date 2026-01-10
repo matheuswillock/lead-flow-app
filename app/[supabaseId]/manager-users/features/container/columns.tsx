@@ -261,18 +261,6 @@ export function createColumns({
               <DropdownMenuLabel>Ações</DropdownMenuLabel>
               {user.status === 'active' ? (
                 <>
-                  {currentUserIsMaster && onTogglePermanentSubscription && (
-                    <DropdownMenuItem
-                      onClick={() => onTogglePermanentSubscription(user.id, user.hasPermanentSubscription || false)}
-                      className="flex items-center gap-2"
-                    >
-                      <Crown className="h-4 w-4" />
-                      {user.hasPermanentSubscription 
-                        ? 'Desativar assinatura permanente' 
-                        : 'Ativar assinatura permanente'}
-                    </DropdownMenuItem>
-                  )}
-                  
                   <DropdownMenuItem
                     onClick={() => onResendInvite(user.email, user.id)}
                     className="flex items-center gap-2"

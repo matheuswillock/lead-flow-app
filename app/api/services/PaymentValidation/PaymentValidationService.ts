@@ -5,6 +5,7 @@ import { IPaymentRepository } from '../../infra/data/repositories/payment/IPayme
 import type { AsaasPayment, AsaasSubscription } from './AsaasWebhookTypes';
 import { isAsaasPayment, isAsaasSubscription } from './AsaasWebhookTypes';
 import { createEmailService } from '@/lib/services/EmailService';
+import { asaasApi, asaasFetch } from '@/lib/asaas';
 
 export class PaymentValidationService implements IPaymentValidationService {
   constructor(private paymentRepository: IPaymentRepository) {}
@@ -15,29 +16,10 @@ export class PaymentValidationService implements IPaymentValidationService {
         `[PaymentValidationService] Validando pagamento: ${paymentId}`
       );
 
-      // Buscar informações do pagamento no Asaas
-      const response = await fetch(
-        `${process.env.ASAAS_API_URL}/payments/${paymentId}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            access_token: process.env.ASAAS_API_KEY || '',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        console.error(
-          `[PaymentValidationService] Erro ao buscar pagamento: ${response.status}`
-        );
-        return {
-          success: false,
-          isPaid: false,
-          message: 'Erro ao buscar informações do pagamento',
-        };
-      }
-
-      const payment = await response.json();
+      // Buscar informações do pagamento no Asaas usando a lib
+      const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
+        method: 'GET',
+      });
       console.info(
         `[PaymentValidationService] Status do pagamento: ${payment.status}`
       );

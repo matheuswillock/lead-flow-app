@@ -1,6 +1,6 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasFetch } from "@/lib/asaas";
+import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { getEmailService } from "@/lib/services/EmailService";
@@ -465,6 +465,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         // Não retorna erro pois o operador já foi criado
       }
 
+      // Nota: A exclusão do PendingOperator é feita pelo webhook do Asaas após confirmação
+
       const result: SubscriptionUpgradeResult = {
         paymentId,
         paymentStatus: 'CONFIRMED',
@@ -597,10 +599,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         },
       };
 
-      console.info('[Asaas] URL:', process.env.ASAAS_URL);
-
-      // Criar payment link no Asaas
-      const payment = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/payments`, {
+      // Criar payment link no Asaas usando a lib
+      const payment = await asaasFetch(asaasApi.payments, {
         method: 'POST',
         body: JSON.stringify(checkoutPayload),
       });
@@ -664,7 +664,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // Conforme doc Asaas: POST /v3/subscriptions
-      const subscription = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/subscriptions`, {
+      const subscription = await asaasFetch(asaasApi.subscriptions, {
         method: 'POST',
         body: JSON.stringify(data),
       });
@@ -730,7 +730,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
   private async checkAsaasPaymentStatus(paymentId: string): Promise<any> {
     try {
-      const payment = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/payments/${paymentId}`, {
+      const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
         method: 'GET',
       });
 
@@ -1183,14 +1183,18 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       if (data.paymentMethod === 'PIX') {
         try {
           // Buscar primeira cobrança da assinatura
-          const payments = await asaasFetch(`/subscriptions/${newSubscription.data.id}/payments`);
+          const payments = await asaasFetch(`${asaasApi.subscriptions}/${newSubscription.data.id}/payments`, {
+            method: 'GET',
+          });
           if (payments.data && payments.data.length > 0) {
             const firstPayment = payments.data[0];
             resultData.paymentId = firstPayment.id;
             
             // Se tiver QR code do PIX
             if (firstPayment.invoiceUrl) {
-              const pixData = await asaasFetch(`/payments/${firstPayment.id}/pixQrCode`);
+              const pixData = await asaasFetch(asaasApi.pixQrCode(firstPayment.id), {
+                method: 'GET',
+              });
               resultData.pixQrCode = pixData.encodedImage;
               resultData.pixCopyPaste = pixData.payload;
             }

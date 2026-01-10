@@ -263,7 +263,44 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 );
             }
 
+            // Buscar informações do usuário antes de deletar
+            const userToDelete = await this.profileRepository.findById(managerId);
+            
+            if (!userToDelete) {
+                return new Output(
+                    false,
+                    [],
+                    ["Manager não encontrado"],
+                    null
+                );
+            }
+
+            // Deletar do banco de dados
             await this.managerUserRepository.deleteManager(managerId);
+            
+            // Deletar do Supabase Auth
+            if (userToDelete.supabaseId) {
+                try {
+                    const { createSupabaseAdmin } = await import('@/lib/supabase/server');
+                    const supabaseAdmin = createSupabaseAdmin();
+                    
+                    if (!supabaseAdmin) {
+                        console.error('❌ [deleteManager] Falha ao criar cliente Supabase Admin');
+                    } else {
+                        const { error } = await supabaseAdmin.auth.admin.deleteUser(userToDelete.supabaseId);
+                        
+                        if (error) {
+                            console.error(`❌ [deleteManager] Erro ao deletar do Supabase Auth:`, error);
+                        } else {
+                            console.info(`🔐 [deleteManager] Usuário deletado do Supabase Auth`);
+                        }
+                    }
+                } catch (supabaseError) {
+                    console.error(`❌ [deleteManager] Erro ao deletar do Supabase:`, supabaseError);
+                    // Não falhar a operação se a deleção do Supabase falhar
+                }
+            }
+            
             return new Output(
                 true,
                 ["Manager excluído com sucesso"],
@@ -330,8 +367,31 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
             
             console.info(`Transferidos ${leadsTransferred} leads do usuário ${operatorId} para o master ${finalMasterId}`);
 
-            // Deletar o usuário
+            // Deletar o usuário do banco
             await this.managerUserRepository.deleteOperator(operatorId);
+            
+            // Deletar do Supabase Auth
+            if (userToDelete.supabaseId) {
+                try {
+                    const { createSupabaseAdmin } = await import('@/lib/supabase/server');
+                    const supabaseAdmin = createSupabaseAdmin();
+                    
+                    if (!supabaseAdmin) {
+                        console.error('❌ [deleteOperator] Falha ao criar cliente Supabase Admin');
+                    } else {
+                        const { error } = await supabaseAdmin.auth.admin.deleteUser(userToDelete.supabaseId);
+                        
+                        if (error) {
+                            console.error(`❌ [deleteOperator] Erro ao deletar do Supabase Auth:`, error);
+                        } else {
+                            console.info(`🔐 [deleteOperator] Usuário deletado do Supabase Auth`);
+                        }
+                    }
+                } catch (supabaseError) {
+                    console.error(`❌ [deleteOperator] Erro ao deletar do Supabase:`, supabaseError);
+                    // Não falhar a operação se a deleção do Supabase falhar
+                }
+            }
             
             return new Output(
                 true,

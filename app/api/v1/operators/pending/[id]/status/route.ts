@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { Output } from '@/lib/output';
+import { asaasApi, asaasFetch } from '@/lib/asaas';
 
 /**
  * GET /api/v1/operators/pending/[id]/status
@@ -49,25 +50,19 @@ export async function GET(
     let asaasStatus = null;
     if (pendingOperator.paymentId) {
       try {
-        const asaasUrl = `${process.env.ASAAS_URL}/api/v3/payments/${pendingOperator.paymentId}`;
-        const response = await fetch(asaasUrl, {
-          headers: {
-            'access_token': process.env.ASAAS_API_KEY || '',
-            'Content-Type': 'application/json',
-          }
-        });
+        const payment = await asaasFetch(
+          `${asaasApi.payments}/${pendingOperator.paymentId}`,
+          { method: 'GET' }
+        );
 
-        if (response.ok) {
-          const payment = await response.json();
-          asaasStatus = {
-            id: payment.id,
-            status: payment.status,
-            value: payment.value,
-            billingType: payment.billingType,
-            externalReference: payment.externalReference,
-            confirmedDate: payment.confirmedDate,
-          };
-        }
+        asaasStatus = {
+          id: payment.id,
+          status: payment.status,
+          value: payment.value,
+          billingType: payment.billingType,
+          externalReference: payment.externalReference,
+          confirmedDate: payment.confirmedDate,
+        };
       } catch (error) {
         console.error('Erro ao verificar status no Asaas:', error);
       }

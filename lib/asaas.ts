@@ -22,11 +22,21 @@ const getAsaasEnvironment = () => detectEnvironment();
 const getIsProduction = () => getAsaasEnvironment() === 'production';
 
 // URL da API Asaas (getter para garantir leitura dinâmica)
+// Prioridade: ASAAS_URL/ASAAS_URL_sandbox do .env > URLs padrão
 const getAsaasApiUrl = () => {
   const isProduction = getIsProduction();
-  return isProduction
-    ? "https://www.asaas.com/api/v3"
-    : "https://sandbox.asaas.com/api/v3";
+  
+  if (isProduction) {
+    // Produção: usar ASAAS_URL do .env ou fallback para URL padrão
+    const envUrl = process.env.ASAAS_URL;
+    const baseUrl = envUrl || "https://www.asaas.com";
+    return `${baseUrl}/api/v3`;
+  } else {
+    // Sandbox: usar ASAAS_URL_sandbox do .env ou fallback para URL padrão
+    const envUrl = process.env.ASAAS_URL_sandbox;
+    const baseUrl = envUrl || "https://sandbox.asaas.com";
+    return `${baseUrl}/api/v3`;
+  }
 };
 
 const getAsaasApiKey = () => process.env.ASAAS_API_KEY;
@@ -50,12 +60,31 @@ const logAsaasConfig = () => {
     console.warn('⚠️ [ASAAS] Para testes, use uma chave de sandbox (contém _hmlg_)');
   }
 
+  // Validação: Verificar se URLs do .env estão corretas
+  if (IS_PRODUCTION) {
+    const envUrl = process.env.ASAAS_URL;
+    if (envUrl && !envUrl.includes('www.asaas.com')) {
+      console.warn('⚠️ [ASAAS] ATENÇÃO: ASAAS_URL não aponta para produção (www.asaas.com)!');
+      console.warn('⚠️ [ASAAS] URL atual:', envUrl);
+    }
+  } else {
+    const envUrl = process.env.ASAAS_URL_sandbox;
+    if (envUrl && !envUrl.includes('sandbox.asaas.com')) {
+      console.warn('⚠️ [ASAAS] ATENÇÃO: ASAAS_URL_sandbox não aponta para sandbox!');
+      console.warn('⚠️ [ASAAS] URL atual:', envUrl);
+    }
+  }
+
   // Logs de configuração do ASAAS
   console.info('🔍 [ASAAS] Configuração carregada');
   console.info('🔍 [ASAAS] NODE_ENV:', process.env.NODE_ENV || 'development');
   console.info('🔍 [ASAAS] ASAAS_ENV:', process.env.ASAAS_ENV || 'auto');
   console.info('🔍 [ASAAS] Environment detectado:', ASAAS_ENVIRONMENT);
   console.info('🔍 [ASAAS] API URL:', ASAAS_API_URL);
+  console.info('🔍 [ASAAS] URL Source:', IS_PRODUCTION 
+    ? (process.env.ASAAS_URL ? 'ASAAS_URL (.env)' : 'hardcoded fallback')
+    : (process.env.ASAAS_URL_sandbox ? 'ASAAS_URL_sandbox (.env)' : 'hardcoded fallback')
+  );
   console.info('🔍 [ASAAS] ASAAS_API_KEY exists:', !!ASAAS_API_KEY);
   if (ASAAS_API_KEY) {
     const keyType = ASAAS_API_KEY.includes('_hmlg_') ? 'SANDBOX' : 'PRODUCTION';

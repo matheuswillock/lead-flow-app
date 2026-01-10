@@ -1,6 +1,6 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasFetch } from "@/lib/asaas";
+import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createClient } from "@supabase/supabase-js";
 
@@ -89,7 +89,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         }
 
         try {
-          const customer = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/customers`, {
+          const customer = await asaasFetch(asaasApi.customers, {
             method: 'POST',
             body: JSON.stringify(customerData),
           });
@@ -135,7 +135,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         },
       };
 
-      const subscription = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/subscriptions`, {
+      const subscription = await asaasFetch(asaasApi.subscriptions, {
         method: 'POST',
         body: JSON.stringify(subscriptionData),
       });
@@ -146,7 +146,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       console.info('🔍 [createSubscriptionCheckout] Buscando cobranças da assinatura...');
       
       const payments = await asaasFetch(
-        `${process.env.ASAAS_URL}/api/v3/subscriptions/${subscription.id}/payments`,
+        `${asaasApi.subscriptions}/${subscription.id}/payments`,
         { method: 'GET' }
       );
 
@@ -292,7 +292,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       // Buscar cobrança no Asaas para obter subscription
       const payment = await asaasFetch(
-        `${process.env.ASAAS_URL}/api/v3/payments/${checkoutId}`,
+        `${asaasApi.payments}/${checkoutId}`,
         { method: 'GET' }
       );
 

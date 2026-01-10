@@ -5,6 +5,7 @@ import {
   SubscriptionStatusResult,
 } from "./ISubscriptionStatusService";
 import { prisma } from "../../infra/data/prisma";
+import { asaasApi, asaasFetch } from '@/lib/asaas';
 
 export class SubscriptionStatusService implements ISubscriptionStatusService {
   
@@ -67,54 +68,23 @@ export class SubscriptionStatusService implements ISubscriptionStatusService {
     subscriptionId: string
   ): Promise<SubscriptionStatusResult> {
     try {
-      // 1. Buscar a assinatura no Asaas
-      const asaasUrl = process.env.ASAAS_URL?.replace(/\/$/, ''); // Remove trailing slash
-      const subscriptionResponse = await fetch(
-        `${asaasUrl}/api/v3/subscriptions/${subscriptionId}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            access_token: process.env.ASAAS_API_KEY || '',
-          },
-        }
+      // 1. Buscar a assinatura no Asaas usando lib
+      const subscription = await asaasFetch(
+        `${asaasApi.subscriptions}/${subscriptionId}`,
+        { method: 'GET' }
       );
 
-      console.info('🌐 [SubscriptionStatusService] URL consultada:', `${asaasUrl}/api/v3/subscriptions/${subscriptionId}`);
-
-      if (!subscriptionResponse.ok) {
-        console.error(
-          '❌ [SubscriptionStatusService] Erro ao consultar assinatura no Asaas:',
-          subscriptionResponse.status
-        );
-        throw new Error('Erro ao verificar assinatura no Asaas');
-      }
-
-      const subscription = await subscriptionResponse.json();
       console.info('📋 [SubscriptionStatusService] Assinatura encontrada:', {
         id: subscription.id,
         status: subscription.status,
       });
 
-      // 2. Buscar pagamentos da assinatura
-      const paymentsResponse = await fetch(
-        `${asaasUrl}/api/v3/payments?subscription=${subscriptionId}&limit=10`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            access_token: process.env.ASAAS_API_KEY || '',
-          },
-        }
+      // 2. Buscar pagamentos da assinatura usando lib
+      const paymentsData = await asaasFetch(
+        `${asaasApi.payments}?subscription=${subscriptionId}&limit=10`,
+        { method: 'GET' }
       );
 
-      if (!paymentsResponse.ok) {
-        console.error(
-          '❌ [SubscriptionStatusService] Erro ao consultar pagamentos no Asaas:',
-          paymentsResponse.status
-        );
-        throw new Error('Erro ao verificar pagamentos no Asaas');
-      }
-
-      const paymentsData = await paymentsResponse.json();
       const payments = paymentsData.data || [];
 
       console.info('💰 [SubscriptionStatusService] Pagamentos encontrados:', {
