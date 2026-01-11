@@ -183,6 +183,24 @@ export async function POST(request: NextRequest) {
                   paymentId: operatorResult.result.paymentId,
                   email: pendingOperator.email
                 });
+
+                // Deletar PendingOperator após confirmação bem-sucedida
+                console.info('🗑️ [Webhook Asaas] Deletando PendingOperator após criação bem-sucedida...');
+                try {
+                  await prisma.pendingOperator.delete({
+                    where: { id: pendingOperatorId }
+                  });
+                  console.info('✅ [Webhook Asaas] PendingOperator deletado com sucesso:', {
+                    id: pendingOperatorId,
+                    email: pendingOperator.email,
+                    operatorId: operatorResult.result.operatorId
+                  });
+                } catch (deleteError) {
+                  console.error('❌ [Webhook Asaas] Erro ao deletar PendingOperator:', deleteError);
+                  console.error('⚠️ [Webhook Asaas] ATENÇÃO: Operador criado mas PendingOperator não foi deletado!');
+                  console.error('🔧 [Webhook Asaas] PendingOperatorId:', pendingOperatorId);
+                  // Não bloqueia o fluxo pois o operador já foi criado
+                }
               } else {
                 console.error('❌ [Webhook Asaas] ❌ FALHA AO CRIAR OPERADOR:', {
                   errorMessages: operatorResult.errorMessages,

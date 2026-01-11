@@ -263,7 +263,44 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 );
             }
 
+            // Buscar informações do usuário antes de deletar
+            const userToDelete = await this.profileRepository.findById(managerId);
+            
+            if (!userToDelete) {
+                return new Output(
+                    false,
+                    [],
+                    ["Manager não encontrado"],
+                    null
+                );
+            }
+
+            // Deletar do banco de dados
             await this.managerUserRepository.deleteManager(managerId);
+            
+            // Deletar do Supabase Auth
+            if (userToDelete.supabaseId) {
+                try {
+                    const { createSupabaseAdmin } = await import('@/lib/supabase/server');
+                    const supabaseAdmin = createSupabaseAdmin();
+                    
+                    if (!supabaseAdmin) {
+                        console.error('❌ [deleteManager] Falha ao criar cliente Supabase Admin');
+                    } else {
+                        const { error } = await supabaseAdmin.auth.admin.deleteUser(userToDelete.supabaseId);
+                        
+                        if (error) {
+                            console.error(`❌ [deleteManager] Erro ao deletar do Supabase Auth:`, error);
+                        } else {
+                            console.info(`🔐 [deleteManager] Usuário deletado do Supabase Auth`);
+                        }
+                    }
+                } catch (supabaseError) {
+                    console.error(`❌ [deleteManager] Erro ao deletar do Supabase:`, supabaseError);
+                    // Não falhar a operação se a deleção do Supabase falhar
+                }
+            }
+            
             return new Output(
                 true,
                 ["Manager excluído com sucesso"],
@@ -330,8 +367,31 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
             
             console.info(`Transferidos ${leadsTransferred} leads do usuário ${operatorId} para o master ${finalMasterId}`);
 
-            // Deletar o usuário
+            // Deletar o usuário do banco
             await this.managerUserRepository.deleteOperator(operatorId);
+            
+            // Deletar do Supabase Auth
+            if (userToDelete.supabaseId) {
+                try {
+                    const { createSupabaseAdmin } = await import('@/lib/supabase/server');
+                    const supabaseAdmin = createSupabaseAdmin();
+                    
+                    if (!supabaseAdmin) {
+                        console.error('❌ [deleteOperator] Falha ao criar cliente Supabase Admin');
+                    } else {
+                        const { error } = await supabaseAdmin.auth.admin.deleteUser(userToDelete.supabaseId);
+                        
+                        if (error) {
+                            console.error(`❌ [deleteOperator] Erro ao deletar do Supabase Auth:`, error);
+                        } else {
+                            console.info(`🔐 [deleteOperator] Usuário deletado do Supabase Auth`);
+                        }
+                    }
+                } catch (supabaseError) {
+                    console.error(`❌ [deleteOperator] Erro ao deletar do Supabase:`, supabaseError);
+                    // Não falhar a operação se a deleção do Supabase falhar
+                }
+            }
             
             return new Output(
                 true,
@@ -341,6 +401,152 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
             );
         } catch (error) {
             console.error("Erro ao excluir operator:", error);
+            return new Output(
+                false,
+                [],
+                [error instanceof Error ? error.message : "Erro interno do servidor"],
+                null
+            );
+        }
+    }
+
+    /**
+     * Deleta operador com atualização de assinatura, envio de email e hard delete
+     */
+    async deleteOperatorWithSubscriptionUpdate(operatorId: string): Promise<Output> {
+        try {
+            if (!operatorId || !this.isValidUUID(operatorId)) {
+                return new Output(
+                    false,
+                    [],
+                    ["ID do operator inválido"],
+                    null
+                );
+            }
+
+            console.info(`🗑️ [deleteOperatorWithSubscriptionUpdate] Iniciando deleção do operador ${operatorId}`);
+
+            // 1. Buscar informações do usuário que será deletado
+            const userToDelete = await this.profileRepository.findById(operatorId);
+            
+            if (!userToDelete) {
+                return new Output(
+                    false,
+                    [],
+                    ["Usuário não encontrado"],
+                    null
+                );
+            }
+
+            console.info(`👤 [deleteOperatorWithSubscriptionUpdate] Usuário encontrado: ${userToDelete.fullName} (${userToDelete.email})`);
+
+            // 2. Buscar o usuário master
+            if (!userToDelete.managerId) {
+                return new Output(
+                    false,
+                    [],
+                    ["Operador não possui um manager associado"],
+                    null
+                );
+            }
+
+            const masterUser = await this.profileRepository.findById(userToDelete.managerId);
+            
+            if (!masterUser || !masterUser.isMaster) {
+                return new Output(
+                    false,
+                    [],
+                    ["Master user não encontrado"],
+                    null
+                );
+            }
+
+            console.info(`👑 [deleteOperatorWithSubscriptionUpdate] Master encontrado: ${masterUser.fullName}`);
+
+            // 3. Atualizar assinatura do master (remover R$ 19,90)
+            if (masterUser.asaasSubscriptionId) {
+                try {
+                    const { AsaasSubscriptionService } = await import('../../services/AsaasSubscription/AsaasSubscriptionService');
+                    
+                    // Buscar assinatura atual
+                    const currentSubscription = await AsaasSubscriptionService.getSubscription(masterUser.asaasSubscriptionId);
+                    
+                    const newValue = Math.max(59.90, currentSubscription.value - 19.90);
+                    
+                    console.info(`💰 [deleteOperatorWithSubscriptionUpdate] Atualizando assinatura de R$ ${currentSubscription.value} para R$ ${newValue}`);
+                    
+                    await AsaasSubscriptionService.updateSubscription(
+                        masterUser.asaasSubscriptionId,
+                        { value: newValue }
+                    );
+
+                    console.info(`✅ [deleteOperatorWithSubscriptionUpdate] Assinatura atualizada com sucesso`);
+                } catch (subscriptionError) {
+                    console.error(`❌ [deleteOperatorWithSubscriptionUpdate] Erro ao atualizar assinatura:`, subscriptionError);
+                    // Não falhar a operação se a atualização da assinatura falhar
+                }
+            } else {
+                console.warn(`⚠️ [deleteOperatorWithSubscriptionUpdate] Master não possui assinatura Asaas`);
+            }
+
+            // 4. Enviar email de cancelamento para o operador
+            try {
+                const { emailService } = await import('@/lib/services/EmailService');
+                
+                await emailService.sendOperatorAccessRemovedEmail({
+                    operatorName: userToDelete.fullName || userToDelete.email,
+                    operatorEmail: userToDelete.email,
+                    managerName: masterUser.fullName || masterUser.email,
+                });
+
+                console.info(`📧 [deleteOperatorWithSubscriptionUpdate] Email de cancelamento enviado para ${userToDelete.email}`);
+            } catch (emailError) {
+                console.error(`❌ [deleteOperatorWithSubscriptionUpdate] Erro ao enviar email:`, emailError);
+                // Não falhar a operação se o email falhar
+            }
+
+            // 5. Transferir leads do operador para o master
+            const leadsTransferred = await this.leadRepository.reassignLeadsToMaster(operatorId, masterUser.id);
+            console.info(`📊 [deleteOperatorWithSubscriptionUpdate] ${leadsTransferred} leads transferidos para o master`);
+
+            // 6. Hard delete do Profile no banco
+            await this.managerUserRepository.deleteOperatorHard(operatorId);
+            console.info(`🗃️ [deleteOperatorWithSubscriptionUpdate] Profile deletado do banco`);
+
+            // 7. Deletar do Supabase Auth
+            if (userToDelete.supabaseId) {
+                try {
+                    const { createSupabaseAdmin } = await import('@/lib/supabase/server');
+                    const supabase = createSupabaseAdmin();
+                    
+                    if (supabase) {
+                        const { error } = await supabase.auth.admin.deleteUser(userToDelete.supabaseId);
+                        
+                        if (error) {
+                            console.error(`❌ [deleteOperatorWithSubscriptionUpdate] Erro ao deletar do Supabase Auth:`, error);
+                        } else {
+                            console.info(`🔐 [deleteOperatorWithSubscriptionUpdate] Usuário deletado do Supabase Auth`);
+                        }
+                    }
+                } catch (supabaseError) {
+                    console.error(`❌ [deleteOperatorWithSubscriptionUpdate] Erro ao deletar do Supabase:`, supabaseError);
+                    // Não falhar a operação se a deleção do Supabase falhar
+                }
+            }
+
+            return new Output(
+                true,
+                [
+                    `Operador removido com sucesso.`,
+                    `Assinatura atualizada (R$ 19,90 removidos).`,
+                    `${leadsTransferred} lead(s) transferido(s) para o master.`,
+                    `Email de notificação enviado para ${userToDelete.email}.`
+                ],
+                [],
+                null
+            );
+        } catch (error) {
+            console.error("❌ [deleteOperatorWithSubscriptionUpdate] Erro geral:", error);
             return new Output(
                 false,
                 [],

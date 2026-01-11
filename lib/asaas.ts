@@ -17,58 +17,107 @@ const detectEnvironment = () => {
   return 'sandbox';
 };
 
-const ASAAS_ENVIRONMENT = detectEnvironment();
-const IS_PRODUCTION = ASAAS_ENVIRONMENT === 'production';
+// Funções getter para garantir que valores sejam lidos no momento da execução
+const getAsaasEnvironment = () => detectEnvironment();
+const getIsProduction = () => getAsaasEnvironment() === 'production';
 
-// URLs da API Asaas
-const ASAAS_API_URL = IS_PRODUCTION
-  ? "https://www.asaas.com/api/v3"
-  : "https://sandbox.asaas.com/api/v3";
-
-const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
-
-// Validação: API Key de produção não deve conter '_hmlg_'
-if (IS_PRODUCTION && ASAAS_API_KEY?.includes('_hmlg_')) {
-  console.warn('⚠️ [ASAAS] ATENÇÃO: Usando chave de SANDBOX em ambiente de PRODUÇÃO!');
-  console.warn('⚠️ [ASAAS] Configure uma chave de produção válida em ASAAS_API_KEY');
-}
-
-// Validação: API Key de sandbox deve conter '_hmlg_'
-if (!IS_PRODUCTION && ASAAS_API_KEY && !ASAAS_API_KEY.includes('_hmlg_')) {
-  console.warn('⚠️ [ASAAS] ATENÇÃO: Usando chave de PRODUÇÃO em ambiente de DESENVOLVIMENTO!');
-  console.warn('⚠️ [ASAAS] Para testes, use uma chave de sandbox (contém _hmlg_)');
-}
-
-// Logs de configuração do ASAAS
-console.info('🔍 [ASAAS] Configuração carregada');
-console.info('🔍 [ASAAS] NODE_ENV:', process.env.NODE_ENV || 'development');
-console.info('🔍 [ASAAS] ASAAS_ENV:', process.env.ASAAS_ENV || 'auto');
-console.info('🔍 [ASAAS] Environment detectado:', ASAAS_ENVIRONMENT);
-console.info('🔍 [ASAAS] API URL:', ASAAS_API_URL);
-console.info('🔍 [ASAAS] ASAAS_API_KEY exists:', !!ASAAS_API_KEY);
-if (ASAAS_API_KEY) {
-  const keyType = ASAAS_API_KEY.includes('_hmlg_') ? 'SANDBOX' : 'PRODUCTION';
-  console.info('🔍 [ASAAS] API Key type:', keyType);
-  console.info('🔍 [ASAAS] API Key preview:', `${ASAAS_API_KEY.slice(0, 10)}...${ASAAS_API_KEY.slice(-8)}`);
-}
-
-// Headers padrão para requisições ao Asaas
-export const asaasHeaders = {
-  'Content-Type': 'application/json',
-  'access_token': `$${ASAAS_API_KEY}` || '',
+// URL da API Asaas (getter para garantir leitura dinâmica)
+// Prioridade: ASAAS_URL/ASAAS_URL_sandbox do .env > URLs padrão
+const getAsaasApiUrl = () => {
+  const isProduction = getIsProduction();
+  
+  if (isProduction) {
+    // Produção: usar ASAAS_URL do .env ou fallback para URL padrão
+    const envUrl = process.env.ASAAS_URL;
+    const baseUrl = envUrl || "https://www.asaas.com";
+    return `${baseUrl}/api/v3`;
+  } else {
+    // Sandbox: usar ASAAS_URL_sandbox do .env ou fallback para URL padrão
+    const envUrl = process.env.ASAAS_URL_sandbox;
+    const baseUrl = envUrl || "https://sandbox.asaas.com";
+    return `${baseUrl}/api/v3`;
+  }
 };
 
-// Endpoints da API Asaas
+const getAsaasApiKey = () => process.env.ASAAS_API_KEY;
+
+// Validação e logs executados apenas uma vez (usar getters para valores dinâmicos)
+const logAsaasConfig = () => {
+  const ASAAS_API_KEY = getAsaasApiKey();
+  const ASAAS_ENVIRONMENT = getAsaasEnvironment();
+  const IS_PRODUCTION = getIsProduction();
+  const ASAAS_API_URL = getAsaasApiUrl();
+  
+  // Validação: API Key de produção não deve conter '_hmlg_'
+  if (IS_PRODUCTION && ASAAS_API_KEY?.includes('_hmlg_')) {
+    console.warn('⚠️ [ASAAS] ATENÇÃO: Usando chave de SANDBOX em ambiente de PRODUÇÃO!');
+    console.warn('⚠️ [ASAAS] Configure uma chave de produção válida em ASAAS_API_KEY');
+  }
+
+  // Validação: API Key de sandbox deve conter '_hmlg_'
+  if (!IS_PRODUCTION && ASAAS_API_KEY && !ASAAS_API_KEY.includes('_hmlg_')) {
+    console.warn('⚠️ [ASAAS] ATENÇÃO: Usando chave de PRODUÇÃO em ambiente de DESENVOLVIMENTO!');
+    console.warn('⚠️ [ASAAS] Para testes, use uma chave de sandbox (contém _hmlg_)');
+  }
+
+  // Validação: Verificar se URLs do .env estão corretas
+  if (IS_PRODUCTION) {
+    const envUrl = process.env.ASAAS_URL;
+    if (envUrl && !envUrl.includes('www.asaas.com')) {
+      console.warn('⚠️ [ASAAS] ATENÇÃO: ASAAS_URL não aponta para produção (www.asaas.com)!');
+      console.warn('⚠️ [ASAAS] URL atual:', envUrl);
+    }
+  } else {
+    const envUrl = process.env.ASAAS_URL_sandbox;
+    if (envUrl && !envUrl.includes('sandbox.asaas.com')) {
+      console.warn('⚠️ [ASAAS] ATENÇÃO: ASAAS_URL_sandbox não aponta para sandbox!');
+      console.warn('⚠️ [ASAAS] URL atual:', envUrl);
+    }
+  }
+
+  // Logs de configuração do ASAAS
+  console.info('🔍 [ASAAS] Configuração carregada');
+  console.info('🔍 [ASAAS] NODE_ENV:', process.env.NODE_ENV || 'development');
+  console.info('🔍 [ASAAS] ASAAS_ENV:', process.env.ASAAS_ENV || 'auto');
+  console.info('🔍 [ASAAS] Environment detectado:', ASAAS_ENVIRONMENT);
+  console.info('🔍 [ASAAS] API URL:', ASAAS_API_URL);
+  console.info('🔍 [ASAAS] URL Source:', IS_PRODUCTION 
+    ? (process.env.ASAAS_URL ? 'ASAAS_URL (.env)' : 'hardcoded fallback')
+    : (process.env.ASAAS_URL_sandbox ? 'ASAAS_URL_sandbox (.env)' : 'hardcoded fallback')
+  );
+  console.info('🔍 [ASAAS] ASAAS_API_KEY exists:', !!ASAAS_API_KEY);
+  if (ASAAS_API_KEY) {
+    const keyType = ASAAS_API_KEY.includes('_hmlg_') ? 'SANDBOX' : 'PRODUCTION';
+    console.info('🔍 [ASAAS] API Key type:', keyType);
+    console.info('🔍 [ASAAS] API Key preview:', `${ASAAS_API_KEY.slice(0, 10)}...${ASAAS_API_KEY.slice(-8)}`);
+  }
+};
+
+// Executar logs apenas uma vez quando o módulo é importado
+logAsaasConfig();
+
+// Headers padrão para requisições ao Asaas (usar getter para API key dinâmica)
+export const asaasHeaders = {
+  'Content-Type': 'application/json',
+  get 'access_token'() {
+    const key = getAsaasApiKey();
+    return `$${key}` || '';
+  }
+};
+
+// Endpoints da API Asaas (usar getters para URLs dinâmicas)
 export const asaasApi = {
-  customers: `${ASAAS_API_URL}/customers`,
-  subscriptions: `${ASAAS_API_URL}/subscriptions`,
-  payments: `${ASAAS_API_URL}/payments`,
-  webhooks: `${ASAAS_API_URL}/notifications`,
-  pixQrCode: (paymentId: string) => `${ASAAS_API_URL}/payments/${paymentId}/pixQrCode`,
+  get customers() { return `${getAsaasApiUrl()}/customers`; },
+  get subscriptions() { return `${getAsaasApiUrl()}/subscriptions`; },
+  get payments() { return `${getAsaasApiUrl()}/payments`; },
+  get webhooks() { return `${getAsaasApiUrl()}/notifications`; },
+  pixQrCode: (paymentId: string) => `${getAsaasApiUrl()}/payments/${paymentId}/pixQrCode`,
 };
 
 // Helper para fazer requisições ao Asaas com tratamento de erros
 export async function asaasFetch(endpoint: string, options?: RequestInit) {
+  const ASAAS_API_KEY = getAsaasApiKey();
+  
   if (!ASAAS_API_KEY) {
     throw new Error('ASAAS_API_KEY não configurada');
   }
@@ -76,6 +125,7 @@ export async function asaasFetch(endpoint: string, options?: RequestInit) {
   // Log detalhado da requisição
   console.info('🔑 [ASAAS] Fazendo requisição:');
   console.info('🔑 [ASAAS] Endpoint:', endpoint);
+  console.info('🔑 [ASAAS] API URL base:', getAsaasApiUrl());
   console.info('🔑 [ASAAS] access_token length:', asaasHeaders.access_token.length);
   // Do not print full secrets; show only length for diagnostics
 
@@ -122,9 +172,12 @@ export async function asaasFetch(endpoint: string, options?: RequestInit) {
 }
 
 // Função legada mantida para compatibilidade
-const BASE = ASAAS_API_URL;
+const getBase = () => getAsaasApiUrl();
 
 export async function asaas(path: string, init?: RequestInit) {
+  const BASE = getBase();
+  const ASAAS_API_KEY = getAsaasApiKey();
+  
   const headers = new Headers(init?.headers)
   // headers.set("Authorization", `Bearer ${ASAAS_API_KEY}`)
   headers.set("Content-Type", "application/json")

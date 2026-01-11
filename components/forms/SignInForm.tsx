@@ -100,7 +100,15 @@ export function SignInForm({
               name="password"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>Senha</FormLabel>
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Senha</FormLabel>
+                    <Link 
+                      href="/forgot-password" 
+                      className="text-sm text-primary hover:underline underline-offset-4"
+                    >
+                      Esqueci minha senha
+                    </Link>
+                  </div>
                   <FormControl>
                     <div className="relative">
                       <Input 

@@ -46,6 +46,12 @@ export interface ResetPasswordEmailData {
   resetUrl: string;
 }
 
+export interface OperatorAccessRemovedEmailData {
+  operatorName: string;
+  operatorEmail: string;
+  managerName: string;
+}
+
 export class EmailService {
   private resend?: ReturnType<typeof assertResend>;
 
@@ -74,7 +80,7 @@ export class EmailService {
       const resendOwnerEmail = process.env.RESEND_OWNER_EMAIL || 'matheuswillock@gmail.com';
       
       const emailData: any = {
-        from: options.from || "Corretor Studio <onboarding@resend.dev>",
+        from: options.from || "Corretor Studio <no-reply@corretorstudio.com>",
         to: isTestMode ? [resendOwnerEmail] : options.to,
         subject: isTestMode 
           ? `[TESTE - Para: ${options.to.join(', ')}] ${options.subject}`
@@ -616,6 +622,95 @@ export class EmailService {
       html,
     });
   }
+
+  // Email de notificação de remoção de acesso
+  async sendOperatorAccessRemovedEmail(data: OperatorAccessRemovedEmailData) {
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                
+                <!-- Header -->
+                <tr>
+                  <td style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); padding: 40px 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
+                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Notificação de Acesso</p>
+                  </td>
+                </tr>
+                
+                <!-- Conteúdo -->
+                <tr>
+                  <td style="padding: 48px 32px;">
+                    <div style="text-align: center; margin-bottom: 32px;">
+                      <div style="display: inline-block; width: 72px; height: 72px; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: 50%; border: 2px solid #dc2626; text-align: center; line-height: 72px; margin-bottom: 16px;">
+                        <span style="font-size: 32px;">⚠️</span>
+                      </div>
+                    </div>
+
+                    <h2 style="margin: 0 0 24px 0; color: #171717; font-size: 24px; font-weight: 600; text-align: center;">Acesso Removido</h2>
+                    
+                    <p style="margin: 0 0 16px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
+                      Olá <strong>${data.operatorName}</strong>,
+                    </p>
+
+                    <p style="margin: 0 0 24px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
+                      Informamos que seu acesso à plataforma <strong>Corretor Studio</strong> foi removido por <strong>${data.managerName}</strong>.
+                    </p>
+
+                    <div style="background-color: #fef2f2; border-left: 4px solid #dc2626; padding: 16px; border-radius: 8px; margin: 24px 0;">
+                      <p style="margin: 0; color: #991b1b; font-size: 15px; line-height: 1.6;">
+                        <strong>O que isso significa?</strong><br>
+                        • Seu acesso à plataforma foi desativado<br>
+                        • Seus leads foram transferidos para o gestor<br>
+                        • Você não poderá mais fazer login no sistema
+                      </p>
+                    </div>
+
+                    <p style="margin: 24px 0 0 0; color: #737373; font-size: 14px; line-height: 1.6; text-align: center;">
+                      Se você tiver alguma dúvida sobre esta alteração, entre em contato com <strong>${data.managerName}</strong>.
+                    </p>
+
+                    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 32px 0;" />
+
+                    <p style="margin: 0; color: #737373; font-size: 14px; line-height: 1.6; text-align: center;">
+                      Agradecemos por ter utilizado o Corretor Studio.
+                    </p>
+                  </td>
+                </tr>
+                
+                <!-- Footer -->
+                <tr>
+                  <td style="background-color: #f9fafb; padding: 24px 32px; text-align: center; border-top: 1px solid #e5e5e5;">
+                    <p style="margin: 0; color: #737373; font-size: 12px;">
+                      Este é um e-mail automático do Corretor Studio
+                    </p>
+                    <p style="margin: 8px 0 0 0; color: #a3a3a3; font-size: 11px;">
+                      © 2026 Corretor Studio. Todos os direitos reservados.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    return this.sendEmail({
+      to: [data.operatorEmail],
+      subject: "Acesso Removido - Corretor Studio",
+      html,
+    });
+  }
 }
 
 // Função para criar instância quando necessário
@@ -633,3 +728,6 @@ export const getEmailService = (() => {
     return instance;
   };
 })();
+
+// Instância singleton do EmailService (mesma que getEmailService)
+export const emailService = getEmailService();

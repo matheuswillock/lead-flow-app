@@ -218,8 +218,8 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
         paymentMethod: user.pendingPayment.paymentMethod,
         operatorCreated: user.pendingPayment.operatorCreated,
         operatorId: user.id,
-        createdAt: user.createdAt.toISOString(),
-        updatedAt: user.updatedAt.toISOString(),
+        createdAt: typeof user.createdAt === 'string' ? user.createdAt : user.createdAt.toISOString(),
+        updatedAt: typeof user.updatedAt === 'string' ? user.updatedAt : user.updatedAt.toISOString(),
       } : undefined
     };
   });

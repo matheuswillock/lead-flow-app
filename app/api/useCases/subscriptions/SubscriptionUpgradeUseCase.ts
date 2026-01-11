@@ -1,6 +1,6 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasFetch } from "@/lib/asaas";
+import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { getEmailService } from "@/lib/services/EmailService";
@@ -282,6 +282,115 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         asaasSubscriptionId: pendingOperator.subscriptionId || null
       });
 
+      // 5. CRÍTICO: Atualizar valor da assinatura do master no Asaas ANTES de criar operador
+      console.info('💰 [createOperatorFromPending] Atualizando valor da assinatura do master...');
+      console.info('👤 [createOperatorFromPending] Manager ID tentando atualizar:', pendingOperator.managerId);
+      
+      try {
+        const manager = await prisma.profile.findUnique({
+          where: { id: pendingOperator.managerId }
+        });
+
+        if (!manager) {
+          console.error('❌ [createOperatorFromPending] Manager não encontrado:', pendingOperator.managerId);
+          return new Output(
+            false, 
+            [], 
+            ['Erro: Usuário master não encontrado para atualizar assinatura'], 
+            null
+          );
+        }
+
+        console.info('👤 [createOperatorFromPending] Manager encontrado:', {
+          id: manager.id,
+          supabaseId: manager.supabaseId,
+          fullName: manager.fullName,
+          asaasSubscriptionId: manager.asaasSubscriptionId
+        });
+
+        if (!manager.asaasSubscriptionId) {
+          console.error('❌ [createOperatorFromPending] Manager não possui assinatura Asaas:', {
+            managerId: manager.id,
+            managerName: manager.fullName,
+            operadorTentandoAdicionar: pendingOperator.name
+          });
+          return new Output(
+            false,
+            [],
+            ['Erro: Assinatura do usuário master não encontrada. Não é possível adicionar operador.'],
+            null
+          );
+        }
+
+        // Buscar assinatura atual no Asaas
+        console.info('🔍 [createOperatorFromPending] Buscando assinatura atual no Asaas...');
+        const currentSubscription = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        
+        if (!currentSubscription) {
+          console.error('❌ [createOperatorFromPending] Assinatura não encontrada no Asaas:', {
+            managerId: manager.id,
+            asaasSubscriptionId: manager.asaasSubscriptionId,
+            operadorTentandoAdicionar: pendingOperator.name
+          });
+          return new Output(
+            false,
+            [],
+            ['Erro: Não foi possível localizar a assinatura no gateway de pagamento'],
+            null
+          );
+        }
+
+        // Calcular novo valor (atual + R$ 19,90 do novo operador)
+        const newValue = currentSubscription.value + 19.90;
+        
+        console.info('💵 [createOperatorFromPending] Detalhes da atualização:', {
+          managerId: manager.id,
+          managerName: manager.fullName,
+          supabaseId: manager.supabaseId,
+          asaasSubscriptionId: manager.asaasSubscriptionId,
+          valorAnterior: currentSubscription.value,
+          valorNovo: newValue,
+          operadorAdicionado: pendingOperator.name,
+          tipoPagamento: currentSubscription.billingType
+        });
+
+        // Atualizar assinatura (comportamento diferente por tipo de pagamento)
+        if (currentSubscription.billingType === 'CREDIT_CARD') {
+          console.info('💳 [createOperatorFromPending] Atualizando assinatura com cobrança automática (Cartão)...');
+          await AsaasSubscriptionService.updateSubscription(
+            manager.asaasSubscriptionId,
+            { value: newValue }
+          );
+          console.info('✅ [createOperatorFromPending] Assinatura atualizada com cobrança automática no cartão');
+        } else {
+          console.info('📄 [createOperatorFromPending] Atualizando assinatura para próxima cobrança (PIX/Boleto)...');
+          await AsaasSubscriptionService.updateSubscription(
+            manager.asaasSubscriptionId,
+            { value: newValue }
+          );
+          console.info('✅ [createOperatorFromPending] Assinatura atualizada - novo valor será cobrado na próxima fatura');
+        }
+
+        console.info('🎉 [createOperatorFromPending] Assinatura atualizada com sucesso! Prosseguindo com criação do operador...');
+
+      } catch (error) {
+        console.error('❌ [createOperatorFromPending] ERRO CRÍTICO ao atualizar assinatura:', error);
+        console.error('👤 [createOperatorFromPending] Manager que tentou atualizar:', {
+          managerId: pendingOperator.managerId,
+          operadorTentandoAdicionar: pendingOperator.name,
+          operadorEmail: pendingOperator.email
+        });
+        console.error('Stack:', error instanceof Error ? error.stack : 'N/A');
+        
+        return new Output(
+          false,
+          [],
+          ['Erro ao atualizar assinatura. O operador não pode ser criado sem atualizar a cobrança.'],
+          null
+        );
+      }
+
+      // 6. Criar operador no banco (só chega aqui se assinatura foi atualizada)
       let operator;
       try {
         operator = await prisma.profile.create({
@@ -310,7 +419,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         return new Output(false, [], ['Erro ao criar perfil do operador'], null);
       }
 
-      // 5. Atualizar status do operador pendente (CRÍTICO - deve ser bem-sucedido)
+      // 7. Atualizar status do operador pendente (CRÍTICO - deve ser bem-sucedido)
       console.info('🔄 [createOperatorFromPending] Atualizando PendingOperator...');
       try {
         const updated = await prisma.pendingOperator.update({
@@ -339,7 +448,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         // Não retorna erro pois o operador já foi criado, mas loga claramente o problema
       }
 
-      // 6. Incrementar contador de operadores no manager
+      // 8. Incrementar contador de operadores no manager
       console.info('📊 [createOperatorFromPending] Incrementando contador do manager...');
       try {
         await prisma.profile.update({
@@ -355,6 +464,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         console.error('❌ [createOperatorFromPending] Erro ao incrementar contador:', error);
         // Não retorna erro pois o operador já foi criado
       }
+
+      // Nota: A exclusão do PendingOperator é feita pelo webhook do Asaas após confirmação
 
       const result: SubscriptionUpgradeResult = {
         paymentId,
@@ -473,11 +584,14 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // Criar checkout com redirecionamento automático
+      const nextDueDate = new Date();
+      nextDueDate.setMonth(nextDueDate.getMonth() + 1); // 1 mês de prazo
+      
       const checkoutPayload = {
         customer: data.customer,
         billingType: 'UNDEFINED', // Permite escolher no checkout
         value: data.value,
-        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 dias
+        dueDate: nextDueDate.toISOString().split('T')[0],
         description: data.description,
         externalReference: `pending-operator-${data.pendingOperatorId}`,
         callback: {
@@ -485,8 +599,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         },
       };
 
-      // Criar payment link no Asaas
-      const payment = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/payments`, {
+      // Criar payment link no Asaas usando a lib
+      const payment = await asaasFetch(asaasApi.payments, {
         method: 'POST',
         body: JSON.stringify(checkoutPayload),
       });
@@ -550,7 +664,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // Conforme doc Asaas: POST /v3/subscriptions
-      const subscription = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/subscriptions`, {
+      const subscription = await asaasFetch(asaasApi.subscriptions, {
         method: 'POST',
         body: JSON.stringify(data),
       });
@@ -616,7 +730,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
   private async checkAsaasPaymentStatus(paymentId: string): Promise<any> {
     try {
-      const payment = await asaasFetch(`${process.env.ASAAS_URL}/api/v3/payments/${paymentId}`, {
+      const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
         method: 'GET',
       });
 
@@ -1004,9 +1118,9 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       // 4. Preparar nextDueDate (manter data antiga ou usar nova)
       const nextDueDate = manager.subscriptionNextDueDate || new Date();
       
-      // Se a data já passou, adicionar 30 dias
+      // Se a data já passou, adicionar 1 mês
       if (nextDueDate < new Date()) {
-        nextDueDate.setDate(nextDueDate.getDate() + 30);
+        nextDueDate.setMonth(nextDueDate.getMonth() + 1);
       }
 
       const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
@@ -1069,14 +1183,18 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       if (data.paymentMethod === 'PIX') {
         try {
           // Buscar primeira cobrança da assinatura
-          const payments = await asaasFetch(`/subscriptions/${newSubscription.data.id}/payments`);
+          const payments = await asaasFetch(`${asaasApi.subscriptions}/${newSubscription.data.id}/payments`, {
+            method: 'GET',
+          });
           if (payments.data && payments.data.length > 0) {
             const firstPayment = payments.data[0];
             resultData.paymentId = firstPayment.id;
             
             // Se tiver QR code do PIX
             if (firstPayment.invoiceUrl) {
-              const pixData = await asaasFetch(`/payments/${firstPayment.id}/pixQrCode`);
+              const pixData = await asaasFetch(asaasApi.pixQrCode(firstPayment.id), {
+                method: 'GET',
+              });
               resultData.pixQrCode = pixData.encodedImage;
               resultData.pixCopyPaste = pixData.payload;
             }
