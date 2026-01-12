@@ -478,3 +478,6 @@ export class LeadRepository implements ILeadRepository {
     return resultAssigned.count + resultCreated.count;
   }
 }
+
+// Singleton export
+export const leadRepository = new LeadRepository();
