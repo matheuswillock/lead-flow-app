@@ -3,8 +3,9 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
+import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { getEmailService } from "@/lib/services/EmailService";
-import { getFullUrl, getAppUrl } from '@/lib/utils/app-url';
+import { getFullUrl } from '@/lib/utils/app-url';
 import type { 
   ISubscriptionUpgradeUseCase, 
   AddOperatorPaymentData,
@@ -63,9 +64,88 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       console.info('💾 [createOperatorPayment] PendingOperator criado:', pendingOperator.id);
 
-      // 4. Gerar link de checkout hospedado do Asaas
+      // 4. Validar ou criar customer no Asaas
+      let asaasCustomerId = manager.asaasCustomerId;
+      
+      if (!asaasCustomerId) {
+        console.error('❌ [createOperatorPayment] Manager sem asaasCustomerId:', {
+          managerId: manager.id,
+          managerEmail: manager.email
+        });
+        
+        // Deletar pendingOperator
+        await prisma.pendingOperator.delete({
+          where: { id: pendingOperator.id }
+        });
+        
+        return new Output(
+          false, 
+          [], 
+          ['Erro: Sua conta não possui customer Asaas. Por favor, entre em contato com o suporte.'], 
+          null
+        );
+      }
+
+      // Verificar se o customer existe no Asaas atual (pode ter mudado de sandbox para produção)
+      console.info('🔍 [createOperatorPayment] Verificando customer no Asaas:', asaasCustomerId);
+      try {
+        await AsaasCustomerService.getCustomer(asaasCustomerId);
+        console.info('✅ [createOperatorPayment] Customer válido no ambiente atual');
+      } catch (error: any) {
+        console.warn('⚠️ [createOperatorPayment] Customer não encontrado no ambiente atual:', {
+          asaasCustomerId,
+          error: error.message
+        });
+        
+        // Customer não existe neste ambiente - criar novo
+        console.info('🔄 [createOperatorPayment] Criando novo customer no ambiente atual...');
+        
+        // Construir dados do customer com campos opcionais
+        const customerData: any = {
+          name: manager.fullName || manager.email,
+          email: manager.email,
+          cpfCnpj: manager.cpfCnpj || '00000000000', // CPF genérico se não tiver
+          externalReference: manager.id,
+        };
+        
+        if (manager.phone) customerData.phone = manager.phone;
+        if (manager.postalCode) customerData.postalCode = manager.postalCode;
+        if (manager.address) customerData.address = manager.address;
+        if (manager.addressNumber) customerData.addressNumber = manager.addressNumber;
+        if (manager.complement) customerData.complement = manager.complement;
+        
+        const newCustomer = await AsaasCustomerService.createCustomer(customerData);
+        
+        if (!newCustomer || !newCustomer.success || !newCustomer.customerId) {
+          console.error('❌ [createOperatorPayment] Falha ao criar customer');
+          await prisma.pendingOperator.delete({
+            where: { id: pendingOperator.id }
+          });
+          return new Output(false, [], ['Erro ao criar customer no gateway'], null);
+        }
+        
+        // Atualizar profile com novo customerId
+        await prisma.profile.update({
+          where: { id: manager.id },
+          data: { asaasCustomerId: newCustomer.customerId }
+        });
+        
+        asaasCustomerId = newCustomer.customerId;
+        console.info('✅ [createOperatorPayment] Novo customer criado:', asaasCustomerId);
+      }
+
+      // Garantir que temos um customerId válido neste ponto
+      if (!asaasCustomerId) {
+        console.error('❌ [createOperatorPayment] asaasCustomerId é null após validações');
+        await prisma.pendingOperator.delete({
+          where: { id: pendingOperator.id }
+        });
+        return new Output(false, [], ['Erro: Customer ID inválido'], null);
+      }
+
+      // 5. Gerar link de checkout hospedado do Asaas
       const checkoutLink = await this.createAsaasCheckoutLink({
-        customer: manager.asaasCustomerId!,
+        customer: asaasCustomerId,
         value: 19.90,
         description: `Licença adicional de operador - ${data.operatorData.name} (${data.operatorData.email}) - Acesso completo à plataforma Corretor Studio com gestão de leads, pipeline de vendas e métricas em tempo real`,
         pendingOperatorId: pendingOperator.id,
@@ -572,16 +652,6 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         customer: data.customer,
         value: data.value,
         description: data.description,
-      });
-
-      // Gerar URLs de callback usando função centralizada
-      const appUrl = getAppUrl({ removeTrailingSlash: true });
-      
-      // Simplificar parâmetros - redirecionar direto para manager-users
-      // O status do operador será exibido na tabela com badges
-      const successParams = new URLSearchParams({
-        payment: 'success',
-        operatorId: data.pendingOperatorId,
       });
 
       // Criar checkout HOSPEDADO (permite escolher forma de pagamento)
