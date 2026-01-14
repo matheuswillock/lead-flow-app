@@ -1,12 +1,12 @@
 {
   "info": {
     "name": "Permanent Subscription API",
-    "description": "API para gerenciar assinaturas permanentes (vitalícias)",
+    "description": "API para gerenciar assinaturas permanentes (vitalícias). REQUER AUTENTICAÇÃO via Supabase.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
-      "name": "Ativar Assinatura Permanente",
+      "name": "1. Login (Obter Cookies de Autenticação)",
       "request": {
         "method": "POST",
         "header": [
@@ -17,21 +17,21 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"profileId\": \"{{PROFILE_ID}}\",\n  \"enable\": true\n}"
+          "raw": "{\n  \"email\": \"{{USER_EMAIL}}\",\n  \"password\": \"{{USER_PASSWORD}}\"\n}"
         },
         "url": {
-          "raw": "{{BASE_URL}}/api/v1/profiles/permanent-subscription",
+          "raw": "{{BASE_URL}}/api/auth/login",
           "host": ["{{BASE_URL}}"],
-          "path": ["api", "v1", "profiles", "permanent-subscription"]
+          "path": ["api", "auth", "login"]
         },
-        "description": "Torna um usuário vitalício. Ele nunca mais passará por validação de assinatura no Asaas."
+        "description": "Faça login primeiro para obter os cookies de autenticação do Supabase. Os cookies serão salvos automaticamente pelo Postman."
       },
       "response": []
     },
     {
-      "name": "Desativar Assinatura Permanente",
+      "name": "2. Ativar Assinatura Permanente (Bruno)",
       "request": {
-        "method": "POST",
+        "method": "PUT",
         "header": [
           {
             "key": "Content-Type",
@@ -40,14 +40,51 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"profileId\": \"{{PROFILE_ID}}\",\n  \"enable\": false\n}"
+          "raw": "{\n  \"hasPermanentSubscription\": true\n}"
         },
         "url": {
-          "raw": "{{BASE_URL}}/api/v1/profiles/permanent-subscription",
+          "raw": "{{BASE_URL}}/api/v1/profiles/f295d256-0868-4bbe-9b9c-fb6cec64ffa0/permanent-subscription",
           "host": ["{{BASE_URL}}"],
-          "path": ["api", "v1", "profiles", "permanent-subscription"]
+          "path": ["api", "v1", "profiles", "f295d256-0868-4bbe-9b9c-fb6cec64ffa0", "permanent-subscription"]
         },
-        "description": "Remove a assinatura permanente. O usuário voltará a passar por validação de assinatura no Asaas."
+        "description": "Ativa assinatura permanente para Bruno Marcelino. Requer autenticação de usuário master.\n\nsupabaseId: f295d256-0868-4bbe-9b9c-fb6cec64ffa0\nemail: bruno@onsidemarketing.com.br"
+      },
+      "response": []
+    },
+    {
+      "name": "3. Desativar Assinatura Permanente",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"hasPermanentSubscription\": false\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/v1/profiles/{{SUPABASE_ID}}/permanent-subscription",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "v1", "profiles", "{{SUPABASE_ID}}", "permanent-subscription"]
+        },
+        "description": "Remove a assinatura permanente de um usuário. Ele voltará a passar por validação no Asaas.\n\nSubstitua {{SUPABASE_ID}} pelo supabaseId do usuário."
+      },
+      "response": []
+    },
+    {
+      "name": "4. Verificar Status do Usuário",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{BASE_URL}}/api/v1/profiles/{{SUPABASE_ID}}",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "v1", "profiles", "{{SUPABASE_ID}}"]
+        },
+        "description": "Busca informações do perfil incluindo hasPermanentSubscription.\n\nPara Bruno use: f295d256-0868-4bbe-9b9c-fb6cec64ffa0"
       },
       "response": []
     }
@@ -55,13 +92,26 @@
   "variable": [
     {
       "key": "BASE_URL",
-      "value": "https://www.corretorstudio.com.br",
+      "value": "http://localhost:3000",
       "type": "string"
     },
     {
-      "key": "PROFILE_ID",
-      "value": "",
-      "type": "string"
+      "key": "USER_EMAIL",
+      "value": "bruno@onsidemarketing.com.br",
+      "type": "string",
+      "description": "Email de um usuário MASTER para autenticação"
+    },
+    {
+      "key": "USER_PASSWORD",
+      "value": "Onside@2025",
+      "type": "string",
+      "description": "Senha do usuário master"
+    },
+    {
+      "key": "SUPABASE_ID",
+      "value": "f295d256-0868-4bbe-9b9c-fb6cec64ffa0",
+      "type": "string",
+      "description": "SupabaseId do usuário (Bruno por padrão)"
     }
   ]
 }
