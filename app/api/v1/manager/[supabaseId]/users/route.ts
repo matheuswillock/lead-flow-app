@@ -13,6 +13,7 @@ import { getEmailService } from "@/lib/services/EmailService";
 import { LeadRepository } from "../../../../infra/data/repositories/lead/LeadRepository";
 import { profileRepository } from "../../../../infra/data/repositories/profile/ProfileRepository";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
+import { getFullUrl } from "@/lib/utils/app-url";
 
 const managerUserRepository = new ManagerUserRepository();
 const leadRepository = new LeadRepository();
@@ -97,8 +98,7 @@ export async function POST(
             throw new Error('Falha ao criar cliente Supabase Admin');
           }
 
-          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-          const redirectTo = `${appUrl}/set-password`;
+          const redirectTo = getFullUrl('/set-password');
 
           const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
             type: 'invite',
@@ -194,8 +194,7 @@ export async function POST(
             throw new Error('Falha ao criar cliente Supabase Admin');
           }
 
-          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-          const redirectTo = `${appUrl}/set-password`;
+          const redirectTo = getFullUrl('/set-password');
 
           const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
             type: 'invite',

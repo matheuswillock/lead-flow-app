@@ -88,10 +88,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Configurar redirect URL
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!appUrl) {
+      console.error('❌ [Forgot Password] NEXT_PUBLIC_APP_URL não está configurada');
+      return NextResponse.json(
+        new Output(
+          false, 
+          [], 
+          ['Erro de configuração do servidor'], 
+          null
+        ),
+        { status: 500 }
+      );
+    }
     const redirectTo = `${appUrl}/set-password`;
 
     console.info('🔄 [Forgot Password] Gerando link de recuperação via Supabase Admin...');
+    console.info('🔗 [Forgot Password] Redirect URL:', redirectTo);
 
     // Gerar link de recuperação de senha via Supabase Admin
     const { data, error } = await supabase.auth.admin.generateLink({

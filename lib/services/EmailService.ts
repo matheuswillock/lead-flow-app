@@ -1,4 +1,5 @@
 import { assertResend } from "@/lib/email";
+import { getAppUrl, getFullUrl } from '@/lib/utils/app-url';
 
 export interface EmailOptions {
   to: string[];
@@ -225,7 +226,7 @@ export class EmailService {
 
     const price = fmtCurrency(data.value);
     const nextDue = data.nextDueDate ? new Date(data.nextDueDate).toLocaleDateString('pt-BR') : undefined;
-    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const appUrl = getAppUrl({ removeTrailingSlash: true });
     const manageUrl = data.manageUrl || `${appUrl}/sign-in`;
 
     const html = `
@@ -352,7 +353,7 @@ export class EmailService {
         </div>
         
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard" 
+          <a href="${getFullUrl('/dashboard')}" 
              style="background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
             Ver Lead no Dashboard
           </a>

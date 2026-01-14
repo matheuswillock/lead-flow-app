@@ -3,6 +3,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createClient } from "@supabase/supabase-js";
+import { getFullUrl } from "@/lib/utils/app-url";
 
 // Função para criar cliente Supabase admin
 function createSupabaseAdminClient() {
@@ -130,7 +131,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         cycle: 'MONTHLY',
         description: 'Corretor Studio - Plano Professional | Gerencie leads, equipe e resultados em um só lugar. Pipeline Kanban completo, analytics em tempo real, automações inteligentes e gestão de operadores. Leads ilimitados, relatórios personalizados e atualizações automáticas. R$ 59,90/mês - Assinatura base para gerenciar sua operação de vendas com eficiência e escala.',
         callback: {
-          successUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout-return`,
+          successUrl: getFullUrl('/checkout-return'),
           autoRedirect: true,
         },
       };
