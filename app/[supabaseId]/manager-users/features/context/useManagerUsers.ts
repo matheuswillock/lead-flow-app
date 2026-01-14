@@ -15,9 +15,10 @@ import { ManagerUsersService } from "../services/ManagerUsersService";
 interface UseManagerUsersProps {
   supabaseId: string;
   currentUserRole: string;
+  hasPermanentSubscription?: boolean;
 }
 
-export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsersProps) {
+export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubscription = false }: UseManagerUsersProps) {
   const [state, setState] = useState<ManagerUsersState>({
     users: [],
     loading: true,
@@ -73,7 +74,7 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     }
   }, [managerUsersService]);
 
-  // Criar usuário - redireciona para checkout do Asaas (R$ 19,90 por usuário adicional)
+  // Criar usuário - se tem assinatura permanente, cria direto; senão redireciona para checkout do Asaas
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
     try {
       setState(prev => ({ ...prev, loading: true }));
@@ -81,6 +82,48 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
       // Fechar modal
       setState(prev => ({ ...prev, isCreateModalOpen: false }));
 
+      // Se tem assinatura permanente, criar diretamente sem passar pelo Asaas
+      if (hasPermanentSubscription) {
+        toast.loading("Criando usuário...");
+
+        console.info('🎯 [createUser] Criando usuário com assinatura permanente', {
+          supabaseId,
+          userData,
+        });
+
+        const response = await fetch(`/api/v1/manager/${supabaseId}/users`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-supabase-user-id': supabaseId,
+          },
+          body: JSON.stringify({
+            name: userData.name,
+            email: userData.email,
+            role: userData.role || 'operator',
+            hasPermanentSubscription: true, // Herda assinatura permanente
+          }),
+        });
+
+        const result = await response.json();
+
+        toast.dismiss();
+
+        if (result.isValid) {
+          toast.success("Usuário criado com sucesso!", {
+            description: 'Um email de convite foi enviado para o novo usuário.',
+            duration: 5000,
+          });
+          setState(prev => ({ ...prev, loading: false }));
+          await loadUsers(); // Recarregar lista
+        } else {
+          toast.error(result.errorMessages?.join(', ') || 'Erro ao criar usuário');
+          setState(prev => ({ ...prev, loading: false }));
+        }
+        return;
+      }
+
+      // Fluxo normal: redirecionar para checkout do Asaas (R$ 19,90 por usuário adicional)
       toast.loading("Gerando link de pagamento...");
 
       // Chamar API para criar checkout
@@ -114,11 +157,11 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
         setState(prev => ({ ...prev, loading: false }));
       }
     } catch (error) {
-      console.error("Erro ao criar checkout:", error);
-      toast.error("Erro ao gerar checkout");
+      console.error("Erro ao criar usuário:", error);
+      toast.error("Erro ao criar usuário");
       setState(prev => ({ ...prev, loading: false }));
     }
-  }, [supabaseId]);
+  }, [supabaseId, hasPermanentSubscription, loadUsers]);
 
   // Atualizar usuário
   const updateUser = useCallback(async (userId: string, userData: UpdateManagerUserFormData) => {
