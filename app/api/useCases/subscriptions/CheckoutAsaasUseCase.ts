@@ -334,8 +334,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       // Enviar e-mail de boas-vindas
       try {
         const emailService = getEmailService();
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-        const loginUrl = `${appUrl}/sign-in`;
+        const loginUrl = getFullUrl('/sign-in');
 
         await emailService.sendWelcomeEmail({
           userName: profile.fullName || profile.email,

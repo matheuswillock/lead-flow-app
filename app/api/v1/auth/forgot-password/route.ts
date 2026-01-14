@@ -3,6 +3,7 @@ import { createSupabaseAdmin } from '@/lib/supabase/server';
 import { Output } from '@/lib/output';
 import { getEmailService } from '@/lib/services/EmailService';
 import { prisma } from '@/app/api/infra/data/prisma';
+import { getFullUrl } from '@/lib/utils/app-url';
 
 /**
  * POST /api/v1/auth/forgot-password
@@ -87,21 +88,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Configurar redirect URL
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-    if (!appUrl) {
-      console.error('❌ [Forgot Password] NEXT_PUBLIC_APP_URL não está configurada');
-      return NextResponse.json(
-        new Output(
-          false, 
-          [], 
-          ['Erro de configuração do servidor'], 
-          null
-        ),
-        { status: 500 }
-      );
-    }
-    const redirectTo = `${appUrl}/set-password`;
+    // Configurar redirect URL usando função centralizada
+    const redirectTo = getFullUrl('/set-password');
 
     console.info('🔄 [Forgot Password] Gerando link de recuperação via Supabase Admin...');
     console.info('🔗 [Forgot Password] Redirect URL:', redirectTo);

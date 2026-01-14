@@ -4,6 +4,7 @@ import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { getEmailService } from "@/lib/services/EmailService";
+import { getFullUrl, getAppUrl } from '@/lib/utils/app-url';
 import type { 
   ISubscriptionUpgradeUseCase, 
   AddOperatorPaymentData,
@@ -573,8 +574,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         description: data.description,
       });
 
-      // Gerar URLs de callback
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      // Gerar URLs de callback usando função centralizada
+      const appUrl = getAppUrl({ removeTrailingSlash: true });
       
       // Simplificar parâmetros - redirecionar direto para manager-users
       // O status do operador será exibido na tabela com badges
@@ -761,8 +762,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('✅ [createSupabaseUser] Cliente Supabase Admin criado');
 
       // Gerar link de convite SEM enviar e-mail do Supabase
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      const redirectTo = `${appUrl}/set-password`;
+      const redirectTo = getFullUrl('/set-password');
       console.info('🔗 [createSupabaseUser] Gerando link de convite para:', email);
       console.info('🔗 [createSupabaseUser] Redirect URL:', redirectTo);
 
