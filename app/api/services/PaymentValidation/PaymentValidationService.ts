@@ -6,6 +6,7 @@ import type { AsaasPayment, AsaasSubscription } from './AsaasWebhookTypes';
 import { isAsaasPayment, isAsaasSubscription } from './AsaasWebhookTypes';
 import { createEmailService } from '@/lib/services/EmailService';
 import { asaasApi, asaasFetch } from '@/lib/asaas';
+import { getAppUrl } from '@/lib/utils/app-url';
 
 export class PaymentValidationService implements IPaymentValidationService {
   constructor(private paymentRepository: IPaymentRepository) {}
@@ -235,7 +236,7 @@ export class PaymentValidationService implements IPaymentValidationService {
 
         if (userEmail) {
           const userName = profile?.fullName || userEmail.split('@')[0];
-          const appUrl = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+          const appUrl = getAppUrl({ removeTrailingSlash: true });
           const manageUrl = profile?.supabaseId ? `${appUrl}/${profile.supabaseId}/account` : `${appUrl}/sign-in`;
 
           const emailService = createEmailService();

@@ -5,6 +5,7 @@ import { PaymentRepository } from '@/app/api/infra/data/repositories/payment/Pay
 import { PaymentValidationService } from '@/app/api/services/PaymentValidation/PaymentValidationService';
 import { PaymentValidationUseCase } from '@/app/api/useCases/payments/PaymentValidationUseCase';
 import { subscriptionUpgradeUseCase } from '@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase';
+import { getFullUrl } from '@/lib/utils/app-url';
 
 export async function POST(request: NextRequest) {
   try {
@@ -293,7 +294,7 @@ export async function POST(request: NextRequest) {
       
       try {
         // Chamar endpoint de notificação (não bloqueia a resposta ao Asaas)
-        const notifyUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/v1/subscriptions/${subscriptionId}/notify-payment`;
+        const notifyUrl = getFullUrl(`/api/v1/subscriptions/${subscriptionId}/notify-payment`);
         
         fetch(notifyUrl, {
           method: 'POST',
