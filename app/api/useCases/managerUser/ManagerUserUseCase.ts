@@ -143,7 +143,7 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
         }
     }
 
-    async createManager(data: { fullName: string; email: string; }): Promise<Output> {
+    async createManager(data: { fullName: string; email: string; hasPermanentSubscription?: boolean; managerId?: string }): Promise<Output> {
         try {
             // Validações básicas
             if (!data.fullName || data.fullName.trim().length < 2) {
@@ -164,7 +164,12 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 );
             }
 
-            const manager = await this.managerUserRepository.createManager(data);
+            const manager = await this.managerUserRepository.createManager({
+                fullName: data.fullName,
+                email: data.email,
+                hasPermanentSubscription: data.hasPermanentSubscription || false,
+                managerId: data.managerId
+            });
             return new Output(
                 true,
                 ["Manager criado com sucesso"],
@@ -193,7 +198,7 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
         }
     }
 
-    async createOperator(data: { fullName: string; email: string; managerId: string; }): Promise<Output> {
+    async createOperator(data: { fullName: string; email: string; managerId: string; hasPermanentSubscription?: boolean }): Promise<Output> {
         try {
             // Validações básicas
             if (!data.fullName || data.fullName.trim().length < 2) {
@@ -223,7 +228,12 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 );
             }
 
-            const operator = await this.managerUserRepository.createOperator(data);
+            const operator = await this.managerUserRepository.createOperator({
+                fullName: data.fullName,
+                email: data.email,
+                managerId: data.managerId,
+                hasPermanentSubscription: data.hasPermanentSubscription || false
+            });
             return new Output(
                 true,
                 ["Operator criado com sucesso"],
@@ -249,6 +259,44 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 [error instanceof Error ? error.message : "Erro interno do servidor"],
                 null
             );
+        }
+    }
+
+    async updateManagerSupabaseId(managerId: string, supabaseId: string): Promise<Output> {
+        try {
+            if (!managerId || !this.isValidUUID(managerId)) {
+                return new Output(false, [], ["ID do manager inválido"], null);
+            }
+
+            if (!supabaseId) {
+                return new Output(false, [], ["supabaseId inválido"], null);
+            }
+
+            await this.managerUserRepository.updateManagerSupabaseId(managerId, supabaseId);
+            
+            return new Output(true, ["supabaseId atualizado com sucesso"], [], null);
+        } catch (error) {
+            console.error("Erro ao atualizar supabaseId do manager:", error);
+            return new Output(false, [], ["Erro ao atualizar supabaseId"], null);
+        }
+    }
+
+    async updateOperatorSupabaseId(operatorId: string, supabaseId: string): Promise<Output> {
+        try {
+            if (!operatorId || !this.isValidUUID(operatorId)) {
+                return new Output(false, [], ["ID do operator inválido"], null);
+            }
+
+            if (!supabaseId) {
+                return new Output(false, [], ["supabaseId inválido"], null);
+            }
+
+            await this.managerUserRepository.updateOperatorSupabaseId(operatorId, supabaseId);
+            
+            return new Output(true, ["supabaseId atualizado com sucesso"], [], null);
+        } catch (error) {
+            console.error("Erro ao atualizar supabaseId do operator:", error);
+            return new Output(false, [], ["Erro ao atualizar supabaseId"], null);
         }
     }
 

@@ -38,6 +38,7 @@ function ManagerUsersPageContent({ supabaseId }: { supabaseId: string }) {
         supabaseId={supabaseId}
         currentUserRole={user?.role || "operator"}
         currentUserIsMaster={user?.isMaster || false}
+        hasPermanentSubscription={user?.hasPermanentSubscription || false}
       />
     </SubscriptionGuard>
   );

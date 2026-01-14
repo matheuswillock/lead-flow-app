@@ -9,7 +9,8 @@ export const CreateUserSchema = z.object({
   role: z.enum(["manager", "operator"], { 
     message: "Role deve ser 'manager' ou 'operator'"
   }),
-  profileIconUrl: z.string().url("URL do ícone deve ser válida").optional()
+  profileIconUrl: z.string().url("URL do ícone deve ser válida").optional(),
+  hasPermanentSubscription: z.boolean().optional().default(false)
 });
 
 export const UpdateUserSchema = z.object({

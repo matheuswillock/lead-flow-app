@@ -18,12 +18,14 @@ interface ManagerUsersContainerProps {
   supabaseId: string;
   currentUserRole: string;
   currentUserIsMaster?: boolean;
+  hasPermanentSubscription?: boolean;
 }
 
 export function ManagerUsersContainer({
   supabaseId,
   currentUserRole,
   currentUserIsMaster = false,
+  hasPermanentSubscription = false,
 }: ManagerUsersContainerProps) {
   const {
     // Estado
@@ -50,7 +52,7 @@ export function ManagerUsersContainer({
     closeEditModal,
     openDeleteDialog,
     closeDeleteDialog,
-  } = useManagerUsers({ supabaseId, currentUserRole });
+  } = useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubscription });
 
   // Verificar se há operadores pendentes
   const hasPendingOperators = users.some(user => user.isPending);

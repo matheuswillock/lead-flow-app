@@ -61,18 +61,39 @@ export async function POST(
 
     const { role } = validatedData;
 
+    console.info('🎯 [POST /users] Criando usuário:', {
+      role,
+      name: validatedData.name,
+      email: validatedData.email,
+      hasPermanentSubscription: validatedData.hasPermanentSubscription,
+      requesterId: requesterProfile.id,
+    });
+
     if (role === 'manager') {
       const output = await managerUserUseCase.createManager({
         fullName: validatedData.name,
-        email: validatedData.email
+        email: validatedData.email,
+        hasPermanentSubscription: validatedData.hasPermanentSubscription || false,
+        managerId: requesterProfile.id // Sub-manager criado por este manager
+      });
+
+      console.info('📦 [POST /users] Output do createManager:', {
+        isValid: output.isValid,
+        hasResult: !!output.result,
+        result: output.result,
+        errorMessages: output.errorMessages,
       });
       
       // Se criação foi bem-sucedida, criar usuário no Supabase Auth e enviar convite
       if (output.isValid && output.result) {
+        console.info('✅ [POST /users] Manager criado, gerando convite...');
         try {
           // Criar usuário no Supabase Auth com link de convite
+          console.info('🔐 [POST /users] Gerando link de convite Supabase para email:', validatedData.email);
+          
           const supabaseAdmin = createSupabaseAdmin();
           if (!supabaseAdmin) {
+            console.error('❌ [POST /users] Falha ao criar cliente Supabase Admin');
             throw new Error('Falha ao criar cliente Supabase Admin');
           }
 
@@ -92,14 +113,28 @@ export async function POST(
             }
           });
 
+          console.info('📧 [POST /users] Resultado Supabase generateLink:', {
+            success: !!data,
+            hasUser: !!(data as any)?.user,
+            userId: (data as any)?.user?.id,
+            error: linkError,
+          });
+
           if (linkError || !data.properties?.action_link) {
-            console.error('Erro ao gerar link de convite:', linkError);
+            console.error('❌ [POST /users] Erro ao gerar link de convite:', linkError);
             throw new Error('Erro ao gerar link de convite');
           }
 
+          const supabaseUserId = (data as any)?.user?.id;
           const inviteLink = data.properties.action_link;
+          console.info('🔗 [POST /users] Link de convite gerado com sucesso');
+
+          // Atualizar perfil com supabaseId
+          console.info('💾 [POST /users] Atualizando perfil com supabaseId:', supabaseUserId);
+          await managerUserUseCase.updateManagerSupabaseId(output.result.id, supabaseUserId);
 
           // Enviar email personalizado com link de convite
+          console.info('📬 [POST /users] Enviando email de convite...');
           const emailService = getEmailService();
           await emailService.sendOperatorInviteEmail({
             operatorName: validatedData.name,
@@ -108,31 +143,54 @@ export async function POST(
             managerName: requesterProfile.fullName || requesterProfile.email,
             inviteUrl: inviteLink,
           });
+          
+          console.info('✅ [POST /users] Email de convite enviado com sucesso');
         } catch (emailError) {
-          console.error("Erro ao criar usuário Supabase ou enviar email:", emailError);
+          console.error("❌ [POST /users] Erro ao criar usuário Supabase ou enviar email:", emailError);
           // Reverter criação do perfil se falhar
+          console.info('🔄 [POST /users] Revertendo criação do perfil...');
           await managerUserUseCase.deleteManager(output.result.id);
           const failureOutput = new Output(false, [], ["Erro ao enviar convite. Tente novamente."], null);
           return NextResponse.json(failureOutput, { status: 500 });
         }
+      } else {
+        console.warn('⚠️ [POST /users] Não foi possível criar manager:', {
+          isValid: output.isValid,
+          hasResult: !!output.result,
+          errorMessages: output.errorMessages,
+        });
       }
       
       const status = output.isValid ? 200 : 400;
+      console.info('📤 [POST /users] Retornando resposta para criação de manager:', { status, isValid: output.isValid });
       return NextResponse.json(output, { status });
     } else if (role === 'operator') {
+      console.info('👤 [POST /users] Criando operador...');
       // For operator creation, we need managerId from the requester
       const output = await managerUserUseCase.createOperator({
         fullName: validatedData.name,
         email: validatedData.email,
-        managerId: requesterProfile.id // Use the manager who is creating the operator
+        managerId: requesterProfile.id, // Use the manager who is creating the operator
+        hasPermanentSubscription: validatedData.hasPermanentSubscription || false
+      });
+
+      console.info('📦 [POST /users] Output do createOperator:', {
+        isValid: output.isValid,
+        hasResult: !!output.result,
+        result: output.result,
+        errorMessages: output.errorMessages,
       });
       
       // Se criação foi bem-sucedida, criar usuário no Supabase Auth e enviar convite
       if (output.isValid && output.result) {
+        console.info('✅ [POST /users] Operador criado, gerando convite...');
         try {
           // Criar usuário no Supabase Auth com link de convite
+          console.info('🔐 [POST /users] Gerando link de convite Supabase para email:', validatedData.email);
+          
           const supabaseAdmin = createSupabaseAdmin();
           if (!supabaseAdmin) {
+            console.error('❌ [POST /users] Falha ao criar cliente Supabase Admin');
             throw new Error('Falha ao criar cliente Supabase Admin');
           }
 
@@ -152,14 +210,28 @@ export async function POST(
             }
           });
 
+          console.info('📧 [POST /users] Resultado Supabase generateLink:', {
+            success: !!data,
+            hasUser: !!(data as any)?.user,
+            userId: (data as any)?.user?.id,
+            error: linkError,
+          });
+
           if (linkError || !data.properties?.action_link) {
-            console.error('Erro ao gerar link de convite:', linkError);
+            console.error('❌ [POST /users] Erro ao gerar link de convite:', linkError);
             throw new Error('Erro ao gerar link de convite');
           }
 
+          const supabaseUserId = (data as any)?.user?.id;
           const inviteLink = data.properties.action_link;
+          console.info('🔗 [POST /users] Link de convite gerado com sucesso');
+
+          // Atualizar perfil com supabaseId
+          console.info('💾 [POST /users] Atualizando perfil com supabaseId:', supabaseUserId);
+          await managerUserUseCase.updateOperatorSupabaseId(output.result.id, supabaseUserId);
 
           // Enviar email personalizado com link de convite
+          console.info('📬 [POST /users] Enviando email de convite...');
           const emailService = getEmailService();
           await emailService.sendOperatorInviteEmail({
             operatorName: validatedData.name,
@@ -168,16 +240,26 @@ export async function POST(
             managerName: requesterProfile.fullName || requesterProfile.email,
             inviteUrl: inviteLink,
           });
+          
+          console.info('✅ [POST /users] Email de convite enviado com sucesso');
         } catch (emailError) {
-          console.error("Erro ao criar usuário Supabase ou enviar email:", emailError);
+          console.error("❌ [POST /users] Erro ao criar usuário Supabase ou enviar email:", emailError);
           // Reverter criação do perfil se falhar
+          console.info('🔄 [POST /users] Revertendo criação do perfil...');
           await managerUserUseCase.deleteOperator(output.result.id);
           const failureOutput = new Output(false, [], ["Erro ao enviar convite. Tente novamente."], null);
           return NextResponse.json(failureOutput, { status: 500 });
         }
+      } else {
+        console.warn('⚠️ [POST /users] Não foi possível criar operador:', {
+          isValid: output.isValid,
+          hasResult: !!output.result,
+          errorMessages: output.errorMessages,
+        });
       }
       
       const status = output.isValid ? 200 : 400;
+      console.info('📤 [POST /users] Retornando resposta para criação de operador:', { status, isValid: output.isValid });
       return NextResponse.json(output, { status });
     } else {
       const output = new Output(false, [], ["Role deve ser 'manager' ou 'operator'"], null);
