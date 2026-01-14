@@ -584,26 +584,24 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         operatorId: data.pendingOperatorId,
       });
 
-      // Criar checkout com redirecionamento automático
+      // Criar checkout HOSPEDADO (permite escolher forma de pagamento)
       const nextDueDate = new Date();
       nextDueDate.setMonth(nextDueDate.getMonth() + 1); // 1 mês de prazo
       
-      const checkoutPayload = {
+      // Primeiro cria o payment como PIX (default)
+      const paymentPayload = {
         customer: data.customer,
-        billingType: 'UNDEFINED', // Permite escolher no checkout
+        billingType: 'PIX', // PIX como padrão, mas checkout permite alterar
         value: data.value,
         dueDate: nextDueDate.toISOString().split('T')[0],
         description: data.description,
         externalReference: `pending-operator-${data.pendingOperatorId}`,
-        callback: {
-          successUrl: `${appUrl}/${data.managerId}/manager-users?${successParams.toString()}`,
-        },
       };
 
-      // Criar payment link no Asaas usando a lib
+      // Criar payment no Asaas
       const payment = await asaasFetch(asaasApi.payments, {
         method: 'POST',
-        body: JSON.stringify(checkoutPayload),
+        body: JSON.stringify(paymentPayload),
       });
 
       console.info('[Asaas] Payment criado:', {
