@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/lib/supabase/server";
+import { createSupabaseServer, createSupabaseAdmin } from "@/lib/supabase/server";
 import { LeadAttachmentUploadResult } from "./DTOs/LeadAttachmentUploadResult";
 import { DeleteLeadAttachmentResult } from "./DTOs/DeleteLeadAttachmentResult";
 import { ILeadAttachmentService } from "./ILeadAttachmentService";
@@ -41,7 +41,8 @@ export class LeadAttachmentService implements ILeadAttachmentService {
         return { success: false, error: validation.error };
       }
 
-      const supabase = await createSupabaseServer();
+      // Usar Admin client para bypass RLS
+      const supabase = createSupabaseAdmin();
       if (!supabase) {
         return { success: false, error: "Failed to initialize Supabase client" };
       }
@@ -97,7 +98,8 @@ export class LeadAttachmentService implements ILeadAttachmentService {
    */
   async deleteAttachment(attachmentId: string): Promise<DeleteLeadAttachmentResult> {
     try {
-      const supabase = await createSupabaseServer();
+      // Usar Admin client para bypass RLS
+      const supabase = createSupabaseAdmin();
       if (!supabase) {
         return { success: false, error: "Failed to initialize Supabase client" };
       }
@@ -125,7 +127,8 @@ export class LeadAttachmentService implements ILeadAttachmentService {
    */
   async getAttachmentUrl(attachmentId: string): Promise<string | null> {
     try {
-      const supabase = await createSupabaseServer();
+      // Usar Admin client para bypass RLS
+      const supabase = createSupabaseAdmin();
       if (!supabase) return null;
 
       const { data } = supabase.storage
@@ -173,7 +176,8 @@ export class LeadAttachmentService implements ILeadAttachmentService {
    */
   async listLeadAttachments(leadId: string): Promise<string[]> {
     try {
-      const supabase = await createSupabaseServer();
+      // Usar Admin client para bypass RLS
+      const supabase = createSupabaseAdmin();
       if (!supabase) return [];
 
       const { data, error } = await supabase.storage

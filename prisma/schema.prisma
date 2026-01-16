@@ -177,10 +177,16 @@ model Lead {
   currentTreatment  String?     @db.Text
   meetingDate       DateTime?   @db.Timestamptz(6)
   notes             String?     @db.Text
-  createdBy         String?     @db.Uuid
-  updatedBy         String?     @db.Uuid
-  createdAt         DateTime    @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime    @updatedAt @db.Timestamptz(6)
+
+  // Novos campos para leads finalizados (apenas em edição)
+  ticket          Decimal?    @db.Decimal(12, 2) // Valor que foi vendido
+  contractDueDate DateTime?   @db.Timestamptz(6) // Data de vigência do contrato
+  soldPlan        HealthPlan? // Plano vendido
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   // Relations
   manager       Profile          @relation("LeadManager", fields: [managerId], references: [id], onDelete: Cascade)
@@ -263,14 +269,15 @@ model LeadFinalized {
 // -----------------------------
 
 model LeadAttachment {
-  id         String   @id @default(uuid()) @db.Uuid
-  leadId     String   @db.Uuid
-  fileName   String   @db.Text
-  fileUrl    String   @db.Text
-  fileType   String   @db.Text // mime type: application/pdf, image/png, etc
-  fileSize   Int // size in bytes
-  uploadedBy String   @db.Uuid
-  uploadedAt DateTime @default(now()) @db.Timestamptz(6)
+  id          String   @id @default(uuid()) @db.Uuid
+  leadId      String   @db.Uuid
+  fileName    String   @db.Text
+  fileUrl     String   @db.Text
+  storagePath String   @default("") @db.Text // Caminho do arquivo no storage: "leadId/timestamp-random-filename"
+  fileType    String   @db.Text // mime type: application/pdf, image/png, etc
+  fileSize    Int // size in bytes
+  uploadedBy  String   @db.Uuid
+  uploadedAt  DateTime @default(now()) @db.Timestamptz(6)
 
   // Relations
   lead     Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)

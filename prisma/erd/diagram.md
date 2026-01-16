@@ -118,6 +118,9 @@ with_operators with_operators
     String currentTreatment "❓"
     DateTime meetingDate "❓"
     String notes "❓"
+    Decimal ticket "❓"
+    DateTime contractDueDate "❓"
+    HealthPlan soldPlan "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -157,6 +160,7 @@ with_operators with_operators
     String id "🗝️"
     String fileName 
     String fileUrl 
+    String storagePath 
     String fileType 
     Int fileSize 
     DateTime uploadedAt 
@@ -192,6 +196,7 @@ with_operators with_operators
     "profiles" o{--}o "pending_operators" : "pendingOperators"
     "leads" o|--|| "LeadStatus" : "enum:status"
     "leads" o|--|o "HealthPlan" : "enum:currentHealthPlan"
+    "leads" o|--|o "HealthPlan" : "enum:soldPlan"
     "leads" o|--|| "profiles" : "manager"
     "leads" o|--|o "profiles" : "assignee"
     "leads" o|--|o "profiles" : "creator"

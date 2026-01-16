@@ -74,12 +74,21 @@ export class DashboardInfosService implements IDashboardInfosService {
     const churnRate = vendas > 0 ? (churn / vendas) * 100 : 0;
     const noShowRate = agendamentos > 0 ? (noShowCount / agendamentos) * 100 : 0;
     
-    // Calcular receita total a partir da tabela LeadFinalized
-    const receitaTotal = finalizedLeads.reduce((total: number, sale) => 
-      total + Number(sale.amount || 0), 0
+    // Calcular receita total: soma de 'ticket' dos leads finalizados
+    const finalizedLeadsWithTicket = leads.filter(lead => 
+      lead.status === 'contract_finalized' && lead.ticket !== null
+    );
+    
+    const receitaTotal = finalizedLeadsWithTicket.reduce((total: number, lead) => 
+      total + Number(lead.ticket || 0), 0
     );
 
-    // Calcular cadência: soma de todos os valores atuais dos leads
+    // Calcular ticket: soma de 'ticket' de todos os leads (intenção de compra)
+    const ticket = leads.reduce((total: number, lead) => 
+      total + Number(lead.ticket || 0), 0
+    );
+
+    // Calcular cadência: soma de 'currentValue' de todos os leads do período
     const cadencia = leads.reduce((total: number, lead) => 
       total + Number(lead.currentValue || 0), 0
     );
@@ -94,6 +103,7 @@ export class DashboardInfosService implements IDashboardInfosService {
       vendas,
       taxaConversao: Math.round(taxaConversao * 100) / 100,
       receitaTotal,
+      ticket,
       churnRate: Math.round(churnRate * 100) / 100,
       noShowRate: Math.round(noShowRate * 100) / 100,
       cadencia,

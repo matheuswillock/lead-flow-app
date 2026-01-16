@@ -30,7 +30,22 @@ export default function BoardDialog() {
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
     const parseCurrentValue = (value: string): number | undefined => {
       if (!value || value.trim() === '') return undefined;
-      const cleanValue = value.replace(/[^\d.,]/g, '').replace(',', '.');
+      
+      // Remove tudo exceto dígitos, vírgula e ponto
+      let cleanValue = value.replace(/[^\d.,]/g, '');
+      
+      // Se tem vírgula, assume formato brasileiro (1.234,56)
+      if (cleanValue.includes(',')) {
+        // Remove pontos (separadores de milhar) e troca vírgula por ponto (decimal)
+        cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+      }
+      // Se não tem vírgula mas tem múltiplos pontos, remove todos exceto o último
+      else if ((cleanValue.match(/\./g) || []).length > 1) {
+        const parts = cleanValue.split('.');
+        const lastPart = parts.pop();
+        cleanValue = parts.join('') + '.' + lastPart;
+      }
+      
       const parsed = parseFloat(cleanValue);
       
       // Retorna undefined se não é um número válido ou se é negativo
@@ -72,7 +87,11 @@ export default function BoardDialog() {
       meetingDate: parseMeetingDate(data.meetingDate || ''),
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
-      status: "new_opportunity" as any // Status padrão para novos leads
+      status: "new_opportunity" as any, // Status padrão para novos leads
+      // Novos campos (null para criação)
+      ticket: undefined,
+      contractDueDate: undefined,
+      soldPlan: undefined
     };
   };
 
@@ -81,7 +100,22 @@ export default function BoardDialog() {
     // Helper para converter valor para número ou undefined
     const parseCurrentValue = (value: string): number | undefined => {
       if (!value || value.trim() === '') return undefined;
-      const cleanValue = value.replace(/[^\d.,]/g, '').replace(',', '.');
+      
+      // Remove tudo exceto dígitos, vírgula e ponto
+      let cleanValue = value.replace(/[^\d.,]/g, '');
+      
+      // Se tem vírgula, assume formato brasileiro (1.234,56)
+      if (cleanValue.includes(',')) {
+        // Remove pontos (separadores de milhar) e troca vírgula por ponto (decimal)
+        cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+      }
+      // Se não tem vírgula mas tem múltiplos pontos, remove todos exceto o último
+      else if ((cleanValue.match(/\./g) || []).length > 1) {
+        const parts = cleanValue.split('.');
+        const lastPart = parts.pop();
+        cleanValue = parts.join('') + '.' + lastPart;
+      }
+      
       const parsed = parseFloat(cleanValue);
       
       // Retorna undefined se não é um número válido ou se é negativo
@@ -122,7 +156,11 @@ export default function BoardDialog() {
       notes: data.additionalNotes || undefined,
       meetingDate: parseMeetingDate(data.meetingDate || ''),
       cnpj: data.cnpj || undefined,
-      assignedTo: data.responsible || undefined
+      assignedTo: data.responsible || undefined,
+      // Novos campos de venda (apenas em edição)
+      ticket: data.ticket ? parseCurrentValue(data.ticket) : undefined,
+      contractDueDate: parseMeetingDate(data.contractDueDate || ''),
+      soldPlan: data.soldPlan || undefined
     };
   };
 
@@ -289,6 +327,10 @@ export default function BoardDialog() {
         additionalNotes: lead.notes || "",
         meetingDate: lead.meetingDate || "",
         responsible: lead.assignedTo || "",
+        // Novos campos de venda
+        ticket: lead.ticket ? formatCurrency(lead.ticket) : "",
+        contractDueDate: lead.contractDueDate || "",
+        soldPlan: lead.soldPlan || undefined,
       });
     } else if (!lead && open) {
       form.reset({
@@ -304,6 +346,10 @@ export default function BoardDialog() {
         additionalNotes: "",
         meetingDate: "",
         responsible: user?.usersAssociated?.[0]?.id || "",
+        // Novos campos zerados na criação
+        ticket: "",
+        contractDueDate: "",
+        soldPlan: undefined,
       });
     }
   }, [lead, open, form, user]);
