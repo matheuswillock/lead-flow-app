@@ -157,6 +157,7 @@ with_operators with_operators
     String id "🗝️"
     String fileName 
     String fileUrl 
+    String storagePath 
     String fileType 
     Int fileSize 
     DateTime uploadedAt 

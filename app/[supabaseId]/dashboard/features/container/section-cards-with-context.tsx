@@ -107,7 +107,7 @@ export function SectionCardsWithContext() {
                 isBlurred && "blur-sm select-none",
               )}
             >
-              R$ {metrics.receitaTotal.toLocaleString("pt-BR")}
+              R$ {metrics.receitaTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </CardDescription>
           </CardHeader>
           <CardFooter className="pt-0">
@@ -161,7 +161,7 @@ export function SectionCardsWithContext() {
                 isBlurred && "blur-sm select-none",
               )}
             >
-              R$ {metrics.cadencia.toLocaleString("pt-BR")}
+              R$ {metrics.cadencia.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </CardDescription>
           </CardHeader>
           <CardFooter className="pt-0">

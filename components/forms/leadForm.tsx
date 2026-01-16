@@ -482,7 +482,7 @@ export function LeadForm({
                     </p>
                 </div>
                 {leadId ? (
-                    <AttachmentList leadId={leadId} />
+                    <AttachmentList leadId={leadId} leadName={form.getValues("name")} />
                 ) : (
                     <div className="flex items-center justify-center p-8 border border-dashed rounded-lg bg-muted/20">
                         <div className="text-center space-y-2">

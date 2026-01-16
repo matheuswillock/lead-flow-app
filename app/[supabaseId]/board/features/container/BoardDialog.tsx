@@ -30,7 +30,22 @@ export default function BoardDialog() {
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
     const parseCurrentValue = (value: string): number | undefined => {
       if (!value || value.trim() === '') return undefined;
-      const cleanValue = value.replace(/[^\d.,]/g, '').replace(',', '.');
+      
+      // Remove tudo exceto dígitos, vírgula e ponto
+      let cleanValue = value.replace(/[^\d.,]/g, '');
+      
+      // Se tem vírgula, assume formato brasileiro (1.234,56)
+      if (cleanValue.includes(',')) {
+        // Remove pontos (separadores de milhar) e troca vírgula por ponto (decimal)
+        cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+      }
+      // Se não tem vírgula mas tem múltiplos pontos, remove todos exceto o último
+      else if ((cleanValue.match(/\./g) || []).length > 1) {
+        const parts = cleanValue.split('.');
+        const lastPart = parts.pop();
+        cleanValue = parts.join('') + '.' + lastPart;
+      }
+      
       const parsed = parseFloat(cleanValue);
       
       // Retorna undefined se não é um número válido ou se é negativo
@@ -81,7 +96,22 @@ export default function BoardDialog() {
     // Helper para converter valor para número ou undefined
     const parseCurrentValue = (value: string): number | undefined => {
       if (!value || value.trim() === '') return undefined;
-      const cleanValue = value.replace(/[^\d.,]/g, '').replace(',', '.');
+      
+      // Remove tudo exceto dígitos, vírgula e ponto
+      let cleanValue = value.replace(/[^\d.,]/g, '');
+      
+      // Se tem vírgula, assume formato brasileiro (1.234,56)
+      if (cleanValue.includes(',')) {
+        // Remove pontos (separadores de milhar) e troca vírgula por ponto (decimal)
+        cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+      }
+      // Se não tem vírgula mas tem múltiplos pontos, remove todos exceto o último
+      else if ((cleanValue.match(/\./g) || []).length > 1) {
+        const parts = cleanValue.split('.');
+        const lastPart = parts.pop();
+        cleanValue = parts.join('') + '.' + lastPart;
+      }
+      
       const parsed = parseFloat(cleanValue);
       
       // Retorna undefined se não é um número válido ou se é negativo

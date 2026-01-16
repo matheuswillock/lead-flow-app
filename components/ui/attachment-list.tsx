@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, X, FileIcon, Image as ImageIcon, File as FileTextIcon, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -23,10 +24,11 @@ export interface Attachment {
 
 interface AttachmentListProps {
   leadId: string;
+  leadName?: string;
   className?: string;
 }
 
-export function AttachmentList({ leadId, className }: AttachmentListProps) {
+export function AttachmentList({ leadId, leadName, className }: AttachmentListProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -78,6 +80,14 @@ export function AttachmentList({ leadId, className }: AttachmentListProps) {
 
         if (!result.isValid) {
           console.error(`Erro ao fazer upload de ${file.name}:`, result.errorMessages);
+          toast.error(`Erro ao enviar ${file.name}`, {
+            description: result.errorMessages.join(", "),
+          });
+        } else {
+          const leadInfo = leadName ? ` no lead ${leadName}` : "";
+          toast.success(`Arquivo salvo com sucesso${leadInfo}`, {
+            description: file.name,
+          });
         }
       }
 
@@ -102,9 +112,18 @@ export function AttachmentList({ leadId, className }: AttachmentListProps) {
       const result = await response.json();
 
       if (result.isValid) {
+        const deletedAttachment = attachments.find((att) => att.id === attachmentId);
         setAttachments((prev) => prev.filter((att) => att.id !== attachmentId));
+        
+        const leadInfo = leadName ? ` do lead ${leadName}` : "";
+        toast.success(`Arquivo deletado com sucesso${leadInfo}`, {
+          description: deletedAttachment?.fileName || "Arquivo removido",
+        });
       } else {
         console.error("Erro ao deletar attachment:", result.errorMessages);
+        toast.error("Erro ao deletar arquivo", {
+          description: result.errorMessages.join(", "),
+        });
       }
     } catch (error) {
       console.error("Erro ao deletar attachment:", error);

@@ -40,6 +40,7 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
           leadId,
           fileName: uploadResult.fileName || file.name,
           fileUrl: uploadResult.publicUrl,
+          storagePath: uploadResult.fileId, // Caminho do arquivo no storage
           fileType: uploadResult.fileType || file.type,
           fileSize: uploadResult.fileSize || file.size,
           uploadedBy,
@@ -81,12 +82,11 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
         return new Output(false, [], ["Attachment does not belong to this lead"], null);
       }
 
-      // Extrair o fileId do URL ou usar o campo adequado
-      // O fileId é o caminho do arquivo no bucket: "leadId/timestamp-random-filename"
-      const fileId = attachment.fileUrl.split("/").slice(-2).join("/");
+      // Usar o storagePath salvo no banco ao invés de tentar extrair da URL
+      const storagePath = attachment.storagePath;
 
       // Deletar do Supabase Storage
-      const deleteResult = await leadAttachmentService.deleteAttachment(fileId);
+      const deleteResult = await leadAttachmentService.deleteAttachment(storagePath);
 
       if (!deleteResult.success) {
         // Mesmo se falhar no storage, continuar para deletar do banco
