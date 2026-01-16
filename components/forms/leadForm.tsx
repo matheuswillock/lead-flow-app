@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { leadFormData } from "@/lib/validations/validationForms";
 import { useEffect, useState } from "react";
+import React from "react";
 import { UseFormReturn } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "../ui/form";
 import { Input } from "../ui/input";
@@ -306,24 +307,48 @@ export function LeadForm({
             <FormField 
                 control={form.control}
                 name="currentValue"
-                render={({ field }) => (
-                    <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">Valor Atual*</FormLabel>
-                        <FormControl>
-                            <Input
-                                value={field.value || ''}
-                                onChange={(e) => {
-                                    const formatted = formatCurrency(e.target.value);
-                                    field.onChange(formatted);
-                                }}
-                                type="text"
-                                placeholder="R$ 10,00"
-                                required
-                                disabled={isLoading || isUpdating}
-                            />
-                        </FormControl>
-                    </FormItem>
-                )}
+                render={({ field }) => {
+                    // Garantir que o valor sempre seja exibido formatado
+                    const displayValue = React.useMemo(() => {
+                        if (!field.value) return '';
+                        
+                        // Se já está formatado (tem R$), retornar como está
+                        if (typeof field.value === 'string' && field.value.includes('R$')) {
+                            return field.value;
+                        }
+                        
+                        // Se é número ou string sem formatação, formatar
+                        const numValue = typeof field.value === 'number' 
+                            ? field.value 
+                            : parseFloat(String(field.value).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.'));
+                        
+                        if (isNaN(numValue)) return '';
+                        
+                        // Converter para centavos e formatar
+                        // Ex: 2170 -> 217000 centavos -> formatCurrency espera string "217000"
+                        const centavos = Math.round(numValue * 100);
+                        return formatCurrency(String(centavos));
+                    }, [field.value]);
+
+                    return (
+                        <FormItem>
+                            <FormLabel className="block text-sm font-medium mb-1">Valor Atual*</FormLabel>
+                            <FormControl>
+                                <Input
+                                    value={displayValue}
+                                    onChange={(e) => {
+                                        const formatted = formatCurrency(e.target.value);
+                                        field.onChange(formatted);
+                                    }}
+                                    type="text"
+                                    placeholder="R$ 10,00"
+                                    required
+                                    disabled={isLoading || isUpdating}
+                                />
+                            </FormControl>
+                        </FormItem>
+                    );
+                }}
             />
 
             <FormField
