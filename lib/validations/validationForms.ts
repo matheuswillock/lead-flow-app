@@ -144,6 +144,25 @@ export const leadFormSchema = z.object({
   additionalNotes: z.string().min(0).optional(),
   meetingDate: z.string().min(0).optional(),
   responsible: z.string().min(2, "O responsável é obrigatório"),
+  
+  // Novos campos para leads finalizados (opcionais, apenas em edição)
+  ticket: z.string().min(0).optional(), // Valor vendido
+  contractDueDate: z.string().min(0).optional(), // Data de vigência
+  soldPlan: z.enum([
+    "NOVA_ADESAO",
+    "AMIL",
+    "BRADESCO",
+    "HAPVIDA",
+    "MEDSENIOR",
+    "GNDI",
+    "OMINT",
+    "PLENA",
+    "PORTO_SEGURO",
+    "PREVENT_SENIOR",
+    "SULAMERICA",
+    "UNIMED",
+    "OUTROS"
+  ]).optional(), // Plano vendido
 });
 
 export type leadFormData = z.infer<typeof leadFormSchema>;

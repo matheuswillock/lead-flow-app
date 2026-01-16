@@ -52,6 +52,10 @@ export class LeadUseCase implements ILeadUseCase {
         meetingDate: data.meetingDate ? new Date(data.meetingDate) : null,
         notes: data.notes || null,
         status: data.status || LeadStatus.new_opportunity,
+        // Novos campos de venda (sempre null na criação)
+        ticket: data.ticket || null,
+        contractDueDate: data.contractDueDate ? new Date(data.contractDueDate) : null,
+        soldPlan: data.soldPlan || null,
         creator: { connect: { id: profileInfo.id } },
         updater: { connect: { id: profileInfo.id } },
         ...(assignedTo && {
@@ -273,6 +277,10 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.meetingDate !== undefined) updateData.meetingDate = data.meetingDate ? new Date(data.meetingDate) : null;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
       if (data.status !== undefined) updateData.status = data.status;
+      // Novos campos de venda
+      if (data.ticket !== undefined) updateData.ticket = data.ticket;
+      if (data.contractDueDate !== undefined) updateData.contractDueDate = data.contractDueDate ? new Date(data.contractDueDate) : null;
+      if (data.soldPlan !== undefined) updateData.soldPlan = data.soldPlan || null;
       if (data.assignedTo !== undefined) {
         if (data.assignedTo) {
           updateData.assignee = { connect: { id: data.assignedTo } };
@@ -504,6 +512,10 @@ export class LeadUseCase implements ILeadUseCase {
       updatedBy: lead.updatedBy,
       createdAt: lead.createdAt.toISOString(),
       updatedAt: lead.updatedAt.toISOString(),
+      // Novos campos de venda
+      ticket: lead.ticket ? Number(lead.ticket) : null,
+      contractDueDate: lead.contractDueDate ? lead.contractDueDate.toISOString() : null,
+      soldPlan: lead.soldPlan,
       attachmentCount: lead._count?.attachments || lead.attachments?.length || 0,
       ...(lead.manager && {
         manager: {

@@ -15,7 +15,11 @@ export const UpdateLeadRequestSchema = z.object({
   notes: z.string().nullish().transform(val => val || undefined),
   assignedTo: z.string().uuid("ID do operador deve ser um UUID válido").nullish().transform(val => val || undefined),
   status: z.nativeEnum(LeadStatus).optional(),
-  updatedBy: z.string().uuid("ID do atualizador deve ser um UUID válido").optional()
+  updatedBy: z.string().uuid("ID do atualizador deve ser um UUID válido").optional(),
+  // Novos campos de venda (podem ser atualizados)
+  ticket: z.number().min(0).nullish().transform(val => val || undefined),
+  contractDueDate: z.string().datetime().nullish().transform(val => val || undefined),
+  soldPlan: z.nativeEnum(HealthPlan).nullish().transform(val => val || undefined)
 });
 
 export type UpdateLeadRequest = z.infer<typeof UpdateLeadRequestSchema>;

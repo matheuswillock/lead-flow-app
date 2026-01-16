@@ -16,7 +16,11 @@ export const CreateLeadRequestSchema = z.object({
   assignedTo: z.string().uuid("ID do operador deve ser um UUID válido").nullish().transform(val => val || undefined),
   status: z.nativeEnum(LeadStatus).optional().default(LeadStatus.new_opportunity),
   createdBy: z.string().uuid("ID do criador deve ser um UUID válido").optional(),
-  updatedBy: z.string().uuid("ID do atualizador deve ser um UUID válido").optional()
+  updatedBy: z.string().uuid("ID do atualizador deve ser um UUID válido").optional(),
+  // Novos campos de venda (sempre null/undefined na criação)
+  ticket: z.number().min(0).nullish().transform(val => val || undefined),
+  contractDueDate: z.string().datetime().nullish().transform(val => val || undefined),
+  soldPlan: z.nativeEnum(HealthPlan).nullish().transform(val => val || undefined)
 });
 
 export type CreateLeadRequest = z.infer<typeof CreateLeadRequestSchema>;

@@ -66,7 +66,11 @@ export default function PipelineDialog() {
       meetingDate: parseMeetingDate(data.meetingDate || ''),
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
-      status: "new_opportunity" as any
+      status: "new_opportunity" as any,
+      // Novos campos (null para criação)
+      ticket: undefined,
+      contractDueDate: undefined,
+      soldPlan: undefined
     };
   };
 
@@ -110,7 +114,11 @@ export default function PipelineDialog() {
       meetingDate: parseMeetingDate(data.meetingDate || ''),
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
-      status: lead?.status as any
+      status: lead?.status as any,
+      // Novos campos de venda (podem ser atualizados)
+      ticket: data.ticket ? parseCurrentValue(data.ticket) : undefined,
+      contractDueDate: parseMeetingDate(data.contractDueDate || ''),
+      soldPlan: data.soldPlan || undefined
     };
   };
 

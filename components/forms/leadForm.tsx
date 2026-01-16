@@ -496,6 +496,118 @@ export function LeadForm({
                 />
             </div>
 
+            {/* Campos adicionais apenas para leads em edição */}
+            {leadId && (
+                <>
+                    <div className="sm:col-span-2 pt-4 border-t">
+                        <h3 className="text-sm font-semibold mb-4 text-foreground">
+                            Informações de Venda
+                        </h3>
+                    </div>
+
+                    <FormField
+                        control={form.control}
+                        name="ticket"
+                        render={({ field }) => {
+                            const displayValue = React.useMemo(() => {
+                                if (!field.value) return '';
+                                
+                                if (typeof field.value === 'string' && field.value.includes('R$')) {
+                                    return field.value;
+                                }
+                                
+                                const numValue = typeof field.value === 'number' 
+                                    ? field.value 
+                                    : parseFloat(String(field.value).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.'));
+                                
+                                if (isNaN(numValue)) return '';
+                                
+                                const centavos = Math.round(numValue * 100);
+                                return formatCurrency(String(centavos));
+                            }, [field.value]);
+
+                            return (
+                                <FormItem>
+                                    <FormLabel className="block text-sm font-medium mb-1">Ticket (Valor Vendido)</FormLabel>
+                                    <FormControl>
+                                        <Input
+                                            value={displayValue}
+                                            onChange={(e) => {
+                                                const formatted = formatCurrency(e.target.value);
+                                                field.onChange(formatted);
+                                            }}
+                                            type="text"
+                                            placeholder="R$ 0,00"
+                                            disabled={isLoading || isUpdating}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            );
+                        }}
+                    />
+
+                    <FormField
+                        control={form.control}
+                        name="contractDueDate"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormControl>
+                                    <DateTimePicker
+                                        date={field.value ? new Date(field.value) : undefined}
+                                        onDateChange={(date) => {
+                                            field.onChange(date ? date.toISOString() : '');
+                                        }}
+                                        label="Data de Vigência do Contrato"
+                                        disabled={isLoading || isUpdating}
+                                        disablePastDates={false}
+                                    />
+                                </FormControl>
+                            </FormItem>
+                        )}
+                    />
+
+                    <div className="sm:col-span-2">
+                        <FormField
+                            control={form.control}
+                            name="soldPlan"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel className="block text-sm font-medium mb-1">
+                                        Plano Vendido
+                                    </FormLabel>
+                                    <FormControl>
+                                        <Select
+                                            value={field.value || ""}
+                                            onValueChange={field.onChange}
+                                            disabled={isLoading || isUpdating}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Selecione o plano vendido" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="NOVA_ADESAO">Nova Adesão</SelectItem>
+                                                <SelectItem value="AMIL">Amil</SelectItem>
+                                                <SelectItem value="BRADESCO">Bradesco</SelectItem>
+                                                <SelectItem value="HAPVIDA">Hapvida</SelectItem>
+                                                <SelectItem value="MEDSENIOR">MedSênior</SelectItem>
+                                                <SelectItem value="GNDI">NotreDame Intermédica (GNDI)</SelectItem>
+                                                <SelectItem value="OMINT">Omint</SelectItem>
+                                                <SelectItem value="PLENA">Plena</SelectItem>
+                                                <SelectItem value="PORTO_SEGURO">Porto Seguro</SelectItem>
+                                                <SelectItem value="PREVENT_SENIOR">Prevent Senior</SelectItem>
+                                                <SelectItem value="SULAMERICA">SulAmérica</SelectItem>
+                                                <SelectItem value="UNIMED">Unimed</SelectItem>
+                                                <SelectItem value="OUTROS">Outros</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                    </div>
+                </>
+            )}
+
             {/* Seção de Attachments */}
             <div className="sm:col-span-2 pt-4 border-t">
                 <div className="mb-2">

@@ -20,6 +20,10 @@ export type Lead = {
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
+  // Novos campos de venda
+  ticket: number | null;
+  contractDueDate: string | null;
+  soldPlan: HealthPlan | null;
   attachmentCount?: number;
   manager?: {
     id: string;
