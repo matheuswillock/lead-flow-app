@@ -21,15 +21,15 @@ async function checkCadencia() {
       take: 10
     });
 
-    console.log('\n📊 Leads encontrados:', leads.length);
-    console.log('\n📝 Detalhes dos leads:');
+    console.info('\n📊 Leads encontrados:', leads.length);
+    console.info('\n📝 Detalhes dos leads:');
     leads.forEach(lead => {
-      console.log(`- ${lead.name}: R$ ${lead.currentValue || 0} (Status: ${lead.status})`);
+      console.info(`- ${lead.name}: R$ ${lead.currentValue || 0} (Status: ${lead.status})`);
     });
 
     const totalCadencia = leads.reduce((total, lead) => total + Number(lead.currentValue || 0), 0);
-    console.log(`\n💰 Total Cadência: R$ ${totalCadencia}`);
-    console.log(`💰 Formatado: R$ ${totalCadencia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    console.info(`\n💰 Total Cadência: R$ ${totalCadencia}`);
+    console.info(`💰 Formatado: R$ ${totalCadencia.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 
   } catch (error) {
     console.error('❌ Erro:', error);

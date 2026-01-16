@@ -89,7 +89,7 @@ export function SectionCardsWithContext() {
       </div>
 
       {/* SEÇÃO 1: MÉTRICAS PRINCIPAIS - Destaque Visual */}
-      <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-4">
         {/* Receita Total - DESTAQUE VERDE */}
         <Card className="@container/card border-green-500/30 bg-gradient-to-br from-green-50 via-green-50/50 to-transparent shadow-md dark:from-green-900/20 dark:via-green-900/10">
           <CardHeader className="pb-3">
@@ -112,7 +112,34 @@ export function SectionCardsWithContext() {
           </CardHeader>
           <CardFooter className="pt-0">
             <CardAction className="text-xs font-medium text-green-600 dark:text-green-400">
-              Total faturado nos {periodText}
+              Total vendido (ticket) nos {periodText}
+            </CardAction>
+          </CardFooter>
+        </Card>
+
+        {/* Ticket - DESTAQUE AMARELO */}
+        <Card className="@container/card border-amber-500/30 bg-gradient-to-br from-amber-50 via-amber-50/50 to-transparent shadow-md dark:from-amber-900/20 dark:via-amber-900/10">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                📊 Ticket
+              </CardTitle>
+              <div className="rounded-full bg-amber-500/10 p-2">
+                <TrendingUp className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              </div>
+            </div>
+            <CardDescription
+              className={cn(
+                "text-4xl font-bold text-foreground transition-all duration-200",
+                isBlurred && "blur-sm select-none",
+              )}
+            >
+              R$ {metrics.ticket.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="pt-0">
+            <CardAction className="text-xs font-medium text-amber-600 dark:text-amber-400">
+              Valor total de intenção de compra
             </CardAction>
           </CardFooter>
         </Card>
@@ -145,7 +172,7 @@ export function SectionCardsWithContext() {
         </Card>
 
         {/* Cadência - DESTAQUE */}
-        <Card className="@container/card border-purple-500/20 bg-gradient-to-br from-purple-500/5 via-purple-500/3 to-transparent shadow-md @xl/main:col-span-2 @4xl/main:col-span-1">
+        <Card className="@container/card border-purple-500/20 bg-gradient-to-br from-purple-500/5 via-purple-500/3 to-transparent shadow-md">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -166,7 +193,7 @@ export function SectionCardsWithContext() {
           </CardHeader>
           <CardFooter className="pt-0">
             <CardAction className="text-xs font-medium text-purple-600 dark:text-purple-400">
-              Valor total em pipeline
+              Valor atual total em pipeline
             </CardAction>
           </CardFooter>
         </Card>

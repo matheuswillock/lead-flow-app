@@ -81,6 +81,7 @@ export class MetricsRepository implements IMetricsRepository {
         id: true,
         status: true,
         currentValue: true,
+        ticket: true,
         createdAt: true,
       },
     });
