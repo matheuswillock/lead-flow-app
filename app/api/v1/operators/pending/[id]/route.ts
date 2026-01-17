@@ -74,3 +74,51 @@ export async function GET(
     );
   }
 }
+
+/**
+ * DELETE /api/v1/operators/pending/[id]
+ * Deleta um operador pendente
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+
+    console.info('🗑️ [DeletePendingOperator] Deletando operador pendente:', id);
+
+    // Verificar se o operador pendente existe
+    const pendingOperator = await prisma.pendingOperator.findUnique({
+      where: { id },
+    });
+
+    if (!pendingOperator) {
+      console.warn('⚠️ [DeletePendingOperator] Operador pendente não encontrado:', id);
+      return NextResponse.json(
+        new Output(false, [], ['Operador pendente não encontrado'], null),
+        { status: 404 }
+      );
+    }
+
+    // Deletar operador pendente
+    await prisma.pendingOperator.delete({
+      where: { id },
+    });
+
+    console.info('✅ [DeletePendingOperator] Operador pendente deletado com sucesso:', id);
+
+    return NextResponse.json(
+      new Output(true, ['Operador pendente deletado com sucesso'], [], null),
+      { status: 200 }
+    );
+
+  } catch (error) {
+    console.error('❌ [DeletePendingOperator] Erro ao deletar:', error);
+    
+    return NextResponse.json(
+      new Output(false, [], ['Erro ao deletar operador pendente'], null),
+      { status: 500 }
+    );
+  }
+}

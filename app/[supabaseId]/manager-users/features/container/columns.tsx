@@ -24,6 +24,7 @@ interface CreateColumnsProps {
   onEdit: (user: ManagerUserTableRow) => void;
   onDelete: (user: ManagerUserTableRow) => void;
   onResendInvite: (email: string, userId?: string) => void;
+  onDeletePendingOperator: (user: ManagerUserTableRow) => void;
   onTogglePermanentSubscription?: (userId: string, currentValue: boolean) => void;
   currentUserIsMaster?: boolean;
 }
@@ -32,6 +33,7 @@ export function createColumns({
   onEdit, 
   onDelete, 
   onResendInvite,
+  onDeletePendingOperator,
   onTogglePermanentSubscription,
   currentUserIsMaster = false
 }: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
@@ -286,8 +288,12 @@ export function createColumns({
                   </DropdownMenuItem>
                 </>
               ) : (
-                <DropdownMenuItem disabled className="flex items-center gap-2 text-muted-foreground">
-                  Aguarde conclusão do pagamento
+                <DropdownMenuItem
+                  onClick={() => onDeletePendingOperator(user)}
+                  className="flex items-center gap-2 text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Deletar operador pendente
                 </DropdownMenuItem>
               )}
               

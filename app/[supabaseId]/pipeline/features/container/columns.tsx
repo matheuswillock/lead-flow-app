@@ -17,6 +17,7 @@ import { Lead } from "../context/PipelineTypes";
 import { formatDate } from "../context/PipelineContext";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { maskPhone } from "@/lib/masks";
 
 // Componente para o drag handle
 function DragHandle({ id }: { id: string }) {
@@ -176,7 +177,8 @@ export const createColumns = ({
       );
     },
     cell: ({ row }) => {
-      return <div>{row.getValue("phone") || "-"}</div>;
+      const phone = row.getValue("phone") as string;
+      return <div>{phone ? maskPhone(phone) : "-"}</div>;
     },
   },
   {
@@ -302,6 +304,20 @@ export const createColumns = ({
           {formatDate(row.getValue("createdAt"))}
         </div>
       );
+    },
+    filterFn: (row, id, value) => {
+      if (!value || !Array.isArray(value)) return true;
+      
+      const rowDate = new Date(row.getValue(id) as string);
+      const [startDate, endDate] = value;
+      
+      if (startDate && endDate) {
+        return rowDate >= startDate && rowDate <= endDate;
+      } else if (startDate) {
+        return rowDate >= startDate;
+      }
+      
+      return true;
     },
   },
   {

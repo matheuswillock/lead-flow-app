@@ -1,18 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import { Users,   } from "lucide-react";
 import { UserRoundPlusIcon } from "@/components/ui/user-round-plus";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 import { useManagerUsers } from "../context/useManagerUsers";
 import { DataTable } from "./DataTable";
 import { createColumns } from "./columns";
 import { UserFormDialog } from "./UserFormDialog";
 import { DeleteUserDialog } from "./DeleteUserDialog";
+import { DeletePendingOperatorDialog } from "./DeletePendingOperatorDialog";
 import { PendingOperatorsAlert } from "./PendingOperatorsAlert";
+import type { ManagerUserTableRow } from "../types";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;
@@ -27,6 +31,9 @@ export function ManagerUsersContainer({
   currentUserIsMaster = false,
   hasPermanentSubscription = false,
 }: ManagerUsersContainerProps) {
+  const [isDeletePendingDialogOpen, setIsDeletePendingDialogOpen] = useState(false);
+  const [pendingOperatorToDelete, setPendingOperatorToDelete] = useState<ManagerUserTableRow | null>(null);
+
   const {
     // Estado
     tableData,
@@ -44,6 +51,7 @@ export function ManagerUsersContainer({
     deleteUser,
     resendInvite,
     togglePermanentSubscription,
+    refreshData,
     
     // Controle de UI
     openCreateModal,
@@ -53,6 +61,45 @@ export function ManagerUsersContainer({
     openDeleteDialog,
     closeDeleteDialog,
   } = useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubscription });
+
+  // Handler para abrir dialog de deletar operador pendente
+  const handleDeletePendingOperator = (user: ManagerUserTableRow) => {
+    setPendingOperatorToDelete(user);
+    setIsDeletePendingDialogOpen(true);
+  };
+
+  // Handler para confirmar deleção de operador pendente
+  const handleConfirmDeletePending = async () => {
+    if (!pendingOperatorToDelete?.pendingPayment?.id) {
+      toast.error('ID do operador pendente não encontrado');
+      return;
+    }
+
+    const loadingToast = toast.loading('Deletando operador pendente...');
+
+    try {
+      const response = await fetch(`/api/v1/operators/pending/${pendingOperatorToDelete.pendingPayment.id}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (!result.isValid) {
+        throw new Error(result.errorMessages?.join(', ') || 'Erro ao deletar');
+      }
+
+      toast.success('Operador pendente deletado com sucesso!', { id: loadingToast });
+      setIsDeletePendingDialogOpen(false);
+      setPendingOperatorToDelete(null);
+      
+      // Atualizar dados
+      await refreshData();
+
+    } catch (error) {
+      console.error('Erro ao deletar operador pendente:', error);
+      toast.error('Erro ao deletar operador pendente', { id: loadingToast });
+    }
+  };
 
   // Verificar se há operadores pendentes
   const hasPendingOperators = users.some(user => user.isPending);
@@ -82,6 +129,7 @@ export function ManagerUsersContainer({
   const columns = createColumns({
     onEdit: openEditModal,
     onDelete: openDeleteDialog,
+    onDeletePendingOperator: handleDeletePendingOperator,
     onResendInvite: resendInvite,
     onTogglePermanentSubscription: togglePermanentSubscription,
     currentUserIsMaster,
@@ -205,6 +253,14 @@ export function ManagerUsersContainer({
         onConfirm={() => selectedUser ? deleteUser(selectedUser.id) : undefined}
         user={selectedUser}
         loading={loading}
+      />
+
+      <DeletePendingOperatorDialog
+        open={isDeletePendingDialogOpen}
+        onOpenChange={setIsDeletePendingDialogOpen}
+        operatorName={pendingOperatorToDelete?.name || ''}
+        operatorEmail={pendingOperatorToDelete?.email || ''}
+        onConfirm={handleConfirmDeletePending}
       />
     </div>
   );
