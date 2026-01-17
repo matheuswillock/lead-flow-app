@@ -34,7 +34,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       }
 
       // Verificar se tem asaasSubscriptionId (campo mais confiável)
-      if (!profile.asaasSubscriptionId) {
+      if (!profile.asaasSubscriptionId && !profile.hasPermanentSubscription) {
         return new Output(
           true,
           ['Nenhuma assinatura ativa encontrada'],
@@ -43,28 +43,42 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
+      // Contar operadores reais linkados a este manager
+      // Incluindo tanto operadores quanto managers (pode ter manager linkado como operador)
+      const actualOperatorCount = await prisma.profile.count({
+        where: {
+          managerId: profile.id,
+          role: { in: ['operator', 'manager'] }
+        }
+      });
+
       // Calcular valor total: plano base + operadores
       const basePrice = 59.90;
       const operatorPrice = 19.90;
-      const operatorCount = profile.operatorCount || 0;
+      const operatorCount = actualOperatorCount;
       
       let totalValue = 0;
-      if (profile.subscriptionPlan !== 'free_trial') {
+      // Assinatura vitalícia não tem custo
+      if (profile.hasPermanentSubscription) {
+        totalValue = 0;
+      } else if (profile.subscriptionPlan !== 'free_trial') {
         totalValue = basePrice + (operatorCount * operatorPrice);
       }
 
       // Formatar dados da assinatura
       const subscriptionData = {
-        id: profile.asaasSubscriptionId,
-        subscriptionAsaasId: profile.asaasSubscriptionId,
-        status: profile.subscriptionStatus || 'active',
+        id: profile.asaasSubscriptionId || 'permanent-subscription',
+        subscriptionAsaasId: profile.asaasSubscriptionId || 'permanent-subscription',
+        status: profile.hasPermanentSubscription ? 'active' : (profile.subscriptionStatus || 'active'),
         value: totalValue,
         nextDueDate: profile.subscriptionNextDueDate?.toISOString() || profile.subscriptionEndDate?.toISOString() || '',
         cycle: profile.subscriptionCycle || 'MONTHLY',
-        description: profile.subscriptionPlan === 'free_trial' ? 'Período de teste' :
+        description: profile.hasPermanentSubscription ? 'Assinatura Vitalícia (Sem Custo)' :
+                     profile.subscriptionPlan === 'free_trial' ? 'Período de teste' :
                      profile.subscriptionPlan === 'manager_base' ? 'Plano Manager Base' :
                      `Plano Manager + ${operatorCount} Operador${operatorCount > 1 ? 'es' : ''}`,
         billingType: 'CREDIT_CARD',
+        hasPermanentSubscription: profile.hasPermanentSubscription || false,
         customer: {
           name: profile.fullName || 'Usuário',
           email: profile.email
@@ -73,7 +87,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         createdAt: profile.subscriptionStartDate?.toISOString() || profile.createdAt.toISOString(),
         planDetails: {
           plan: profile.subscriptionPlan,
-          operatorCount: profile.operatorCount,
+          operatorCount: operatorCount,
           trialEndDate: profile.trialEndDate?.toISOString()
         }
       };
