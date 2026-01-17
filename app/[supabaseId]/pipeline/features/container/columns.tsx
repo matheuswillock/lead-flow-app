@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Calendar, Trash2, CheckCircle, GripVertical } from "lucide-react";
+import { MoreHorizontal, Calendar, Trash2, CheckCircle, GripVertical, RefreshCw } from "lucide-react";
 import { Lead } from "../context/PipelineTypes";
 import { formatDate } from "../context/PipelineContext";
 import { useSortable } from "@dnd-kit/sortable";
@@ -92,6 +92,7 @@ interface ColumnsProps {
   onRescheduleMeeting: (lead: Lead) => void;
   onDeleteLead: (lead: Lead) => void;
   onFinalizeContract: (lead: Lead) => void;
+  onChangeStatus: (lead: Lead) => void;
 }
 
 export const createColumns = ({
@@ -101,6 +102,7 @@ export const createColumns = ({
   onRescheduleMeeting,
   onDeleteLead,
   onFinalizeContract,
+  onChangeStatus,
 }: ColumnsProps): ColumnDef<Lead>[] => [
   {
     id: "drag",
@@ -331,15 +333,31 @@ export const createColumns = ({
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Ações</DropdownMenuLabel>
             
+            <DropdownMenuItem onClick={(e) => {
+              e.stopPropagation();
+              onChangeStatus(lead);
+            }}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Mudar status
+            </DropdownMenuItem>
+            
+            <DropdownMenuSeparator />
+            
             {canSchedule && (
-              <DropdownMenuItem onClick={() => onScheduleMeeting(lead)}>
+              <DropdownMenuItem onClick={(e) => {
+                e.stopPropagation();
+                onScheduleMeeting(lead);
+              }}>
                 <Calendar className="mr-2 h-4 w-4" />
                 Agendar reunião
               </DropdownMenuItem>
             )}
             
             {canReschedule && (
-              <DropdownMenuItem onClick={() => onRescheduleMeeting(lead)}>
+              <DropdownMenuItem onClick={(e) => {
+                e.stopPropagation();
+                onRescheduleMeeting(lead);
+              }}>
                 <Calendar className="mr-2 h-4 w-4" />
                 Reagendar reunião
               </DropdownMenuItem>
@@ -348,7 +366,10 @@ export const createColumns = ({
             {canFinalize && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onFinalizeContract(lead)}>
+                <DropdownMenuItem onClick={(e) => {
+                  e.stopPropagation();
+                  onFinalizeContract(lead);
+                }}>
                   <CheckCircle className="mr-2 h-4 w-4" />
                   Fechar contrato
                 </DropdownMenuItem>
@@ -357,7 +378,10 @@ export const createColumns = ({
             
             <DropdownMenuSeparator />
             <DropdownMenuItem 
-              onClick={() => onDeleteLead(lead)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteLead(lead);
+              }}
               className="text-red-600"
             >
               <Trash2 className="mr-2 h-4 w-4" />
