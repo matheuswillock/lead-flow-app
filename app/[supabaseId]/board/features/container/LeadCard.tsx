@@ -98,23 +98,26 @@ export function LeadCard({
                 )}
             </CardContent>
             <CardFooter className="w-full flex justify-between items-center">
-                <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 w-8 p-0 relative cursor-pointer hover:bg-accent/50"
-                    onClick={handleAttachmentClick}
-                    title="Anexos"
-                >
-                    <Paperclip animateOnHover className="h-4 w-4" />
-                    {attachmentCount > 0 && (
+                {attachmentCount > 0 && (
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-8 p-0 relative cursor-pointer hover:bg-accent/50"
+                        onClick={handleAttachmentClick}
+                        title={`${attachmentCount} anexo${attachmentCount > 1 ? 's' : ''}`}
+                    >
+                        <Paperclip animateOnHover className="h-4 w-4" />
                         <Badge 
                             variant="secondary" 
                             className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px]"
                         >
                             {attachmentCount}
                         </Badge>
-                    )}
-                </Button>
+                    </Button>
+                )}
+                {attachmentCount === 0 && (
+                    <div className="h-8 w-8" />
+                )}
                 <Avatar className="h-6 w-6">
                     <AvatarImage src={lead?.assignee?.avatarUrl || ""} alt={`@${lead?.assignee?.fullName || ""}`} />
                     <AvatarFallback>
