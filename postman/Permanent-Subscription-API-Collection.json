@@ -91,9 +91,22 @@
   ],
   "variable": [
     {
+      "key": "BASE_URL_LOCAL",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "URL base para ambiente LOCAL"
+    },
+    {
+      "key": "BASE_URL_PROD",
+      "value": "https://www.corretorstudio.com.br",
+      "type": "string",
+      "description": "URL base para ambiente PRODUÇÃO"
+    },
+    {
       "key": "BASE_URL",
       "value": "http://localhost:3000",
-      "type": "string"
+      "type": "string",
+      "description": "URL base ativa (altere para BASE_URL_PROD em produção)"
     },
     {
       "key": "USER_EMAIL",
@@ -102,16 +115,34 @@
       "description": "Email de um usuário MASTER para autenticação"
     },
     {
+      "key": "USER_EMAIL_2",
+      "value": "matheuswillock@gmail.com",
+      "type": "string",
+      "description": "Email alternativo para testes"
+    },
+    {
       "key": "USER_PASSWORD",
       "value": "Onside@2025",
       "type": "string",
       "description": "Senha do usuário master"
     },
     {
+      "key": "USER_PASSWORD_2",
+      "value": "Nath@1308",
+      "type": "string",
+      "description": "Senha alternativa para testes (preencher quando necessário)"
+    },
+    {
       "key": "SUPABASE_ID",
       "value": "f295d256-0868-4bbe-9b9c-fb6cec64ffa0",
       "type": "string",
       "description": "SupabaseId do usuário (Bruno por padrão)"
+    },
+    {
+      "key": "SUPABASE_ID_2",
+      "value": "d41b5b47-9e3c-4eae-9eb6-798129c741c4",
+      "type": "string",
+      "description": "SupabaseId do usuário (Matheus por padrão)"
     }
   ]
 }

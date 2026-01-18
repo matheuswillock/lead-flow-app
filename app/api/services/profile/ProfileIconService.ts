@@ -1,4 +1,4 @@
-import { createSupabaseServer } from "@/lib/supabase/server";
+import { createSupabaseServer, createSupabaseAdmin } from "@/lib/supabase/server";
 import { ProfileIconUploadResult } from "./DTOs/ProfileIconUploadResult";
 import { DeleteProfileIconResult } from "./DTOs/DeleteProfileIconResult";
 import { IProfileIconService } from "./IProfileIconService";
@@ -23,7 +23,8 @@ export class ProfileIconService implements IProfileIconService {
         return { success: false, error: validation.error };
       }
 
-      const supabase = await createSupabaseServer();
+      // Usar Admin client para bypass RLS
+      const supabase = createSupabaseAdmin();
       if (!supabase) {
         return { success: false, error: "Failed to initialize Supabase client" };
       }
@@ -77,7 +78,8 @@ export class ProfileIconService implements IProfileIconService {
    */
   async deleteProfileIcon(iconId: string): Promise<DeleteProfileIconResult> {
     try {
-      const supabase = await createSupabaseServer();
+      // Usar Admin client para bypass RLS
+      const supabase = createSupabaseAdmin();
       if (!supabase) {
         return { success: false, error: "Failed to initialize Supabase client" };
       }
