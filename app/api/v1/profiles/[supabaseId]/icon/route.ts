@@ -42,7 +42,13 @@ export async function POST(
     const uploadResult = await profileIconService.uploadProfileIcon(file, supabaseId);
 
     if (!uploadResult.success) {
-      const output = new Output(false, [], [uploadResult.error || "Upload failed"], null);
+      // Retornar erro já mapeado do service
+      const output = new Output(
+        false, 
+        [], 
+        [uploadResult.error || "Erro ao fazer upload da imagem"], 
+        null
+      );
       return NextResponse.json(output, { status: 400 });
     }
 
@@ -57,7 +63,7 @@ export async function POST(
       return NextResponse.json(updateResult, { status: 400 });
     }
 
-    const output = new Output(true, ["Profile icon uploaded successfully"], [], {
+    const output = new Output(true, ["Ícone de perfil atualizado com sucesso"], [], {
       iconId: uploadResult.iconId,
       publicUrl: uploadResult.publicUrl
     });
@@ -65,7 +71,12 @@ export async function POST(
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
     console.error("Error in POST /api/v1/profiles/[supabaseId]/icon:", error);
-    const output = new Output(false, [], ["Internal server error"], null);
+    const output = new Output(
+      false, 
+      [], 
+      ["Erro inesperado ao fazer upload da imagem. Tente novamente"], 
+      null
+    );
     return NextResponse.json(output, { status: 500 });
   }
 }
@@ -104,7 +115,13 @@ export async function DELETE(
     const deleteResult = await profileIconService.deleteProfileIcon(profile.profileIconId);
 
     if (!deleteResult.success) {
-      const output = new Output(false, [], [deleteResult.error || "Failed to delete icon"], null);
+      // Retornar erro já mapeado do service
+      const output = new Output(
+        false, 
+        [], 
+        [deleteResult.error || "Erro ao deletar a imagem"], 
+        null
+      );
       return NextResponse.json(output, { status: 400 });
     }
 
@@ -115,11 +132,16 @@ export async function DELETE(
       return NextResponse.json(updateResult, { status: 400 });
     }
 
-    const output = new Output(true, ["Profile icon deleted successfully"], [], null);
+    const output = new Output(true, ["Ícone de perfil removido com sucesso"], [], null);
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
     console.error("Error in DELETE /api/v1/profiles/[supabaseId]/icon:", error);
-    const output = new Output(false, [], ["Internal server error"], null);
+    const output = new Output(
+      false, 
+      [], 
+      ["Erro inesperado ao deletar a imagem. Tente novamente"], 
+      null
+    );
     return NextResponse.json(output, { status: 500 });
   }
 }
