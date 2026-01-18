@@ -59,6 +59,13 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
         fullname: data.fullName,
         phone: data.phone,
         cpfCnpj: data.cpfCnpj, // Campo do formulário
+        postalCode: data.postalCode,
+        address: data.address,
+        addressNumber: data.addressNumber,
+        neighborhood: data.neighborhood,
+        complement: data.complement,
+        city: data.city,
+        state: data.state,
         // Campos opcionais (preenchidos quando veio do fluxo de assinatura)
         asaasCustomerId: (data as any).asaasCustomerId,
         subscriptionId: (data as any).subscriptionId,
@@ -68,12 +75,6 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
         operatorCount: (data as any).operatorCount,
         subscriptionStartDate: (data as any).subscriptionStartDate,
         trialEndDate: (data as any).trialEndDate,
-        postalCode: (data as any).postalCode,
-        address: (data as any).address,
-        addressNumber: (data as any).addressNumber,
-        complement: (data as any).complement,
-        city: (data as any).city,
-        state: (data as any).state,
       };
 
       const result = await signUpService.registerUser(requestData);

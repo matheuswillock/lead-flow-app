@@ -1,4 +1,4 @@
-import { HeartPulse, Eye, EyeOff, ShieldCheck, Check, X } from "lucide-react"
+import { HeartPulse, Eye, EyeOff, ShieldCheck, Check, X, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,6 +8,8 @@ import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData } from "@/lib/validations/validationForms"
 import { maskPhone, maskCPFOrCNPJ, unmask } from "@/lib/masks"
 import { useState } from "react"
+import { CepService } from "@/lib/services/CepService"
+import { toast } from "sonner"
 
 interface SignUpFormProps {
   form: UseFormReturn<signUpFormData>;
@@ -30,14 +32,65 @@ export function SignupForm({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
+  const [isSearchingCep, setIsSearchingCep] = useState(false);
 
   // Validações individuais da senha
   const passwordValidations = {
-    minLength: currentPassword.length >= 6,
+      minLength: currentPassword.length >= 8,
     hasUppercase: /[A-Z]/.test(currentPassword),
     hasLowercase: /[a-z]/.test(currentPassword),
     hasNumber: /[0-9]/.test(currentPassword),
     hasSpecialChar: /[^A-Za-z0-9]/.test(currentPassword),
+  };
+
+  const handleSearchCep = async () => {
+    const cep = form.getValues('postalCode');
+    
+    if (!cep || cep.replace(/\D/g, '').length !== 8) {
+      toast.error('CEP inválido', {
+        description: 'Digite um CEP válido com 8 dígitos',
+      });
+      return;
+    }
+
+    setIsSearchingCep(true);
+    
+    try {
+      const cepData = await CepService.consultarCep(cep);
+      
+      if (cepData) {
+        const formData = CepService.formatarParaFormulario(cepData);
+        
+        form.setValue('address', formData.address);
+        form.setValue('neighborhood', formData.neighborhood);
+        form.setValue('city', formData.city);
+        form.setValue('state', formData.state);
+        if (formData.complement) {
+          form.setValue('complement', formData.complement);
+        }
+        
+        toast.success('CEP encontrado', {
+          description: 'Endereço preenchido automaticamente',
+        });
+        
+        // Focar no campo de número após preencher
+        setTimeout(() => {
+          const numberInput = document.querySelector('input[name="addressNumber"]') as HTMLInputElement;
+          numberInput?.focus();
+        }, 100);
+      } else {
+        toast.error('CEP não encontrado', {
+          description: 'Verifique o CEP digitado e tente novamente',
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao buscar CEP:', error);
+      toast.error('Erro ao buscar CEP', {
+        description: 'Tente novamente ou preencha manualmente',
+      });
+    } finally {
+      setIsSearchingCep(false);
+    }
   };
 
   const calculatePasswordStrength = (pwd: string): 'weak' | 'medium' | 'strong' => {
@@ -226,6 +279,168 @@ export function SignupForm({
               )}
             />
 
+            {/* CEP com botão de busca */}
+            <FormField
+              control={form.control}
+              name="postalCode"
+              render={({ field }) => (
+                <FormItem className="grid gap-2">
+                  <FormLabel>CEP</FormLabel>
+                  <FormControl>
+                    <div className="flex gap-2">
+                      <Input 
+                        placeholder="00000-000" 
+                        {...field}
+                        value={field.value?.replace(/(\d{5})(\d{3})/, '$1-$2') || ''}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/\D/g, '');
+                          field.onChange(value);
+                        }}
+                        maxLength={9}
+                        className="border-2 border-gray-300 rounded-md p-2"
+                        disabled={readonly}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={handleSearchCep}
+                        disabled={readonly || isSearchingCep}
+                        className="flex-shrink-0"
+                      >
+                        <Search className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </FormControl>
+                  <FormMessage className="text-red-500">{errors.postalCode}</FormMessage>
+                </FormItem>
+              )}
+            />
+
+            {/* Endereço */}
+            <FormField
+              control={form.control}
+              name="address"
+              render={({ field }) => (
+                <FormItem className="grid gap-2">
+                  <FormLabel>Endereço</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="Rua, Avenida, etc." 
+                      {...field}
+                      className="border-2 border-gray-300 rounded-md p-2"
+                      disabled={readonly}
+                    />
+                  </FormControl>
+                  <FormMessage className="text-red-500">{errors.address}</FormMessage>
+                </FormItem>
+              )}
+            />
+
+            {/* Número e Bairro na mesma linha */}
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="addressNumber"
+                render={({ field }) => (
+                  <FormItem className="grid gap-2">
+                    <FormLabel>Número</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="123" 
+                        {...field}
+                        className="border-2 border-gray-300 rounded-md p-2"
+                        disabled={readonly}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-red-500">{errors.addressNumber}</FormMessage>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="neighborhood"
+                render={({ field }) => (
+                  <FormItem className="grid gap-2">
+                    <FormLabel>Bairro</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Centro, Jardins, etc." 
+                        {...field}
+                        className="border-2 border-gray-300 rounded-md p-2"
+                        disabled={readonly}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-red-500">{errors.neighborhood}</FormMessage>
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Complemento */}
+            <FormField
+              control={form.control}
+              name="complement"
+              render={({ field }) => (
+                <FormItem className="grid gap-2">
+                  <FormLabel>Complemento (opcional)</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="Apto, Bloco, etc." 
+                      {...field}
+                      className="border-2 border-gray-300 rounded-md p-2"
+                      disabled={readonly}
+                    />
+                  </FormControl>
+                  <FormMessage className="text-red-500">{errors.complement}</FormMessage>
+                </FormItem>
+              )}
+            />
+
+            {/* Cidade e Estado na mesma linha */}
+            <div className="grid grid-cols-3 gap-4">
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem className="grid gap-2 col-span-2">
+                    <FormLabel>Cidade</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="São Paulo" 
+                        {...field}
+                        className="border-2 border-gray-300 rounded-md p-2"
+                        disabled={readonly}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-red-500">{errors.city}</FormMessage>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="state"
+                render={({ field }) => (
+                  <FormItem className="grid gap-2">
+                    <FormLabel>UF</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="SP" 
+                        {...field}
+                        maxLength={2}
+                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                        className="border-2 border-gray-300 rounded-md p-2"
+                        disabled={readonly}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-red-500">{errors.state}</FormMessage>
+                  </FormItem>
+                )}
+              />
+            </div>
+
             <FormField
               control={form.control}
               name="password"
@@ -322,7 +537,7 @@ export function SignupForm({
                         ) : (
                           <X className="w-4 h-4 flex-shrink-0" />
                         )}
-                        <span>Mínimo de 6 caracteres</span>
+                        <span>Mínimo de 8 caracteres</span>
                       </li>
                       
                       <li className={cn(

@@ -131,6 +131,7 @@ class PrismaProfileRepository implements IProfileRepository {
     postalCode?: string,
     address?: string,
     addressNumber?: string,
+    neighborhood?: string,
     complement?: string,
     city?: string,
     state?: string,
@@ -230,6 +231,7 @@ class PrismaProfileRepository implements IProfileRepository {
       if (postalCode) profileData.postalCode = postalCode;
       if (address) profileData.address = address;
       if (addressNumber) profileData.addressNumber = addressNumber;
+      if (neighborhood) profileData.neighborhood = neighborhood;
       if (complement) profileData.complement = complement;
       if (city) profileData.city = city;
       if (state) profileData.state = state;

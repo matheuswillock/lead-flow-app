@@ -110,6 +110,7 @@ model Profile {
   postalCode               String?             @db.Text
   address                  String?             @db.Text
   addressNumber            String?             @db.Text
+  neighborhood             String?             @db.Text
   complement               String?             @db.Text
   city                     String?             @db.Text
   state                    String?             @db.Text

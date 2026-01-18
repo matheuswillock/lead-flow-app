@@ -2,6 +2,60 @@
 
 > Documentação do fluxo de assinatura usando Checkout hospedado pelo Asaas
 
+## 🎯 IMPORTANTE: Asaas Checkout com Assinatura Recorrente
+
+**Abordagem Utilizada**: Usamos o **Asaas Checkout** (endpoint `/v3/checkouts`) ao invés de criar assinaturas diretamente (endpoint `/v3/subscriptions`).
+
+**Por quê?**:
+- ✅ **Múltiplas formas de pagamento**: Cliente escolhe entre PIX, Boleto, Cartão de Crédito ou Cartão de Débito
+- ✅ **Assinatura recorrente automática**: `chargeTypes: ['RECURRENT']`
+- ✅ **Experiência de checkout otimizada**: Página hospedada pelo Asaas
+- ✅ **Flexibilidade total**: Cliente tem autonomia para escolher como pagar
+
+**Configuração do Checkout**:
+```typescript
+const checkoutData = {
+  customer: asaasCustomerId,
+  billingTypes: ['CREDIT_CARD'], // ✅ Obrigatório; CREDIT_CARD habilita TODAS as opções
+  chargeTypes: ['RECURRENT'], // Assinatura recorrente
+  recurrent: {
+    cycle: 'MONTHLY', // Ciclo mensal
+    startDate: nextDueDateStr, // Primeira cobrança em 1 mês
+    endDate: endDateStr, // Válido por 1 ano
+  },
+  items: [
+    {
+      name: 'Corretor Studio - Plano Professional',
+      description: '...',
+      value: 5990, // R$ 59,90 em centavos
+      quantity: 1,
+    }
+  ],
+  callback: {
+    successUrl: 'https://seusite.com/checkout-return',
+    autoRedirect: true,
+  },
+};
+```
+
+**⚠️ IMPORTANTE - Comportamento do Campo billingTypes**: 
+- ✅ **`billingTypes: ['CREDIT_CARD']`** = Mostra **TODAS** as opções (PIX, Boleto, Cartão Crédito e Débito)
+- ❌ **Omitir billingTypes** = Erro: "O campo 'billingTypes' é obrigatório"
+- ❌ **`billingTypes: ['PIX', 'BOLETO', 'CREDIT_CARD']`** = Erro: "O campo billingTypes é inválido"
+- ✅ **Solução**: Usar array com **um único valor**: `['CREDIT_CARD']`
+
+**Resultado**:
+- Cliente é redirecionado para: `https://sandbox.asaas.com/checkoutSession/show?id={checkout.id}`
+- No checkout, aparecem **todas as formas de pagamento** disponíveis (PIX, Boleto, Cartão)
+- Após escolher e pagar, a **assinatura é criada automaticamente**
+- Cobranças mensais acontecem de forma recorrente
+
+**Diferença da Abordagem Anterior**:
+- ❌ **Antes**: Criava assinatura direto com `billingType: 'UNDEFINED'` (endpoint `/v3/subscriptions`)
+  - Problema: Campo obrigatório mas com comportamento inconsistente
+- ✅ **Agora**: Cria Asaas Checkout (endpoint `/v3/checkouts`) com `billingTypes: ['CREDIT_CARD']`
+  - Solução: CREDIT_CARD habilita todas as opções de pagamento automaticamente no checkout
+
 ## ⚠️ ATENÇÃO: Callback Desabilitado (Limitação Asaas)
 
 **Problema**: O Asaas requer que você configure um domínio na conta antes de usar callbacks (redirecionamento automático após pagamento).

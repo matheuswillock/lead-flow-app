@@ -58,6 +58,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 input.postalCode,
                 input.address,
                 input.addressNumber,
+                input.neighborhood,
                 input.complement,
                 input.city,
                 input.state

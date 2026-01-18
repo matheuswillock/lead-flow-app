@@ -1,6 +1,6 @@
 "use client";
-import { useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useSignUpForm } from "@/hooks/useForms";
 import { SignupForm } from "@/components/forms/signUpForm";
 import { useSignUp } from "./signUpContext";
@@ -13,11 +13,65 @@ import { toast } from "sonner";
  */
 export function SignUpFormContainer() {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const form = useSignUpForm();
     const { isLoading, errors, registerUser } = useSignUp();
+    const [isDeletingUser, setIsDeletingUser] = useState(false);
 
-    // Auth-first: no pendingSignUp/session flow; no URL fallback prefill.
-    useEffect(() => { /* noop */ }, [searchParams, form]);
+    // Detectar parâmetro deleteUser (vindo do checkout cancelado/expirado)
+    useEffect(() => {
+        const deleteUserId = searchParams.get('deleteUser');
+        
+        if (deleteUserId && !isDeletingUser) {
+            setIsDeletingUser(true);
+            
+            // Deletar usuário
+            (async () => {
+                try {
+                    console.info('🗑️ [SignUpFormContainer] Deletando usuário abandonado:', deleteUserId);
+                    
+                    toast.info('Checkout cancelado', {
+                        description: 'Removendo conta criada...',
+                        duration: 3000,
+                    });
+
+                    const response = await fetch(`/api/v1/users/delete?supabaseId=${deleteUserId}`, {
+                        method: 'DELETE',
+                    });
+
+                    const result = await response.json();
+
+                    if (result.isValid) {
+                        console.info('✅ [SignUpFormContainer] Usuário deletado com sucesso');
+                        
+                        toast.success('Checkout cancelado', {
+                            description: 'Sua conta foi removida. Você pode tentar novamente quando quiser.',
+                            duration: 5000,
+                        });
+                    } else {
+                        console.error('❌ [SignUpFormContainer] Erro ao deletar usuário:', result.errorMessages);
+                        
+                        toast.error('Erro ao remover conta', {
+                            description: 'Entre em contato com o suporte.',
+                            duration: 5000,
+                        });
+                    }
+                } catch (error) {
+                    console.error('❌ [SignUpFormContainer] Erro ao deletar usuário:', error);
+                    
+                    toast.error('Erro ao processar cancelamento', {
+                        description: 'Entre em contato com o suporte.',
+                        duration: 5000,
+                    });
+                } finally {
+                    setIsDeletingUser(false);
+                    
+                    // Limpar parâmetro da URL
+                    router.replace('/sign-up');
+                }
+            })();
+        }
+    }, [searchParams, isDeletingUser, router]);
 
     async function onSubmit(data: signUpFormData) {
         console.info('🚀 [SignUpFormContainer] onSubmit iniciado');
@@ -42,6 +96,13 @@ export function SignUpFormContainer() {
                         email: data.email,
                         phone: data.phone,
                         cpfCnpj: data.cpfCnpj,
+                        postalCode: data.postalCode,
+                        address: data.address,
+                        addressNumber: data.addressNumber,
+                        neighborhood: data.neighborhood,
+                        complement: data.complement,
+                        city: data.city,
+                        state: data.state,
                     }),
                 });
 
@@ -85,8 +146,8 @@ export function SignUpFormContainer() {
                     form={form} 
                     errors={errors} 
                     onSubmit={onSubmit}
-                    isLoading={isLoading}
-                    readonly={false}
+                    isLoading={isLoading || isDeletingUser}
+                    readonly={isDeletingUser}
                 />
             </div>
         </main>
