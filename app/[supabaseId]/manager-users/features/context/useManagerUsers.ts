@@ -417,6 +417,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
     
     // Ações
     loadUsers,
+    refreshData: loadUsers, // Alias para loadUsers
     createUser,
     updateUser,
     deleteUser,

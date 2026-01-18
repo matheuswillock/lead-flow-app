@@ -48,6 +48,7 @@ import { DraggableRow } from "./DraggableRow";
 import { toast } from "sonner";
 import { useState } from "react";
 import { ScheduleMeetingDialog } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
+import { ChangeStatusDialog } from "./ChangeStatusDialog";
 
 export default function PipelineTable() {
   const { 
@@ -65,6 +66,7 @@ export default function PipelineTable() {
   const [data, setData] = React.useState<Lead[]>(filtered);
   
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [showChangeStatusDialog, setShowChangeStatusDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   // Atualizar data quando filtered mudar
@@ -161,6 +163,11 @@ export default function PipelineTable() {
     toast.success('Funcionalidade de finalizar contrato será implementada');
   };
 
+  const handleChangeStatus = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowChangeStatusDialog(true);
+  };
+
   const columns = React.useMemo<ColumnDef<Lead>[]>(
     () =>
       createColumns({
@@ -170,6 +177,7 @@ export default function PipelineTable() {
         onRescheduleMeeting: handleRescheduleMeeting,
         onDeleteLead: handleDeleteLead,
         onFinalizeContract: handleFinalizeContract,
+        onChangeStatus: handleChangeStatus,
       }),
     [statusLabels]
   );
@@ -328,6 +336,16 @@ export default function PipelineTable() {
           onOpenChange={setShowScheduleDialog}
           lead={selectedLead}
           onScheduleSuccess={refreshLeads}
+        />
+      )}
+
+      {selectedLead && (
+        <ChangeStatusDialog
+          open={showChangeStatusDialog}
+          onOpenChange={setShowChangeStatusDialog}
+          lead={selectedLead}
+          statusLabels={statusLabels}
+          onStatusChanged={refreshLeads}
         />
       )}
     </div>

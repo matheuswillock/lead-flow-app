@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTableFacetedFilter } from "./data-table-faceted-filter";
+import { DataTableDateFilter } from "./data-table-date-filter";
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
@@ -42,6 +43,12 @@ export function DataTableToolbar<TData>({
             column={table.getColumn("assignedTo")}
             title="Responsável"
             options={responsibleOptions}
+          />
+        )}
+        {table.getColumn("createdAt") && (
+          <DataTableDateFilter
+            column={table.getColumn("createdAt")}
+            title="Data de Criação"
           />
         )}
         {isFiltered && (
