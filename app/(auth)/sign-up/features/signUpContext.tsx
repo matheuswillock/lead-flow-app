@@ -52,6 +52,14 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
     setErrors({});
 
     try {
+      console.info('🔍 [SignUpContext] Dados recebidos:', {
+        neighborhood: data.neighborhood,
+        postalCode: data.postalCode,
+        address: data.address,
+        city: data.city,
+        state: data.state,
+      });
+      
       // Monta o payload preservando possíveis campos adicionais da assinatura/endereço
       const requestData: RequestToRegisterUserProfile = {
         email: data.email,
@@ -76,6 +84,14 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
         subscriptionStartDate: (data as any).subscriptionStartDate,
         trialEndDate: (data as any).trialEndDate,
       };
+      
+      console.info('📤 [SignUpContext] Enviando para API:', {
+        neighborhood: requestData.neighborhood,
+        postalCode: requestData.postalCode,
+        address: requestData.address,
+        city: requestData.city,
+        state: requestData.state,
+      });
 
       const result = await signUpService.registerUser(requestData);
 

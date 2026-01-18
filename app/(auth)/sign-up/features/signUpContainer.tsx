@@ -75,6 +75,15 @@ export function SignUpFormContainer() {
 
     async function onSubmit(data: signUpFormData) {
         console.info('🚀 [SignUpFormContainer] onSubmit iniciado');
+        console.info('📦 [SignUpFormContainer] Dados do formulário:', {
+            neighborhood: data.neighborhood,
+            postalCode: data.postalCode,
+            address: data.address,
+            addressNumber: data.addressNumber,
+            complement: data.complement,
+            city: data.city,
+            state: data.state,
+        });
 
         const result = await registerUser(data);
 

@@ -17,6 +17,7 @@ export interface UserData {
   postalCode: string | null;
   address: string | null;
   addressNumber: string | null;
+  neighborhood: string | null;
   complement: string | null;
   city: string | null;
   state: string | null;

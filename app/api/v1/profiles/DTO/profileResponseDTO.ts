@@ -15,6 +15,14 @@ export interface ProfileResponseDTO {
   supabaseId: string | null;
   phone: string | null;
   fullName: string | null;
+  cpfCnpj: string | null;
+  postalCode: string | null;
+  address: string | null;
+  addressNumber: string | null;
+  neighborhood: string | null;
+  complement: string | null;
+  city: string | null;
+  state: string | null;
   role: UserRole;
   isMaster: boolean;
   hasPermanentSubscription: boolean;
@@ -68,6 +76,14 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     supabaseId: profile.supabaseId,
     phone: profile.phone,
     fullName: profile.fullName,
+    cpfCnpj: profile.cpfCnpj ?? null,
+    postalCode: profile.postalCode ?? null,
+    address: profile.address ?? null,
+    addressNumber: profile.addressNumber ?? null,
+    neighborhood: profile.neighborhood ?? null,
+    complement: profile.complement ?? null,
+    city: profile.city ?? null,
+    state: profile.state ?? null,
     role: profile.role,
     isMaster: profile.isMaster ?? false,
     hasPermanentSubscription: profile.hasPermanentSubscription ?? false,

@@ -70,7 +70,7 @@ export function SignupForm({
         }
         
         toast.success('CEP encontrado', {
-          description: 'Endereço preenchido automaticamente',
+          description: `Endereço preenchido: ${formData.address}, ${formData.neighborhood} - ${formData.city}/${formData.state}`,
         });
         
         // Focar no campo de número após preencher
@@ -197,7 +197,9 @@ export function SignupForm({
               name="fullName"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>Nome completo</FormLabel>
+                  <FormLabel>
+                    Nome completo <span className="text-red-500">*</span>
+                  </FormLabel>
                   <FormControl>
                     <Input
                       placeholder="Seu nome"
@@ -215,7 +217,9 @@ export function SignupForm({
               name="email"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>
+                    Email <span className="text-red-500">*</span>
+                  </FormLabel>
                   <FormControl>
                     <Input 
                       placeholder="email@exemplo.com" 
@@ -234,7 +238,9 @@ export function SignupForm({
               name="phone"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>Telefone</FormLabel>
+                  <FormLabel>
+                    Telefone <span className="text-red-500">*</span>
+                  </FormLabel>
                   <FormControl>
                     <Input 
                       placeholder="(11) 99999-9999" 
@@ -259,7 +265,9 @@ export function SignupForm({
               name="cpfCnpj"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>CPF ou CNPJ</FormLabel>
+                  <FormLabel>
+                    CPF ou CNPJ <span className="text-red-500">*</span>
+                  </FormLabel>
                   <FormControl>
                     <Input 
                       placeholder="000.000.000-00 ou 00.000.000/0000-00" 
@@ -285,7 +293,9 @@ export function SignupForm({
               name="postalCode"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>CEP</FormLabel>
+                  <FormLabel>
+                    CEP <span className="text-red-500">*</span>
+                  </FormLabel>
                   <FormControl>
                     <div className="flex gap-2">
                       <Input 
@@ -295,6 +305,13 @@ export function SignupForm({
                         onChange={(e) => {
                           const value = e.target.value.replace(/\D/g, '');
                           field.onChange(value);
+                        }}
+                        onBlur={(e) => {
+                          // Busca automática ao sair do campo se CEP estiver completo
+                          const cep = e.target.value.replace(/\D/g, '');
+                          if (cep.length === 8 && !readonly) {
+                            handleSearchCep();
+                          }
                         }}
                         maxLength={9}
                         className="border-2 border-gray-300 rounded-md p-2"
@@ -307,6 +324,7 @@ export function SignupForm({
                         onClick={handleSearchCep}
                         disabled={readonly || isSearchingCep}
                         className="flex-shrink-0"
+                        title="Buscar endereço pelo CEP"
                       >
                         <Search className="h-4 w-4" />
                       </Button>
@@ -323,7 +341,9 @@ export function SignupForm({
               name="address"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>Endereço</FormLabel>
+                  <FormLabel>
+                    Endereço <span className="text-red-500">*</span>
+                  </FormLabel>
                   <FormControl>
                     <Input 
                       placeholder="Rua, Avenida, etc." 
@@ -344,7 +364,9 @@ export function SignupForm({
                 name="addressNumber"
                 render={({ field }) => (
                   <FormItem className="grid gap-2">
-                    <FormLabel>Número</FormLabel>
+                    <FormLabel>
+                      Número <span className="text-red-500">*</span>
+                    </FormLabel>
                     <FormControl>
                       <Input 
                         placeholder="123" 
@@ -363,7 +385,9 @@ export function SignupForm({
                 name="neighborhood"
                 render={({ field }) => (
                   <FormItem className="grid gap-2">
-                    <FormLabel>Bairro</FormLabel>
+                    <FormLabel>
+                      Bairro <span className="text-red-500">*</span>
+                    </FormLabel>
                     <FormControl>
                       <Input 
                         placeholder="Centro, Jardins, etc." 
@@ -405,7 +429,9 @@ export function SignupForm({
                 name="city"
                 render={({ field }) => (
                   <FormItem className="grid gap-2 col-span-2">
-                    <FormLabel>Cidade</FormLabel>
+                    <FormLabel>
+                      Cidade <span className="text-red-500">*</span>
+                    </FormLabel>
                     <FormControl>
                       <Input 
                         placeholder="São Paulo" 
@@ -424,7 +450,9 @@ export function SignupForm({
                 name="state"
                 render={({ field }) => (
                   <FormItem className="grid gap-2">
-                    <FormLabel>UF</FormLabel>
+                    <FormLabel>
+                      UF <span className="text-red-500">*</span>
+                    </FormLabel>
                     <FormControl>
                       <Input 
                         placeholder="SP" 
@@ -447,7 +475,9 @@ export function SignupForm({
               render={({ field }) => (
                 <FormItem className="grid gap-2">
                   <div className="flex items-center justify-between">
-                    <FormLabel>Senha</FormLabel>
+                    <FormLabel>
+                      Senha <span className="text-red-500">*</span>
+                    </FormLabel>
                     <Button
                       type="button"
                       variant="ghost"
@@ -611,7 +641,9 @@ export function SignupForm({
               name="confirmPassword"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>Confirmar Senha</FormLabel>
+                  <FormLabel>
+                    Confirmar Senha <span className="text-red-500">*</span>
+                  </FormLabel>
                   <FormControl>
                     <div className="relative">
                       <Input 

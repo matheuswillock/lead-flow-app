@@ -190,8 +190,10 @@ export async function DELETE(
         // Deletar cada operador do Supabase Auth
         for (const operator of operators) {
           try {
-            await supabase.auth.admin.deleteUser(operator.supabaseId);
-            console.info(`✅ [DELETE Profile] Operador ${operator.email} deletado do Supabase`);
+            if (operator.supabaseId) {
+              await supabase.auth.admin.deleteUser(operator.supabaseId);
+              console.info(`✅ [DELETE Profile] Operador ${operator.email} deletado do Supabase`);
+            }
           } catch (error) {
             console.error(`⚠️ [DELETE Profile] Erro ao deletar operador ${operator.email}:`, error);
           }

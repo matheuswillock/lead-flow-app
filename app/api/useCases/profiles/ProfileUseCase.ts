@@ -41,6 +41,16 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 return new Output(false, [], ["Usuário já cadastrado com este e-mail ou telefone"], null);
             }
 
+            console.info('🔍 [ProfileUseCase] Valores de endereço do INPUT:', {
+                postalCode: input.postalCode,
+                address: input.address,
+                addressNumber: input.addressNumber,
+                neighborhood: input.neighborhood,
+                complement: input.complement,
+                city: input.city,
+                state: input.state
+            });
+            
             const result = await this.repo.createProfile(
                 input.fullname,
                 input.phone,
@@ -148,7 +158,23 @@ export class RegisterNewUserProfile implements IProfileUseCase {
         }
     }
 
-    async updateProfile(supabaseId: string, updates: { fullName?: string; phone?: string; email?: string; password?: string }): Promise<Output> {
+    async updateProfile(
+        supabaseId: string, 
+        updates: { 
+            fullName?: string; 
+            phone?: string; 
+            email?: string; 
+            password?: string;
+            cpfCnpj?: string;
+            postalCode?: string;
+            address?: string;
+            addressNumber?: string;
+            neighborhood?: string;
+            complement?: string;
+            city?: string;
+            state?: string;
+        }
+    ): Promise<Output> {
         try {
             if (!supabaseId) {
                 return new Output(false, [], ["Supabase ID is required"], null);
@@ -188,6 +214,14 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 fullName: updates.fullName,
                 phone: updates.phone,
                 email: updates.email,
+                cpfCnpj: updates.cpfCnpj,
+                postalCode: updates.postalCode,
+                address: updates.address,
+                addressNumber: updates.addressNumber,
+                neighborhood: updates.neighborhood,
+                complement: updates.complement,
+                city: updates.city,
+                state: updates.state,
             });
 
             if (!updatedProfile) {

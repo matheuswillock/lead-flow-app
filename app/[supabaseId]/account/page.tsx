@@ -66,6 +66,7 @@ export default function AccountProfilePage() {
         postalCode: user.postalCode || "",
         address: user.address || "",
         addressNumber: user.addressNumber || "",
+        neighborhood: user.neighborhood || "",
         complement: user.complement || "",
         city: user.city || "",
         state: user.state || "",
@@ -191,6 +192,10 @@ export default function AccountProfilePage() {
       }
       if (data.addressNumber !== (user?.addressNumber || "")) {
         updates.addressNumber = data.addressNumber;
+        hasChanges = true;
+      }
+      if (data.neighborhood !== (user?.neighborhood || "")) {
+        updates.neighborhood = data.neighborhood;
         hasChanges = true;
       }
       if (data.complement !== (user?.complement || "")) {

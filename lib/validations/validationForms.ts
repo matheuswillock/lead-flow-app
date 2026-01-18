@@ -120,6 +120,7 @@ export const updateAccountFormSchema = z.object({
   postalCode: z.string().optional(),
   address: z.string().optional(),
   addressNumber: z.string().optional(),
+  neighborhood: z.string().optional(),
   complement: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),

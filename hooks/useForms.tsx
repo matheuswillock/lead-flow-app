@@ -47,6 +47,7 @@ export function useUpdateAccountForm(): UseFormReturn<updateAccountFormData> {
       postalCode: "",
       address: "",
       addressNumber: "",
+      neighborhood: "",
       complement: "",
       city: "",
       state: "",

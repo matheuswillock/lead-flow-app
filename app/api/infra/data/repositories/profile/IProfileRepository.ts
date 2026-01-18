@@ -30,7 +30,19 @@ export interface IProfileRepository {
   ): Promise<{ profileId: string; supabaseId: string } | null>;
   updateProfile(
     supabaseId: string,
-    updates: { fullName?: string; phone?: string; email?: string }
+    updates: { 
+      fullName?: string; 
+      phone?: string; 
+      email?: string;
+      cpfCnpj?: string;
+      postalCode?: string;
+      address?: string;
+      addressNumber?: string;
+      neighborhood?: string;
+      complement?: string;
+      city?: string;
+      state?: string;
+    }
   ): Promise<Profile | null>;
   updateProfileById(
     profileId: string,
