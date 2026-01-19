@@ -45,6 +45,7 @@ export interface CreateCheckoutData {
   complement?: string;
   city?: string;
   state?: string;
+  billingType?: 'CREDIT_CARD' | 'PIX' | 'BOLETO';
 }
 
 export interface CreateOperatorCheckoutData {
@@ -178,15 +179,28 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         cycle: 'MONTHLY - próxima cobrança em +30 dias'
       });
 
+      // ✅ IMPORTANTE: Para múltiplas formas de pagamento no checkout
+      // Use array com todos os billingTypes desejados:
+      // - PIX
+      // - BOLETO (Boleto Bancário)
+      // - CREDIT_CARD (Cartão de Crédito)
+      //
+      // ⚠️ LIMITAÇÃO ASAAS: chargeTypes RECURRENT só funciona com CREDIT_CARD
+      // Para PIX/Boleto com assinatura, precisamos usar DETACHED e criar
+      // subscription separadamente via webhook após primeiro pagamento
+      const billingTypes = ['PIX', 'BOLETO', 'CREDIT_CARD']; // ✅ Todas as opções
+      const chargeTypes = ['DETACHED']; // ✅ Pagamento único (não recorrente)
+
+      console.info('💳 [createSubscriptionCheckout] Configuração:', {
+        billingTypes,
+        chargeTypes,
+        note: 'Múltiplas formas de pagamento - primeiro pagamento apenas'
+      });
+
       const checkoutData: any = {
         customer: asaasCustomerId,
-        billingTypes: ['CREDIT_CARD'], // Habilita todas as opções no checkout
-        chargeTypes: ['RECURRENT'], // ✅ Assinatura recorrente
-        subscription: {
-          cycle: 'MONTHLY',
-          nextDueDate: nextDueDateStr,
-          endDate: endDateStr,
-        },
+        billingTypes, // ✅ PIX, Boleto e Cartão
+        chargeTypes, // ✅ DETACHED para pagamento único
         items: [
           {
             name: 'Plano Professional',
@@ -202,6 +216,12 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           autoRedirect: true,
         },
       };
+
+      // ❌ IMPORTANTE: Com chargeTypes DETACHED não podemos incluir subscription
+      // A subscription será criada via webhook após o primeiro pagamento ser confirmado
+      // Isso permite que o usuário escolha PIX, Boleto ou Cartão
+      console.info('ℹ️ [createSubscriptionCheckout] Checkout para primeiro pagamento');
+      console.info('ℹ️ [createSubscriptionCheckout] Subscription será criada via webhook após confirmação');
 
       const checkout = await asaasFetch(asaasApi.checkouts, {
         method: 'POST',

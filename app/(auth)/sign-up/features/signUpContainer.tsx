@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSignUpForm } from "@/hooks/useForms";
 import { SignupForm } from "@/components/forms/signUpForm";
+import { PaymentSelection } from "./PaymentSelection";
 import { useSignUp } from "./signUpContext";
 import { signUpFormData } from "@/lib/validations/validationForms";
 import { toast } from "sonner";
@@ -15,7 +16,16 @@ export function SignUpFormContainer() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const form = useSignUpForm();
-    const { isLoading, errors, registerUser } = useSignUp();
+    const { 
+        isLoading, 
+        errors, 
+        currentStep, 
+        paymentMethod,
+        registerUser,
+        setPaymentMethod,
+        proceedToCheckout,
+        goBackToForm,
+    } = useSignUp();
     const [isDeletingUser, setIsDeletingUser] = useState(false);
 
     // Detectar parâmetro deleteUser (vindo do checkout cancelado/expirado)
@@ -87,66 +97,37 @@ export function SignUpFormContainer() {
 
         const result = await registerUser(data);
 
-        if (result.isValid && result.result?.supabaseId) {
-            // Novo fluxo: criar checkout Asaas e redirecionar
+        if (result.isValid) {
+            // Conta criada com sucesso - agora mostrar seleção de pagamento
             toast.success('Cadastro concluído', {
-                description: 'Criando sua assinatura...',
+                description: 'Agora escolha a forma de pagamento',
                 duration: 3000,
             });
-
-            try {
-                // Chamar API para criar checkout
-                const checkoutResponse = await fetch('/api/v1/checkout/create', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        supabaseId: result.result.supabaseId,
-                        fullName: data.fullName,
-                        email: data.email,
-                        phone: data.phone,
-                        cpfCnpj: data.cpfCnpj,
-                        postalCode: data.postalCode,
-                        address: data.address,
-                        addressNumber: data.addressNumber,
-                        neighborhood: data.neighborhood,
-                        complement: data.complement,
-                        city: data.city,
-                        state: data.state,
-                    }),
-                });
-
-                const checkoutResult = await checkoutResponse.json();
-
-                if (checkoutResult.isValid && checkoutResult.result?.checkoutUrl) {
-                    toast.success('Redirecionando para pagamento', {
-                        description: 'Você será redirecionado para finalizar sua assinatura.',
-                        duration: 2000,
-                    });
-
-                    // Aguardar toast aparecer
-                    setTimeout(() => {
-                        // Redirecionar para checkout Asaas
-                        window.location.href = checkoutResult.result.checkoutUrl;
-                    }, 1500);
-                } else {
-                    toast.error('Erro ao criar checkout', {
-                        description: checkoutResult.errorMessages?.join(', ') || 'Tente novamente.',
-                        duration: 5000,
-                    });
-                }
-            } catch (error) {
-                console.error('❌ [SignUpFormContainer] Erro ao criar checkout:', error);
-                toast.error('Erro ao processar assinatura', {
-                    description: 'Entre em contato com o suporte.',
-                    duration: 5000,
-                });
-            }
         }
         // Os erros já são gerenciados pelo context
     }
 
     // Verificar se veio do fluxo de assinatura (apenas para copy/UX)
     // REMOVIDO: Agora todos os cadastros vão para /subscribe, então não precisa de lógica condicional
+
+    // Renderizar etapa apropriada
+    if (currentStep === 'payment') {
+        return (
+            <PaymentSelection
+                onSelectPayment={(method) => {
+                    setPaymentMethod(method);
+                    toast.loading('Criando checkout...', { duration: 1000 });
+                    setTimeout(() => {
+                        proceedToCheckout(method); // Passa método diretamente
+                    }, 1000);
+                }}
+                onBack={goBackToForm}
+                isLoading={isLoading}
+                error={errors.checkout}
+                selectedMethod={paymentMethod}
+            />
+        );
+    }
 
     return (
         <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-6 md:p-10">

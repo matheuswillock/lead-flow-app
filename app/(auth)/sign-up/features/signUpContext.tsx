@@ -7,12 +7,34 @@ import { createSignUpService } from "./services/SignUpService";
 import { signUpFormData } from "@/lib/validations/validationForms";
 
 /**
+ * Método de pagamento selecionado
+ */
+export type PaymentMethod = 'CREDIT_CARD' | 'PIX' | 'BOLETO';
+
+/**
+ * Etapa do fluxo de cadastro
+ */
+export type SignUpStep = 'form' | 'payment';
+
+/**
  * Interface para o estado do contexto de cadastro
  */
 interface ISignUpContextState {
   isLoading: boolean;
   errors: Record<string, string>;
+  currentStep: SignUpStep;
+  paymentMethod: PaymentMethod | null;
+  createdUserData: {
+    supabaseId: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    cpfCnpj: string;
+  } | null;
   registerUser: (data: signUpFormData) => Promise<Output>;
+  setPaymentMethod: (method: PaymentMethod) => void;
+  proceedToCheckout: (method?: PaymentMethod) => Promise<void>;
+  goBackToForm: () => void;
   clearErrors: () => void;
 }
 
@@ -41,6 +63,15 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [currentStep, setCurrentStep] = useState<SignUpStep>('form');
+  const [paymentMethod, setPaymentMethodState] = useState<PaymentMethod | null>(null);
+  const [createdUserData, setCreatedUserData] = useState<{
+    supabaseId: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    cpfCnpj: string;
+  } | null>(null);
 
   /**
    * Registra um novo usuário
@@ -95,7 +126,19 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
 
       const result = await signUpService.registerUser(requestData);
 
-      if (result.isValid) { 
+      if (result.isValid) {
+        // Armazenar dados do usuário criado
+        setCreatedUserData({
+          supabaseId: result.result.supabaseId,
+          fullName: data.fullName,
+          email: data.email,
+          phone: data.phone,
+          cpfCnpj: data.cpfCnpj,
+        });
+        
+        // Mudar para etapa de seleção de pagamento
+        setCurrentStep('payment');
+        
         return result;
       } else {
         const apiErrors: Record<string, string> = {};
@@ -131,6 +174,76 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
   };
 
   /**
+   * Define o método de pagamento selecionado
+   */
+  const setPaymentMethod = (method: PaymentMethod) => {
+    setPaymentMethodState(method);
+  };
+
+  /**
+   * Prossegue para o checkout com o método selecionado
+   */
+  const proceedToCheckout = async (method?: PaymentMethod) => {
+    const selectedMethod = method || paymentMethod;
+    
+    if (!createdUserData || !selectedMethod) {
+      console.error('❌ [SignUpContext] Dados incompletos para checkout', {
+        hasUserData: !!createdUserData,
+        hasMethod: !!selectedMethod
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      console.info('💳 [SignUpContext] Criando checkout:', { paymentMethod: selectedMethod });
+
+      const checkoutResponse = await fetch('/api/v1/checkout/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supabaseId: createdUserData.supabaseId,
+          fullName: createdUserData.fullName,
+          email: createdUserData.email,
+          phone: createdUserData.phone,
+          cpfCnpj: createdUserData.cpfCnpj,
+          billingType: selectedMethod,
+        }),
+      });
+
+      const checkoutResult = await checkoutResponse.json();
+
+      if (checkoutResult.isValid && checkoutResult.result?.checkoutUrl) {
+        console.info('✅ [SignUpContext] Redirecionando para checkout');
+        
+        // Redirecionar para checkout Asaas
+        window.location.href = checkoutResult.result.checkoutUrl;
+      } else {
+        console.error('❌ [SignUpContext] Erro ao criar checkout:', checkoutResult.errorMessages);
+        setErrors({
+          checkout: checkoutResult.errorMessages?.join(', ') || 'Erro ao criar checkout',
+        });
+      }
+    } catch (error) {
+      console.error('❌ [SignUpContext] Erro ao criar checkout:', error);
+      setErrors({
+        checkout: 'Erro ao processar pagamento. Tente novamente.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * Volta para o formulário de cadastro
+   */
+  const goBackToForm = () => {
+    setCurrentStep('form');
+    setPaymentMethodState(null);
+  };
+
+  /**
    * Limpa os erros do estado
    */
   const clearErrors = () => {
@@ -140,7 +253,13 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
   const value: ISignUpContextState = {
     isLoading,
     errors,
+    currentStep,
+    paymentMethod,
+    createdUserData,
     registerUser,
+    setPaymentMethod,
+    proceedToCheckout,
+    goBackToForm,
     clearErrors
   };
 
