@@ -80,6 +80,7 @@ with_operators with_operators
     String postalCode "❓"
     String address "❓"
     String addressNumber "❓"
+    String neighborhood "❓"
     String complement "❓"
     String city "❓"
     String state "❓"

@@ -17,10 +17,19 @@ export function useLoginForm(): UseFormReturn<loginFormData> {
 export function useSignUpForm(): UseFormReturn<signUpFormData> {
   return useForm<signUpFormData>({
     resolver: zodResolver(signupFormSchema),
+    mode: "onChange", // Valida em tempo real para habilitar botão
     defaultValues: {
       fullName: "",
       email: "",
       phone: "",
+      cpfCnpj: "", // Campo obrigatório no schema
+      postalCode: "",
+      address: "",
+      addressNumber: "",
+      neighborhood: "",
+      complement: "",
+      city: "",
+      state: "",
       password: "",
       confirmPassword: "",
     },
@@ -38,6 +47,7 @@ export function useUpdateAccountForm(): UseFormReturn<updateAccountFormData> {
       postalCode: "",
       address: "",
       addressNumber: "",
+      neighborhood: "",
       complement: "",
       city: "",
       state: "",

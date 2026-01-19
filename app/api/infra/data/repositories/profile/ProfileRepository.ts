@@ -131,6 +131,7 @@ class PrismaProfileRepository implements IProfileRepository {
     postalCode?: string,
     address?: string,
     addressNumber?: string,
+    neighborhood?: string,
     complement?: string,
     city?: string,
     state?: string,
@@ -226,14 +227,29 @@ class PrismaProfileRepository implements IProfileRepository {
         profileData.trialEndDate = trialEndDate;
       }
 
-      // Adicionar endereço se fornecido
-      if (postalCode) profileData.postalCode = postalCode;
-      if (address) profileData.address = address;
-      if (addressNumber) profileData.addressNumber = addressNumber;
-      if (complement) profileData.complement = complement;
-      if (city) profileData.city = city;
-      if (state) profileData.state = state;
+      // Adicionar endereço se fornecido (undefined check ao invés de truthy)
+      console.info('🔍 [ProfileRepository] Valores de endereço ANTES de adicionar:', {
+        postalCode, address, addressNumber, neighborhood, complement, city, state
+      });
+      
+      if (postalCode !== undefined) profileData.postalCode = postalCode;
+      if (address !== undefined) profileData.address = address;
+      if (addressNumber !== undefined) profileData.addressNumber = addressNumber;
+      if (neighborhood !== undefined) profileData.neighborhood = neighborhood;
+      if (complement !== undefined) profileData.complement = complement;
+      if (city !== undefined) profileData.city = city;
+      if (state !== undefined) profileData.state = state;
 
+      console.info('📝 [ProfileRepository] profileData APÓS adicionar endereço:', {
+        postalCode: profileData.postalCode,
+        address: profileData.address,
+        addressNumber: profileData.addressNumber,
+        neighborhood: profileData.neighborhood,
+        complement: profileData.complement,
+        city: profileData.city,
+        state: profileData.state
+      });
+      
       console.info('📝 [ProfileRepository] profileData final:', {
         hasSubscriptionId: !!profileData.subscriptionId,
         hasAsaasCustomerId: !!profileData.asaasCustomerId,
@@ -319,7 +335,19 @@ class PrismaProfileRepository implements IProfileRepository {
 
     async updateProfile(
         supabaseId: string,
-        updates: { fullName?: string; phone?: string; email?: string }
+        updates: { 
+            fullName?: string; 
+            phone?: string; 
+            email?: string;
+            cpfCnpj?: string;
+            postalCode?: string;
+            address?: string;
+            addressNumber?: string;
+            neighborhood?: string;
+            complement?: string;
+            city?: string;
+            state?: string;
+        }
     ): Promise<Profile | null> {
         try {
             // Primeiro, atualizar no Supabase Auth se o email foi alterado
@@ -359,6 +387,38 @@ class PrismaProfileRepository implements IProfileRepository {
             
             if (updates.email !== undefined) {
                 updateData.email = updates.email;
+            }
+
+            if (updates.cpfCnpj !== undefined) {
+                updateData.cpfCnpj = updates.cpfCnpj;
+            }
+
+            if (updates.postalCode !== undefined) {
+                updateData.postalCode = updates.postalCode;
+            }
+
+            if (updates.address !== undefined) {
+                updateData.address = updates.address;
+            }
+
+            if (updates.addressNumber !== undefined) {
+                updateData.addressNumber = updates.addressNumber;
+            }
+
+            if (updates.neighborhood !== undefined) {
+                updateData.neighborhood = updates.neighborhood;
+            }
+
+            if (updates.complement !== undefined) {
+                updateData.complement = updates.complement;
+            }
+
+            if (updates.city !== undefined) {
+                updateData.city = updates.city;
+            }
+
+            if (updates.state !== undefined) {
+                updateData.state = updates.state;
             }
 
             const profile = await prisma.profile.update({

@@ -47,6 +47,7 @@ export function AccountForm({
       watchedValues.postalCode !== initialData.postalCode ||
       watchedValues.address !== initialData.address ||
       watchedValues.addressNumber !== initialData.addressNumber ||
+      watchedValues.neighborhood !== initialData.neighborhood ||
       watchedValues.complement !== initialData.complement ||
       watchedValues.city !== initialData.city ||
       watchedValues.state !== initialData.state ||
@@ -250,6 +251,25 @@ export function AccountForm({
 
             <FormField
               control={form.control}
+              name="neighborhood"
+              render={({ field }) => (
+                <FormItem className="space-y-2">
+                  <FormLabel>Bairro</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Centro, Jardins, etc"
+                      className="h-11"
+                      disabled={isLoading || isUpdating}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="complement"
               render={({ field }) => (
                 <FormItem className="space-y-2">
@@ -266,28 +286,28 @@ export function AccountForm({
                 </FormItem>
               )}
             />
-
-            <FormField
-              control={form.control}
-              name="state"
-              render={({ field }) => (
-                <FormItem className="space-y-2">
-                  <FormLabel>Estado</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="SP"
-                      className="h-11"
-                      maxLength={2}
-                      disabled={isLoading || isUpdating}
-                      {...field}
-                      onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
           </div>
+
+          <FormField
+            control={form.control}
+            name="state"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Estado</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="SP"
+                    className="h-11"
+                    maxLength={2}
+                    disabled={isLoading || isUpdating}
+                    {...field}
+                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
 
         {showPasswordField && (

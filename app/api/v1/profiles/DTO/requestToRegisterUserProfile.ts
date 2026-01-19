@@ -16,6 +16,7 @@ export interface RequestToRegisterUserProfile {
   postalCode?: string;
   address?: string;
   addressNumber?: string;
+  neighborhood?: string;
   complement?: string;
   city?: string;
   state?: string;

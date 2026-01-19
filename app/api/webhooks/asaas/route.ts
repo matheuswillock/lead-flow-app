@@ -252,6 +252,20 @@ export async function POST(request: NextRequest) {
             nextDueDate: subscription.nextDueDate
           });
 
+          // Converter data brasileira DD/MM/YYYY para ISO
+          const parseBrazilianDate = (dateStr: string): Date | null => {
+            if (!dateStr) return null;
+            
+            const parts = dateStr.split('/');
+            if (parts.length !== 3) return null;
+            
+            const [day, month, year] = parts;
+            const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            const date = new Date(isoDate);
+            
+            return isNaN(date.getTime()) ? null : date;
+          };
+
           // Buscar manager pelo asaasCustomerId
           const { prisma } = await import('@/app/api/infra/data/prisma');
           const manager = await prisma.profile.findFirst({
@@ -262,14 +276,27 @@ export async function POST(request: NextRequest) {
           });
 
           if (manager) {
+            const nextDueDate = parseBrazilianDate(subscription.nextDueDate);
+            
+            console.info('📅 [Webhook Asaas] Convertendo data:', {
+              original: subscription.nextDueDate,
+              converted: nextDueDate?.toISOString(),
+              isValid: nextDueDate !== null
+            });
+
             // Atualizar subscriptionId e nextDueDate no Profile
+            const updateData: any = {
+              asaasSubscriptionId: subscription.id,
+              subscriptionCycle: subscription.cycle || 'MONTHLY',
+            };
+
+            if (nextDueDate) {
+              updateData.subscriptionNextDueDate = nextDueDate;
+            }
+
             await prisma.profile.update({
               where: { id: manager.id },
-              data: {
-                asaasSubscriptionId: subscription.id,
-                subscriptionNextDueDate: new Date(subscription.nextDueDate),
-                subscriptionCycle: subscription.cycle || 'MONTHLY',
-              }
+              data: updateData
             });
 
             console.info('✅ [Webhook Asaas] Assinatura sincronizada para manager:', {

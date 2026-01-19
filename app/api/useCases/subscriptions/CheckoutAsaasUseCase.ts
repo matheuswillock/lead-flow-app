@@ -5,6 +5,15 @@ import { getEmailService } from "@/lib/services/EmailService";
 import { createClient } from "@supabase/supabase-js";
 import { getFullUrl } from "@/lib/utils/app-url";
 
+// Helper para detectar ambiente de produção
+function getIsProduction() {
+  const asaasEnv = process.env.ASAAS_ENV;
+  if (asaasEnv) {
+    return asaasEnv === 'production';
+  }
+  return process.env.NODE_ENV === 'production';
+}
+
 // Função para criar cliente Supabase admin
 function createSupabaseAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -29,6 +38,13 @@ export interface CreateCheckoutData {
   email: string;
   phone: string;
   cpfCnpj?: string;
+  postalCode?: string;
+  address?: string;
+  addressNumber?: string;
+  neighborhood?: string;
+  complement?: string;
+  city?: string;
+  state?: string;
 }
 
 export interface ICheckoutAsaasUseCase {
@@ -79,15 +95,33 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       if (!asaasCustomerId) {
         console.info('👤 [createSubscriptionCheckout] Criando cliente no Asaas...');
         
+        // Usar dados do Profile (recém-criado) ou fallback dos dados do request
         const customerData: any = {
-          name: data.fullName,
-          email: data.email,
-          mobilePhone: data.phone?.replace(/\D/g, '') || undefined,
+          name: profile.fullName || data.fullName,
+          email: profile.email || data.email,
+          mobilePhone: (profile.phone || data.phone)?.replace(/\D/g, '') || undefined,
+          cpfCnpj: (profile.cpfCnpj || data.cpfCnpj)?.replace(/\D/g, '') || undefined,
+          postalCode: (profile.postalCode || data.postalCode)?.replace(/\D/g, '') || '01310100',
+          address: profile.address || data.address || 'Não informado',
+          addressNumber: profile.addressNumber || data.addressNumber || 'S/N',
+          province: profile.neighborhood || data.neighborhood || 'Centro', // Province = Bairro
         };
 
-        if (data.cpfCnpj) {
-          customerData.cpfCnpj = data.cpfCnpj.replace(/\D/g, '');
+        // Adicionar complemento se fornecido
+        if (profile.complement || data.complement) {
+          customerData.complement = profile.complement || data.complement;
         }
+
+        console.info('📍 [createSubscriptionCheckout] Dados do cliente:', {
+          name: customerData.name,
+          email: customerData.email,
+          postalCode: customerData.postalCode,
+          address: customerData.address,
+          addressNumber: customerData.addressNumber,
+          province: customerData.province,
+          complement: customerData.complement,
+          dataSource: profile.neighborhood ? 'profile' : 'request',
+        });
 
         try {
           const customer = await asaasFetch(asaasApi.customers, {
@@ -116,67 +150,67 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         }
       }
 
-      // 2. Criar assinatura no Asaas
-      const nextDueDate = new Date();
-      nextDueDate.setMonth(nextDueDate.getMonth() + 1); // 1 mês de prazo para primeira cobrança
-      const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
+      // 2. Criar Asaas Checkout com assinatura recorrente
+      // nextDueDate = data da PRIMEIRA cobrança (hoje, para cobrar no ato)
+      // A segunda cobrança será automaticamente agendada para +1 mês (MONTHLY)
+      const now = new Date();
+      const nextDueDateStr = now.toISOString().slice(0, 19).replace('T', ' '); // "2026-01-18 12:00:00"
+      
+      const endDate = new Date();
+      endDate.setFullYear(endDate.getFullYear() + 1);
+      const endDateStr = endDate.toISOString().slice(0, 19).replace('T', ' '); // "2027-01-18 12:00:00"
 
-      console.info('📝 [createSubscriptionCheckout] Criando assinatura no Asaas...');
+      console.info('📝 [createSubscriptionCheckout] Criando Asaas Checkout...');
+      console.info('📅 [createSubscriptionCheckout] Datas da assinatura:', {
+        firstPayment: nextDueDateStr,
+        endDate: endDateStr,
+        cycle: 'MONTHLY - próxima cobrança em +30 dias'
+      });
 
-      const subscriptionData = {
+      const checkoutData: any = {
         customer: asaasCustomerId,
-        billingType: 'UNDEFINED', // Cliente escolhe forma de pagamento
-        nextDueDate: nextDueDateStr,
-        value: 59.90,
-        cycle: 'MONTHLY',
-        description: 'Corretor Studio - Plano Professional | Gerencie leads, equipe e resultados em um só lugar. Pipeline Kanban completo, analytics em tempo real, automações inteligentes e gestão de operadores. Leads ilimitados, relatórios personalizados e atualizações automáticas. R$ 59,90/mês - Assinatura base para gerenciar sua operação de vendas com eficiência e escala.',
+        billingTypes: ['CREDIT_CARD'], // Habilita todas as opções no checkout
+        chargeTypes: ['RECURRENT'], // ✅ Assinatura recorrente
+        subscription: {
+          cycle: 'MONTHLY',
+          nextDueDate: nextDueDateStr,
+          endDate: endDateStr,
+        },
+        items: [
+          {
+            name: 'Plano Professional',
+            description: 'Sistema completo de gestão de leads com pipeline Kanban, analytics em tempo real e gestão de equipe.',
+            value: 59.90,
+            quantity: 1,
+          }
+        ],
         callback: {
           successUrl: getFullUrl('/checkout-return'),
+          cancelUrl: getFullUrl(`/sign-up?deleteUser=${data.supabaseId}`),
+          expiredUrl: getFullUrl(`/sign-up?deleteUser=${data.supabaseId}`),
           autoRedirect: true,
         },
       };
 
-      const subscription = await asaasFetch(asaasApi.subscriptions, {
+      const checkout = await asaasFetch(asaasApi.checkouts, {
         method: 'POST',
-        body: JSON.stringify(subscriptionData),
+        body: JSON.stringify(checkoutData),
       });
 
-      console.info('✅ [createSubscriptionCheckout] Assinatura criada:', subscription.id);
+      console.info('✅ [createSubscriptionCheckout] Checkout criado:', checkout.id);
 
-      // 3. Buscar primeira cobrança gerada pela assinatura
-      console.info('🔍 [createSubscriptionCheckout] Buscando cobranças da assinatura...');
-      
-      const payments = await asaasFetch(
-        `${asaasApi.subscriptions}/${subscription.id}/payments`,
-        { method: 'GET' }
-      );
+      // 3. Construir URL do checkout
+      const checkoutUrl = `https://${getIsProduction() ? 'www' : 'sandbox'}.asaas.com/checkoutSession/show?id=${checkout.id}`;
+      console.info('🔗 [createSubscriptionCheckout] Checkout URL:', checkoutUrl);
 
-      if (!payments.data || payments.data.length === 0) {
-        return new Output(
-          false,
-          [],
-          ['Erro ao gerar cobrança da assinatura'],
-          null
-        );
-      }
-
-      const firstPayment = payments.data[0];
-      console.info('✅ [createSubscriptionCheckout] Primeira cobrança:', firstPayment.id);
-
-      // 4. Salvar informações temporárias no profile
+      // 3. Salvar informações no profile
       await prisma.profile.update({
         where: { supabaseId: data.supabaseId },
         data: {
-          asaasSubscriptionId: subscription.id,
-          subscriptionNextDueDate: new Date(subscription.nextDueDate),
-          subscriptionCycle: subscription.cycle,
-          subscriptionStatus: 'trial', // Aguardando primeiro pagamento
+          subscriptionStatus: 'trial',
           subscriptionPlan: 'manager_base',
         }
       });
-
-      // 5. Retornar URL da fatura para checkout
-      const checkoutUrl = firstPayment.invoiceUrl;
 
       console.info('🎉 [createSubscriptionCheckout] Checkout criado com sucesso!');
 
@@ -186,10 +220,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         [],
         {
           checkoutUrl,
-          subscriptionId: subscription.id,
-          paymentId: firstPayment.id,
-          dueDate: firstPayment.dueDate,
-          value: firstPayment.value,
+          checkoutId: checkout.id,
         }
       );
 

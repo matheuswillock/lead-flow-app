@@ -61,6 +61,32 @@ export const signupFormSchema = z.object({
       }
       return true;
     }, "CPF ou CNPJ inválido"),
+  postalCode: z
+    .string()
+    .min(8, "CEP inválido")
+    .max(9, "CEP inválido")
+    .refine((val) => {
+      const numbers = val.replace(/\D/g, '');
+      return numbers.length === 8;
+    }, "CEP deve ter 8 dígitos"),
+  address: z
+    .string()
+    .min(3, "Endereço é obrigatório"),
+  addressNumber: z
+    .string()
+    .min(1, "Número é obrigatório"),
+  neighborhood: z
+    .string()
+    .min(2, "Bairro é obrigatório"),
+  complement: z
+    .string()
+    .optional(),
+  city: z
+    .string()
+    .min(2, "Cidade é obrigatória"),
+  state: z
+    .string()
+    .length(2, "UF deve ter 2 letras"),
   password: z.string().min(8, "A senha deve ter no mínimo 8 caracteres")
     .regex(/[A-Z]/, "A senha deve conter pelo menos uma letra maiúscula")
     .regex(/[a-z]/, "A senha deve conter pelo menos uma letra minúscula")
@@ -94,6 +120,7 @@ export const updateAccountFormSchema = z.object({
   postalCode: z.string().optional(),
   address: z.string().optional(),
   addressNumber: z.string().optional(),
+  neighborhood: z.string().optional(),
   complement: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),

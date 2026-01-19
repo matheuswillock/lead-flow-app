@@ -11,16 +11,19 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         
         console.info('📥 [RegisterProfile Route] Body recebido:', {
+            email: body.email,
+            fullname: body.fullname,
+            phone: body.phone,
+            cpfCnpj: body.cpfCnpj,
+            postalCode: body.postalCode,
+            address: body.address,
+            addressNumber: body.addressNumber,
+            neighborhood: body.neighborhood,
+            complement: body.complement,
+            city: body.city,
+            state: body.state,
             hasSubscriptionId: !!body.subscriptionId,
             hasAsaasCustomerId: !!body.asaasCustomerId,
-            hasSubscriptionPlan: !!body.subscriptionPlan,
-            hasOperatorCount: body.operatorCount !== undefined,
-            subscriptionId: body.subscriptionId,
-            asaasCustomerId: body.asaasCustomerId,
-            subscriptionPlan: body.subscriptionPlan,
-            operatorCount: body.operatorCount,
-            subscriptionStatus: body.subscriptionStatus,
-            role: body.role
         });
         
         let validatedData: RequestToRegisterUserProfile;
@@ -42,16 +45,20 @@ export async function POST(req: NextRequest) {
                 postalCode: body.postalCode,
                 address: body.address,
                 addressNumber: body.addressNumber,
+                neighborhood: body.neighborhood,
                 complement: body.complement,
                 city: body.city,
                 state: body.state,
             };
             
             console.info('✅ [RegisterProfile Route] Dados validados:', {
+                hasAddress: !!validatedData.address,
+                hasNeighborhood: !!validatedData.neighborhood,
+                postalCode: validatedData.postalCode,
+                address: validatedData.address,
+                neighborhood: validatedData.neighborhood,
                 hasSubscriptionId: !!validatedData.subscriptionId,
                 hasAsaasCustomerId: !!validatedData.asaasCustomerId,
-                subscriptionPlan: validatedData.subscriptionPlan,
-                operatorCount: validatedData.operatorCount
             });
         } catch (validationError) {
             console.error('❌ [RegisterProfile Route] Erro de validação:', validationError);

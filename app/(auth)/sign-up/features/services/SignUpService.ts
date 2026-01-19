@@ -33,6 +33,7 @@ export class SignUpService implements ISignUpService {
         postalCode: (requestData as any).postalCode,
         address: (requestData as any).address,
         addressNumber: (requestData as any).addressNumber,
+        neighborhood: (requestData as any).neighborhood,
         complement: (requestData as any).complement,
         city: (requestData as any).city,
         state: (requestData as any).state,
