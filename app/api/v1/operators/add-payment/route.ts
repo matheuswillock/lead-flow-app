@@ -1,25 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { subscriptionUpgradeUseCase } from "@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase";
+import { checkoutAsaasUseCase } from "@/app/api/useCases/subscriptions/CheckoutAsaasUseCase";
 
 /**
- * POST /api/v1/operators/add-operator-payment
- * Cria pagamento para adicionar novo operador
+ * POST /api/v1/operators/add-payment
+ * Cria checkout hospedado do Asaas para adicionar novo operador
+ * Incrementa assinatura existente do manager em +R$ 19,90
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const { 
-      managerId, 
-      operatorData, 
-      paymentMethod, 
-      creditCard,
-      creditCardHolderInfo,
-      remoteIp 
-    } = body;
+    const { managerId, operatorData } = body;
 
     // Validações básicas
-    if (!managerId || !operatorData || !paymentMethod) {
+    if (!managerId || !operatorData) {
       return NextResponse.json(
         {
           isValid: false,
@@ -31,29 +25,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validações específicas para cartão de crédito
-    if (paymentMethod === 'CREDIT_CARD') {
-      if (!creditCard || !creditCardHolderInfo) {
-        return NextResponse.json(
-          {
-            isValid: false,
-            successMessages: [],
-            errorMessages: ['Dados do cartão de crédito são obrigatórios'],
-            result: null
-          },
-          { status: 400 }
-        );
-      }
+    if (!operatorData.name || !operatorData.email) {
+      return NextResponse.json(
+        {
+          isValid: false,
+          successMessages: [],
+          errorMessages: ['Nome e e-mail do operador são obrigatórios'],
+          result: null
+        },
+        { status: 400 }
+      );
     }
 
-    // Criar pagamento
-    const result = await subscriptionUpgradeUseCase.createOperatorPayment({
+    // Criar checkout usando o mesmo fluxo de novos usuários
+    const result = await checkoutAsaasUseCase.createOperatorCheckout({
       managerId,
-      operatorData,
-      paymentMethod,
-      creditCard,
-      creditCardHolderInfo,
-      remoteIp
+      operatorData: {
+        name: operatorData.name,
+        email: operatorData.email,
+        role: operatorData.role || 'operator',
+      }
     });
 
     const statusCode = result.isValid ? 201 : 400;
