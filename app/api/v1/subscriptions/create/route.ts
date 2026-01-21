@@ -17,6 +17,8 @@ export async function POST(req: NextRequest) {
       hasSupabaseId: !!supabaseId
     });
 
+    const forwardedFor = req.headers.get('x-forwarded-for') || ''
+    const remoteIp = forwardedFor.split(',')[0]?.trim() || undefined
     const useCase = new CreateSubscriptionUseCase()
     const output: Output = await useCase.execute({
       supabaseId,
@@ -32,7 +34,8 @@ export async function POST(req: NextRequest) {
       city: body.city,
       state: body.state,
       billingType: body.billingType || 'CREDIT_CARD',
-      creditCard: body.creditCard
+      creditCard: body.creditCard,
+      remoteIp
     })
 
     console.info('🌐 [SubscriptionController] Output:', { 

@@ -29,6 +29,7 @@ export interface CreateSubscriptionInput {
     expiryYear: string
     ccv: string
   }
+  remoteIp?: string
 }
 
 export interface CreateSubscriptionResult {
@@ -68,6 +69,9 @@ export class CreateSubscriptionUseCase {
       if (!input.email) validationErrors.push('Email is required')
       if (!input.cpfCnpj) validationErrors.push('CPF/CNPJ is required')
       if (!input.billingType) validationErrors.push('Billing type is required')
+      if (input.billingType === 'CREDIT_CARD' && !input.creditCard) {
+        validationErrors.push('Credit card data is required for credit card billing')
+      }
 
       if (validationErrors.length) {
         console.warn('⚠️ [CreateSubscriptionUseCase] Erros de validação:', validationErrors);
@@ -271,14 +275,33 @@ export class CreateSubscriptionUseCase {
       
       // externalReference: preferir UUID do Profile quando existir
       const subscriptionExternalRef = (authProfile?.id || existingProfile?.id || input.email);
-      const subscription = await this.subscriptionService.createManagerSubscription({
+      const subscriptionPayload: any = {
         customer: customerId,
         billingType: input.billingType,
         value: 59.90,
         cycle: 'MONTHLY',
         description: 'Lead Flow - Plano Manager',
         externalReference: subscriptionExternalRef
-      })
+      }
+
+      if (input.billingType === 'CREDIT_CARD' && input.creditCard) {
+        subscriptionPayload.creditCard = input.creditCard
+        subscriptionPayload.creditCardHolderInfo = {
+          name: input.fullName,
+          email: input.email,
+          cpfCnpj: cpfCnpj,
+          postalCode: postalCode,
+          addressNumber: input.addressNumber || undefined,
+          addressComplement: input.complement || null,
+          phone: phone || undefined,
+          mobilePhone: phone || undefined
+        }
+        if (input.remoteIp) {
+          subscriptionPayload.remoteIp = input.remoteIp
+        }
+      }
+
+      const subscription = await this.subscriptionService.createManagerSubscription(subscriptionPayload)
       
       console.info('✅ [CreateSubscriptionUseCase] Assinatura criada:', subscription.subscriptionId);
 

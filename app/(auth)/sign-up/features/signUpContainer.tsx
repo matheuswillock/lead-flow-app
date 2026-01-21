@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSignUpForm } from "@/hooks/useForms";
 import { SignupForm } from "@/components/forms/signUpForm";
-import { PaymentSelection } from "./PaymentSelection";
+import { CheckoutStep } from "./CheckoutStep";
 import { useSignUp } from "./signUpContext";
 import { signUpFormData } from "@/lib/validations/validationForms";
 import { toast } from "sonner";
@@ -20,10 +20,7 @@ export function SignUpFormContainer() {
         isLoading, 
         errors, 
         currentStep, 
-        paymentMethod,
         registerUser,
-        setPaymentMethod,
-        proceedToCheckout,
         goBackToForm,
     } = useSignUp();
     const [isDeletingUser, setIsDeletingUser] = useState(false);
@@ -40,6 +37,11 @@ export function SignUpFormContainer() {
                 try {
                     console.info('🗑️ [SignUpFormContainer] Deletando usuário abandonado:', deleteUserId);
                     
+                    toast.info('Cancelando pagamento', {
+                        description: 'Voltando ao cadastro e removendo a conta criada...',
+                        duration: 3000,
+                    });
+
                     toast.info('Checkout cancelado', {
                         description: 'Removendo conta criada...',
                         duration: 3000,
@@ -112,21 +114,7 @@ export function SignUpFormContainer() {
 
     // Renderizar etapa apropriada
     if (currentStep === 'payment') {
-        return (
-            <PaymentSelection
-                onSelectPayment={(method) => {
-                    setPaymentMethod(method);
-                    toast.loading('Criando checkout...', { duration: 1000 });
-                    setTimeout(() => {
-                        proceedToCheckout(method); // Passa método diretamente
-                    }, 1000);
-                }}
-                onBack={goBackToForm}
-                isLoading={isLoading}
-                error={errors.checkout}
-                selectedMethod={paymentMethod}
-            />
-        );
+        return <CheckoutStep onBack={goBackToForm} />;
     }
 
     return (

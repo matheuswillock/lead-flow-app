@@ -679,7 +679,8 @@ export default function AccountProfilePage() {
                                   <AlertTriangle className="h-5 w-5" />
                                   Tem certeza absoluta?
                                 </AlertDialogTitle>
-                                <AlertDialogDescription className="space-y-3 pt-2">
+                                <AlertDialogDescription asChild className="space-y-3 pt-2">
+                                  <div>
                                   <p>
                                     Esta ação <strong className="text-foreground">não pode ser desfeita</strong>. Isso irá deletar permanentemente:
                                   </p>
@@ -693,6 +694,7 @@ export default function AccountProfilePage() {
                                   <p className="text-red-600 dark:text-red-500 font-medium pt-2">
                                     ⚠️ Esta ação é irreversível!
                                   </p>
+                                                                  </div>
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
 

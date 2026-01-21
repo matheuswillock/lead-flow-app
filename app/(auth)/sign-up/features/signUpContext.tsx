@@ -30,6 +30,13 @@ interface ISignUpContextState {
     email: string;
     phone: string;
     cpfCnpj: string;
+    postalCode?: string;
+    address?: string;
+    addressNumber?: string;
+    neighborhood?: string;
+    complement?: string;
+    city?: string;
+    state?: string;
   } | null;
   registerUser: (data: signUpFormData) => Promise<Output>;
   setPaymentMethod: (method: PaymentMethod) => void;
@@ -71,6 +78,13 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
     email: string;
     phone: string;
     cpfCnpj: string;
+    postalCode?: string;
+    address?: string;
+    addressNumber?: string;
+    neighborhood?: string;
+    complement?: string;
+    city?: string;
+    state?: string;
   } | null>(null);
 
   /**
@@ -134,6 +148,13 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
           email: data.email,
           phone: data.phone,
           cpfCnpj: data.cpfCnpj,
+          postalCode: data.postalCode,
+          address: data.address,
+          addressNumber: data.addressNumber,
+          neighborhood: data.neighborhood,
+          complement: data.complement,
+          city: data.city,
+          state: data.state,
         });
         
         // Mudar para etapa de seleção de pagamento
