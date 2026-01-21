@@ -17,12 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSignUp } from "./signUpContext";
 import { signUpCheckoutSchema, type SignUpCheckoutFormData } from "@/lib/validations/checkoutSchema";
-import { useWebhookListener } from "@/hooks/useWebhookListener";
+import { usePaymentPolling } from "@/hooks/usePaymentPolling";
 import { toast } from "sonner";
 
 const PLAN_PRICE = 59.9;
@@ -50,7 +48,7 @@ interface CheckoutStepProps {
 
 export function CheckoutStep({ onBack }: CheckoutStepProps) {
   const router = useRouter();
-  const { createdUserData } = useSignUp();
+  const { createdUserData, goBackToForm } = useSignUp();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
@@ -72,12 +70,10 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
     resolver: zodResolver(signUpCheckoutSchema),
     defaultValues: {
       billingType: "PIX",
-      cardPaymentType: "CREDIT",
     },
   });
 
   const billingType = form.watch("billingType");
-  const cardPaymentType = form.watch("cardPaymentType");
   const [countdown, setCountdown] = useState<string | null>(null);
   const firstChargeDate = new Date();
   const lastChargeDate = new Date();
@@ -130,6 +126,7 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
   };
 
   const handleBack = () => {
+    goBackToForm();
     if (createdUserData?.supabaseId) {
       toast.info("Cancelando pagamento", {
         description: "Voltando ao cadastro e removendo a conta criada.",
@@ -141,6 +138,7 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
   };
 
   const handleCancelPayment = () => {
+    goBackToForm();
     if (createdUserData?.supabaseId) {
       toast.info("Cancelando pagamento", {
         description: "Voltando ao cadastro e removendo a conta criada.",
@@ -151,7 +149,7 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
     onBack();
   };
 
-  useWebhookListener({
+  usePaymentPolling({
     subscriptionId,
     enabled: !!subscriptionId,
     onPaymentConfirmed: () => {
@@ -194,7 +192,9 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
     if (!createdUserData) return;
     const isPix = data.billingType === "PIX";
     const isBoleto = data.billingType === "BOLETO";
-    const hasPaymentData = (isPix && !!pixData) || (isBoleto && !!boletoData);
+    const hasPaymentData =
+      (isPix && !!pixData) ||
+      (isBoleto && !!boletoData);
 
     if (hasPaymentData) {
       await checkPaymentStatus();
@@ -220,7 +220,6 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
         city: createdUserData.city,
         state: createdUserData.state,
         billingType: data.billingType,
-        cardPaymentType: data.cardPaymentType,
       };
 
       if (data.billingType === "CREDIT_CARD") {
@@ -277,12 +276,12 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
             Voltar ao cadastro
           </Button>
           {paymentDeadline && (
-            <div className="flex items-center gap-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-indigo-900 shadow-sm">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/80">
-                <Clock className="h-4 w-4 text-indigo-600" />
+            <div className="flex items-center gap-4 rounded-2xl border border-border/60 bg-card px-4 py-3 text-foreground shadow-sm">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted">
+                <Clock className="h-4 w-4 text-primary" />
               </div>
-              <div className="text-sm font-semibold tracking-wide">{countdown}</div>
-              <div className="text-xs text-indigo-700">
+              <div className="text-sm font-semibold tracking-wide text-foreground">{countdown}</div>
+              <div className="text-xs text-muted-foreground">
                 Tempo limite para conclusao do pagamento
               </div>
             </div>
@@ -383,37 +382,6 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
                     </TabsContent>
 
                     <TabsContent value="CREDIT_CARD" className="mt-6 space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="cardPaymentType"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Tipo de pagamento</FormLabel>
-                            <FormControl>
-                              <RadioGroup
-                                value={field.value}
-                                onValueChange={field.onChange}
-                                className="grid grid-cols-2 gap-3"
-                              >
-                                <Label
-                                  htmlFor="card-credit"
-                                  className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-                                >
-                                  <RadioGroupItem value="CREDIT" id="card-credit" />
-                                  Credito
-                                </Label>
-                                <Label
-                                  htmlFor="card-debit"
-                                  className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-                                >
-                                  <RadioGroupItem value="DEBIT" id="card-debit" />
-                                  Debito
-                                </Label>
-                              </RadioGroup>
-                            </FormControl>
-                          </FormItem>
-                        )}
-                      />
                       <>
                         <FormField
                           control={form.control}

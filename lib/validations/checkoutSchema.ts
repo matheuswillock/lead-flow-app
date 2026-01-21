@@ -12,7 +12,6 @@ export const signUpCheckoutSchema = z.object({
   billingType: z.enum(["PIX", "BOLETO", "CREDIT_CARD"], {
     message: "Forma de pagamento invalida",
   }),
-  cardPaymentType: z.enum(["CREDIT", "DEBIT"]),
   creditCard: creditCardSchema.optional(),
 }).refine(
   (data) => {

@@ -68,10 +68,10 @@ export class CreateSubscriptionUseCase {
       if (!input.fullName) validationErrors.push('Full name is required')
       if (!input.email) validationErrors.push('Email is required')
       if (!input.cpfCnpj) validationErrors.push('CPF/CNPJ is required')
-      if (!input.billingType) validationErrors.push('Billing type is required')
-      if (input.billingType === 'CREDIT_CARD' && !input.creditCard) {
-        validationErrors.push('Credit card data is required for credit card billing')
-      }
+    if (!input.billingType) validationErrors.push('Billing type is required')
+    if (input.billingType === 'CREDIT_CARD' && !input.creditCard) {
+      validationErrors.push('Credit card data is required for credit card billing')
+    }
 
       if (validationErrors.length) {
         console.warn('⚠️ [CreateSubscriptionUseCase] Erros de validação:', validationErrors);

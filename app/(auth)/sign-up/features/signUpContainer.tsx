@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSignUpForm } from "@/hooks/useForms";
 import { SignupForm } from "@/components/forms/signUpForm";
@@ -24,12 +24,15 @@ export function SignUpFormContainer() {
         goBackToForm,
     } = useSignUp();
     const [isDeletingUser, setIsDeletingUser] = useState(false);
+    const deleteUserRef = useRef<string | null>(null);
 
     // Detectar parâmetro deleteUser (vindo do checkout cancelado/expirado)
     useEffect(() => {
         const deleteUserId = searchParams.get('deleteUser');
         
-        if (deleteUserId && !isDeletingUser) {
+        if (deleteUserId && !isDeletingUser && deleteUserRef.current !== deleteUserId) {
+            deleteUserRef.current = deleteUserId;
+            goBackToForm();
             setIsDeletingUser(true);
             
             // Deletar usuário
