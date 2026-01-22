@@ -185,6 +185,31 @@ export async function POST(request: NextRequest) {
       } else if (!isOperatorPayment) {
         console.info('ℹ️ [Webhook Asaas] Não é pagamento de operador (externalReference diferente)');
       }
+
+      const isPendingOperatorRef = !!externalReference && externalReference.startsWith('pending-operator-');
+      if (!isOperatorPayment && isPendingOperatorRef && result.isPaid) {
+        try {
+          console.info('?? [Webhook Asaas] Detectado pagamento de OPERADOR via externalReference');
+          const { subscriptionUpgradeUseCase } = await import('@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase');
+          const operatorResult = await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId);
+
+          if (operatorResult.isValid) {
+            console.info('?? [Webhook Asaas] ? OPERADOR CRIADO COM SUCESSO (externalRef):', {
+              operatorId: operatorResult.result?.operatorId,
+              operatorEmail: operatorResult.result?.operatorEmail,
+              paymentId
+            });
+          } else {
+            console.error('? [Webhook Asaas] ? FALHA AO CRIAR OPERADOR (externalRef):', {
+              errorMessages: operatorResult.errorMessages,
+              paymentId,
+              externalReference
+            });
+          }
+        } catch (error) {
+          console.error('? [Webhook Asaas] Erro ao processar pagamento de operador (externalRef):', error);
+        }
+      }
     }
 
     // ATIVAR ASSINATURA APÓS PAGAMENTO CONFIRMADO (SIGN-UP FLOW)

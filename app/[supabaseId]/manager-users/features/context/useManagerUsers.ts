@@ -28,6 +28,14 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
     isEditModalOpen: false,
     isDeleteDialogOpen: false,
   });
+  const [operatorCheckout, setOperatorCheckout] = useState<{
+    isOpen: boolean;
+    operatorData: CreateManagerUserFormData | null;
+  }>({
+    isOpen: false,
+    operatorData: null,
+  });
+
 
   const [permissions] = useState<UserPermissions>({
     canCreateUser: currentUserRole === "manager",
@@ -122,40 +130,12 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
         }
         return;
       }
-
-      // Fluxo normal: redirecionar para checkout do Asaas (R$ 19,90 por usuário adicional)
-      toast.loading("Gerando link de pagamento...");
-
-      // Chamar API para criar checkout
-      const response = await fetch('/api/v1/operators/add-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          managerId: supabaseId,
-          operatorData: {
-            name: userData.name,
-            email: userData.email,
-            role: userData.role || 'operator',
-          },
-          paymentMethod: 'UNDEFINED', // Permite escolher no checkout
-        }),
+      // Fluxo normal: abrir checkout interno para pagamento do operador
+      setOperatorCheckout({
+        isOpen: true,
+        operatorData: userData,
       });
-
-      const result = await response.json();
-
-      toast.dismiss();
-
-      if (result.isValid && result.result?.checkoutUrl) {
-        toast.success("Redirecionando para checkout...");
-        
-        // Redirecionar para o checkout hospedado do Asaas
-        setTimeout(() => {
-          window.location.href = result.result.checkoutUrl;
-        }, 1000);
-      } else {
-        toast.error(result.errorMessages?.join(', ') || 'Erro ao gerar checkout');
-        setState(prev => ({ ...prev, loading: false }));
-      }
+      setState(prev => ({ ...prev, loading: false }));
     } catch (error) {
       console.error("Erro ao criar usuário:", error);
       toast.error("Erro ao criar usuário");
@@ -182,7 +162,6 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
       } else {
         toast.error(response.errorMessages.join(", ") || "Erro ao atualizar usuário");
         setState(prev => ({ ...prev, loading: false }));
-      }
     } catch (error) {
       console.error("Erro ao atualizar usuário:", error);
       toast.error("Erro ao atualizar usuário");
@@ -218,7 +197,6 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
       } else {
         toast.error(response.errorMessages.join(", ") || "Erro ao remover usuário");
         setState(prev => ({ ...prev, loading: false }));
-      }
     } catch (error) {
       console.error("Erro ao deletar usuário:", error);
       toast.error("Erro ao remover usuário");
@@ -307,6 +285,15 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
       selectedUser: null 
     }));
   }, []);
+
+  const closeOperatorCheckout = useCallback(() => {
+    setOperatorCheckout({ isOpen: false, operatorData: null });
+  }, []);
+
+  const completeOperatorCheckout = useCallback(async () => {
+    setOperatorCheckout({ isOpen: false, operatorData: null });
+    await loadUsers();
+  }, [loadUsers]);
 
   // Carregar dados no mount
   useEffect(() => {
@@ -423,6 +410,9 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
     deleteUser,
     resendInvite,
     togglePermanentSubscription,
+    operatorCheckout,
+    closeOperatorCheckout,
+    completeOperatorCheckout,
     
     // Controle de UI
     openCreateModal,
