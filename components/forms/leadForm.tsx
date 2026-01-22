@@ -16,15 +16,33 @@ import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
 import { Loader2 } from "lucide-react";
 
-const formatCurrency = (value: string): string => {
-    const cleanValue = value.replace(/\D/g, '');
-    if (cleanValue === '') return '';
-    
-    const numberValue = parseInt(cleanValue) / 100;
-    return `R$ ${numberValue.toLocaleString('pt-BR', {
+const formatCurrencyNumber = (value: number): string =>
+    `R$ ${value.toLocaleString('pt-BR', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     })}`;
+
+const parseCurrencyValue = (value: string): number | null => {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) return null;
+    const cents = digits.slice(-2).padStart(2, '0');
+    const intPart = digits.slice(0, -2) || '0';
+    return parseFloat(`${intPart}.${cents}`);
+};
+
+const formatCurrencyInput = (value: string): string => {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) return '';
+    const cents = digits.slice(-2).padStart(2, '0');
+    const intPart = digits.slice(0, -2) || '0';
+    const formattedInt = Number(intPart).toLocaleString('pt-BR');
+    return `R$ ${formattedInt},${cents}`;
+};
+
+const toCurrencyStorageValue = (value: string): string | null => {
+    const parsed = parseCurrencyValue(value);
+    if (parsed === null || isNaN(parsed)) return null;
+    return parsed.toFixed(2);
 };
 
 export interface ILeadFormProps {
@@ -51,6 +69,8 @@ export function LeadForm({
     leadId
 }: ILeadFormProps) {
     const [hasChanges, setHasChanges] = useState(false);
+    const [currentValueDisplay, setCurrentValueDisplay] = useState("");
+    const [ticketDisplay, setTicketDisplay] = useState("");
 
     const watchedValues = form.watch();
     const isFormValid = form.formState.isValid;
@@ -100,6 +120,46 @@ export function LeadForm({
             form.setValue('responsible', usersToAssign[0].id);
         }
     }, [usersToAssign, form]);
+
+    useEffect(() => {
+        const raw = form.getValues("currentValue");
+        if (!raw) {
+            setCurrentValueDisplay("");
+            return;
+        }
+        const parsed = parseCurrencyValue(String(raw));
+        if (parsed === null || isNaN(parsed)) {
+            setCurrentValueDisplay("");
+            return;
+        }
+        setCurrentValueDisplay(formatCurrencyNumber(parsed));
+        if (typeof raw === "string" && /[R$,]/.test(raw)) {
+            const storage = toCurrencyStorageValue(raw);
+            if (storage) {
+                form.setValue("currentValue", storage, { shouldDirty: false });
+            }
+        }
+    }, [form]);
+
+    useEffect(() => {
+        const raw = form.getValues("ticket");
+        if (!raw) {
+            setTicketDisplay("");
+            return;
+        }
+        const parsed = parseCurrencyValue(String(raw));
+        if (parsed === null || isNaN(parsed)) {
+            setTicketDisplay("");
+            return;
+        }
+        setTicketDisplay(formatCurrencyNumber(parsed));
+        if (typeof raw === "string" && /[R$,]/.test(raw)) {
+            const storage = toCurrencyStorageValue(raw);
+            if (storage) {
+                form.setValue("ticket", storage, { shouldDirty: false });
+            }
+        }
+    }, [form]);
 
     return (
       <Form {...form}>
@@ -309,36 +369,17 @@ export function LeadForm({
                 name="currentValue"
                 render={({ field }) => {
                     // Garantir que o valor sempre seja exibido formatado
-                    const displayValue = React.useMemo(() => {
-                        if (!field.value) return '';
-                        
-                        // Se já está formatado (tem R$), retornar como está
-                        if (typeof field.value === 'string' && field.value.includes('R$')) {
-                            return field.value;
-                        }
-                        
-                        // Se é número ou string sem formatação, formatar
-                        const numValue = typeof field.value === 'number' 
-                            ? field.value 
-                            : parseFloat(String(field.value).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.'));
-                        
-                        if (isNaN(numValue)) return '';
-                        
-                        // Converter para centavos e formatar
-                        // Ex: 2170 -> 217000 centavos -> formatCurrency espera string "217000"
-                        const centavos = Math.round(numValue * 100);
-                        return formatCurrency(String(centavos));
-                    }, [field.value]);
-
                     return (
                         <FormItem>
                             <FormLabel className="block text-sm font-medium mb-1">Valor Atual*</FormLabel>
                             <FormControl>
                                 <Input
-                                    value={displayValue}
+                                    value={currentValueDisplay}
                                     onChange={(e) => {
-                                        const formatted = formatCurrency(e.target.value);
-                                        field.onChange(formatted);
+                                        const formatted = formatCurrencyInput(e.target.value);
+                                        const storage = toCurrencyStorageValue(e.target.value);
+                                        setCurrentValueDisplay(formatted);
+                                        field.onChange(storage ?? "");
                                     }}
                                     type="text"
                                     placeholder="R$ 10,00"
@@ -509,32 +550,17 @@ export function LeadForm({
                         control={form.control}
                         name="ticket"
                         render={({ field }) => {
-                            const displayValue = React.useMemo(() => {
-                                if (!field.value) return '';
-                                
-                                if (typeof field.value === 'string' && field.value.includes('R$')) {
-                                    return field.value;
-                                }
-                                
-                                const numValue = typeof field.value === 'number' 
-                                    ? field.value 
-                                    : parseFloat(String(field.value).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.'));
-                                
-                                if (isNaN(numValue)) return '';
-                                
-                                const centavos = Math.round(numValue * 100);
-                                return formatCurrency(String(centavos));
-                            }, [field.value]);
-
                             return (
                                 <FormItem>
                                     <FormLabel className="block text-sm font-medium mb-1">Ticket (Valor Vendido)</FormLabel>
                                     <FormControl>
                                         <Input
-                                            value={displayValue}
+                                            value={ticketDisplay}
                                             onChange={(e) => {
-                                                const formatted = formatCurrency(e.target.value);
-                                                field.onChange(formatted);
+                                                const formatted = formatCurrencyInput(e.target.value);
+                                                const storage = toCurrencyStorageValue(e.target.value);
+                                                setTicketDisplay(formatted);
+                                                field.onChange(storage ?? "");
                                             }}
                                             type="text"
                                             placeholder="R$ 0,00"
