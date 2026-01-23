@@ -21,6 +21,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { maskPhone } from "@/lib/masks";
 import { getHealthPlanLabel } from "@/lib/healthPlanLabels";
 
+const headerButtonClass = "h-8 px-2 hover:bg-accent w-full justify-center";
+
 // Componente para o drag handle
 function DragHandle({ id }: { id: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -122,7 +124,7 @@ export const createColumns = ({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-8 px-2 hover:bg-accent"
+          className={headerButtonClass}
         >
           Nome
           <span className="ml-2">
@@ -149,7 +151,7 @@ export const createColumns = ({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-8 px-2 hover:bg-accent"
+          className={headerButtonClass}
         >
           ID
           <span className="ml-2">
@@ -189,7 +191,7 @@ export const createColumns = ({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-8 px-2 hover:bg-accent"
+          className={headerButtonClass}
         >
           Telefone
           <span className="ml-2">
@@ -210,7 +212,7 @@ export const createColumns = ({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-8 px-2 hover:bg-accent"
+          className={headerButtonClass}
         >
           Plano atual
           <span className="ml-2">
@@ -231,7 +233,7 @@ export const createColumns = ({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-8 px-2 hover:bg-accent"
+          className={headerButtonClass}
         >
           Status
           <span className="ml-2">
@@ -259,7 +261,7 @@ export const createColumns = ({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-8 px-2 hover:bg-accent"
+          className={headerButtonClass}
         >
           Responsável
           <span className="ml-2">
@@ -279,7 +281,7 @@ export const createColumns = ({
       return (
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="inline-flex cursor-default">
+            <div className="inline-flex cursor-default justify-center w-full">
               <Avatar className="size-6">
                 <AvatarImage
                   src={lead.assignee.avatarUrl || undefined}
@@ -314,7 +316,7 @@ export const createColumns = ({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-8 px-2 hover:bg-accent"
+          className={headerButtonClass}
         >
           Reunião
           <span className="ml-2">
@@ -338,7 +340,7 @@ export const createColumns = ({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="h-8 px-2 hover:bg-accent"
+          className={headerButtonClass}
         >
           Criado em
           <span className="ml-2">
