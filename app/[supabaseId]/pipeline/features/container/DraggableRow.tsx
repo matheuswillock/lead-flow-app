@@ -2,7 +2,7 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { TableRow } from "@/components/ui/table";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { flexRender, Row } from "@tanstack/react-table";
 import { Lead } from "../context/PipelineTypes";
 
@@ -38,9 +38,9 @@ export function DraggableRow({ row, onRowClick }: DraggableRowProps) {
       onClick={() => onRowClick(row.original)}
     >
       {row.getVisibleCells().map((cell) => (
-        <td key={cell.id} className="p-4">
+        <TableCell key={cell.id} className="p-2 text-center align-middle">
           {flexRender(cell.column.columnDef.cell, cell.getContext())}
-        </td>
+        </TableCell>
       ))}
     </TableRow>
   );
