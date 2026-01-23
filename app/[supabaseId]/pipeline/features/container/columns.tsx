@@ -12,12 +12,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { MoreHorizontal, Calendar, Trash2, CheckCircle, GripVertical, RefreshCw } from "lucide-react";
 import { Lead } from "../context/PipelineTypes";
 import { formatDate } from "../context/PipelineContext";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { maskPhone } from "@/lib/masks";
+import { getHealthPlanLabel } from "@/lib/healthPlanLabels";
 
 // Componente para o drag handle
 function DragHandle({ id }: { id: string }) {
@@ -202,6 +204,27 @@ export const createColumns = ({
     },
   },
   {
+    accessorKey: "currentHealthPlan",
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="h-8 px-2 hover:bg-accent"
+        >
+          Plano atual
+          <span className="ml-2">
+            {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
+          </span>
+        </Button>
+      );
+    },
+    cell: ({ row }) => {
+      const plan = row.getValue("currentHealthPlan") as Lead["currentHealthPlan"];
+      return <div className="text-sm">{getHealthPlanLabel(plan) || "-"}</div>;
+    },
+  },
+  {
     accessorKey: "status",
     header: ({ column }) => {
       return (
@@ -250,27 +273,33 @@ export const createColumns = ({
       if (!lead.assignee) {
         return <span className="text-muted-foreground">-</span>;
       }
-      
+
+      const assigneeLabel = lead.assignee.fullName || lead.assignee.email;
+
       return (
-        <div className="flex items-center gap-2">
-          <Avatar className="size-6">
-            <AvatarImage 
-              src={lead.assignee.avatarUrl || undefined} 
-              alt={lead.assignee.fullName || lead.assignee.email} 
-            />
-            <AvatarFallback className="text-xs">
-              {(lead.assignee.fullName || lead.assignee.email)
-                .split(' ')
-                .map(n => n[0])
-                .join('')
-                .toUpperCase()
-                .slice(0, 2)}
-            </AvatarFallback>
-          </Avatar>
-          <span className="text-sm">
-            {lead.assignee.fullName || lead.assignee.email}
-          </span>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="inline-flex cursor-default">
+              <Avatar className="size-6">
+                <AvatarImage
+                  src={lead.assignee.avatarUrl || undefined}
+                  alt={assigneeLabel}
+                />
+                <AvatarFallback className="text-xs">
+                  {assigneeLabel
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .toUpperCase()
+                    .slice(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{assigneeLabel}</p>
+          </TooltipContent>
+        </Tooltip>
       );
     },
     accessorFn: (row) => row.assignee?.fullName || row.assignee?.email || "",
