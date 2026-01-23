@@ -15,10 +15,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   CI: true
   NEXT_TELEMETRY_DISABLED: 1
@@ -27,6 +23,7 @@ jobs:
   quality:
     name: Lint & Typecheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,6 +38,7 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
+            node_modules
           key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
@@ -57,6 +55,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     needs: quality
     steps:
       - name: Checkout
@@ -72,15 +71,16 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
+            node_modules
           key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Restore Next build cache
+      - name: Cache Next.js build
         uses: actions/cache@v4
         with:
           path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('next.config.*', 'tsconfig.json', 'package.json', 'app/**/*.tsx', 'lib/**/*.ts', 'lib/**/*.tsx') }}
+          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '!node_modules/**') }}
           restore-keys: |
             ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
             ${{ runner.os }}-next-
@@ -91,11 +91,17 @@ jobs:
       - name: Generate Prisma Client
         run: bun run prisma:generate
 
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" ]; then
+            echo "::warning::NEXT_PUBLIC_SUPABASE_URL secret not configured - using placeholder"
+          fi
+
       - name: Build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY != '' && secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY != '' && secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
         run: bun run build
 
       - name: Upload build artifact
@@ -105,9 +111,12 @@ jobs:
           name: next-build
           path: |
             .next
+            public
             package.json
             bun.lock
             bun.lockb
+            next.config.ts
+            prisma/schema.prisma
           retention-days: 7
 
   deploy:
@@ -115,6 +124,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       deployments: write
@@ -122,13 +132,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download build artifact (optional)
-        uses: actions/download-artifact@v4
-        with:
-            name: next-build
-            path: .
-
       - name: Deploy to Vercel (Production)
+        id: vercel-deploy
         uses: amondnet/vercel-action@v25
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
@@ -139,11 +144,18 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
+      - name: Deployment Summary
+        run: |
+          echo "### 🚀 Production Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** ${{ steps.vercel-deploy.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** main" >> $GITHUB_STEP_SUMMARY
+
   preview:
     name: Deploy Preview
     if: github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       deployments: write
@@ -152,41 +164,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: next-build
-          path: .
-
       - name: Deploy to Vercel (Preview)
+        id: vercel-preview
         uses: amondnet/vercel-action@v25
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           working-directory: .
-          # Sem --prod para gerar preview
           github-comment: true
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
+      - name: Preview Summary
+        run: |
+          echo "### 👀 Preview Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** ${{ steps.vercel-preview.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR:** #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+
   auto-pr:
     name: Create Pull Request
-    # Run on push to feat*/feature*/develop OR manual dispatch with a matching branch input
+    # Run on push to feat*/feature* branches only (develop→main is handled separately)
     if: >-
       ${{
         (github.event_name == 'push' &&
           (startsWith(github.ref, 'refs/heads/feat/') ||
-           startsWith(github.ref, 'refs/heads/feature/') ||
-           github.ref == 'refs/heads/develop'))
+           startsWith(github.ref, 'refs/heads/feature/')))
         ||
         (github.event_name == 'workflow_dispatch' &&
           (startsWith(github.event.inputs.branch, 'feat/') ||
-           startsWith(github.event.inputs.branch, 'feature/') ||
-           github.event.inputs.branch == 'develop'))
+           startsWith(github.event.inputs.branch, 'feature/')))
       }}
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: write
@@ -335,12 +346,126 @@ jobs:
               }
             }
 
-  auto-pr-develop-to-main:
-    name: Create PR from Develop to Main
-    # Run when there's a push to develop branch (typically after merging feature branches)
+  version-bump:
+    name: Auto Version Bump
+    # Run when there's a push to develop branch
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      bumped: ${{ steps.bump.outputs.bumped }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Determine version bump
+        id: bump
+        run: |
+          # Get commits since last version tag or last 20 commits
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -n "$LAST_TAG" ]; then
+            COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s" 2>/dev/null || git log -20 --pretty=format:"%s")
+          else
+            COMMITS=$(git log -20 --pretty=format:"%s")
+          fi
+          
+          echo "Recent commits:"
+          echo "$COMMITS"
+          
+          # Determine bump type based on conventional commits
+          BUMP_TYPE="patch"
+          
+          if echo "$COMMITS" | grep -qiE "^feat(\(.+\))?!:|BREAKING CHANGE"; then
+            BUMP_TYPE="major"
+          elif echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
+            BUMP_TYPE="minor"
+          elif echo "$COMMITS" | grep -qiE "^fix(\(.+\))?:"; then
+            BUMP_TYPE="patch"
+          fi
+          
+          echo "Bump type: $BUMP_TYPE"
+          
+          # Get current version
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Calculate new version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+          
+          case $BUMP_TYPE in
+            major)
+              NEW_VERSION="$((MAJOR + 1)).0.0"
+              ;;
+            minor)
+              NEW_VERSION="${MAJOR}.$((MINOR + 1)).0"
+              ;;
+            patch)
+              NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+              ;;
+          esac
+          
+          echo "New version: $NEW_VERSION"
+          
+          # Check if version actually changed (avoid duplicate bumps)
+          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
+            echo "Version already up to date"
+            echo "bumped=false" >> $GITHUB_OUTPUT
+            echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Update package.json
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$NEW_VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          
+          echo "bumped=true" >> $GITHUB_OUTPUT
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+
+      - name: Commit version bump
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to v${{ steps.bump.outputs.new_version }}"
+          git push
+
+      - name: Version bump summary
+        run: |
+          echo "### 📦 Version Bump" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.bump.outputs.bumped }}" = "true" ]; then
+            echo "- **New Version:** v${{ steps.bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Bump Type:** ${{ steps.bump.outputs.bump_type }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Status:** No version bump needed" >> $GITHUB_STEP_SUMMARY
+            echo "- **Current Version:** v${{ steps.bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  auto-pr-develop-to-main:
+    name: Create PR from Develop to Main
+    # Run when there's a push to develop branch (after version bump)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [build, version-bump]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: write
@@ -348,39 +473,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Fetch full history to check for recent merges
+          fetch-depth: 0
+          ref: develop  # Get latest including version bump commit
 
-      - name: Check if recent merge from feature branch and create PR
+      - name: Create PR develop to main
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
-            // Check if this push was a merge from a feature/feat branch
-            const { execSync } = require('child_process');
-            
-            try {
-              // Get the commit message of the latest commit
-              const commitMessage = execSync('git log -1 --pretty=%s', { encoding: 'utf-8' }).trim();
-              console.log(`Latest commit message: ${commitMessage}`);
-              
-              // Check if it's a merge commit from a feature/feat branch
-              const isMergeFromFeature = commitMessage.includes('Merge') && 
-                                        (commitMessage.includes('feat/') || commitMessage.includes('feature/'));
-              
-              if (!isMergeFromFeature) {
-                core.info('This push is not a merge from a feature branch. Skipping PR creation.');
-                return;
-              }
-              
-              console.log('Detected merge from feature branch to develop. Creating PR to main...');
-              
-            } catch (error) {
-              core.warning(`Could not check git history: ${error.message}`);
-              // Continue anyway - we still want to create the PR if develop has new commits
-            }
-
+            const fs = require('fs');
             const head = 'develop';
             const base = 'main';
+
+            // Read version from package.json
+            let version = '0.0.0';
+            try {
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              version = pkg.version || '0.0.0';
+            } catch (err) {
+              core.warning(`Could not read package.json version: ${err.message}`);
+            }
 
             // Check if there's already an open PR from develop to main
             let existingPrs = [];
@@ -395,11 +507,8 @@ jobs:
               });
               existingPrs = res.data;
             } catch (err) {
-              if (err.status === 404) {
-                core.warning('Could not list PRs (404). Proceeding to attempt creation.');
-              } else {
-                throw err;
-              }
+              if (err.status !== 404) throw err;
+              core.warning('Could not list PRs (404). Proceeding to attempt creation.');
             }
 
             if (existingPrs.length > 0) {
@@ -408,132 +517,94 @@ jobs:
             }
 
             // Check if develop is ahead of main
+            let comparison;
             try {
-              const comparison = await github.rest.repos.compareCommits({
+              comparison = await github.rest.repos.compareCommits({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 base,
                 head,
               });
-
-              if (comparison.data.ahead_by === 0) {
-                core.info('Develop branch is not ahead of main. No PR needed.');
-                return;
-              }
-
-              console.log(`Develop is ${comparison.data.ahead_by} commits ahead of main.`);
-              
-              // Generate commit list for PR description
-              const commits = comparison.data.commits || [];
-              const commitList = commits.map(commit => {
-                const msg = commit.commit.message.split('\n')[0]; // First line only
-                const shortSha = commit.sha.substring(0, 7);
-                const author = commit.commit.author.name;
-                return `- ${msg} (\`${shortSha}\`) - @${author}`;
-              }).join('\n');
-              
-              // Group commits by type if they follow conventional commits
-              const groupedCommits = {
-                feat: [],
-                fix: [],
-                chore: [],
-                docs: [],
-                refactor: [],
-                test: [],
-                other: []
-              };
-              
-              commits.forEach(commit => {
-                const msg = commit.commit.message.split('\n')[0];
-                const shortSha = commit.sha.substring(0, 7);
-                const author = commit.commit.author.name;
-                const line = `- ${msg} (\`${shortSha}\`) - @${author}`;
-                
-                if (msg.startsWith('feat')) groupedCommits.feat.push(line);
-                else if (msg.startsWith('fix')) groupedCommits.fix.push(line);
-                else if (msg.startsWith('chore')) groupedCommits.chore.push(line);
-                else if (msg.startsWith('docs')) groupedCommits.docs.push(line);
-                else if (msg.startsWith('refactor')) groupedCommits.refactor.push(line);
-                else if (msg.startsWith('test')) groupedCommits.test.push(line);
-                else groupedCommits.other.push(line);
-              });
-              
-              // Build organized commit section
-              let organizedCommits = '';
-              if (groupedCommits.feat.length > 0) {
-                organizedCommits += '\n### ✨ Features\n' + groupedCommits.feat.join('\n') + '\n';
-              }
-              if (groupedCommits.fix.length > 0) {
-                organizedCommits += '\n### 🐛 Bug Fixes\n' + groupedCommits.fix.join('\n') + '\n';
-              }
-              if (groupedCommits.refactor.length > 0) {
-                organizedCommits += '\n### ♻️ Refactors\n' + groupedCommits.refactor.join('\n') + '\n';
-              }
-              if (groupedCommits.docs.length > 0) {
-                organizedCommits += '\n### 📝 Documentation\n' + groupedCommits.docs.join('\n') + '\n';
-              }
-              if (groupedCommits.test.length > 0) {
-                organizedCommits += '\n### 🧪 Tests\n' + groupedCommits.test.join('\n') + '\n';
-              }
-              if (groupedCommits.chore.length > 0) {
-                organizedCommits += '\n### 🔧 Chores\n' + groupedCommits.chore.join('\n') + '\n';
-              }
-              if (groupedCommits.other.length > 0) {
-                organizedCommits += '\n### 📦 Other Changes\n' + groupedCommits.other.join('\n') + '\n';
-              }
-
-              // Create the PR with enhanced description
-              const title = 'chore: release develop to main';
-              const body = [
-                '## 🚀 Release to Production',
-                '',
-                `**Changes:** ${comparison.data.ahead_by} commits`,
-                `**Branch:** \`${head}\` → \`${base}\``,
-                '',
-                '## 📝 Changes',
-                organizedCommits,
-                '',
-                '## ✅ Review Checklist',
-                '',
-                '- [ ] All tests are passing ✅',
-                '- [ ] Build is successful ✅',
-                '- [ ] No breaking changes',
-                '- [ ] Documentation updated',
-                '- [ ] Ready for production deployment',
-                '',
-                '## 🎯 Deploy Instructions',
-                '',
-                '1. Review all changes carefully',
-                '2. Ensure CI checks pass',
-                '3. Merge to trigger production deployment',
-                '',
-                '---',
-                '*This PR was created automatically after feature branches were merged into develop.*'
-              ].join('\n');
-
-              try {
-                const res = await github.rest.pulls.create({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  head,
-                  base,
-                  title,
-                  body,
-                  maintainer_can_modify: true,
-                });
-                core.info(`Created PR #${res.data.number}: ${res.data.html_url}`);
-              } catch (err) {
-                if (err.status === 403) {
-                  core.setFailed('Permission denied to create PR. Ensure proper permissions are configured.');
-                } else if (err.status === 404) {
-                  core.setFailed('Not Found creating PR. Check repository access and token permissions.');
-                } else if (err.status === 422) {
-                  core.info('PR could not be created - likely no differences between branches or validation error.');
-                } else {
-                  throw err;
-                }
-              }
-              
             } catch (err) {
-              core.warning(`Could not compare branches: ${err.message}. Proceeding with PR creation.`);
+              core.warning(`Could not compare branches: ${err.message}`);
+              return;
+            }
+
+            if (comparison.data.ahead_by === 0) {
+              core.info('Develop branch is not ahead of main. No PR needed.');
+              return;
+            }
+
+            console.log(`Develop is ${comparison.data.ahead_by} commits ahead of main.`);
+            
+            // Generate organized commit list
+            const commits = comparison.data.commits || [];
+            const grouped = { feat: [], fix: [], chore: [], docs: [], refactor: [], test: [], other: [] };
+            
+            commits.forEach(commit => {
+              const msg = commit.commit.message.split('\n')[0];
+              const shortSha = commit.sha.substring(0, 7);
+              const line = `- ${msg} (\`${shortSha}\`)`;
+              
+              if (msg.startsWith('feat')) grouped.feat.push(line);
+              else if (msg.startsWith('fix')) grouped.fix.push(line);
+              else if (msg.startsWith('chore')) grouped.chore.push(line);
+              else if (msg.startsWith('docs')) grouped.docs.push(line);
+              else if (msg.startsWith('refactor')) grouped.refactor.push(line);
+              else if (msg.startsWith('test')) grouped.test.push(line);
+              else grouped.other.push(line);
+            });
+            
+            let organizedCommits = '';
+            if (grouped.feat.length) organizedCommits += '\n### ✨ Features\n' + grouped.feat.join('\n') + '\n';
+            if (grouped.fix.length) organizedCommits += '\n### 🐛 Bug Fixes\n' + grouped.fix.join('\n') + '\n';
+            if (grouped.refactor.length) organizedCommits += '\n### ♻️ Refactors\n' + grouped.refactor.join('\n') + '\n';
+            if (grouped.docs.length) organizedCommits += '\n### 📝 Documentation\n' + grouped.docs.join('\n') + '\n';
+            if (grouped.test.length) organizedCommits += '\n### 🧪 Tests\n' + grouped.test.join('\n') + '\n';
+            if (grouped.chore.length) organizedCommits += '\n### 🔧 Chores\n' + grouped.chore.join('\n') + '\n';
+            if (grouped.other.length) organizedCommits += '\n### 📦 Other Changes\n' + grouped.other.join('\n') + '\n';
+
+            const title = `release: v${version}`;
+            const body = [
+              '## 🚀 Release to Production',
+              '',
+              `**Version:** \`v${version}\``,
+              `**Changes:** ${comparison.data.ahead_by} commits`,
+              `**Branch:** \`${head}\` → \`${base}\``,
+              '',
+              '## 📝 Changes',
+              organizedCommits || '*(No commits found)*',
+              '',
+              '## ✅ Review Checklist',
+              '',
+              '- [ ] All tests are passing',
+              '- [ ] Build is successful',
+              '- [ ] No breaking changes',
+              '- [ ] Ready for production deployment',
+              '',
+              '---',
+              '*This PR was created automatically after changes were pushed to develop.*'
+            ].join('\n');
+
+            try {
+              const res = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head,
+                base,
+                title,
+                body,
+                maintainer_can_modify: true,
+              });
+              core.info(`Created PR #${res.data.number}: ${res.data.html_url}`);
+            } catch (err) {
+              if (err.status === 403) {
+                core.setFailed('Permission denied to create PR. Check token permissions.');
+              } else if (err.status === 404) {
+                core.setFailed('Not Found creating PR. Check repository access.');
+              } else if (err.status === 422) {
+                core.info('PR could not be created - likely no differences between branches.');
+              } else {
+                throw err;
+              }
             }
