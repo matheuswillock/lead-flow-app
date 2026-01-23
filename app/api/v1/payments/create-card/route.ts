@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
       addressNumber,
       complement,
       province,
-      city,
-      state,
+      city: _city,
+      state: _state,
     } = body;
 
     if (!supabaseId) {

@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       const customer = await asaasCustomerService.createCustomer({
         name: manager.fullName || manager.email,
         email: manager.email,
-        cpfCnpj: manager.cpfCnpj,
+        cpfCnpj: manager.cpfCnpj || '',
         phone: manager.phone || undefined,
         postalCode: manager.postalCode || undefined,
         address: manager.address || undefined,

@@ -1,7 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal, Pencil, Trash2, Mail, Crown } from "lucide-react";
+import { ArrowUpDown, MoreHorizontal, Pencil, Trash2, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -34,8 +34,8 @@ export function createColumns({
   onDelete, 
   onResendInvite,
   onDeletePendingOperator,
-  onTogglePermanentSubscription,
-  currentUserIsMaster = false
+  onTogglePermanentSubscription: _onTogglePermanentSubscription,
+  currentUserIsMaster: _currentUserIsMaster = false
 }: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
   return [
     {

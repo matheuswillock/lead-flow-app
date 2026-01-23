@@ -27,7 +27,9 @@ const generateUniqueLeadCode = async (name: string) => {
 
 const run = async () => {
   const leads = await prisma.lead.findMany({
-    where: { leadCode: null },
+    where: { 
+      leadCode: ''
+    },
     select: { id: true, name: true },
   });
 
