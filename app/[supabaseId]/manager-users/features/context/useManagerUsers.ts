@@ -162,6 +162,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
       } else {
         toast.error(response.errorMessages.join(", ") || "Erro ao atualizar usuário");
         setState(prev => ({ ...prev, loading: false }));
+      }
     } catch (error) {
       console.error("Erro ao atualizar usuário:", error);
       toast.error("Erro ao atualizar usuário");
@@ -197,6 +198,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
       } else {
         toast.error(response.errorMessages.join(", ") || "Erro ao remover usuário");
         setState(prev => ({ ...prev, loading: false }));
+      }
     } catch (error) {
       console.error("Erro ao deletar usuário:", error);
       toast.error("Erro ao remover usuário");

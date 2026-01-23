@@ -265,28 +265,6 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      // Verificar permissões para operators
-      if (profileInfo.role === 'operator') {
-        const existingLead = await this.leadRepository.findById(id);
-        
-        if (!existingLead) {
-          return new Output(false, [], ["Lead não encontrado"], null);
-        }
-        
-        // Operator só pode editar se criou o lead OU se está atribuído a ele
-        const canEdit = existingLead.createdBy === profileInfo.id || 
-                       existingLead.assignedTo === profileInfo.id;
-        
-        if (!canEdit) {
-          return new Output(false, [], ["Você não tem permissão para editar este lead"], null);
-        }
-        
-        // Operator não pode alterar o assignedTo
-        if (data.assignedTo !== undefined) {
-          return new Output(false, [], ["Você não tem permissão para alterar o responsável pelo lead"], null);
-        }
-      }
-
       const updateData: any = {};
       
       if (data.name !== undefined) updateData.name = data.name;
