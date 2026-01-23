@@ -8,6 +8,7 @@ import { UseFormReturn } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "../ui/form";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
@@ -15,16 +16,35 @@ import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
 import { Loader2 } from "lucide-react";
+import { LinkIcon } from "@/components/animate-ui/icons/link";
 
-const formatCurrency = (value: string): string => {
-    const cleanValue = value.replace(/\D/g, '');
-    if (cleanValue === '') return '';
-    
-    const numberValue = parseInt(cleanValue) / 100;
-    return `R$ ${numberValue.toLocaleString('pt-BR', {
+const formatCurrencyNumber = (value: number): string =>
+    `R$ ${value.toLocaleString('pt-BR', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
     })}`;
+
+const parseCurrencyValue = (value: string): number | null => {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) return null;
+    const cents = digits.slice(-2).padStart(2, '0');
+    const intPart = digits.slice(0, -2) || '0';
+    return parseFloat(`${intPart}.${cents}`);
+};
+
+const formatCurrencyInput = (value: string): string => {
+    const digits = value.replace(/\D/g, '');
+    if (!digits) return '';
+    const cents = digits.slice(-2).padStart(2, '0');
+    const intPart = digits.slice(0, -2) || '0';
+    const formattedInt = Number(intPart).toLocaleString('pt-BR');
+    return `R$ ${formattedInt},${cents}`;
+};
+
+const toCurrencyStorageValue = (value: string): string | null => {
+    const parsed = parseCurrencyValue(value);
+    if (parsed === null || isNaN(parsed)) return null;
+    return parsed.toFixed(2);
 };
 
 export interface ILeadFormProps {
@@ -51,6 +71,8 @@ export function LeadForm({
     leadId
 }: ILeadFormProps) {
     const [hasChanges, setHasChanges] = useState(false);
+    const [currentValueDisplay, setCurrentValueDisplay] = useState("");
+    const [ticketDisplay, setTicketDisplay] = useState("");
 
     const watchedValues = form.watch();
     const isFormValid = form.formState.isValid;
@@ -100,6 +122,46 @@ export function LeadForm({
             form.setValue('responsible', usersToAssign[0].id);
         }
     }, [usersToAssign, form]);
+
+    useEffect(() => {
+        const raw = form.getValues("currentValue");
+        if (!raw) {
+            setCurrentValueDisplay("");
+            return;
+        }
+        const parsed = parseCurrencyValue(String(raw));
+        if (parsed === null || isNaN(parsed)) {
+            setCurrentValueDisplay("");
+            return;
+        }
+        setCurrentValueDisplay(formatCurrencyNumber(parsed));
+        if (typeof raw === "string" && /[R$,]/.test(raw)) {
+            const storage = toCurrencyStorageValue(raw);
+            if (storage) {
+                form.setValue("currentValue", storage, { shouldDirty: false });
+            }
+        }
+    }, [form]);
+
+    useEffect(() => {
+        const raw = form.getValues("ticket");
+        if (!raw) {
+            setTicketDisplay("");
+            return;
+        }
+        const parsed = parseCurrencyValue(String(raw));
+        if (parsed === null || isNaN(parsed)) {
+            setTicketDisplay("");
+            return;
+        }
+        setTicketDisplay(formatCurrencyNumber(parsed));
+        if (typeof raw === "string" && /[R$,]/.test(raw)) {
+            const storage = toCurrencyStorageValue(raw);
+            if (storage) {
+                form.setValue("ticket", storage, { shouldDirty: false });
+            }
+        }
+    }, [form]);
 
     return (
       <Form {...form}>
@@ -206,57 +268,24 @@ export function LeadForm({
                                 <Input
                                     value={field.value || ""}
                                     onChange={(e) => {
-                                        let value = e.target.value;
-                                        
-                                        // Remove caracteres que não são números, vírgulas ou espaços
-                                        value = value.replace(/[^0-9,\s]/g, '');
-                                        
-                                        // Remove vírgulas e espaços para processar
-                                        const cleanValue = value.replace(/[,\s]/g, '');
-                                        
-                                        // Divide em grupos de idades
-                                        const groups: string[] = [];
-                                        let currentGroup = '';
-                                        
-                                        for (let i = 0; i < cleanValue.length; i++) {
-                                            const char = cleanValue[i];
-                                            currentGroup += char;
-                                            
-                                            // Se o primeiro dígito é 1, permite até 3 dígitos (100-120)
-                                            if (currentGroup[0] === '1') {
-                                                if (currentGroup.length === 3) {
-                                                    // Valida se não ultrapassa 120
-                                                    const age = parseInt(currentGroup);
-                                                    if (age > 120) {
-                                                        currentGroup = '120';
-                                                    }
-                                                    groups.push(currentGroup);
-                                                    currentGroup = '';
-                                                }
-                                            } else {
-                                                // Para outros números, aceita apenas 2 dígitos
-                                                if (currentGroup.length === 2) {
-                                                    groups.push(currentGroup);
-                                                    currentGroup = '';
-                                                }
-                                            }
+                                        const raw = e.target.value;
+                                        const digitsOnly = raw.replace(/[^0-9,\s]/g, "");
+                                        const endsWithSeparator = /[,\s]$/.test(digitsOnly);
+                                        const parts = digitsOnly.split(/[,\s]+/).filter(Boolean);
+                                        const normalized = parts
+                                            .map((part) => part.replace(/\D/g, ""))
+                                            .filter(Boolean);
+                                        let formatted = normalized.join(", ");
+                                        if (endsWithSeparator && normalized.length > 0) {
+                                            formatted += ", ";
                                         }
-                                        
-                                        // Adiciona o último grupo se existir
-                                        if (currentGroup) {
-                                            groups.push(currentGroup);
-                                        }
-                                        
-                                        // Junta os grupos com vírgula e espaço
-                                        const formattedValue = groups.join(', ');
-                                        
-                                        field.onChange(formattedValue);
+                                        field.onChange(formatted);
                                     }}
                                     placeholder="Ex: 36, 32, 13"
                                     disabled={isLoading || isUpdating}
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Exemplo: 36, 32, 13, 100, 120 (idades até 120 anos, separadas automaticamente)
+                                    Exemplo: 12, 15, 22, 30, 120, 55. Digite dois caracteres e pressione espaco para adicionar a virgula automaticamente.
                                 </p>
                             </div>
                         </FormControl>
@@ -309,36 +338,17 @@ export function LeadForm({
                 name="currentValue"
                 render={({ field }) => {
                     // Garantir que o valor sempre seja exibido formatado
-                    const displayValue = React.useMemo(() => {
-                        if (!field.value) return '';
-                        
-                        // Se já está formatado (tem R$), retornar como está
-                        if (typeof field.value === 'string' && field.value.includes('R$')) {
-                            return field.value;
-                        }
-                        
-                        // Se é número ou string sem formatação, formatar
-                        const numValue = typeof field.value === 'number' 
-                            ? field.value 
-                            : parseFloat(String(field.value).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.'));
-                        
-                        if (isNaN(numValue)) return '';
-                        
-                        // Converter para centavos e formatar
-                        // Ex: 2170 -> 217000 centavos -> formatCurrency espera string "217000"
-                        const centavos = Math.round(numValue * 100);
-                        return formatCurrency(String(centavos));
-                    }, [field.value]);
-
                     return (
                         <FormItem>
                             <FormLabel className="block text-sm font-medium mb-1">Valor Atual*</FormLabel>
                             <FormControl>
                                 <Input
-                                    value={displayValue}
+                                    value={currentValueDisplay}
                                     onChange={(e) => {
-                                        const formatted = formatCurrency(e.target.value);
-                                        field.onChange(formatted);
+                                        const formatted = formatCurrencyInput(e.target.value);
+                                        const storage = toCurrencyStorageValue(e.target.value);
+                                        setCurrentValueDisplay(formatted);
+                                        field.onChange(storage ?? "");
                                     }}
                                     type="text"
                                     placeholder="R$ 10,00"
@@ -407,6 +417,12 @@ export function LeadForm({
                     </FormItem>
                 )}
             />
+
+            <div className="sm:col-span-2 pt-4 border-t">
+                <h3 className="text-sm font-semibold mb-4 text-foreground">
+                    Informacoes de agendamento
+                </h3>
+            </div>
 
             {/* Data, Horário e Responsável em uma linha no desktop */}
             <div className="sm:col-span-2 flex flex-col sm:flex-row gap-4">
@@ -496,6 +512,59 @@ export function LeadForm({
                 />
             </div>
 
+            <FormField
+                control={form.control}
+                name="meetingNotes"
+                render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                        <FormLabel className="block text-sm font-medium mb-1">
+                            Observacoes
+                        </FormLabel>
+                        <FormControl>
+                            <Textarea
+                                {...field}
+                                placeholder="Adicione observacoes sobre a reuniao"
+                                className="min-h-[84px] resize-y"
+                                disabled={isLoading || isUpdating}
+                            />
+                        </FormControl>
+                    </FormItem>
+                )}
+            />
+
+                    <FormField
+                        control={form.control}
+                        name="meetingLink"
+                        render={({ field }) => (
+                            <FormItem className="sm:col-span-2">
+                                <FormLabel className="block text-sm font-medium mb-1">
+                                    Link da reuniao
+                                </FormLabel>
+                                <FormControl>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            {...field}
+                                            type="url"
+                                            placeholder="https://meet.google.com/..."
+                                            disabled={isLoading || isUpdating}
+                                        />
+                                        {field.value ? (
+                                            <a
+                                                href={field.value}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                                aria-label="Abrir link da reuniao"
+                                            >
+                                                <LinkIcon size={18} />
+                                            </a>
+                                        ) : null}
+                                    </div>
+                                </FormControl>
+                            </FormItem>
+                        )}
+                    />
+
             {/* Campos adicionais apenas para leads em edição */}
             {leadId && (
                 <>
@@ -509,32 +578,17 @@ export function LeadForm({
                         control={form.control}
                         name="ticket"
                         render={({ field }) => {
-                            const displayValue = React.useMemo(() => {
-                                if (!field.value) return '';
-                                
-                                if (typeof field.value === 'string' && field.value.includes('R$')) {
-                                    return field.value;
-                                }
-                                
-                                const numValue = typeof field.value === 'number' 
-                                    ? field.value 
-                                    : parseFloat(String(field.value).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.'));
-                                
-                                if (isNaN(numValue)) return '';
-                                
-                                const centavos = Math.round(numValue * 100);
-                                return formatCurrency(String(centavos));
-                            }, [field.value]);
-
                             return (
                                 <FormItem>
                                     <FormLabel className="block text-sm font-medium mb-1">Ticket (Valor Vendido)</FormLabel>
                                     <FormControl>
                                         <Input
-                                            value={displayValue}
+                                            value={ticketDisplay}
                                             onChange={(e) => {
-                                                const formatted = formatCurrency(e.target.value);
-                                                field.onChange(formatted);
+                                                const formatted = formatCurrencyInput(e.target.value);
+                                                const storage = toCurrencyStorageValue(e.target.value);
+                                                setTicketDisplay(formatted);
+                                                field.onChange(storage ?? "");
                                             }}
                                             type="text"
                                             placeholder="R$ 0,00"

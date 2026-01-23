@@ -20,7 +20,6 @@ import { useUserContext } from "@/app/context/UserContext"
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const { user } = useUserContext();
-  const isManager = user?.role === 'manager';
   const isMaster = user?.isMaster === true;
 
   const items = [

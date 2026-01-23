@@ -38,8 +38,11 @@ export class LeadUseCase implements ILeadUseCase {
         assignedTo = profileInfo.id;
       }
 
+      const leadCode = await this.generateLeadCode(data.name);
+
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
+        leadCode,
         name: data.name,
         email: data.email || null,
         phone: data.phone || null,
@@ -50,6 +53,8 @@ export class LeadUseCase implements ILeadUseCase {
         referenceHospital: data.referenceHospital || null,
         currentTreatment: data.currentTreatment || null,
         meetingDate: data.meetingDate ? new Date(data.meetingDate) : null,
+        meetingNotes: data.meetingNotes || null,
+        meetingLink: data.meetingLink || null,
         notes: data.notes || null,
         status: data.status || LeadStatus.new_opportunity,
         // Novos campos de venda (sempre null na criação)
@@ -97,6 +102,25 @@ export class LeadUseCase implements ILeadUseCase {
       
       return new Output(false, [], ["Erro interno do servidor ao criar lead"], null);
     }
+  }
+
+  private async generateLeadCode(name: string): Promise<string> {
+    const clean = name.replace(/[^A-Za-zÀ-ÿ]/g, "");
+    const firstLetter = (clean[0] || "L").toUpperCase();
+    const lastLetter = (clean[clean.length - 1] || "D").toUpperCase();
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const digitsLength = 4 + Math.floor(Math.random() * 3); // 4-6
+      const digits = Array.from({ length: digitsLength }, () => Math.floor(Math.random() * 10)).join("");
+      const code = `${firstLetter}${digits}${lastLetter}`;
+      const existing = await this.leadRepository.findByLeadCode(code);
+      if (!existing) {
+        return code;
+      }
+    }
+
+    const fallbackDigits = Date.now().toString().slice(-6);
+    return `${firstLetter}${fallbackDigits}${lastLetter}`;
   }
 
   async getLeadById(supabaseId: string, id: string): Promise<Output> {
@@ -241,28 +265,6 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      // Verificar permissões para operators
-      if (profileInfo.role === 'operator') {
-        const existingLead = await this.leadRepository.findById(id);
-        
-        if (!existingLead) {
-          return new Output(false, [], ["Lead não encontrado"], null);
-        }
-        
-        // Operator só pode editar se criou o lead OU se está atribuído a ele
-        const canEdit = existingLead.createdBy === profileInfo.id || 
-                       existingLead.assignedTo === profileInfo.id;
-        
-        if (!canEdit) {
-          return new Output(false, [], ["Você não tem permissão para editar este lead"], null);
-        }
-        
-        // Operator não pode alterar o assignedTo
-        if (data.assignedTo !== undefined) {
-          return new Output(false, [], ["Você não tem permissão para alterar o responsável pelo lead"], null);
-        }
-      }
-
       const updateData: any = {};
       
       if (data.name !== undefined) updateData.name = data.name;
@@ -275,6 +277,8 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
       if (data.currentTreatment !== undefined) updateData.currentTreatment = data.currentTreatment || null;
       if (data.meetingDate !== undefined) updateData.meetingDate = data.meetingDate ? new Date(data.meetingDate) : null;
+      if (data.meetingNotes !== undefined) updateData.meetingNotes = data.meetingNotes || null;
+      if (data.meetingLink !== undefined) updateData.meetingLink = data.meetingLink || null;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
       if (data.status !== undefined) updateData.status = data.status;
       // Novos campos de venda
@@ -494,6 +498,7 @@ export class LeadUseCase implements ILeadUseCase {
   private transformToDTO(lead: any): LeadResponseDTO {
     return {
       id: lead.id,
+      leadCode: lead.leadCode,
       managerId: lead.managerId,
       assignedTo: lead.assignedTo,
       status: lead.status,
@@ -507,6 +512,8 @@ export class LeadUseCase implements ILeadUseCase {
       referenceHospital: lead.referenceHospital,
       currentTreatment: lead.currentTreatment,
       meetingDate: lead.meetingDate ? lead.meetingDate.toISOString() : null,
+      meetingNotes: lead.meetingNotes,
+      meetingLink: lead.meetingLink,
       notes: lead.notes,
       createdBy: lead.createdBy,
       updatedBy: lead.updatedBy,

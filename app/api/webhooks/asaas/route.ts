@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PaymentRepository } from '@/app/api/infra/data/repositories/payment/PaymentRepository';
 import { PaymentValidationService } from '@/app/api/services/PaymentValidation/PaymentValidationService';
 import { PaymentValidationUseCase } from '@/app/api/useCases/payments/PaymentValidationUseCase';
-import { subscriptionUpgradeUseCase } from '@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase';
 import { getFullUrl } from '@/lib/utils/app-url';
 
 export async function POST(request: NextRequest) {
@@ -112,114 +111,104 @@ export async function POST(request: NextRequest) {
     // Detectar através do externalReference que contém "pending-operator-{id}"
     if (body?.payment?.id) {
       const paymentId = body.payment.id;
-      const externalReference = body.payment.externalReference;
+      // ExternalReference pode vir no payment OU na subscription
+      const externalReference = body.payment.externalReference || body.subscription?.externalReference;
       const paymentStatus = body.payment.status;
+      const checkoutSessionId = body.payment.checkoutSession;
       
       console.info('💳 [Webhook Asaas] Detalhes do pagamento:', {
         event: body.event,
         paymentId,
         status: paymentStatus,
+        checkoutSessionId: checkoutSessionId || 'não definido',
         externalReference: externalReference || 'não definido',
+        externalRefFromPayment: body.payment.externalReference || 'null',
+        externalRefFromSubscription: body.subscription?.externalReference || 'null',
         isPaid: result.isPaid
       });
       
-      // Verificar se é pagamento de operador através do externalReference
-      const isOperatorPayment = externalReference && externalReference.startsWith('pending-operator-');
+      // Verificar se é pagamento de operador através do checkoutSessionId
+      // Buscar diretamente no banco porque o Asaas não retorna externalReference no webhook
+      let isOperatorPayment = false;
+      
+      if (checkoutSessionId) {
+        try {
+          const { prisma } = await import('@/app/api/infra/data/prisma');
+          const pendingOperator = await prisma.pendingOperator.findFirst({
+            where: { paymentId: checkoutSessionId }
+          });
+          
+          isOperatorPayment = !!pendingOperator;
+          
+          console.info('🔍 [Webhook Asaas] Verificação de operador:', {
+            hasCheckoutSessionId: true,
+            checkoutSessionId,
+            pendingOperatorFound: isOperatorPayment,
+            willProcess: isOperatorPayment && (result.isPaid || paymentStatus === 'CONFIRMED')
+          });
+        } catch (error) {
+          console.error('❌ [Webhook Asaas] Erro ao verificar pendingOperator:', error);
+        }
+      } else {
+        console.info('🔍 [Webhook Asaas] Sem checkoutSessionId - não é pagamento de operador');
+      }
       
       if (isOperatorPayment && (result.isPaid || paymentStatus === 'CONFIRMED')) {
         try {
-          // Extrair pendingOperatorId do externalReference
-          const pendingOperatorId = externalReference.replace('pending-operator-', '');
+          console.info('🔄 [Webhook Asaas] Detectado pagamento de OPERADOR (checkout)');
+          console.info('📋 [Webhook Asaas] CheckoutSessionId:', checkoutSessionId);
+          console.info('📋 [Webhook Asaas] PaymentId:', paymentId);
+          console.info('📋 [Webhook Asaas] ExternalReference:', externalReference);
           
-          console.info('🔄 [Webhook Asaas] Processando pagamento de operador:', {
-            pendingOperatorId,
-            paymentId,
-            status: paymentStatus
-          });
+          // Usar novo fluxo de checkout para operadores
+          // Passar paymentId para buscar no Asaas
+          const { checkoutAsaasUseCase } = await import('@/app/api/useCases/subscriptions/CheckoutAsaasUseCase');
+          const operatorResult = await checkoutAsaasUseCase.processOperatorCheckoutPaid(checkoutSessionId, paymentId);
           
-          // Buscar PendingOperator diretamente pelo ID
-          const { prisma } = await import('@/app/api/infra/data/prisma');
-          const pendingOperator = await prisma.pendingOperator.findUnique({
-            where: { id: pendingOperatorId },
-            include: { manager: true }
-          });
-          
-          if (pendingOperator) {
-            console.info('✅ [Webhook Asaas] PendingOperator encontrado:', {
-              id: pendingOperator.id,
-              name: pendingOperator.name,
-              email: pendingOperator.email,
-              operatorCreated: pendingOperator.operatorCreated,
-              currentPaymentId: pendingOperator.paymentId
+          if (operatorResult.isValid) {
+            console.info('🎉 [Webhook Asaas] ✅ OPERADOR CRIADO COM SUCESSO (checkout):', {
+              operatorId: operatorResult.result?.operatorId,
+              operatorEmail: operatorResult.result?.operatorEmail,
+              paymentId
             });
-            
-            // Se operador já foi criado, não processar novamente
-            if (pendingOperator.operatorCreated) {
-              console.info('ℹ️ [Webhook Asaas] Operador já foi criado anteriormente - ignorando webhook');
-            } else {
-              // Atualizar paymentId E paymentStatus no PendingOperator ANTES de criar operador
-              console.info('💾 [Webhook Asaas] Atualizando PendingOperator antes de criar operador...');
-              
-              const updatedPendingOperator = await prisma.pendingOperator.update({
-                where: { id: pendingOperatorId },
-                data: { 
-                  paymentId,
-                  paymentStatus: 'CONFIRMED'
-                }
-              });
-              
-              console.info('✅ [Webhook Asaas] PendingOperator atualizado:', {
-                id: updatedPendingOperator.id,
-                paymentId: updatedPendingOperator.paymentId,
-                paymentStatus: updatedPendingOperator.paymentStatus
-              });
-              
-              // Confirmar pagamento e criar operador
-              console.info('🚀 [Webhook Asaas] Iniciando criação do operador...');
-              const operatorResult = await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId);
-              
-              if (operatorResult.isValid && operatorResult.result?.operatorCreated) {
-                console.info('🎉 [Webhook Asaas] ✅ OPERADOR CRIADO COM SUCESSO:', {
-                  operatorId: operatorResult.result.operatorId,
-                  paymentId: operatorResult.result.paymentId,
-                  email: pendingOperator.email
-                });
-
-                // Deletar PendingOperator após confirmação bem-sucedida
-                console.info('🗑️ [Webhook Asaas] Deletando PendingOperator após criação bem-sucedida...');
-                try {
-                  await prisma.pendingOperator.delete({
-                    where: { id: pendingOperatorId }
-                  });
-                  console.info('✅ [Webhook Asaas] PendingOperator deletado com sucesso:', {
-                    id: pendingOperatorId,
-                    email: pendingOperator.email,
-                    operatorId: operatorResult.result.operatorId
-                  });
-                } catch (deleteError) {
-                  console.error('❌ [Webhook Asaas] Erro ao deletar PendingOperator:', deleteError);
-                  console.error('⚠️ [Webhook Asaas] ATENÇÃO: Operador criado mas PendingOperator não foi deletado!');
-                  console.error('🔧 [Webhook Asaas] PendingOperatorId:', pendingOperatorId);
-                  // Não bloqueia o fluxo pois o operador já foi criado
-                }
-              } else {
-                console.error('❌ [Webhook Asaas] ❌ FALHA AO CRIAR OPERADOR:', {
-                  errorMessages: operatorResult.errorMessages,
-                  pendingOperatorId,
-                  paymentId,
-                  email: pendingOperator.email
-                });
-              }
-            }
           } else {
-            console.warn('⚠️ [Webhook Asaas] PendingOperator não encontrado para ID:', pendingOperatorId);
+            console.error('❌ [Webhook Asaas] ❌ FALHA AO CRIAR OPERADOR (checkout):', {
+              errorMessages: operatorResult.errorMessages,
+              paymentId,
+              externalReference
+            });
           }
         } catch (error) {
-          console.error('❌ [Webhook Asaas] Erro ao processar pagamento de operador:', error);
+          console.error('❌ [Webhook Asaas] Erro ao processar checkout de operador:', error);
           // Não bloquear o fluxo principal
         }
       } else if (!isOperatorPayment) {
         console.info('ℹ️ [Webhook Asaas] Não é pagamento de operador (externalReference diferente)');
+      }
+
+      const isPendingOperatorRef = !!externalReference && externalReference.startsWith('pending-operator-');
+      if (!isOperatorPayment && isPendingOperatorRef && result.isPaid) {
+        try {
+          console.info('?? [Webhook Asaas] Detectado pagamento de OPERADOR via externalReference');
+          const { subscriptionUpgradeUseCase } = await import('@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase');
+          const operatorResult = await subscriptionUpgradeUseCase.confirmPaymentAndCreateOperator(paymentId);
+
+          if (operatorResult.isValid) {
+            console.info('?? [Webhook Asaas] ? OPERADOR CRIADO COM SUCESSO (externalRef):', {
+              operatorId: operatorResult.result?.operatorId,
+              operatorEmail: operatorResult.result?.operatorEmail,
+              paymentId
+            });
+          } else {
+            console.error('? [Webhook Asaas] ? FALHA AO CRIAR OPERADOR (externalRef):', {
+              errorMessages: operatorResult.errorMessages,
+              paymentId,
+              externalReference
+            });
+          }
+        } catch (error) {
+          console.error('? [Webhook Asaas] Erro ao processar pagamento de operador (externalRef):', error);
+        }
       }
     }
 

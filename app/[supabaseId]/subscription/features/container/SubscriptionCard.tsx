@@ -87,7 +87,7 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
       await onCancel();
       toast.success('Assinatura cancelada com sucesso');
       setIsDialogOpen(false);
-    } catch (error) {
+    } catch (_error) {
       toast.error('Erro ao cancelar assinatura');
     } finally {
       setIsCanceling(false);

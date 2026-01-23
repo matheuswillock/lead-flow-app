@@ -13,10 +13,7 @@ import {
 
 import { cn } from '@/lib/utils';
 import { useIsInView } from '@/hooks/use-is-in-view';
-import { Slot } from '@radix-ui/react-slot';
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-type WithAsChild<T = {}> = T & { asChild?: boolean };
+import { Slot, type WithAsChild } from '@/components/animate-ui/primitives/animate/slot';
 
 const staticAnimations = {
   path: {
@@ -123,7 +120,7 @@ function composeEventHandlers<E extends React.SyntheticEvent<unknown>>(
   };
 }
 
-type AnyProps = Record<string, unknown>;
+type AnyProps = Record<string, any>;
 
 function AnimateIcon({
   asChild = false,
@@ -211,7 +208,7 @@ function AnimateIcon({
     setCurrentAnimation(typeof animate === 'string' ? animate : animation);
     if (animate) startAnimation(animate as TriggerProp);
     else stopAnimation();
-  }, [animate]);
+  }, [animate, startAnimation, stopAnimation]);
 
   React.useEffect(() => {
     return () => {
@@ -220,11 +217,9 @@ function AnimateIcon({
     };
   }, []);
 
-  const viewOuterRef = React.useRef<HTMLElement>(null);
   const { ref: inViewRef, isInView } = useIsInView({
-    threshold: 0,
-    rootMargin: animateOnViewMargin,
     triggerOnce: animateOnViewOnce,
+    rootMargin: animateOnViewMargin,
   });
 
   const startAnim = React.useCallback(
@@ -373,17 +368,17 @@ function AnimateIcon({
 
   const childProps = (
     React.isValidElement(children) ? (children as React.ReactElement).props : {}
-  ) as Record<string, any>;
+  ) as AnyProps;
 
   const handleMouseEnter = composeEventHandlers<React.MouseEvent<HTMLElement>>(
-    childProps.onMouseEnter as ((event: React.MouseEvent<HTMLElement, MouseEvent>) => void) | undefined,
+    childProps.onMouseEnter,
     () => {
       if (animateOnHover) startAnimation(animateOnHover);
     },
   );
 
   const handleMouseLeave = composeEventHandlers<React.MouseEvent<HTMLElement>>(
-    childProps.onMouseLeave as ((event: React.MouseEvent<HTMLElement, MouseEvent>) => void) | undefined,
+    childProps.onMouseLeave,
     () => {
       if (animateOnHover || animateOnTap) stopAnimation();
     },
@@ -391,12 +386,12 @@ function AnimateIcon({
 
   const handlePointerDown = composeEventHandlers<
     React.PointerEvent<HTMLElement>
-  >(childProps.onPointerDown as ((event: React.PointerEvent<HTMLElement>) => void) | undefined, () => {
+  >(childProps.onPointerDown, () => {
     if (animateOnTap) startAnimation(animateOnTap);
   });
 
   const handlePointerUp = composeEventHandlers<React.PointerEvent<HTMLElement>>(
-    childProps.onPointerUp as ((event: React.PointerEvent<HTMLElement>) => void) | undefined,
+    childProps.onPointerUp,
     () => {
       if (animateOnTap) stopAnimation();
     },
@@ -404,12 +399,12 @@ function AnimateIcon({
 
   const content = asChild ? (
     <Slot
-      ref={inViewRef as any}
+      ref={inViewRef}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
-      {...(props as any)}
+      {...props}
     >
       {children}
     </Slot>

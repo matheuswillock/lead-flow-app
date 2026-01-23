@@ -3,6 +3,7 @@ import { Lead, LeadStatus, Prisma } from "@prisma/client";
 export interface ILeadRepository {
   create(data: Prisma.LeadCreateInput): Promise<Lead>;
   findById(id: string): Promise<Lead | null>;
+  findByLeadCode(leadCode: string): Promise<Lead | null>;
   findByManagerId(
     managerId: string, 
     options?: {

@@ -35,7 +35,7 @@ export class LeadAttachmentService implements ILeadAttachmentService {
   async uploadAttachment(
     file: File,
     leadId: string,
-    uploadedBy: string
+    _uploadedBy: string
   ): Promise<AttachmentUploadResult> {
     try {
       // Validações

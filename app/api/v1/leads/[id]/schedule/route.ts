@@ -7,6 +7,7 @@ import { z } from "zod";
 const scheduleSchema = z.object({
   date: z.string().datetime(),
   notes: z.string().optional(),
+  meetingLink: z.string().url("Link da reunião inválido").optional(),
 });
 
 export async function POST(
@@ -42,7 +43,7 @@ export async function POST(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const { date, notes } = validation.data;
+    const { date, notes, meetingLink } = validation.data;
     const meetingDate = new Date(date);
 
     // Verificar se já existe um agendamento para este lead
@@ -56,6 +57,7 @@ export async function POST(
       schedule = await leadScheduleRepository.update(existingSchedule.id, {
         date: meetingDate,
         notes,
+        meetingLink,
       });
       message = "Agendamento atualizado com sucesso";
     } else {
@@ -64,6 +66,7 @@ export async function POST(
         leadId,
         date: meetingDate,
         notes,
+        meetingLink,
       });
       message = "Agendamento criado com sucesso";
     }
@@ -71,7 +74,7 @@ export async function POST(
     // Atualizar o campo meetingDate do lead
     await prisma.lead.update({
       where: { id: leadId },
-      data: { meetingDate },
+      data: { meetingDate, meetingNotes: notes || null, meetingLink: meetingLink || null },
     });
 
     const output = new Output(

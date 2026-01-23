@@ -2,6 +2,7 @@ import type { LeadStatus, HealthPlan } from '@prisma/client';
 
 export interface LeadResponseDTO {
   id: string;
+  leadCode: string;
   managerId: string;
   assignedTo: string | null;
   status: LeadStatus;
@@ -15,6 +16,8 @@ export interface LeadResponseDTO {
   referenceHospital: string | null;
   currentTreatment: string | null;
   meetingDate: string | null;
+  meetingNotes: string | null;
+  meetingLink: string | null;
   notes: string | null;
   createdBy: string | null;
   updatedBy: string | null;

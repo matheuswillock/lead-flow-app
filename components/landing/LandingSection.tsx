@@ -62,7 +62,7 @@ export default function LandingSection() {
                   color: "transparent",
                 }}
               >
-                Apresente, gerencie e cresça — em um único lugar.
+                Apresente, gerencie e cresça em um único lugar.
               </motion.h1>
 
               <motion.p

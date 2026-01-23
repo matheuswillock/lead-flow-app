@@ -102,7 +102,7 @@ export default function Home() {
                   color: "transparent",
                 }}
               >
-                Apresente, gerencie e cresça — em um único lugar.
+                Apresente, gerencie e cresça em um único lugar.
               </MotionH1>
 
               <MotionP

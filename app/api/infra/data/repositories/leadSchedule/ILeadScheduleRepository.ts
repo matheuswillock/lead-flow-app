@@ -4,11 +4,13 @@ export interface CreateLeadScheduleDTO {
   leadId: string;
   date: Date;
   notes?: string;
+  meetingLink?: string;
 }
 
 export interface UpdateLeadScheduleDTO {
   date?: Date;
   notes?: string;
+  meetingLink?: string;
 }
 
 export interface ILeadScheduleRepository {

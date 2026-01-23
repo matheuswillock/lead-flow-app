@@ -9,11 +9,12 @@ import { Output } from '@/lib/output';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { supabaseId, fullName, email, phone, cpfCnpj } = body;
+    const { supabaseId, fullName, email, phone, cpfCnpj, billingType } = body;
 
     console.info('📞 [POST /api/v1/checkout/create] Requisição recebida:', {
       supabaseId,
-      email
+      email,
+      billingType
     });
 
     // Validações
@@ -49,6 +50,7 @@ export async function POST(request: NextRequest) {
       email,
       phone,
       cpfCnpj,
+      billingType: billingType || 'CREDIT_CARD', // Default: cartão de crédito
     });
 
     const statusCode = result.isValid ? 201 : 400;

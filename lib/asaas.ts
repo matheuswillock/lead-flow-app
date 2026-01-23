@@ -177,7 +177,6 @@ const getBase = () => getAsaasApiUrl();
 
 export async function asaas(path: string, init?: RequestInit) {
   const BASE = getBase();
-  const ASAAS_API_KEY = getAsaasApiKey();
   
   const headers = new Headers(init?.headers)
   // headers.set("Authorization", `Bearer ${ASAAS_API_KEY}`)

@@ -73,6 +73,7 @@ export async function GET(request: NextRequest) {
         leadId: true,
         date: true,
         notes: true,
+        meetingLink: true,
         createdAt: true,
         updatedAt: true,
         lead: {
@@ -114,6 +115,7 @@ export async function GET(request: NextRequest) {
       responsible: schedule.lead.assignee?.fullName || schedule.lead.manager?.fullName || 'Não atribuído',
       responsibleEmail: schedule.lead.assignee?.email || schedule.lead.manager?.email || '',
       notes: schedule.notes,
+      meetingLink: schedule.meetingLink,
       leadId: schedule.leadId,
     }));
 
