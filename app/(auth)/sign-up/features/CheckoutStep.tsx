@@ -81,9 +81,14 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
   const formattedFirstCharge = firstChargeDate.toLocaleDateString("pt-BR");
   const formattedLastCharge = lastChargeDate.toLocaleDateString("pt-BR");
 
+  const handleError = (message: string) => {
+    setError(message);
+    toast.error(message);
+  };
+
   useEffect(() => {
     if (!createdUserData) {
-      setError("Dados do cadastro nao encontrados. Volte e tente novamente.");
+      handleError("Dados do cadastro nao encontrados. Volte e tente novamente.");
     }
   }, [createdUserData]);
 
@@ -159,13 +164,18 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
 
   const handleCopy = async (value?: string) => {
     if (!value) return;
-    await navigator.clipboard.writeText(value);
-    toast.success("Codigo copiado!");
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Codigo copiado!");
+    } catch (copyError) {
+      console.error(copyError);
+      toast.error("Nao foi possivel copiar o codigo.");
+    }
   };
 
   const checkPaymentStatus = async () => {
     if (!subscriptionId) {
-      setError("Assinatura nao encontrada. Gere o pagamento novamente.");
+      handleError("Assinatura nao encontrada. Gere o pagamento novamente.");
       return;
     }
 
@@ -246,7 +256,7 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
       if (!response.ok || !result?.isValid) {
         const message =
           result?.errorMessages?.join(", ") || "Nao foi possivel gerar o pagamento.";
-        setError(message);
+        handleError(message);
         return;
       }
 
@@ -261,7 +271,7 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
       }
     } catch (err) {
       console.error(err);
-      setError("Erro ao processar pagamento. Tente novamente.");
+      handleError("Erro ao processar pagamento. Tente novamente.");
     } finally {
       setIsSubmitting(false);
     }
@@ -303,7 +313,14 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
             </CardHeader>
             <CardContent className="space-y-6">
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+                <form
+                  onSubmit={form.handleSubmit(handleSubmit, (errors) => {
+                    const firstError = Object.values(errors)[0];
+                    const message = firstError?.message || "Verifique os campos obrigatorios.";
+                    toast.error(message);
+                  })}
+                  className="space-y-6"
+                >
                   <Tabs
                     value={billingType}
                     onValueChange={(value) => {

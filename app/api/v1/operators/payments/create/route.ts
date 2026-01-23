@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { asaasApi, asaasFetch, asaasHeaders } from "@/lib/asaas";
 import { asaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 
@@ -93,12 +93,19 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    let customerId = manager.asaasCustomerId;
-    if (!customerId) {
+    if (!manager.cpfCnpj) {
+      return NextResponse.json(
+        new Output(false, [], ["CPF/CNPJ do manager nao informado"], null),
+        { status: 400 }
+      );
+    }
+
+    const createCustomer = async () => {
+
       const customer = await asaasCustomerService.createCustomer({
         name: manager.fullName || manager.email,
         email: manager.email,
-        cpfCnpj: manager.cpfCnpj || "",
+        cpfCnpj: manager.cpfCnpj,
         phone: manager.phone || undefined,
         postalCode: manager.postalCode || undefined,
         address: manager.address || undefined,
@@ -107,11 +114,33 @@ export async function POST(request: NextRequest) {
         province: manager.neighborhood || undefined,
         externalReference: manager.id,
       });
-      customerId = customer.customerId;
+
       await prisma.profile.update({
         where: { id: manager.id },
-        data: { asaasCustomerId: customerId },
+        data: { asaasCustomerId: customer.customerId },
       });
+
+      return customer.customerId;
+    };
+
+    let customerId = manager.asaasCustomerId;
+    if (customerId) {
+      const customerCheck = await fetch(`${asaasApi.customers}/${customerId}`, {
+        headers: {
+          ...asaasHeaders,
+        },
+        cache: "no-store",
+      });
+
+      if (!customerCheck.ok) {
+        console.warn(
+          "[POST /api/v1/operators/payments/create] Customer do manager invalido no Asaas, recriando...",
+          { customerId, status: customerCheck.status }
+        );
+        customerId = await createCustomer();
+      }
+    } else {
+      customerId = await createCustomer();
     }
 
     if (billingType === "CREDIT_CARD") {

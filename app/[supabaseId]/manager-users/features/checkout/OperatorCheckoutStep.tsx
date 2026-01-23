@@ -80,6 +80,10 @@ export function OperatorCheckoutStep({
   });
 
   const billingType = form.watch("billingType");
+  const handleError = (message: string) => {
+    setError(message);
+    toast.error(message);
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -123,7 +127,7 @@ export function OperatorCheckoutStep({
 
   const checkPaymentStatus = async () => {
     if (!paymentId) {
-      setError("Pagamento nao encontrado. Gere o pagamento novamente.");
+      handleError("Pagamento nao encontrado. Gere o pagamento novamente.");
       return;
     }
 
@@ -161,8 +165,13 @@ export function OperatorCheckoutStep({
 
   const handleCopy = async (value?: string) => {
     if (!value) return;
-    await navigator.clipboard.writeText(value);
-    toast.success("Codigo copiado!");
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Codigo copiado!");
+    } catch (copyError) {
+      console.error(copyError);
+      toast.error("Nao foi possivel copiar o codigo.");
+    }
   };
 
   const handleCancelPayment = async () => {
@@ -171,6 +180,7 @@ export function OperatorCheckoutStep({
         await fetch(`/api/v1/operators/pending/${pendingOperatorId}`, { method: "DELETE" });
       } catch (err) {
         console.error(err);
+        toast.error("Nao foi possivel cancelar o pagamento.");
       }
     }
     toast.info("Pagamento cancelado", {
@@ -226,7 +236,7 @@ export function OperatorCheckoutStep({
       if (!response.ok || !result?.isValid) {
         const message =
           result?.errorMessages?.join(", ") || "Nao foi possivel gerar o pagamento.";
-        setError(message);
+        handleError(message);
         return;
       }
 
@@ -242,7 +252,7 @@ export function OperatorCheckoutStep({
       }
     } catch (err) {
       console.error(err);
-      setError("Erro ao processar pagamento. Tente novamente.");
+      handleError("Erro ao processar pagamento. Tente novamente.");
     } finally {
       setIsSubmitting(false);
     }
@@ -284,7 +294,14 @@ export function OperatorCheckoutStep({
             </CardHeader>
             <CardContent className="space-y-6">
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+                <form
+                  onSubmit={form.handleSubmit(handleSubmit, (errors) => {
+                    const firstError = Object.values(errors)[0];
+                    const message = firstError?.message || "Verifique os campos obrigatorios.";
+                    toast.error(message);
+                  })}
+                  className="space-y-6"
+                >
                   <Tabs
                     value={billingType}
                     onValueChange={(value) => {
