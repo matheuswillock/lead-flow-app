@@ -1,9 +1,8 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import useBoardContext from "../context/BoardHook";
 import { LeadForm } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLeads } from "@/hooks/useLeads";
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
@@ -11,20 +10,39 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CheckCircle } from "lucide-react";
 import { CopyIcon } from "@/components/ui/copy";
-import { FinalizeContractDialog } from "./FinalizeContractDialog";
+import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
+import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
+import type { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 
-export default function BoardDialog() {
-  const { open, setOpen, selected: lead, user, userLoading, refreshLeads } = useBoardContext();
+interface LeadDialogProps {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  lead: Lead | null;
+  user: ProfileResponseDTO | null;
+  userLoading: boolean;
+  refreshLeads: () => Promise<void>;
+  finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
+}
+
+export default function LeadDialog({
+  open,
+  setOpen,
+  lead,
+  user,
+  userLoading,
+  refreshLeads,
+  finalizeContract,
+}: LeadDialogProps) {
   const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
+  const [finalizeCompleted, setFinalizeCompleted] = useState(false);
 
-  // Verificar se o lead pode ter o contrato finalizado
   const canFinalizeContract = lead && (
-    lead.status === 'invoicePayment' || 
-    lead.status === 'dps_agreement' ||
-    lead.status === 'offerSubmission'
+    lead.status === "invoicePayment" ||
+    lead.status === "dps_agreement" ||
+    lead.status === "offerSubmission"
   );
 
   const handleCopyLeadCode = async (code: string) => {
@@ -37,54 +55,43 @@ export default function BoardDialog() {
     }
   };
 
-  // Função para transformar os dados do formulário para criação de lead
-  const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
-    const parseCurrentValue = (value: string): number | undefined => {
-      if (!value || value.trim() === '') return undefined;
-      
-      // Remove tudo exceto dígitos, vírgula e ponto
-      let cleanValue = value.replace(/[^\d.,]/g, '');
-      
-      // Se tem vírgula, assume formato brasileiro (1.234,56)
-      if (cleanValue.includes(',')) {
-        // Remove pontos (separadores de milhar) e troca vírgula por ponto (decimal)
-        cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
-      }
-      // Se não tem vírgula mas tem múltiplos pontos, remove todos exceto o último
-      else if ((cleanValue.match(/\./g) || []).length > 1) {
-        const parts = cleanValue.split('.');
-        const lastPart = parts.pop();
-        cleanValue = parts.join('') + '.' + lastPart;
-      }
-      
-      const parsed = parseFloat(cleanValue);
-      
-      // Retorna undefined se não é um número válido ou se é negativo
-      if (isNaN(parsed) || parsed < 0) return undefined;
-      
-      // Retorna o valor (incluindo 0) se é válido
-      return parsed;
-    };
+  const parseCurrentValue = (value: string): number | undefined => {
+    if (!value || value.trim() === "") return undefined;
 
-    // Helper para converter data para ISO datetime ou undefined
-    const parseMeetingDate = (date: string): string | undefined => {
-      if (!date || date.trim() === '') return undefined;
-      try {
-        // Se já é uma data ISO, retornar como está
-        if (date.includes('T') && date.includes('Z')) {
-          return date;
-        }
-        // Se é uma data no formato YYYY-MM-DD ou DD/MM/YYYY, converter para ISO
-        const parsedDate = new Date(date);
-        if (isNaN(parsedDate.getTime())) {
-          return undefined;
-        }
-        return parsedDate.toISOString();
-      } catch {
+    let cleanValue = value.replace(/[^\d.,]/g, "");
+
+    if (cleanValue.includes(",")) {
+      cleanValue = cleanValue.replace(/\./g, "").replace(",", ".");
+    } else if ((cleanValue.match(/\./g) || []).length > 1) {
+      const parts = cleanValue.split(".");
+      const lastPart = parts.pop();
+      cleanValue = parts.join("") + "." + lastPart;
+    }
+
+    const parsed = parseFloat(cleanValue);
+
+    if (isNaN(parsed) || parsed < 0) return undefined;
+
+    return parsed;
+  };
+
+  const parseMeetingDate = (date: string): string | undefined => {
+    if (!date || date.trim() === "") return undefined;
+    try {
+      if (date.includes("T") && date.includes("Z")) {
+        return date;
+      }
+      const parsedDate = new Date(date);
+      if (isNaN(parsedDate.getTime())) {
         return undefined;
       }
-    };
+      return parsedDate.toISOString();
+    } catch {
+      return undefined;
+    }
+  };
 
+  const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
     return {
       name: data.name,
       email: data.email || undefined,
@@ -95,68 +102,19 @@ export default function BoardDialog() {
       referenceHospital: data.referenceHospital || undefined,
       currentTreatment: data.ongoingTreatment || undefined,
       notes: data.additionalNotes || undefined,
-      meetingDate: parseMeetingDate(data.meetingDate || ''),
+      meetingDate: parseMeetingDate(data.meetingDate || ""),
       meetingNotes: data.meetingNotes || undefined,
       meetingLink: data.meetingLink || undefined,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
-      status: "new_opportunity" as any, // Status padrão para novos leads
-      // Novos campos (null para criação)
+      status: "new_opportunity" as any,
       ticket: undefined,
       contractDueDate: undefined,
-      soldPlan: undefined
+      soldPlan: undefined,
     };
   };
 
-  // Função para transformar os dados do formulário para atualização de lead
   const transformToUpdateRequest = (data: leadFormData): UpdateLeadRequest => {
-    // Helper para converter valor para número ou undefined
-    const parseCurrentValue = (value: string): number | undefined => {
-      if (!value || value.trim() === '') return undefined;
-      
-      // Remove tudo exceto dígitos, vírgula e ponto
-      let cleanValue = value.replace(/[^\d.,]/g, '');
-      
-      // Se tem vírgula, assume formato brasileiro (1.234,56)
-      if (cleanValue.includes(',')) {
-        // Remove pontos (separadores de milhar) e troca vírgula por ponto (decimal)
-        cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
-      }
-      // Se não tem vírgula mas tem múltiplos pontos, remove todos exceto o último
-      else if ((cleanValue.match(/\./g) || []).length > 1) {
-        const parts = cleanValue.split('.');
-        const lastPart = parts.pop();
-        cleanValue = parts.join('') + '.' + lastPart;
-      }
-      
-      const parsed = parseFloat(cleanValue);
-      
-      // Retorna undefined se não é um número válido ou se é negativo
-      if (isNaN(parsed) || parsed < 0) return undefined;
-      
-      // Retorna o valor (incluindo 0) se é válido
-      return parsed;
-    };
-
-    // Helper para converter data para ISO datetime ou undefined
-    const parseMeetingDate = (date: string): string | undefined => {
-      if (!date || date.trim() === '') return undefined;
-      try {
-        // Se já é uma data ISO, retornar como está
-        if (date.includes('T') && date.includes('Z')) {
-          return date;
-        }
-        // Se é uma data no formato YYYY-MM-DD ou DD/MM/YYYY, converter para ISO
-        const parsedDate = new Date(date);
-        if (isNaN(parsedDate.getTime())) {
-          return undefined;
-        }
-        return parsedDate.toISOString();
-      } catch {
-        return undefined;
-      }
-    };
-
     return {
       name: data.name,
       email: data.email || undefined,
@@ -167,29 +125,27 @@ export default function BoardDialog() {
       referenceHospital: data.referenceHospital || undefined,
       currentTreatment: data.ongoingTreatment || undefined,
       notes: data.additionalNotes || undefined,
-      meetingDate: parseMeetingDate(data.meetingDate || ''),
+      meetingDate: parseMeetingDate(data.meetingDate || ""),
       meetingNotes: data.meetingNotes || undefined,
       meetingLink: data.meetingLink || undefined,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
-      // Novos campos de venda (apenas em edição)
       ticket: data.ticket ? parseCurrentValue(data.ticket) : undefined,
-      contractDueDate: parseMeetingDate(data.contractDueDate || ''),
-      soldPlan: data.soldPlan || undefined
+      contractDueDate: parseMeetingDate(data.contractDueDate || ""),
+      soldPlan: data.soldPlan || undefined,
     };
   };
 
   const onSubmit = async (data: leadFormData) => {
     setIsSubmitting(true);
-    
+
     try {
       if (lead) {
-        // 🔄 EDITAR LEAD
-        const loadingToast = toast.loading('Atualizando lead...');
-        
+        const loadingToast = toast.loading("Atualizando lead...");
+
         const updateData = transformToUpdateRequest(data);
         const result = await updateLead(lead.id, updateData);
-        
+
         if (result.success) {
           toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
             id: loadingToast,
@@ -204,16 +160,14 @@ export default function BoardDialog() {
           });
         }
       } else {
-        // ➕ CRIAR NOVO LEAD
         const loadingToast = toast.loading(`Criando lead "${data.name}"...`);
-        
-        // 🚀 Optimistic update - fechar dialog imediatamente
+
         setOpen(false);
-        
+
         try {
           const createData = transformToCreateRequest(data);
           const result = await createLead(createData);
-          
+
           if (result.success) {
             toast.success(`Lead "${data.name}" criado com sucesso!`, {
               id: loadingToast,
@@ -221,7 +175,6 @@ export default function BoardDialog() {
             });
             await refreshLeads();
           } else {
-            // Reabrir dialog em caso de erro
             toast.error(result.message || "Erro ao criar lead", {
               id: loadingToast,
               duration: 5000,
@@ -229,17 +182,19 @@ export default function BoardDialog() {
             setOpen(true);
           }
         } catch (createError) {
-          // ❌ Erro específico da criação
           const errorMessage = createError instanceof Error ? createError.message : "Erro ao criar lead";
-          
-          // Verificar se é erro de duplicação (unique constraint)
-          if (errorMessage.includes('Unique constraint') || errorMessage.includes('já existe')) {
-            toast.error(`⚠️ Já existe um lead com este telefone: ${data.phone}`, {
+          const normalizedMessage = errorMessage
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase();
+
+          if (errorMessage.includes("Unique constraint") || normalizedMessage.includes("ja existe")) {
+            toast.error(`Aviso: ja existe um lead com este telefone: ${data.phone}`, {
               id: loadingToast,
               duration: 6000,
             });
-          } else if (errorMessage.includes('validation') || errorMessage.includes('inválido')) {
-            toast.error(`⚠️ Dados inválidos: ${errorMessage}`, {
+          } else if (normalizedMessage.includes("validation") || normalizedMessage.includes("invalido")) {
+            toast.error(`Aviso: dados invalidos: ${errorMessage}`, {
               id: loadingToast,
               duration: 5000,
             });
@@ -249,19 +204,17 @@ export default function BoardDialog() {
               duration: 5000,
             });
           }
-          
-          // Reabrir dialog para usuário corrigir
+
           setOpen(true);
         }
       }
     } catch (error) {
-      console.error("Erro na submissão do formulário:", error);
-      const errorMessage = error instanceof Error ? error.message : "Erro inesperado ao processar o formulário";
+      console.error("Erro na submissao do formulario:", error);
+      const errorMessage = error instanceof Error ? error.message : "Erro inesperado ao processar o formulario";
       toast.error(errorMessage, {
         duration: 5000,
       });
-      
-      // Reabrir dialog em caso de erro
+
       if (!lead) {
         setOpen(true);
       }
@@ -270,63 +223,45 @@ export default function BoardDialog() {
     }
   };
 
-  const handleFinalizeContract = () => {
-    setShowFinalizeDialog(true);
-  };
-
-  const handleFinalizeSubmit = async (data: any) => {
+  const handleFinalizeSubmit = async (data: FinalizeContractData) => {
     if (!lead) return;
 
     try {
-      const response = await fetch(`/api/v1/leads/${lead.id}/finalize`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.errors?.[0] || 'Erro ao finalizar contrato');
-      }
-
-      toast.success('Contrato finalizado com sucesso!');
+      await finalizeContract(lead.id, data);
+      toast.success("Contrato finalizado com sucesso!");
+      setFinalizeCompleted(true);
       setShowFinalizeDialog(false);
       setOpen(false);
       await refreshLeads();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao finalizar contrato');
+      toast.error(error instanceof Error ? error.message : "Erro ao finalizar contrato");
       throw error;
     }
   };
 
   useEffect(() => {
     if (lead && open) {
-      // Função para formatar valor como moeda
       const formatCurrency = (value: number): string => {
         if (value === null || value === undefined) return "";
-        return `R$ ${value.toFixed(2).replace('.', ',')}`;
+        return `R$ ${value.toFixed(2).replace(".", ",")}`;
       };
 
-      // Função para formatar telefone
       const formatPhone = (phone: string): string => {
         if (!phone) return "";
-        const numbers = phone.replace(/\D/g, '');
+        const numbers = phone.replace(/\D/g, "");
         if (numbers.length === 11) {
-          return numbers.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+          return numbers.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
         }
-        return phone; // Retorna como está se não tiver 11 dígitos
+        return phone;
       };
 
-      // Função para formatar CNPJ
       const formatCNPJ = (cnpj: string): string => {
         if (!cnpj) return "";
-        const numbers = cnpj.replace(/\D/g, '');
+        const numbers = cnpj.replace(/\D/g, "");
         if (numbers.length === 14) {
-          return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+          return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
         }
-        return cnpj; // Retorna como está se não tiver 14 dígitos
+        return cnpj;
       };
 
       form.reset({
@@ -344,7 +279,6 @@ export default function BoardDialog() {
         meetingNotes: lead.meetingNotes || "",
         meetingLink: lead.meetingLink || "",
         responsible: lead.assignedTo || "",
-        // Novos campos de venda
         ticket: lead.ticket ? formatCurrency(lead.ticket) : "",
         contractDueDate: lead.contractDueDate || "",
         soldPlan: lead.soldPlan || undefined,
@@ -365,7 +299,6 @@ export default function BoardDialog() {
         meetingNotes: "",
         meetingLink: "",
         responsible: user?.usersAssociated?.[0]?.id || "",
-        // Novos campos zerados na criação
         ticket: "",
         contractDueDate: "",
         soldPlan: undefined,
@@ -375,7 +308,7 @@ export default function BoardDialog() {
 
   return (
     <>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open && !showFinalizeDialog} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="flex items-center justify-between">
@@ -384,7 +317,7 @@ export default function BoardDialog() {
                   {lead ? "Editar Lead" : "Novo Lead"}
                 </DialogTitle>
                 <DialogDescription>
-                  {lead 
+                  {lead
                     ? "Faça as alterações necessárias nos dados do lead."
                     : "Preencha os dados para criar um novo lead."
                   }
@@ -407,7 +340,11 @@ export default function BoardDialog() {
                 <Button
                   size="sm"
                   variant="default"
-                  onClick={handleFinalizeContract}
+                  onClick={() => {
+                    setFinalizeCompleted(false);
+                    setShowFinalizeDialog(true);
+                    setOpen(false);
+                  }}
                   className="ml-4"
                 >
                   <CheckCircle className="mr-2 h-4 w-4" />
@@ -416,7 +353,7 @@ export default function BoardDialog() {
               )}
             </div>
           </DialogHeader>
-          
+
           {userLoading ? (
             <div className="flex items-center justify-center p-8">
               <div className="text-center">
@@ -444,7 +381,12 @@ export default function BoardDialog() {
       {lead && (
         <FinalizeContractDialog
           open={showFinalizeDialog}
-          onOpenChange={setShowFinalizeDialog}
+          onOpenChange={(nextOpen) => {
+            setShowFinalizeDialog(nextOpen);
+            if (!nextOpen && !finalizeCompleted) {
+              setOpen(true);
+            }
+          }}
           leadName={lead.name}
           onFinalize={handleFinalizeSubmit}
         />

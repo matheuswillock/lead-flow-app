@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import BoardHeader from "./BoardHeader";
 import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
-import BoardDialog from "./BoardDialog";
+import LeadDialog from "@/app/[supabaseId]/components/LeadDialog";
 import { FinalizeContractDialog } from "./FinalizeContractDialog";
 import { ScheduleMeetingDialog } from "./ScheduleMeetingDialog";
 import useBoardContext from "../context/BoardHook";
@@ -12,7 +12,7 @@ import { Lead } from "../context/BoardTypes";
 import { toast } from "sonner";
 
 export function BoardContainer() {
-  const { finalizeContract, refreshLeads } = useBoardContext();
+  const { finalizeContract, refreshLeads, open, setOpen, selected: lead, user, userLoading } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -58,7 +58,15 @@ export function BoardContainer() {
 
       <BoardFooter />
 
-      <BoardDialog />
+      <LeadDialog
+        open={open}
+        setOpen={setOpen}
+        lead={lead}
+        user={user}
+        userLoading={userLoading}
+        refreshLeads={refreshLeads}
+        finalizeContract={finalizeContract}
+      />
 
       {selectedLead && (
         <>
