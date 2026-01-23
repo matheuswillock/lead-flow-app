@@ -6,6 +6,7 @@ import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 
 export interface ILeadUseCase {
   createLead(supabaseId: string, data: CreateLeadRequest): Promise<Output>;
+  createLeadFromImport(supabaseId: string, data: CreateLeadRequest): Promise<Output>;
   getLeadById(supabaseId: string, id: string): Promise<Output>;
   getLeadsByManager(
     supabaseId: string,

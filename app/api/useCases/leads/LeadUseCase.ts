@@ -17,6 +17,18 @@ export class LeadUseCase implements ILeadUseCase {
   ) {}
 
   async createLead(supabaseId: string, data: CreateLeadRequest): Promise<Output> {
+    return this.createLeadInternal(supabaseId, data, false);
+  }
+
+  async createLeadFromImport(supabaseId: string, data: CreateLeadRequest): Promise<Output> {
+    return this.createLeadInternal(supabaseId, data, true);
+  }
+
+  private async createLeadInternal(
+    supabaseId: string,
+    data: CreateLeadRequest,
+    skipAutoAssign: boolean
+  ): Promise<Output> {
     try {
       // Buscar informações do perfil através do ProfileUseCase
       const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
@@ -33,8 +45,8 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       // Se for operator e não foi definido assignedTo, atribuir automaticamente ao próprio operator
-      let assignedTo = data.assignedTo;
-      if (profileInfo.role === 'operator' && !assignedTo) {
+      let assignedTo = skipAutoAssign ? undefined : data.assignedTo;
+      if (!skipAutoAssign && profileInfo.role === 'operator' && !assignedTo) {
         assignedTo = profileInfo.id;
       }
 
