@@ -301,7 +301,11 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
             {subscription.status !== "canceled" && (
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="cursor-pointer" size="sm">
+                  <Button
+                    variant="destructive"
+                    className="cursor-pointer bg-red-500 hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-600"
+                    size="sm"
+                  >
                     Cancelar Assinatura
                   </Button>
                 </DialogTrigger>
@@ -326,8 +330,8 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                       Voltar
                     </Button>
                     <Button
-                      variant="outline"
-                      className="cursor-pointer"
+                      variant="destructive"
+                      className="cursor-pointer bg-red-500 hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-600"
                       onClick={handleCancel}
                       disabled={isCanceling}
                     >
