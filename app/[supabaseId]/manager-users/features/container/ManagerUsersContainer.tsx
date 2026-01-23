@@ -16,6 +16,7 @@ import { UserFormDialog } from "./UserFormDialog";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { DeletePendingOperatorDialog } from "./DeletePendingOperatorDialog";
 import { PendingOperatorsAlert } from "./PendingOperatorsAlert";
+import { OperatorCheckoutStep } from "../checkout/OperatorCheckoutStep";
 import type { ManagerUserTableRow } from "../types";
 
 interface ManagerUsersContainerProps {
@@ -52,6 +53,9 @@ export function ManagerUsersContainer({
     resendInvite,
     togglePermanentSubscription,
     refreshData,
+    operatorCheckout,
+    closeOperatorCheckout,
+    completeOperatorCheckout,
     
     // Controle de UI
     openCreateModal,
@@ -123,6 +127,18 @@ export function ManagerUsersContainer({
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+
+  if (operatorCheckout.isOpen && operatorCheckout.operatorData) {
+    return (
+      <OperatorCheckoutStep
+        managerId={supabaseId}
+        operatorData={operatorCheckout.operatorData}
+        onCancel={closeOperatorCheckout}
+        onComplete={completeOperatorCheckout}
+      />
     );
   }
 

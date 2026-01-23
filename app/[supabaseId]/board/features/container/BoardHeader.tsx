@@ -53,7 +53,7 @@ export default function BoardHeader() {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar por nome ou data (dd/mm/aaaa)"
+              placeholder="Buscar por nome, ID ou data (dd/mm/aaaa)"
               className="pl-8 w-96"
             />
           </div>

@@ -73,6 +73,12 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
+  async findByLeadCode(leadCode: string): Promise<Lead | null> {
+    return await prisma.lead.findUnique({
+      where: { leadCode },
+    });
+  }
+
   async findByManagerId(
     managerId: string,
     options?: {
@@ -101,6 +107,7 @@ export class LeadRepository implements ILeadRepository {
       ...(assignedTo && { assignedTo }),
       ...(search && {
         OR: [
+          { leadCode: { contains: search, mode: 'insensitive' } },
           { name: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
           { phone: { contains: search, mode: 'insensitive' } },
@@ -350,6 +357,7 @@ export class LeadRepository implements ILeadRepository {
       ...(assignedTo && { assignedTo }),
       ...(search && {
         OR: [
+          { leadCode: { contains: search, mode: 'insensitive' } },
           { name: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
           { phone: { contains: search, mode: 'insensitive' } },
@@ -419,6 +427,7 @@ export class LeadRepository implements ILeadRepository {
       ...(status && { status }),
       ...(search && {
         OR: [
+          { leadCode: { contains: search, mode: 'insensitive' } },
           { name: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
           { phone: { contains: search, mode: 'insensitive' } },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { toast } from "sonner";
@@ -35,7 +36,15 @@ export function ScheduleMeetingDialog({
 
   const [meetingDate, setMeetingDate] = useState<Date>();
   const [notes, setNotes] = useState<string>("");
+  const [meetingLink, setMeetingLink] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setMeetingDate(lead.meetingDate ? new Date(lead.meetingDate) : undefined);
+    setNotes(lead.meetingNotes || "");
+    setMeetingLink(lead.meetingLink || "");
+  }, [open, lead]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,6 +68,7 @@ export function ScheduleMeetingDialog({
         body: JSON.stringify({
           date: meetingDate.toISOString(),
           notes: notes || `Reunião agendada com ${lead.name}`,
+          meetingLink: meetingLink || undefined,
         }),
       });
 
@@ -99,6 +109,7 @@ export function ScheduleMeetingDialog({
       // Limpar form
       setMeetingDate(undefined);
       setNotes("");
+      setMeetingLink("");
       
       // Fechar dialog
       onOpenChange(false);
@@ -149,6 +160,18 @@ export function ScheduleMeetingDialog({
                 value={notes}
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNotes(e.target.value)}
                 rows={3}
+              />
+            </div>
+
+            {/* Link da reunião */}
+            <div className="grid gap-2">
+              <Label htmlFor="meetingLink">Link da reunião (opcional)</Label>
+              <Input
+                id="meetingLink"
+                type="url"
+                placeholder="https://meet.google.com/..."
+                value={meetingLink}
+                onChange={(e) => setMeetingLink(e.target.value)}
               />
             </div>
           </div>

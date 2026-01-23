@@ -21,7 +21,7 @@ interface ActiveSubscriptionMessageProps {
 }
 
 export function ActiveSubscriptionMessage({
-  userExists,
+  userExists: _userExists,
   matchSource,
   matchedIdentifier,
   subscription,

@@ -107,6 +107,7 @@ with_operators with_operators
 
   "leads" {
     String id "🗝️"
+    String leadCode 
     LeadStatus status 
     String name 
     String email "❓"
@@ -118,6 +119,8 @@ with_operators with_operators
     String referenceHospital "❓"
     String currentTreatment "❓"
     DateTime meetingDate "❓"
+    String meetingNotes "❓"
+    String meetingLink "❓"
     String notes "❓"
     Decimal ticket "❓"
     DateTime contractDueDate "❓"
@@ -140,6 +143,7 @@ with_operators with_operators
     String id "🗝️"
     DateTime date 
     String notes "❓"
+    String meetingLink "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
