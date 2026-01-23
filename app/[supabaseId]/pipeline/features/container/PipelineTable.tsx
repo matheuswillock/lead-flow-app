@@ -42,13 +42,14 @@ import {
 import { Button } from "@/components/ui/button";
 import usePipelineContext from "../context/PipelineHook";
 import { Lead } from "../context/PipelineTypes";
-import { createColumns } from "./columns";
+// import { createColumns } from "./columns";
 import { DataTableToolbar } from "./data-table-toolbar";
 import { DraggableRow } from "./DraggableRow";
 import { toast } from "sonner";
 import { useState } from "react";
 import { ScheduleMeetingDialog } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
 import { ChangeStatusDialog } from "./ChangeStatusDialog";
+import { createColumns } from "./PipelineColumns";
 
 export default function PipelineTable() {
   const { 
