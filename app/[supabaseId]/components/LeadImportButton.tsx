@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { Upload } from "lucide-react";
+import { Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -99,7 +99,14 @@ export default function LeadImportButton({ onImportComplete }: LeadImportButtonP
                 Cancelar
               </Button>
               <Button onClick={handleImport} disabled={isSubmitting || !file}>
-                {isSubmitting ? "Importando..." : "Importar"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                    Importando...
+                  </>
+                ) : (
+                  "Importar"
+                )}
               </Button>
             </div>
           </div>

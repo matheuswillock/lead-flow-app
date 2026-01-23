@@ -46,7 +46,6 @@ export class DashboardInfosService implements IDashboardInfosService {
 
     // Buscar agendamentos da tabela LeadsSchedule
     const scheduledLeads = await metricsRepository.getScheduledLeads(repositoryFilters);
-    const agendamentos = scheduledLeads.length;
 
     // Buscar vendas da tabela LeadFinalized
     const finalizedLeads = await metricsRepository.getFinalizedLeads(repositoryFilters);
@@ -69,6 +68,11 @@ export class DashboardInfosService implements IDashboardInfosService {
     const implementacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.IMPLEMENTATION);
     const churn = this.countByStatusGroup(statusCount, STATUS_GROUPS.CHURN);
     const noShowCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.NO_SHOW);
+
+    const scheduledLeadIds = new Set(scheduledLeads.map((lead) => lead.leadId));
+    const scheduledFromStatus =
+      this.countByStatusGroup(statusCount, STATUS_GROUPS.SCHEDULED) + noShowCount;
+    const agendamentos = Math.max(scheduledLeadIds.size, scheduledFromStatus);
 
     const taxaConversao = agendamentos > 0 ? (vendas / agendamentos) * 100 : 0;
     const churnRate = vendas > 0 ? (churn / vendas) * 100 : 0;

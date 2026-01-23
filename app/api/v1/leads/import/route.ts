@@ -67,6 +67,16 @@ const mapStatus = (value: string | null | undefined): LeadStatus => {
   if (!value) return LeadStatus.new_opportunity;
   const normalized = normalizeText(value);
 
+  if (normalized === "contract_finalized" || normalized === "contract finalized") {
+    return LeadStatus.contract_finalized;
+  }
+  if (normalized === "agendado") return LeadStatus.scheduled;
+  if (normalized === "negociacao") return LeadStatus.offerNegotiation;
+  if (normalized === "pendente") return LeadStatus.pending_documents;
+  if (normalized === "doctos pendentes") return LeadStatus.pending_documents;
+  if (normalized === "implementacao enviada") return LeadStatus.offerSubmission;
+  if (normalized === "venda futura") return LeadStatus.offerSubmission;
+
   if (normalized.includes("perdido")) return LeadStatus.opportunityLost;
   if (normalized.includes("desqualificado")) return LeadStatus.disqualified;
   if (normalized.includes("negado")) return LeadStatus.operator_denied;
@@ -76,9 +86,19 @@ const mapStatus = (value: string | null | undefined): LeadStatus => {
   if (normalized.includes("negoci")) return LeadStatus.offerNegotiation;
   if (normalized.includes("document")) return LeadStatus.pending_documents;
   if (normalized.includes("proposta")) return LeadStatus.offerSubmission;
+  if (
+    normalized.includes("negocio fechado") ||
+    normalized.includes("negocio") && normalized.includes("fechado") ||
+    normalized.includes("contrato assinado") ||
+    normalized.includes("contrato fechado") ||
+    normalized.includes("venda concluida") ||
+    normalized.includes("fechado") ||
+    normalized.includes("finalizado")
+  ) {
+    return LeadStatus.contract_finalized;
+  }
   if (normalized.includes("dps") || normalized.includes("contrato")) return LeadStatus.dps_agreement;
   if (normalized.includes("boleto") || normalized.includes("fatura")) return LeadStatus.invoicePayment;
-  if (normalized.includes("fechado") || normalized.includes("finalizado")) return LeadStatus.contract_finalized;
 
   return LeadStatus.new_opportunity;
 };
@@ -221,6 +241,7 @@ export async function POST(request: NextRequest) {
       let cnpj = getCell(row, headerMap, "CNPJ (short text)");
       const age = getCell(row, headerMap, "Idades (short text)");
       const currentValue = parseCurrency(getCell(row, headerMap, "Valor Atual (currency)"));
+      const ticket = parseCurrency(getCell(row, headerMap, "Ticket (currency)"));
       const referenceHospital = getCell(row, headerMap, "Hospital Referencia (Se houver) (short text)");
       const currentTreatment = getCell(
         row,
@@ -280,7 +301,7 @@ export async function POST(request: NextRequest) {
         meetingNotes: undefined,
         meetingLink: undefined,
         assignedTo: undefined,
-        ticket: undefined,
+        ticket: ticket ?? undefined,
         contractDueDate: undefined,
         soldPlan: undefined,
       });

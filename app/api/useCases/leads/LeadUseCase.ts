@@ -21,7 +21,21 @@ export class LeadUseCase implements ILeadUseCase {
   }
 
   async createLeadFromImport(supabaseId: string, data: CreateLeadRequest): Promise<Output> {
-    return this.createLeadInternal(supabaseId, data, true);
+    const output = await this.createLeadInternal(supabaseId, data, true);
+
+    if (output.isValid && data.status === LeadStatus.contract_finalized && output.result?.id) {
+      const amount = Number(data.ticket ?? data.currentValue ?? 0);
+      await leadFinalizedRepository.create({
+        leadId: output.result.id,
+        finalizedAt: new Date(),
+        startDateAt: new Date(),
+        duration: 0,
+        amount,
+        notes: "Lead importado como negocio fechado",
+      });
+    }
+
+    return output;
   }
 
   private async createLeadInternal(
