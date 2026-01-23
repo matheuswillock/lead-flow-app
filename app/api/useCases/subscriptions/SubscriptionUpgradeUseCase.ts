@@ -302,7 +302,22 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     try {
       if (pendingOperator.operatorCreated) {
         console.info('ℹ️ [createOperatorFromPending] Operador já foi criado anteriormente');
-        return new Output(false, [], ['Operador já foi criado'], null);
+        
+        // Buscar operador criado e retornar sucesso (para evitar erro em múltiplas chamadas)
+        const result: SubscriptionUpgradeResult = {
+          paymentId,
+          paymentStatus: 'CONFIRMED',
+          paymentMethod: pendingOperator.paymentMethod,
+          operatorCreated: true,
+          operatorId: pendingOperator.operatorId || '',
+        };
+
+        return new Output(
+          true,
+          ['Operador já foi criado anteriormente'],
+          [],
+          result
+        );
       }
 
       // 2. Verificar status do pagamento no Asaas
@@ -435,22 +450,12 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           tipoPagamento: currentSubscription.billingType
         });
 
-        // Atualizar assinatura (comportamento diferente por tipo de pagamento)
-        if (currentSubscription.billingType === 'CREDIT_CARD') {
-          console.info('💳 [createOperatorFromPending] Atualizando assinatura com cobrança automática (Cartão)...');
-          await AsaasSubscriptionService.updateSubscription(
-            manager.asaasSubscriptionId,
-            { value: newValue }
-          );
-          console.info('✅ [createOperatorFromPending] Assinatura atualizada com cobrança automática no cartão');
-        } else {
-          console.info('📄 [createOperatorFromPending] Atualizando assinatura para próxima cobrança (PIX/Boleto)...');
-          await AsaasSubscriptionService.updateSubscription(
-            manager.asaasSubscriptionId,
-            { value: newValue }
-          );
-          console.info('✅ [createOperatorFromPending] Assinatura atualizada - novo valor será cobrado na próxima fatura');
-        }
+        await this.updateManagerSubscriptionValue({
+          manager,
+          currentSubscription,
+          newValue,
+          operatorName: pendingOperator.name,
+        });
 
         console.info('🎉 [createOperatorFromPending] Assinatura atualizada com sucesso! Prosseguindo com criação do operador...');
 
@@ -926,6 +931,125 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       value: totalValue,
       description
     };
+  }
+
+  private async updateManagerSubscriptionValue(params: {
+    manager: any;
+    currentSubscription: any;
+    newValue: number;
+    operatorName: string;
+  }): Promise<void> {
+    const { manager, currentSubscription, newValue, operatorName } = params;
+
+    const isCreditCard = currentSubscription.billingType === 'CREDIT_CARD';
+
+    if (!isCreditCard) {
+      console.info('📄 [updateManagerSubscriptionValue] Atualizando assinatura para proxima cobranca (PIX/Boleto)...');
+      await AsaasSubscriptionService.updateSubscription(
+        manager.asaasSubscriptionId,
+        { value: newValue }
+      );
+      console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada - novo valor sera cobrado na proxima fatura');
+      return;
+    }
+
+    console.info('💳 [updateManagerSubscriptionValue] Atualizando assinatura com cobranca automatica (Cartao)...');
+
+    try {
+      await AsaasSubscriptionService.updateSubscription(
+        manager.asaasSubscriptionId,
+        { value: newValue }
+      );
+      console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada com sucesso no cartao');
+      return;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      const normalizedMessage = errorMessage.toLowerCase();
+      const blockedValueChange = normalizedMessage.includes('nao e possivel alterar o valor')
+        || normalizedMessage.includes('não é possível alterar o valor')
+        || normalizedMessage.includes('assinaturas via cartao de credito')
+        || normalizedMessage.includes('assinaturas via cartão de crédito');
+
+      if (!blockedValueChange) {
+        throw error;
+      }
+
+      console.warn('⚠️ [updateManagerSubscriptionValue] Alteracao de valor bloqueada para cartao. Recriando assinatura...', {
+        managerId: manager.id,
+        subscriptionId: manager.asaasSubscriptionId,
+        operatorName,
+        errorMessage
+      });
+
+      await this.recreateCreditCardSubscription({
+        manager,
+        currentSubscription,
+        newValue,
+      });
+    }
+  }
+
+  private async recreateCreditCardSubscription(params: {
+    manager: any;
+    currentSubscription: any;
+    newValue: number;
+  }): Promise<void> {
+    const { manager, currentSubscription, newValue } = params;
+
+    if (!manager.asaasCustomerId) {
+      throw new Error('Manager sem customer Asaas para recriar assinatura');
+    }
+
+    const now = new Date();
+    const currentNextDueDate = manager.subscriptionNextDueDate
+      ? new Date(manager.subscriptionNextDueDate)
+      : (currentSubscription.nextDueDate ? new Date(currentSubscription.nextDueDate) : null);
+
+    const nextDueDate = currentNextDueDate && !Number.isNaN(currentNextDueDate.getTime())
+      ? currentNextDueDate
+      : now;
+
+    if (nextDueDate < now) {
+      nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+    }
+
+    const payload: any = {
+      customer: manager.asaasCustomerId,
+      billingType: 'CREDIT_CARD',
+      value: newValue,
+      cycle: currentSubscription.cycle || 'MONTHLY',
+      nextDueDate: nextDueDate.toISOString().split('T')[0],
+      description: currentSubscription.description || 'Assinatura Manager atualizada',
+      externalReference: `manager-${manager.id}-${Date.now()}`
+    };
+
+    const creditCardToken = currentSubscription?.creditCard?.creditCardToken;
+    if (creditCardToken) {
+      payload.creditCardToken = creditCardToken;
+    } else {
+      console.warn('⚠️ [recreateCreditCardSubscription] Sem creditCardToken no Asaas para recriar assinatura', {
+        managerId: manager.id,
+        subscriptionId: currentSubscription.id
+      });
+    }
+
+    const newSubscription = await AsaasSubscriptionService.createSubscription(payload);
+
+    await prisma.profile.update({
+      where: { id: manager.id },
+      data: {
+        asaasSubscriptionId: newSubscription.subscriptionId,
+        subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+        subscriptionCycle: newSubscription.data.cycle || 'MONTHLY',
+      }
+    });
+
+    try {
+      await AsaasSubscriptionService.cancelSubscription(currentSubscription.id);
+      console.info('✅ [recreateCreditCardSubscription] Assinatura antiga cancelada');
+    } catch (error) {
+      console.error('❌ [recreateCreditCardSubscription] Falha ao cancelar assinatura antiga:', error);
+    }
   }
 
   /**

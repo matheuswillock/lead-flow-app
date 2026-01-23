@@ -9,6 +9,12 @@ export interface AsaasSubscription {
   description?: string;          // Descrição da assinatura
   externalReference?: string;    // ID do Profile
   nextDueDate?: string;          // Data da próxima cobrança (YYYY-MM-DD)
+  creditCardToken?: string;      // Token do cartão (tokenizacao Asaas)
+  creditCard?: {
+    creditCardToken?: string;
+    creditCardNumber?: string;
+    creditCardBrand?: string;
+  };
   discount?: {
     value: number;               // Desconto em reais
     dueDateLimitDays: number;    // Dias antes do vencimento
@@ -37,6 +43,11 @@ export interface AsaasSubscriptionResponse {
   nextDueDate: string;
   externalReference?: string;
   dateCreated: string;
+  creditCard?: {
+    creditCardToken?: string;
+    creditCardNumber?: string;
+    creditCardBrand?: string;
+  };
 }
 
 import type { IAsaasSubscriptionService } from './IAsaasSubscriptionService';

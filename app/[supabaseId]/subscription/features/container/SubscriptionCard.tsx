@@ -101,7 +101,7 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
           <div>
             <CardTitle className="flex items-center gap-2">
               <CreditCard className="h-5 w-5" />
-              {isPermanentSubscription ? 'Assinatura Vitalícia' : 'Sua Assinatura'}
+              {isPermanentSubscription ? "Assinatura Vitalícia" : "Sua Assinatura"}
             </CardTitle>
             <CardDescription>{subscription.description}</CardDescription>
           </div>
@@ -116,8 +116,18 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
             <div className="rounded-lg bg-gradient-to-r from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/30 p-6 border-2 border-amber-300 dark:border-amber-700">
               <div className="flex items-start gap-4">
                 <div className="rounded-full bg-amber-500 p-3">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  <svg
+                    className="h-6 w-6 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+                    />
                   </svg>
                 </div>
                 <div className="flex-1">
@@ -125,17 +135,22 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                     🎉 Você possui acesso vitalício sem custo!
                   </h3>
                   <p className="text-sm text-amber-800 dark:text-amber-200 mb-4">
-                    Sua conta tem benefícios permanentes e não requer pagamento mensal. Aproveite todos os recursos sem limitações!
+                    Sua conta tem benefícios permanentes e não requer pagamento mensal. Aproveite
+                    todos os recursos sem limitações!
                   </p>
-                  
+
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="flex items-center gap-2 text-sm">
                       <div className="rounded-full bg-amber-500/20 p-2">
                         <CreditCard className="h-4 w-4 text-amber-700 dark:text-amber-300" />
                       </div>
                       <div>
-                        <span className="text-amber-700 dark:text-amber-300 font-medium">Valor Mensal:</span>
-                        <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">R$ 0,00</span>
+                        <span className="text-amber-700 dark:text-amber-300 font-medium">
+                          Valor Mensal:
+                        </span>
+                        <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">
+                          R$ 0,00
+                        </span>
                       </div>
                     </div>
 
@@ -144,9 +159,12 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                         <Users className="h-4 w-4 text-amber-700 dark:text-amber-300" />
                       </div>
                       <div>
-                        <span className="text-amber-700 dark:text-amber-300 font-medium">Operadores:</span>
+                        <span className="text-amber-700 dark:text-amber-300 font-medium">
+                          Operadores:
+                        </span>
                         <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">
-                          {priceBreakdown.operatorCount} {priceBreakdown.operatorCount === 1 ? 'operador' : 'operadores'}
+                          {priceBreakdown.operatorCount}{" "}
+                          {priceBreakdown.operatorCount === 1 ? "operador" : "operadores"}
                         </span>
                       </div>
                     </div>
@@ -156,8 +174,12 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                         <Calendar className="h-4 w-4 text-amber-700 dark:text-amber-300" />
                       </div>
                       <div>
-                        <span className="text-amber-700 dark:text-amber-300 font-medium">Validade:</span>
-                        <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">Sem vencimento</span>
+                        <span className="text-amber-700 dark:text-amber-300 font-medium">
+                          Validade:
+                        </span>
+                        <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">
+                          Sem vencimento
+                        </span>
                       </div>
                     </div>
 
@@ -166,8 +188,12 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                         <Users className="h-4 w-4 text-amber-700 dark:text-amber-300" />
                       </div>
                       <div>
-                        <span className="text-amber-700 dark:text-amber-300 font-medium">Custo por Operador:</span>
-                        <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">R$ 0,00</span>
+                        <span className="text-amber-700 dark:text-amber-300 font-medium">
+                          Custo por Operador:
+                        </span>
+                        <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">
+                          R$ 0,00
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -182,7 +208,7 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                   <span className="text-muted-foreground">Cliente:</span>
                   <span className="font-semibold">{subscription.customer.name}</span>
                 </div>
-                
+
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground">Email:</span>
                   <span className="font-semibold">{subscription.customer.email}</span>
@@ -194,7 +220,7 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                   <span className="text-muted-foreground">Tipo de Assinatura:</span>
                   <span className="font-semibold">Vitalícia</span>
                 </div>
-                
+
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground">Benefícios:</span>
                   <span className="font-semibold">Ilimitados</span>
@@ -218,9 +244,13 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                   <div className="flex items-center gap-2 text-sm">
                     <Users className="h-4 w-4 text-muted-foreground" />
                     <span className="text-muted-foreground">
-                      {priceBreakdown.operatorCount} Operador{priceBreakdown.operatorCount > 1 ? 'es' : ''} × {formatCurrency(priceBreakdown.operatorPrice)}:
+                      {priceBreakdown.operatorCount} Operador
+                      {priceBreakdown.operatorCount > 1 ? "es" : ""} ×{" "}
+                      {formatCurrency(priceBreakdown.operatorPrice)}:
                     </span>
-                    <span className="font-semibold">{formatCurrency(priceBreakdown.operatorTotal)}</span>
+                    <span className="font-semibold">
+                      {formatCurrency(priceBreakdown.operatorTotal)}
+                    </span>
                   </div>
                 )}
 
@@ -229,7 +259,7 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                   <span className="text-muted-foreground">Valor Mensal Total:</span>
                   <span className="font-bold text-lg">{formatCurrency(priceBreakdown.total)}</span>
                 </div>
-                
+
                 <div className="flex items-center gap-2 text-sm">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Próximo Vencimento:</span>
@@ -242,7 +272,7 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                   <span className="text-muted-foreground">Cliente:</span>
                   <span className="font-semibold">{subscription.customer.name}</span>
                 </div>
-                
+
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground">Email:</span>
                   <span className="font-semibold">{subscription.customer.email}</span>
@@ -252,7 +282,9 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                   <div className="flex items-center gap-2 text-sm">
                     <AlertCircle className="h-4 w-4 text-muted-foreground" />
                     <span className="text-muted-foreground">Fim do Trial:</span>
-                    <span className="font-semibold">{formatDate(subscription.planDetails.trialEndDate)}</span>
+                    <span className="font-semibold">
+                      {formatDate(subscription.planDetails.trialEndDate)}
+                    </span>
                   </div>
                 )}
               </div>
@@ -266,10 +298,10 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
             {/* <Button variant="outline" size="sm">
               Atualizar Método de Pagamento
             </Button> */}
-            {subscription.status !== 'canceled' && (
+            {subscription.status !== "canceled" && (
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="destructive" className="cursor-pointer" size="sm">
+                  <Button variant="outline" className="cursor-pointer" size="sm">
                     Cancelar Assinatura
                   </Button>
                 </DialogTrigger>
@@ -280,25 +312,26 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                       Tem certeza que deseja cancelar sua assinatura?
                       <br />
                       <br />
-                      Ao cancelar, você perderá acesso aos recursos premium e seus operadores não poderão mais usar o sistema.
+                      Ao cancelar, você perderá acesso aos recursos da plataforma e seus operadores
+                      não poderão mais usar o sistema.
                     </DialogDescription>
                   </DialogHeader>
                   <DialogFooter>
                     <Button
-                      variant="outline"
+                      variant="default"
+                      className="cursor-pointer"
                       onClick={() => setIsDialogOpen(false)}
                       disabled={isCanceling}
-                      className="cursor-pointer"
                     >
                       Voltar
                     </Button>
                     <Button
-                      variant="destructive"
+                      variant="outline"
+                      className="cursor-pointer"
                       onClick={handleCancel}
                       disabled={isCanceling}
-                      className="cursor-pointer"
                     >
-                      {isCanceling ? 'Cancelando...' : 'Confirmar Cancelamento'}
+                      {isCanceling ? "Cancelando..." : "Confirmar Cancelamento"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
@@ -308,5 +341,5 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
         )}
       </CardContent>
     </Card>
-  );
+  )
 }
