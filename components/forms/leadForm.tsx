@@ -16,6 +16,7 @@ import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
 import { Loader2 } from "lucide-react";
+import { LinkIcon } from "@/components/animate-ui/icons/link";
 
 const formatCurrencyNumber = (value: number): string =>
     `R$ ${value.toLocaleString('pt-BR', {
@@ -531,25 +532,38 @@ export function LeadForm({
                 )}
             />
 
-            <FormField
-                control={form.control}
-                name="meetingLink"
-                render={({ field }) => (
-                    <FormItem className="sm:col-span-2">
-                        <FormLabel className="block text-sm font-medium mb-1">
-                            Link da reuniao
-                        </FormLabel>
-                        <FormControl>
-                            <Input
-                                {...field}
-                                type="url"
-                                placeholder="https://meet.google.com/..."
-                                disabled={isLoading || isUpdating}
-                            />
-                        </FormControl>
-                    </FormItem>
-                )}
-            />
+                    <FormField
+                        control={form.control}
+                        name="meetingLink"
+                        render={({ field }) => (
+                            <FormItem className="sm:col-span-2">
+                                <FormLabel className="block text-sm font-medium mb-1">
+                                    Link da reuniao
+                                </FormLabel>
+                                <FormControl>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            {...field}
+                                            type="url"
+                                            placeholder="https://meet.google.com/..."
+                                            disabled={isLoading || isUpdating}
+                                        />
+                                        {field.value ? (
+                                            <a
+                                                href={field.value}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                                aria-label="Abrir link da reuniao"
+                                            >
+                                                <LinkIcon size={18} />
+                                            </a>
+                                        ) : null}
+                                    </div>
+                                </FormControl>
+                            </FormItem>
+                        )}
+                    />
 
             {/* Campos adicionais apenas para leads em edição */}
             {leadId && (
