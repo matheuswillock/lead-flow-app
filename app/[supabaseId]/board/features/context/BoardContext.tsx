@@ -196,6 +196,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
             const hasChanges = 
               updatedLead.meetingDate !== selected.meetingDate ||
+              updatedLead.meetingNotes !== selected.meetingNotes ||
+              updatedLead.meetingLink !== selected.meetingLink ||
               updatedLead.status !== selected.status ||
               updatedLead.name !== selected.name ||
               updatedLead.email !== selected.email ||
@@ -390,7 +392,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const inQuery = (l: Lead) => !q || l.name.toLowerCase().includes(q) || formatDate(l.createdAt).includes(q);
+    const inQuery = (l: Lead) =>
+      !q ||
+      l.name.toLowerCase().includes(q) ||
+      l.leadCode.toLowerCase().includes(q) ||
+      formatDate(l.createdAt).includes(q);
     const inResponsible = (l: Lead) => assignedUser === "todos" || l.assignedTo === assignedUser;
     const inPeriod = (l: Lead) => {
       const d = l.createdAt; // ISO date string

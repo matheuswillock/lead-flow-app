@@ -158,6 +158,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
           if (updatedLead) {
             const hasChanges = 
               updatedLead.meetingDate !== selected.meetingDate ||
+              updatedLead.meetingNotes !== selected.meetingNotes ||
+              updatedLead.meetingLink !== selected.meetingLink ||
               updatedLead.status !== selected.status ||
               updatedLead.name !== selected.name ||
               updatedLead.email !== selected.email ||
@@ -248,6 +250,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       // Filtro por query (nome ou data)
       const matchesQuery = !q || 
         lead.name.toLowerCase().includes(q) || 
+        lead.leadCode.toLowerCase().includes(q) ||
         formatDate(lead.createdAt).includes(q);
       
       // Filtro por responsável

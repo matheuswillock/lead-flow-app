@@ -10,6 +10,7 @@ import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CheckCircle } from "lucide-react";
+import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog } from "./FinalizeContractDialog";
 
 export default function BoardDialog() {
@@ -25,6 +26,16 @@ export default function BoardDialog() {
     lead.status === 'dps_agreement' ||
     lead.status === 'offerSubmission'
   );
+
+  const handleCopyLeadCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast.success("ID copiado");
+    } catch (error) {
+      console.error("Erro ao copiar ID do lead:", error);
+      toast.error("Nao foi possivel copiar o ID");
+    }
+  };
 
   // Função para transformar os dados do formulário para criação de lead
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
@@ -85,6 +96,8 @@ export default function BoardDialog() {
       currentTreatment: data.ongoingTreatment || undefined,
       notes: data.additionalNotes || undefined,
       meetingDate: parseMeetingDate(data.meetingDate || ''),
+      meetingNotes: data.meetingNotes || undefined,
+      meetingLink: data.meetingLink || undefined,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
       status: "new_opportunity" as any, // Status padrão para novos leads
@@ -155,6 +168,8 @@ export default function BoardDialog() {
       currentTreatment: data.ongoingTreatment || undefined,
       notes: data.additionalNotes || undefined,
       meetingDate: parseMeetingDate(data.meetingDate || ''),
+      meetingNotes: data.meetingNotes || undefined,
+      meetingLink: data.meetingLink || undefined,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
       // Novos campos de venda (apenas em edição)
@@ -326,6 +341,8 @@ export default function BoardDialog() {
         ongoingTreatment: lead.currentTreatment || "",
         additionalNotes: lead.notes || "",
         meetingDate: lead.meetingDate || "",
+        meetingNotes: lead.meetingNotes || "",
+        meetingLink: lead.meetingLink || "",
         responsible: lead.assignedTo || "",
         // Novos campos de venda
         ticket: lead.ticket ? formatCurrency(lead.ticket) : "",
@@ -345,6 +362,8 @@ export default function BoardDialog() {
         ongoingTreatment: "",
         additionalNotes: "",
         meetingDate: "",
+        meetingNotes: "",
+        meetingLink: "",
         responsible: user?.usersAssociated?.[0]?.id || "",
         // Novos campos zerados na criação
         ticket: "",
@@ -370,6 +389,19 @@ export default function BoardDialog() {
                     : "Preencha os dados para criar um novo lead."
                   }
                 </DialogDescription>
+                {lead?.leadCode && (
+                  <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>ID: {lead.leadCode}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyLeadCode(lead.leadCode)}
+                      className="rounded-md p-1 transition-colors hover:bg-accent/60"
+                      aria-label="Copiar ID do lead"
+                    >
+                      <CopyIcon size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
               {canFinalizeContract && (
                 <Button

@@ -17,6 +17,7 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
         leadId: data.leadId,
         date: data.date,
         notes: data.notes,
+        meetingLink: data.meetingLink,
       },
     });
   }

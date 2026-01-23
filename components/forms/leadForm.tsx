@@ -8,6 +8,7 @@ import { UseFormReturn } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "../ui/form";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
@@ -266,57 +267,24 @@ export function LeadForm({
                                 <Input
                                     value={field.value || ""}
                                     onChange={(e) => {
-                                        let value = e.target.value;
-                                        
-                                        // Remove caracteres que não são números, vírgulas ou espaços
-                                        value = value.replace(/[^0-9,\s]/g, '');
-                                        
-                                        // Remove vírgulas e espaços para processar
-                                        const cleanValue = value.replace(/[,\s]/g, '');
-                                        
-                                        // Divide em grupos de idades
-                                        const groups: string[] = [];
-                                        let currentGroup = '';
-                                        
-                                        for (let i = 0; i < cleanValue.length; i++) {
-                                            const char = cleanValue[i];
-                                            currentGroup += char;
-                                            
-                                            // Se o primeiro dígito é 1, permite até 3 dígitos (100-120)
-                                            if (currentGroup[0] === '1') {
-                                                if (currentGroup.length === 3) {
-                                                    // Valida se não ultrapassa 120
-                                                    const age = parseInt(currentGroup);
-                                                    if (age > 120) {
-                                                        currentGroup = '120';
-                                                    }
-                                                    groups.push(currentGroup);
-                                                    currentGroup = '';
-                                                }
-                                            } else {
-                                                // Para outros números, aceita apenas 2 dígitos
-                                                if (currentGroup.length === 2) {
-                                                    groups.push(currentGroup);
-                                                    currentGroup = '';
-                                                }
-                                            }
+                                        const raw = e.target.value;
+                                        const digitsOnly = raw.replace(/[^0-9,\s]/g, "");
+                                        const endsWithSeparator = /[,\s]$/.test(digitsOnly);
+                                        const parts = digitsOnly.split(/[,\s]+/).filter(Boolean);
+                                        const normalized = parts
+                                            .map((part) => part.replace(/\D/g, ""))
+                                            .filter(Boolean);
+                                        let formatted = normalized.join(", ");
+                                        if (endsWithSeparator && normalized.length > 0) {
+                                            formatted += ", ";
                                         }
-                                        
-                                        // Adiciona o último grupo se existir
-                                        if (currentGroup) {
-                                            groups.push(currentGroup);
-                                        }
-                                        
-                                        // Junta os grupos com vírgula e espaço
-                                        const formattedValue = groups.join(', ');
-                                        
-                                        field.onChange(formattedValue);
+                                        field.onChange(formatted);
                                     }}
                                     placeholder="Ex: 36, 32, 13"
                                     disabled={isLoading || isUpdating}
                                 />
                                 <p className="text-xs text-muted-foreground">
-                                    Exemplo: 36, 32, 13, 100, 120 (idades até 120 anos, separadas automaticamente)
+                                    Exemplo: 12, 15, 22, 30, 120, 55. Digite dois caracteres e pressione espaco para adicionar a virgula automaticamente.
                                 </p>
                             </div>
                         </FormControl>
@@ -449,6 +417,12 @@ export function LeadForm({
                 )}
             />
 
+            <div className="sm:col-span-2 pt-4 border-t">
+                <h3 className="text-sm font-semibold mb-4 text-foreground">
+                    Informacoes de agendamento
+                </h3>
+            </div>
+
             {/* Data, Horário e Responsável em uma linha no desktop */}
             <div className="sm:col-span-2 flex flex-col sm:flex-row gap-4">
                 <FormField
@@ -536,6 +510,46 @@ export function LeadForm({
                     }}
                 />
             </div>
+
+            <FormField
+                control={form.control}
+                name="meetingNotes"
+                render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                        <FormLabel className="block text-sm font-medium mb-1">
+                            Observacoes
+                        </FormLabel>
+                        <FormControl>
+                            <Textarea
+                                {...field}
+                                placeholder="Adicione observacoes sobre a reuniao"
+                                className="min-h-[84px] resize-y"
+                                disabled={isLoading || isUpdating}
+                            />
+                        </FormControl>
+                    </FormItem>
+                )}
+            />
+
+            <FormField
+                control={form.control}
+                name="meetingLink"
+                render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                        <FormLabel className="block text-sm font-medium mb-1">
+                            Link da reuniao
+                        </FormLabel>
+                        <FormControl>
+                            <Input
+                                {...field}
+                                type="url"
+                                placeholder="https://meet.google.com/..."
+                                disabled={isLoading || isUpdating}
+                            />
+                        </FormControl>
+                    </FormItem>
+                )}
+            />
 
             {/* Campos adicionais apenas para leads em edição */}
             {leadId && (

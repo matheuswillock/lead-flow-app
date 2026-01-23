@@ -170,6 +170,8 @@ export const leadFormSchema = z.object({
   ongoingTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
   additionalNotes: z.string().min(0).optional(),
   meetingDate: z.string().min(0).optional(),
+  meetingNotes: z.string().min(0).optional(),
+  meetingLink: z.string().url("Link da reuniao invalido").optional().or(z.literal("")),
   responsible: z.string().min(2, "O responsável é obrigatório"),
   
   // Novos campos para leads finalizados (opcionais, apenas em edição)

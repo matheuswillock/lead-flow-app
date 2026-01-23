@@ -141,6 +141,26 @@ export const createColumns = ({
     },
   },
   {
+    accessorKey: "leadCode",
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="h-8 px-2 hover:bg-accent"
+        >
+          ID
+          <span className="ml-2">
+            {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
+          </span>
+        </Button>
+      );
+    },
+    cell: ({ row }) => {
+      return <div className="text-sm">{row.getValue("leadCode") || "-"}</div>;
+    },
+  },
+  {
     accessorKey: "email",
     header: ({ column }) => {
       return (
