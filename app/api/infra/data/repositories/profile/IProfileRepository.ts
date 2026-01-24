@@ -43,6 +43,7 @@ export interface IProfileRepository {
       complement?: string;
       city?: string;
       state?: string;
+      functions?: ("SDR" | "CLOSER")[];
     }
   ): Promise<Profile | null>;
   updateProfileById(

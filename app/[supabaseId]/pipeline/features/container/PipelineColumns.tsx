@@ -130,6 +130,7 @@ export const createColumns = ({
   },
   {
     accessorKey: "name",
+    meta: { label: "Nome" },
     header: ({ column }) => {
       return (
         <Button
@@ -157,6 +158,7 @@ export const createColumns = ({
   },
   {
     accessorKey: "leadCode",
+    meta: { label: "ID" },
     header: ({ column }) => {
       return (
         <Button
@@ -177,6 +179,7 @@ export const createColumns = ({
   },
   {
     accessorKey: "email",
+    meta: { label: "Email" },
     header: ({ column }) => {
       return (
         <Button
@@ -197,6 +200,7 @@ export const createColumns = ({
   },
   {
     accessorKey: "phone",
+    meta: { label: "Telefone" },
     header: ({ column }) => {
       return (
         <Button
@@ -218,6 +222,7 @@ export const createColumns = ({
   },
   {
     accessorKey: "currentHealthPlan",
+    meta: { label: "Plano atual" },
     header: ({ column }) => {
       return (
         <Button
@@ -239,6 +244,7 @@ export const createColumns = ({
   },
   {
     accessorKey: "currentValue",
+    meta: { label: "Valor atual" },
     header: ({ column }) => {
       return (
         <Button
@@ -260,6 +266,7 @@ export const createColumns = ({
   },
   {
     accessorKey: "status",
+    meta: { label: "Status" },
     header: ({ column }) => {
       return (
         <Button
@@ -286,6 +293,7 @@ export const createColumns = ({
   },
   {
     accessorKey: "assignedTo",
+    meta: { label: "Responsável" },
     header: ({ column }) => {
       return (
         <Button
@@ -338,6 +346,7 @@ export const createColumns = ({
   },
   {
     accessorKey: "closerId",
+    meta: { label: "Closer" },
     header: ({ column }) => {
       return (
         <Button
@@ -384,9 +393,13 @@ export const createColumns = ({
       )
     },
     accessorFn: (row) => row.closer?.fullName || row.closer?.email || "",
+    filterFn: (row, id, value) => {
+      return value.includes(row.original.closer?.id || "")
+    },
   },
   {
     accessorKey: "meetingDate",
+    meta: { label: "Reunião" },
     header: ({ column }) => {
       return (
         <Button
@@ -407,6 +420,7 @@ export const createColumns = ({
   },
   {
     accessorKey: "createdAt",
+    meta: { label: "Criado em" },
     header: ({ column }) => {
       return (
         <Button
@@ -441,6 +455,7 @@ export const createColumns = ({
   },
   {
     id: "actions",
+    enableHiding: false,
     cell: ({ row }) => {
       const lead = row.original
 
