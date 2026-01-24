@@ -337,6 +337,55 @@ export const createColumns = ({
     },
   },
   {
+    accessorKey: "closerId",
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className={headerButtonClass}
+        >
+          Closer
+          <span className="ml-2">
+            {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
+          </span>
+        </Button>
+      )
+    },
+    cell: ({ row }) => {
+      const lead = row.original
+      if (!lead.closer) {
+        return <span className="text-muted-foreground">-</span>
+      }
+
+      const closerLabel = lead.closer.fullName || lead.closer.email
+
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="inline-flex cursor-default justify-center w-full">
+              <Avatar className="size-6">
+                <AvatarImage src={lead.closer.avatarUrl || undefined} alt={closerLabel} />
+                <AvatarFallback className="text-xs">
+                  {closerLabel
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .toUpperCase()
+                    .slice(0, 2)}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{closerLabel}</p>
+          </TooltipContent>
+        </Tooltip>
+      )
+    },
+    accessorFn: (row) => row.closer?.fullName || row.closer?.email || "",
+  },
+  {
     accessorKey: "meetingDate",
     header: ({ column }) => {
       return (

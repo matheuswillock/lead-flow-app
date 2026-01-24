@@ -15,6 +15,7 @@ export interface RequestToUpdateProfile {
   complement?: string;
   city?: string;
   state?: string;
+  functions?: ("SDR" | "CLOSER")[];
 }
 
 /**
@@ -179,13 +180,26 @@ export function validateUpdateProfileRequest(data: any): RequestToUpdateProfile 
     hasValidField = true;
   }
 
+  if (data.functions !== undefined) {
+    if (!Array.isArray(data.functions)) {
+      throw new Error('Functions must be an array');
+    }
+    const allowedFunctions = ["SDR", "CLOSER"];
+    const invalidFunctions = data.functions.filter((func: any) => !allowedFunctions.includes(func));
+    if (invalidFunctions.length > 0) {
+      throw new Error(`Invalid functions: ${invalidFunctions.join(", ")}`);
+    }
+    result.functions = data.functions;
+    hasValidField = true;
+  }
+
   // Check for invalid fields
-  const allowedFields = ['fullName', 'phone', 'email', 'password', 'cpfCnpj', 'postalCode', 'address', 'addressNumber', 'neighborhood', 'complement', 'city', 'state'];
+  const allowedFields = ['fullName', 'phone', 'email', 'password', 'cpfCnpj', 'postalCode', 'address', 'addressNumber', 'neighborhood', 'complement', 'city', 'state', 'functions'];
   const providedFields = Object.keys(data);
   const invalidFields = providedFields.filter(field => !allowedFields.includes(field));
   
   if (invalidFields.length > 0) {
-    throw new Error(`Invalid fields provided: ${invalidFields.join(', ')}. Only fullName, phone, email, and password are allowed.`);
+    throw new Error(`Invalid fields provided: ${invalidFields.join(', ')}. Only profile fields and functions are allowed.`);
   }
 
   // At least one field must be provided

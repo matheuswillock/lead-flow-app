@@ -207,6 +207,13 @@ class PrismaProfileRepository implements IProfileRepository {
         isMaster: !managerId,
       };
 
+      if (
+        profileData.isMaster &&
+        (subscriptionId || asaasCustomerId || subscriptionPlan)
+      ) {
+        profileData.functions = ["SDR", "CLOSER"];
+      }
+
       // Se tem managerId, adicionar ao profileData
       if (managerId) {
         profileData.managerId = managerId;
@@ -360,6 +367,7 @@ class PrismaProfileRepository implements IProfileRepository {
             complement?: string;
             city?: string;
             state?: string;
+            functions?: ("SDR" | "CLOSER")[];
         }
     ): Promise<Profile | null> {
         try {
@@ -432,6 +440,10 @@ class PrismaProfileRepository implements IProfileRepository {
 
             if (updates.state !== undefined) {
                 updateData.state = updates.state;
+            }
+
+            if (updates.functions !== undefined) {
+                updateData.functions = updates.functions;
             }
 
             const profile = await prisma.profile.update({

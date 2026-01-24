@@ -19,7 +19,24 @@ export interface IProfileUseCase {
   getProfileBySupabaseId(supabaseId: string): Promise<Output>;
   getProfileById(profileId: string): Promise<ProfileInfo | null>;
   getProfileInfoBySupabaseId(supabaseId: string): Promise<ProfileInfo | null>;
-  updateProfile(supabaseId: string, updates: { fullName?: string; phone?: string; email?: string }): Promise<Output>;
+  updateProfile(
+    supabaseId: string,
+    updates: {
+      fullName?: string;
+      phone?: string;
+      email?: string;
+      password?: string;
+      cpfCnpj?: string;
+      postalCode?: string;
+      address?: string;
+      addressNumber?: string;
+      neighborhood?: string;
+      complement?: string;
+      city?: string;
+      state?: string;
+      functions?: ("SDR" | "CLOSER")[];
+    }
+  ): Promise<Output>;
   updateProfileIcon(supabaseId: string, profileIconId: string | null): Promise<Output>;
   updatePassword(supabaseId: string, newPassword: string): Promise<Output>;
   deleteProfile(supabaseId: string): Promise<Output>;

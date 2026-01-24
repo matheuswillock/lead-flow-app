@@ -173,6 +173,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
             complement?: string;
             city?: string;
             state?: string;
+            functions?: ("SDR" | "CLOSER")[];
         }
     ): Promise<Output> {
         try {
@@ -209,6 +210,10 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 }
             }
 
+            if (updates.functions !== undefined && !existingProfile.isMaster) {
+                return new Output(false, [], ["Apenas o usuário master pode atualizar funções"], null);
+            }
+
             // Atualizar perfil
             const updatedProfile = await this.repo.updateProfile(supabaseId, {
                 fullName: updates.fullName,
@@ -222,6 +227,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 complement: updates.complement,
                 city: updates.city,
                 state: updates.state,
+                functions: updates.functions,
             });
 
             if (!updatedProfile) {
