@@ -59,6 +59,7 @@ export default function PipelineTable() {
     isLoading,
     setSelected,
     refreshLeads,
+    user,
   } = usePipelineContext();
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -337,6 +338,7 @@ export default function PipelineTable() {
           onOpenChange={setShowScheduleDialog}
           lead={selectedLead}
           onScheduleSuccess={refreshLeads}
+          closers={closers}
         />
       )}
 
@@ -347,8 +349,13 @@ export default function PipelineTable() {
           lead={selectedLead}
           statusLabels={statusLabels}
           onStatusChanged={refreshLeads}
+          closers={closers}
         />
       )}
     </div>
   );
 }
+  const closers = React.useMemo(() => {
+    const users = user?.usersAssociated || [];
+    return users.filter((u) => u.functions?.includes("CLOSER"));
+  }, [user]);

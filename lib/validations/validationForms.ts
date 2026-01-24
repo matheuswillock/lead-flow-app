@@ -141,6 +141,7 @@ export const leadFormSchema = z.object({
   phone: z.string().min(8, "Telefone inválido").max(20, "Telefone inválido"),
   email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
   cnpj: z.string().min(0).optional(),
+  closerId: z.string().min(0).optional(),
   age: z.string()
     .min(1, "Informe as idades")
     .regex(/^[0-9,\s]+$/, "Use apenas números, vírgulas e espaços")
@@ -172,6 +173,7 @@ export const leadFormSchema = z.object({
   meetingDate: z.string().min(0).optional(),
   meetingNotes: z.string().min(0).optional(),
   meetingLink: z.string().url("Link da reuniao invalido").optional().or(z.literal("")),
+  meetingHeald: z.enum(["yes", "no"]).optional(),
   responsible: z.string().min(2, "O responsável é obrigatório"),
   
   // Novos campos para leads finalizados (opcionais, apenas em edição)

@@ -1,4 +1,4 @@
-import type { UserRole } from "@prisma/client";
+import type { UserRole, UserFunction } from "@prisma/client";
 import { Output } from "@/lib/output";
 
 export interface UserAssociated {
@@ -7,6 +7,7 @@ export interface UserAssociated {
   avatarImageUrl: string;
   email: string;
   role: UserRole;
+  functions?: UserFunction[];
 }
 
 export interface ProfileResponseDTO {
@@ -24,6 +25,7 @@ export interface ProfileResponseDTO {
   city: string | null;
   state: string | null;
   role: UserRole;
+  functions: UserFunction[];
   isMaster: boolean;
   hasPermanentSubscription: boolean;
   managerId: string | null;
@@ -45,7 +47,8 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     name: profile.fullName || 'N/A',
     avatarImageUrl: profile.profileIconUrl || '',
     email: profile.email,
-    role: profile.role
+    role: profile.role,
+    functions: profile.functions ?? []
   };
   
   usersAssociated.push(currentUser);
@@ -59,7 +62,8 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
         name: operator.fullName || 'N/A',
         avatarImageUrl: operator.profileIconUrl || '',
         email: operator.email,
-        role: operator.role
+        role: operator.role,
+        functions: operator.functions ?? []
       }));
     
     usersAssociated.push(...operators);
@@ -85,6 +89,7 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     city: profile.city ?? null,
     state: profile.state ?? null,
     role: profile.role,
+    functions: profile.functions ?? [],
     isMaster: profile.isMaster ?? false,
     hasPermanentSubscription: profile.hasPermanentSubscription ?? false,
     managerId: profile.managerId,

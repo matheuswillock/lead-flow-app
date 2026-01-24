@@ -17,12 +17,15 @@ import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { toast } from "sonner";
 import { Lead } from "../context/BoardTypes";
 import { useParams } from "next/navigation";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 
 interface ScheduleMeetingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lead: Lead;
   onScheduleSuccess: () => void;
+  closers: UserAssociated[];
 }
 
 export function ScheduleMeetingDialog({
@@ -30,6 +33,7 @@ export function ScheduleMeetingDialog({
   onOpenChange,
   lead,
   onScheduleSuccess,
+  closers,
 }: ScheduleMeetingDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
@@ -37,6 +41,7 @@ export function ScheduleMeetingDialog({
   const [meetingDate, setMeetingDate] = useState<Date>();
   const [notes, setNotes] = useState<string>("");
   const [meetingLink, setMeetingLink] = useState<string>("");
+  const [closerId, setCloserId] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -44,13 +49,21 @@ export function ScheduleMeetingDialog({
     setMeetingDate(lead.meetingDate ? new Date(lead.meetingDate) : undefined);
     setNotes(lead.meetingNotes || "");
     setMeetingLink(lead.meetingLink || "");
-  }, [open, lead]);
+    setCloserId(lead.closerId || "");
+    if (!lead.closerId && closers.length === 1) {
+      setCloserId(closers[0].id);
+    }
+  }, [open, lead, closers]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!meetingDate) {
       toast.error("Selecione uma data e hora para o agendamento");
+      return;
+    }
+    if (closers.length > 0 && !closerId) {
+      toast.error("Selecione um closer para a reuniao");
       return;
     }
 
@@ -69,6 +82,7 @@ export function ScheduleMeetingDialog({
           date: meetingDate.toISOString(),
           notes: notes || `Reunião agendada com ${lead.name}`,
           meetingLink: meetingLink || undefined,
+          closerId: closerId || undefined,
         }),
       });
 
@@ -136,12 +150,12 @@ export function ScheduleMeetingDialog({
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Agendar Reunião</DialogTitle>
-            <DialogDescription>
-              Agendar reunião com <strong>{lead.name}</strong>
-            </DialogDescription>
-          </DialogHeader>
+          <DialogDescription>
+            Agendar reunião com <strong>{lead.name}</strong>
+          </DialogDescription>
+        </DialogHeader>
 
-          <div className="grid gap-4 py-4">
+        <div className="grid gap-4 py-4">
             {/* Data e Hora */}
             <DateTimePicker
               date={meetingDate}
@@ -173,6 +187,23 @@ export function ScheduleMeetingDialog({
                 value={meetingLink}
                 onChange={(e) => setMeetingLink(e.target.value)}
               />
+            </div>
+
+            {/* Closer */}
+            <div className="grid gap-2">
+              <Label>Closer</Label>
+              <Select value={closerId} onValueChange={setCloserId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={closers.length ? "Selecione um closer" : "Sem closers disponiveis"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {closers.map((closer) => (
+                    <SelectItem key={closer.id} value={closer.id}>
+                      {closer.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

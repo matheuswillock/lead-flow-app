@@ -8,6 +8,20 @@ operator operator
     
 
 
+        UserFunction {
+            SDR SDR
+CLOSER CLOSER
+        }
+    
+
+
+        MeetingHeald {
+            yes yes
+no no
+        }
+    
+
+
         LeadStatus {
             new_opportunity new_opportunity
 scheduled scheduled
@@ -87,6 +101,7 @@ with_operators with_operators
     String profileIconId "❓"
     String profileIconUrl "❓"
     UserRole role 
+    UserFunction functions 
     Boolean isMaster 
     Boolean hasPermanentSubscription 
     String asaasCustomerId "❓"
@@ -121,6 +136,7 @@ with_operators with_operators
     DateTime meetingDate "❓"
     String meetingNotes "❓"
     String meetingLink "❓"
+    MeetingHeald meetingHeald "❓"
     String notes "❓"
     Decimal ticket "❓"
     DateTime contractDueDate "❓"
@@ -177,6 +193,7 @@ with_operators with_operators
     String name 
     String email 
     String role 
+    UserFunction functions 
     String paymentId "❓"
     String subscriptionId "❓"
     String paymentStatus 
@@ -188,12 +205,14 @@ with_operators with_operators
     }
   
     "profiles" o|--|| "UserRole" : "enum:role"
+    "profiles" o|--}o "UserFunction" : "enum:functions"
     "profiles" o|--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "profiles" o|--|o "SubscriptionPlan" : "enum:subscriptionPlan"
     "profiles" o|--|o "profiles" : "manager"
     "profiles" o{--}o "profiles" : "operators"
     "profiles" o{--}o "leads" : "leadsAsManager"
     "profiles" o{--}o "leads" : "leadsAsAssignee"
+    "profiles" o{--}o "leads" : "leadsAsCloser"
     "profiles" o{--}o "leads" : "leadsAsCreator"
     "profiles" o{--}o "leads" : "leadsAsUpdater"
     "profiles" o{--}o "lead_activities" : "activities"
@@ -201,9 +220,11 @@ with_operators with_operators
     "profiles" o{--}o "pending_operators" : "pendingOperators"
     "leads" o|--|| "LeadStatus" : "enum:status"
     "leads" o|--|o "HealthPlan" : "enum:currentHealthPlan"
+    "leads" o|--|o "MeetingHeald" : "enum:meetingHeald"
     "leads" o|--|o "HealthPlan" : "enum:soldPlan"
     "leads" o|--|| "profiles" : "manager"
     "leads" o|--|o "profiles" : "assignee"
+    "leads" o|--|o "profiles" : "closer"
     "leads" o|--|o "profiles" : "creator"
     "leads" o|--|o "profiles" : "updater"
     "leads" o{--}o "lead_activities" : "activities"
@@ -217,5 +238,6 @@ with_operators with_operators
     "lead_finalized" o|--|| "leads" : "lead"
     "lead_attachments" o|--|| "leads" : "lead"
     "lead_attachments" o|--|| "profiles" : "uploader"
+    "pending_operators" o|--}o "UserFunction" : "enum:functions"
     "pending_operators" o|--|| "profiles" : "manager"
 ```

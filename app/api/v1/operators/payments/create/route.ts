@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
         name: operatorData.name,
         email: operatorData.email,
         role: operatorData.role || "operator",
+        functions: operatorData.functions ?? [],
         paymentId: null,
         subscriptionId: null,
         paymentStatus: "PENDING",

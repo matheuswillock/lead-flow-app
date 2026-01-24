@@ -81,6 +81,7 @@ export class LeadUseCase implements ILeadUseCase {
         meetingDate: data.meetingDate ? new Date(data.meetingDate) : null,
         meetingNotes: data.meetingNotes || null,
         meetingLink: data.meetingLink || null,
+        meetingHeald: data.meetingHeald || null,
         notes: data.notes || null,
         status: data.status || LeadStatus.new_opportunity,
         // Novos campos de venda (sempre null na criação)
@@ -91,6 +92,9 @@ export class LeadUseCase implements ILeadUseCase {
         updater: { connect: { id: profileInfo.id } },
         ...(assignedTo && {
           assignee: { connect: { id: assignedTo } }
+        }),
+        ...(data.closerId && {
+          closer: { connect: { id: data.closerId } }
         }),
         activities: {
           create: {
@@ -305,6 +309,7 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.meetingDate !== undefined) updateData.meetingDate = data.meetingDate ? new Date(data.meetingDate) : null;
       if (data.meetingNotes !== undefined) updateData.meetingNotes = data.meetingNotes || null;
       if (data.meetingLink !== undefined) updateData.meetingLink = data.meetingLink || null;
+      if (data.meetingHeald !== undefined) updateData.meetingHeald = data.meetingHeald || null;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
       if (data.status !== undefined) updateData.status = data.status;
       // Novos campos de venda
@@ -316,6 +321,13 @@ export class LeadUseCase implements ILeadUseCase {
           updateData.assignee = { connect: { id: data.assignedTo } };
         } else {
           updateData.assignee = { disconnect: true };
+        }
+      }
+      if (data.closerId !== undefined) {
+        if (data.closerId) {
+          updateData.closer = { connect: { id: data.closerId } };
+        } else {
+          updateData.closer = { disconnect: true };
         }
       }
 
@@ -540,6 +552,8 @@ export class LeadUseCase implements ILeadUseCase {
       meetingDate: lead.meetingDate ? lead.meetingDate.toISOString() : null,
       meetingNotes: lead.meetingNotes,
       meetingLink: lead.meetingLink,
+      meetingHeald: lead.meetingHeald,
+      closerId: lead.closerId ?? null,
       notes: lead.notes,
       createdBy: lead.createdBy,
       updatedBy: lead.updatedBy,
@@ -563,6 +577,14 @@ export class LeadUseCase implements ILeadUseCase {
           fullName: lead.assignee.fullName,
           email: lead.assignee.email,
           avatarUrl: lead.assignee.profileIconUrl || null,
+        }
+      }),
+      ...(lead.closer && {
+        closer: {
+          id: lead.closer.id,
+          fullName: lead.closer.fullName,
+          email: lead.closer.email,
+          avatarUrl: lead.closer.profileIconUrl || null,
         }
       }),
       ...(lead.activities && {

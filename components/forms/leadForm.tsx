@@ -92,26 +92,30 @@ export function LeadForm({
                 (watchedValues.ongoingTreatment && watchedValues.ongoingTreatment.trim() !== '') ||
                 (watchedValues.additionalNotes && watchedValues.additionalNotes.trim() !== '') ||
                 (watchedValues.meetingDate && watchedValues.meetingDate.trim() !== '') ||
-                (watchedValues.responsible && watchedValues.responsible.trim() !== '');
+                (watchedValues.meetingHeald && watchedValues.meetingHeald.trim() !== '') ||
+                (watchedValues.responsible && watchedValues.responsible.trim() !== '') ||
+                (watchedValues.closerId && watchedValues.closerId.trim() !== '');
 
             setHasChanges(!!hasAnyData);
             return;
         }
 
         // Modo de edição - verificar se há mudanças em relação aos dados iniciais
-        const hasFormChanges = 
-            watchedValues.name !== initialData.name ||
-            watchedValues.email !== initialData.email ||
-            watchedValues.phone !== initialData.phone ||
-            watchedValues.cnpj !== initialData.cnpj ||
-            watchedValues.age !== initialData.age ||
-            watchedValues.currentHealthPlan !== initialData.currentHealthPlan ||
-            watchedValues.currentValue !== initialData.currentValue ||
-            watchedValues.referenceHospital !== initialData.referenceHospital ||
-            watchedValues.ongoingTreatment !== initialData.ongoingTreatment ||
-            watchedValues.additionalNotes !== initialData.additionalNotes ||
-            watchedValues.meetingDate !== initialData.meetingDate ||
-            watchedValues.responsible !== initialData.responsible;
+            const hasFormChanges = 
+                watchedValues.name !== initialData.name ||
+                watchedValues.email !== initialData.email ||
+                watchedValues.phone !== initialData.phone ||
+                watchedValues.cnpj !== initialData.cnpj ||
+                watchedValues.age !== initialData.age ||
+                watchedValues.currentHealthPlan !== initialData.currentHealthPlan ||
+                watchedValues.currentValue !== initialData.currentValue ||
+                watchedValues.referenceHospital !== initialData.referenceHospital ||
+                watchedValues.ongoingTreatment !== initialData.ongoingTreatment ||
+                watchedValues.additionalNotes !== initialData.additionalNotes ||
+                watchedValues.meetingDate !== initialData.meetingDate ||
+                watchedValues.meetingHeald !== initialData.meetingHeald ||
+                watchedValues.responsible !== initialData.responsible ||
+                watchedValues.closerId !== initialData.closerId;
 
         setHasChanges(hasFormChanges);
     }, [watchedValues, initialData]);
@@ -292,6 +296,8 @@ export function LeadForm({
                     </FormItem>
                 )}
             />
+
+            <input type="hidden" {...form.register("closerId")} />
 
             <div className="sm:col-span-2">
                 <FormField
@@ -511,6 +517,33 @@ export function LeadForm({
                     }}
                 />
             </div>
+
+            <FormField
+                control={form.control}
+                name="meetingHeald"
+                render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                        <FormLabel className="block text-sm font-medium mb-1">
+                            Reunião realizada?
+                        </FormLabel>
+                        <FormControl>
+                            <Select
+                                value={field.value || ""}
+                                onValueChange={field.onChange}
+                                disabled={isLoading || isUpdating}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Selecione se a reunião foi realizada" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="yes">Sim</SelectItem>
+                                    <SelectItem value="no">Não</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </FormControl>
+                    </FormItem>
+                )}
+            />
 
             <FormField
                 control={form.control}

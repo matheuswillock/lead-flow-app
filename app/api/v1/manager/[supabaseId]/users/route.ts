@@ -75,7 +75,8 @@ export async function POST(
         fullName: validatedData.name,
         email: validatedData.email,
         hasPermanentSubscription: validatedData.hasPermanentSubscription || false,
-        managerId: requesterProfile.id // Sub-manager criado por este manager
+        managerId: requesterProfile.id, // Sub-manager criado por este manager
+        functions: validatedData.functions
       });
 
       console.info('📦 [POST /users] Output do createManager:', {
@@ -171,7 +172,8 @@ export async function POST(
         fullName: validatedData.name,
         email: validatedData.email,
         managerId: requesterProfile.id, // Use the manager who is creating the operator
-        hasPermanentSubscription: validatedData.hasPermanentSubscription || false
+        hasPermanentSubscription: validatedData.hasPermanentSubscription || false,
+        functions: validatedData.functions
       });
 
       console.info('📦 [POST /users] Output do createOperator:', {
@@ -285,6 +287,7 @@ export async function GET(
     const { supabaseId } = await params;
     const { searchParams } = new URL(request.url);
     const roleFilter = searchParams.get('role');
+    const emailToCheck = searchParams.get('email');
     
     if (!requesterId) {
       const output = new Output(false, [], ["Header x-supabase-user-id é obrigatório"], null);
@@ -301,6 +304,24 @@ export async function GET(
     if (requesterId !== supabaseId) {
       const output = new Output(false, [], ["Você só pode acessar seus próprios recursos"], null);
       return NextResponse.json(output, { status: 403 });
+    }
+
+    if (emailToCheck) {
+      const normalizedEmail = emailToCheck.trim().toLowerCase();
+      const existingProfile = await prisma.profile.findFirst({
+        where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+      });
+      const existingPending = await prisma.pendingOperator.findFirst({
+        where: { email: { equals: normalizedEmail, mode: 'insensitive' }, operatorCreated: false },
+      });
+
+      if (existingProfile || existingPending) {
+        const output = new Output(false, [], ["Email já está em uso"], { available: false });
+        return NextResponse.json(output, { status: 409 });
+      }
+
+      const output = new Output(true, [], [], { available: true });
+      return NextResponse.json(output, { status: 200 });
     }
 
     // Listar usuários com filtro opcional por role
@@ -420,7 +441,29 @@ export async function PUT(
       }
 
       // Verificar se o usuário sendo atualizado pertence ao manager
-      const userToUpdate = await profileUseCase.getProfileById(validatedData.id);
+      let userToUpdate = await profileUseCase.getProfileById(validatedData.id);
+      let resolvedUserId = validatedData.id;
+      if (!userToUpdate) {
+        const userBySupabase = await profileUseCase.getProfileInfoBySupabaseId(validatedData.id);
+        if (userBySupabase) {
+          userToUpdate = userBySupabase;
+          resolvedUserId = userBySupabase.id;
+        }
+      }
+      if (!userToUpdate && validatedData.email) {
+        const userByEmail = await profileRepository.findByEmail(validatedData.email);
+        if (userByEmail) {
+          userToUpdate = {
+            id: userByEmail.id,
+            role: userByEmail.role as 'manager' | 'operator',
+            managerId: userByEmail.managerId,
+            isMaster: userByEmail.isMaster,
+            fullName: userByEmail.fullName,
+            email: userByEmail.email
+          };
+          resolvedUserId = userByEmail.id;
+        }
+      }
       if (!userToUpdate) {
         const output = new Output(false, [], ["Usuário não encontrado"], null);
         return NextResponse.json(output, { status: 404 });
@@ -443,13 +486,15 @@ export async function PUT(
         userId: validatedData.id,
         fullName: validatedData.name,
         email: validatedData.email,
-        role: validatedData.role
+        role: validatedData.role,
+        functions: validatedData.functions
       });
       
-      const output = await managerUserUseCase.updateOperator(validatedData.id, {
+      const output = await managerUserUseCase.updateOperator(resolvedUserId, {
         fullName: validatedData.name,
         email: validatedData.email,
-        role: validatedData.role
+        role: validatedData.role,
+        functions: validatedData.functions
       });
 
       console.info("📤 [PUT /users] Resultado:", {

@@ -20,6 +20,8 @@ import { Label } from '@/components/ui/label';
 import { Lead } from '../context/PipelineTypes';
 import { ScheduleMeetingDialog } from '@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog';
 import { FinalizeContractDialog, FinalizeContractData } from '@/app/[supabaseId]/board/features/container/FinalizeContractDialog';
+import { UserAssociated } from '@/app/api/v1/profiles/DTO/profileResponseDTO';
+import { useParams } from 'next/navigation';
 
 interface ChangeStatusDialogProps {
   open: boolean;
@@ -27,6 +29,7 @@ interface ChangeStatusDialogProps {
   lead: Lead | null;
   statusLabels: Record<string, string>;
   onStatusChanged: () => Promise<void>;
+  closers: UserAssociated[];
 }
 
 export function ChangeStatusDialog({
@@ -35,7 +38,10 @@ export function ChangeStatusDialog({
   lead,
   statusLabels,
   onStatusChanged,
+  closers,
 }: ChangeStatusDialogProps) {
+  const params = useParams();
+  const supabaseId = params.supabaseId as string | undefined;
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
@@ -69,7 +75,10 @@ export function ChangeStatusDialog({
     try {
       const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
+        },
         body: JSON.stringify({ status: newStatus }),
       });
 
@@ -148,6 +157,7 @@ export function ChangeStatusDialog({
           onOpenChange={setShowScheduleDialog}
           lead={lead}
           onScheduleSuccess={handleScheduleSuccess}
+          closers={closers}
         />
       )}
 

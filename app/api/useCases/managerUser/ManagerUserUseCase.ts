@@ -51,14 +51,15 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
         }
     }
 
-    async updateOperator(userId: string, data: { fullName?: string; email?: string; role?: string }): Promise<Output> {
+    async updateOperator(userId: string, data: { fullName?: string; email?: string; role?: string; functions?: ("SDR" | "CLOSER")[] }): Promise<Output> {
         try {
             console.info("🔄 [ManagerUserUseCase.updateOperator] Iniciando atualização");
             console.info("📦 [ManagerUserUseCase.updateOperator] Dados recebidos:", {
                 userId,
                 fullName: data.fullName,
                 email: data.email,
-                role: data.role
+                role: data.role,
+                functions: data.functions
             });
 
             // Validações
@@ -85,6 +86,7 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
             if (data.fullName) updateData.fullName = data.fullName;
             if (data.email) updateData.email = data.email;
             if (data.role) updateData.role = data.role;
+            if (data.functions !== undefined) updateData.functions = data.functions;
 
             console.info("🚀 [ManagerUserUseCase.updateOperator] Chamando ProfileRepository.updateProfileById com:", updateData);
 
@@ -103,7 +105,8 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 id: updatedUser.id,
                 fullName: updatedUser.fullName,
                 email: updatedUser.email,
-                role: updatedUser.role
+                role: updatedUser.role,
+                functions: (updatedUser as any).functions
             });
 
             return new Output(
@@ -143,7 +146,7 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
         }
     }
 
-    async createManager(data: { fullName: string; email: string; hasPermanentSubscription?: boolean; managerId?: string }): Promise<Output> {
+    async createManager(data: { fullName: string; email: string; hasPermanentSubscription?: boolean; managerId?: string; functions?: ("SDR" | "CLOSER")[] }): Promise<Output> {
         try {
             // Validações básicas
             if (!data.fullName || data.fullName.trim().length < 2) {
@@ -168,7 +171,8 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 fullName: data.fullName,
                 email: data.email,
                 hasPermanentSubscription: data.hasPermanentSubscription || false,
-                managerId: data.managerId
+                managerId: data.managerId,
+                functions: data.functions
             });
             return new Output(
                 true,
@@ -198,7 +202,7 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
         }
     }
 
-    async createOperator(data: { fullName: string; email: string; managerId: string; hasPermanentSubscription?: boolean }): Promise<Output> {
+    async createOperator(data: { fullName: string; email: string; managerId: string; hasPermanentSubscription?: boolean; functions?: ("SDR" | "CLOSER")[] }): Promise<Output> {
         try {
             // Validações básicas
             if (!data.fullName || data.fullName.trim().length < 2) {
@@ -232,7 +236,8 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
                 fullName: data.fullName,
                 email: data.email,
                 managerId: data.managerId,
-                hasPermanentSubscription: data.hasPermanentSubscription || false
+                hasPermanentSubscription: data.hasPermanentSubscription || false,
+                functions: data.functions
             });
             return new Output(
                 true,
