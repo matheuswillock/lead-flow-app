@@ -126,6 +126,11 @@ export default function PipelineTable() {
     }));
   }, [filtered]);
 
+  const closers = React.useMemo(() => {
+    const users = user?.usersAssociated || [];
+    return users.filter((u) => u.functions?.includes("CLOSER"));
+  }, [user]);
+
   const handleScheduleMeeting = (lead: Lead) => {
     setSelectedLead(lead);
     setShowScheduleDialog(true);
@@ -355,7 +360,3 @@ export default function PipelineTable() {
     </div>
   );
 }
-  const closers = React.useMemo(() => {
-    const users = user?.usersAssociated || [];
-    return users.filter((u) => u.functions?.includes("CLOSER"));
-  }, [user]);

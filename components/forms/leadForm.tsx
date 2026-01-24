@@ -12,6 +12,7 @@ import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
+import { Checkbox } from "../ui/checkbox";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
@@ -73,6 +74,10 @@ export function LeadForm({
     const [hasChanges, setHasChanges] = useState(false);
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
     const [ticketDisplay, setTicketDisplay] = useState("");
+    const closers = React.useMemo(
+        () => usersToAssign?.filter((user) => user.functions?.includes("CLOSER")) ?? [],
+        [usersToAssign]
+    );
 
     const watchedValues = form.watch();
     const isFormValid = form.formState.isValid;
@@ -297,8 +302,6 @@ export function LeadForm({
                 )}
             />
 
-            <input type="hidden" {...form.register("closerId")} />
-
             <div className="sm:col-span-2">
                 <FormField
                     control={form.control}
@@ -516,31 +519,27 @@ export function LeadForm({
                         );
                     }}
                 />
+
             </div>
 
             <FormField
                 control={form.control}
                 name="meetingHeald"
                 render={({ field }) => (
-                    <FormItem className="sm:col-span-2">
-                        <FormLabel className="block text-sm font-medium mb-1">
+                    <FormItem className="sm:col-span-2 flex items-center gap-3">
+                        <FormControl>
+                            <Checkbox
+                                checked={field.value === "yes"}
+                                onCheckedChange={(value) => {
+                                    field.onChange(value ? "yes" : "no");
+                                }}
+                                className=""
+                                disabled={isLoading || isUpdating}
+                            />
+                        </FormControl>
+                        <FormLabel className="text-sm font-medium leading-none mb-1.5">
                             Reunião realizada?
                         </FormLabel>
-                        <FormControl>
-                            <Select
-                                value={field.value || ""}
-                                onValueChange={field.onChange}
-                                disabled={isLoading || isUpdating}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Selecione se a reunião foi realizada" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="yes">Sim</SelectItem>
-                                    <SelectItem value="no">Não</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </FormControl>
                     </FormItem>
                 )}
             />
@@ -732,6 +731,87 @@ export function LeadForm({
                         </div>
                     </div>
                 )}
+            </div>
+
+            <div className="sm:col-span-2">
+                <FormField
+                    control={form.control}
+                    name="closerId"
+                    render={({ field }) => {
+                        const selectedCloser = closers.find((user) => user.id === field.value);
+                        const isOnlyOneCloser = closers.length === 1;
+
+                        useEffect(() => {
+                            if (!field.value && closers.length === 1) {
+                                field.onChange(closers[0].id);
+                            }
+                        }, [closers, field.value, field.onChange]);
+
+                        return (
+                            <FormItem className="flex flex-col">
+                                <FormLabel className="text-sm font-medium">
+                                    Closer{isOnlyOneCloser && " (único disponível)"}
+                                </FormLabel>
+                                <FormControl>
+                                    <Select
+                                        value={field.value || ""}
+                                        onValueChange={field.onChange}
+                                        disabled={isLoading || isUpdating || closers.length === 0}
+                                    >
+                                        <SelectTrigger className="h-9">
+                                            <SelectValue
+                                                placeholder={
+                                                    closers.length === 0
+                                                        ? "Nenhum closer disponível"
+                                                        : "Selecione um closer"
+                                                }
+                                            >
+                                                {selectedCloser && (
+                                                    <div className="flex items-center gap-2">
+                                                        <Avatar className="h-5 w-5">
+                                                            <AvatarImage
+                                                                src={selectedCloser.avatarImageUrl || undefined}
+                                                            />
+                                                            <AvatarFallback className="text-xs">
+                                                                {selectedCloser.name
+                                                                    .split(" ")
+                                                                    .map((n) => n[0])
+                                                                    .join("")
+                                                                    .toUpperCase()}
+                                                            </AvatarFallback>
+                                                        </Avatar>
+                                                        <span className="truncate">{selectedCloser.name}</span>
+                                                    </div>
+                                                )}
+                                            </SelectValue>
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {closers.map((user) => (
+                                                <SelectItem key={user.id} value={user.id}>
+                                                    <div className="flex items-center gap-2">
+                                                        <Avatar className="h-6 w-6">
+                                                            <AvatarImage
+                                                                src={user.avatarImageUrl || undefined}
+                                                            />
+                                                            <AvatarFallback className="text-xs">
+                                                                {user.name
+                                                                    .split(" ")
+                                                                    .map((n) => n[0])
+                                                                    .join("")
+                                                                    .toUpperCase()}
+                                                            </AvatarFallback>
+                                                        </Avatar>
+                                                        <span>{user.name}</span>
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </FormControl>
+                            </FormItem>
+                        );
+                    }}
+                />
             </div>
 
             <div className="sm:col-span-2 flex justify-end gap-2 pt-2">

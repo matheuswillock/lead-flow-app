@@ -90,7 +90,8 @@ export function LeadCard({
         });
     };
 
-    const hasMeetingInfo = Boolean(lead.meetingDate || lead.meetingNotes);
+    const closerName = lead.closer?.fullName || lead.closer?.email;
+    const hasMeetingInfo = Boolean(lead.meetingDate || lead.meetingNotes || closerName);
 
     const handleCopyLeadCode = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -197,6 +198,9 @@ export function LeadCard({
                         )}
                         {lead.meetingNotes && (
                             <div>Observações: {lead.meetingNotes}</div>
+                        )}
+                        {closerName && (
+                            <div>Closer: {closerName}</div>
                         )}
                     </div>
                 )}
