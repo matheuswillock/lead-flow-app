@@ -428,9 +428,32 @@ export function LeadForm({
             />
 
             <div className="sm:col-span-2 pt-4 border-t">
-                <h3 className="text-sm font-semibold mb-4 text-foreground">
-                    Informacoes de agendamento
-                </h3>
+                <div className="flex items-center justify-between gap-4">
+                    <h3 className="text-sm font-semibold text-foreground">
+                        Informacoes de agendamento
+                    </h3>
+                    <FormField
+                        control={form.control}
+                        name="meetingHeald"
+                        render={({ field }) => (
+                            <FormItem className="flex items-center gap-2">
+                                <FormControl>
+                                    <Checkbox
+                                        checked={field.value === "yes"}
+                                        onCheckedChange={(value) => {
+                                            field.onChange(value ? "yes" : "no");
+                                        }}
+                                        className="mt-[1px]"
+                                        disabled={isLoading || isUpdating}
+                                    />
+                                </FormControl>
+                                <FormLabel className="text-sm font-medium leading-none mb-2">
+                                    Reunião realizada?
+                                </FormLabel>
+                            </FormItem>
+                        )}
+                    />
+                </div>
             </div>
 
             {/* Data, Horário e Responsável em uma linha no desktop */}
@@ -457,55 +480,69 @@ export function LeadForm({
 
                 <FormField
                     control={form.control}
-                    name="responsible"
+                    name="closerId"
                     render={({ field }) => {
-                        const selectedValue = field.value || (usersToAssign?.[0]?.id ?? "");
-                        const selectedUser = usersToAssign?.find(user => user.id === selectedValue);
-                        const isOnlyOneUser = usersToAssign?.length === 1;
+                        const selectedCloser = closers.find((user) => user.id === field.value);
+                        const isOnlyOneCloser = closers.length === 1;
+
                         useEffect(() => {
-                            if (!field.value && usersToAssign?.length > 0) {
-                                field.onChange(usersToAssign[0].id);
+                            if (!field.value && closers.length === 1) {
+                                field.onChange(closers[0].id);
                             }
-                        }, [usersToAssign, field.value, field.onChange]);
+                        }, [closers, field.value, field.onChange]);
 
                         return (
                             <FormItem className="flex flex-col sm:flex-1">
                                 <FormLabel className="text-sm font-medium">
-                                    Responsável{isOnlyOneUser && " (único disponível)"}
+                                    Closer{isOnlyOneCloser && " (único disponível)"}
                                 </FormLabel>
                                 <FormControl>
                                     <Select
-                                        value={selectedValue}
+                                        value={field.value || ""}
                                         onValueChange={field.onChange}
-                                        disabled={isLoading || isUpdating}
+                                        disabled={isLoading || isUpdating || closers.length === 0}
                                     >
                                         <SelectTrigger className="h-9">
-                                            <SelectValue placeholder="Selecione um responsável">
-                                                {selectedUser && (
+                                            <SelectValue
+                                                placeholder={
+                                                    closers.length === 0
+                                                        ? "Nenhum closer disponível"
+                                                        : "Selecione um closer"
+                                                }
+                                            >
+                                                {selectedCloser && (
                                                     <div className="flex items-center gap-2">
                                                         <Avatar className="h-5 w-5">
-                                                            <AvatarImage 
-                                                                src={selectedUser.avatarImageUrl || undefined} 
+                                                            <AvatarImage
+                                                                src={selectedCloser.avatarImageUrl || undefined}
                                                             />
                                                             <AvatarFallback className="text-xs">
-                                                                {selectedUser.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                                                                {selectedCloser.name
+                                                                    .split(" ")
+                                                                    .map((n) => n[0])
+                                                                    .join("")
+                                                                    .toUpperCase()}
                                                             </AvatarFallback>
                                                         </Avatar>
-                                                        <span className="truncate">{selectedUser.name}</span>
+                                                        <span className="truncate">{selectedCloser.name}</span>
                                                     </div>
                                                 )}
                                             </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {usersToAssign?.map(user => (
+                                            {closers.map((user) => (
                                                 <SelectItem key={user.id} value={user.id}>
                                                     <div className="flex items-center gap-2">
                                                         <Avatar className="h-6 w-6">
-                                                            <AvatarImage 
-                                                                src={user.avatarImageUrl || undefined} 
+                                                            <AvatarImage
+                                                                src={user.avatarImageUrl || undefined}
                                                             />
                                                             <AvatarFallback className="text-xs">
-                                                                {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                                                                {user.name
+                                                                    .split(" ")
+                                                                    .map((n) => n[0])
+                                                                    .join("")
+                                                                    .toUpperCase()}
                                                             </AvatarFallback>
                                                         </Avatar>
                                                         <span>{user.name}</span>
@@ -521,28 +558,6 @@ export function LeadForm({
                 />
 
             </div>
-
-            <FormField
-                control={form.control}
-                name="meetingHeald"
-                render={({ field }) => (
-                    <FormItem className="sm:col-span-2 flex items-center gap-3">
-                        <FormControl>
-                            <Checkbox
-                                checked={field.value === "yes"}
-                                onCheckedChange={(value) => {
-                                    field.onChange(value ? "yes" : "no");
-                                }}
-                                className=""
-                                disabled={isLoading || isUpdating}
-                            />
-                        </FormControl>
-                        <FormLabel className="text-sm font-medium leading-none mb-1.5">
-                            Reunião realizada?
-                        </FormLabel>
-                    </FormItem>
-                )}
-            />
 
             <FormField
                 control={form.control}
@@ -736,69 +751,55 @@ export function LeadForm({
             <div className="sm:col-span-2">
                 <FormField
                     control={form.control}
-                    name="closerId"
+                    name="responsible"
                     render={({ field }) => {
-                        const selectedCloser = closers.find((user) => user.id === field.value);
-                        const isOnlyOneCloser = closers.length === 1;
-
+                        const selectedValue = field.value || (usersToAssign?.[0]?.id ?? "");
+                        const selectedUser = usersToAssign?.find(user => user.id === selectedValue);
+                        const isOnlyOneUser = usersToAssign?.length === 1;
                         useEffect(() => {
-                            if (!field.value && closers.length === 1) {
-                                field.onChange(closers[0].id);
+                            if (!field.value && usersToAssign?.length > 0) {
+                                field.onChange(usersToAssign[0].id);
                             }
-                        }, [closers, field.value, field.onChange]);
+                        }, [usersToAssign, field.value, field.onChange]);
 
                         return (
                             <FormItem className="flex flex-col">
                                 <FormLabel className="text-sm font-medium">
-                                    Closer{isOnlyOneCloser && " (único disponível)"}
+                                    Responsável - SDR {isOnlyOneUser && " (único disponível)"}
                                 </FormLabel>
                                 <FormControl>
                                     <Select
-                                        value={field.value || ""}
+                                        value={selectedValue}
                                         onValueChange={field.onChange}
-                                        disabled={isLoading || isUpdating || closers.length === 0}
+                                        disabled={isLoading || isUpdating}
                                     >
                                         <SelectTrigger className="h-9">
-                                            <SelectValue
-                                                placeholder={
-                                                    closers.length === 0
-                                                        ? "Nenhum closer disponível"
-                                                        : "Selecione um closer"
-                                                }
-                                            >
-                                                {selectedCloser && (
+                                            <SelectValue placeholder="Selecione um responsável">
+                                                {selectedUser && (
                                                     <div className="flex items-center gap-2">
                                                         <Avatar className="h-5 w-5">
                                                             <AvatarImage
-                                                                src={selectedCloser.avatarImageUrl || undefined}
+                                                                src={selectedUser.avatarImageUrl || undefined}
                                                             />
                                                             <AvatarFallback className="text-xs">
-                                                                {selectedCloser.name
-                                                                    .split(" ")
-                                                                    .map((n) => n[0])
-                                                                    .join("")
-                                                                    .toUpperCase()}
+                                                                {selectedUser.name.split(' ').map(n => n[0]).join('').toUpperCase()}
                                                             </AvatarFallback>
                                                         </Avatar>
-                                                        <span className="truncate">{selectedCloser.name}</span>
+                                                        <span className="truncate">{selectedUser.name}</span>
                                                     </div>
                                                 )}
                                             </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {closers.map((user) => (
+                                            {usersToAssign?.map(user => (
                                                 <SelectItem key={user.id} value={user.id}>
                                                     <div className="flex items-center gap-2">
                                                         <Avatar className="h-6 w-6">
                                                             <AvatarImage
-                                                                src={user.avatarImageUrl || undefined}
+                                                                src={user.avatarImageUrl || undefined} 
                                                             />
                                                             <AvatarFallback className="text-xs">
-                                                                {user.name
-                                                                    .split(" ")
-                                                                    .map((n) => n[0])
-                                                                    .join("")
-                                                                    .toUpperCase()}
+                                                                {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
                                                             </AvatarFallback>
                                                         </Avatar>
                                                         <span>{user.name}</span>
