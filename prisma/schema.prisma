@@ -34,6 +34,16 @@ enum UserRole {
   operator
 }
 
+enum UserFunction {
+  SDR
+  CLOSER
+}
+
+enum MeetingHeald {
+  yes
+  no
+}
+
 enum LeadStatus {
   new_opportunity
   scheduled
@@ -117,6 +127,7 @@ model Profile {
   profileIconId            String?             @db.Text
   profileIconUrl           String?             @db.Text
   role                     UserRole            @default(manager)
+  functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
   managerId                String?             @db.Uuid
@@ -142,6 +153,7 @@ model Profile {
   // Lead relations
   leadsAsManager  Lead[]           @relation("LeadManager")
   leadsAsAssignee Lead[]           @relation("LeadAssignee")
+  leadsAsCloser   Lead[]           @relation("LeadCloser")
   leadsAsCreator  Lead[]           @relation("LeadCreator")
   leadsAsUpdater  Lead[]           @relation("LeadUpdater")
   activities      LeadActivity[]
@@ -167,6 +179,7 @@ model Lead {
   leadCode          String      @unique @db.Text
   managerId         String      @db.Uuid
   assignedTo        String?     @db.Uuid
+  closerId          String?     @db.Uuid
   status            LeadStatus  @default(new_opportunity)
   name              String      @db.Text
   email             String?     @db.Text
@@ -180,6 +193,7 @@ model Lead {
   meetingDate       DateTime?   @db.Timestamptz(6)
   meetingNotes      String?     @db.Text
   meetingLink       String?     @db.Text
+  meetingHeald      MeetingHeald?
   notes             String?     @db.Text
 
   // Novos campos para leads finalizados (apenas em edição)
@@ -195,6 +209,7 @@ model Lead {
   // Relations
   manager       Profile          @relation("LeadManager", fields: [managerId], references: [id], onDelete: Cascade)
   assignee      Profile?         @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  closer        Profile?         @relation("LeadCloser", fields: [closerId], references: [id], onDelete: SetNull)
   creator       Profile?         @relation("LeadCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater       Profile?         @relation("LeadUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
   activities    LeadActivity[]
@@ -208,6 +223,7 @@ model Lead {
   @@unique([managerId, cnpj])
   @@index([managerId])
   @@index([assignedTo])
+  @@index([closerId])
   @@index([createdBy])
   @@index([updatedBy])
   @@index([meetingDate])
@@ -302,6 +318,7 @@ model PendingOperator {
   name            String   @db.Text
   email           String   @db.Text
   role            String   @db.Text // "operator" geralmente
+  functions       UserFunction[] @default([])
   paymentId       String?  @unique @db.Text // ID do pagamento no Asaas (opcional para assinaturas)
   subscriptionId  String?  @db.Text // ID da assinatura no Asaas
   paymentStatus   String   @db.Text // PENDING, CONFIRMED, FAILED

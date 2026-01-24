@@ -54,6 +54,7 @@ export interface CreateOperatorCheckoutData {
     name: string;
     email: string;
     role: string;
+    functions?: ("SDR" | "CLOSER")[];
   };
 }
 
@@ -399,6 +400,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           name: data.operatorData.name,
           email: data.operatorData.email,
           role: data.operatorData.role,
+          functions: data.operatorData.functions ?? [],
           paymentId: 'pending',
           subscriptionId: manager.asaasSubscriptionId,
           paymentStatus: 'PENDING',
@@ -647,6 +649,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           fullName: pendingOperator.name,
           email: pendingOperator.email,
           role: pendingOperator.role as any,
+          functions: pendingOperator.functions ?? [],
           managerId: manager.id,
           subscriptionStatus: 'active',
           subscriptionPlan: null, // Operadores não têm plano próprio

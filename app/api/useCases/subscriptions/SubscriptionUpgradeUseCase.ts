@@ -55,6 +55,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           name: data.operatorData.name,
           email: data.operatorData.email,
           role: data.operatorData.role,
+          functions: data.operatorData.functions ?? [],
           paymentId: 'pending', // Será atualizado após criação do checkout
           subscriptionId: null,
           paymentStatus: 'PENDING',
@@ -485,6 +486,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
             fullName: pendingOperator.name,
             email: pendingOperator.email,
             role: pendingOperator.role as any,
+            functions: pendingOperator.functions ?? [],
             managerId: pendingOperator.managerId,
             asaasSubscriptionId: pendingOperator.subscriptionId || undefined,
             subscriptionCycle: pendingOperator.subscriptionId ? 'MONTHLY' : undefined,
@@ -941,16 +943,51 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
   }): Promise<void> {
     const { manager, currentSubscription, newValue, operatorName } = params;
 
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
     const isCreditCard = currentSubscription.billingType === 'CREDIT_CARD';
+    const verifyUpdatedValue = async () => {
+      try {
+        const latest = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        const latestValue = Number(latest?.value);
+        if (!Number.isFinite(latestValue)) {
+          return false;
+        }
+        return Math.abs(latestValue - newValue) < 0.01;
+      } catch (verifyError) {
+        console.warn('⚠️ [updateManagerSubscriptionValue] Falha ao verificar valor atual da assinatura:', verifyError);
+        return false;
+      }
+    };
+    const logLatestValue = async (context: string) => {
+      try {
+        const latest = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        console.warn('⚠️ [updateManagerSubscriptionValue] Valor atual da assinatura:', {
+          context,
+          subscriptionId: manager.asaasSubscriptionId,
+          latestValue: latest?.value,
+          expectedValue: newValue
+        });
+      } catch (logError) {
+        console.warn('⚠️ [updateManagerSubscriptionValue] Falha ao buscar valor atual da assinatura:', logError);
+      }
+    };
 
     if (!isCreditCard) {
       console.info('📄 [updateManagerSubscriptionValue] Atualizando assinatura para proxima cobranca (PIX/Boleto)...');
-      await AsaasSubscriptionService.updateSubscription(
-        manager.asaasSubscriptionId,
-        { value: newValue }
-      );
-      console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada - novo valor sera cobrado na proxima fatura');
-      return;
+      try {
+        await AsaasSubscriptionService.updateSubscription(
+          manager.asaasSubscriptionId,
+          { value: newValue }
+        );
+        console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada - novo valor sera cobrado na proxima fatura');
+        return;
+      } catch (error) {
+        if (await verifyUpdatedValue()) {
+          console.info('✅ [updateManagerSubscriptionValue] Valor ja atualizado no Asaas (PIX/Boleto), seguindo fluxo');
+          return;
+        }
+        throw error;
+      }
     }
 
     console.info('💳 [updateManagerSubscriptionValue] Atualizando assinatura com cobranca automatica (Cartao)...');
@@ -971,7 +1008,34 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         || normalizedMessage.includes('assinaturas via cartão de crédito');
 
       if (!blockedValueChange) {
-        throw error;
+        if (await verifyUpdatedValue()) {
+          console.info('✅ [updateManagerSubscriptionValue] Valor ja atualizado no Asaas (Cartao), seguindo fluxo');
+          return;
+        }
+
+        console.warn('⚠️ [updateManagerSubscriptionValue] Re-tentando atualizar assinatura no cartao...');
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          try {
+            if (attempt > 1) {
+              await sleep(500 * attempt);
+            }
+            await AsaasSubscriptionService.updateSubscription(
+              manager.asaasSubscriptionId,
+              { value: newValue }
+            );
+            console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada com sucesso no cartao (re-tentativa)');
+            return;
+          } catch (retryError) {
+            await logLatestValue(`retry_${attempt}`);
+            if (await verifyUpdatedValue()) {
+              console.info('✅ [updateManagerSubscriptionValue] Valor ja atualizado no Asaas apos re-tentativa');
+              return;
+            }
+            if (attempt === 2) {
+              throw retryError;
+            }
+          }
+        }
       }
 
       console.warn('⚠️ [updateManagerSubscriptionValue] Alteracao de valor bloqueada para cartao. Recriando assinatura...', {

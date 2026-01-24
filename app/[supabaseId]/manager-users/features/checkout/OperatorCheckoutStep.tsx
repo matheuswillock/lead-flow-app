@@ -211,6 +211,7 @@ export function OperatorCheckoutStep({
           name: operatorData.name,
           email: operatorData.email,
           role: operatorData.role || "operator",
+          functions: operatorData.functions,
         },
         billingType: data.billingType,
       };

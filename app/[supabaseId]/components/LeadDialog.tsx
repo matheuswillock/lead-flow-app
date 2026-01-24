@@ -13,6 +13,7 @@ import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+import { useParams } from "next/navigation";
 
 interface LeadDialogProps {
   open: boolean;
@@ -38,12 +39,15 @@ export default function LeadDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [finalizeCompleted, setFinalizeCompleted] = useState(false);
+  const params = useParams();
+  const supabaseId = params.supabaseId as string | undefined;
 
   const canFinalizeContract = lead && (
     lead.status === "invoicePayment" ||
     lead.status === "dps_agreement" ||
     lead.status === "offerSubmission"
   );
+  const canMarkNoShow = lead?.status === "scheduled";
 
   const handleCopyLeadCode = async (code: string) => {
     try {
@@ -105,8 +109,10 @@ export default function LeadDialog({
       meetingDate: parseMeetingDate(data.meetingDate || ""),
       meetingNotes: data.meetingNotes || undefined,
       meetingLink: data.meetingLink || undefined,
+      meetingHeald: data.meetingHeald || undefined,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
+      closerId: data.closerId || undefined,
       status: "new_opportunity" as any,
       ticket: undefined,
       contractDueDate: undefined,
@@ -128,8 +134,10 @@ export default function LeadDialog({
       meetingDate: parseMeetingDate(data.meetingDate || ""),
       meetingNotes: data.meetingNotes || undefined,
       meetingLink: data.meetingLink || undefined,
+      meetingHeald: data.meetingHeald || undefined,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
+      closerId: data.closerId || undefined,
       ticket: data.ticket ? parseCurrentValue(data.ticket) : undefined,
       contractDueDate: parseMeetingDate(data.contractDueDate || ""),
       soldPlan: data.soldPlan || undefined,
@@ -239,6 +247,35 @@ export default function LeadDialog({
     }
   };
 
+  const handleNoShow = async () => {
+    if (!lead) return;
+    if (!supabaseId) {
+      toast.error("Usuario nao identificado");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+        },
+        body: JSON.stringify({ status: "no_show" }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Erro ao marcar no-show");
+      }
+
+      toast.success("Lead marcado como no-show");
+      setOpen(false);
+      await refreshLeads();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show");
+    }
+  };
+
   useEffect(() => {
     if (lead && open) {
       const formatCurrency = (value: number): string => {
@@ -269,6 +306,7 @@ export default function LeadDialog({
         phone: formatPhone(lead.phone || ""),
         email: lead.email || "",
         cnpj: formatCNPJ(lead.cnpj || ""),
+        closerId: lead.closerId || "",
         age: lead.age || "",
         currentHealthPlan: lead.currentHealthPlan || undefined,
         currentValue: lead.currentValue ? formatCurrency(lead.currentValue) : "",
@@ -278,6 +316,7 @@ export default function LeadDialog({
         meetingDate: lead.meetingDate || "",
         meetingNotes: lead.meetingNotes || "",
         meetingLink: lead.meetingLink || "",
+        meetingHeald: lead.meetingHeald || undefined,
         responsible: lead.assignedTo || "",
         ticket: lead.ticket ? formatCurrency(lead.ticket) : "",
         contractDueDate: lead.contractDueDate || "",
@@ -289,6 +328,7 @@ export default function LeadDialog({
         phone: "",
         email: "",
         cnpj: "",
+        closerId: "",
         age: "",
         currentHealthPlan: undefined,
         currentValue: "",
@@ -298,6 +338,7 @@ export default function LeadDialog({
         meetingDate: "",
         meetingNotes: "",
         meetingLink: "",
+        meetingHeald: undefined,
         responsible: user?.usersAssociated?.[0]?.id || "",
         ticket: "",
         contractDueDate: "",
@@ -336,21 +377,27 @@ export default function LeadDialog({
                   </div>
                 )}
               </div>
-              {canFinalizeContract && (
-                <Button
-                  size="sm"
-                  variant="default"
-                  onClick={() => {
-                    setFinalizeCompleted(false);
-                    setShowFinalizeDialog(true);
-                    setOpen(false);
-                  }}
-                  className="ml-4"
-                >
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Fechar Contrato
-                </Button>
-              )}
+              <div className="ml-4 flex items-center gap-2">
+                {canMarkNoShow && (
+                  <Button size="sm" variant="outline" onClick={handleNoShow}>
+                    Marcar No-show
+                  </Button>
+                )}
+                {canFinalizeContract && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => {
+                      setFinalizeCompleted(false);
+                      setShowFinalizeDialog(true);
+                      setOpen(false);
+                    }}
+                  >
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Fechar Contrato
+                  </Button>
+                )}
+              </div>
             </div>
           </DialogHeader>
 

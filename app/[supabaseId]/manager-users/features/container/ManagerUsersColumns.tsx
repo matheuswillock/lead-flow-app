@@ -52,10 +52,12 @@ export function createColumns({
           .slice(0, 2);
 
         return (
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={user.profileIconUrl} alt={userName} />
-            <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-          </Avatar>
+          <div className="flex justify-center">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={user.profileIconUrl} alt={userName} />
+              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+            </Avatar>
+          </div>
         );
       },
       enableSorting: false,
@@ -63,6 +65,7 @@ export function createColumns({
     },
     {
       accessorKey: "name",
+      meta: { label: "Nome" },
       header: ({ column }) => {
         return (
           <Button
@@ -81,6 +84,7 @@ export function createColumns({
     },
     {
       accessorKey: "email",
+      meta: { label: "Email" },
       header: ({ column }) => {
         return (
           <Button
@@ -123,39 +127,83 @@ export function createColumns({
     },
     {
       accessorKey: "role",
+      meta: { label: "Papel" },
       header: ({ column }) => {
         return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-auto p-0 font-semibold"
-          >
-            Papel
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+              className="h-auto p-0 font-semibold"
+            >
+              Papel
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         );
       },
       cell: ({ row }) => {
         const role = row.getValue("role") as string;
         return (
-          <Badge variant={role === "manager" ? "default" : "secondary"}>
-            {role === "manager" ? "MANAGER" : "OPERATOR"}
-          </Badge>
+          <div className="flex justify-center">
+            <Badge variant={role === "manager" ? "default" : "secondary"}>
+              {role === "manager" ? "MANAGER" : "OPERATOR"}
+            </Badge>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "functions",
+      meta: { label: "Funções" },
+      header: ({ column }) => {
+        return (
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+              className="h-auto p-0 font-semibold"
+            >
+              Funções
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
+      cell: ({ row }) => {
+        const functions = row.original.functions || [];
+        if (!functions.length) {
+          return <div className="text-center text-muted-foreground">-</div>;
+        }
+
+        return (
+          <div className="flex justify-center">
+            <div className="flex flex-wrap justify-center gap-1">
+            {functions.map((func) => (
+              <Badge key={func} variant="secondary">
+                {func}
+              </Badge>
+            ))}
+            </div>
+          </div>
         );
       },
     },
     {
       accessorKey: "status",
+      meta: { label: "Status" },
       header: ({ column }) => {
         return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-auto p-0 font-semibold"
-          >
-            Status
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+              className="h-auto p-0 font-semibold"
+            >
+              Status
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         );
       },
       cell: ({ row }) => {
@@ -193,24 +241,29 @@ export function createColumns({
         const config = statusConfig[status] || statusConfig.active;
 
         return (
-          <Badge variant={config.variant} className={config.className}>
-            {config.label}
-          </Badge>
+          <div className="flex justify-center">
+            <Badge variant={config.variant} className={config.className}>
+              {config.label}
+            </Badge>
+          </div>
         );
       },
     },
     {
       accessorKey: "leadsCount",
+      meta: { label: "Leads" },
       header: ({ column }) => {
         return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-auto p-0 font-semibold"
-          >
-            Leads
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+              className="h-auto p-0 font-semibold"
+            >
+              Leads
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         );
       },
       cell: ({ row }) => {
@@ -223,23 +276,56 @@ export function createColumns({
       },
     },
     {
-      accessorKey: "createdAt",
+      accessorKey: "meetingsCount",
+      meta: { label: "Agendamentos" },
       header: ({ column }) => {
         return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="h-auto p-0 font-semibold"
-          >
-            Criado em
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+              className="h-auto p-0 font-semibold"
+            >
+              Agendamentos
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
+      cell: ({ row }) => {
+        const user = row.original;
+        const isCloser = user.functions?.includes("CLOSER");
+        if (!isCloser) {
+          return <div className="text-center text-muted-foreground">-</div>;
+        }
+        return (
+          <div className="text-center font-medium">
+            {user.meetingsCount || 0}
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "createdAt",
+      meta: { label: "Criado em" },
+      header: ({ column }) => {
+        return (
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+              className="h-auto p-0 font-semibold"
+            >
+              Criado em
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         );
       },
       cell: ({ row }) => {
         const date = new Date(row.getValue("createdAt"));
         return (
-          <div className="text-muted-foreground">
+          <div className="text-center text-muted-foreground">
             {date.toLocaleDateString("pt-BR")}
           </div>
         );
@@ -252,53 +338,55 @@ export function createColumns({
         const user = row.original;
 
         return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0 cursor-pointer">
-                <span className="sr-only">Abrir menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Ações</DropdownMenuLabel>
-              {user.status === 'active' ? (
-                <>
-                  <DropdownMenuItem
-                    onClick={() => onResendInvite(user.email, user.id)}
-                    className="flex items-center gap-2"
-                  >
-                    <Mail className="h-4 w-4" />
-                    Enviar reset de senha
-                  </DropdownMenuItem>
+          <div className="flex justify-center">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0 cursor-pointer">
+                  <span className="sr-only">Abrir menu</span>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                {user.status === 'active' ? (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() => onResendInvite(user.email, user.id)}
+                      className="flex items-center gap-2"
+                    >
+                      <Mail className="h-4 w-4" />
+                      Enviar reset de senha
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem
+                      onClick={() => onEdit(user)}
+                      className="flex items-center gap-2"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Editar usuário
+                    </DropdownMenuItem>
                   
+                    <DropdownMenuItem
+                      onClick={() => onDelete(user)}
+                      className="flex items-center gap-2 text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Remover usuário
+                    </DropdownMenuItem>
+                  </>
+                ) : (
                   <DropdownMenuItem
-                    onClick={() => onEdit(user)}
-                    className="flex items-center gap-2"
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Editar usuário
-                  </DropdownMenuItem>
-                
-                  <DropdownMenuItem
-                    onClick={() => onDelete(user)}
+                    onClick={() => onDeletePendingOperator(user)}
                     className="flex items-center gap-2 text-destructive focus:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
-                    Remover usuário
+                    Deletar operador pendente
                   </DropdownMenuItem>
-                </>
-              ) : (
-                <DropdownMenuItem
-                  onClick={() => onDeletePendingOperator(user)}
-                  className="flex items-center gap-2 text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Deletar operador pendente
-                </DropdownMenuItem>
-              )}
-              
-            </DropdownMenuContent>
-          </DropdownMenu>
+                )}
+                
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         );
       },
       enableSorting: false,

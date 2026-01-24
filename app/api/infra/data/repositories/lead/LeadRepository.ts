@@ -22,6 +22,14 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        closer: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
         _count: {
           select: {
             attachments: true,
@@ -43,6 +51,14 @@ export class LeadRepository implements ILeadRepository {
           },
         },
         assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+        closer: {
           select: {
             id: true,
             fullName: true,
@@ -178,6 +194,14 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        closer: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
         _count: {
           select: {
             attachments: true,
@@ -206,6 +230,14 @@ export class LeadRepository implements ILeadRepository {
           },
         },
         assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+        closer: {
           select: {
             id: true,
             fullName: true,
@@ -242,6 +274,14 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        closer: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
         _count: {
           select: {
             attachments: true,
@@ -266,6 +306,14 @@ export class LeadRepository implements ILeadRepository {
           },
         },
         assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+        closer: {
           select: {
             id: true,
             fullName: true,
@@ -308,6 +356,14 @@ export class LeadRepository implements ILeadRepository {
           },
         },
         assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+        closer: {
           select: {
             id: true,
             fullName: true,
@@ -382,6 +438,14 @@ export class LeadRepository implements ILeadRepository {
           },
         },
         assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+        closer: {
           select: {
             id: true,
             fullName: true,

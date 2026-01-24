@@ -4,6 +4,7 @@ import React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
 
 import {
   CreateManagerUserSchema,
@@ -67,11 +72,13 @@ export function UserFormDialog({
           name: user?.name || "",
           email: user?.email || "",
           role: user?.role || "operator",
+          functions: user?.functions || [],
         }
       : {
           name: "",
           email: "",
           role: "operator",
+          functions: [],
         },
   });
 
@@ -83,12 +90,14 @@ export function UserFormDialog({
           name: user.name,
           email: user.email,
           role: user.role,
+          functions: user.functions || [],
         });
       } else {
         form.reset({
           name: "",
           email: "",
           role: "operator",
+          functions: [],
         });
       }
     }
@@ -96,10 +105,27 @@ export function UserFormDialog({
 
   const handleSubmit = async (data: CreateManagerUserFormData | UpdateManagerUserFormData) => {
     try {
+      const nextEmail = (data as { email?: string }).email?.trim() || "";
+      const currentEmail = user?.email?.trim() || "";
+      const shouldValidateEmail = !!nextEmail && currentUserId && (!isEditing || nextEmail.toLowerCase() !== currentEmail.toLowerCase());
+
+      if (shouldValidateEmail) {
+        const response = await fetch(
+          `/api/v1/manager/${currentUserId}/users?email=${encodeURIComponent(nextEmail)}`,
+        );
+        const payload = await response.json().catch(() => null);
+        const isAvailable = response.ok && payload?.isValid && payload?.result?.available === true;
+        if (!isAvailable) {
+          toast.error(payload?.errorMessages?.join(", ") || "Email já está em uso");
+          return;
+        }
+      }
+
       await onSubmit(data);
       form.reset();
     } catch (error) {
       console.error("Erro ao salvar usuário:", error);
+      toast.error("Erro ao salvar usuário");
     }
   };
 
@@ -198,6 +224,32 @@ export function UserFormDialog({
                       ? "Managers não podem alterar seu próprio papel."
                       : "Define as permissões do usuário na aplicação."
                     }
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="functions"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Funções</FormLabel>
+                  <FormControl>
+                    <ToggleGroup
+                      type="multiple"
+                      value={field.value ?? []}
+                      onValueChange={field.onChange}
+                      disabled={loading}
+                      className="justify-start"
+                    >
+                      <ToggleGroupItem value="SDR">SDR</ToggleGroupItem>
+                      <ToggleGroupItem value="CLOSER">Closer</ToggleGroupItem>
+                    </ToggleGroup>
+                  </FormControl>
+                  <FormDescription>
+                    Selecione SDR, Closer ou ambos.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

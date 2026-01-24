@@ -22,6 +22,17 @@ import { maskPhone } from "@/lib/masks";
 import { getHealthPlanLabel } from "@/lib/healthPlanLabels";
 
 const headerButtonClass = "h-8 px-2 hover:bg-accent w-full justify-center";
+const formatCurrency = (value: Lead["currentValue"]) => {
+  if (value === null || value === undefined) return "-";
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return "-";
+  return numeric.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
 
 // Componente para o drag handle
 function DragHandle({ id }: { id: string }) {
@@ -131,17 +142,17 @@ export const createColumns = ({
             {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
           </span>
         </Button>
-      );
+      )
     },
     cell: ({ row }) => {
       return (
-        <div 
+        <div
           className="font-medium cursor-pointer hover:underline"
           onClick={() => onRowClick(row.original)}
         >
           {row.getValue("name")}
         </div>
-      );
+      )
     },
   },
   {
@@ -158,10 +169,10 @@ export const createColumns = ({
             {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
           </span>
         </Button>
-      );
+      )
     },
     cell: ({ row }) => {
-      return <div className="text-sm">{row.getValue("leadCode") || "-"}</div>;
+      return <div className="text-sm">{row.getValue("leadCode") || "-"}</div>
     },
   },
   {
@@ -178,10 +189,10 @@ export const createColumns = ({
             {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
           </span>
         </Button>
-      );
+      )
     },
     cell: ({ row }) => {
-      return <div>{row.getValue("email") || "-"}</div>;
+      return <div>{row.getValue("email") || "-"}</div>
     },
   },
   {
@@ -198,11 +209,11 @@ export const createColumns = ({
             {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
           </span>
         </Button>
-      );
+      )
     },
     cell: ({ row }) => {
-      const phone = row.getValue("phone") as string;
-      return <div>{phone ? maskPhone(phone) : "-"}</div>;
+      const phone = row.getValue("phone") as string
+      return <div>{phone ? maskPhone(phone) : "-"}</div>
     },
   },
   {
@@ -219,11 +230,32 @@ export const createColumns = ({
             {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
           </span>
         </Button>
-      );
+      )
     },
     cell: ({ row }) => {
-      const plan = row.getValue("currentHealthPlan") as Lead["currentHealthPlan"];
-      return <div className="text-sm">{getHealthPlanLabel(plan) || "-"}</div>;
+      const plan = row.getValue("currentHealthPlan") as Lead["currentHealthPlan"]
+      return <div className="text-sm">{getHealthPlanLabel(plan) || "-"}</div>
+    },
+  },
+  {
+    accessorKey: "currentValue",
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className={headerButtonClass}
+        >
+          Valor atual
+          <span className="ml-2">
+            {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
+          </span>
+        </Button>
+      )
+    },
+    cell: ({ row }) => {
+      const value = row.getValue("currentValue") as Lead["currentValue"]
+      return <div className="text-sm">{formatCurrency(value)}</div>
     },
   },
   {
@@ -240,18 +272,16 @@ export const createColumns = ({
             {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
           </span>
         </Button>
-      );
+      )
     },
     cell: ({ row }) => {
-      const status = row.getValue("status") as string;
+      const status = row.getValue("status") as string
       return (
-        <Badge className={`${getStatusColor(status)} text-white`}>
-          {statusLabels[status]}
-        </Badge>
-      );
+        <Badge className={`${getStatusColor(status)} text-white`}>{statusLabels[status]}</Badge>
+      )
     },
     filterFn: (row, id, value) => {
-      return value.includes(row.getValue(id));
+      return value.includes(row.getValue(id))
     },
   },
   {
@@ -268,25 +298,22 @@ export const createColumns = ({
             {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
           </span>
         </Button>
-      );
+      )
     },
     cell: ({ row }) => {
-      const lead = row.original;
+      const lead = row.original
       if (!lead.assignee) {
-        return <span className="text-muted-foreground">-</span>;
+        return <span className="text-muted-foreground">-</span>
       }
 
-      const assigneeLabel = lead.assignee.fullName || lead.assignee.email;
+      const assigneeLabel = lead.assignee.fullName || lead.assignee.email
 
       return (
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="inline-flex cursor-default justify-center w-full">
               <Avatar className="size-6">
-                <AvatarImage
-                  src={lead.assignee.avatarUrl || undefined}
-                  alt={assigneeLabel}
-                />
+                <AvatarImage src={lead.assignee.avatarUrl || undefined} alt={assigneeLabel} />
                 <AvatarFallback className="text-xs">
                   {assigneeLabel
                     .split(" ")
@@ -302,11 +329,11 @@ export const createColumns = ({
             <p>{assigneeLabel}</p>
           </TooltipContent>
         </Tooltip>
-      );
+      )
     },
     accessorFn: (row) => row.assignee?.fullName || row.assignee?.email || "",
     filterFn: (row, id, value) => {
-      return value.includes(row.original.assignee?.id || "");
+      return value.includes(row.original.assignee?.id || "")
     },
   },
   {
@@ -323,14 +350,10 @@ export const createColumns = ({
             {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
           </span>
         </Button>
-      );
+      )
     },
     cell: ({ row }) => {
-      return (
-        <div className="text-sm">
-          {formatMeetingDate(row.getValue("meetingDate"))}
-        </div>
-      );
+      return <div className="text-sm">{formatMeetingDate(row.getValue("meetingDate"))}</div>
     },
   },
   {
@@ -347,47 +370,42 @@ export const createColumns = ({
             {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
           </span>
         </Button>
-      );
+      )
     },
     cell: ({ row }) => {
-      return (
-        <div className="text-sm">
-          {formatDate(row.getValue("createdAt"))}
-        </div>
-      );
+      return <div className="text-sm">{formatDate(row.getValue("createdAt"))}</div>
     },
     filterFn: (row, id, value) => {
-      if (!value || !Array.isArray(value)) return true;
-      
-      const rowDate = new Date(row.getValue(id) as string);
-      const [startDate, endDate] = value;
-      
+      if (!value || !Array.isArray(value)) return true
+
+      const rowDate = new Date(row.getValue(id) as string)
+      const [startDate, endDate] = value
+
       if (startDate && endDate) {
-        return rowDate >= startDate && rowDate <= endDate;
+        return rowDate >= startDate && rowDate <= endDate
       } else if (startDate) {
-        return rowDate >= startDate;
+        return rowDate >= startDate
       }
-      
-      return true;
+
+      return true
     },
   },
   {
     id: "actions",
     cell: ({ row }) => {
-      const lead = row.original;
-      
+      const lead = row.original
+
       // Verificar se pode agendar reunião (não tem reunião agendada e status permite)
-      const canSchedule = !lead.meetingDate && lead.status !== 'contract_finalized';
-      
+      const canSchedule = !lead.meetingDate && lead.status !== "contract_finalized"
+
       // Verificar se pode reagendar (já tem reunião agendada)
-      const canReschedule = !!lead.meetingDate && lead.status !== 'contract_finalized';
-      
+      const canReschedule = !!lead.meetingDate && lead.status !== "contract_finalized"
+
       // Verificar se pode finalizar contrato
-      const canFinalize = (
-        lead.status === 'invoicePayment' || 
-        lead.status === 'dps_agreement' ||
-        lead.status === 'offerSubmission'
-      );
+      const canFinalize =
+        lead.status === "invoicePayment" ||
+        lead.status === "dps_agreement" ||
+        lead.status === "offerSubmission"
 
       return (
         <DropdownMenu>
@@ -399,55 +417,63 @@ export const createColumns = ({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Ações</DropdownMenuLabel>
-            
-            <DropdownMenuItem onClick={(e) => {
-              e.stopPropagation();
-              onChangeStatus(lead);
-            }}>
+
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                onChangeStatus(lead)
+              }}
+            >
               <RefreshCw className="mr-2 h-4 w-4" />
               Mudar status
             </DropdownMenuItem>
-            
+
             <DropdownMenuSeparator />
-            
+
             {canSchedule && (
-              <DropdownMenuItem onClick={(e) => {
-                e.stopPropagation();
-                onScheduleMeeting(lead);
-              }}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onScheduleMeeting(lead)
+                }}
+              >
                 <Calendar className="mr-2 h-4 w-4" />
                 Agendar reunião
               </DropdownMenuItem>
             )}
-            
+
             {canReschedule && (
-              <DropdownMenuItem onClick={(e) => {
-                e.stopPropagation();
-                onRescheduleMeeting(lead);
-              }}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onRescheduleMeeting(lead)
+                }}
+              >
                 <Calendar className="mr-2 h-4 w-4" />
                 Reagendar reunião
               </DropdownMenuItem>
             )}
-            
+
             {canFinalize && (
               <>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={(e) => {
-                  e.stopPropagation();
-                  onFinalizeContract(lead);
-                }}>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onFinalizeContract(lead)
+                  }}
+                >
                   <CheckCircle className="mr-2 h-4 w-4" />
                   Fechar contrato
                 </DropdownMenuItem>
               </>
             )}
-            
+
             <DropdownMenuSeparator />
-            <DropdownMenuItem 
+            <DropdownMenuItem
               onClick={(e) => {
-                e.stopPropagation();
-                onDeleteLead(lead);
+                e.stopPropagation()
+                onDeleteLead(lead)
               }}
               className="text-red-600"
             >
@@ -456,7 +482,7 @@ export const createColumns = ({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      );
+      )
     },
   },
-];
+]

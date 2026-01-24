@@ -42,13 +42,14 @@ import {
 import { Button } from "@/components/ui/button";
 import usePipelineContext from "../context/PipelineHook";
 import { Lead } from "../context/PipelineTypes";
-import { createColumns } from "./columns";
+// import { createColumns } from "./columns";
 import { DataTableToolbar } from "./data-table-toolbar";
 import { DraggableRow } from "./DraggableRow";
 import { toast } from "sonner";
 import { useState } from "react";
 import { ScheduleMeetingDialog } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
 import { ChangeStatusDialog } from "./ChangeStatusDialog";
+import { createColumns } from "./PipelineColumns";
 
 export default function PipelineTable() {
   const { 
@@ -58,6 +59,7 @@ export default function PipelineTable() {
     isLoading,
     setSelected,
     refreshLeads,
+    user,
   } = usePipelineContext();
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -123,6 +125,11 @@ export default function PipelineTable() {
       value: id,
     }));
   }, [filtered]);
+
+  const closers = React.useMemo(() => {
+    const users = user?.usersAssociated || [];
+    return users.filter((u) => u.functions?.includes("CLOSER"));
+  }, [user]);
 
   const handleScheduleMeeting = (lead: Lead) => {
     setSelectedLead(lead);
@@ -336,6 +343,7 @@ export default function PipelineTable() {
           onOpenChange={setShowScheduleDialog}
           lead={selectedLead}
           onScheduleSuccess={refreshLeads}
+          closers={closers}
         />
       )}
 
@@ -346,6 +354,7 @@ export default function PipelineTable() {
           lead={selectedLead}
           statusLabels={statusLabels}
           onStatusChanged={refreshLeads}
+          closers={closers}
         />
       )}
     </div>

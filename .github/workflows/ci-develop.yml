@@ -1,0 +1,280 @@
+# .github/workflows/ci-develop.yml
+name: CI (develop -> version -> preview -> PR main)
+
+on:
+  push:
+    branches: ["develop"]
+
+concurrency:
+  group: ci-develop-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  deployments: write
+
+env:
+  CI: true
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  quality:
+    name: Lint & Typecheck
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun store
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+  build:
+    name: Build
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: quality
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun store
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '!node_modules/**') }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
+            ${{ runner.os }}-next-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: bun run prisma:generate
+
+      - name: Build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
+        run: bun run build
+
+  version-bump:
+    name: Auto Version Bump (develop)
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    needs: build
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      bumped: ${{ steps.bump.outputs.bumped }}
+      bump_type: ${{ steps.bump.outputs.bump_type }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Determine version bump (conventional commits)
+        id: bump
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s" 2>/dev/null || git log -20 --pretty=format:"%s")
+          else
+            COMMITS=$(git log -20 --pretty=format:"%s")
+          fi
+
+          BUMP_TYPE="patch"
+          if echo "$COMMITS" | grep -qiE "^feat(\(.+\))?!:|BREAKING CHANGE"; then
+            BUMP_TYPE="major"
+          elif echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
+            BUMP_TYPE="minor"
+          elif echo "$COMMITS" | grep -qiE "^fix(\(.+\))?:"; then
+            BUMP_TYPE="patch"
+          fi
+
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+          case $BUMP_TYPE in
+            major) NEW_VERSION="$((MAJOR + 1)).0.0" ;;
+            minor) NEW_VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
+            patch) NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+          esac
+
+          echo "bumped=true" >> $GITHUB_OUTPUT
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
+
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+            pkg.version='${NEW_VERSION}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');
+          "
+
+      - name: Commit version bump (skip ci)
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to v${{ steps.bump.outputs.new_version }} [skip ci]"
+          git push
+
+      - name: Version bump summary
+        run: |
+          echo "### Version Bump (develop)" >> $GITHUB_STEP_SUMMARY
+          echo "- New Version: v${{ steps.bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Bump Type: ${{ steps.bump.outputs.bump_type }}" >> $GITHUB_STEP_SUMMARY
+
+  deploy-preview:
+    name: Deploy Vercel (Preview) from develop
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: version-bump
+    steps:
+      - name: Checkout latest develop (includes bump)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Deploy to Vercel (Preview)
+        id: vercel-preview
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: .
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Preview Summary
+        run: |
+          echo "### Preview Deploy (develop)" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: ${{ steps.vercel-preview.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: v${{ needs.version-bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+
+  auto-pr-develop-to-main:
+    name: Open PR develop -> main
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: deploy-preview
+    steps:
+      - name: Checkout develop (latest)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Create PR (develop -> main) if needed
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = 'develop';
+            const base = 'main';
+
+            let version = '0.0.0';
+            try {
+              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+              version = pkg.version || version;
+            } catch {}
+
+            const existing = await github.rest.pulls.list({
+              owner, repo,
+              head: `${owner}:${head}`,
+              base,
+              state: 'open',
+              per_page: 1,
+            });
+
+            if (existing.data.length > 0) {
+              core.info(`PR já existe: #${existing.data[0].number} ${existing.data[0].html_url}`);
+              return;
+            }
+
+            const cmp = await github.rest.repos.compareCommits({ owner, repo, base, head });
+            if ((cmp.data.ahead_by || 0) === 0) {
+              core.info('develop não está à frente do main. Sem PR.');
+              return;
+            }
+
+            const commits = (cmp.data.commits || []).map(c => {
+              const msg = c.commit.message.split('\n')[0];
+              return `- ${msg} (\`${c.sha.slice(0,7)}\`)`;
+            }).join('\n');
+
+            const title = `release: v${version}`;
+            const body = [
+              '## Release (develop → main)',
+              '',
+              `**Version:** \`v${version}\``,
+              `**Commits:** ${cmp.data.ahead_by}`,
+              '',
+              '## Changes',
+              commits || '*(sem commits)*',
+              '',
+              '- [ ] Build/Lint OK',
+              '- [ ] Preview deploy OK',
+              '',
+              '*PR criado automaticamente.*'
+            ].join('\n');
+
+            const pr = await github.rest.pulls.create({
+              owner, repo,
+              head, base,
+              title, body,
+              maintainer_can_modify: true,
+            });
+
+            core.info(`PR criado: #${pr.data.number} ${pr.data.html_url}`);
