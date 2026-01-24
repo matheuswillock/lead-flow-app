@@ -65,6 +65,7 @@ export function createColumns({
     },
     {
       accessorKey: "name",
+      meta: { label: "Nome" },
       header: ({ column }) => {
         return (
           <Button
@@ -83,6 +84,7 @@ export function createColumns({
     },
     {
       accessorKey: "email",
+      meta: { label: "Email" },
       header: ({ column }) => {
         return (
           <Button
@@ -125,6 +127,7 @@ export function createColumns({
     },
     {
       accessorKey: "role",
+      meta: { label: "Papel" },
       header: ({ column }) => {
         return (
           <div className="flex justify-center">
@@ -152,6 +155,7 @@ export function createColumns({
     },
     {
       accessorKey: "functions",
+      meta: { label: "Funções" },
       header: ({ column }) => {
         return (
           <div className="flex justify-center">
@@ -187,6 +191,7 @@ export function createColumns({
     },
     {
       accessorKey: "status",
+      meta: { label: "Status" },
       header: ({ column }) => {
         return (
           <div className="flex justify-center">
@@ -246,6 +251,7 @@ export function createColumns({
     },
     {
       accessorKey: "leadsCount",
+      meta: { label: "Leads" },
       header: ({ column }) => {
         return (
           <div className="flex justify-center">
@@ -271,6 +277,7 @@ export function createColumns({
     },
     {
       accessorKey: "meetingsCount",
+      meta: { label: "Agendamentos" },
       header: ({ column }) => {
         return (
           <div className="flex justify-center">
@@ -300,6 +307,7 @@ export function createColumns({
     },
     {
       accessorKey: "createdAt",
+      meta: { label: "Criado em" },
       header: ({ column }) => {
         return (
           <div className="flex justify-center">
