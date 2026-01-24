@@ -13,6 +13,7 @@ export interface ManagerUser {
   profileIconUrl?: string;
   managerId?: string; // Para operators
   leadsCount?: number; // Contador de leads
+  meetingsCount?: number; // Contador de agendamentos (closer)
   hasPermanentSubscription?: boolean; // Indica assinatura permanente
   createdAt: Date | string; // Pode vir como Date do Prisma ou string do JSON
   updatedAt: Date | string; // Pode vir como Date do Prisma ou string do JSON

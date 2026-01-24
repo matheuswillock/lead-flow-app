@@ -359,6 +359,7 @@ export async function GET(
         profileIconUrl: null,
         managerId: requesterProfile.id,
         leadsCount: 0,
+        meetingsCount: 0,
         createdAt: pending.createdAt,
         updatedAt: pending.updatedAt,
         isPending: true,

@@ -57,6 +57,12 @@ export class ManagerUserRepository implements IManagerUserRepository {
                             where: {
                                 managerId: managerId  // Filtrar leads do próprio manager
                             }
+                        },
+                        leadsAsCloser: {
+                            where: {
+                                managerId: managerId,
+                                status: 'scheduled'
+                            }
                         }
                     }
                 }
@@ -76,6 +82,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
             functions: op.functions,
             managerId: op.managerId,
             leadsCount: op._count?.leadsAsAssignee ?? 0,
+            meetingsCount: op._count?.leadsAsCloser ?? 0,
             _countObject: op._count
         })));
 
@@ -88,6 +95,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
             profileIconUrl: op.profileIconUrl,
             managerId: op.managerId,
             leadsCount: op._count?.leadsAsAssignee ?? 0, // Usar 0 como fallback
+            meetingsCount: op._count?.leadsAsCloser ?? 0,
             createdAt: op.createdAt,
             updatedAt: op.updatedAt
         }));
