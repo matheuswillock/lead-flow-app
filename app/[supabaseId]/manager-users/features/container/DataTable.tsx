@@ -116,6 +116,9 @@ export function DataTable<TData, TValue>({
               .getAllColumns()
               .filter((column) => column.getCanHide())
               .map((column) => {
+                const label =
+                  (column.columnDef.meta as { label?: string } | undefined)?.label ??
+                  column.id;
                 return (
                   <DropdownMenuCheckboxItem
                     key={column.id}
@@ -125,14 +128,7 @@ export function DataTable<TData, TValue>({
                       column.toggleVisibility(!!value)
                     }
                   >
-                    {column.id === "name" && "Nome"}
-                    {column.id === "email" && "Email"}
-                    {column.id === "role" && "Papel"}
-                    {column.id === "functions" && "Funções"}
-                    {column.id === "status" && "Status"}
-                    {column.id === "leadsCount" && "Leads"}
-                    {column.id === "meetingsCount" && "Agendamentos"}
-                    {column.id === "createdAt" && "Criado em"}
+                    {label}
                   </DropdownMenuCheckboxItem>
                 );
               })}
