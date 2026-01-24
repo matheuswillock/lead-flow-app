@@ -297,6 +297,8 @@ export async function POST(request: NextRequest) {
         currentTreatment: currentTreatment || undefined,
         notes: notes || undefined,
         status,
+        meetingHeald: undefined,
+        closerId: undefined,
         meetingDate: undefined,
         meetingNotes: undefined,
         meetingLink: undefined,

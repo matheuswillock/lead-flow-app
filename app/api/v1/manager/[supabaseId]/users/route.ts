@@ -308,6 +308,7 @@ export async function GET(
 
     if (emailToCheck) {
       const normalizedEmail = emailToCheck.trim().toLowerCase();
+      const { prisma } = await import('../../../../infra/data/prisma');
       const existingProfile = await prisma.profile.findFirst({
         where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
       });
