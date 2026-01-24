@@ -46,6 +46,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
                 fullName: true,
                 email: true,
                 role: true,
+                functions: true,
                 profileIconUrl: true,
                 managerId: true,
                 createdAt: true,
@@ -55,6 +56,12 @@ export class ManagerUserRepository implements IManagerUserRepository {
                         leadsAsAssignee: {
                             where: {
                                 managerId: managerId  // Filtrar leads do próprio manager
+                            }
+                        },
+                        leadsAsCloser: {
+                            where: {
+                                managerId: managerId,
+                                status: 'scheduled'
                             }
                         }
                     }
@@ -72,8 +79,10 @@ export class ManagerUserRepository implements IManagerUserRepository {
             name: op.fullName,
             email: op.email,
             role: op.role,
+            functions: op.functions,
             managerId: op.managerId,
             leadsCount: op._count?.leadsAsAssignee ?? 0,
+            meetingsCount: op._count?.leadsAsCloser ?? 0,
             _countObject: op._count
         })));
 
@@ -82,20 +91,23 @@ export class ManagerUserRepository implements IManagerUserRepository {
             name: op.fullName || 'Usuário',
             email: op.email,
             role: op.role.toLowerCase() as 'operator' | 'manager',
+            functions: op.functions,
             profileIconUrl: op.profileIconUrl,
             managerId: op.managerId,
             leadsCount: op._count?.leadsAsAssignee ?? 0, // Usar 0 como fallback
+            meetingsCount: op._count?.leadsAsCloser ?? 0,
             createdAt: op.createdAt,
             updatedAt: op.updatedAt
         }));
     }
 
-    async createManager(data: { fullName: string; email: string; hasPermanentSubscription?: boolean; managerId?: string }): Promise<{ id: string; fullName: string; email: string; }> {
+    async createManager(data: { fullName: string; email: string; hasPermanentSubscription?: boolean; managerId?: string; functions?: ("SDR" | "CLOSER")[] }): Promise<{ id: string; fullName: string; email: string; }> {
         const manager = await prisma.profile.create({
             data: {
                 fullName: data.fullName,
                 email: data.email,
                 role: UserRole.manager,
+                functions: data.functions ?? [],
                 hasPermanentSubscription: data.hasPermanentSubscription || false,
                 managerId: data.managerId || null
             },
@@ -113,7 +125,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
         };
     }
 
-    async createOperator(data: { fullName: string; email: string; managerId: string; hasPermanentSubscription?: boolean }): Promise<{ id: string; fullName: string; email: string; managerId: string; }> {
+    async createOperator(data: { fullName: string; email: string; managerId: string; hasPermanentSubscription?: boolean; functions?: ("SDR" | "CLOSER")[] }): Promise<{ id: string; fullName: string; email: string; managerId: string; }> {
         // Verifica se o manager existe
         const manager = await prisma.profile.findUnique({
             where: { id: data.managerId }
@@ -128,6 +140,7 @@ export class ManagerUserRepository implements IManagerUserRepository {
                 fullName: data.fullName,
                 email: data.email,
                 role: UserRole.operator,
+                functions: data.functions ?? [],
                 managerId: data.managerId,
                 hasPermanentSubscription: data.hasPermanentSubscription || false
             },

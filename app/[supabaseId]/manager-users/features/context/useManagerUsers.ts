@@ -87,8 +87,20 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
     try {
       setState(prev => ({ ...prev, loading: true }));
 
-      // Fechar modal
-      setState(prev => ({ ...prev, isCreateModalOpen: false }));
+      const normalizedEmail = userData.email.trim().toLowerCase();
+      const emailInList = state.users.some(user => user.email?.toLowerCase() === normalizedEmail);
+      if (emailInList) {
+        toast.error("Email já está em uso");
+        setState(prev => ({ ...prev, loading: false, isCreateModalOpen: true }));
+        return;
+      }
+      
+      const emailCheck = await managerUsersService.checkEmailAvailability(userData.email);
+      if (!emailCheck.available) {
+        toast.error(emailCheck.error || "Email já está em uso");
+        setState(prev => ({ ...prev, loading: false, isCreateModalOpen: true }));
+        return;
+      }
 
       // Se tem assinatura permanente, criar diretamente sem passar pelo Asaas
       if (hasPermanentSubscription) {
@@ -109,6 +121,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
             name: userData.name,
             email: userData.email,
             role: userData.role || 'operator',
+            functions: userData.functions,
             hasPermanentSubscription: true, // Herda assinatura permanente
           }),
         });
@@ -122,6 +135,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
             description: 'Um email de convite foi enviado para o novo usuário.',
             duration: 5000,
           });
+          setState(prev => ({ ...prev, isCreateModalOpen: false }));
           setState(prev => ({ ...prev, loading: false }));
           await loadUsers(); // Recarregar lista
         } else {
@@ -130,6 +144,8 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
         }
         return;
       }
+      // Fechar modal e abrir checkout
+      setState(prev => ({ ...prev, isCreateModalOpen: false }));
       // Fluxo normal: abrir checkout interno para pagamento do operador
       setOperatorCheckout({
         isOpen: true,
@@ -141,7 +157,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
       toast.error("Erro ao criar usuário");
       setState(prev => ({ ...prev, loading: false }));
     }
-  }, [supabaseId, hasPermanentSubscription, loadUsers]);
+  }, [supabaseId, hasPermanentSubscription, loadUsers, managerUsersService, state.users]);
 
   // Atualizar usuário
   const updateUser = useCallback(async (userId: string, userData: UpdateManagerUserFormData) => {

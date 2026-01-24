@@ -5,6 +5,7 @@ export interface IProfileRepository {
   findBySupabaseId(supabaseId: string): Promise<Profile | null>;
   findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null>;
   existingByEmailOrPhone(email: string, phone: string): Promise<boolean>;
+  findByEmail(email: string): Promise<Profile | null>;
   createProfile(
     fullName: string,
     phone: string,
@@ -46,7 +47,7 @@ export interface IProfileRepository {
   ): Promise<Profile | null>;
   updateProfileById(
     profileId: string,
-    updates: { fullName?: string; phone?: string; email?: string; role?: string }
+    updates: { fullName?: string; phone?: string; email?: string; role?: string; functions?: ("SDR" | "CLOSER")[] }
   ): Promise<Profile | null>;
   updateProfileIcon(
     supabaseId: string,

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Filter, ScrollText, User, Plus } from "lucide-react";
 import useBoardContext from "../context/BoardHook";
+import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
 
 export default function BoardHeader() {
     const { 
@@ -20,7 +21,8 @@ export default function BoardHeader() {
         userLoading,
         data,
         isLoading,
-        openNewLeadDialog
+        openNewLeadDialog,
+        refreshLeads
     } = useBoardContext();
 
     // Calcular total de leads
@@ -95,6 +97,7 @@ export default function BoardHeader() {
             <Plus className="mr-2 size-4" />
             Adicionar novo lead
           </Button>
+          <LeadImportButton onImportComplete={refreshLeads} />
         </div>
       </div>
     );

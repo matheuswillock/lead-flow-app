@@ -59,16 +59,19 @@ export function useUpdateAccountForm(): UseFormReturn<updateAccountFormData> {
 export function useLeadForm() {
   return useForm<leadFormData>({
     resolver: zodResolver(leadFormSchema),
+    mode: "onChange",
     defaultValues: {
       name: "",
       phone: "",
       email: "",
       cnpj: "",
+      closerId: "",
       age: "",
       currentValue: "",
       referenceHospital: "",
       ongoingTreatment: "",
       meetingDate: "",
+      meetingHeald: undefined,
       additionalNotes: "",
       responsible: "",
     },

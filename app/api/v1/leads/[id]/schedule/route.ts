@@ -8,6 +8,7 @@ const scheduleSchema = z.object({
   date: z.string().datetime(),
   notes: z.string().optional(),
   meetingLink: z.string().url("Link da reunião inválido").optional(),
+  closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
 });
 
 export async function POST(
@@ -43,7 +44,7 @@ export async function POST(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const { date, notes, meetingLink } = validation.data;
+    const { date, notes, meetingLink, closerId } = validation.data;
     const meetingDate = new Date(date);
 
     // Verificar se já existe um agendamento para este lead
@@ -74,7 +75,12 @@ export async function POST(
     // Atualizar o campo meetingDate do lead
     await prisma.lead.update({
       where: { id: leadId },
-      data: { meetingDate, meetingNotes: notes || null, meetingLink: meetingLink || null },
+      data: {
+        meetingDate,
+        meetingNotes: notes || null,
+        meetingLink: meetingLink || null,
+        ...(closerId ? { closerId } : {}),
+      },
     });
 
     const output = new Output(

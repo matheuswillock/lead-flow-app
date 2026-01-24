@@ -6,7 +6,7 @@ import { formatDate } from "../context/BoardContext";
 import { ColumnKey } from "../context/BoardTypes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LeadResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
-import { CheckCircle, Calendar } from "lucide-react";
+import { CheckCircle, Calendar, Video } from "lucide-react";
 import { Paperclip } from "@/components/ui/paperclip";
 import { Badge } from "@/components/ui/badge";
 import { CopyIcon } from "@/components/ui/copy";
@@ -20,6 +20,7 @@ interface LeadCardProps {
     handleCardClick: (lead: LeadResponseDTO) => void;
     onFinalizeContract?: (lead: LeadResponseDTO) => void;
     onScheduleMeeting?: (lead: LeadResponseDTO) => void;
+    onNoShow?: (lead: LeadResponseDTO) => void;
     attachmentCount?: number;
 }
 
@@ -31,6 +32,7 @@ export function LeadCard({
     handleCardClick,
     onFinalizeContract,
     onScheduleMeeting,
+    onNoShow,
     attachmentCount = 0,
 }: LeadCardProps) {
     // Verifica se o lead está em uma coluna que permite finalizar contrato
@@ -40,6 +42,8 @@ export function LeadCard({
 
     // Verifica se o lead está na coluna de nova oportunidade (pode agendar)
     const canScheduleMeeting = columnKey === 'new_opportunity';
+    const isScheduled = columnKey === 'scheduled';
+    const isNoShow = columnKey === 'no_show';
 
     const handleFinalizeClick = (e: React.MouseEvent) => {
         e.stopPropagation(); // Evita que o card seja clicado
@@ -53,6 +57,19 @@ export function LeadCard({
         if (onScheduleMeeting) {
             onScheduleMeeting(lead);
         }
+    };
+
+    const handleNoShowClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (onNoShow) {
+            onNoShow(lead);
+        }
+    };
+
+    const handleJoinMeeting = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!lead.meetingLink) return;
+        window.open(lead.meetingLink, "_blank", "noopener,noreferrer");
     };
 
     const handleAttachmentClick = (e: React.MouseEvent) => {
@@ -73,7 +90,8 @@ export function LeadCard({
         });
     };
 
-    const hasMeetingInfo = Boolean(lead.meetingDate || lead.meetingNotes);
+    const closerName = lead.closer?.fullName || lead.closer?.email;
+    const hasMeetingInfo = Boolean(lead.meetingDate || lead.meetingNotes || closerName);
 
     const handleCopyLeadCode = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -127,6 +145,40 @@ export function LeadCard({
                         Agendar Reunião
                     </Button>
                 )}
+                {isNoShow && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full cursor-pointer"
+                        onClick={handleScheduleClick}
+                    >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        Reagendar Reunião
+                    </Button>
+                )}
+                {isScheduled && (
+                    <div className="flex flex-col gap-2">
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full cursor-pointer"
+                            onClick={handleNoShowClick}
+                        >
+                            Marcar No-show
+                        </Button>
+                        {lead.meetingLink && (
+                            <Button
+                                size="sm"
+                                variant="default"
+                                className="w-full cursor-pointer"
+                                onClick={handleJoinMeeting}
+                            >
+                                <Video className="mr-2 h-4 w-4" />
+                                Ir para Reunião
+                            </Button>
+                        )}
+                    </div>
+                )}
                 {canFinalizeContract && (
                     <Button
                         size="sm"
@@ -146,6 +198,9 @@ export function LeadCard({
                         )}
                         {lead.meetingNotes && (
                             <div>Observações: {lead.meetingNotes}</div>
+                        )}
+                        {closerName && (
+                            <div>Closer: {closerName}</div>
                         )}
                     </div>
                 )}

@@ -10,9 +10,10 @@ import { Lead } from "../context/BoardTypes";
 interface BoardColumnsProps {
     onFinalizeContract: (lead: Lead) => void;
     onScheduleMeeting: (lead: Lead) => void;
+    onNoShow: (lead: Lead) => void;
 }
 
-export default function BoardColumns({ onFinalizeContract, onScheduleMeeting }: BoardColumnsProps) {
+export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, onNoShow }: BoardColumnsProps) {
     const { 
         filtered, 
         isLoading,
@@ -82,6 +83,7 @@ export default function BoardColumns({ onFinalizeContract, onScheduleMeeting }: 
                                         handleCardClick={handleCardClick}
                                         onFinalizeContract={onFinalizeContract}
                                         onScheduleMeeting={onScheduleMeeting}
+                                        onNoShow={onNoShow}
                                         attachmentCount={lead.attachmentCount || 0}
                                     />
                                 ))}

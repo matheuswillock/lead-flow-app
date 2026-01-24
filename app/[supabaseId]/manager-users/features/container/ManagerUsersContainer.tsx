@@ -11,13 +11,14 @@ import { toast } from "sonner";
 
 import { useManagerUsers } from "../context/useManagerUsers";
 import { DataTable } from "./DataTable";
-import { createColumns } from "./columns";
+// import { createColumns } from "./columns";
 import { UserFormDialog } from "./UserFormDialog";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { DeletePendingOperatorDialog } from "./DeletePendingOperatorDialog";
 import { PendingOperatorsAlert } from "./PendingOperatorsAlert";
 import { OperatorCheckoutStep } from "../checkout/OperatorCheckoutStep";
 import type { ManagerUserTableRow } from "../types";
+import { createColumns } from "./ManagerUsersColumns";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;

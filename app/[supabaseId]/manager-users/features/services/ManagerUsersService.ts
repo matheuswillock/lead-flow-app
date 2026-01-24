@@ -110,6 +110,31 @@ class ManagerUsersService {
     return true;
   }
 
+  // Verificar se email está disponível
+  async checkEmailAvailability(email: string): Promise<{ available: boolean; error?: string }> {
+    const url = `/api/v1/manager/${this.supabaseId}/users?email=${encodeURIComponent(email)}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "x-supabase-user-id": this.supabaseId,
+      },
+    });
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok || !payload?.isValid) {
+      return {
+        available: false,
+        error: payload?.errorMessages?.join(", ") || `HTTP error! status: ${response.status}`,
+      };
+    }
+
+    return {
+      available: payload?.result?.available === true,
+    };
+  }
+
   // Reenviar convite por e-mail para operador
   async resendInvite(email: string, userId?: string): Promise<{ isValid: boolean; successMessages: string[]; errorMessages: string[] }> {
     try {

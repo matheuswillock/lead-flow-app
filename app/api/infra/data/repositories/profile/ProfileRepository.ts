@@ -51,7 +51,8 @@ class PrismaProfileRepository implements IProfileRepository {
                             fullName: true,
                             profileIconUrl: true,
                             email: true,
-                            role: true
+                            role: true,
+                            functions: true
                         }
                     },
                     manager: {
@@ -60,7 +61,8 @@ class PrismaProfileRepository implements IProfileRepository {
                             fullName: true,
                             profileIconUrl: true,
                             email: true,
-                            role: true
+                            role: true,
+                            functions: true
                         }
                     }
                 }
@@ -85,7 +87,8 @@ class PrismaProfileRepository implements IProfileRepository {
                         fullName: true,
                         profileIconUrl: true,
                         email: true,
-                        role: true
+                        role: true,
+                        functions: true
                     }
                 });
 
@@ -112,6 +115,16 @@ class PrismaProfileRepository implements IProfileRepository {
             return false;
         }
 
+    }
+
+    async findByEmail(email: string): Promise<Profile | null> {
+        try {
+            const profile = await prisma.profile.findUnique({ where: { email } });
+            return profile ?? null;
+        } catch (error) {
+            console.error("Error fetching profile by email:", error);
+            return null;
+        }
     }
 
     async createProfile(
@@ -444,7 +457,7 @@ class PrismaProfileRepository implements IProfileRepository {
 
     async updateProfileById(
         profileId: string,
-        updates: { fullName?: string; phone?: string; email?: string; role?: string }
+        updates: { fullName?: string; phone?: string; email?: string; role?: string; functions?: ("SDR" | "CLOSER")[] }
     ): Promise<Profile | null> {
         try {
             console.info("🔄 [updateProfileById] Iniciando atualização para profileId:", profileId);
@@ -538,6 +551,11 @@ class PrismaProfileRepository implements IProfileRepository {
             if (updates.role !== undefined) {
                 updateData.role = updates.role;
                 console.info("👤 [updateProfileById] Atualizando role:", `${existingProfile.role} → ${updates.role}`);
+            }
+
+            if (updates.functions !== undefined) {
+                updateData.functions = updates.functions;
+                console.info("🧩 [updateProfileById] Atualizando functions:", updates.functions);
             }
 
             const profile = await prisma.profile.update({

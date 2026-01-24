@@ -6,6 +6,7 @@ export interface AddOperatorPaymentData {
     name: string;
     email: string;
     role: string;
+    functions?: ("SDR" | "CLOSER")[];
   };
   paymentMethod: "PIX" | "CREDIT_CARD";
   creditCard?: {

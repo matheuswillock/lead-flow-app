@@ -21,10 +21,31 @@ import {
   TrendingDown,
   Wallet,
   Eye,
-  EyeOff
+  EyeOff,
+  Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+
+function InfoTooltip({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="ml-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/10 text-muted-foreground transition hover:bg-muted/20 hover:text-foreground"
+          aria-label="Ver detalhes do calculo"
+        >
+          <Info className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>
+        <p>{text}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export function SectionCardsWithContext() {
   const { metrics, isLoading, error, filters, customDateRange, isBlurred, toggleBlur } = useDashboardContext();
@@ -70,7 +91,8 @@ export function SectionCardsWithContext() {
   const periodText = getPeriodText();
 
   return (
-    <div className="space-y-6 px-4 lg:px-6">
+    <TooltipProvider delayDuration={0}>
+      <div className="space-y-6 px-4 lg:px-6">
       {/* Toggle de Blur para Privacidade */}
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={toggleBlur} className="gap-2">
@@ -96,6 +118,7 @@ export function SectionCardsWithContext() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 💰 Receita Total
+                <InfoTooltip text="Soma do ticket dos leads com status Negocio fechado no periodo selecionado." />
               </CardTitle>
               <div className="rounded-full bg-green-500/10 p-2">
                 <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -123,6 +146,7 @@ export function SectionCardsWithContext() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 📊 Ticket
+                <InfoTooltip text="Soma do ticket de todos os leads no periodo selecionado." />
               </CardTitle>
               <div className="rounded-full bg-amber-500/10 p-2">
                 <TrendingUp className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -150,6 +174,7 @@ export function SectionCardsWithContext() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 🎯 Taxa de Conversão
+                <InfoTooltip text="Vendas divididas pelo total de agendados no periodo selecionado." />
               </CardTitle>
               <div className="rounded-full bg-blue-500/10 p-2">
                 <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -177,6 +202,7 @@ export function SectionCardsWithContext() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 💼 Cadência
+                <InfoTooltip text="Soma do valor atual (currentValue) de todos os leads no periodo selecionado." />
               </CardTitle>
               <div className="rounded-full bg-purple-500/10 p-2">
                 <Wallet className="h-5 w-5 text-purple-600 dark:text-purple-400" />
@@ -210,6 +236,7 @@ export function SectionCardsWithContext() {
                 <Calendar className="h-4 w-4 text-blue-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Agendamentos
+                  <InfoTooltip text="Total de leads agendados no periodo (status Agendado + No Show). Se houver registros de agendamento, eles sao usados como base." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -233,6 +260,7 @@ export function SectionCardsWithContext() {
                 <Handshake className="h-4 w-4 text-orange-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Negociação
+                  <InfoTooltip text="Quantidade de leads em negociacao ou cotacao no periodo selecionado." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -256,6 +284,7 @@ export function SectionCardsWithContext() {
                 <Settings className="h-4 w-4 text-cyan-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Implementação
+                  <InfoTooltip text="Quantidade de leads em proposta, DPS/Contrato, boleto ou documentos pendentes." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -277,7 +306,10 @@ export function SectionCardsWithContext() {
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-green-500" />
-                <CardTitle className="text-xs font-medium text-muted-foreground">Vendas</CardTitle>
+                <CardTitle className="text-xs font-medium text-muted-foreground">
+                  Vendas
+                  <InfoTooltip text="Quantidade de leads com status Negocio fechado no periodo selecionado." />
+                </CardTitle>
               </div>
               <CardDescription
                 className={cn(
@@ -306,7 +338,10 @@ export function SectionCardsWithContext() {
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
                 <UserX className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
-                <CardTitle className="text-xs font-medium text-muted-foreground">No-Show</CardTitle>
+                <CardTitle className="text-xs font-medium text-muted-foreground">
+                  Taxa de No-show
+                  <InfoTooltip text="No-show dividido pelo total de agendados no periodo selecionado." />
+                </CardTitle>
               </div>
               <CardDescription
                 className={cn(
@@ -328,7 +363,8 @@ export function SectionCardsWithContext() {
               <div className="flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-red-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Churn Rate
+                  Taxa de Churn Rate
+                  <InfoTooltip text="Negado operadora dividido por vendas no periodo selecionado." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -348,7 +384,8 @@ export function SectionCardsWithContext() {
           </Card>
         </div>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   )
 }
 
