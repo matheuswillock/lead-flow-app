@@ -19,6 +19,8 @@ interface AccountFormProps {
   className?: string;
   initialData?: updateAccountFormData;
   showPasswordField?: boolean;
+  hasExtraChanges?: boolean;
+  extraContent?: React.ReactNode;
 }
 
 export function AccountForm({
@@ -30,6 +32,8 @@ export function AccountForm({
   onCancel,
   initialData,
   showPasswordField = false,
+  hasExtraChanges = false,
+  extraContent,
 }: AccountFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -58,7 +62,7 @@ export function AccountForm({
 
   const isFormValid = form.formState.isValid;
   
-  const isSubmitDisabled = !hasChanges || !isFormValid || isLoading || isUpdating;
+  const isSubmitDisabled = (!hasChanges && !hasExtraChanges) || !isFormValid || isLoading || isUpdating;
 
   return (
     <Form {...form}>
@@ -345,6 +349,8 @@ export function AccountForm({
             )}
           />
         )}
+
+        {extraContent}
 
         <div className="flex items-center justify-end gap-3">
           <Button 

@@ -131,6 +131,15 @@ export default function PipelineTable() {
     return users.filter((u) => u.functions?.includes("CLOSER"));
   }, [user]);
 
+  const closerOptions = React.useMemo(() => {
+    return closers.map((closer) => ({
+      label: (closer as { fullName?: string; name?: string; email?: string }).fullName
+        || (closer as { name?: string }).name
+        || closer.email,
+      value: closer.id,
+    }));
+  }, [closers]);
+
   const handleScheduleMeeting = (lead: Lead) => {
     setSelectedLead(lead);
     setShowScheduleDialog(true);
@@ -226,6 +235,7 @@ export default function PipelineTable() {
         table={table} 
         statusOptions={statusOptions}
         responsibleOptions={responsibleOptions}
+        closerOptions={closerOptions}
       />
       <div className="rounded-md border">
         <DndContext

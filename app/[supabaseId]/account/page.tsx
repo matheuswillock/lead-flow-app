@@ -9,7 +9,7 @@ import { useUser } from "@/app/context/UserContext";
 import { toast } from "sonner";
 import { useUpdateAccountForm } from "@/hooks/useForms";
 import { AccountForm } from "@/components/forms/accountForm";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { updateAccountFormData } from "@/lib/validations/validationForms";
 import {
   AlertDialog,
@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useParams, useRouter } from "next/navigation";
 
 export default function AccountProfilePage() {
@@ -34,6 +35,7 @@ export default function AccountProfilePage() {
   const [isUploadingIcon, setIsUploadingIcon] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [functionSelections, setFunctionSelections] = useState<string[]>([]);
   
   // Estados para deletar conta
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -70,6 +72,7 @@ export default function AccountProfilePage() {
         city: user.city || "",
         state: user.state || "",
       });
+      setFunctionSelections(user.functions || []);
     }
   }, [user, form]);
 
@@ -210,6 +213,11 @@ export default function AccountProfilePage() {
         hasChanges = true;
       }
 
+      if (user?.isMaster && hasFunctionChanges) {
+        updates.functions = functionSelections;
+        hasChanges = true;
+      }
+
       if (!hasChanges) {
         toast.info("Nenhuma alteração detectada");
         return;
@@ -285,6 +293,23 @@ export default function AccountProfilePage() {
       newPassword: "",
       confirmPassword: ""
     });
+  }
+
+  const functionChangeKey = useMemo(() => {
+    const current = (user?.functions || []).slice().sort().join(",");
+    const next = functionSelections.slice().sort().join(",");
+    return `${current}|${next}`;
+  }, [user?.functions, functionSelections]);
+
+  const hasFunctionChanges = useMemo(() => {
+    const [current, next] = functionChangeKey.split("|");
+    return current !== next;
+  }, [functionChangeKey]);
+
+  function toggleFunction(value: string) {
+    setFunctionSelections((prev) =>
+      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
+    );
   }
 
   async function handleDeleteAccount() {
@@ -471,6 +496,53 @@ export default function AccountProfilePage() {
                     isUpdating={isUpdating}
                     onCancel={onCancel}
                     showPasswordField={false}
+                    hasExtraChanges={hasFunctionChanges}
+                    extraContent={
+                      user?.isMaster ? (
+                        <>
+                          <Separator />
+                          <section className="space-y-4">
+                            <div>
+                              <h2 className="text-base font-medium">Gerenciar funções</h2>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                Defina as funções habilitadas para o seu usuário master.
+                              </p>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <label className="flex items-center gap-3 rounded-lg border border-border/60 p-3">
+                                <Checkbox
+                                  checked={functionSelections.includes("SDR")}
+                                  onCheckedChange={() => toggleFunction("SDR")}
+                                  disabled={isUpdating}
+                                />
+                                <div>
+                                  <p className="text-sm font-medium">SDR</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Qualifica leads e organiza o funil.
+                                  </p>
+                                </div>
+                              </label>
+                              <label className="flex items-center gap-3 rounded-lg border border-border/60 p-3">
+                                <Checkbox
+                                  checked={functionSelections.includes("CLOSER")}
+                                  onCheckedChange={() => toggleFunction("CLOSER")}
+                                  disabled={isUpdating}
+                                />
+                                <div>
+                                  <p className="text-sm font-medium">Closer</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Conduz reuniões e fechamento.
+                                  </p>
+                                </div>
+                              </label>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              As funções serão salvas junto com as alterações do perfil.
+                            </p>
+                          </section>
+                        </>
+                      ) : null
+                    }
                     initialData={{
                       fullName: user?.fullName || "",
                       email: user?.email || "",
