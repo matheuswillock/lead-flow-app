@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useParams } from "next/navigation"
+import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -23,9 +25,11 @@ import { ScheduleMeetingDialog } from "@/app/[supabaseId]/board/features/contain
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes"
 import { getLeadStatusLabel } from "@/lib/lead-status"
 
+const SLOT_MINUTES = 30
+
 const buildTimeSlots = () =>
-  Array.from({ length: 96 }, (_, i) => {
-    const totalMinutes = i * 15
+  Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, i) => {
+    const totalMinutes = i * SLOT_MINUTES
     const hour = Math.floor(totalMinutes / 60)
     const minute = totalMinutes % 60
     return `${hour.toString().padStart(2, "0")}:${minute
@@ -35,6 +39,25 @@ const buildTimeSlots = () =>
 
 const formatTime = (date: Date) =>
   date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+
+const timeToMinutes = (time: string) => {
+  const [hours, minutes] = time.split(":").map((part) => Number(part))
+  return hours * 60 + minutes
+}
+
+const dateToMinutes = (date: Date) =>
+  date.getHours() * 60 +
+  date.getMinutes() +
+  date.getSeconds() / 60 +
+  date.getMilliseconds() / 60000
+
+const getSlotIndex = (minutes: number) => Math.floor(minutes / SLOT_MINUTES)
+
+const isWithinSlot = (meetingDate: Date, slotStart: string) => {
+  const startMinutes = timeToMinutes(slotStart)
+  const meetingMinutes = dateToMinutes(meetingDate)
+  return getSlotIndex(meetingMinutes) === getSlotIndex(startMinutes)
+}
 
 const formatDateRange = (from: Date, to: Date) => {
   const day = from.toLocaleDateString("pt-BR", {
@@ -89,6 +112,10 @@ export default function Calendar42() {
   const [leadToSchedule, setLeadToSchedule] = React.useState<Lead | null>(null)
   const [scheduleDialogOpen, setScheduleDialogOpen] = React.useState(false)
   const [leadPickerQuery, setLeadPickerQuery] = React.useState("")
+  const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
+  const [leadToCancel, setLeadToCancel] = React.useState<Lead | null>(null)
+  const params = useParams()
+  const supabaseId = params.supabaseId as string | undefined
 
   const timeSlots = React.useMemo(() => buildTimeSlots(), [])
 
@@ -127,7 +154,7 @@ export default function Calendar42() {
     return dayEvents.filter((lead) => {
       const meetingDate = lead.meetingDate ? new Date(lead.meetingDate) : null
       const matchesTime =
-        !selectedTime || (meetingDate && formatTime(meetingDate) === selectedTime)
+        !selectedTime || (meetingDate && isWithinSlot(meetingDate, selectedTime))
       const matchesName =
         !nameQuery || lead.name.toLowerCase().includes(nameQuery)
       const matchesId =
@@ -153,6 +180,42 @@ export default function Calendar42() {
         )
       })
   }, [allLeads, leadPickerQuery])
+
+  const handleCancelSchedule = async () => {
+    if (!leadToCancel) return
+    try {
+      if (!supabaseId) {
+        throw new Error("Usuario nao identificado")
+      }
+      const response = await fetch(`/api/v1/leads/${leadToCancel.id}/schedule/cancel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+        },
+      })
+      const result = await response.json()
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Erro ao cancelar agenda")
+      }
+      setCancelDialogOpen(false)
+      setLeadToCancel(null)
+      await refreshLeads()
+      const successMessage =
+        result?.successMessages?.[0] || "Agenda cancelada com sucesso"
+      const warningMessage =
+        result?.successMessages?.length > 1
+          ? result.successMessages.slice(1).join(" ")
+          : undefined
+      toast.success(successMessage, {
+        description: warningMessage,
+      })
+    } catch (error) {
+      console.error("Erro ao cancelar agenda:", error)
+      const message = error instanceof Error ? error.message : "Erro ao cancelar agenda"
+      toast.error(message)
+    }
+  }
 
   const selectedClosers = closers.filter((closer) =>
     closerFilter.includes(closer.id)
@@ -363,27 +426,44 @@ export default function Calendar42() {
                     : null
                   const closerLabel = getCloserLabel(lead, closersById)
                   return (
-                    <button
+                    <div
                       key={lead.id}
-                      type="button"
-                      onClick={() => handleCardClick(lead)}
                       className="bg-muted hover:bg-muted/80 after:bg-primary/70 relative rounded-md p-3 pl-6 text-left text-sm transition-colors after:absolute after:inset-y-3 after:left-3 after:w-1 after:rounded-full"
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-medium">{lead.name}</div>
-                        <span className="text-xs text-muted-foreground">
-                          {lead.leadCode}
-                        </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCardClick(lead)}
+                        className="flex w-full flex-col gap-1 text-left"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="font-medium">{lead.name}</div>
+                          <span className="text-xs text-muted-foreground">
+                            {lead.leadCode}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {meetingStart && meetingEnd
+                            ? formatDateRange(meetingStart, meetingEnd)
+                            : "Horario indefinido"}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Closer: {closerLabel}
+                        </div>
+                      </button>
+                      <div className="mt-2 flex justify-end">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setLeadToCancel(lead)
+                            setCancelDialogOpen(true)
+                          }}
+                        >
+                          Cancelar agenda
+                        </Button>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {meetingStart && meetingEnd
-                          ? formatDateRange(meetingStart, meetingEnd)
-                          : "Horario indefinido"}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Closer: {closerLabel}
-                      </div>
-                    </button>
+                    </div>
                   )
                 })
               )}
@@ -465,6 +545,41 @@ export default function Calendar42() {
           closers={closers}
         />
       )}
+
+      <Dialog
+        open={cancelDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setCancelDialogOpen(nextOpen)
+          if (!nextOpen) {
+            setLeadToCancel(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Cancelar agenda</DialogTitle>
+            <DialogDescription>
+              Deseja cancelar a agenda atual ou reagendar a reuniao?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!leadToCancel) return
+                setCancelDialogOpen(false)
+                setLeadToSchedule(leadToCancel)
+                setScheduleDialogOpen(true)
+              }}
+            >
+              Reagendar
+            </Button>
+            <Button variant="destructive" onClick={handleCancelSchedule}>
+              Cancelar agenda
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

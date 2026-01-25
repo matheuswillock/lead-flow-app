@@ -131,7 +131,20 @@ async function googleCalendarFetch<T>(url: string, accessToken: string, options:
     throw new Error(message);
   }
 
-  return response.json() as Promise<T>;
+  if (response.status === 204) {
+    return null as T;
+  }
+
+  const rawBody = await response.text().catch(() => "");
+  if (!rawBody) {
+    return null as T;
+  }
+
+  try {
+    return JSON.parse(rawBody) as T;
+  } catch {
+    return null as T;
+  }
 }
 
 export async function resendCalendarInvite({
@@ -168,6 +181,24 @@ export async function resendCalendarInvite({
     `${baseUrl}/${encodeURIComponent(eventId)}?sendUpdates=all`,
     accessToken,
     { method: "PATCH", body: JSON.stringify(body) }
+  );
+}
+
+export async function cancelCalendarEvent({
+  organizer,
+  eventId,
+  calendarId = "primary",
+}: {
+  organizer: Profile;
+  eventId: string;
+  calendarId?: string;
+}): Promise<void> {
+  const accessToken = await getValidAccessToken(organizer);
+  const baseUrl = `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`;
+  await googleCalendarFetch<any>(
+    `${baseUrl}/${encodeURIComponent(eventId)}?sendUpdates=all`,
+    accessToken,
+    { method: "DELETE" }
   );
 }
 

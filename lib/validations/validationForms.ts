@@ -174,6 +174,17 @@ export const leadFormSchema = z.object({
   meetingNotes: z.string().min(0).optional(),
   meetingLink: z.string().url("Link da reuniao invalido").optional().or(z.literal("")),
   meetingHeald: z.enum(["yes", "no"]).optional(),
+  extraGuests: z
+    .string()
+    .optional()
+    .refine((value) => {
+      if (!value || value.trim() === "") return true;
+      const emails = value
+        .split(/[,;\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      return emails.every((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    }, "Informe apenas emails válidos"),
   responsible: z.string().min(2, "O responsável é obrigatório"),
   
   // Novos campos para leads finalizados (opcionais, apenas em edição)

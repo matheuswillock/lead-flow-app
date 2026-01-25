@@ -13,6 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { Checkbox } from "../ui/checkbox";
+import {
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
@@ -58,6 +64,14 @@ export interface ILeadFormProps {
     initialData?: leadFormData;
     usersToAssign: UserAssociated[];
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
+    meetingInfo?: {
+        date?: string | null;
+        link?: string | null;
+        notes?: string | null;
+        guests?: string[];
+        closerName?: string | null;
+    };
+    onResendInvite?: () => void;
 }
 
 export function LeadForm({
@@ -69,7 +83,9 @@ export function LeadForm({
     className,
     initialData,
     usersToAssign,
-    leadId
+    leadId,
+    meetingInfo,
+    onResendInvite
 }: ILeadFormProps) {
     const [hasChanges, setHasChanges] = useState(false);
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
@@ -78,6 +94,19 @@ export function LeadForm({
         () => usersToAssign?.filter((user) => user.functions?.includes("CLOSER")) ?? [],
         [usersToAssign]
     );
+
+    const parseEmails = (value: string | undefined) => {
+        if (!value) return [];
+        return value
+            .split(/[,;\s]+/)
+            .map((item) => item.trim().toLowerCase())
+            .filter(Boolean);
+    };
+
+    const buildEmailValue = (emails: string[]) => {
+        const unique = Array.from(new Set(emails));
+        return unique.join(", ");
+    };
 
     const watchedValues = form.watch();
     const isFormValid = form.formState.isValid;
@@ -559,6 +588,27 @@ export function LeadForm({
 
             </div>
 
+            {meetingInfo?.date && (
+                <div className="sm:col-span-2 rounded-lg border border-dashed border-muted-foreground/40 p-3 text-sm text-muted-foreground">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                            <div className="font-medium text-foreground">Resumo do agendamento</div>
+                            <div>Data e horário: {new Date(meetingInfo.date).toLocaleString("pt-BR")}</div>
+                            {meetingInfo.closerName && <div>Closer: {meetingInfo.closerName}</div>}
+                            {meetingInfo.guests && meetingInfo.guests.length > 0 && (
+                                <div>Convidados extras: {meetingInfo.guests.join(", ")}</div>
+                            )}
+                            {meetingInfo.link && <div>Link: {meetingInfo.link}</div>}
+                        </div>
+                        {onResendInvite && (
+                            <Button type="button" variant="outline" onClick={onResendInvite}>
+                                Reenviar convite
+                            </Button>
+                        )}
+                    </div>
+                </div>
+            )}
+
             <FormField
                 control={form.control}
                 name="meetingNotes"
@@ -611,6 +661,80 @@ export function LeadForm({
                             </FormItem>
                         )}
                     />
+
+            <FormField
+                control={form.control}
+                name="extraGuests"
+                render={({ field }) => {
+                    const selectedEmails = parseEmails(field.value);
+                    return (
+                        <FormItem className="sm:col-span-2">
+                            <FormLabel className="block text-sm font-medium mb-1">
+                                Convidados extras (emails)
+                            </FormLabel>
+                            <FormControl>
+                                <div className="grid gap-2">
+                                    <Input
+                                        value={field.value || ""}
+                                        onChange={field.onChange}
+                                        placeholder="ex: convidado1@email.com, convidado2@email.com"
+                                        disabled={isLoading || isUpdating}
+                                    />
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                        <span>Adicionar membros do time:</span>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button type="button" variant="outline" size="sm">
+                                                    Selecionar
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent className="w-60">
+                                                {usersToAssign
+                                                    .filter((user) => user.email)
+                                                    .map((user) => {
+                                                        const email = user.email;
+                                                        const checked = selectedEmails.includes(email.toLowerCase());
+                                                        return (
+                                                            <DropdownMenuCheckboxItem
+                                                                key={user.id}
+                                                                checked={checked}
+                                                                onCheckedChange={(nextChecked) => {
+                                                                    const next = nextChecked
+                                                                        ? [...selectedEmails, email]
+                                                                        : selectedEmails.filter((item) => item !== email.toLowerCase());
+                                                                    field.onChange(buildEmailValue(next));
+                                                                }}
+                                                            >
+                                                                <div className="flex items-center gap-2">
+                                                                    <Avatar className="h-5 w-5">
+                                                                        <AvatarImage
+                                                                            src={user.avatarImageUrl || undefined}
+                                                                        />
+                                                                        <AvatarFallback className="text-[10px]">
+                                                                            {user.name
+                                                                                .split(" ")
+                                                                                .map((n) => n[0])
+                                                                                .join("")
+                                                                                .toUpperCase()}
+                                                                        </AvatarFallback>
+                                                                    </Avatar>
+                                                                    <span className="truncate">{user.name}</span>
+                                                                </div>
+                                                            </DropdownMenuCheckboxItem>
+                                                        );
+                                                    })}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        Separe os emails por virgula ou espaco.
+                                    </p>
+                                </div>
+                            </FormControl>
+                        </FormItem>
+                    );
+                }}
+            />
 
             {/* Campos adicionais apenas para leads em edição */}
             {leadId && (

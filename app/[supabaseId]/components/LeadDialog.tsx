@@ -189,6 +189,40 @@ export default function LeadDialog({
         const result = await updateLead(lead.id, updateData);
 
         if (result.success) {
+          const extraGuests = parseExtraGuests(data.extraGuests);
+          const normalizedGuests = Array.from(
+            new Set(extraGuests.map((email) => email.toLowerCase()))
+          );
+          const currentGuests = Array.from(
+            new Set(scheduleGuests.map((email) => email.toLowerCase()))
+          );
+          const guestsChanged =
+            normalizedGuests.length !== currentGuests.length ||
+            normalizedGuests.some((email) => !currentGuests.includes(email));
+
+          const meetingDateValue = data.meetingDate || lead.meetingDate;
+          if (meetingDateValue && (guestsChanged || data.meetingDate || data.meetingLink || data.meetingNotes)) {
+            try {
+              await fetch(`/api/v1/leads/${lead.id}/schedule`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-supabase-user-id": supabaseId || "",
+                },
+                body: JSON.stringify({
+                  date: meetingDateValue,
+                  notes: data.meetingNotes || undefined,
+                  meetingLink: data.meetingLink || undefined,
+                  closerId: data.closerId || undefined,
+                  extraGuests: normalizedGuests,
+                }),
+              });
+              setScheduleGuests(normalizedGuests);
+            } catch (error) {
+              console.error("Erro ao atualizar convidados extras:", error);
+            }
+          }
+
           toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
             id: loadingToast,
             duration: 3000,
@@ -351,6 +385,7 @@ export default function LeadDialog({
         meetingNotes: lead.meetingNotes || "",
         meetingLink: lead.meetingLink || "",
         meetingHeald: lead.meetingHeald || undefined,
+        extraGuests: scheduleGuests.join(", "),
         responsible: lead.assignedTo || "",
         ticket: lead.ticket ? formatCurrency(lead.ticket) : "",
         contractDueDate: lead.contractDueDate || "",
@@ -373,13 +408,14 @@ export default function LeadDialog({
         meetingNotes: "",
         meetingLink: "",
         meetingHeald: undefined,
+        extraGuests: "",
         responsible: user?.usersAssociated?.[0]?.id || "",
         ticket: "",
         contractDueDate: "",
         soldPlan: undefined,
       });
     }
-  }, [lead, open, form, user]);
+  }, [lead, open, form, user, scheduleGuests]);
 
   useEffect(() => {
     const fetchScheduleGuests = async () => {
@@ -444,6 +480,15 @@ export default function LeadDialog({
       const message = error instanceof Error ? error.message : "Erro ao reenviar convite";
       toast.error(message, { id: loadingToast });
     }
+  };
+
+  const parseExtraGuests = (value: string | undefined): string[] => {
+    if (!value) return [];
+    return value
+      .split(/[,;\s]+/)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+      .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
   };
 
   return (
@@ -521,14 +566,22 @@ export default function LeadDialog({
               <p className="text-sm text-destructive">Erro ao carregar dados do usuário</p>
             </div>
           ) : (
-            <LeadForm
-              form={form}
-              onSubmit={onSubmit}
-              isLoading={isSubmitting}
-              onCancel={() => setOpen(false)}
-              usersToAssign={user.usersAssociated || []}
-              leadId={lead?.id}
-            />
+          <LeadForm
+            form={form}
+            onSubmit={onSubmit}
+            isLoading={isSubmitting}
+            onCancel={() => setOpen(false)}
+            usersToAssign={user.usersAssociated || []}
+            leadId={lead?.id}
+            meetingInfo={{
+              date: lead?.meetingDate || null,
+              link: lead?.meetingLink || null,
+              notes: lead?.meetingNotes || null,
+              guests: scheduleGuests,
+              closerName: lead?.closer?.fullName || lead?.closer?.email || null,
+            }}
+            onResendInvite={() => setResendDialogOpen(true)}
+          />
           )}
         </DialogContent>
       </Dialog>
