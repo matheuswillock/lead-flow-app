@@ -53,6 +53,17 @@ export interface OperatorAccessRemovedEmailData {
   managerName: string;
 }
 
+export interface MeetingInviteEmailData {
+  to: string[];
+  leadName: string;
+  meetingTitle?: string | null;
+  meetingDate: Date;
+  meetingLink?: string | null;
+  organizerName: string;
+  closerName?: string | null;
+  notes?: string | null;
+}
+
 export class EmailService {
   private resend?: ReturnType<typeof assertResend>;
 
@@ -709,6 +720,78 @@ export class EmailService {
     return this.sendEmail({
       to: [data.operatorEmail],
       subject: "Acesso Removido - Corretor Studio",
+      html,
+    });
+  }
+
+  async sendMeetingInviteEmail(data: MeetingInviteEmailData) {
+    const formattedDate = data.meetingDate.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+    const formattedTime = data.meetingDate.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const title = data.meetingTitle || `Reunião com ${data.leadName}`;
+    const linkMarkup = data.meetingLink
+      ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
+      : "Link não informado";
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                <tr>
+                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
+                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Convite de reunião</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 40px 32px;">
+                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600;">${title}</h2>
+                    <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
+                      Você foi convidado para uma reunião com <strong>${data.leadName}</strong>.
+                    </p>
+                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
+                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
+                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
+                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Organizador:</strong> ${data.organizerName}</p>
+                      <p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> ${linkMarkup}</p>
+                    </div>
+                    <p style="margin: 20px 0 0 0; color: #737373; font-size: 13px; line-height: 1.6;">
+                      Este convite foi reenviado pelo Corretor Studio.
+                    </p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background-color: #fafafa; padding: 20px 32px; border-top: 1px solid #e5e5e5;">
+                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
+                      Este é um e-mail automático do Corretor Studio
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    return this.sendEmail({
+      to: data.to,
+      subject: title,
       html,
     });
   }

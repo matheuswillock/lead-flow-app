@@ -354,6 +354,7 @@ export default function PipelineTable() {
           lead={selectedLead}
           onScheduleSuccess={refreshLeads}
           closers={closers}
+          teamMembers={user?.usersAssociated ?? []}
         />
       )}
 
@@ -365,6 +366,7 @@ export default function PipelineTable() {
           statusLabels={statusLabels}
           onStatusChanged={refreshLeads}
           closers={closers}
+          teamMembers={user?.usersAssociated ?? []}
         />
       )}
     </div>

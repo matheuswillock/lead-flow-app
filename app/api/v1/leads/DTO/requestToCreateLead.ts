@@ -12,6 +12,7 @@ export const CreateLeadRequestSchema = z.object({
   referenceHospital: z.string().nullish().transform(val => val || undefined),
   currentTreatment: z.string().nullish().transform(val => val || undefined),
   meetingDate: z.string().datetime().nullish().transform(val => val || undefined),
+  meetingTitle: z.string().nullish().transform(val => val || undefined),
   meetingNotes: z.string().nullish().transform(val => val || undefined),
   meetingLink: z.string().url("Link da reunião inválido").nullish().transform(val => val || undefined),
   meetingHeald: z.nativeEnum(MeetingHeald).nullish().transform(val => val || undefined),

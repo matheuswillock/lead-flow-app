@@ -1,6 +1,7 @@
 'use client';
 
 import { useDashboardContext } from '../context/DashboardContext';
+import { getLeadStatusLabel } from '@/lib/lead-status';
 
 export function DashboardMetricsWithContext() {
   const { 
@@ -225,7 +226,7 @@ export function DashboardMetricsWithContext() {
                 {detailedMetrics.map((metric: any, index: number) => (
                   <tr key={index}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {metric.status}
+                      {getLeadStatusLabel(metric.status)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {metric.count}

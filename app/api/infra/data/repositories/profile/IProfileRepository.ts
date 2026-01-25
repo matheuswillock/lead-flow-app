@@ -29,6 +29,29 @@ export interface IProfileRepository {
     state?: string,
     managerId?: string
   ): Promise<{ profileId: string; supabaseId: string } | null>;
+  createProfileWithSupabaseId(
+    supabaseId: string,
+    fullName: string,
+    phone: string,
+    email: string,
+    role: UserRole,
+    asaasCustomerId?: string,
+    subscriptionId?: string,
+    cpfCnpj?: string,
+    subscriptionStatus?: string,
+    subscriptionPlan?: string,
+    operatorCount?: number,
+    subscriptionStartDate?: Date,
+    trialEndDate?: Date,
+    postalCode?: string,
+    address?: string,
+    addressNumber?: string,
+    neighborhood?: string,
+    complement?: string,
+    city?: string,
+    state?: string,
+    managerId?: string
+  ): Promise<{ profileId: string; supabaseId: string } | null>;
   updateProfile(
     supabaseId: string,
     updates: { 
@@ -54,6 +77,16 @@ export interface IProfileRepository {
     supabaseId: string,
     profileIconId: string | null,
     profileIconUrl: string | null
+  ): Promise<Profile | null>;
+  updateGoogleCalendarAuth(
+    supabaseId: string,
+    updates: {
+      accessToken?: string | null;
+      refreshToken?: string | null;
+      expiresAt?: Date | null;
+      email?: string | null;
+      connected?: boolean;
+    }
   ): Promise<Profile | null>;
   updatePassword(supabaseId: string, newPassword: string): Promise<boolean>;
   deleteProfile(supabaseId: string): Promise<Profile | null>;
