@@ -12,6 +12,7 @@ import { useParams } from "next/navigation"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -24,6 +25,8 @@ import useBoardContext from "@/app/[supabaseId]/board/features/context/BoardHook
 import { ScheduleMeetingDialog } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog"
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes"
 import { getLeadStatusLabel } from "@/lib/lead-status"
+import { CalendarDayButton } from "@/components/ui/calendar"
+import { cn } from "@/lib/utils"
 
 const SLOT_MINUTES = 30
 
@@ -67,6 +70,11 @@ const formatDateRange = (from: Date, to: Date) => {
   })
   return `${day} ${formatTime(from)} - ${formatTime(to)}`
 }
+
+const toDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`
 
 const isSameDay = (left: Date, right: Date) =>
   left.getFullYear() === right.getFullYear() &&
@@ -116,8 +124,13 @@ export default function Calendar42() {
   const [leadToCancel, setLeadToCancel] = React.useState<Lead | null>(null)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
+  const timeListRef = React.useRef<HTMLDivElement | null>(null)
 
   const timeSlots = React.useMemo(() => buildTimeSlots(), [])
+  const todayStart = React.useMemo(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  }, [])
 
   const allLeads = React.useMemo(
     () => Object.values(data).flat(),
@@ -140,6 +153,16 @@ export default function Calendar42() {
     () => allLeads.filter((lead) => !!lead.meetingDate),
     [allLeads]
   )
+
+  const meetingCounts = React.useMemo(() => {
+    const counts = new Map<string, number>()
+    leadsWithMeetings.forEach((lead) => {
+      if (!lead.meetingDate) return
+      const key = toDateKey(new Date(lead.meetingDate))
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
+    return counts
+  }, [leadsWithMeetings])
 
   const dayEvents = React.useMemo(() => {
     if (!date) return []
@@ -221,6 +244,16 @@ export default function Calendar42() {
     closerFilter.includes(closer.id)
   )
 
+  React.useEffect(() => {
+    if (!selectedTime) return
+    const target = timeListRef.current?.querySelector(
+      `[data-time="${selectedTime}"]`
+    ) as HTMLElement | null
+    if (target) {
+      target.scrollIntoView({ block: "center" })
+    }
+  }, [selectedTime])
+
   return (
     <div className="flex min-h-0 h-full w-full max-w-full flex-1 flex-col gap-4 overflow-x-hidden p-4">
       <div className="grid w-full min-w-0 max-w-full gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:h-full">
@@ -234,6 +267,28 @@ export default function Calendar42() {
               locale={ptBR}
               showOutsideDays={false}
               className="bg-transparent p-0 [--cell-size:2.25rem] sm:[--cell-size:2.5rem]"
+              modifiers={{
+                past: (day) => day < todayStart,
+              }}
+              modifiersClassNames={{
+                past: "opacity-50 line-through",
+              }}
+              components={{
+                DayButton: (props) => {
+                  const count = meetingCounts.get(toDateKey(props.day.date)) ?? 0
+                  return (
+                    <CalendarDayButton
+                      {...props}
+                      className={cn(props.className, count > 0 && "gap-0.5")}
+                    >
+                      <span>{props.children}</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {count > 0 ? count : ""}
+                      </span>
+                    </CalendarDayButton>
+                  )
+                },
+              }}
               formatters={{
                 formatMonthCaption: (value) => {
                   const raw = value.toLocaleString("pt-BR", { month: "short" })
@@ -258,13 +313,17 @@ export default function Calendar42() {
                 Limpar horario
               </Button>
             </div>
-            <div className="no-scrollbar flex max-h-[40dvh] flex-col gap-2 overflow-y-auto px-2 lg:max-h-none lg:min-h-0 lg:flex-1">
+            <div
+              ref={timeListRef}
+              className="no-scrollbar flex max-h-[40dvh] flex-col gap-2 overflow-y-auto px-2 lg:max-h-none lg:min-h-0 lg:flex-1"
+            >
               {timeSlots.map((time) => (
                 <Button
                   key={time}
                   variant={selectedTime === time ? "default" : "outline"}
                   onClick={() => setSelectedTime(time)}
                   className="w-full shadow-none"
+                  data-time={time}
                 >
                   {time}
                 </Button>
@@ -427,10 +486,20 @@ export default function Calendar42() {
                   const closerLabel = getCloserLabel(lead, closersById)
                   const meetingTitle = lead.meetingTitle || `Reunião com ${lead.name}`
                   const showLeadName = meetingTitle !== lead.name
+                  const isCanceled =
+                    lead.meetingHeald === "no" || lead.status === "no_show"
+                  const isOverdue =
+                    !!meetingStart &&
+                    meetingStart.getTime() < Date.now() &&
+                    lead.status === "scheduled" &&
+                    lead.meetingHeald !== "yes"
                   return (
                     <div
                       key={lead.id}
-                      className="bg-muted hover:bg-muted/80 after:bg-primary/70 relative rounded-md p-3 pl-6 text-left text-sm transition-colors after:absolute after:inset-y-3 after:left-3 after:w-1 after:rounded-full"
+                      className={cn(
+                        "bg-muted hover:bg-muted/80 after:bg-primary/70 relative rounded-md p-3 pl-6 text-left text-sm transition-colors after:absolute after:inset-y-3 after:left-3 after:w-1 after:rounded-full",
+                        isCanceled && "opacity-70"
+                      )}
                     >
                       <button
                         type="button"
@@ -438,22 +507,44 @@ export default function Calendar42() {
                         className="flex w-full flex-col gap-1 text-left"
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium">{meetingTitle}</div>
+                          <div className={cn("font-medium", isCanceled && "line-through")}>
+                            {meetingTitle}
+                          </div>
                           <span className="text-xs text-muted-foreground">
                             {lead.leadCode}
                           </span>
                         </div>
+                        {(isCanceled || isOverdue) && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {isCanceled && (
+                              <Badge variant="secondary">Reuniao cancelada</Badge>
+                            )}
+                            {isOverdue && (
+                              <Badge variant="secondary">Reuniao vencida</Badge>
+                            )}
+                          </div>
+                        )}
                         {showLeadName && (
                           <div className="text-xs text-muted-foreground">
                             Lead: {lead.name}
                           </div>
                         )}
-                        <div className="text-xs text-muted-foreground">
+                        <div
+                          className={cn(
+                            "text-xs text-muted-foreground",
+                            isCanceled && "line-through"
+                          )}
+                        >
                           {meetingStart && meetingEnd
                             ? formatDateRange(meetingStart, meetingEnd)
                             : "Horario indefinido"}
                         </div>
-                        <div className="text-xs text-muted-foreground">
+                        <div
+                          className={cn(
+                            "text-xs text-muted-foreground",
+                            isCanceled && "line-through"
+                          )}
+                        >
                           Closer: {closerLabel}
                         </div>
                       </button>
