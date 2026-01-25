@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge"
 interface SignUpFormProps {
   form: UseFormReturn<signUpFormData | signUpOAuthFormData>;
   errors: Record<string, string>;
-  onSubmit: (data: signUpFormData) => void | Promise<void>;
+  onSubmit: (data: signUpFormData | signUpOAuthFormData) => void | Promise<void>;
   isLoading?: boolean;
   readonly?: boolean;
   isOAuth?: boolean;

@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { formatDateRange } from "little-date"
 import { PlusIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -25,6 +24,21 @@ const events = [
     to: "2025-06-12T15:00:00",
   },
 ]
+
+const formatDateRange = (start: Date, end: Date) => {
+  const date = start.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+  const time = (value: Date) =>
+    value.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    })
+
+  return `${date}, ${time(start)} - ${time(end)}`
+}
 
 export default function Calendar31() {
   const [date, setDate] = React.useState<Date | undefined>(

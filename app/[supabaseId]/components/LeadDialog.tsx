@@ -60,7 +60,6 @@ export default function LeadDialog({
     lead.status === "offerSubmission"
   );
   const canMarkNoShow = lead?.status === "scheduled";
-  const canResendInvite = Boolean(lead?.meetingDate);
 
   const buildParticipantOptions = () => {
     const options: { label: string; email: string }[] = [];

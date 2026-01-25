@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
         city: body.city,
         state: body.state,
       };
-    } catch (validationError) {
+    } catch (_validationError) {
       const output = new Output(false, [], ["Dados inválidos. Verifique os campos e tente novamente."], null);
       return NextResponse.json(output, { status: 400 });
     }
