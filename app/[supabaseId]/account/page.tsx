@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import type { SignInWithOAuthCredentials } from "@supabase/supabase-js";
 import { Upload, Camera, Eye, EyeOff, Trash2, AlertTriangle, Loader2, Calendar, Link2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -331,7 +332,7 @@ export default function AccountProfilePage() {
         linkIdentity?: (params: any) => Promise<{ error: { message: string } | null }>;
       };
 
-      const params = {
+      const params: SignInWithOAuthCredentials = {
         provider: "google",
         options: {
           scopes: "https://www.googleapis.com/auth/calendar.events",
