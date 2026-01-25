@@ -39,6 +39,7 @@ export function ScheduleMeetingDialog({
   const supabaseId = params.supabaseId as string;
 
   const [meetingDate, setMeetingDate] = useState<Date>();
+  const [meetingTitle, setMeetingTitle] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [meetingLink, setMeetingLink] = useState<string>("");
   const [closerId, setCloserId] = useState<string>("");
@@ -48,6 +49,7 @@ export function ScheduleMeetingDialog({
   useEffect(() => {
     if (!open) return;
     setMeetingDate(lead.meetingDate ? new Date(lead.meetingDate) : undefined);
+    setMeetingTitle(lead.meetingTitle || `Reunião com ${lead.name}`);
     setNotes(lead.meetingNotes || "");
     setMeetingLink(lead.meetingLink || "");
     setCloserId(lead.closerId || "");
@@ -73,6 +75,10 @@ export function ScheduleMeetingDialog({
       toast.error("Selecione uma data e hora para o agendamento");
       return;
     }
+    if (!meetingTitle.trim()) {
+      toast.error("Informe o titulo da reunião");
+      return;
+    }
     if (closers.length > 0 && !closerId) {
       toast.error("Selecione um closer para a reuniao");
       return;
@@ -93,6 +99,7 @@ export function ScheduleMeetingDialog({
         },
         body: JSON.stringify({
           date: meetingDate.toISOString(),
+          meetingTitle: meetingTitle.trim(),
           notes: notes || `Reunião agendada com ${lead.name}`,
           meetingLink: meetingLink || undefined,
           closerId: closerId || undefined,
@@ -136,6 +143,7 @@ export function ScheduleMeetingDialog({
       
       // Limpar form
       setMeetingDate(undefined);
+      setMeetingTitle("");
       setNotes("");
       setMeetingLink("");
       setExtraGuestsInput("");
@@ -179,6 +187,18 @@ export function ScheduleMeetingDialog({
               required
               disablePastDates
             />
+
+            {/* Titulo da reuniao */}
+            <div className="grid gap-2">
+              <Label htmlFor="meetingTitle">Titulo da reuniao</Label>
+              <Input
+                id="meetingTitle"
+                placeholder="Ex: Apresentação da proposta"
+                value={meetingTitle}
+                onChange={(e) => setMeetingTitle(e.target.value)}
+                required
+              />
+            </div>
 
             {/* Observações */}
             <div className="grid gap-2">

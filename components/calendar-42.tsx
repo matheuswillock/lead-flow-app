@@ -425,6 +425,8 @@ export default function Calendar42() {
                     ? new Date(meetingStart.getTime() + 60 * 60 * 1000)
                     : null
                   const closerLabel = getCloserLabel(lead, closersById)
+                  const meetingTitle = lead.meetingTitle || `Reunião com ${lead.name}`
+                  const showLeadName = meetingTitle !== lead.name
                   return (
                     <div
                       key={lead.id}
@@ -436,11 +438,16 @@ export default function Calendar42() {
                         className="flex w-full flex-col gap-1 text-left"
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <div className="font-medium">{lead.name}</div>
+                          <div className="font-medium">{meetingTitle}</div>
                           <span className="text-xs text-muted-foreground">
                             {lead.leadCode}
                           </span>
                         </div>
+                        {showLeadName && (
+                          <div className="text-xs text-muted-foreground">
+                            Lead: {lead.name}
+                          </div>
+                        )}
                         <div className="text-xs text-muted-foreground">
                           {meetingStart && meetingEnd
                             ? formatDateRange(meetingStart, meetingEnd)

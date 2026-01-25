@@ -56,6 +56,7 @@ export interface OperatorAccessRemovedEmailData {
 export interface MeetingInviteEmailData {
   to: string[];
   leadName: string;
+  meetingTitle?: string | null;
   meetingDate: Date;
   meetingLink?: string | null;
   organizerName: string;
@@ -733,10 +734,11 @@ export class EmailService {
       hour: "2-digit",
       minute: "2-digit",
     });
+    const title = data.meetingTitle || `Reunião com ${data.leadName}`;
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #171717;">
-        <h2>Convite de reunião</h2>
+        <h2>${title}</h2>
         <p>Olá,</p>
         <p>Você foi convidado para uma reunião com <strong>${data.leadName}</strong>.</p>
         <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 12px; margin: 16px 0;">
@@ -753,7 +755,7 @@ export class EmailService {
 
     return this.sendEmail({
       to: data.to,
-      subject: `Convite de reunião - ${data.leadName}`,
+      subject: title,
       html,
     });
   }

@@ -66,6 +66,7 @@ export async function POST(
       where: { id: leadId },
       data: {
         meetingDate: null,
+        meetingTitle: null,
         meetingNotes: null,
         meetingLink: null,
         meetingHeald: null,

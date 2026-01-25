@@ -139,6 +139,7 @@ with_operators with_operators
     String referenceHospital "❓"
     String currentTreatment "❓"
     DateTime meetingDate "❓"
+    String meetingTitle "❓"
     String meetingNotes "❓"
     String meetingLink "❓"
     MeetingHeald meetingHeald "❓"
@@ -163,6 +164,7 @@ with_operators with_operators
   "leads_schedule" {
     String id "🗝️"
     DateTime date 
+    String meetingTitle "❓"
     String notes "❓"
     String meetingLink "❓"
     String extraGuests 

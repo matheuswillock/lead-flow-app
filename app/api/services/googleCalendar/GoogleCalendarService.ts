@@ -207,6 +207,7 @@ export async function upsertCalendarEvent({
   lead,
   closerEmail,
   meetingDate,
+  meetingTitle,
   notes,
   meetingLink,
   extraGuests,
@@ -216,6 +217,7 @@ export async function upsertCalendarEvent({
   lead: Lead;
   closerEmail?: string | null;
   meetingDate: Date;
+  meetingTitle?: string | null;
   notes?: string | null;
   meetingLink?: string | null;
   extraGuests?: string[];
@@ -237,8 +239,9 @@ export async function upsertCalendarEvent({
     .filter((email, index, list) => list.indexOf(email) === index);
   const attendees = attendeeEmails.map((email) => ({ email }));
 
+  const summary = meetingTitle || `Reuniao com ${lead.name}`;
   const body: Record<string, unknown> = {
-    summary: `Reuniao com ${lead.name}`,
+    summary,
     description: notes || `Lead ${lead.name} agendado pelo Lead Flow`,
     start: { dateTime: meetingDate.toISOString(), timeZone: DEFAULT_TIMEZONE },
     end: { dateTime: endTime.toISOString(), timeZone: DEFAULT_TIMEZONE },

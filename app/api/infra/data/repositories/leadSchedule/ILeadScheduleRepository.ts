@@ -3,6 +3,7 @@ import { LeadsSchedule } from "@prisma/client";
 export interface CreateLeadScheduleDTO {
   leadId: string;
   date: Date;
+  meetingTitle?: string;
   notes?: string;
   meetingLink?: string;
   extraGuests?: string[];
@@ -12,6 +13,7 @@ export interface CreateLeadScheduleDTO {
 
 export interface UpdateLeadScheduleDTO {
   date?: Date;
+  meetingTitle?: string;
   notes?: string;
   meetingLink?: string;
   extraGuests?: string[];

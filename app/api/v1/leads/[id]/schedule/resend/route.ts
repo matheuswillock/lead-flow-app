@@ -93,6 +93,7 @@ export async function POST(
     const emailResult = await emailService.sendMeetingInviteEmail({
       to: [email],
       leadName: lead.name,
+      meetingTitle: schedule.meetingTitle || undefined,
       meetingDate: schedule.date,
       meetingLink: schedule.meetingLink,
       organizerName,

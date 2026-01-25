@@ -7,6 +7,7 @@ import { upsertCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCal
 
 const scheduleSchema = z.object({
   date: z.string().datetime(),
+  meetingTitle: z.string().optional(),
   notes: z.string().optional(),
   meetingLink: z.string().url("Link da reunião inválido").optional(),
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
@@ -46,7 +47,7 @@ export async function POST(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const { date, notes, meetingLink, closerId, extraGuests } = validation.data;
+    const { date, meetingTitle, notes, meetingLink, closerId, extraGuests } = validation.data;
     const meetingDate = new Date(date);
 
     const lead = await prisma.lead.findUnique({
@@ -78,12 +79,14 @@ export async function POST(
       : lead.closer;
 
     const closerEmail = closerProfile?.email || null;
+    const resolvedMeetingTitle = meetingTitle || `Reunião com ${lead.name}`;
 
     const calendarResult = await upsertCalendarEvent({
       organizer: lead.manager,
       lead,
       closerEmail,
       meetingDate,
+      meetingTitle: resolvedMeetingTitle,
       notes,
       meetingLink,
       extraGuests,
@@ -99,6 +102,7 @@ export async function POST(
       // Atualizar o agendamento existente
       schedule = await leadScheduleRepository.update(existingSchedule.id, {
         date: meetingDate,
+        meetingTitle: resolvedMeetingTitle,
         notes,
         meetingLink: resolvedMeetingLink || undefined,
         extraGuests: extraGuests ?? existingSchedule.extraGuests ?? [],
@@ -111,6 +115,7 @@ export async function POST(
       schedule = await leadScheduleRepository.create({
         leadId,
         date: meetingDate,
+        meetingTitle: resolvedMeetingTitle,
         notes,
         meetingLink: resolvedMeetingLink || undefined,
         extraGuests,
@@ -125,6 +130,7 @@ export async function POST(
       where: { id: leadId },
       data: {
         meetingDate,
+        meetingTitle: resolvedMeetingTitle,
         meetingNotes: notes || null,
         meetingLink: resolvedMeetingLink || null,
         ...(closerId ? { closerId } : {}),

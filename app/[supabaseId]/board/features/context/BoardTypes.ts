@@ -16,6 +16,7 @@ export type Lead = {
   referenceHospital: string | null;
   currentTreatment: string | null;
   meetingDate: string | null;
+  meetingTitle: string | null;
   meetingNotes: string | null;
   meetingLink: string | null;
   meetingHeald: MeetingHeald | null;

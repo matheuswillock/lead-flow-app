@@ -81,6 +81,7 @@ export class LeadUseCase implements ILeadUseCase {
         referenceHospital: data.referenceHospital || null,
         currentTreatment: data.currentTreatment || null,
         meetingDate: data.meetingDate ? new Date(data.meetingDate) : null,
+        meetingTitle: data.meetingTitle || null,
         meetingNotes: data.meetingNotes || null,
         meetingLink: data.meetingLink || null,
         meetingHeald: data.meetingHeald || null,
@@ -309,6 +310,7 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
       if (data.currentTreatment !== undefined) updateData.currentTreatment = data.currentTreatment || null;
       if (data.meetingDate !== undefined) updateData.meetingDate = data.meetingDate ? new Date(data.meetingDate) : null;
+      if (data.meetingTitle !== undefined) updateData.meetingTitle = data.meetingTitle || null;
       if (data.meetingNotes !== undefined) updateData.meetingNotes = data.meetingNotes || null;
       if (data.meetingLink !== undefined) updateData.meetingLink = data.meetingLink || null;
       if (data.meetingHeald !== undefined) updateData.meetingHeald = data.meetingHeald || null;
@@ -416,6 +418,7 @@ export class LeadUseCase implements ILeadUseCase {
       // Se o status for scheduled, criar ou atualizar registro na tabela LeadsSchedule
       if (status === LeadStatus.scheduled) {
         const meetingDate = existingLead.meetingDate || new Date();
+        const fallbackMeetingTitle = existingLead.meetingTitle || `Reuniao com ${existingLead.name}`;
         
         // Verificar se já existe um agendamento para este lead
         const existingSchedule = await leadScheduleRepository.findLatestByLeadId(id);
@@ -438,6 +441,7 @@ export class LeadUseCase implements ILeadUseCase {
                 lead: leadWithManager,
                 closerEmail: leadWithManager.closer?.email || null,
                 meetingDate,
+                meetingTitle: existingLead.meetingTitle || undefined,
                 notes: existingLead.meetingNotes || undefined,
                 meetingLink: existingLead.meetingLink || undefined,
                 existingEventId: existingSchedule?.googleEventId ?? null,
@@ -452,6 +456,7 @@ export class LeadUseCase implements ILeadUseCase {
           // Atualizar agendamento existente
           await leadScheduleRepository.update(existingSchedule.id, {
             date: meetingDate,
+            meetingTitle: fallbackMeetingTitle,
             notes: `Lead agendado`,
             meetingLink: calendarEventResult?.meetLink ?? existingSchedule.meetingLink ?? undefined,
             googleEventId: calendarEventResult?.eventId ?? existingSchedule.googleEventId ?? undefined,
@@ -462,6 +467,7 @@ export class LeadUseCase implements ILeadUseCase {
           await leadScheduleRepository.create({
             leadId: id,
             date: meetingDate,
+            meetingTitle: fallbackMeetingTitle,
             notes: `Lead agendado`,
             meetingLink: calendarEventResult?.meetLink ?? existingLead.meetingLink ?? undefined,
             googleEventId: calendarEventResult?.eventId ?? undefined,
@@ -473,7 +479,12 @@ export class LeadUseCase implements ILeadUseCase {
         if (!existingLead.meetingDate) {
           await this.leadRepository.update(id, {
             meetingDate,
+            meetingTitle: fallbackMeetingTitle,
             meetingLink: calendarEventResult?.meetLink ?? undefined,
+          });
+        } else if (!existingLead.meetingTitle) {
+          await this.leadRepository.update(id, {
+            meetingTitle: fallbackMeetingTitle,
           });
         } else if (calendarEventResult?.meetLink && !existingLead.meetingLink) {
           await this.leadRepository.update(id, {
@@ -591,6 +602,7 @@ export class LeadUseCase implements ILeadUseCase {
       referenceHospital: lead.referenceHospital,
       currentTreatment: lead.currentTreatment,
       meetingDate: lead.meetingDate ? lead.meetingDate.toISOString() : null,
+      meetingTitle: lead.meetingTitle,
       meetingNotes: lead.meetingNotes,
       meetingLink: lead.meetingLink,
       meetingHeald: lead.meetingHeald,
