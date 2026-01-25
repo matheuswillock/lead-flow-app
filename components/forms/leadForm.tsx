@@ -11,6 +11,7 @@ import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { Badge } from "../ui/badge";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { Checkbox } from "../ui/checkbox";
 import {
@@ -22,7 +23,7 @@ import {
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { LinkIcon } from "@/components/animate-ui/icons/link";
 
 const formatCurrencyNumber = (value: number): string =>
@@ -66,6 +67,7 @@ export interface ILeadFormProps {
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     meetingInfo?: {
         date?: string | null;
+        title?: string | null;
         link?: string | null;
         notes?: string | null;
         guests?: string[];
@@ -90,6 +92,7 @@ export function LeadForm({
     const [hasChanges, setHasChanges] = useState(false);
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
     const [ticketDisplay, setTicketDisplay] = useState("");
+    const [extraGuestsDraft, setExtraGuestsDraft] = useState("");
     const closers = React.useMemo(
         () => usersToAssign?.filter((user) => user.functions?.includes("CLOSER")) ?? [],
         [usersToAssign]
@@ -106,6 +109,41 @@ export function LeadForm({
     const buildEmailValue = (emails: string[]) => {
         const unique = Array.from(new Set(emails));
         return unique.join(", ");
+    };
+
+    const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+    const handleGuestDraftChange = (
+        value: string,
+        currentEmails: string[],
+        onChange: (value: string) => void
+    ) => {
+        if (!value) {
+            setExtraGuestsDraft("");
+            return;
+        }
+        const parts = value.split(/[,;\s]+/);
+        if (parts.length === 1) {
+            setExtraGuestsDraft(value);
+            return;
+        }
+        const last = value.match(/[,\s;]$/) ? "" : parts.pop() || "";
+        const normalized = parts
+            .map((item) => item.trim().toLowerCase())
+            .filter(Boolean)
+            .filter(isValidEmail);
+        if (normalized.length > 0) {
+            onChange(buildEmailValue([...currentEmails, ...normalized]));
+        }
+        setExtraGuestsDraft(last);
+    };
+
+    const commitGuestDraft = (
+        currentEmails: string[],
+        onChange: (value: string) => void
+    ) => {
+        if (!extraGuestsDraft.trim()) return;
+        handleGuestDraftChange(`${extraGuestsDraft} `, currentEmails, onChange);
     };
 
     const watchedValues = form.watch();
@@ -126,6 +164,7 @@ export function LeadForm({
                 (watchedValues.ongoingTreatment && watchedValues.ongoingTreatment.trim() !== '') ||
                 (watchedValues.additionalNotes && watchedValues.additionalNotes.trim() !== '') ||
                 (watchedValues.meetingDate && watchedValues.meetingDate.trim() !== '') ||
+                (watchedValues.meetingTitle && watchedValues.meetingTitle.trim() !== '') ||
                 (watchedValues.meetingHeald && watchedValues.meetingHeald.trim() !== '') ||
                 (watchedValues.responsible && watchedValues.responsible.trim() !== '') ||
                 (watchedValues.closerId && watchedValues.closerId.trim() !== '');
@@ -147,6 +186,7 @@ export function LeadForm({
                 watchedValues.ongoingTreatment !== initialData.ongoingTreatment ||
                 watchedValues.additionalNotes !== initialData.additionalNotes ||
                 watchedValues.meetingDate !== initialData.meetingDate ||
+                watchedValues.meetingTitle !== initialData.meetingTitle ||
                 watchedValues.meetingHeald !== initialData.meetingHeald ||
                 watchedValues.responsible !== initialData.responsible ||
                 watchedValues.closerId !== initialData.closerId;
@@ -593,12 +633,11 @@ export function LeadForm({
                     <div className="flex items-start justify-between gap-4">
                         <div className="space-y-1">
                             <div className="font-medium text-foreground">Resumo do agendamento</div>
-                            <div>Data e horário: {new Date(meetingInfo.date).toLocaleString("pt-BR")}</div>
+                            {meetingInfo.title && <div>Titulo: {meetingInfo.title}</div>}
                             {meetingInfo.closerName && <div>Closer: {meetingInfo.closerName}</div>}
                             {meetingInfo.guests && meetingInfo.guests.length > 0 && (
                                 <div>Convidados extras: {meetingInfo.guests.join(", ")}</div>
                             )}
-                            {meetingInfo.link && <div>Link: {meetingInfo.link}</div>}
                         </div>
                         {onResendInvite && (
                             <Button type="button" variant="outline" onClick={onResendInvite}>
@@ -674,12 +713,45 @@ export function LeadForm({
                             </FormLabel>
                             <FormControl>
                                 <div className="grid gap-2">
-                                    <Input
-                                        value={field.value || ""}
-                                        onChange={field.onChange}
-                                        placeholder="ex: convidado1@email.com, convidado2@email.com"
-                                        disabled={isLoading || isUpdating}
-                                    />
+                                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2">
+                                        {selectedEmails.map((email) => (
+                                            <Badge key={email} variant="secondary" className="gap-1 pr-1">
+                                                <span>{email}</span>
+                                                <button
+                                                    type="button"
+                                                    className="rounded-sm px-1 text-muted-foreground transition hover:text-foreground"
+                                                    onClick={() => {
+                                                        const next = selectedEmails.filter((item) => item !== email);
+                                                        field.onChange(buildEmailValue(next));
+                                                    }}
+                                                    aria-label={`Remover ${email}`}
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            </Badge>
+                                        ))}
+                                        <input
+                                            type="text"
+                                            value={extraGuestsDraft}
+                                            onChange={(e) =>
+                                                handleGuestDraftChange(
+                                                    e.target.value,
+                                                    selectedEmails,
+                                                    field.onChange
+                                                )
+                                            }
+                                            onBlur={() => commitGuestDraft(selectedEmails, field.onChange)}
+                                            onKeyDown={(event) => {
+                                                if (event.key === "Enter") {
+                                                    event.preventDefault();
+                                                    commitGuestDraft(selectedEmails, field.onChange);
+                                                }
+                                            }}
+                                            placeholder="ex: convidado1@email.com, convidado2@email.com"
+                                            className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                                            disabled={isLoading || isUpdating}
+                                        />
+                                    </div>
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                         <span>Adicionar membros do time:</span>
                                         <DropdownMenu>
@@ -827,9 +899,28 @@ export function LeadForm({
                                         </Select>
                                     </FormControl>
                                 </FormItem>
-                            )}
+                )}
+            />
+        </div>
+
+        <FormField
+            control={form.control}
+            name="meetingTitle"
+            render={({ field }) => (
+                <FormItem className="sm:col-span-2">
+                    <FormLabel className="block text-sm font-medium mb-1">
+                        Titulo da reuniao
+                    </FormLabel>
+                    <FormControl>
+                        <Input
+                            {...field}
+                            placeholder="Ex: Apresentacao da proposta"
+                            disabled={isLoading || isUpdating}
                         />
-                    </div>
+                    </FormControl>
+                </FormItem>
+            )}
+        />
                 </>
             )}
 

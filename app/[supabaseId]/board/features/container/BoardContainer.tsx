@@ -119,6 +119,7 @@ export function BoardContainer() {
             lead={selectedLead}
             onScheduleSuccess={handleScheduleSuccess}
             closers={closers}
+            teamMembers={user?.usersAssociated ?? []}
           />
         </>
       )}

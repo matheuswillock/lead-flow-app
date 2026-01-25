@@ -46,6 +46,7 @@ export default function LeadDialog({
   const [resendTarget, setResendTarget] = useState<"all" | "single">("all");
   const [resendEmail, setResendEmail] = useState<string>("");
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
+  const [scheduleTitle, setScheduleTitle] = useState<string | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
@@ -141,6 +142,7 @@ export default function LeadDialog({
       currentTreatment: data.ongoingTreatment || undefined,
       notes: data.additionalNotes || undefined,
       meetingDate: parseMeetingDate(data.meetingDate || ""),
+      meetingTitle: data.meetingTitle || undefined,
       meetingNotes: data.meetingNotes || undefined,
       meetingLink: data.meetingLink || undefined,
       meetingHeald: data.meetingHeald || undefined,
@@ -166,6 +168,7 @@ export default function LeadDialog({
       currentTreatment: data.ongoingTreatment || undefined,
       notes: data.additionalNotes || undefined,
       meetingDate: parseMeetingDate(data.meetingDate || ""),
+      meetingTitle: data.meetingTitle || undefined,
       meetingNotes: data.meetingNotes || undefined,
       meetingLink: data.meetingLink || undefined,
       meetingHeald: data.meetingHeald || undefined,
@@ -211,6 +214,7 @@ export default function LeadDialog({
                 },
                 body: JSON.stringify({
                   date: meetingDateValue,
+                  meetingTitle: data.meetingTitle || undefined,
                   notes: data.meetingNotes || undefined,
                   meetingLink: data.meetingLink || undefined,
                   closerId: data.closerId || undefined,
@@ -382,6 +386,7 @@ export default function LeadDialog({
         ongoingTreatment: lead.currentTreatment || "",
         additionalNotes: lead.notes || "",
         meetingDate: lead.meetingDate || "",
+        meetingTitle: lead.meetingTitle || scheduleTitle || "",
         meetingNotes: lead.meetingNotes || "",
         meetingLink: lead.meetingLink || "",
         meetingHeald: lead.meetingHeald || undefined,
@@ -405,6 +410,7 @@ export default function LeadDialog({
         ongoingTreatment: "",
         additionalNotes: "",
         meetingDate: "",
+        meetingTitle: "",
         meetingNotes: "",
         meetingLink: "",
         meetingHeald: undefined,
@@ -415,7 +421,7 @@ export default function LeadDialog({
         soldPlan: undefined,
       });
     }
-  }, [lead, open, form, user, scheduleGuests]);
+  }, [lead, open, form, user, scheduleGuests, scheduleTitle]);
 
   useEffect(() => {
     const fetchScheduleGuests = async () => {
@@ -432,9 +438,13 @@ export default function LeadDialog({
           return;
         }
         const data = await response.json();
-        const schedules = (data?.result || []) as Array<{ extraGuests?: string[] }>;
+        const schedules = (data?.result || []) as Array<{
+          extraGuests?: string[];
+          meetingTitle?: string | null;
+        }>;
         const latest = schedules[0];
         setScheduleGuests(latest?.extraGuests || []);
+        setScheduleTitle(latest?.meetingTitle || null);
       } catch (error) {
         console.error("Erro ao carregar convidados extras:", error);
       } finally {
@@ -522,15 +532,6 @@ export default function LeadDialog({
                 )}
               </div>
               <div className="ml-4 flex items-center gap-2">
-                {canResendInvite && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setResendDialogOpen(true)}
-                  >
-                    Reenviar convite
-                  </Button>
-                )}
                 {canMarkNoShow && (
                   <Button size="sm" variant="outline" onClick={handleNoShow}>
                     Marcar No-show
@@ -575,6 +576,7 @@ export default function LeadDialog({
             leadId={lead?.id}
             meetingInfo={{
               date: lead?.meetingDate || null,
+              title: lead?.meetingTitle || scheduleTitle || null,
               link: lead?.meetingLink || null,
               notes: lead?.meetingNotes || null,
               guests: scheduleGuests,

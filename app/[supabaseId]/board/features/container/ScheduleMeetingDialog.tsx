@@ -19,6 +19,14 @@ import { Lead } from "../context/BoardTypes";
 import { useParams } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { X } from "lucide-react";
 
 interface ScheduleMeetingDialogProps {
   open: boolean;
@@ -26,6 +34,7 @@ interface ScheduleMeetingDialogProps {
   lead: Lead;
   onScheduleSuccess: () => void;
   closers: UserAssociated[];
+  teamMembers?: UserAssociated[];
 }
 
 export function ScheduleMeetingDialog({
@@ -34,6 +43,7 @@ export function ScheduleMeetingDialog({
   lead,
   onScheduleSuccess,
   closers,
+  teamMembers,
 }: ScheduleMeetingDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
@@ -43,8 +53,10 @@ export function ScheduleMeetingDialog({
   const [notes, setNotes] = useState<string>("");
   const [meetingLink, setMeetingLink] = useState<string>("");
   const [closerId, setCloserId] = useState<string>("");
-  const [extraGuestsInput, setExtraGuestsInput] = useState<string>("");
+  const [extraGuests, setExtraGuests] = useState<string[]>([]);
+  const [extraGuestsDraft, setExtraGuestsDraft] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const members = teamMembers && teamMembers.length > 0 ? teamMembers : closers;
 
   useEffect(() => {
     if (!open) return;
@@ -53,19 +65,42 @@ export function ScheduleMeetingDialog({
     setNotes(lead.meetingNotes || "");
     setMeetingLink(lead.meetingLink || "");
     setCloserId(lead.closerId || "");
-    setExtraGuestsInput("");
+    setExtraGuests([]);
+    setExtraGuestsDraft("");
     if (!lead.closerId && closers.length === 1) {
       setCloserId(closers[0].id);
     }
   }, [open, lead, closers]);
 
-  const parseExtraGuests = (value: string): string[] => {
-    const raw = value
-      .split(/[,;\s]+/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-    const valid = raw.filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
-    return Array.from(new Set(valid.map((email) => email.toLowerCase())));
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+  const addExtraGuests = (values: string[]) => {
+    const normalized = values
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+      .filter(isValidEmail);
+    if (normalized.length === 0) return;
+    setExtraGuests((prev) => Array.from(new Set([...prev, ...normalized])));
+  };
+
+  const handleExtraGuestsInput = (value: string) => {
+    if (!value) {
+      setExtraGuestsDraft("");
+      return;
+    }
+    const parts = value.split(/[,;\s]+/);
+    if (parts.length === 1) {
+      setExtraGuestsDraft(value);
+      return;
+    }
+    const last = value.match(/[,\s;]$/) ? "" : parts.pop() || "";
+    addExtraGuests(parts);
+    setExtraGuestsDraft(last);
+  };
+
+  const commitExtraGuestDraft = () => {
+    if (!extraGuestsDraft.trim()) return;
+    handleExtraGuestsInput(`${extraGuestsDraft} `);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -84,7 +119,7 @@ export function ScheduleMeetingDialog({
       return;
     }
 
-    const extraGuests = parseExtraGuests(extraGuestsInput);
+    const guests = extraGuests;
 
     setIsSubmitting(true);
     const loadingToast = toast.loading("Agendando reunião...");
@@ -103,7 +138,7 @@ export function ScheduleMeetingDialog({
           notes: notes || `Reunião agendada com ${lead.name}`,
           meetingLink: meetingLink || undefined,
           closerId: closerId || undefined,
-          extraGuests: extraGuests.length ? extraGuests : undefined,
+          extraGuests: guests.length ? guests : undefined,
         }),
       });
 
@@ -146,7 +181,8 @@ export function ScheduleMeetingDialog({
       setMeetingTitle("");
       setNotes("");
       setMeetingLink("");
-      setExtraGuestsInput("");
+      setExtraGuests([]);
+      setExtraGuestsDraft("");
       
       // Fechar dialog
       onOpenChange(false);
@@ -227,13 +263,73 @@ export function ScheduleMeetingDialog({
             {/* Convidados extras */}
             <div className="grid gap-2">
               <Label htmlFor="extraGuests">Convidados extras (emails)</Label>
-              <Input
-                id="extraGuests"
-                type="text"
-                placeholder="ex: convidado1@email.com, convidado2@email.com"
-                value={extraGuestsInput}
-                onChange={(e) => setExtraGuestsInput(e.target.value)}
-              />
+              <div className="flex flex-wrap items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2">
+                {extraGuests.map((email) => (
+                  <Badge key={email} variant="secondary" className="gap-1 pr-1">
+                    <span>{email}</span>
+                    <button
+                      type="button"
+                      className="rounded-sm px-1 text-muted-foreground transition hover:text-foreground"
+                      onClick={() =>
+                        setExtraGuests((prev) => prev.filter((item) => item !== email))
+                      }
+                      aria-label={`Remover ${email}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+                <input
+                  id="extraGuests"
+                  type="text"
+                  value={extraGuestsDraft}
+                  onChange={(e) => handleExtraGuestsInput(e.target.value)}
+                  onBlur={commitExtraGuestDraft}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitExtraGuestDraft();
+                    }
+                  }}
+                  placeholder="ex: convidado1@email.com, convidado2@email.com"
+                  className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>Adicionar membros do time:</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="outline" size="sm">
+                      Selecionar
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-60">
+                    {members
+                      .filter((member) => member.email)
+                      .map((member) => {
+                        const email = member.email!;
+                        const checked = extraGuests.includes(email.toLowerCase());
+                        return (
+                          <DropdownMenuCheckboxItem
+                            key={member.id}
+                            checked={checked}
+                            onCheckedChange={(nextChecked) => {
+                              if (nextChecked) {
+                                addExtraGuests([email]);
+                              } else {
+                                setExtraGuests((prev) =>
+                                  prev.filter((item) => item !== email.toLowerCase())
+                                );
+                              }
+                            }}
+                          >
+                            {member.name}
+                          </DropdownMenuCheckboxItem>
+                        );
+                      })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Separe os emails por virgula ou espaco.
               </p>

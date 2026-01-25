@@ -550,6 +550,7 @@ export default function Calendar42() {
           lead={leadToSchedule}
           onScheduleSuccess={refreshLeads}
           closers={closers}
+          teamMembers={user?.usersAssociated ?? []}
         />
       )}
 
