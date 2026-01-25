@@ -2,6 +2,7 @@
 
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics';
 import { MetricsFilters } from '../services/DashboardMetricsService';
+import { getLeadStatusLabel } from '@/lib/lead-status';
 
 interface DashboardMetricsProps {
   supabaseId: string;
@@ -183,7 +184,7 @@ export function DashboardMetrics({ supabaseId }: DashboardMetricsProps) {
                 {detailedMetrics.map((metric, index) => (
                   <tr key={index}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {metric.status}
+                      {getLeadStatusLabel(metric.status)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {metric.count}
