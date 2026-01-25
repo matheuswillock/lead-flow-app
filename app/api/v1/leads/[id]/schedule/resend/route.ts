@@ -7,8 +7,9 @@ import { resendCalendarInvite } from "@/app/api/services/googleCalendar/GoogleCa
 import { emailService } from "@/lib/services/EmailService";
 
 const resendSchema = z.object({
-  target: z.enum(["all", "single"]),
+  target: z.enum(["all", "single", "new"]),
   email: z.string().email().optional(),
+  emails: z.array(z.string().email()).optional(),
 });
 
 export async function POST(
@@ -79,6 +80,34 @@ export async function POST(
       });
 
       const output = new Output(true, ["Convites reenviados para todos os participantes"], [], null);
+      return NextResponse.json(output, { status: 200 });
+    }
+
+    if (target === "new") {
+      const emails = (validation.data.emails || []).map((item) => item.toLowerCase());
+      const uniqueEmails = Array.from(new Set(emails));
+      if (uniqueEmails.length === 0) {
+        const output = new Output(false, [], ["Informe pelo menos um participante"], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      const organizerName = lead.manager.fullName || lead.manager.email;
+
+      const emailResult = await emailService.sendMeetingInviteEmail({
+        to: uniqueEmails,
+        leadName: lead.name,
+        meetingTitle: schedule.meetingTitle || undefined,
+        meetingDate: schedule.date,
+        meetingLink: schedule.meetingLink,
+        organizerName,
+      });
+
+      if (!emailResult.success) {
+        const output = new Output(false, [], [emailResult.error || "Erro ao reenviar convite"], null);
+        return NextResponse.json(output, { status: 500 });
+      }
+
+      const output = new Output(true, ["Convite reenviado para novos participantes"], [], null);
       return NextResponse.json(output, { status: 200 });
     }
 

@@ -8,7 +8,7 @@ import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, X } from "lucide-react";
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
@@ -17,6 +17,7 @@ import { useParams } from "next/navigation";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 
 interface LeadDialogProps {
   open: boolean;
@@ -43,8 +44,10 @@ export default function LeadDialog({
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [finalizeCompleted, setFinalizeCompleted] = useState(false);
   const [resendDialogOpen, setResendDialogOpen] = useState(false);
-  const [resendTarget, setResendTarget] = useState<"all" | "single">("all");
+  const [resendTarget, setResendTarget] = useState<"all" | "single" | "new">("all");
   const [resendEmail, setResendEmail] = useState<string>("");
+  const [newParticipantDraft, setNewParticipantDraft] = useState("");
+  const [newParticipants, setNewParticipants] = useState<string[]>([]);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
   const [scheduleTitle, setScheduleTitle] = useState<string | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
@@ -81,7 +84,13 @@ export default function LeadDialog({
         options.push({ label: guestEmail, email: guestEmail });
       }
     });
-    return options;
+    const seen = new Set<string>();
+    return options.filter((option) => {
+      const normalized = option.email.toLowerCase();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
   };
 
   const handleCopyLeadCode = async (code: string) => {
@@ -461,6 +470,10 @@ export default function LeadDialog({
       toast.error("Selecione um participante para reenviar o convite");
       return;
     }
+    if (resendTarget === "new" && newParticipants.length === 0) {
+      toast.error("Informe pelo menos um participante");
+      return;
+    }
 
     const loadingToast = toast.loading("Reenviando convite...");
     try {
@@ -473,6 +486,7 @@ export default function LeadDialog({
         body: JSON.stringify({
           target: resendTarget,
           email: resendTarget === "single" ? resendEmail : undefined,
+          emails: resendTarget === "new" ? newParticipants : undefined,
         }),
       });
 
@@ -486,6 +500,8 @@ export default function LeadDialog({
         duration: 3000,
       });
       setResendDialogOpen(false);
+      setNewParticipants([]);
+      setNewParticipantDraft("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro ao reenviar convite";
       toast.error(message, { id: loadingToast });
@@ -499,6 +515,37 @@ export default function LeadDialog({
       .map((item) => item.trim().toLowerCase())
       .filter(Boolean)
       .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  };
+
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+  const addNewParticipants = (values: string[]) => {
+    const normalized = values
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+      .filter(isValidEmail);
+    if (normalized.length === 0) return;
+    setNewParticipants((prev) => Array.from(new Set([...prev, ...normalized])));
+  };
+
+  const handleNewParticipantInput = (value: string) => {
+    if (!value) {
+      setNewParticipantDraft("");
+      return;
+    }
+    const parts = value.split(/[,;\s]+/);
+    if (parts.length === 1) {
+      setNewParticipantDraft(value);
+      return;
+    }
+    const last = value.match(/[,\s;]$/) ? "" : parts.pop() || "";
+    addNewParticipants(parts);
+    setNewParticipantDraft(last);
+  };
+
+  const commitNewParticipantDraft = () => {
+    if (!newParticipantDraft.trim()) return;
+    handleNewParticipantInput(`${newParticipantDraft} `);
   };
 
   return (
@@ -599,7 +646,7 @@ export default function LeadDialog({
           <div className="grid gap-4">
             <RadioGroup
               value={resendTarget}
-              onValueChange={(value) => setResendTarget(value as "all" | "single")}
+              onValueChange={(value) => setResendTarget(value as "all" | "single" | "new")}
               className="grid gap-3"
             >
               <div className="flex items-center gap-2">
@@ -609,6 +656,10 @@ export default function LeadDialog({
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="single" id="resend-single" />
                 <Label htmlFor="resend-single">Somente um participante</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="new" id="resend-new" />
+                <Label htmlFor="resend-new">Novo participante</Label>
               </div>
             </RadioGroup>
 
@@ -627,6 +678,46 @@ export default function LeadDialog({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {resendTarget === "new" && (
+              <div className="grid gap-2">
+                <Label>Novo participante</Label>
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2">
+                  {newParticipants.map((email) => (
+                    <Badge key={email} variant="secondary" className="gap-1 pr-1">
+                      <span>{email}</span>
+                      <button
+                        type="button"
+                        className="rounded-sm px-1 text-muted-foreground transition hover:text-foreground"
+                        onClick={() =>
+                          setNewParticipants((prev) => prev.filter((item) => item !== email))
+                        }
+                        aria-label={`Remover ${email}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                  <input
+                    type="text"
+                    value={newParticipantDraft}
+                    onChange={(event) => handleNewParticipantInput(event.target.value)}
+                    onBlur={commitNewParticipantDraft}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        commitNewParticipantDraft();
+                      }
+                    }}
+                    placeholder="ex: participante@email.com"
+                    className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Separe os emails por virgula ou espaco.
+                </p>
               </div>
             )}
 

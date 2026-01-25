@@ -301,9 +301,7 @@ export default function Calendar42() {
               }}
             />
             <div className="flex items-center justify-between px-2">
-              <div className="text-xs font-medium text-muted-foreground">
-                Horarios
-              </div>
+              <div className="text-xs font-medium text-muted-foreground">Horarios</div>
               <Button
                 variant="ghost"
                 size="sm"
@@ -363,10 +361,7 @@ export default function Calendar42() {
                 <Label className="text-xs">Closer</Label>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-between gap-2 px-3"
-                    >
+                    <Button variant="outline" className="w-full justify-between gap-2 px-3">
                       {selectedClosers.length === 0 && (
                         <span className="text-muted-foreground">Todos</span>
                       )}
@@ -381,9 +376,7 @@ export default function Calendar42() {
                           <span className="truncate">{selectedClosers[0].name}</span>
                         </div>
                       )}
-                      {selectedClosers.length > 1 && (
-                        <span>{selectedClosers.length} closers</span>
-                      )}
+                      {selectedClosers.length > 1 && <span>{selectedClosers.length} closers</span>}
                       <span className="ml-auto text-muted-foreground">▼</span>
                     </Button>
                   </DropdownMenuTrigger>
@@ -407,9 +400,7 @@ export default function Calendar42() {
                           onCheckedChange={(nextChecked) => {
                             setCloserFilter((prev) => {
                               if (nextChecked) {
-                                return prev.includes(closer.id)
-                                  ? prev
-                                  : [...prev, closer.id]
+                                return prev.includes(closer.id) ? prev : [...prev, closer.id]
                               }
                               return prev.filter((id) => id !== closer.id)
                             })
@@ -448,11 +439,7 @@ export default function Calendar42() {
                   {selectedTime ? `Horario: ${selectedTime}` : "Sem horario selecionado"}
                 </div>
               </div>
-              <Button
-                variant="outline"
-                onClick={() => setLeadPickerOpen(true)}
-                className="group"
-              >
+              <Button variant="outline" onClick={() => setLeadPickerOpen(true)} className="group">
                 <CirclePlus
                   className="mr-2 transition-transform duration-300 group-hover:rotate-90"
                   size={16}
@@ -471,23 +458,18 @@ export default function Calendar42() {
                   <p className="text-sm text-muted-foreground">
                     Nenhuma agenda para este dia e horario.
                   </p>
-                  <Button onClick={() => setLeadPickerOpen(true)}>
-                    Agendar nova reunião
-                  </Button>
+                  <Button onClick={() => setLeadPickerOpen(true)}>Agendar nova reunião</Button>
                 </div>
               ) : (
                 filteredEvents.map((lead) => {
-                  const meetingStart = lead.meetingDate
-                    ? new Date(lead.meetingDate)
-                    : null
+                  const meetingStart = lead.meetingDate ? new Date(lead.meetingDate) : null
                   const meetingEnd = meetingStart
                     ? new Date(meetingStart.getTime() + 60 * 60 * 1000)
                     : null
                   const closerLabel = getCloserLabel(lead, closersById)
                   const meetingTitle = lead.meetingTitle || `Reunião com ${lead.name}`
                   const showLeadName = meetingTitle !== lead.name
-                  const isCanceled =
-                    lead.meetingHeald === "no" || lead.status === "no_show"
+                  const isCanceled = lead.meetingHeald === "no" || lead.status === "no_show"
                   const isOverdue =
                     !!meetingStart &&
                     meetingStart.getTime() < Date.now() &&
@@ -498,7 +480,7 @@ export default function Calendar42() {
                       key={lead.id}
                       className={cn(
                         "bg-muted hover:bg-muted/80 after:bg-primary/70 relative rounded-md p-3 pl-6 text-left text-sm transition-colors after:absolute after:inset-y-3 after:left-3 after:w-1 after:rounded-full",
-                        isCanceled && "opacity-70"
+                        isCanceled && "opacity-70",
                       )}
                     >
                       <button
@@ -507,32 +489,26 @@ export default function Calendar42() {
                         className="flex w-full flex-col gap-1 text-left"
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <div className={cn("font-medium", isCanceled && "line-through")}>
-                            {meetingTitle}
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {lead.leadCode}
-                          </span>
-                        </div>
-                        {(isCanceled || isOverdue) && (
-                          <div className="flex flex-wrap gap-2 pt-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className={cn("font-medium", isCanceled && "line-through")}>
+                              {meetingTitle}
+                            </div>
+                            {isOverdue && <Badge variant="default">Reuniao vencida</Badge>}
                             {isCanceled && (
-                              <Badge variant="secondary">Reuniao cancelada</Badge>
-                            )}
-                            {isOverdue && (
-                              <Badge variant="secondary">Reuniao vencida</Badge>
+                              <Badge className="border-red-500 bg-transparent text-red-500 hover:bg-transparent">
+                                Reuniao cancelada
+                              </Badge>
                             )}
                           </div>
-                        )}
+                          <span className="text-xs text-muted-foreground">{lead.leadCode}</span>
+                        </div>
                         {showLeadName && (
-                          <div className="text-xs text-muted-foreground">
-                            Lead: {lead.name}
-                          </div>
+                          <div className="text-xs text-muted-foreground">Lead: {lead.name}</div>
                         )}
                         <div
                           className={cn(
                             "text-xs text-muted-foreground",
-                            isCanceled && "line-through"
+                            isCanceled && "line-through",
                           )}
                         >
                           {meetingStart && meetingEnd
@@ -542,21 +518,37 @@ export default function Calendar42() {
                         <div
                           className={cn(
                             "text-xs text-muted-foreground",
-                            isCanceled && "line-through"
+                            isCanceled && "line-through",
                           )}
                         >
                           Closer: {closerLabel}
                         </div>
+                        {lead.meetingNotes && (
+                          <div className="text-xs text-muted-foreground">
+                            Observacoes: {lead.meetingNotes}
+                          </div>
+                        )}
                       </button>
-                      <div className="mt-2 flex justify-end">
+                      <div className="mt-2 flex flex-wrap justify-end gap-2">
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="outline"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setLeadToSchedule(lead)
+                            setScheduleDialogOpen(true)
+                          }}
+                        >
+                          Reagendar reuniao
+                        </Button>
+                        <Button
+                          size="sm"
                           onClick={(event) => {
                             event.stopPropagation()
                             setLeadToCancel(lead)
                             setCancelDialogOpen(true)
                           }}
+                          className="border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-foreground cursor-pointer"
                         >
                           Cancelar agenda
                         </Button>
@@ -568,7 +560,6 @@ export default function Calendar42() {
             </div>
           </CardContent>
         </Card>
-
       </div>
 
       <LeadDialog
@@ -594,9 +585,7 @@ export default function Calendar42() {
             />
             <div className="max-h-[360px] overflow-y-auto rounded-md border">
               {leadPickerCandidates.length === 0 ? (
-                <div className="p-4 text-sm text-muted-foreground">
-                  Nenhum lead encontrado.
-                </div>
+                <div className="p-4 text-sm text-muted-foreground">Nenhum lead encontrado.</div>
               ) : (
                 leadPickerCandidates.map((lead) => {
                   const closerLabel = getCloserLabel(lead, closersById)
@@ -673,7 +662,10 @@ export default function Calendar42() {
             >
               Reagendar
             </Button>
-            <Button variant="destructive" onClick={handleCancelSchedule}>
+            <Button
+              onClick={handleCancelSchedule}
+              className="h-9 border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-foreground"
+            >
               Cancelar agenda
             </Button>
           </div>
