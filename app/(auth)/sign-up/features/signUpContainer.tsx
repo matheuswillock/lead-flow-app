@@ -130,10 +130,11 @@ export function SignUpFormContainer() {
         supabase.auth.getSession().then(({ data }) => {
             const user = data.session?.user;
             if (!user) return;
-            const metadata = user.user_metadata as { full_name?: string; name?: string } | undefined;
+            const metadata = user.user_metadata as { full_name?: string; name?: string; phone?: string } | undefined;
             const fullName = metadata?.full_name || metadata?.name;
             if (fullName) form.setValue("fullName", fullName);
             if (user.email) form.setValue("email", user.email);
+            if (metadata?.phone) form.setValue("phone", metadata.phone);
         });
     }, [form, isOAuth]);
 

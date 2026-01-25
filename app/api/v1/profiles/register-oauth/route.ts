@@ -68,9 +68,17 @@ export async function POST(req: NextRequest) {
     if (output.isValid) {
       const supabaseAdmin = createSupabaseAdminClient();
       if (supabaseAdmin) {
+        const existingPhone =
+          (body?.phone && typeof body.phone === "string" && body.phone.trim()) || undefined;
+        const existingFullName =
+          (body?.fullname && typeof body.fullname === "string" && body.fullname.trim()) || undefined;
         await supabaseAdmin.auth.admin.updateUserById(supabaseId, {
           app_metadata: {
             provider: "google",
+          },
+          user_metadata: {
+            phone: existingPhone,
+            full_name: existingFullName,
           },
         });
       }

@@ -12,6 +12,7 @@ import { CepService } from "@/lib/services/CepService"
 import { toast } from "sonner"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
 import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
 
 interface SignUpFormProps {
   form: UseFormReturn<signUpFormData | signUpOAuthFormData>;
@@ -188,6 +189,11 @@ export function SignupForm({
                 ? "Preencha os dados restantes para seguir para a assinatura."
                 : "Crie sua conta para começar a usar o Corretor Studio"}
             </p>
+            {isOAuth && (
+              <Badge variant="outline" className="mt-1 border-primary/30 text-primary">
+                Cadastro via Google
+              </Badge>
+            )}
             <div className="text-center text-sm">
               Já tem uma conta? 
               {' '}

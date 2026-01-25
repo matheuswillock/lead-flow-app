@@ -32,10 +32,11 @@ export default function AuthCallbackPage() {
       const googleIdentity = session.user.identities?.find(
         (identity) => identity.provider === "google"
       );
-      const googleEmail =
-        (googleIdentity?.identity_data as { email?: string } | undefined)?.email ||
-        session.user.email ||
-        undefined;
+      const identityData = googleIdentity?.identity_data as
+        | { email?: string; phone?: string; phone_number?: string }
+        | undefined;
+      const googleEmail = identityData?.email || session.user.email || undefined;
+      const googlePhone = identityData?.phone || identityData?.phone_number || undefined;
 
       const profileResponse = await fetch(`/api/v1/profiles/${supabaseId}`, {
         cache: "no-store",
@@ -48,6 +49,7 @@ export default function AuthCallbackPage() {
         sessionStorage.setItem("oauthSignup", JSON.stringify({
           fullName,
           email: googleEmail,
+          phone: googlePhone,
         }));
 
         if (providerToken) {
