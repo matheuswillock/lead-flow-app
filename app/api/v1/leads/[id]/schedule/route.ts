@@ -3,6 +3,7 @@ import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSc
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { z } from "zod";
+import { upsertCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 
 const scheduleSchema = z.object({
   date: z.string().datetime(),
@@ -47,8 +48,47 @@ export async function POST(
     const { date, notes, meetingLink, closerId } = validation.data;
     const meetingDate = new Date(date);
 
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      include: {
+        manager: true,
+        closer: true,
+      },
+    });
+
+    if (!lead) {
+      const output = new Output(false, [], ["Lead não encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    if (!lead.manager.googleCalendarConnected || !lead.manager.googleRefreshToken) {
+      const output = new Output(false, [], ["Conecte seu Google Calendar para agendar reuniões"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
     // Verificar se já existe um agendamento para este lead
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
+
+    const closerProfile = closerId
+      ? await prisma.profile.findUnique({
+          where: { id: closerId },
+          select: { email: true },
+        })
+      : lead.closer;
+
+    const closerEmail = closerProfile?.email || null;
+
+    const calendarResult = await upsertCalendarEvent({
+      organizer: lead.manager,
+      lead,
+      closerEmail,
+      meetingDate,
+      notes,
+      meetingLink,
+      existingEventId: existingSchedule?.googleEventId ?? null,
+    });
+
+    const resolvedMeetingLink = meetingLink || calendarResult.meetLink || null;
 
     let schedule;
     let message: string;
@@ -58,7 +98,9 @@ export async function POST(
       schedule = await leadScheduleRepository.update(existingSchedule.id, {
         date: meetingDate,
         notes,
-        meetingLink,
+        meetingLink: resolvedMeetingLink || undefined,
+        googleEventId: calendarResult.eventId,
+        googleCalendarId: calendarResult.calendarId,
       });
       message = "Agendamento atualizado com sucesso";
     } else {
@@ -67,7 +109,9 @@ export async function POST(
         leadId,
         date: meetingDate,
         notes,
-        meetingLink,
+        meetingLink: resolvedMeetingLink || undefined,
+        googleEventId: calendarResult.eventId,
+        googleCalendarId: calendarResult.calendarId,
       });
       message = "Agendamento criado com sucesso";
     }
@@ -78,7 +122,7 @@ export async function POST(
       data: {
         meetingDate,
         meetingNotes: notes || null,
-        meetingLink: meetingLink || null,
+        meetingLink: resolvedMeetingLink || null,
         ...(closerId ? { closerId } : {}),
       },
     });

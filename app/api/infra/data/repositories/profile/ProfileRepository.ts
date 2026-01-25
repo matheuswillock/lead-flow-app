@@ -636,6 +636,36 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
+    async updateGoogleCalendarAuth(
+        supabaseId: string,
+        updates: {
+            accessToken?: string | null;
+            refreshToken?: string | null;
+            expiresAt?: Date | null;
+            email?: string | null;
+            connected?: boolean;
+        }
+    ): Promise<Profile | null> {
+        try {
+            const profile = await prisma.profile.update({
+                where: { supabaseId },
+                data: {
+                    googleAccessToken: updates.accessToken ?? undefined,
+                    googleRefreshToken: updates.refreshToken ?? undefined,
+                    googleTokenExpiresAt: updates.expiresAt ?? undefined,
+                    googleEmail: updates.email ?? undefined,
+                    googleCalendarConnected: updates.connected ?? undefined,
+                },
+            });
+
+            console.info("Google Calendar auth updated:", profile.id);
+            return profile;
+        } catch (error) {
+            console.error("Error updating Google Calendar auth:", error);
+            return null;
+        }
+    }
+
     async deleteProfile(supabaseId: string): Promise<Profile | null> {
         try {
             const profile = await prisma.profile.delete({ where: { supabaseId } });

@@ -130,6 +130,11 @@ model Profile {
   functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
+  googleCalendarConnected  Boolean             @default(false)
+  googleAccessToken        String?             @db.Text
+  googleRefreshToken       String?             @db.Text
+  googleTokenExpiresAt     DateTime?           @db.Timestamptz(6)
+  googleEmail              String?             @db.Text
   managerId                String?             @db.Uuid
   asaasCustomerId          String?             @db.Text
   subscriptionId           String?             @db.Text
@@ -257,6 +262,8 @@ model LeadsSchedule {
   date        DateTime @db.Timestamptz(6)
   notes       String?  @db.Text
   meetingLink String?  @db.Text
+  googleEventId    String?  @db.Text
+  googleCalendarId String?  @db.Text
   createdAt   DateTime @default(now()) @db.Timestamptz(6)
   updatedAt   DateTime @updatedAt @db.Timestamptz(6)
 

@@ -55,6 +55,16 @@ export interface IProfileRepository {
     profileIconId: string | null,
     profileIconUrl: string | null
   ): Promise<Profile | null>;
+  updateGoogleCalendarAuth(
+    supabaseId: string,
+    updates: {
+      accessToken?: string | null;
+      refreshToken?: string | null;
+      expiresAt?: Date | null;
+      email?: string | null;
+      connected?: boolean;
+    }
+  ): Promise<Profile | null>;
   updatePassword(supabaseId: string, newPassword: string): Promise<boolean>;
   deleteProfile(supabaseId: string): Promise<Profile | null>;
 }

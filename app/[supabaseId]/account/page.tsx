@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Upload, Camera, Eye, EyeOff, Trash2, AlertTriangle, Loader2 } from "lucide-react";
+import { Upload, Camera, Eye, EyeOff, Trash2, AlertTriangle, Loader2, Calendar, Link2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,6 +26,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useParams, useRouter } from "next/navigation";
+import { createSupabaseBrowser } from "@/lib/supabase/browser";
+import { CircleCheckBig } from "@/components/animate-ui/icons/circle-check-big";
 
 export default function AccountProfilePage() {
   const { user, isLoading, updateUser, updatePassword, uploadProfileIcon, deleteProfileIcon } = useUser();
@@ -36,6 +38,7 @@ export default function AccountProfilePage() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [functionSelections, setFunctionSelections] = useState<string[]>([]);
+  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   
   // Estados para deletar conta
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -312,6 +315,56 @@ export default function AccountProfilePage() {
     );
   }
 
+  async function handleConnectGoogle() {
+    if (isConnectingGoogle) return;
+    setIsConnectingGoogle(true);
+
+    try {
+      const supabase = createSupabaseBrowser();
+      if (!supabase) {
+        toast.error("Supabase indisponível no momento.");
+        return;
+      }
+
+      const redirectTo = `${window.location.origin}/auth/callback?next=/account`;
+      const auth = supabase.auth as typeof supabase.auth & {
+        linkIdentity?: (params: any) => Promise<{ error: { message: string } | null }>;
+      };
+
+      const params = {
+        provider: "google",
+        options: {
+          scopes: "https://www.googleapis.com/auth/calendar.events",
+          redirectTo,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+        },
+      };
+
+      const linkIdentity = auth.linkIdentity?.bind(auth);
+      const signInWithOAuth = auth.signInWithOAuth.bind(auth);
+
+      const { error } = linkIdentity
+        ? await linkIdentity(params)
+        : await signInWithOAuth(params);
+
+      if (error) {
+        if (error.message === "Manual linking is disabled") {
+          toast.error("Vinculacao manual desativada no Supabase. Ative em Auth > Providers.");
+        } else {
+          toast.error(error.message || "Erro ao iniciar conexao com Google");
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao conectar Google:", error);
+      toast.error("Erro inesperado ao conectar Google");
+    } finally {
+      setIsConnectingGoogle(false);
+    }
+  }
+
   async function handleDeleteAccount() {
     if (!deletePassword) {
       toast.error("Digite sua senha para confirmar a exclusão");
@@ -376,9 +429,10 @@ export default function AccountProfilePage() {
               </div>
             ) : (
               <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-6">
+                <TabsList className="grid w-full grid-cols-3 mb-6">
                   <TabsTrigger value="profile">Perfil</TabsTrigger>
                   <TabsTrigger value="security">Segurança</TabsTrigger>
+                  <TabsTrigger value="connections">Conexões</TabsTrigger>
                 </TabsList>
 
                 {/* Aba de Perfil */}
@@ -498,50 +552,52 @@ export default function AccountProfilePage() {
                     showPasswordField={false}
                     hasExtraChanges={hasFunctionChanges}
                     extraContent={
-                      user?.isMaster ? (
-                        <>
-                          <Separator />
-                          <section className="space-y-4">
-                            <div>
-                              <h2 className="text-base font-medium">Gerenciar funções</h2>
-                              <p className="text-sm text-muted-foreground mt-1">
-                                Defina as funções habilitadas para o seu usuário master.
+                      <>
+                        {user?.isMaster ? (
+                          <>
+                            <Separator />
+                            <section className="space-y-4">
+                              <div>
+                                <h2 className="text-base font-medium">Gerenciar funções</h2>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  Defina as funções habilitadas para o seu usuário master.
+                                </p>
+                              </div>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <label className="flex items-center gap-3 rounded-lg border border-border/60 p-3">
+                                  <Checkbox
+                                    checked={functionSelections.includes("SDR")}
+                                    onCheckedChange={() => toggleFunction("SDR")}
+                                    disabled={isUpdating}
+                                  />
+                                  <div>
+                                    <p className="text-sm font-medium">SDR</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Qualifica leads e organiza o funil.
+                                    </p>
+                                  </div>
+                                </label>
+                                <label className="flex items-center gap-3 rounded-lg border border-border/60 p-3">
+                                  <Checkbox
+                                    checked={functionSelections.includes("CLOSER")}
+                                    onCheckedChange={() => toggleFunction("CLOSER")}
+                                    disabled={isUpdating}
+                                  />
+                                  <div>
+                                    <p className="text-sm font-medium">Closer</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      Conduz reuniões e fechamento.
+                                    </p>
+                                  </div>
+                                </label>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                As funções serão salvas junto com as alterações do perfil.
                               </p>
-                            </div>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <label className="flex items-center gap-3 rounded-lg border border-border/60 p-3">
-                                <Checkbox
-                                  checked={functionSelections.includes("SDR")}
-                                  onCheckedChange={() => toggleFunction("SDR")}
-                                  disabled={isUpdating}
-                                />
-                                <div>
-                                  <p className="text-sm font-medium">SDR</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Qualifica leads e organiza o funil.
-                                  </p>
-                                </div>
-                              </label>
-                              <label className="flex items-center gap-3 rounded-lg border border-border/60 p-3">
-                                <Checkbox
-                                  checked={functionSelections.includes("CLOSER")}
-                                  onCheckedChange={() => toggleFunction("CLOSER")}
-                                  disabled={isUpdating}
-                                />
-                                <div>
-                                  <p className="text-sm font-medium">Closer</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Conduz reuniões e fechamento.
-                                  </p>
-                                </div>
-                              </label>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              As funções serão salvas junto com as alterações do perfil.
-                            </p>
-                          </section>
-                        </>
-                      ) : null
+                            </section>
+                          </>
+                        ) : null}
+                      </>
                     }
                     initialData={{
                       fullName: user?.fullName || "",
@@ -556,6 +612,56 @@ export default function AccountProfilePage() {
                       state: user?.state || "",
                     }}
                   />
+                </TabsContent>
+
+                <TabsContent value="connections" className="space-y-6">
+                  <section className="space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-base font-medium">Google Calendar</h2>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Conecte sua conta Google para criar reunioes automaticamente.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
+                        {user?.googleCalendarConnected ? (
+                          <CircleCheckBig className="h-4 w-4 text-emerald-500" />
+                        ) : (
+                          <Calendar className="h-4 w-4" />
+                        )}
+                        {user?.googleCalendarConnected ? "Conectado" : "Nao conectado"}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 p-4">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">
+                          {user?.googleCalendarConnected
+                            ? "Conta vinculada"
+                            : "Conectar conta Google"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {user?.googleCalendarConnected
+                            ? `Conectado como ${user.googleEmail || user.email}.`
+                            : "Necessario para enviar convites e criar eventos."}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 gap-2"
+                        onClick={handleConnectGoogle}
+                        disabled={isConnectingGoogle}
+                      >
+                        <Link2 className="h-4 w-4" />
+                        {isConnectingGoogle
+                          ? "Conectando..."
+                          : user?.googleCalendarConnected
+                            ? "Reconectar Google"
+                            : "Conectar Google"}
+                      </Button>
+                    </div>
+                  </section>
                 </TabsContent>
 
                 {/* Aba de Segurança */}
@@ -679,144 +785,129 @@ export default function AccountProfilePage() {
                   <Separator className="my-8" />
 
                   {/* Danger Zone */}
-                  <div className="space-y-4 rounded-lg border-2 border-red-600/40 bg-red-50 dark:bg-red-950/20 p-6">
-                    <div className="flex items-start gap-3">
-                      <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-500 mt-0.5" />
-                      <div className="flex-1">
-                        <h3 className="text-base font-semibold text-red-700 dark:text-red-500">
-                          Zona de Perigo
-                        </h3>
-                        <p className="text-sm text-red-600/80 dark:text-red-400/80 mt-1">
-                          Ações irreversíveis. Proceda com cautela.
-                        </p>
-                      </div>
+                  <section className="space-y-3">
+                    <div>
+                      <h3 className="text-base font-semibold">Zona de Perigo</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Ações irreversíveis. Proceda com cautela.
+                      </p>
                     </div>
 
-                    <Separator className="bg-red-600/30" />
-
-                    <div className="space-y-3">
-                      <div>
-                        <h4 className="text-sm font-medium text-red-700 dark:text-red-400">
-                          Deletar conta permanentemente
-                        </h4>
-                        <p className="text-sm text-red-600/80 dark:text-red-400/80 mt-1">
-                          Esta ação é <strong>irreversível</strong>. Todos os seus dados, incluindo operadores e managers relacionados, serão permanentemente removidos.
-                        </p>
-                      </div>
-
-                      <div className="flex justify-end pt-2">
+                    <div className="rounded-md border border-red-600/30 bg-muted/20">
+                      <div className="flex flex-col gap-3 border-b border-border/60 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">Deletar conta permanentemente</p>
+                          <p className="text-xs text-muted-foreground">
+                            Esta ação é irreversível. Todos os seus dados, incluindo operadores e managers, serão removidos.
+                          </p>
+                        </div>
                         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                           <AlertDialogTrigger asChild>
                             <Button
-                              variant="destructive"
-                              className="cursor-pointer bg-red-500 hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-600"
+                              className="h-9 font-medium border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-foreground cursor-pointer"
                               disabled={isDeletingAccount}
                             >
-                              <Trash2 className="h-4 w-4 mr-2" />
                               Deletar conta
                             </Button>
                           </AlertDialogTrigger>
-                        <AlertDialogContent className="border-red-600/40">
-                          {deletionComplete ? (
-                            // Tela de despedida
-                            <div className="text-center py-6">
-                              <div className="mx-auto w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center mb-4">
-                                <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
+                          <AlertDialogContent className="border-red-600/40">
+                            {deletionComplete ? (
+                              <div className="text-center py-6">
+                                <div className="mx-auto w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center mb-4">
+                                  <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </div>
+                                <h3 className="text-xl font-semibold mb-2">Até logo! 👋</h3>
+                                <p className="text-muted-foreground mb-1">
+                                  Sua conta foi deletada com sucesso.
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  Redirecionando em 5 segundos...
+                                </p>
                               </div>
-                              <h3 className="text-xl font-semibold mb-2">Até logo! 👋</h3>
-                              <p className="text-muted-foreground mb-1">
-                                Sua conta foi deletada com sucesso.
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                Redirecionando em 5 segundos...
-                              </p>
-                            </div>
-                          ) : isDeletingAccount ? (
-                            // Tela de loading
-                            <div className="text-center py-6">
-                              <Loader2 className="h-12 w-12 animate-spin text-red-600 mx-auto mb-4" />
-                              <h3 className="text-lg font-semibold mb-2">Deletando sua conta</h3>
-                              <p className="text-sm text-muted-foreground">
-                                Aguarde enquanto removemos todos os seus dados...
-                              </p>
-                            </div>
-                          ) : (
-                            // Tela de confirmação
-                            <>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-500">
-                                  <AlertTriangle className="h-5 w-5" />
-                                  Tem certeza absoluta?
-                                </AlertDialogTitle>
-                                <AlertDialogDescription asChild className="space-y-3 pt-2">
-                                  <div>
-                                  <p>
-                                    Esta ação <strong className="text-foreground">não pode ser desfeita</strong>. Isso irá deletar permanentemente:
-                                  </p>
-                                  <ul className="list-disc list-inside space-y-1 text-sm">
-                                    <li>Sua conta e todos os dados pessoais</li>
-                                    <li>Todos os leads e informações de clientes</li>
-                                    <li>Todos os operadores vinculados à sua conta</li>
-                                    <li>Todos os managers relacionados</li>
-                                    <li>Histórico de atividades e relatórios</li>
-                                  </ul>
-                                  <p className="text-red-600 dark:text-red-500 font-medium pt-2">
-                                    ⚠️ Esta ação é irreversível!
-                                  </p>
-                                                                  </div>
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
+                            ) : isDeletingAccount ? (
+                              <div className="text-center py-6">
+                                <Loader2 className="h-12 w-12 animate-spin text-red-600 mx-auto mb-4" />
+                                <h3 className="text-lg font-semibold mb-2">Deletando sua conta</h3>
+                                <p className="text-sm text-muted-foreground">
+                                  Aguarde enquanto removemos todos os seus dados...
+                                </p>
+                              </div>
+                            ) : (
+                              <>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-500">
+                                    <AlertTriangle className="h-5 w-5" />
+                                    Tem certeza absoluta?
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription asChild className="space-y-3 pt-2">
+                                    <div>
+                                      <p>
+                                        Esta ação <strong className="text-foreground">não pode ser desfeita</strong>. Isso irá deletar permanentemente:
+                                      </p>
+                                      <ul className="list-disc list-inside space-y-1 text-sm">
+                                        <li>Sua conta e todos os dados pessoais</li>
+                                        <li>Todos os leads e informações de clientes</li>
+                                        <li>Todos os operadores vinculados à sua conta</li>
+                                        <li>Todos os managers relacionados</li>
+                                        <li>Histórico de atividades e relatórios</li>
+                                      </ul>
+                                      <p className="text-red-600 dark:text-red-500 font-medium pt-2">
+                                        ⚠️ Esta ação é irreversível!
+                                      </p>
+                                    </div>
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
 
-                              <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                  <Label htmlFor="delete-password" className="text-sm font-medium">
-                                    Digite sua senha para confirmar
-                                  </Label>
-                                  <div className="relative">
-                                    <Input
-                                      id="delete-password"
-                                      type={showDeletePassword ? "text" : "password"}
-                                      placeholder="Digite sua senha"
-                                      value={deletePassword}
-                                      onChange={(e) => setDeletePassword(e.target.value)}
-                                      className="pr-11"
-                                      autoComplete="current-password"
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => setShowDeletePassword(!showDeletePassword)}
-                                      className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground hover:text-foreground transition-colors"
-                                      aria-label={showDeletePassword ? "Ocultar senha" : "Mostrar senha"}
-                                    >
-                                      {showDeletePassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                                    </button>
+                                <div className="space-y-4 py-4">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="delete-password" className="text-sm font-medium">
+                                      Digite sua senha para confirmar
+                                    </Label>
+                                    <div className="relative">
+                                      <Input
+                                        id="delete-password"
+                                        type={showDeletePassword ? "text" : "password"}
+                                        placeholder="Digite sua senha"
+                                        value={deletePassword}
+                                        onChange={(e) => setDeletePassword(e.target.value)}
+                                        className="pr-11"
+                                        autoComplete="current-password"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowDeletePassword(!showDeletePassword)}
+                                        className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground hover:text-foreground transition-colors"
+                                        aria-label={showDeletePassword ? "Ocultar senha" : "Mostrar senha"}
+                                      >
+                                        {showDeletePassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
 
-                              <AlertDialogFooter>
-                                <AlertDialogCancel onClick={handleCancelDelete} className="cursor-pointer">
-                                  Cancelar
-                                </AlertDialogCancel>
-                                <Button
-                                  variant="destructive"
-                                  onClick={handleDeleteAccount}
-                                  disabled={!deletePassword}
-                                  className="cursor-pointer bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Confirmar exclusão
-                                </Button>
-                              </AlertDialogFooter>
-                            </>
-                          )}
-                        </AlertDialogContent>
-                      </AlertDialog>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel onClick={handleCancelDelete} className="cursor-pointer">
+                                    Cancelar
+                                  </AlertDialogCancel>
+                                  <Button
+                                    variant="destructive"
+                                    onClick={handleDeleteAccount}
+                                    disabled={!deletePassword}
+                                    className="cursor-pointer bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Confirmar exclusão
+                                  </Button>
+                                </AlertDialogFooter>
+                              </>
+                            )}
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
-                  </div>
+                  </section>
                 </TabsContent>
               </Tabs>
             )}
