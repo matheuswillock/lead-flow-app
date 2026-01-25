@@ -42,6 +42,7 @@ export function ScheduleMeetingDialog({
   const [notes, setNotes] = useState<string>("");
   const [meetingLink, setMeetingLink] = useState<string>("");
   const [closerId, setCloserId] = useState<string>("");
+  const [extraGuestsInput, setExtraGuestsInput] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -50,10 +51,20 @@ export function ScheduleMeetingDialog({
     setNotes(lead.meetingNotes || "");
     setMeetingLink(lead.meetingLink || "");
     setCloserId(lead.closerId || "");
+    setExtraGuestsInput("");
     if (!lead.closerId && closers.length === 1) {
       setCloserId(closers[0].id);
     }
   }, [open, lead, closers]);
+
+  const parseExtraGuests = (value: string): string[] => {
+    const raw = value
+      .split(/[,;\s]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const valid = raw.filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    return Array.from(new Set(valid.map((email) => email.toLowerCase())));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +77,8 @@ export function ScheduleMeetingDialog({
       toast.error("Selecione um closer para a reuniao");
       return;
     }
+
+    const extraGuests = parseExtraGuests(extraGuestsInput);
 
     setIsSubmitting(true);
     const loadingToast = toast.loading("Agendando reunião...");
@@ -83,6 +96,7 @@ export function ScheduleMeetingDialog({
           notes: notes || `Reunião agendada com ${lead.name}`,
           meetingLink: meetingLink || undefined,
           closerId: closerId || undefined,
+          extraGuests: extraGuests.length ? extraGuests : undefined,
         }),
       });
 
@@ -124,6 +138,7 @@ export function ScheduleMeetingDialog({
       setMeetingDate(undefined);
       setNotes("");
       setMeetingLink("");
+      setExtraGuestsInput("");
       
       // Fechar dialog
       onOpenChange(false);
@@ -187,6 +202,21 @@ export function ScheduleMeetingDialog({
                 value={meetingLink}
                 onChange={(e) => setMeetingLink(e.target.value)}
               />
+            </div>
+
+            {/* Convidados extras */}
+            <div className="grid gap-2">
+              <Label htmlFor="extraGuests">Convidados extras (emails)</Label>
+              <Input
+                id="extraGuests"
+                type="text"
+                placeholder="ex: convidado1@email.com, convidado2@email.com"
+                value={extraGuestsInput}
+                onChange={(e) => setExtraGuestsInput(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Separe os emails por virgula ou espaco.
+              </p>
             </div>
 
             {/* Closer */}

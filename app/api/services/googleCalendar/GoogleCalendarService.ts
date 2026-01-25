@@ -134,6 +134,43 @@ async function googleCalendarFetch<T>(url: string, accessToken: string, options:
   return response.json() as Promise<T>;
 }
 
+export async function resendCalendarInvite({
+  organizer,
+  eventId,
+  calendarId = "primary",
+}: {
+  organizer: Profile;
+  eventId: string;
+  calendarId?: string;
+}): Promise<void> {
+  const accessToken = await getValidAccessToken(organizer);
+  const baseUrl = `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`;
+
+  const event = await googleCalendarFetch<any>(
+    `${baseUrl}/${encodeURIComponent(eventId)}`,
+    accessToken,
+    { method: "GET" }
+  );
+
+  const body: Record<string, unknown> = {
+    summary: event.summary,
+    description: event.description,
+    start: event.start,
+    end: event.end,
+    attendees: event.attendees,
+  };
+
+  if (event.location) {
+    body.location = event.location;
+  }
+
+  await googleCalendarFetch<any>(
+    `${baseUrl}/${encodeURIComponent(eventId)}?sendUpdates=all`,
+    accessToken,
+    { method: "PATCH", body: JSON.stringify(body) }
+  );
+}
+
 export async function upsertCalendarEvent({
   organizer,
   lead,
@@ -141,6 +178,7 @@ export async function upsertCalendarEvent({
   meetingDate,
   notes,
   meetingLink,
+  extraGuests,
   existingEventId,
 }: {
   organizer: Profile;
@@ -149,6 +187,7 @@ export async function upsertCalendarEvent({
   meetingDate: Date;
   notes?: string | null;
   meetingLink?: string | null;
+  extraGuests?: string[];
   existingEventId?: string | null;
 }): Promise<CalendarEventResult> {
   const accessToken = await getValidAccessToken(organizer);
@@ -156,11 +195,16 @@ export async function upsertCalendarEvent({
   const calendarId = "primary";
   const requestId = `lead${lead.id.replace(/-/g, "")}`;
   const endTime = getEventEnd(meetingDate);
-  const attendees = [
-    lead.email ? { email: lead.email } : null,
-    closerEmail ? { email: closerEmail } : null,
-    organizer.email ? { email: organizer.email } : null,
-  ].filter(Boolean);
+  const attendeeEmails = [
+    lead.email,
+    closerEmail,
+    organizer.email,
+    ...(extraGuests ?? []),
+  ]
+    .filter(Boolean)
+    .map((email) => (email as string).trim().toLowerCase())
+    .filter((email, index, list) => list.indexOf(email) === index);
+  const attendees = attendeeEmails.map((email) => ({ email }));
 
   const body: Record<string, unknown> = {
     summary: `Reuniao com ${lead.name}`,

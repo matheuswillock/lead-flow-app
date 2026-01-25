@@ -53,6 +53,16 @@ export interface OperatorAccessRemovedEmailData {
   managerName: string;
 }
 
+export interface MeetingInviteEmailData {
+  to: string[];
+  leadName: string;
+  meetingDate: Date;
+  meetingLink?: string | null;
+  organizerName: string;
+  closerName?: string | null;
+  notes?: string | null;
+}
+
 export class EmailService {
   private resend?: ReturnType<typeof assertResend>;
 
@@ -709,6 +719,41 @@ export class EmailService {
     return this.sendEmail({
       to: [data.operatorEmail],
       subject: "Acesso Removido - Corretor Studio",
+      html,
+    });
+  }
+
+  async sendMeetingInviteEmail(data: MeetingInviteEmailData) {
+    const formattedDate = data.meetingDate.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+    const formattedTime = data.meetingDate.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #171717;">
+        <h2>Convite de reunião</h2>
+        <p>Olá,</p>
+        <p>Você foi convidado para uma reunião com <strong>${data.leadName}</strong>.</p>
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 12px; margin: 16px 0;">
+          <p style="margin: 0 0 8px 0;"><strong>Data:</strong> ${formattedDate}</p>
+          <p style="margin: 0 0 8px 0;"><strong>Horario:</strong> ${formattedTime}</p>
+          <p style="margin: 0 0 8px 0;"><strong>Organizador:</strong> ${data.organizerName}</p>
+          ${data.closerName ? `<p style="margin: 0 0 8px 0;"><strong>Closer:</strong> ${data.closerName}</p>` : ""}
+          ${data.meetingLink ? `<p style="margin: 0;"><strong>Link:</strong> <a href="${data.meetingLink}">${data.meetingLink}</a></p>` : ""}
+        </div>
+        ${data.notes ? `<p><strong>Observacoes:</strong> ${data.notes}</p>` : ""}
+        <p>Este convite foi reenviado pelo Corretor Studio.</p>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to: data.to,
+      subject: `Convite de reunião - ${data.leadName}`,
       html,
     });
   }

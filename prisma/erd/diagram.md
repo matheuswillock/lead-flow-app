@@ -165,6 +165,7 @@ with_operators with_operators
     DateTime date 
     String notes "❓"
     String meetingLink "❓"
+    String extraGuests 
     String googleEventId "❓"
     String googleCalendarId "❓"
     DateTime createdAt 

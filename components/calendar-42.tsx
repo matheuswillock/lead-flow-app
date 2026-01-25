@@ -10,7 +10,12 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { CirclePlus } from "@/components/animate-ui/icons/circle-plus"
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog"
 import useBoardContext from "@/app/[supabaseId]/board/features/context/BoardHook"
@@ -79,7 +84,7 @@ export default function Calendar42() {
   const [selectedTime, setSelectedTime] = React.useState<string | null>("09:00")
   const [leadNameFilter, setLeadNameFilter] = React.useState("")
   const [leadIdFilter, setLeadIdFilter] = React.useState("")
-  const [closerFilter, setCloserFilter] = React.useState("all")
+  const [closerFilter, setCloserFilter] = React.useState<string[]>([])
   const [leadPickerOpen, setLeadPickerOpen] = React.useState(false)
   const [leadToSchedule, setLeadToSchedule] = React.useState<Lead | null>(null)
   const [scheduleDialogOpen, setScheduleDialogOpen] = React.useState(false)
@@ -130,7 +135,8 @@ export default function Calendar42() {
         lead.leadCode.toLowerCase().includes(idQuery) ||
         lead.id.toLowerCase().includes(idQuery)
       const matchesCloser =
-        closerFilter === "all" || lead.closerId === closerFilter
+        closerFilter.length === 0 ||
+        (lead.closerId ? closerFilter.includes(lead.closerId) : false)
       return matchesTime && matchesName && matchesId && matchesCloser
     })
   }, [dayEvents, leadNameFilter, leadIdFilter, selectedTime, closerFilter])
@@ -148,7 +154,9 @@ export default function Calendar42() {
       })
   }, [allLeads, leadPickerQuery])
 
-  const selectedCloser = closers.find((closer) => closer.id === closerFilter)
+  const selectedClosers = closers.filter((closer) =>
+    closerFilter.includes(closer.id)
+  )
 
   return (
     <div className="flex min-h-0 h-full w-full max-w-full flex-1 flex-col gap-4 overflow-x-hidden p-4">
@@ -231,39 +239,74 @@ export default function Calendar42() {
               </div>
               <div className="w-full min-w-0">
                 <Label className="text-xs">Closer</Label>
-                <Select value={closerFilter} onValueChange={setCloserFilter}>
-                  <SelectTrigger className="w-full max-w-none">
-                    {closerFilter === "all" || !selectedCloser ? (
-                      <SelectValue placeholder="Todos os closers" />
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <Avatar className="h-5 w-5">
-                          <AvatarImage src={selectedCloser.avatarImageUrl} />
-                          <AvatarFallback className="text-[10px]">
-                            {getInitials(selectedCloser.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="truncate">{selectedCloser.name}</span>
-                      </div>
-                    )}
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    {closers.map((closer) => (
-                      <SelectItem key={closer.id} value={closer.id}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-between gap-2 px-3"
+                    >
+                      {selectedClosers.length === 0 && (
+                        <span className="text-muted-foreground">Todos</span>
+                      )}
+                      {selectedClosers.length === 1 && (
                         <div className="flex items-center gap-2">
                           <Avatar className="h-5 w-5">
-                            <AvatarImage src={closer.avatarImageUrl} />
+                            <AvatarImage src={selectedClosers[0].avatarImageUrl} />
                             <AvatarFallback className="text-[10px]">
-                              {getInitials(closer.name)}
+                              {getInitials(selectedClosers[0].name)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="truncate">{closer.name}</span>
+                          <span className="truncate">{selectedClosers[0].name}</span>
                         </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      )}
+                      {selectedClosers.length > 1 && (
+                        <span>{selectedClosers.length} closers</span>
+                      )}
+                      <span className="ml-auto text-muted-foreground">▼</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56">
+                    <DropdownMenuCheckboxItem
+                      checked={closerFilter.length === 0}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setCloserFilter([])
+                        }
+                      }}
+                    >
+                      Todos
+                    </DropdownMenuCheckboxItem>
+                    {closers.map((closer) => {
+                      const checked = closerFilter.includes(closer.id)
+                      return (
+                        <DropdownMenuCheckboxItem
+                          key={closer.id}
+                          checked={checked}
+                          onCheckedChange={(nextChecked) => {
+                            setCloserFilter((prev) => {
+                              if (nextChecked) {
+                                return prev.includes(closer.id)
+                                  ? prev
+                                  : [...prev, closer.id]
+                              }
+                              return prev.filter((id) => id !== closer.id)
+                            })
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-5 w-5">
+                              <AvatarImage src={closer.avatarImageUrl} />
+                              <AvatarFallback className="text-[10px]">
+                                {getInitials(closer.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate">{closer.name}</span>
+                          </div>
+                        </DropdownMenuCheckboxItem>
+                      )
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 

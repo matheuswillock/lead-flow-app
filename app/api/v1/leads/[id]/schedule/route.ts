@@ -10,6 +10,7 @@ const scheduleSchema = z.object({
   notes: z.string().optional(),
   meetingLink: z.string().url("Link da reunião inválido").optional(),
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
+  extraGuests: z.array(z.string().email("Email inválido")).optional(),
 });
 
 export async function POST(
@@ -45,7 +46,7 @@ export async function POST(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const { date, notes, meetingLink, closerId } = validation.data;
+    const { date, notes, meetingLink, closerId, extraGuests } = validation.data;
     const meetingDate = new Date(date);
 
     const lead = await prisma.lead.findUnique({
@@ -85,6 +86,7 @@ export async function POST(
       meetingDate,
       notes,
       meetingLink,
+      extraGuests,
       existingEventId: existingSchedule?.googleEventId ?? null,
     });
 
@@ -99,6 +101,7 @@ export async function POST(
         date: meetingDate,
         notes,
         meetingLink: resolvedMeetingLink || undefined,
+        extraGuests: extraGuests ?? existingSchedule.extraGuests ?? [],
         googleEventId: calendarResult.eventId,
         googleCalendarId: calendarResult.calendarId,
       });
@@ -110,6 +113,7 @@ export async function POST(
         date: meetingDate,
         notes,
         meetingLink: resolvedMeetingLink || undefined,
+        extraGuests,
         googleEventId: calendarResult.eventId,
         googleCalendarId: calendarResult.calendarId,
       });

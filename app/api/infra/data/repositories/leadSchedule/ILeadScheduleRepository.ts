@@ -5,6 +5,7 @@ export interface CreateLeadScheduleDTO {
   date: Date;
   notes?: string;
   meetingLink?: string;
+  extraGuests?: string[];
   googleEventId?: string | null;
   googleCalendarId?: string | null;
 }
@@ -13,6 +14,7 @@ export interface UpdateLeadScheduleDTO {
   date?: Date;
   notes?: string;
   meetingLink?: string;
+  extraGuests?: string[];
   googleEventId?: string | null;
   googleCalendarId?: string | null;
 }

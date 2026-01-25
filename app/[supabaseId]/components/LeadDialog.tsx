@@ -14,6 +14,9 @@ import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { useParams } from "next/navigation";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface LeadDialogProps {
   open: boolean;
@@ -39,6 +42,11 @@ export default function LeadDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [finalizeCompleted, setFinalizeCompleted] = useState(false);
+  const [resendDialogOpen, setResendDialogOpen] = useState(false);
+  const [resendTarget, setResendTarget] = useState<"all" | "single">("all");
+  const [resendEmail, setResendEmail] = useState<string>("");
+  const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
 
@@ -48,6 +56,32 @@ export default function LeadDialog({
     lead.status === "offerSubmission"
   );
   const canMarkNoShow = lead?.status === "scheduled";
+  const canResendInvite = Boolean(lead?.meetingDate);
+
+  const buildParticipantOptions = () => {
+    const options: { label: string; email: string }[] = [];
+    if (lead?.email) {
+      options.push({ label: `${lead.name} (Lead)`, email: lead.email });
+    }
+    if (lead?.closer?.email) {
+      options.push({
+        label: `${lead.closer.fullName || lead.closer.email} (Closer)`,
+        email: lead.closer.email,
+      });
+    }
+    if (user?.email) {
+      options.push({
+        label: `${user.fullName || user.email} (Master)`,
+        email: user.email,
+      });
+    }
+    scheduleGuests.forEach((guestEmail) => {
+      if (!options.some((option) => option.email === guestEmail)) {
+        options.push({ label: guestEmail, email: guestEmail });
+      }
+    });
+    return options;
+  };
 
   const handleCopyLeadCode = async (code: string) => {
     try {
@@ -347,6 +381,71 @@ export default function LeadDialog({
     }
   }, [lead, open, form, user]);
 
+  useEffect(() => {
+    const fetchScheduleGuests = async () => {
+      if (!lead || !open || !supabaseId) return;
+      setScheduleLoading(true);
+      try {
+        const response = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+          },
+        });
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json();
+        const schedules = (data?.result || []) as Array<{ extraGuests?: string[] }>;
+        const latest = schedules[0];
+        setScheduleGuests(latest?.extraGuests || []);
+      } catch (error) {
+        console.error("Erro ao carregar convidados extras:", error);
+      } finally {
+        setScheduleLoading(false);
+      }
+    };
+
+    fetchScheduleGuests();
+  }, [lead, open, supabaseId]);
+
+  const handleResendInvite = async () => {
+    if (!lead || !supabaseId) return;
+    if (resendTarget === "single" && !resendEmail) {
+      toast.error("Selecione um participante para reenviar o convite");
+      return;
+    }
+
+    const loadingToast = toast.loading("Reenviando convite...");
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}/schedule/resend`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+        },
+        body: JSON.stringify({
+          target: resendTarget,
+          email: resendTarget === "single" ? resendEmail : undefined,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Erro ao reenviar convite");
+      }
+
+      toast.success("Convite reenviado com sucesso!", {
+        id: loadingToast,
+        duration: 3000,
+      });
+      setResendDialogOpen(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao reenviar convite";
+      toast.error(message, { id: loadingToast });
+    }
+  };
+
   return (
     <>
       <Dialog open={open && !showFinalizeDialog} onOpenChange={setOpen}>
@@ -378,6 +477,15 @@ export default function LeadDialog({
                 )}
               </div>
               <div className="ml-4 flex items-center gap-2">
+                {canResendInvite && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setResendDialogOpen(true)}
+                  >
+                    Reenviar convite
+                  </Button>
+                )}
                 {canMarkNoShow && (
                   <Button size="sm" variant="outline" onClick={handleNoShow}>
                     Marcar No-show
@@ -422,6 +530,60 @@ export default function LeadDialog({
               leadId={lead?.id}
             />
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resendDialogOpen} onOpenChange={setResendDialogOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Reenviar convite</DialogTitle>
+            <DialogDescription>
+              Escolha se deseja reenviar o convite para todos ou para um participante.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <RadioGroup
+              value={resendTarget}
+              onValueChange={(value) => setResendTarget(value as "all" | "single")}
+              className="grid gap-3"
+            >
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="all" id="resend-all" />
+                <Label htmlFor="resend-all">Todos os participantes</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="single" id="resend-single" />
+                <Label htmlFor="resend-single">Somente um participante</Label>
+              </div>
+            </RadioGroup>
+
+            {resendTarget === "single" && (
+              <div className="grid gap-2">
+                <Label>Participante</Label>
+                <Select value={resendEmail} onValueChange={setResendEmail}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={scheduleLoading ? "Carregando..." : "Selecione o email"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {buildParticipantOptions().map((option) => (
+                      <SelectItem key={option.email} value={option.email}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setResendDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleResendInvite}>
+                Reenviar convite
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
