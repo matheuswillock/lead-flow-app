@@ -22,6 +22,28 @@ export interface RequestToRegisterUserProfile {
   state?: string;
 }
 
+export interface RequestToRegisterUserProfileOAuth {
+  email: string;
+  fullname: string;
+  phone: string;
+  asaasCustomerId?: string;
+  subscriptionId?: string;
+  cpfCnpj?: string;
+  subscriptionStatus?: 'trial' | 'active' | 'past_due' | 'suspended' | 'canceled';
+  subscriptionPlan?: 'free_trial' | 'manager_base' | 'with_operators';
+  role?: 'manager' | 'operator';
+  operatorCount?: number;
+  subscriptionStartDate?: Date;
+  trialEndDate?: Date;
+  postalCode?: string;
+  address?: string;
+  addressNumber?: string;
+  neighborhood?: string;
+  complement?: string;
+  city?: string;
+  state?: string;
+}
+
 /**
  * Valida os dados de registro de perfil de usuário
  * @param data - Dados a serem validados
@@ -128,5 +150,69 @@ export function validateRegisterProfileRequest(data: any): RequestToRegisterUser
     password: data.password,
     fullname: data.fullname.trim(),
     phone: data.phone.trim()
+  };
+}
+
+export function validateRegisterProfileRequestOAuth(data: any): RequestToRegisterUserProfileOAuth {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Request body is required and must be an object');
+  }
+
+  const errors: string[] = [];
+
+  if (data.email === undefined || data.email === null) {
+    errors.push('Email is required');
+  } else if (typeof data.email !== 'string') {
+    errors.push('Email must be a string');
+  } else if (data.email.trim().length === 0) {
+    errors.push('Email cannot be empty');
+  } else if (data.email.length > 100) {
+    errors.push('Email must be at most 100 characters long');
+  } else {
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(data.email)) {
+      errors.push('Email must be a valid email address');
+    }
+  }
+
+  if (data.fullname === undefined || data.fullname === null) {
+    errors.push('Full name is required');
+  } else if (typeof data.fullname !== 'string') {
+    errors.push('Full name must be a string');
+  } else if (data.fullname.trim().length === 0) {
+    errors.push('Full name cannot be empty');
+  } else if (data.fullname.length < 2) {
+    errors.push('Full name must be at least 2 characters long');
+  } else if (data.fullname.length > 100) {
+    errors.push('Full name must be at most 100 characters long');
+  } else {
+    const nameRegex = /^[a-zA-ZÀ-ÿ\s\-']+$/;
+    if (!nameRegex.test(data.fullname)) {
+      errors.push('Full name can only contain letters, spaces, hyphens and apostrophes');
+    }
+  }
+
+  if (data.phone === undefined || data.phone === null) {
+    errors.push('Phone is required');
+  } else if (typeof data.phone !== 'string') {
+    errors.push('Phone must be a string');
+  } else if (data.phone.trim().length === 0) {
+    errors.push('Phone cannot be empty');
+  } else {
+    const cleanPhone = data.phone.replace(/[\s\-\(\)]/g, '');
+    const phoneRegex = /^(\+55|55)?[1-9][0-9]{8,10}$/;
+    if (!phoneRegex.test(cleanPhone)) {
+      errors.push('Phone must be a valid Brazilian phone number (e.g., +5511999999999 or 11999999999)');
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(errors.join(', '));
+  }
+
+  return {
+    email: data.email.trim().toLowerCase(),
+    fullname: data.fullname.trim(),
+    phone: data.phone.trim(),
   };
 }

@@ -4,7 +4,8 @@ import { RequestToRegisterUserProfile } from "@/app/api/v1/profiles/DTO/requestT
 import { Output } from "@/lib/output";
 import { ISignUpService } from "./services/ISignUpService";
 import { createSignUpService } from "./services/SignUpService";
-import { signUpFormData } from "@/lib/validations/validationForms";
+import { signUpFormData, signUpOAuthFormData } from "@/lib/validations/validationForms";
+import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 /**
  * Método de pagamento selecionado
@@ -38,7 +39,7 @@ interface ISignUpContextState {
     city?: string;
     state?: string;
   } | null;
-  registerUser: (data: signUpFormData) => Promise<Output>;
+  registerUser: (data: signUpFormData | signUpOAuthFormData, options?: { isOAuth?: boolean }) => Promise<Output>;
   setPaymentMethod: (method: PaymentMethod) => void;
   proceedToCheckout: (method?: PaymentMethod) => Promise<void>;
   goBackToForm: () => void;
@@ -92,7 +93,7 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
    * @param data - Dados do formulário de cadastro
    * @returns Resultado da operação de cadastro
    */
-  const registerUser = async (data: signUpFormData): Promise<Output> => {
+  const registerUser = async (data: signUpFormData | signUpOAuthFormData, options?: { isOAuth?: boolean }): Promise<Output> => {
     setIsLoading(true);
     setErrors({});
 
@@ -106,39 +107,88 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
       });
       
       // Monta o payload preservando possíveis campos adicionais da assinatura/endereço
-      const requestData: RequestToRegisterUserProfile = {
-        email: data.email,
-        password: data.password,
-        fullname: data.fullName,
-        phone: data.phone,
-        cpfCnpj: data.cpfCnpj, // Campo do formulário
-        postalCode: data.postalCode,
-        address: data.address,
-        addressNumber: data.addressNumber,
-        neighborhood: data.neighborhood,
-        complement: data.complement,
-        city: data.city,
-        state: data.state,
-        // Campos opcionais (preenchidos quando veio do fluxo de assinatura)
-        asaasCustomerId: (data as any).asaasCustomerId,
-        subscriptionId: (data as any).subscriptionId,
-        subscriptionStatus: (data as any).subscriptionStatus,
-        subscriptionPlan: (data as any).subscriptionPlan,
-        role: (data as any).role,
-        operatorCount: (data as any).operatorCount,
-        subscriptionStartDate: (data as any).subscriptionStartDate,
-        trialEndDate: (data as any).trialEndDate,
-      };
-      
-      console.info('📤 [SignUpContext] Enviando para API:', {
-        neighborhood: requestData.neighborhood,
-        postalCode: requestData.postalCode,
-        address: requestData.address,
-        city: requestData.city,
-        state: requestData.state,
-      });
+      let result: Output;
 
-      const result = await signUpService.registerUser(requestData);
+      if (options?.isOAuth) {
+        const supabase = createSupabaseBrowser();
+        if (!supabase) {
+          return new Output(false, [], ["Supabase indisponível"], null);
+        }
+
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !sessionData.session?.user) {
+          return new Output(false, [], ["Sessão inválida. Faça login novamente."], null);
+        }
+
+        const supabaseId = sessionData.session.user.id;
+
+        const requestData = {
+          email: data.email,
+          fullname: data.fullName,
+          phone: data.phone,
+          cpfCnpj: data.cpfCnpj,
+          postalCode: data.postalCode,
+          address: data.address,
+          addressNumber: data.addressNumber,
+          neighborhood: data.neighborhood,
+          complement: data.complement,
+          city: data.city,
+          state: data.state,
+          asaasCustomerId: (data as any).asaasCustomerId,
+          subscriptionId: (data as any).subscriptionId,
+          subscriptionStatus: (data as any).subscriptionStatus,
+          subscriptionPlan: (data as any).subscriptionPlan,
+          role: (data as any).role,
+          operatorCount: (data as any).operatorCount,
+          subscriptionStartDate: (data as any).subscriptionStartDate,
+          trialEndDate: (data as any).trialEndDate,
+        };
+
+        console.info('📤 [SignUpContext] Enviando OAuth para API:', {
+          neighborhood: requestData.neighborhood,
+          postalCode: requestData.postalCode,
+          address: requestData.address,
+          city: requestData.city,
+          state: requestData.state,
+        });
+
+        result = await signUpService.registerUserOAuth(requestData, supabaseId);
+      } else {
+        const formData = data as signUpFormData;
+        const requestData: RequestToRegisterUserProfile = {
+          email: formData.email,
+          password: formData.password,
+          fullname: formData.fullName,
+          phone: formData.phone,
+          cpfCnpj: formData.cpfCnpj, // Campo do formulário
+          postalCode: formData.postalCode,
+          address: formData.address,
+          addressNumber: formData.addressNumber,
+          neighborhood: formData.neighborhood,
+          complement: formData.complement,
+          city: formData.city,
+          state: formData.state,
+          // Campos opcionais (preenchidos quando veio do fluxo de assinatura)
+          asaasCustomerId: (formData as any).asaasCustomerId,
+          subscriptionId: (formData as any).subscriptionId,
+          subscriptionStatus: (formData as any).subscriptionStatus,
+          subscriptionPlan: (formData as any).subscriptionPlan,
+          role: (formData as any).role,
+          operatorCount: (formData as any).operatorCount,
+          subscriptionStartDate: (formData as any).subscriptionStartDate,
+          trialEndDate: (formData as any).trialEndDate,
+        };
+        
+        console.info('📤 [SignUpContext] Enviando para API:', {
+          neighborhood: requestData.neighborhood,
+          postalCode: requestData.postalCode,
+          address: requestData.address,
+          city: requestData.city,
+          state: requestData.state,
+        });
+
+        result = await signUpService.registerUser(requestData);
+      }
 
       if (result.isValid) {
         // Armazenar dados do usuário criado
@@ -160,6 +210,38 @@ export const SignUpProvider: React.FC<ISignUpProviderProps> = ({
         // Mudar para etapa de seleção de pagamento
         setCurrentStep('payment');
         
+        if (options?.isOAuth) {
+          const pending = sessionStorage.getItem("googleConnectPending");
+          if (pending) {
+            try {
+              const payload = JSON.parse(pending) as {
+                accessToken?: string;
+                refreshToken?: string;
+                expiresAt?: string;
+                email?: string;
+              };
+
+              await fetch("/api/v1/google/connect", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-supabase-user-id": result.result.supabaseId,
+                },
+                body: JSON.stringify({
+                  accessToken: payload.accessToken,
+                  refreshToken: payload.refreshToken || undefined,
+                  expiresAt: payload.expiresAt,
+                  email: payload.email,
+                }),
+              });
+            } catch (error) {
+              console.warn("Falha ao conectar Google apos cadastro:", error);
+            } finally {
+              sessionStorage.removeItem("googleConnectPending");
+            }
+          }
+        }
+
         return result;
       } else {
         const apiErrors: Record<string, string> = {};

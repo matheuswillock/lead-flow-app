@@ -178,7 +178,10 @@ class PrismaProfileRepository implements IProfileRepository {
         const { data: user, error: authError } = await supabase.auth.admin.createUser({
           email,
           password,
-          email_confirm: true
+          email_confirm: true,
+          app_metadata: {
+            provider: "email"
+          }
         });
 
         if (authError || !user.user) {
@@ -350,6 +353,112 @@ class PrismaProfileRepository implements IProfileRepository {
     } catch (outerError: any) {
       console.error("❌ [ProfileRepository] Erro geral ao criar profile:", outerError);
       throw outerError;
+    }
+  }
+
+  async createProfileWithSupabaseId(
+    supabaseId: string,
+    fullName: string,
+    phone: string,
+    email: string,
+    role: UserRole,
+    asaasCustomerId?: string,
+    subscriptionId?: string,
+    cpfCnpj?: string,
+    subscriptionStatus?: string,
+    subscriptionPlan?: string,
+    operatorCount?: number,
+    subscriptionStartDate?: Date,
+    trialEndDate?: Date,
+    postalCode?: string,
+    address?: string,
+    addressNumber?: string,
+    neighborhood?: string,
+    complement?: string,
+    city?: string,
+    state?: string,
+    managerId?: string
+  ): Promise<{ profileId: string; supabaseId: string } | null> {
+    try {
+      if (!supabaseId) {
+        throw new Error("Supabase ID é obrigatório");
+      }
+
+      const existingProfile = await prisma.profile.findUnique({ where: { supabaseId } });
+      if (existingProfile) {
+        throw new Error("Perfil já existe para este usuário");
+      }
+
+      const profileData: any = {
+        supabaseId,
+        fullName,
+        phone,
+        email,
+        role,
+        isMaster: !managerId,
+      };
+
+      if (
+        profileData.isMaster &&
+        (subscriptionId || asaasCustomerId || subscriptionPlan)
+      ) {
+        profileData.functions = ["SDR", "CLOSER"];
+      }
+
+      if (managerId) {
+        profileData.managerId = managerId;
+      }
+
+      if (cpfCnpj) {
+        profileData.cpfCnpj = cpfCnpj;
+      }
+      if (asaasCustomerId) {
+        profileData.asaasCustomerId = asaasCustomerId;
+      }
+      if (subscriptionId) {
+        profileData.subscriptionId = subscriptionId;
+      }
+      if (subscriptionStatus) {
+        profileData.subscriptionStatus = subscriptionStatus;
+      }
+      if (subscriptionPlan) {
+        profileData.subscriptionPlan = subscriptionPlan;
+      }
+      if (operatorCount !== undefined) {
+        profileData.operatorCount = operatorCount;
+      }
+      if (subscriptionStartDate) {
+        profileData.subscriptionStartDate = subscriptionStartDate;
+      }
+      if (trialEndDate) {
+        profileData.trialEndDate = trialEndDate;
+      }
+
+      if (postalCode !== undefined) profileData.postalCode = postalCode;
+      if (address !== undefined) profileData.address = address;
+      if (addressNumber !== undefined) profileData.addressNumber = addressNumber;
+      if (neighborhood !== undefined) profileData.neighborhood = neighborhood;
+      if (complement !== undefined) profileData.complement = complement;
+      if (city !== undefined) profileData.city = city;
+      if (state !== undefined) profileData.state = state;
+
+      const profile = await prisma.profile.create({ data: profileData });
+
+      return { profileId: profile.id, supabaseId };
+    } catch (error: any) {
+      console.error("❌ [ProfileRepository] Erro ao criar profile OAuth:", error);
+
+      if (error.message.includes('Unique constraint failed on the fields: (`email`)')) {
+        throw new Error("Este e-mail já está cadastrado");
+      }
+      if (error.message.includes('Unique constraint failed on the fields: (`phone`)')) {
+        throw new Error("Este telefone já está cadastrado");
+      }
+      if (error.message && error.message.includes('já está cadastrado')) {
+        throw error;
+      }
+
+      throw new Error("Erro ao criar conta. Tente novamente em alguns instantes.");
     }
   }
 

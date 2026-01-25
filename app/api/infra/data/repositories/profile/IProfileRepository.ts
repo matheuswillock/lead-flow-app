@@ -29,6 +29,29 @@ export interface IProfileRepository {
     state?: string,
     managerId?: string
   ): Promise<{ profileId: string; supabaseId: string } | null>;
+  createProfileWithSupabaseId(
+    supabaseId: string,
+    fullName: string,
+    phone: string,
+    email: string,
+    role: UserRole,
+    asaasCustomerId?: string,
+    subscriptionId?: string,
+    cpfCnpj?: string,
+    subscriptionStatus?: string,
+    subscriptionPlan?: string,
+    operatorCount?: number,
+    subscriptionStartDate?: Date,
+    trialEndDate?: Date,
+    postalCode?: string,
+    address?: string,
+    addressNumber?: string,
+    neighborhood?: string,
+    complement?: string,
+    city?: string,
+    state?: string,
+    managerId?: string
+  ): Promise<{ profileId: string; supabaseId: string } | null>;
   updateProfile(
     supabaseId: string,
     updates: { 

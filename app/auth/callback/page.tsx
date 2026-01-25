@@ -37,6 +37,39 @@ export default function AuthCallbackPage() {
         session.user.email ||
         undefined;
 
+      const profileResponse = await fetch(`/api/v1/profiles/${supabaseId}`, {
+        cache: "no-store",
+      });
+
+      if (profileResponse.status === 404) {
+        const userMetadata = session.user.user_metadata as { full_name?: string; name?: string } | undefined;
+        const fullName = userMetadata?.full_name || userMetadata?.name;
+
+        sessionStorage.setItem("oauthSignup", JSON.stringify({
+          fullName,
+          email: googleEmail,
+        }));
+
+        if (providerToken) {
+          sessionStorage.setItem("googleConnectPending", JSON.stringify({
+            accessToken: providerToken,
+            refreshToken: refreshToken || undefined,
+            expiresAt: session.expires_at
+              ? new Date(session.expires_at * 1000).toISOString()
+              : undefined,
+            email: googleEmail,
+          }));
+        }
+
+        router.replace("/sign-up?oauth=google&newUser=1");
+        return;
+      }
+
+      if (!profileResponse.ok) {
+        setMessage("Falha ao validar perfil do usuario.");
+        return;
+      }
+
       if (!providerToken) {
         setMessage("Token do Google nao encontrado. Tente novamente.");
         return;
