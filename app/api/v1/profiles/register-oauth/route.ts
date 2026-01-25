@@ -1,6 +1,6 @@
 import { Output } from "@/lib/output";
 import { NextRequest, NextResponse } from "next/server";
-import { RequestToRegisterUserProfileOAuth, validateRegisterProfileRequestOAuth } from "../DTO/requestToRegisterUserProfile";
+import { RequestToRegisterUserProfileOAuth, validateRegisterProfileRequestOAuth } from "@/app/api/v1/profiles/DTO/requestToRegisterUserProfile";
 import { RegisterExistingUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import type { IProfileUseCase } from "@/app/api/useCases/profiles/IProfileUseCase";
 import { createClient } from "@supabase/supabase-js";
