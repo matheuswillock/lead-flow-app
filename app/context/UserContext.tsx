@@ -23,6 +23,8 @@ export interface UserData {
   state: string | null;
   profileIconId: string | null;
   profileIconUrl: string | null;
+  googleCalendarConnected: boolean;
+  googleEmail: string | null;
   role: UserRole;
   functions: UserFunction[];
   isMaster: boolean;

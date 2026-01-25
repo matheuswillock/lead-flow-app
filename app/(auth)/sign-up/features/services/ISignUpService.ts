@@ -1,4 +1,4 @@
-import { RequestToRegisterUserProfile } from "@/app/api/v1/profiles/DTO/requestToRegisterUserProfile";
+import { RequestToRegisterUserProfile, RequestToRegisterUserProfileOAuth } from "@/app/api/v1/profiles/DTO/requestToRegisterUserProfile";
 import { Output } from "@/lib/output";
 
 /**
@@ -12,4 +12,5 @@ export interface ISignUpService {
    * @returns Promise com o resultado da operação
    */
   registerUser(requestData: RequestToRegisterUserProfile): Promise<Output>;
+  registerUserOAuth(requestData: RequestToRegisterUserProfileOAuth, supabaseId: string): Promise<Output>;
 }

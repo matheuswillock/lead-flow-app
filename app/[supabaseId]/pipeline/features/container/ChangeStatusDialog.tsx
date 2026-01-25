@@ -30,6 +30,7 @@ interface ChangeStatusDialogProps {
   statusLabels: Record<string, string>;
   onStatusChanged: () => Promise<void>;
   closers: UserAssociated[];
+  teamMembers?: UserAssociated[];
 }
 
 export function ChangeStatusDialog({
@@ -39,6 +40,7 @@ export function ChangeStatusDialog({
   statusLabels,
   onStatusChanged,
   closers,
+  teamMembers,
 }: ChangeStatusDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
@@ -158,6 +160,7 @@ export function ChangeStatusDialog({
           lead={lead}
           onScheduleSuccess={handleScheduleSuccess}
           closers={closers}
+          teamMembers={teamMembers}
         />
       )}
 

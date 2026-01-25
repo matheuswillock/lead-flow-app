@@ -104,6 +104,11 @@ with_operators with_operators
     UserFunction functions 
     Boolean isMaster 
     Boolean hasPermanentSubscription 
+    Boolean googleCalendarConnected 
+    String googleAccessToken "❓"
+    String googleRefreshToken "❓"
+    DateTime googleTokenExpiresAt "❓"
+    String googleEmail "❓"
     String asaasCustomerId "❓"
     String subscriptionId "❓"
     SubscriptionStatus subscriptionStatus "❓"
@@ -134,6 +139,7 @@ with_operators with_operators
     String referenceHospital "❓"
     String currentTreatment "❓"
     DateTime meetingDate "❓"
+    String meetingTitle "❓"
     String meetingNotes "❓"
     String meetingLink "❓"
     MeetingHeald meetingHeald "❓"
@@ -158,8 +164,12 @@ with_operators with_operators
   "leads_schedule" {
     String id "🗝️"
     DateTime date 
+    String meetingTitle "❓"
     String notes "❓"
     String meetingLink "❓"
+    String extraGuests 
+    String googleEventId "❓"
+    String googleCalendarId "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }

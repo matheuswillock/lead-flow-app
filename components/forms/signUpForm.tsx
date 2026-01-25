@@ -5,18 +5,22 @@ import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form"
 import Link from "next/link"
 import type { UseFormReturn } from "react-hook-form"
-import { signUpFormData } from "@/lib/validations/validationForms"
+import { signUpFormData, signUpOAuthFormData } from "@/lib/validations/validationForms"
 import { maskPhone, maskCPFOrCNPJ, unmask } from "@/lib/masks"
 import { useState } from "react"
 import { CepService } from "@/lib/services/CepService"
 import { toast } from "sonner"
+import { createSupabaseBrowser } from "@/lib/supabase/browser"
+import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
 
 interface SignUpFormProps {
-  form: UseFormReturn<signUpFormData>;
+  form: UseFormReturn<signUpFormData | signUpOAuthFormData>;
   errors: Record<string, string>;
-  onSubmit: (data: signUpFormData) => void | Promise<void>;
+  onSubmit: (data: signUpFormData | signUpOAuthFormData) => void | Promise<void>;
   isLoading?: boolean;
   readonly?: boolean;
+  isOAuth?: boolean;
 }
 
 export function SignupForm({
@@ -26,6 +30,7 @@ export function SignupForm({
   onSubmit,
   isLoading = false,
   readonly = false,
+  isOAuth = false,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignUpFormProps) {
   const [showPassword, setShowPassword] = useState(false);
@@ -33,6 +38,23 @@ export function SignupForm({
   const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [isSearchingCep, setIsSearchingCep] = useState(false);
+
+  const handleGoogleSignIn = async () => {
+    const supabase = createSupabaseBrowser();
+    if (!supabase) return;
+
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        scopes: "https://www.googleapis.com/auth/calendar.events",
+        redirectTo: `${window.location.origin}/auth/callback?next=/board`,
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    });
+  };
 
   // Validações individuais da senha
   const passwordValidations = {
@@ -159,10 +181,19 @@ export function SignupForm({
               </div>
               <span className="sr-only">Corretor Studio</span>
             </Link>
-            <h1 className="text-xl font-bold">Criar conta</h1>
+            <h1 className="text-xl font-bold">
+              {isOAuth ? "Completar cadastro" : "Criar conta"}
+            </h1>
             <p className="text-center text-sm text-muted-foreground max-w-sm">
-              Crie sua conta para começar a usar o Corretor Studio
+              {isOAuth
+                ? "Preencha os dados restantes para seguir para a assinatura."
+                : "Crie sua conta para começar a usar o Corretor Studio"}
             </p>
+            {isOAuth && (
+              <Badge variant="outline" className="mt-1 border-primary/30 text-primary">
+                Cadastro via Google
+              </Badge>
+            )}
             <div className="text-center text-sm">
               Já tem uma conta? 
               {' '}
@@ -205,7 +236,7 @@ export function SignupForm({
                       placeholder="Seu nome"
                       {...field}
                       className="border-2 border-gray-300 rounded-md p-2"
-                      disabled={readonly}
+                      disabled={readonly || (isOAuth && !!field.value)}
                     />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.fullName}</FormMessage>
@@ -225,7 +256,7 @@ export function SignupForm({
                       placeholder="email@exemplo.com" 
                       {...field} 
                       className="border-2 border-gray-300 rounded-md p-2"
-                      disabled={readonly}
+                      disabled={readonly || (isOAuth && !!field.value)}
                     />
                   </FormControl>
                   <FormMessage className="text-red-500">{errors.email}</FormMessage>
@@ -469,201 +500,205 @@ export function SignupForm({
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem className="grid gap-2">
-                  <div className="flex items-center justify-between">
-                    <FormLabel>
-                      Senha <span className="text-red-500">*</span>
-                    </FormLabel>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleGeneratePassword}
-                      className="h-auto py-1 px-2 text-xs"
-                    >
-                      Gerar senha forte
-                    </Button>
-                  </div>
-                  <FormControl>
-                    <div className="relative">
-                      <Input 
-                        type={showPassword ? "text" : "password"} 
-                        {...field}
-                        onChange={(e) => {
-                          field.onChange(e);
-                          setCurrentPassword(e.target.value);
-                          if (e.target.value) {
-                            setPasswordStrength(calculatePasswordStrength(e.target.value));
-                          } else {
-                            setPasswordStrength(null);
-                          }
-                        }}
-                        className="border-2 border-gray-300 rounded-md p-2 pr-10" 
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </FormControl>
-                  
-                  {/* Indicador de força da senha */}
-                  {passwordStrength && (
-                    <div className="space-y-1">
-                      <div className="flex gap-1">
-                        <div className={`h-1 flex-1 rounded ${
-                          passwordStrength === 'weak' ? 'bg-red-500' :
-                          passwordStrength === 'medium' ? 'bg-yellow-500' :
-                          'bg-green-500'
-                        }`} />
-                        <div className={`h-1 flex-1 rounded ${
-                          passwordStrength === 'medium' || passwordStrength === 'strong' ? 
-                          (passwordStrength === 'medium' ? 'bg-yellow-500' : 'bg-green-500') : 
-                          'bg-muted'
-                        }`} />
-                        <div className={`h-1 flex-1 rounded ${
-                          passwordStrength === 'strong' ? 'bg-green-500' : 'bg-muted'
-                        }`} />
+            {!isOAuth && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem className="grid gap-2">
+                      <div className="flex items-center justify-between">
+                        <FormLabel>
+                          Senha <span className="text-red-500">*</span>
+                        </FormLabel>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleGeneratePassword}
+                          className="h-auto py-1 px-2 text-xs"
+                        >
+                          Gerar senha forte
+                        </Button>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <ShieldCheck className={`h-3 w-3 ${
-                          passwordStrength === 'weak' ? 'text-red-500' :
-                          passwordStrength === 'medium' ? 'text-yellow-500' :
-                          'text-green-500'
-                        }`} />
-                        <p className={`text-xs font-medium ${
-                          passwordStrength === 'weak' ? 'text-red-500' :
-                          passwordStrength === 'medium' ? 'text-yellow-500' :
-                          'text-green-500'
-                        }`}>
-                          {passwordStrength === 'weak' ? 'Senha fraca' :
-                           passwordStrength === 'medium' ? 'Senha média' :
-                           'Senha forte'}
-                        </p>
+                      <FormControl>
+                        <div className="relative">
+                          <Input 
+                            type={showPassword ? "text" : "password"} 
+                            {...field}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              setCurrentPassword(e.target.value);
+                              if (e.target.value) {
+                                setPasswordStrength(calculatePasswordStrength(e.target.value));
+                              } else {
+                                setPasswordStrength(null);
+                              }
+                            }}
+                            className="border-2 border-gray-300 rounded-md p-2 pr-10" 
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </FormControl>
+                      
+                      {/* Indicador de força da senha */}
+                      {passwordStrength && (
+                        <div className="space-y-1">
+                          <div className="flex gap-1">
+                            <div className={`h-1 flex-1 rounded ${
+                              passwordStrength === 'weak' ? 'bg-red-500' :
+                              passwordStrength === 'medium' ? 'bg-yellow-500' :
+                              'bg-green-500'
+                            }`} />
+                            <div className={`h-1 flex-1 rounded ${
+                              passwordStrength === 'medium' || passwordStrength === 'strong' ? 
+                              (passwordStrength === 'medium' ? 'bg-yellow-500' : 'bg-green-500') : 
+                              'bg-muted'
+                            }`} />
+                            <div className={`h-1 flex-1 rounded ${
+                              passwordStrength === 'strong' ? 'bg-green-500' : 'bg-muted'
+                            }`} />
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <ShieldCheck className={`h-3 w-3 ${
+                              passwordStrength === 'weak' ? 'text-red-500' :
+                              passwordStrength === 'medium' ? 'text-yellow-500' :
+                              'text-green-500'
+                            }`} />
+                            <p className={`text-xs font-medium ${
+                              passwordStrength === 'weak' ? 'text-red-500' :
+                              passwordStrength === 'medium' ? 'text-yellow-500' :
+                              'text-green-500'
+                            }`}>
+                              {passwordStrength === 'weak' ? 'Senha fraca' :
+                               passwordStrength === 'medium' ? 'Senha média' :
+                               'Senha forte'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Regras de validação com feedback visual dinâmico */}
+                      <div className="border border-muted rounded-md p-3 bg-muted/30 space-y-2">
+                        <p className="font-medium text-foreground text-sm">A senha deve conter:</p>
+                        <ul className="space-y-1.5">
+                          <li className={cn(
+                            "flex items-center gap-2 text-sm transition-colors",
+                            currentPassword.length === 0 ? "text-muted-foreground" :
+                            passwordValidations.minLength ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                          )}>
+                            {currentPassword.length === 0 ? (
+                              <span className="w-4 h-4 flex items-center justify-center">•</span>
+                            ) : passwordValidations.minLength ? (
+                              <Check className="w-4 h-4 flex-shrink-0" />
+                            ) : (
+                              <X className="w-4 h-4 flex-shrink-0" />
+                            )}
+                            <span>Mínimo de 8 caracteres</span>
+                          </li>
+                          
+                          <li className={cn(
+                            "flex items-center gap-2 text-sm transition-colors",
+                            currentPassword.length === 0 ? "text-muted-foreground" :
+                            passwordValidations.hasUppercase ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                          )}>
+                            {currentPassword.length === 0 ? (
+                              <span className="w-4 h-4 flex items-center justify-center">•</span>
+                            ) : passwordValidations.hasUppercase ? (
+                              <Check className="w-4 h-4 flex-shrink-0" />
+                            ) : (
+                              <X className="w-4 h-4 flex-shrink-0" />
+                            )}
+                            <span>Pelo menos uma letra maiúscula</span>
+                          </li>
+                          
+                          <li className={cn(
+                            "flex items-center gap-2 text-sm transition-colors",
+                            currentPassword.length === 0 ? "text-muted-foreground" :
+                            passwordValidations.hasLowercase ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                          )}>
+                            {currentPassword.length === 0 ? (
+                              <span className="w-4 h-4 flex items-center justify-center">•</span>
+                            ) : passwordValidations.hasLowercase ? (
+                              <Check className="w-4 h-4 flex-shrink-0" />
+                            ) : (
+                              <X className="w-4 h-4 flex-shrink-0" />
+                            )}
+                            <span>Pelo menos uma letra minúscula</span>
+                          </li>
+                          
+                          <li className={cn(
+                            "flex items-center gap-2 text-sm transition-colors",
+                            currentPassword.length === 0 ? "text-muted-foreground" :
+                            passwordValidations.hasNumber ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                          )}>
+                            {currentPassword.length === 0 ? (
+                              <span className="w-4 h-4 flex items-center justify-center">•</span>
+                            ) : passwordValidations.hasNumber ? (
+                              <Check className="w-4 h-4 flex-shrink-0" />
+                            ) : (
+                              <X className="w-4 h-4 flex-shrink-0" />
+                            )}
+                            <span>Pelo menos um número</span>
+                          </li>
+                          
+                          <li className={cn(
+                            "flex items-center gap-2 text-sm transition-colors",
+                            currentPassword.length === 0 ? "text-muted-foreground" :
+                            passwordValidations.hasSpecialChar ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                          )}>
+                            {currentPassword.length === 0 ? (
+                              <span className="w-4 h-4 flex items-center justify-center">•</span>
+                            ) : passwordValidations.hasSpecialChar ? (
+                              <Check className="w-4 h-4 flex-shrink-0" />
+                            ) : (
+                              <X className="w-4 h-4 flex-shrink-0" />
+                            )}
+                            <span>Pelo menos um caractere especial (@, #, $, etc.)</span>
+                          </li>
+                        </ul>
                       </div>
-                    </div>
+                      <FormMessage className="text-red-500">{errors.password}</FormMessage>
+                    </FormItem>
                   )}
-                  
-                  {/* Regras de validação com feedback visual dinâmico */}
-                  <div className="border border-muted rounded-md p-3 bg-muted/30 space-y-2">
-                    <p className="font-medium text-foreground text-sm">A senha deve conter:</p>
-                    <ul className="space-y-1.5">
-                      <li className={cn(
-                        "flex items-center gap-2 text-sm transition-colors",
-                        currentPassword.length === 0 ? "text-muted-foreground" :
-                        passwordValidations.minLength ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                      )}>
-                        {currentPassword.length === 0 ? (
-                          <span className="w-4 h-4 flex items-center justify-center">•</span>
-                        ) : passwordValidations.minLength ? (
-                          <Check className="w-4 h-4 flex-shrink-0" />
-                        ) : (
-                          <X className="w-4 h-4 flex-shrink-0" />
-                        )}
-                        <span>Mínimo de 8 caracteres</span>
-                      </li>
-                      
-                      <li className={cn(
-                        "flex items-center gap-2 text-sm transition-colors",
-                        currentPassword.length === 0 ? "text-muted-foreground" :
-                        passwordValidations.hasUppercase ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                      )}>
-                        {currentPassword.length === 0 ? (
-                          <span className="w-4 h-4 flex items-center justify-center">•</span>
-                        ) : passwordValidations.hasUppercase ? (
-                          <Check className="w-4 h-4 flex-shrink-0" />
-                        ) : (
-                          <X className="w-4 h-4 flex-shrink-0" />
-                        )}
-                        <span>Pelo menos uma letra maiúscula</span>
-                      </li>
-                      
-                      <li className={cn(
-                        "flex items-center gap-2 text-sm transition-colors",
-                        currentPassword.length === 0 ? "text-muted-foreground" :
-                        passwordValidations.hasLowercase ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                      )}>
-                        {currentPassword.length === 0 ? (
-                          <span className="w-4 h-4 flex items-center justify-center">•</span>
-                        ) : passwordValidations.hasLowercase ? (
-                          <Check className="w-4 h-4 flex-shrink-0" />
-                        ) : (
-                          <X className="w-4 h-4 flex-shrink-0" />
-                        )}
-                        <span>Pelo menos uma letra minúscula</span>
-                      </li>
-                      
-                      <li className={cn(
-                        "flex items-center gap-2 text-sm transition-colors",
-                        currentPassword.length === 0 ? "text-muted-foreground" :
-                        passwordValidations.hasNumber ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                      )}>
-                        {currentPassword.length === 0 ? (
-                          <span className="w-4 h-4 flex items-center justify-center">•</span>
-                        ) : passwordValidations.hasNumber ? (
-                          <Check className="w-4 h-4 flex-shrink-0" />
-                        ) : (
-                          <X className="w-4 h-4 flex-shrink-0" />
-                        )}
-                        <span>Pelo menos um número</span>
-                      </li>
-                      
-                      <li className={cn(
-                        "flex items-center gap-2 text-sm transition-colors",
-                        currentPassword.length === 0 ? "text-muted-foreground" :
-                        passwordValidations.hasSpecialChar ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                      )}>
-                        {currentPassword.length === 0 ? (
-                          <span className="w-4 h-4 flex items-center justify-center">•</span>
-                        ) : passwordValidations.hasSpecialChar ? (
-                          <Check className="w-4 h-4 flex-shrink-0" />
-                        ) : (
-                          <X className="w-4 h-4 flex-shrink-0" />
-                        )}
-                        <span>Pelo menos um caractere especial (@, #, $, etc.)</span>
-                      </li>
-                    </ul>
-                  </div>
-                  <FormMessage className="text-red-500">{errors.password}</FormMessage>
-                </FormItem>
-              )}
-            />
+                />
 
-            <FormField
-              control={form.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem className="grid gap-2">
-                  <FormLabel>
-                    Confirmar Senha <span className="text-red-500">*</span>
-                  </FormLabel>
-                  <FormControl>
-                    <div className="relative">
-                      <Input 
-                        type={showConfirmPassword ? "text" : "password"} 
-                        {...field} 
-                        className="border-2 border-gray-300 rounded-md p-2 pr-10" 
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                      >
-                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </FormControl>
-                  <FormMessage className="text-red-500">{errors.confirmPassword || errors.apiError}</FormMessage>
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="confirmPassword"
+                  render={({ field }) => (
+                    <FormItem className="grid gap-2">
+                      <FormLabel>
+                        Confirmar Senha <span className="text-red-500">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Input 
+                            type={showConfirmPassword ? "text" : "password"} 
+                            {...field} 
+                            className="border-2 border-gray-300 rounded-md p-2 pr-10" 
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                          >
+                            {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </FormControl>
+                      <FormMessage className="text-red-500">{errors.confirmPassword || errors.apiError}</FormMessage>
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
 
             <Button
               type="submit"
@@ -673,22 +708,31 @@ export function SignupForm({
               {form.formState.isSubmitting || isLoading ? "Cadastrando..." : "Criar conta"}
             </Button>
           </div>
-          {/* <div className="flex items-center gap-4">
-            <Separator className="flex-1 shrink w-auto h-px bg-[var(--border)] opacity-60" />
-            <span className="text-xs text-muted-foreground">Ou continue com</span>
-            <Separator className="flex-1 shrink w-auto h-px bg-[var(--border)] opacity-60" />
-          </div>
-          <div className="grid gap-4">
-            <Button variant="outline" className="w-full flex justify-center items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-4 w-4">
-              <path
-                d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
-                fill="currentColor"
-              />
-              </svg>
-              Continuar com Google
-            </Button>
-          </div> */}
+          {!isOAuth && (
+            <>
+              <div className="flex items-center gap-4">
+                <Separator className="flex-1 shrink w-auto h-px bg-[var(--border)] opacity-60" />
+                <span className="text-xs text-muted-foreground">Ou continue com</span>
+                <Separator className="flex-1 shrink w-auto h-px bg-[var(--border)] opacity-60" />
+              </div>
+              <div className="grid gap-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGoogleSignIn}
+                  className="w-full flex justify-center items-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-4 w-4">
+                  <path
+                    d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
+                    fill="currentColor"
+                  />
+                  </svg>
+                  Continuar com Google
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </form>
     </Form>

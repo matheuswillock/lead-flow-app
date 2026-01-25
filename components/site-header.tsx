@@ -15,6 +15,7 @@ export function SiteHeader() {
     dashboard: 'Dashboard',
     board: 'Board',
     pipeline: 'Pipeline',
+    calendar: 'Calendario',
     account: 'Account',
     subscription: 'Assinatura',
     'manager-users': 'Manager Users',

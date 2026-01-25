@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"  
-import { LayoutDashboard, KanbanSquare, ChartBarBig, Users, HeartPulse } from "lucide-react"
+import { LayoutDashboard, KanbanSquare, ChartBarBig, Users, HeartPulse, CalendarDays } from "lucide-react"
 
 import {
   Sidebar,
@@ -26,6 +26,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "Board", url: `/${supabaseId}/board`, icon: KanbanSquare },
     { title: "Pipeline", url: `/${supabaseId}/pipeline`, icon: ChartBarBig },
+    { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays },
     { 
       title: "Manager Users", 
       url: `/${supabaseId}/manager-users`, 

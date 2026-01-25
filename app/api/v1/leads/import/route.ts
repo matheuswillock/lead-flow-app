@@ -300,6 +300,7 @@ export async function POST(request: NextRequest) {
         meetingHeald: undefined,
         closerId: undefined,
         meetingDate: undefined,
+        meetingTitle: undefined,
         meetingNotes: undefined,
         meetingLink: undefined,
         assignedTo: undefined,

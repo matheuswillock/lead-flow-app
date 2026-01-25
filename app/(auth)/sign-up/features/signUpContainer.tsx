@@ -5,8 +5,9 @@ import { useSignUpForm } from "@/hooks/useForms";
 import { SignupForm } from "@/components/forms/signUpForm";
 import { CheckoutStep } from "./CheckoutStep";
 import { useSignUp } from "./signUpContext";
-import { signUpFormData } from "@/lib/validations/validationForms";
+import { signUpFormData, signUpOAuthFormData } from "@/lib/validations/validationForms";
 import { toast } from "sonner";
+import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 /**
  * Componente interno que usa o context
@@ -15,7 +16,9 @@ import { toast } from "sonner";
 export function SignUpFormContainer() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    const form = useSignUpForm();
+    const isOAuth = searchParams.get("oauth") === "google";
+    const isNewUser = searchParams.get("newUser") === "1";
+    const form = useSignUpForm(isOAuth ? "oauth" : "default");
     const { 
         isLoading, 
         errors, 
@@ -25,6 +28,8 @@ export function SignUpFormContainer() {
     } = useSignUp();
     const [isDeletingUser, setIsDeletingUser] = useState(false);
     const deleteUserRef = useRef<string | null>(null);
+    const oauthInitRef = useRef(false);
+    const newUserToastRef = useRef(false);
 
     // Detectar parâmetro deleteUser (vindo do checkout cancelado/expirado)
     useEffect(() => {
@@ -88,7 +93,52 @@ export function SignUpFormContainer() {
         }
     }, [searchParams, isDeletingUser, router]);
 
-    async function onSubmit(data: signUpFormData) {
+    useEffect(() => {
+        if (!isNewUser || newUserToastRef.current) {
+            return;
+        }
+
+        newUserToastRef.current = true;
+        toast.info("Primeiro acesso com Google", {
+            description: "Finalize seu cadastro e siga para a assinatura.",
+            duration: 5000,
+        });
+    }, [isNewUser]);
+
+    useEffect(() => {
+        if (!isOAuth || oauthInitRef.current) {
+            return;
+        }
+
+        oauthInitRef.current = true;
+        const stored = sessionStorage.getItem("oauthSignup");
+        if (stored) {
+            try {
+                const data = JSON.parse(stored) as { fullName?: string; email?: string; phone?: string };
+                if (data.fullName) form.setValue("fullName", data.fullName);
+                if (data.email) form.setValue("email", data.email);
+                if (data.phone) form.setValue("phone", data.phone);
+                return;
+            } catch (error) {
+                console.warn("Falha ao ler dados do cadastro Google:", error);
+            }
+        }
+
+        const supabase = createSupabaseBrowser();
+        if (!supabase) return;
+
+        supabase.auth.getSession().then(({ data }) => {
+            const user = data.session?.user;
+            if (!user) return;
+            const metadata = user.user_metadata as { full_name?: string; name?: string; phone?: string } | undefined;
+            const fullName = metadata?.full_name || metadata?.name;
+            if (fullName) form.setValue("fullName", fullName);
+            if (user.email) form.setValue("email", user.email);
+            if (metadata?.phone) form.setValue("phone", metadata.phone);
+        });
+    }, [form, isOAuth]);
+
+    async function onSubmit(data: signUpFormData | signUpOAuthFormData) {
         console.info('🚀 [SignUpFormContainer] onSubmit iniciado');
         console.info('📦 [SignUpFormContainer] Dados do formulário:', {
             neighborhood: data.neighborhood,
@@ -100,7 +150,7 @@ export function SignUpFormContainer() {
             state: data.state,
         });
 
-        const result = await registerUser(data);
+        const result = await registerUser(data, { isOAuth });
 
         if (result.isValid) {
             // Conta criada com sucesso - agora mostrar seleção de pagamento
@@ -129,6 +179,7 @@ export function SignUpFormContainer() {
                     onSubmit={onSubmit}
                     isLoading={isLoading || isDeletingUser}
                     readonly={isDeletingUser}
+                    isOAuth={isOAuth}
                 />
             </div>
         </main>

@@ -9,6 +9,8 @@ import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
 import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinalized/LeadFinalizedRepository";
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
+import { upsertCalendarEvent } from "../../services/googleCalendar/GoogleCalendarService";
+import { prisma } from "../../infra/data/prisma";
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -79,6 +81,7 @@ export class LeadUseCase implements ILeadUseCase {
         referenceHospital: data.referenceHospital || null,
         currentTreatment: data.currentTreatment || null,
         meetingDate: data.meetingDate ? new Date(data.meetingDate) : null,
+        meetingTitle: data.meetingTitle || null,
         meetingNotes: data.meetingNotes || null,
         meetingLink: data.meetingLink || null,
         meetingHeald: data.meetingHeald || null,
@@ -307,6 +310,7 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
       if (data.currentTreatment !== undefined) updateData.currentTreatment = data.currentTreatment || null;
       if (data.meetingDate !== undefined) updateData.meetingDate = data.meetingDate ? new Date(data.meetingDate) : null;
+      if (data.meetingTitle !== undefined) updateData.meetingTitle = data.meetingTitle || null;
       if (data.meetingNotes !== undefined) updateData.meetingNotes = data.meetingNotes || null;
       if (data.meetingLink !== undefined) updateData.meetingLink = data.meetingLink || null;
       if (data.meetingHeald !== undefined) updateData.meetingHeald = data.meetingHeald || null;
@@ -414,22 +418,60 @@ export class LeadUseCase implements ILeadUseCase {
       // Se o status for scheduled, criar ou atualizar registro na tabela LeadsSchedule
       if (status === LeadStatus.scheduled) {
         const meetingDate = existingLead.meetingDate || new Date();
+        const fallbackMeetingTitle = existingLead.meetingTitle || `Reuniao com ${existingLead.name}`;
         
         // Verificar se já existe um agendamento para este lead
         const existingSchedule = await leadScheduleRepository.findLatestByLeadId(id);
-        
+        const shouldCreateCalendarEvent = !existingSchedule?.googleEventId;
+        let calendarEventResult: { eventId: string; calendarId: string; meetLink?: string | null } | null = null;
+
+        if (shouldCreateCalendarEvent) {
+          const leadWithManager = await prisma.lead.findUnique({
+            where: { id },
+            include: {
+              manager: true,
+              closer: true,
+            },
+          });
+
+          if (leadWithManager?.manager.googleCalendarConnected && leadWithManager.manager.googleRefreshToken) {
+            try {
+              calendarEventResult = await upsertCalendarEvent({
+                organizer: leadWithManager.manager,
+                lead: leadWithManager,
+                closerEmail: leadWithManager.closer?.email || null,
+                meetingDate,
+                meetingTitle: existingLead.meetingTitle || undefined,
+                notes: existingLead.meetingNotes || undefined,
+                meetingLink: existingLead.meetingLink || undefined,
+                existingEventId: existingSchedule?.googleEventId ?? null,
+              });
+            } catch (error) {
+              console.error("Erro ao criar evento no Google Calendar:", error);
+            }
+          }
+        }
+
         if (existingSchedule) {
           // Atualizar agendamento existente
           await leadScheduleRepository.update(existingSchedule.id, {
             date: meetingDate,
+            meetingTitle: fallbackMeetingTitle,
             notes: `Lead agendado`,
+            meetingLink: calendarEventResult?.meetLink ?? existingSchedule.meetingLink ?? undefined,
+            googleEventId: calendarEventResult?.eventId ?? existingSchedule.googleEventId ?? undefined,
+            googleCalendarId: calendarEventResult?.calendarId ?? existingSchedule.googleCalendarId ?? undefined,
           });
         } else {
           // Criar novo agendamento
           await leadScheduleRepository.create({
             leadId: id,
             date: meetingDate,
+            meetingTitle: fallbackMeetingTitle,
             notes: `Lead agendado`,
+            meetingLink: calendarEventResult?.meetLink ?? existingLead.meetingLink ?? undefined,
+            googleEventId: calendarEventResult?.eventId ?? undefined,
+            googleCalendarId: calendarEventResult?.calendarId ?? undefined,
           });
         }
 
@@ -437,6 +479,16 @@ export class LeadUseCase implements ILeadUseCase {
         if (!existingLead.meetingDate) {
           await this.leadRepository.update(id, {
             meetingDate,
+            meetingTitle: fallbackMeetingTitle,
+            meetingLink: calendarEventResult?.meetLink ?? undefined,
+          });
+        } else if (!existingLead.meetingTitle) {
+          await this.leadRepository.update(id, {
+            meetingTitle: fallbackMeetingTitle,
+          });
+        } else if (calendarEventResult?.meetLink && !existingLead.meetingLink) {
+          await this.leadRepository.update(id, {
+            meetingLink: calendarEventResult.meetLink,
           });
         }
       }
@@ -550,6 +602,7 @@ export class LeadUseCase implements ILeadUseCase {
       referenceHospital: lead.referenceHospital,
       currentTreatment: lead.currentTreatment,
       meetingDate: lead.meetingDate ? lead.meetingDate.toISOString() : null,
+      meetingTitle: lead.meetingTitle,
       meetingNotes: lead.meetingNotes,
       meetingLink: lead.meetingLink,
       meetingHeald: lead.meetingHeald,
