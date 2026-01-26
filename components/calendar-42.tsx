@@ -230,9 +230,10 @@ export default function Calendar42() {
         result?.successMessages?.length > 1
           ? result.successMessages.slice(1).join(" ")
           : undefined
-      toast.success(successMessage, {
-        description: warningMessage,
-      })
+      toast.success(successMessage)
+      if (warningMessage) {
+        toast.info(warningMessage)
+      }
     } catch (error) {
       console.error("Erro ao cancelar agenda:", error)
       const message = error instanceof Error ? error.message : "Erro ao cancelar agenda"

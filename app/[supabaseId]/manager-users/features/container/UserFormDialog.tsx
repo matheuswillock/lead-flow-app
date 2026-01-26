@@ -32,10 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "@/components/ui/toggle-group";
+import { Switch } from "@/components/ui/switch";
 
 import {
   CreateManagerUserSchema,
@@ -237,16 +234,34 @@ export function UserFormDialog({
                 <FormItem>
                   <FormLabel>Funções</FormLabel>
                   <FormControl>
-                    <ToggleGroup
-                      type="multiple"
-                      value={field.value ?? []}
-                      onValueChange={field.onChange}
-                      disabled={loading}
-                      className="justify-start"
-                    >
-                      <ToggleGroupItem value="SDR">SDR</ToggleGroupItem>
-                      <ToggleGroupItem value="CLOSER">Closer</ToggleGroupItem>
-                    </ToggleGroup>
+                    <div className="space-y-2">
+                      {([
+                        { label: "SDR", value: "SDR" as const },
+                        { label: "Closer", value: "CLOSER" as const },
+                      ]).map((item) => {
+                        const current = field.value ?? [];
+                        const isChecked = current.includes(item.value);
+                        return (
+                          <div
+                            key={item.value}
+                            className="flex items-center justify-between rounded-md border border-input px-3 py-2"
+                          >
+                            <span className="text-sm font-medium">{item.label}</span>
+                            <Switch
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  field.onChange(Array.from(new Set([...current, item.value])));
+                                } else {
+                                  field.onChange(current.filter((value) => value !== item.value));
+                                }
+                              }}
+                              disabled={loading}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
                   </FormControl>
                   <FormDescription>
                     Selecione SDR, Closer ou ambos.
