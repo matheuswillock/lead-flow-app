@@ -73,25 +73,26 @@ export default function LeadImportButton({ onImportComplete }: LeadImportButtonP
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
+      {/*
+          <Button variant="outline" onClick={() => setOpen(true)}>
         <Upload className="mr-2 size-4" />
         Importar leads
       </Button>
+    */}
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Importar leads</DialogTitle>
-            <DialogDescription>
-              Envie o arquivo .xlsx exportado do ClickUp.
-            </DialogDescription>
+            <DialogDescription>Envie o arquivo .xlsx exportado do ClickUp.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <Input
               type="file"
               accept=".xlsx"
               onChange={(event) => {
-                const nextFile = event.target.files?.[0] || null;
-                setFile(nextFile);
+                const nextFile = event.target.files?.[0] || null
+                setFile(nextFile)
               }}
             />
             <div className="flex justify-end gap-2">
@@ -113,5 +114,5 @@ export default function LeadImportButton({ onImportComplete }: LeadImportButtonP
         </DialogContent>
       </Dialog>
     </>
-  );
+  )
 }

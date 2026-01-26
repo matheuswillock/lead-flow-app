@@ -494,10 +494,25 @@ export default function LeadDialog({
         throw new Error(result?.errorMessages?.join(", ") || "Erro ao reenviar convite");
       }
 
-      toast.success("Convite reenviado com sucesso!", {
+      const warningMessage = Array.isArray(result?.successMessages)
+        ? result.successMessages.find((message: string) => message.toLowerCase().startsWith("aviso"))
+        : undefined;
+      const successMessage =
+        Array.isArray(result?.successMessages) && result.successMessages.length > 0
+          ? result.successMessages[0]
+          : "Convite reenviado com sucesso!";
+
+      const toastHandler = warningMessage && successMessage.toLowerCase().includes("não reenviados")
+        ? toast.info
+        : toast.success;
+
+      toastHandler(successMessage, {
         id: loadingToast,
         duration: 3000,
       });
+      if (warningMessage) {
+        toast.info(warningMessage, { duration: 5000 });
+      }
       setResendDialogOpen(false);
       setNewParticipants([]);
       setNewParticipantDraft("");

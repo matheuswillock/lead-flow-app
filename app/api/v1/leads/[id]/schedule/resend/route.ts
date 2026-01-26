@@ -60,14 +60,19 @@ export async function POST(
       return NextResponse.json(output, { status: 404 });
     }
 
-    if (!lead.manager.googleCalendarConnected || !lead.manager.googleRefreshToken) {
-      const output = new Output(false, [], ["Conecte seu Google Calendar para reenviar convites"], null);
-      return NextResponse.json(output, { status: 400 });
-    }
-
     const { target, email } = validation.data;
+    const canUseGoogleCalendar = !!lead.manager.googleCalendarConnected && !!lead.manager.googleRefreshToken;
 
     if (target === "all") {
+      if (!canUseGoogleCalendar) {
+        const output = new Output(
+          true,
+          ["Convites não reenviados.", "Aviso: conta Google não conectada."],
+          [],
+          null
+        );
+        return NextResponse.json(output, { status: 200 });
+      }
       if (!schedule.googleEventId) {
         const output = new Output(false, [], ["Evento do Google Calendar não encontrado"], null);
         return NextResponse.json(output, { status: 400 });

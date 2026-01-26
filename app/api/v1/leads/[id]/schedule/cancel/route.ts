@@ -39,24 +39,24 @@ export async function POST(
       return NextResponse.json(output, { status: 404 });
     }
 
-    if (!lead.manager.googleCalendarConnected || !lead.manager.googleRefreshToken) {
-      const output = new Output(false, [], ["Conecte seu Google Calendar para cancelar reuniões"], null);
-      return NextResponse.json(output, { status: 400 });
-    }
-
     let calendarWarning: string | null = null;
+    const canUseGoogleCalendar = !!lead.manager.googleCalendarConnected && !!lead.manager.googleRefreshToken;
     if (schedule.googleEventId) {
-      try {
-        await cancelCalendarEvent({
-          organizer: lead.manager,
-          eventId: schedule.googleEventId,
-          calendarId: schedule.googleCalendarId ?? "primary",
-        });
-      } catch (calendarError) {
-        console.warn("Erro ao cancelar evento no Google Calendar:", calendarError);
-        calendarWarning = calendarError instanceof Error
-          ? calendarError.message
-          : "Falha ao cancelar evento no Google Calendar";
+      if (!canUseGoogleCalendar) {
+        calendarWarning = "Conta Google não conectada. Evento não foi cancelado no Google Calendar.";
+      } else {
+        try {
+          await cancelCalendarEvent({
+            organizer: lead.manager,
+            eventId: schedule.googleEventId,
+            calendarId: schedule.googleCalendarId ?? "primary",
+          });
+        } catch (calendarError) {
+          console.warn("Erro ao cancelar evento no Google Calendar:", calendarError);
+          calendarWarning = calendarError instanceof Error
+            ? calendarError.message
+            : "Falha ao cancelar evento no Google Calendar";
+        }
       }
     }
 

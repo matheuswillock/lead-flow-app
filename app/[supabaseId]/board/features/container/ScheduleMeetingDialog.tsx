@@ -148,6 +148,10 @@ export function ScheduleMeetingDialog({
         throw new Error(result.errorMessages?.join(", ") || "Erro ao agendar reunião");
       }
 
+      const warningMessage = Array.isArray(result?.successMessages)
+        ? result.successMessages.find((message: string) => message.toLowerCase().startsWith("aviso"))
+        : undefined;
+
       // 2. Atualizar status do lead para scheduled
       const statusResponse = await fetch(`/api/v1/leads/${lead.id}/status`, {
         method: "PUT",
@@ -175,6 +179,10 @@ export function ScheduleMeetingDialog({
         id: loadingToast,
         duration: 4000,
       });
+
+      if (warningMessage) {
+        toast.info(warningMessage, { duration: 5000 });
+      }
       
       // Limpar form
       setMeetingDate(undefined);

@@ -63,11 +63,6 @@ export async function POST(
       return NextResponse.json(output, { status: 404 });
     }
 
-    if (!lead.manager.googleCalendarConnected || !lead.manager.googleRefreshToken) {
-      const output = new Output(false, [], ["Conecte seu Google Calendar para agendar reuniões"], null);
-      return NextResponse.json(output, { status: 400 });
-    }
-
     // Verificar se já existe um agendamento para este lead
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
 
@@ -81,19 +76,34 @@ export async function POST(
     const closerEmail = closerProfile?.email || null;
     const resolvedMeetingTitle = meetingTitle || `Reunião com ${lead.name}`;
 
-    const calendarResult = await upsertCalendarEvent({
-      organizer: lead.manager,
-      lead,
-      closerEmail,
-      meetingDate,
-      meetingTitle: resolvedMeetingTitle,
-      notes,
-      meetingLink,
-      extraGuests,
-      existingEventId: existingSchedule?.googleEventId ?? null,
-    });
+    const canUseGoogleCalendar = !!lead.manager.googleCalendarConnected && !!lead.manager.googleRefreshToken;
+    let calendarResult: { eventId: string; calendarId: string; meetLink?: string | null } | null = null;
+    let calendarWarning: string | null = null;
 
-    const resolvedMeetingLink = meetingLink || calendarResult.meetLink || null;
+    if (canUseGoogleCalendar) {
+      try {
+        calendarResult = await upsertCalendarEvent({
+          organizer: lead.manager,
+          lead,
+          closerEmail,
+          meetingDate,
+          meetingTitle: resolvedMeetingTitle,
+          notes,
+          meetingLink,
+          extraGuests,
+          existingEventId: existingSchedule?.googleEventId ?? null,
+        });
+      } catch (calendarError) {
+        console.warn("Erro ao criar evento no Google Calendar:", calendarError);
+        calendarWarning = calendarError instanceof Error
+          ? calendarError.message
+          : "Falha ao criar evento no Google Calendar";
+      }
+    } else {
+      calendarWarning = "Conta Google não conectada. Evento não foi criado no Google Calendar.";
+    }
+
+    const resolvedMeetingLink = meetingLink || calendarResult?.meetLink || null;
 
     let schedule;
     let message: string;
@@ -106,8 +116,8 @@ export async function POST(
         notes,
         meetingLink: resolvedMeetingLink || undefined,
         extraGuests: extraGuests ?? existingSchedule.extraGuests ?? [],
-        googleEventId: calendarResult.eventId,
-        googleCalendarId: calendarResult.calendarId,
+        googleEventId: calendarResult?.eventId,
+        googleCalendarId: calendarResult?.calendarId,
       });
       message = "Agendamento atualizado com sucesso";
     } else {
@@ -119,8 +129,8 @@ export async function POST(
         notes,
         meetingLink: resolvedMeetingLink || undefined,
         extraGuests,
-        googleEventId: calendarResult.eventId,
-        googleCalendarId: calendarResult.calendarId,
+        googleEventId: calendarResult?.eventId,
+        googleCalendarId: calendarResult?.calendarId,
       });
       message = "Agendamento criado com sucesso";
     }
@@ -137,12 +147,11 @@ export async function POST(
       },
     });
 
-    const output = new Output(
-      true, 
-      [message], 
-      [], 
-      schedule
-    );
+    const successMessages = [message];
+    if (calendarWarning) {
+      successMessages.push(`Aviso: ${calendarWarning}`);
+    }
+    const output = new Output(true, successMessages, [], schedule);
     return NextResponse.json(output, { status: existingSchedule ? 200 : 201 });
 
   } catch (error) {
