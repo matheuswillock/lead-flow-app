@@ -5,7 +5,13 @@ import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "./context/AuthContext"
 import { Toaster } from "sonner";
 
-export const metadata: Metadata = { title: "Corretor Studio", description: "Uma plataforma de gestão de leads para corretores de saúde" }
+export const metadata: Metadata = { 
+  title: "Corretor Studio", 
+  description: "Uma plataforma de gestão de leads para corretores de saúde",
+  icons: {
+    icon: '/corretor-studio-icon.svg',
+  }
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

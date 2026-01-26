@@ -8,7 +8,7 @@ export const loginFormSchema = z.object({
 export type loginFormData = z.infer<typeof loginFormSchema>;
 
 
-export const signupFormSchema = z.object({
+const signUpCoreSchema = z.object({
   fullName: z
     .string()
     .min(2, "Informe seu nome completo"),
@@ -61,6 +61,35 @@ export const signupFormSchema = z.object({
       }
       return true;
     }, "CPF ou CNPJ inválido"),
+  postalCode: z
+    .string()
+    .min(8, "CEP inválido")
+    .max(9, "CEP inválido")
+    .refine((val) => {
+      const numbers = val.replace(/\D/g, '');
+      return numbers.length === 8;
+    }, "CEP deve ter 8 dígitos"),
+  address: z
+    .string()
+    .min(3, "Endereço é obrigatório"),
+  addressNumber: z
+    .string()
+    .min(1, "Número é obrigatório"),
+  neighborhood: z
+    .string()
+    .min(2, "Bairro é obrigatório"),
+  complement: z
+    .string()
+    .optional(),
+  city: z
+    .string()
+    .min(2, "Cidade é obrigatória"),
+  state: z
+    .string()
+    .length(2, "UF deve ter 2 letras"),
+});
+
+export const signupFormSchema = signUpCoreSchema.extend({
   password: z.string().min(8, "A senha deve ter no mínimo 8 caracteres")
     .regex(/[A-Z]/, "A senha deve conter pelo menos uma letra maiúscula")
     .regex(/[a-z]/, "A senha deve conter pelo menos uma letra minúscula")
@@ -72,7 +101,26 @@ export const signupFormSchema = z.object({
   path: ["confirmPassword"],
 });
 
+export const signupFormSchemaOAuth = signUpCoreSchema.extend({
+  password: z.string().optional()
+    .refine((val) => !val || val.length >= 8, "A senha deve ter no mínimo 8 caracteres")
+    .refine((val) => !val || /[A-Z]/.test(val), "A senha deve conter pelo menos uma letra maiúscula")
+    .refine((val) => !val || /[a-z]/.test(val), "A senha deve conter pelo menos uma letra minúscula")
+    .refine((val) => !val || /[0-9]/.test(val), "A senha deve conter pelo menos um número")
+    .refine((val) => !val || /[^A-Za-z0-9]/.test(val), "A senha deve conter pelo menos um caracter especial"),
+  confirmPassword: z.string().optional(),
+}).refine((data) => {
+  if (!data.password && !data.confirmPassword) {
+    return true;
+  }
+  return data.password === data.confirmPassword;
+}, {
+  message: "As senhas não conferem",
+  path: ["confirmPassword"],
+});
+
 export type signUpFormData = z.infer<typeof signupFormSchema>;
+export type signUpOAuthFormData = z.infer<typeof signupFormSchemaOAuth>;
 
 export const updateAccountFormSchema = z.object({
   fullName: z
@@ -94,6 +142,7 @@ export const updateAccountFormSchema = z.object({
   postalCode: z.string().optional(),
   address: z.string().optional(),
   addressNumber: z.string().optional(),
+  neighborhood: z.string().optional(),
   complement: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
@@ -114,6 +163,7 @@ export const leadFormSchema = z.object({
   phone: z.string().min(8, "Telefone inválido").max(20, "Telefone inválido"),
   email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
   cnpj: z.string().min(0).optional(),
+  closerId: z.string().min(0).optional(),
   age: z.string()
     .min(1, "Informe as idades")
     .regex(/^[0-9,\s]+$/, "Use apenas números, vírgulas e espaços")
@@ -143,7 +193,41 @@ export const leadFormSchema = z.object({
   ongoingTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
   additionalNotes: z.string().min(0).optional(),
   meetingDate: z.string().min(0).optional(),
+  meetingTitle: z.string().min(0).optional(),
+  meetingNotes: z.string().min(0).optional(),
+  meetingLink: z.string().url("Link da reuniao invalido").optional().or(z.literal("")),
+  meetingHeald: z.enum(["yes", "no"]).optional(),
+  extraGuests: z
+    .string()
+    .optional()
+    .refine((value) => {
+      if (!value || value.trim() === "") return true;
+      const emails = value
+        .split(/[,;\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      return emails.every((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    }, "Informe apenas emails válidos"),
   responsible: z.string().min(2, "O responsável é obrigatório"),
+  
+  // Novos campos para leads finalizados (opcionais, apenas em edição)
+  ticket: z.string().min(0).optional(), // Valor vendido
+  contractDueDate: z.string().min(0).optional(), // Data de vigência
+  soldPlan: z.enum([
+    "NOVA_ADESAO",
+    "AMIL",
+    "BRADESCO",
+    "HAPVIDA",
+    "MEDSENIOR",
+    "GNDI",
+    "OMINT",
+    "PLENA",
+    "PORTO_SEGURO",
+    "PREVENT_SENIOR",
+    "SULAMERICA",
+    "UNIMED",
+    "OUTROS"
+  ]).optional(), // Plano vendido
 });
 
 export type leadFormData = z.infer<typeof leadFormSchema>;

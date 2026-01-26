@@ -42,12 +42,14 @@ import {
 import { Button } from "@/components/ui/button";
 import usePipelineContext from "../context/PipelineHook";
 import { Lead } from "../context/PipelineTypes";
-import { createColumns } from "./columns";
+// import { createColumns } from "./columns";
 import { DataTableToolbar } from "./data-table-toolbar";
 import { DraggableRow } from "./DraggableRow";
 import { toast } from "sonner";
 import { useState } from "react";
 import { ScheduleMeetingDialog } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
+import { ChangeStatusDialog } from "./ChangeStatusDialog";
+import { createColumns } from "./PipelineColumns";
 
 export default function PipelineTable() {
   const { 
@@ -57,6 +59,7 @@ export default function PipelineTable() {
     isLoading,
     setSelected,
     refreshLeads,
+    user,
   } = usePipelineContext();
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -65,6 +68,7 @@ export default function PipelineTable() {
   const [data, setData] = React.useState<Lead[]>(filtered);
   
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [showChangeStatusDialog, setShowChangeStatusDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   // Atualizar data quando filtered mudar
@@ -122,6 +126,20 @@ export default function PipelineTable() {
     }));
   }, [filtered]);
 
+  const closers = React.useMemo(() => {
+    const users = user?.usersAssociated || [];
+    return users.filter((u) => u.functions?.includes("CLOSER"));
+  }, [user]);
+
+  const closerOptions = React.useMemo(() => {
+    return closers.map((closer) => ({
+      label: (closer as { fullName?: string; name?: string; email?: string }).fullName
+        || (closer as { name?: string }).name
+        || closer.email,
+      value: closer.id,
+    }));
+  }, [closers]);
+
   const handleScheduleMeeting = (lead: Lead) => {
     setSelectedLead(lead);
     setShowScheduleDialog(true);
@@ -161,6 +179,11 @@ export default function PipelineTable() {
     toast.success('Funcionalidade de finalizar contrato será implementada');
   };
 
+  const handleChangeStatus = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowChangeStatusDialog(true);
+  };
+
   const columns = React.useMemo<ColumnDef<Lead>[]>(
     () =>
       createColumns({
@@ -170,6 +193,7 @@ export default function PipelineTable() {
         onRescheduleMeeting: handleRescheduleMeeting,
         onDeleteLead: handleDeleteLead,
         onFinalizeContract: handleFinalizeContract,
+        onChangeStatus: handleChangeStatus,
       }),
     [statusLabels]
   );
@@ -211,6 +235,7 @@ export default function PipelineTable() {
         table={table} 
         statusOptions={statusOptions}
         responsibleOptions={responsibleOptions}
+        closerOptions={closerOptions}
       />
       <div className="rounded-md border">
         <DndContext
@@ -225,7 +250,7 @@ export default function PipelineTable() {
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
                     return (
-                      <TableHead key={header.id}>
+                      <TableHead key={header.id} className="text-center align-middle">
                         {header.isPlaceholder
                           ? null
                           : flexRender(
@@ -328,6 +353,20 @@ export default function PipelineTable() {
           onOpenChange={setShowScheduleDialog}
           lead={selectedLead}
           onScheduleSuccess={refreshLeads}
+          closers={closers}
+          teamMembers={user?.usersAssociated ?? []}
+        />
+      )}
+
+      {selectedLead && (
+        <ChangeStatusDialog
+          open={showChangeStatusDialog}
+          onOpenChange={setShowChangeStatusDialog}
+          lead={selectedLead}
+          statusLabels={statusLabels}
+          onStatusChanged={refreshLeads}
+          closers={closers}
+          teamMembers={user?.usersAssociated ?? []}
         />
       )}
     </div>

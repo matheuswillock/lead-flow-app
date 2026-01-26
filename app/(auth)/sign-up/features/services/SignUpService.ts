@@ -1,4 +1,4 @@
-import { RequestToRegisterUserProfile, validateRegisterProfileRequest } from "@/app/api/v1/profiles/DTO/requestToRegisterUserProfile";
+import { RequestToRegisterUserProfile, RequestToRegisterUserProfileOAuth, validateRegisterProfileRequest, validateRegisterProfileRequestOAuth } from "@/app/api/v1/profiles/DTO/requestToRegisterUserProfile";
 import { Output } from "@/lib/output";
 import { ISignUpService } from "./ISignUpService";
 
@@ -33,6 +33,7 @@ export class SignUpService implements ISignUpService {
         postalCode: (requestData as any).postalCode,
         address: (requestData as any).address,
         addressNumber: (requestData as any).addressNumber,
+        neighborhood: (requestData as any).neighborhood,
         complement: (requestData as any).complement,
         city: (requestData as any).city,
         state: (requestData as any).state,
@@ -55,6 +56,63 @@ export class SignUpService implements ISignUpService {
       return result;
     } catch (error) {
       console.error("Error on SignUp:", error);
+      
+      return new Output(
+        false,
+        [],
+        ["Erro de conexão. Verifique sua internet e tente novamente."],
+        null
+      );
+    }
+  }
+
+  async registerUserOAuth(requestData: RequestToRegisterUserProfileOAuth, supabaseId: string): Promise<Output> {
+    try {
+      let validatedCore: RequestToRegisterUserProfileOAuth;
+      try {
+        validatedCore = validateRegisterProfileRequestOAuth(requestData);
+      } catch (validationError) {
+        return new Output(false, [], [(validationError as Error).message], null);
+      }
+
+      const payload: RequestToRegisterUserProfileOAuth = {
+        ...validatedCore,
+        asaasCustomerId: (requestData as any).asaasCustomerId,
+        subscriptionId: (requestData as any).subscriptionId,
+        cpfCnpj: (requestData as any).cpfCnpj,
+        subscriptionStatus: (requestData as any).subscriptionStatus,
+        subscriptionPlan: (requestData as any).subscriptionPlan,
+        role: (requestData as any).role,
+        operatorCount: (requestData as any).operatorCount,
+        subscriptionStartDate: (requestData as any).subscriptionStartDate,
+        trialEndDate: (requestData as any).trialEndDate,
+        postalCode: (requestData as any).postalCode,
+        address: (requestData as any).address,
+        addressNumber: (requestData as any).addressNumber,
+        neighborhood: (requestData as any).neighborhood,
+        complement: (requestData as any).complement,
+        city: (requestData as any).city,
+        state: (requestData as any).state,
+      };
+
+      const response = await fetch("/api/v1/profiles/register-oauth", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        return result;
+      }
+
+      return result;
+    } catch (error) {
+      console.error("Error on SignUp (OAuth):", error);
       
       return new Output(
         false,

@@ -1,4 +1,4 @@
-import type { UserRole } from "@prisma/client";
+import type { UserRole, UserFunction } from "@prisma/client";
 import { Output } from "@/lib/output";
 
 export interface UserAssociated {
@@ -7,6 +7,7 @@ export interface UserAssociated {
   avatarImageUrl: string;
   email: string;
   role: UserRole;
+  functions?: UserFunction[];
 }
 
 export interface ProfileResponseDTO {
@@ -15,12 +16,23 @@ export interface ProfileResponseDTO {
   supabaseId: string | null;
   phone: string | null;
   fullName: string | null;
+  cpfCnpj: string | null;
+  postalCode: string | null;
+  address: string | null;
+  addressNumber: string | null;
+  neighborhood: string | null;
+  complement: string | null;
+  city: string | null;
+  state: string | null;
   role: UserRole;
+  functions: UserFunction[];
   isMaster: boolean;
   hasPermanentSubscription: boolean;
   managerId: string | null;
   profileIconId: string | null;
   profileIconUrl: string | null;
+  googleCalendarConnected: boolean;
+  googleEmail: string | null;
   subscriptionId: string | null;
   subscriptionStatus: string | null;
   createdAt: string;
@@ -37,7 +49,8 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     name: profile.fullName || 'N/A',
     avatarImageUrl: profile.profileIconUrl || '',
     email: profile.email,
-    role: profile.role
+    role: profile.role,
+    functions: profile.functions ?? []
   };
   
   usersAssociated.push(currentUser);
@@ -51,7 +64,8 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
         name: operator.fullName || 'N/A',
         avatarImageUrl: operator.profileIconUrl || '',
         email: operator.email,
-        role: operator.role
+        role: operator.role,
+        functions: operator.functions ?? []
       }));
     
     usersAssociated.push(...operators);
@@ -68,12 +82,23 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     supabaseId: profile.supabaseId,
     phone: profile.phone,
     fullName: profile.fullName,
+    cpfCnpj: profile.cpfCnpj ?? null,
+    postalCode: profile.postalCode ?? null,
+    address: profile.address ?? null,
+    addressNumber: profile.addressNumber ?? null,
+    neighborhood: profile.neighborhood ?? null,
+    complement: profile.complement ?? null,
+    city: profile.city ?? null,
+    state: profile.state ?? null,
     role: profile.role,
+    functions: profile.functions ?? [],
     isMaster: profile.isMaster ?? false,
     hasPermanentSubscription: profile.hasPermanentSubscription ?? false,
     managerId: profile.managerId,
     profileIconId: profile.profileIconId,
     profileIconUrl: profile.profileIconUrl,
+    googleCalendarConnected: profile.googleCalendarConnected ?? false,
+    googleEmail: profile.googleEmail ?? null,
     subscriptionId: profile.subscriptionId ?? null,
     subscriptionStatus: profile.subscriptionStatus ?? null,
     createdAt: (profile.createdAt instanceof Date ? profile.createdAt.toISOString() : profile.createdAt) as string,

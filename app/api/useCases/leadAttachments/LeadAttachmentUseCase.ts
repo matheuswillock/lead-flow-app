@@ -31,7 +31,13 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
       const uploadResult = await leadAttachmentService.uploadAttachment(file, leadId, uploadedBy);
 
       if (!uploadResult.success || !uploadResult.fileId || !uploadResult.publicUrl) {
-        return new Output(false, [], [uploadResult.error || "Upload failed"], null);
+        // Retornar erro já mapeado do storage service
+        return new Output(
+          false, 
+          [], 
+          [uploadResult.error || "Erro ao fazer upload do arquivo"], 
+          null
+        );
       }
 
       // Salvar registro no banco de dados
@@ -40,6 +46,7 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
           leadId,
           fileName: uploadResult.fileName || file.name,
           fileUrl: uploadResult.publicUrl,
+          storagePath: uploadResult.fileId, // Caminho do arquivo no storage
           fileType: uploadResult.fileType || file.type,
           fileSize: uploadResult.fileSize || file.size,
           uploadedBy,
@@ -58,7 +65,12 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
       return new Output(true, ["File uploaded successfully"], [], attachment);
     } catch (error) {
       console.error("Error uploading attachment:", error);
-      return new Output(false, [], ["Internal server error"], null);
+      return new Output(
+        false, 
+        [], 
+        ["Erro inesperado ao fazer upload do arquivo. Tente novamente"], 
+        null
+      );
     }
   }
 
@@ -81,16 +93,16 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
         return new Output(false, [], ["Attachment does not belong to this lead"], null);
       }
 
-      // Extrair o fileId do URL ou usar o campo adequado
-      // O fileId é o caminho do arquivo no bucket: "leadId/timestamp-random-filename"
-      const fileId = attachment.fileUrl.split("/").slice(-2).join("/");
+      // Usar o storagePath salvo no banco ao invés de tentar extrair da URL
+      const storagePath = attachment.storagePath;
 
       // Deletar do Supabase Storage
-      const deleteResult = await leadAttachmentService.deleteAttachment(fileId);
+      const deleteResult = await leadAttachmentService.deleteAttachment(storagePath);
 
       if (!deleteResult.success) {
         // Mesmo se falhar no storage, continuar para deletar do banco
         console.warn("Failed to delete from storage, but continuing:", deleteResult.error);
+        // Opcional: pode querer retornar erro se preferir não deletar do banco quando falha no storage
       }
 
       // Deletar do banco de dados
@@ -98,10 +110,15 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
         where: { id: attachmentId },
       });
 
-      return new Output(true, ["Attachment deleted successfully"], [], null);
+      return new Output(true, ["Anexo deletado com sucesso"], [], null);
     } catch (error) {
       console.error("Error deleting attachment:", error);
-      return new Output(false, [], ["Internal server error"], null);
+      return new Output(
+        false, 
+        [], 
+        ["Erro inesperado ao deletar o arquivo. Tente novamente"], 
+        null
+      );
     }
   }
 

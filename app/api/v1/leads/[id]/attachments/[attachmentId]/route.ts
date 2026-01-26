@@ -31,7 +31,7 @@ export async function DELETE(
       );
     }
 
-    const result = await leadAttachmentUseCase.deleteAttachment(leadId, attachmentId);
+    const result = await leadAttachmentUseCase.deleteAttachment(attachmentId, leadId);
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 });
   } catch (error) {

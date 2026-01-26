@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdmin } from '@/lib/supabase/server';
 import { Output } from '@/lib/output';
 import { getEmailService } from '@/lib/services/EmailService';
+import { getFullUrl } from '@/lib/utils/app-url';
 
 /**
  * POST /api/v1/operators/resend-invite
@@ -47,8 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Configurar redirect URL
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const redirectTo = `${appUrl}/set-password`;
+    const redirectTo = getFullUrl('/set-password');
 
     // Gerar link de reset de senha via Supabase Admin (sem enviar email)
     const { data, error } = await supabase.auth.admin.generateLink({

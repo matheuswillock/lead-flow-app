@@ -111,6 +111,7 @@ export const asaasApi = {
   get subscriptions() { return `${getAsaasApiUrl()}/subscriptions`; },
   get payments() { return `${getAsaasApiUrl()}/payments`; },
   get webhooks() { return `${getAsaasApiUrl()}/notifications`; },
+  get checkouts() { return `${getAsaasApiUrl()}/checkouts`; },
   pixQrCode: (paymentId: string) => `${getAsaasApiUrl()}/payments/${paymentId}/pixQrCode`,
 };
 
@@ -176,7 +177,6 @@ const getBase = () => getAsaasApiUrl();
 
 export async function asaas(path: string, init?: RequestInit) {
   const BASE = getBase();
-  const ASAAS_API_KEY = getAsaasApiKey();
   
   const headers = new Headers(init?.headers)
   // headers.set("Authorization", `Bearer ${ASAAS_API_KEY}`)

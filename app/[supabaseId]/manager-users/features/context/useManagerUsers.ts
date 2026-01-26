@@ -15,9 +15,10 @@ import { ManagerUsersService } from "../services/ManagerUsersService";
 interface UseManagerUsersProps {
   supabaseId: string;
   currentUserRole: string;
+  hasPermanentSubscription?: boolean;
 }
 
-export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsersProps) {
+export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubscription = false }: UseManagerUsersProps) {
   const [state, setState] = useState<ManagerUsersState>({
     users: [],
     loading: true,
@@ -27,6 +28,14 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     isEditModalOpen: false,
     isDeleteDialogOpen: false,
   });
+  const [operatorCheckout, setOperatorCheckout] = useState<{
+    isOpen: boolean;
+    operatorData: CreateManagerUserFormData | null;
+  }>({
+    isOpen: false,
+    operatorData: null,
+  });
+
 
   const [permissions] = useState<UserPermissions>({
     canCreateUser: currentUserRole === "manager",
@@ -73,52 +82,82 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     }
   }, [managerUsersService]);
 
-  // Criar usuário - redireciona para checkout do Asaas (R$ 19,90 por usuário adicional)
+  // Criar usuário - se tem assinatura permanente, cria direto; senão redireciona para checkout do Asaas
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
     try {
       setState(prev => ({ ...prev, loading: true }));
 
-      // Fechar modal
-      setState(prev => ({ ...prev, isCreateModalOpen: false }));
+      const normalizedEmail = userData.email.trim().toLowerCase();
+      const emailInList = state.users.some(user => user.email?.toLowerCase() === normalizedEmail);
+      if (emailInList) {
+        toast.error("Email já está em uso");
+        setState(prev => ({ ...prev, loading: false, isCreateModalOpen: true }));
+        return;
+      }
+      
+      const emailCheck = await managerUsersService.checkEmailAvailability(userData.email);
+      if (!emailCheck.available) {
+        toast.error(emailCheck.error || "Email já está em uso");
+        setState(prev => ({ ...prev, loading: false, isCreateModalOpen: true }));
+        return;
+      }
 
-      toast.loading("Gerando link de pagamento...");
+      // Se tem assinatura permanente, criar diretamente sem passar pelo Asaas
+      if (hasPermanentSubscription) {
+        toast.loading("Criando usuário...");
 
-      // Chamar API para criar checkout
-      const response = await fetch('/api/v1/operators/add-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          managerId: supabaseId,
-          operatorData: {
+        console.info('🎯 [createUser] Criando usuário com assinatura permanente', {
+          supabaseId,
+          userData,
+        });
+
+        const response = await fetch(`/api/v1/manager/${supabaseId}/users`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-supabase-user-id': supabaseId,
+          },
+          body: JSON.stringify({
             name: userData.name,
             email: userData.email,
             role: userData.role || 'operator',
-          },
-          paymentMethod: 'UNDEFINED', // Permite escolher no checkout
-        }),
-      });
+            functions: userData.functions,
+            hasPermanentSubscription: true, // Herda assinatura permanente
+          }),
+        });
 
-      const result = await response.json();
+        const result = await response.json();
 
-      toast.dismiss();
+        toast.dismiss();
 
-      if (result.isValid && result.result?.checkoutUrl) {
-        toast.success("Redirecionando para checkout...");
-        
-        // Redirecionar para o checkout hospedado do Asaas
-        setTimeout(() => {
-          window.location.href = result.result.checkoutUrl;
-        }, 1000);
-      } else {
-        toast.error(result.errorMessages?.join(', ') || 'Erro ao gerar checkout');
-        setState(prev => ({ ...prev, loading: false }));
+        if (result.isValid) {
+          toast.success("Usuário criado com sucesso!", {
+            description: 'Um email de convite foi enviado para o novo usuário.',
+            duration: 5000,
+          });
+          setState(prev => ({ ...prev, isCreateModalOpen: false }));
+          setState(prev => ({ ...prev, loading: false }));
+          await loadUsers(); // Recarregar lista
+        } else {
+          toast.error(result.errorMessages?.join(', ') || 'Erro ao criar usuário');
+          setState(prev => ({ ...prev, loading: false }));
+        }
+        return;
       }
+      // Fechar modal e abrir checkout
+      setState(prev => ({ ...prev, isCreateModalOpen: false }));
+      // Fluxo normal: abrir checkout interno para pagamento do operador
+      setOperatorCheckout({
+        isOpen: true,
+        operatorData: userData,
+      });
+      setState(prev => ({ ...prev, loading: false }));
     } catch (error) {
-      console.error("Erro ao criar checkout:", error);
-      toast.error("Erro ao gerar checkout");
+      console.error("Erro ao criar usuário:", error);
+      toast.error("Erro ao criar usuário");
       setState(prev => ({ ...prev, loading: false }));
     }
-  }, [supabaseId]);
+  }, [supabaseId, hasPermanentSubscription, loadUsers, managerUsersService, state.users]);
 
   // Atualizar usuário
   const updateUser = useCallback(async (userId: string, userData: UpdateManagerUserFormData) => {
@@ -265,6 +304,15 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     }));
   }, []);
 
+  const closeOperatorCheckout = useCallback(() => {
+    setOperatorCheckout({ isOpen: false, operatorData: null });
+  }, []);
+
+  const completeOperatorCheckout = useCallback(async () => {
+    setOperatorCheckout({ isOpen: false, operatorData: null });
+    await loadUsers();
+  }, [loadUsers]);
+
   // Carregar dados no mount
   useEffect(() => {
     loadUsers();
@@ -374,11 +422,15 @@ export function useManagerUsers({ supabaseId, currentUserRole }: UseManagerUsers
     
     // Ações
     loadUsers,
+    refreshData: loadUsers, // Alias para loadUsers
     createUser,
     updateUser,
     deleteUser,
     resendInvite,
     togglePermanentSubscription,
+    operatorCheckout,
+    closeOperatorCheckout,
+    completeOperatorCheckout,
     
     // Controle de UI
     openCreateModal,

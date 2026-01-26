@@ -19,6 +19,8 @@ interface AccountFormProps {
   className?: string;
   initialData?: updateAccountFormData;
   showPasswordField?: boolean;
+  hasExtraChanges?: boolean;
+  extraContent?: React.ReactNode;
 }
 
 export function AccountForm({
@@ -30,6 +32,8 @@ export function AccountForm({
   onCancel,
   initialData,
   showPasswordField = false,
+  hasExtraChanges = false,
+  extraContent,
 }: AccountFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -47,6 +51,7 @@ export function AccountForm({
       watchedValues.postalCode !== initialData.postalCode ||
       watchedValues.address !== initialData.address ||
       watchedValues.addressNumber !== initialData.addressNumber ||
+      watchedValues.neighborhood !== initialData.neighborhood ||
       watchedValues.complement !== initialData.complement ||
       watchedValues.city !== initialData.city ||
       watchedValues.state !== initialData.state ||
@@ -57,7 +62,7 @@ export function AccountForm({
 
   const isFormValid = form.formState.isValid;
   
-  const isSubmitDisabled = !hasChanges || !isFormValid || isLoading || isUpdating;
+  const isSubmitDisabled = (!hasChanges && !hasExtraChanges) || !isFormValid || isLoading || isUpdating;
 
   return (
     <Form {...form}>
@@ -250,6 +255,25 @@ export function AccountForm({
 
             <FormField
               control={form.control}
+              name="neighborhood"
+              render={({ field }) => (
+                <FormItem className="space-y-2">
+                  <FormLabel>Bairro</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Centro, Jardins, etc"
+                      className="h-11"
+                      disabled={isLoading || isUpdating}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="complement"
               render={({ field }) => (
                 <FormItem className="space-y-2">
@@ -266,28 +290,28 @@ export function AccountForm({
                 </FormItem>
               )}
             />
-
-            <FormField
-              control={form.control}
-              name="state"
-              render={({ field }) => (
-                <FormItem className="space-y-2">
-                  <FormLabel>Estado</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="SP"
-                      className="h-11"
-                      maxLength={2}
-                      disabled={isLoading || isUpdating}
-                      {...field}
-                      onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
           </div>
+
+          <FormField
+            control={form.control}
+            name="state"
+            render={({ field }) => (
+              <FormItem className="space-y-2">
+                <FormLabel>Estado</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="SP"
+                    className="h-11"
+                    maxLength={2}
+                    disabled={isLoading || isUpdating}
+                    {...field}
+                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
 
         {showPasswordField && (
@@ -325,6 +349,8 @@ export function AccountForm({
             )}
           />
         )}
+
+        {extraContent}
 
         <div className="flex items-center justify-end gap-3">
           <Button 

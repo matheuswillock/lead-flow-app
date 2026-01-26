@@ -103,7 +103,7 @@ export class DashboardMetricsService implements IDashboardMetricsService {
           if (now - timestamp > CACHE_TTL) {
             keysToRemove.push(key);
           }
-        } catch (error) {
+        } catch (_error) {
           keysToRemove.push(key); // Remover cache corrompido
         }
       }

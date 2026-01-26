@@ -3,10 +3,15 @@ import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSc
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { z } from "zod";
+import { upsertCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 
 const scheduleSchema = z.object({
   date: z.string().datetime(),
+  meetingTitle: z.string().optional(),
   notes: z.string().optional(),
+  meetingLink: z.string().url("Link da reunião inválido").optional(),
+  closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
+  extraGuests: z.array(z.string().email("Email inválido")).optional(),
 });
 
 export async function POST(
@@ -42,11 +47,63 @@ export async function POST(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const { date, notes } = validation.data;
+    const { date, meetingTitle, notes, meetingLink, closerId, extraGuests } = validation.data;
     const meetingDate = new Date(date);
+
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      include: {
+        manager: true,
+        closer: true,
+      },
+    });
+
+    if (!lead) {
+      const output = new Output(false, [], ["Lead não encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
 
     // Verificar se já existe um agendamento para este lead
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
+
+    const closerProfile = closerId
+      ? await prisma.profile.findUnique({
+          where: { id: closerId },
+          select: { email: true },
+        })
+      : lead.closer;
+
+    const closerEmail = closerProfile?.email || null;
+    const resolvedMeetingTitle = meetingTitle || `Reunião com ${lead.name}`;
+
+    const canUseGoogleCalendar = !!lead.manager.googleCalendarConnected && !!lead.manager.googleRefreshToken;
+    let calendarResult: { eventId: string; calendarId: string; meetLink?: string | null } | null = null;
+    let calendarWarning: string | null = null;
+
+    if (canUseGoogleCalendar) {
+      try {
+        calendarResult = await upsertCalendarEvent({
+          organizer: lead.manager,
+          lead,
+          closerEmail,
+          meetingDate,
+          meetingTitle: resolvedMeetingTitle,
+          notes,
+          meetingLink,
+          extraGuests,
+          existingEventId: existingSchedule?.googleEventId ?? null,
+        });
+      } catch (calendarError) {
+        console.warn("Erro ao criar evento no Google Calendar:", calendarError);
+        calendarWarning = calendarError instanceof Error
+          ? calendarError.message
+          : "Falha ao criar evento no Google Calendar";
+      }
+    } else {
+      calendarWarning = "Conta Google não conectada. Evento não foi criado no Google Calendar.";
+    }
+
+    const resolvedMeetingLink = meetingLink || calendarResult?.meetLink || null;
 
     let schedule;
     let message: string;
@@ -55,7 +112,12 @@ export async function POST(
       // Atualizar o agendamento existente
       schedule = await leadScheduleRepository.update(existingSchedule.id, {
         date: meetingDate,
+        meetingTitle: resolvedMeetingTitle,
         notes,
+        meetingLink: resolvedMeetingLink || undefined,
+        extraGuests: extraGuests ?? existingSchedule.extraGuests ?? [],
+        googleEventId: calendarResult?.eventId,
+        googleCalendarId: calendarResult?.calendarId,
       });
       message = "Agendamento atualizado com sucesso";
     } else {
@@ -63,7 +125,12 @@ export async function POST(
       schedule = await leadScheduleRepository.create({
         leadId,
         date: meetingDate,
+        meetingTitle: resolvedMeetingTitle,
         notes,
+        meetingLink: resolvedMeetingLink || undefined,
+        extraGuests,
+        googleEventId: calendarResult?.eventId,
+        googleCalendarId: calendarResult?.calendarId,
       });
       message = "Agendamento criado com sucesso";
     }
@@ -71,15 +138,20 @@ export async function POST(
     // Atualizar o campo meetingDate do lead
     await prisma.lead.update({
       where: { id: leadId },
-      data: { meetingDate },
+      data: {
+        meetingDate,
+        meetingTitle: resolvedMeetingTitle,
+        meetingNotes: notes || null,
+        meetingLink: resolvedMeetingLink || null,
+        ...(closerId ? { closerId } : {}),
+      },
     });
 
-    const output = new Output(
-      true, 
-      [message], 
-      [], 
-      schedule
-    );
+    const successMessages = [message];
+    if (calendarWarning) {
+      successMessages.push(`Aviso: ${calendarWarning}`);
+    }
+    const output = new Output(true, successMessages, [], schedule);
     return NextResponse.json(output, { status: existingSchedule ? 200 : 201 });
 
   } catch (error) {

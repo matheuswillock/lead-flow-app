@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export type UserFunction = "SDR" | "CLOSER";
+
 // Interfaces principais
 export interface ManagerUser {
   id: string;
@@ -7,9 +9,11 @@ export interface ManagerUser {
   fullName?: string; // Alias para name
   email: string;
   role: "manager" | "operator";
+  functions?: UserFunction[];
   profileIconUrl?: string;
   managerId?: string; // Para operators
   leadsCount?: number; // Contador de leads
+  meetingsCount?: number; // Contador de agendamentos (closer)
   hasPermanentSubscription?: boolean; // Indica assinatura permanente
   createdAt: Date | string; // Pode vir como Date do Prisma ou string do JSON
   updatedAt: Date | string; // Pode vir como Date do Prisma ou string do JSON
@@ -63,6 +67,9 @@ export const CreateManagerUserSchema = z.object({
   role: z.enum(["manager", "operator"], { 
     message: "Selecione um papel válido"
   }),
+  functions: z.array(z.enum(["SDR", "CLOSER"]))
+    .max(2, "Selecione no máximo 2 funções")
+    .optional(),
 });
 
 export const UpdateManagerUserSchema = z.object({
@@ -71,6 +78,9 @@ export const UpdateManagerUserSchema = z.object({
   role: z.enum(["manager", "operator"], { 
     message: "Selecione um papel válido"
   }).optional(),
+  functions: z.array(z.enum(["SDR", "CLOSER"]))
+    .max(2, "Selecione no máximo 2 funções")
+    .optional(),
 });
 
 // Tipos inferidos dos schemas

@@ -1,21 +1,30 @@
 'use client';
 
 import { Table } from "@tanstack/react-table";
-import { X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataTableFacetedFilter } from "./data-table-faceted-filter";
+import { DataTableDateFilter } from "./data-table-date-filter";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
   statusOptions: { label: string; value: string; }[];
   responsibleOptions: { label: string; value: string; }[];
+  closerOptions: { label: string; value: string; }[];
 }
 
 export function DataTableToolbar<TData>({
   table,
   statusOptions,
   responsibleOptions,
+  closerOptions,
 }: DataTableToolbarProps<TData>) {
   const isFiltered = table.getState().columnFilters.length > 0;
 
@@ -44,6 +53,19 @@ export function DataTableToolbar<TData>({
             options={responsibleOptions}
           />
         )}
+        {table.getColumn("closerId") && closerOptions.length > 0 && (
+          <DataTableFacetedFilter
+            column={table.getColumn("closerId")}
+            title="Closer"
+            options={closerOptions}
+          />
+        )}
+        {table.getColumn("createdAt") && (
+          <DataTableDateFilter
+            column={table.getColumn("createdAt")}
+            title="Data de Criação"
+          />
+        )}
         {isFiltered && (
           <Button
             variant="ghost"
@@ -55,6 +77,35 @@ export function DataTableToolbar<TData>({
           </Button>
         )}
       </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" className="h-8">
+            Colunas <ChevronDown className="ml-2 h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {table
+            .getAllColumns()
+            .filter((column) => column.getCanHide())
+            .map((column) => {
+              const label =
+                (column.columnDef.meta as { label?: string } | undefined)?.label ??
+                column.id;
+              return (
+                <DropdownMenuCheckboxItem
+                  key={column.id}
+                  className="capitalize"
+                  checked={column.getIsVisible()}
+                  onCheckedChange={(value) =>
+                    column.toggleVisibility(!!value)
+                  }
+                >
+                  {label}
+                </DropdownMenuCheckboxItem>
+              );
+            })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

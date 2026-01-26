@@ -9,6 +9,8 @@ import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
 import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinalized/LeadFinalizedRepository";
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
+import { upsertCalendarEvent } from "../../services/googleCalendar/GoogleCalendarService";
+import { prisma } from "../../infra/data/prisma";
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -17,6 +19,32 @@ export class LeadUseCase implements ILeadUseCase {
   ) {}
 
   async createLead(supabaseId: string, data: CreateLeadRequest): Promise<Output> {
+    return this.createLeadInternal(supabaseId, data, false);
+  }
+
+  async createLeadFromImport(supabaseId: string, data: CreateLeadRequest): Promise<Output> {
+    const output = await this.createLeadInternal(supabaseId, data, true);
+
+    if (output.isValid && data.status === LeadStatus.contract_finalized && output.result?.id) {
+      const amount = Number(data.ticket ?? data.currentValue ?? 0);
+      await leadFinalizedRepository.create({
+        leadId: output.result.id,
+        finalizedAt: new Date(),
+        startDateAt: new Date(),
+        duration: 0,
+        amount,
+        notes: "Lead importado como negocio fechado",
+      });
+    }
+
+    return output;
+  }
+
+  private async createLeadInternal(
+    supabaseId: string,
+    data: CreateLeadRequest,
+    skipAutoAssign: boolean
+  ): Promise<Output> {
     try {
       // Buscar informações do perfil através do ProfileUseCase
       const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
@@ -33,13 +61,16 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       // Se for operator e não foi definido assignedTo, atribuir automaticamente ao próprio operator
-      let assignedTo = data.assignedTo;
-      if (profileInfo.role === 'operator' && !assignedTo) {
+      let assignedTo = skipAutoAssign ? undefined : data.assignedTo;
+      if (!skipAutoAssign && profileInfo.role === 'operator' && !assignedTo) {
         assignedTo = profileInfo.id;
       }
 
+      const leadCode = await this.generateLeadCode(data.name);
+
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
+        leadCode,
         name: data.name,
         email: data.email || null,
         phone: data.phone || null,
@@ -50,12 +81,23 @@ export class LeadUseCase implements ILeadUseCase {
         referenceHospital: data.referenceHospital || null,
         currentTreatment: data.currentTreatment || null,
         meetingDate: data.meetingDate ? new Date(data.meetingDate) : null,
+        meetingTitle: data.meetingTitle || null,
+        meetingNotes: data.meetingNotes || null,
+        meetingLink: data.meetingLink || null,
+        meetingHeald: data.meetingHeald || null,
         notes: data.notes || null,
         status: data.status || LeadStatus.new_opportunity,
+        // Novos campos de venda (sempre null na criação)
+        ticket: data.ticket || null,
+        contractDueDate: data.contractDueDate ? new Date(data.contractDueDate) : null,
+        soldPlan: data.soldPlan || null,
         creator: { connect: { id: profileInfo.id } },
         updater: { connect: { id: profileInfo.id } },
         ...(assignedTo && {
           assignee: { connect: { id: assignedTo } }
+        }),
+        ...(data.closerId && {
+          closer: { connect: { id: data.closerId } }
         }),
         activities: {
           create: {
@@ -93,6 +135,25 @@ export class LeadUseCase implements ILeadUseCase {
       
       return new Output(false, [], ["Erro interno do servidor ao criar lead"], null);
     }
+  }
+
+  private async generateLeadCode(name: string): Promise<string> {
+    const clean = name.replace(/[^A-Za-zÀ-ÿ]/g, "");
+    const firstLetter = (clean[0] || "L").toUpperCase();
+    const lastLetter = (clean[clean.length - 1] || "D").toUpperCase();
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const digitsLength = 4 + Math.floor(Math.random() * 3); // 4-6
+      const digits = Array.from({ length: digitsLength }, () => Math.floor(Math.random() * 10)).join("");
+      const code = `${firstLetter}${digits}${lastLetter}`;
+      const existing = await this.leadRepository.findByLeadCode(code);
+      if (!existing) {
+        return code;
+      }
+    }
+
+    const fallbackDigits = Date.now().toString().slice(-6);
+    return `${firstLetter}${fallbackDigits}${lastLetter}`;
   }
 
   async getLeadById(supabaseId: string, id: string): Promise<Output> {
@@ -237,28 +298,6 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      // Verificar permissões para operators
-      if (profileInfo.role === 'operator') {
-        const existingLead = await this.leadRepository.findById(id);
-        
-        if (!existingLead) {
-          return new Output(false, [], ["Lead não encontrado"], null);
-        }
-        
-        // Operator só pode editar se criou o lead OU se está atribuído a ele
-        const canEdit = existingLead.createdBy === profileInfo.id || 
-                       existingLead.assignedTo === profileInfo.id;
-        
-        if (!canEdit) {
-          return new Output(false, [], ["Você não tem permissão para editar este lead"], null);
-        }
-        
-        // Operator não pode alterar o assignedTo
-        if (data.assignedTo !== undefined) {
-          return new Output(false, [], ["Você não tem permissão para alterar o responsável pelo lead"], null);
-        }
-      }
-
       const updateData: any = {};
       
       if (data.name !== undefined) updateData.name = data.name;
@@ -271,13 +310,28 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
       if (data.currentTreatment !== undefined) updateData.currentTreatment = data.currentTreatment || null;
       if (data.meetingDate !== undefined) updateData.meetingDate = data.meetingDate ? new Date(data.meetingDate) : null;
+      if (data.meetingTitle !== undefined) updateData.meetingTitle = data.meetingTitle || null;
+      if (data.meetingNotes !== undefined) updateData.meetingNotes = data.meetingNotes || null;
+      if (data.meetingLink !== undefined) updateData.meetingLink = data.meetingLink || null;
+      if (data.meetingHeald !== undefined) updateData.meetingHeald = data.meetingHeald || null;
       if (data.notes !== undefined) updateData.notes = data.notes || null;
       if (data.status !== undefined) updateData.status = data.status;
+      // Novos campos de venda
+      if (data.ticket !== undefined) updateData.ticket = data.ticket;
+      if (data.contractDueDate !== undefined) updateData.contractDueDate = data.contractDueDate ? new Date(data.contractDueDate) : null;
+      if (data.soldPlan !== undefined) updateData.soldPlan = data.soldPlan || null;
       if (data.assignedTo !== undefined) {
         if (data.assignedTo) {
           updateData.assignee = { connect: { id: data.assignedTo } };
         } else {
           updateData.assignee = { disconnect: true };
+        }
+      }
+      if (data.closerId !== undefined) {
+        if (data.closerId) {
+          updateData.closer = { connect: { id: data.closerId } };
+        } else {
+          updateData.closer = { disconnect: true };
         }
       }
 
@@ -364,22 +418,60 @@ export class LeadUseCase implements ILeadUseCase {
       // Se o status for scheduled, criar ou atualizar registro na tabela LeadsSchedule
       if (status === LeadStatus.scheduled) {
         const meetingDate = existingLead.meetingDate || new Date();
+        const fallbackMeetingTitle = existingLead.meetingTitle || `Reuniao com ${existingLead.name}`;
         
         // Verificar se já existe um agendamento para este lead
         const existingSchedule = await leadScheduleRepository.findLatestByLeadId(id);
-        
+        const shouldCreateCalendarEvent = !existingSchedule?.googleEventId;
+        let calendarEventResult: { eventId: string; calendarId: string; meetLink?: string | null } | null = null;
+
+        if (shouldCreateCalendarEvent) {
+          const leadWithManager = await prisma.lead.findUnique({
+            where: { id },
+            include: {
+              manager: true,
+              closer: true,
+            },
+          });
+
+          if (leadWithManager?.manager.googleCalendarConnected && leadWithManager.manager.googleRefreshToken) {
+            try {
+              calendarEventResult = await upsertCalendarEvent({
+                organizer: leadWithManager.manager,
+                lead: leadWithManager,
+                closerEmail: leadWithManager.closer?.email || null,
+                meetingDate,
+                meetingTitle: existingLead.meetingTitle || undefined,
+                notes: existingLead.meetingNotes || undefined,
+                meetingLink: existingLead.meetingLink || undefined,
+                existingEventId: existingSchedule?.googleEventId ?? null,
+              });
+            } catch (error) {
+              console.error("Erro ao criar evento no Google Calendar:", error);
+            }
+          }
+        }
+
         if (existingSchedule) {
           // Atualizar agendamento existente
           await leadScheduleRepository.update(existingSchedule.id, {
             date: meetingDate,
+            meetingTitle: fallbackMeetingTitle,
             notes: `Lead agendado`,
+            meetingLink: calendarEventResult?.meetLink ?? existingSchedule.meetingLink ?? undefined,
+            googleEventId: calendarEventResult?.eventId ?? existingSchedule.googleEventId ?? undefined,
+            googleCalendarId: calendarEventResult?.calendarId ?? existingSchedule.googleCalendarId ?? undefined,
           });
         } else {
           // Criar novo agendamento
           await leadScheduleRepository.create({
             leadId: id,
             date: meetingDate,
+            meetingTitle: fallbackMeetingTitle,
             notes: `Lead agendado`,
+            meetingLink: calendarEventResult?.meetLink ?? existingLead.meetingLink ?? undefined,
+            googleEventId: calendarEventResult?.eventId ?? undefined,
+            googleCalendarId: calendarEventResult?.calendarId ?? undefined,
           });
         }
 
@@ -387,6 +479,16 @@ export class LeadUseCase implements ILeadUseCase {
         if (!existingLead.meetingDate) {
           await this.leadRepository.update(id, {
             meetingDate,
+            meetingTitle: fallbackMeetingTitle,
+            meetingLink: calendarEventResult?.meetLink ?? undefined,
+          });
+        } else if (!existingLead.meetingTitle) {
+          await this.leadRepository.update(id, {
+            meetingTitle: fallbackMeetingTitle,
+          });
+        } else if (calendarEventResult?.meetLink && !existingLead.meetingLink) {
+          await this.leadRepository.update(id, {
+            meetingLink: calendarEventResult.meetLink,
           });
         }
       }
@@ -486,6 +588,7 @@ export class LeadUseCase implements ILeadUseCase {
   private transformToDTO(lead: any): LeadResponseDTO {
     return {
       id: lead.id,
+      leadCode: lead.leadCode,
       managerId: lead.managerId,
       assignedTo: lead.assignedTo,
       status: lead.status,
@@ -499,11 +602,20 @@ export class LeadUseCase implements ILeadUseCase {
       referenceHospital: lead.referenceHospital,
       currentTreatment: lead.currentTreatment,
       meetingDate: lead.meetingDate ? lead.meetingDate.toISOString() : null,
+      meetingTitle: lead.meetingTitle,
+      meetingNotes: lead.meetingNotes,
+      meetingLink: lead.meetingLink,
+      meetingHeald: lead.meetingHeald,
+      closerId: lead.closerId ?? null,
       notes: lead.notes,
       createdBy: lead.createdBy,
       updatedBy: lead.updatedBy,
       createdAt: lead.createdAt.toISOString(),
       updatedAt: lead.updatedAt.toISOString(),
+      // Novos campos de venda
+      ticket: lead.ticket ? Number(lead.ticket) : null,
+      contractDueDate: lead.contractDueDate ? lead.contractDueDate.toISOString() : null,
+      soldPlan: lead.soldPlan,
       attachmentCount: lead._count?.attachments || lead.attachments?.length || 0,
       ...(lead.manager && {
         manager: {
@@ -518,6 +630,14 @@ export class LeadUseCase implements ILeadUseCase {
           fullName: lead.assignee.fullName,
           email: lead.assignee.email,
           avatarUrl: lead.assignee.profileIconUrl || null,
+        }
+      }),
+      ...(lead.closer && {
+        closer: {
+          id: lead.closer.id,
+          fullName: lead.closer.fullName,
+          email: lead.closer.email,
+          avatarUrl: lead.closer.profileIconUrl || null,
         }
       }),
       ...(lead.activities && {

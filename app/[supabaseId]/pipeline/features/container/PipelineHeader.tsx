@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Filter, Table2, User, Plus } from "lucide-react";
 import usePipelineContext from "../context/PipelineHook";
+import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
 
 export default function PipelineHeader() {
     const { 
@@ -20,7 +21,8 @@ export default function PipelineHeader() {
         userLoading,
         allLeads,
         isLoading,
-        openNewLeadDialog
+        openNewLeadDialog,
+        refreshLeads
     } = usePipelineContext();
 
     // Calcular total de leads
@@ -53,7 +55,7 @@ export default function PipelineHeader() {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar por nome ou data (dd/mm/aaaa)"
+              placeholder="Buscar por nome, ID ou data (dd/mm/aaaa)"
               className="pl-8 w-96"
             />
           </div>
@@ -95,6 +97,7 @@ export default function PipelineHeader() {
             <Plus className="mr-2 size-4" />
             Adicionar novo lead
           </Button>
+          <LeadImportButton onImportComplete={refreshLeads} />
         </div>
       </div>
     );

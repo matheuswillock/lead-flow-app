@@ -15,6 +15,7 @@ function SignInInner() {
   const isFromSubscription = searchParams.get('from') === 'subscribe';
   const isFromCheckout = searchParams.get('from') === 'checkout';
   const paymentSuccess = searchParams.get('success') === 'true';
+  const emailPrefill = searchParams.get('email') ?? '';
 
   // Exibir toast de sucesso do pagamento
   useEffect(() => {
@@ -25,6 +26,13 @@ function SignInInner() {
       });
     }
   }, [isFromCheckout, paymentSuccess]);
+
+  useEffect(() => {
+    if (!emailPrefill) return;
+    form.setValue('email', emailPrefill);
+    form.setValue('password', '');
+    form.clearErrors('email');
+  }, [emailPrefill, form]);
 
   async function onSubmit(data: loginFormData) {
     const formData = new FormData();

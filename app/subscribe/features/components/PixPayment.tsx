@@ -68,7 +68,7 @@ export function PixPayment({
       toast.success('Código Pix copiado!', {
         description: 'Cole no seu aplicativo de pagamento',
       });
-    } catch (error) {
+    } catch (_error) {
       toast.error('Erro ao copiar código');
     }
   };
@@ -98,7 +98,7 @@ export function PixPayment({
           description: 'Um novo código foi gerado para você',
         });
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error('Erro ao regenerar QR Code', {
         description: 'Tente novamente em alguns instantes',
       });
@@ -136,7 +136,7 @@ export function PixPayment({
           description: 'Aguardando confirmação do pagamento',
         });
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error('Erro ao verificar pagamento');
     } finally {
       setIsChecking(false);

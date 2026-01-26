@@ -3,7 +3,9 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
+import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { getEmailService } from "@/lib/services/EmailService";
+import { getFullUrl } from '@/lib/utils/app-url';
 import type { 
   ISubscriptionUpgradeUseCase, 
   AddOperatorPaymentData,
@@ -53,6 +55,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           name: data.operatorData.name,
           email: data.operatorData.email,
           role: data.operatorData.role,
+          functions: data.operatorData.functions ?? [],
           paymentId: 'pending', // Será atualizado após criação do checkout
           subscriptionId: null,
           paymentStatus: 'PENDING',
@@ -62,9 +65,88 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       console.info('💾 [createOperatorPayment] PendingOperator criado:', pendingOperator.id);
 
-      // 4. Gerar link de checkout hospedado do Asaas
+      // 4. Validar ou criar customer no Asaas
+      let asaasCustomerId = manager.asaasCustomerId;
+      
+      if (!asaasCustomerId) {
+        console.error('❌ [createOperatorPayment] Manager sem asaasCustomerId:', {
+          managerId: manager.id,
+          managerEmail: manager.email
+        });
+        
+        // Deletar pendingOperator
+        await prisma.pendingOperator.delete({
+          where: { id: pendingOperator.id }
+        });
+        
+        return new Output(
+          false, 
+          [], 
+          ['Erro: Sua conta não possui customer Asaas. Por favor, entre em contato com o suporte.'], 
+          null
+        );
+      }
+
+      // Verificar se o customer existe no Asaas atual (pode ter mudado de sandbox para produção)
+      console.info('🔍 [createOperatorPayment] Verificando customer no Asaas:', asaasCustomerId);
+      try {
+        await AsaasCustomerService.getCustomer(asaasCustomerId);
+        console.info('✅ [createOperatorPayment] Customer válido no ambiente atual');
+      } catch (error: any) {
+        console.warn('⚠️ [createOperatorPayment] Customer não encontrado no ambiente atual:', {
+          asaasCustomerId,
+          error: error.message
+        });
+        
+        // Customer não existe neste ambiente - criar novo
+        console.info('🔄 [createOperatorPayment] Criando novo customer no ambiente atual...');
+        
+        // Construir dados do customer com campos opcionais
+        const customerData: any = {
+          name: manager.fullName || manager.email,
+          email: manager.email,
+          cpfCnpj: manager.cpfCnpj || '00000000000', // CPF genérico se não tiver
+          externalReference: manager.id,
+        };
+        
+        if (manager.phone) customerData.phone = manager.phone;
+        if (manager.postalCode) customerData.postalCode = manager.postalCode;
+        if (manager.address) customerData.address = manager.address;
+        if (manager.addressNumber) customerData.addressNumber = manager.addressNumber;
+        if (manager.complement) customerData.complement = manager.complement;
+        
+        const newCustomer = await AsaasCustomerService.createCustomer(customerData);
+        
+        if (!newCustomer || !newCustomer.success || !newCustomer.customerId) {
+          console.error('❌ [createOperatorPayment] Falha ao criar customer');
+          await prisma.pendingOperator.delete({
+            where: { id: pendingOperator.id }
+          });
+          return new Output(false, [], ['Erro ao criar customer no gateway'], null);
+        }
+        
+        // Atualizar profile com novo customerId
+        await prisma.profile.update({
+          where: { id: manager.id },
+          data: { asaasCustomerId: newCustomer.customerId }
+        });
+        
+        asaasCustomerId = newCustomer.customerId;
+        console.info('✅ [createOperatorPayment] Novo customer criado:', asaasCustomerId);
+      }
+
+      // Garantir que temos um customerId válido neste ponto
+      if (!asaasCustomerId) {
+        console.error('❌ [createOperatorPayment] asaasCustomerId é null após validações');
+        await prisma.pendingOperator.delete({
+          where: { id: pendingOperator.id }
+        });
+        return new Output(false, [], ['Erro: Customer ID inválido'], null);
+      }
+
+      // 5. Gerar link de checkout hospedado do Asaas
       const checkoutLink = await this.createAsaasCheckoutLink({
-        customer: manager.asaasCustomerId!,
+        customer: asaasCustomerId,
         value: 19.90,
         description: `Licença adicional de operador - ${data.operatorData.name} (${data.operatorData.email}) - Acesso completo à plataforma Corretor Studio com gestão de leads, pipeline de vendas e métricas em tempo real`,
         pendingOperatorId: pendingOperator.id,
@@ -221,7 +303,22 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     try {
       if (pendingOperator.operatorCreated) {
         console.info('ℹ️ [createOperatorFromPending] Operador já foi criado anteriormente');
-        return new Output(false, [], ['Operador já foi criado'], null);
+        
+        // Buscar operador criado e retornar sucesso (para evitar erro em múltiplas chamadas)
+        const result: SubscriptionUpgradeResult = {
+          paymentId,
+          paymentStatus: 'CONFIRMED',
+          paymentMethod: pendingOperator.paymentMethod,
+          operatorCreated: true,
+          operatorId: pendingOperator.operatorId || '',
+        };
+
+        return new Output(
+          true,
+          ['Operador já foi criado anteriormente'],
+          [],
+          result
+        );
       }
 
       // 2. Verificar status do pagamento no Asaas
@@ -354,22 +451,12 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           tipoPagamento: currentSubscription.billingType
         });
 
-        // Atualizar assinatura (comportamento diferente por tipo de pagamento)
-        if (currentSubscription.billingType === 'CREDIT_CARD') {
-          console.info('💳 [createOperatorFromPending] Atualizando assinatura com cobrança automática (Cartão)...');
-          await AsaasSubscriptionService.updateSubscription(
-            manager.asaasSubscriptionId,
-            { value: newValue }
-          );
-          console.info('✅ [createOperatorFromPending] Assinatura atualizada com cobrança automática no cartão');
-        } else {
-          console.info('📄 [createOperatorFromPending] Atualizando assinatura para próxima cobrança (PIX/Boleto)...');
-          await AsaasSubscriptionService.updateSubscription(
-            manager.asaasSubscriptionId,
-            { value: newValue }
-          );
-          console.info('✅ [createOperatorFromPending] Assinatura atualizada - novo valor será cobrado na próxima fatura');
-        }
+        await this.updateManagerSubscriptionValue({
+          manager,
+          currentSubscription,
+          newValue,
+          operatorName: pendingOperator.name,
+        });
 
         console.info('🎉 [createOperatorFromPending] Assinatura atualizada com sucesso! Prosseguindo com criação do operador...');
 
@@ -399,6 +486,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
             fullName: pendingOperator.name,
             email: pendingOperator.email,
             role: pendingOperator.role as any,
+            functions: pendingOperator.functions ?? [],
             managerId: pendingOperator.managerId,
             asaasSubscriptionId: pendingOperator.subscriptionId || undefined,
             subscriptionCycle: pendingOperator.subscriptionId ? 'MONTHLY' : undefined,
@@ -573,36 +661,24 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         description: data.description,
       });
 
-      // Gerar URLs de callback
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      
-      // Simplificar parâmetros - redirecionar direto para manager-users
-      // O status do operador será exibido na tabela com badges
-      const successParams = new URLSearchParams({
-        payment: 'success',
-        operatorId: data.pendingOperatorId,
-      });
-
-      // Criar checkout com redirecionamento automático
+      // Criar checkout HOSPEDADO (permite escolher forma de pagamento)
       const nextDueDate = new Date();
       nextDueDate.setMonth(nextDueDate.getMonth() + 1); // 1 mês de prazo
       
-      const checkoutPayload = {
+      // Primeiro cria o payment como PIX (default)
+      const paymentPayload = {
         customer: data.customer,
-        billingType: 'UNDEFINED', // Permite escolher no checkout
+        billingType: 'PIX', // PIX como padrão, mas checkout permite alterar
         value: data.value,
         dueDate: nextDueDate.toISOString().split('T')[0],
         description: data.description,
         externalReference: `pending-operator-${data.pendingOperatorId}`,
-        callback: {
-          successUrl: `${appUrl}/${data.managerId}/manager-users?${successParams.toString()}`,
-        },
       };
 
-      // Criar payment link no Asaas usando a lib
+      // Criar payment no Asaas
       const payment = await asaasFetch(asaasApi.payments, {
         method: 'POST',
-        body: JSON.stringify(checkoutPayload),
+        body: JSON.stringify(paymentPayload),
       });
 
       console.info('[Asaas] Payment criado:', {
@@ -761,8 +837,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('✅ [createSupabaseUser] Cliente Supabase Admin criado');
 
       // Gerar link de convite SEM enviar e-mail do Supabase
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      const redirectTo = `${appUrl}/set-password`;
+      const redirectTo = getFullUrl('/set-password');
       console.info('🔗 [createSupabaseUser] Gerando link de convite para:', email);
       console.info('🔗 [createSupabaseUser] Redirect URL:', redirectTo);
 
@@ -858,6 +933,187 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       value: totalValue,
       description
     };
+  }
+
+  private async updateManagerSubscriptionValue(params: {
+    manager: any;
+    currentSubscription: any;
+    newValue: number;
+    operatorName: string;
+  }): Promise<void> {
+    const { manager, currentSubscription, newValue, operatorName } = params;
+
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const isCreditCard = currentSubscription.billingType === 'CREDIT_CARD';
+    const verifyUpdatedValue = async () => {
+      try {
+        const latest = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        const latestValue = Number(latest?.value);
+        if (!Number.isFinite(latestValue)) {
+          return false;
+        }
+        return Math.abs(latestValue - newValue) < 0.01;
+      } catch (verifyError) {
+        console.warn('⚠️ [updateManagerSubscriptionValue] Falha ao verificar valor atual da assinatura:', verifyError);
+        return false;
+      }
+    };
+    const logLatestValue = async (context: string) => {
+      try {
+        const latest = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        console.warn('⚠️ [updateManagerSubscriptionValue] Valor atual da assinatura:', {
+          context,
+          subscriptionId: manager.asaasSubscriptionId,
+          latestValue: latest?.value,
+          expectedValue: newValue
+        });
+      } catch (logError) {
+        console.warn('⚠️ [updateManagerSubscriptionValue] Falha ao buscar valor atual da assinatura:', logError);
+      }
+    };
+
+    if (!isCreditCard) {
+      console.info('📄 [updateManagerSubscriptionValue] Atualizando assinatura para proxima cobranca (PIX/Boleto)...');
+      try {
+        await AsaasSubscriptionService.updateSubscription(
+          manager.asaasSubscriptionId,
+          { value: newValue }
+        );
+        console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada - novo valor sera cobrado na proxima fatura');
+        return;
+      } catch (error) {
+        if (await verifyUpdatedValue()) {
+          console.info('✅ [updateManagerSubscriptionValue] Valor ja atualizado no Asaas (PIX/Boleto), seguindo fluxo');
+          return;
+        }
+        throw error;
+      }
+    }
+
+    console.info('💳 [updateManagerSubscriptionValue] Atualizando assinatura com cobranca automatica (Cartao)...');
+
+    try {
+      await AsaasSubscriptionService.updateSubscription(
+        manager.asaasSubscriptionId,
+        { value: newValue }
+      );
+      console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada com sucesso no cartao');
+      return;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      const normalizedMessage = errorMessage.toLowerCase();
+      const blockedValueChange = normalizedMessage.includes('nao e possivel alterar o valor')
+        || normalizedMessage.includes('não é possível alterar o valor')
+        || normalizedMessage.includes('assinaturas via cartao de credito')
+        || normalizedMessage.includes('assinaturas via cartão de crédito');
+
+      if (!blockedValueChange) {
+        if (await verifyUpdatedValue()) {
+          console.info('✅ [updateManagerSubscriptionValue] Valor ja atualizado no Asaas (Cartao), seguindo fluxo');
+          return;
+        }
+
+        console.warn('⚠️ [updateManagerSubscriptionValue] Re-tentando atualizar assinatura no cartao...');
+        for (let attempt = 1; attempt <= 2; attempt += 1) {
+          try {
+            if (attempt > 1) {
+              await sleep(500 * attempt);
+            }
+            await AsaasSubscriptionService.updateSubscription(
+              manager.asaasSubscriptionId,
+              { value: newValue }
+            );
+            console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada com sucesso no cartao (re-tentativa)');
+            return;
+          } catch (retryError) {
+            await logLatestValue(`retry_${attempt}`);
+            if (await verifyUpdatedValue()) {
+              console.info('✅ [updateManagerSubscriptionValue] Valor ja atualizado no Asaas apos re-tentativa');
+              return;
+            }
+            if (attempt === 2) {
+              throw retryError;
+            }
+          }
+        }
+      }
+
+      console.warn('⚠️ [updateManagerSubscriptionValue] Alteracao de valor bloqueada para cartao. Recriando assinatura...', {
+        managerId: manager.id,
+        subscriptionId: manager.asaasSubscriptionId,
+        operatorName,
+        errorMessage
+      });
+
+      await this.recreateCreditCardSubscription({
+        manager,
+        currentSubscription,
+        newValue,
+      });
+    }
+  }
+
+  private async recreateCreditCardSubscription(params: {
+    manager: any;
+    currentSubscription: any;
+    newValue: number;
+  }): Promise<void> {
+    const { manager, currentSubscription, newValue } = params;
+
+    if (!manager.asaasCustomerId) {
+      throw new Error('Manager sem customer Asaas para recriar assinatura');
+    }
+
+    const now = new Date();
+    const currentNextDueDate = manager.subscriptionNextDueDate
+      ? new Date(manager.subscriptionNextDueDate)
+      : (currentSubscription.nextDueDate ? new Date(currentSubscription.nextDueDate) : null);
+
+    const nextDueDate = currentNextDueDate && !Number.isNaN(currentNextDueDate.getTime())
+      ? currentNextDueDate
+      : now;
+
+    if (nextDueDate < now) {
+      nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+    }
+
+    const payload: any = {
+      customer: manager.asaasCustomerId,
+      billingType: 'CREDIT_CARD',
+      value: newValue,
+      cycle: currentSubscription.cycle || 'MONTHLY',
+      nextDueDate: nextDueDate.toISOString().split('T')[0],
+      description: currentSubscription.description || 'Assinatura Manager atualizada',
+      externalReference: `manager-${manager.id}-${Date.now()}`
+    };
+
+    const creditCardToken = currentSubscription?.creditCard?.creditCardToken;
+    if (creditCardToken) {
+      payload.creditCardToken = creditCardToken;
+    } else {
+      console.warn('⚠️ [recreateCreditCardSubscription] Sem creditCardToken no Asaas para recriar assinatura', {
+        managerId: manager.id,
+        subscriptionId: currentSubscription.id
+      });
+    }
+
+    const newSubscription = await AsaasSubscriptionService.createSubscription(payload);
+
+    await prisma.profile.update({
+      where: { id: manager.id },
+      data: {
+        asaasSubscriptionId: newSubscription.subscriptionId,
+        subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+        subscriptionCycle: newSubscription.data.cycle || 'MONTHLY',
+      }
+    });
+
+    try {
+      await AsaasSubscriptionService.cancelSubscription(currentSubscription.id);
+      console.info('✅ [recreateCreditCardSubscription] Assinatura antiga cancelada');
+    } catch (error) {
+      console.error('❌ [recreateCreditCardSubscription] Falha ao cancelar assinatura antiga:', error);
+    }
   }
 
   /**

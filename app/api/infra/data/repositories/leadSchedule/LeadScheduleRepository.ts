@@ -16,7 +16,12 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
       data: {
         leadId: data.leadId,
         date: data.date,
+        meetingTitle: data.meetingTitle,
         notes: data.notes,
+        meetingLink: data.meetingLink,
+        extraGuests: data.extraGuests ?? [],
+        googleEventId: data.googleEventId ?? undefined,
+        googleCalendarId: data.googleCalendarId ?? undefined,
       },
     });
   }

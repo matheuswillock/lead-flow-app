@@ -1,12 +1,21 @@
 /**
  * DTO for updating profile information
- * Allows updating email, phone, fullName, and password fields
+ * Allows updating email, phone, fullName, password, address fields, and cpfCnpj
  */
 export interface RequestToUpdateProfile {
   fullName?: string;
   phone?: string;
   email?: string;
   password?: string;
+  cpfCnpj?: string;
+  postalCode?: string;
+  address?: string;
+  addressNumber?: string;
+  neighborhood?: string;
+  complement?: string;
+  city?: string;
+  state?: string;
+  functions?: ("SDR" | "CLOSER")[];
 }
 
 /**
@@ -99,13 +108,98 @@ export function validateUpdateProfileRequest(data: any): RequestToUpdateProfile 
     hasValidField = true;
   }
 
+  // Validate cpfCnpj
+  if (data.cpfCnpj !== undefined) {
+    if (data.cpfCnpj !== null && data.cpfCnpj !== '' && typeof data.cpfCnpj !== 'string') {
+      throw new Error('CPF/CNPJ must be a string');
+    }
+    result.cpfCnpj = data.cpfCnpj || undefined;
+    hasValidField = true;
+  }
+
+  // Validate postalCode
+  if (data.postalCode !== undefined) {
+    if (data.postalCode !== null && data.postalCode !== '' && typeof data.postalCode !== 'string') {
+      throw new Error('Postal code must be a string');
+    }
+    result.postalCode = data.postalCode || undefined;
+    hasValidField = true;
+  }
+
+  // Validate address
+  if (data.address !== undefined) {
+    if (data.address !== null && data.address !== '' && typeof data.address !== 'string') {
+      throw new Error('Address must be a string');
+    }
+    result.address = data.address || undefined;
+    hasValidField = true;
+  }
+
+  // Validate addressNumber
+  if (data.addressNumber !== undefined) {
+    if (data.addressNumber !== null && data.addressNumber !== '' && typeof data.addressNumber !== 'string') {
+      throw new Error('Address number must be a string');
+    }
+    result.addressNumber = data.addressNumber || undefined;
+    hasValidField = true;
+  }
+
+  // Validate neighborhood
+  if (data.neighborhood !== undefined) {
+    if (data.neighborhood !== null && data.neighborhood !== '' && typeof data.neighborhood !== 'string') {
+      throw new Error('Neighborhood must be a string');
+    }
+    result.neighborhood = data.neighborhood || undefined;
+    hasValidField = true;
+  }
+
+  // Validate complement
+  if (data.complement !== undefined) {
+    if (data.complement !== null && data.complement !== '' && typeof data.complement !== 'string') {
+      throw new Error('Complement must be a string');
+    }
+    result.complement = data.complement || undefined;
+    hasValidField = true;
+  }
+
+  // Validate city
+  if (data.city !== undefined) {
+    if (data.city !== null && data.city !== '' && typeof data.city !== 'string') {
+      throw new Error('City must be a string');
+    }
+    result.city = data.city || undefined;
+    hasValidField = true;
+  }
+
+  // Validate state
+  if (data.state !== undefined) {
+    if (data.state !== null && data.state !== '' && typeof data.state !== 'string') {
+      throw new Error('State must be a string');
+    }
+    result.state = data.state || undefined;
+    hasValidField = true;
+  }
+
+  if (data.functions !== undefined) {
+    if (!Array.isArray(data.functions)) {
+      throw new Error('Functions must be an array');
+    }
+    const allowedFunctions = ["SDR", "CLOSER"];
+    const invalidFunctions = data.functions.filter((func: any) => !allowedFunctions.includes(func));
+    if (invalidFunctions.length > 0) {
+      throw new Error(`Invalid functions: ${invalidFunctions.join(", ")}`);
+    }
+    result.functions = data.functions;
+    hasValidField = true;
+  }
+
   // Check for invalid fields
-  const allowedFields = ['fullName', 'phone', 'email', 'password'];
+  const allowedFields = ['fullName', 'phone', 'email', 'password', 'cpfCnpj', 'postalCode', 'address', 'addressNumber', 'neighborhood', 'complement', 'city', 'state', 'functions'];
   const providedFields = Object.keys(data);
   const invalidFields = providedFields.filter(field => !allowedFields.includes(field));
   
   if (invalidFields.length > 0) {
-    throw new Error(`Invalid fields provided: ${invalidFields.join(', ')}. Only fullName, phone, email, and password are allowed.`);
+    throw new Error(`Invalid fields provided: ${invalidFields.join(', ')}. Only profile fields and functions are allowed.`);
   }
 
   // At least one field must be provided

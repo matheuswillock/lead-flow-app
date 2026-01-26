@@ -1,13 +1,14 @@
 'use client';
 
 import PipelineTable from "./PipelineTable";
-import PipelineDialog from "./PipelineDialog";
+import LeadDialog from "@/app/[supabaseId]/components/LeadDialog";
 import { Table2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import usePipelineContext from "../context/PipelineHook";
+import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
 
 export function PipelineContainer() {
-  const { user, userLoading, allLeads, isLoading, openNewLeadDialog } = usePipelineContext();
+  const { user, userLoading, allLeads, isLoading, openNewLeadDialog, open, setOpen, selected: lead, refreshLeads, finalizeContract } = usePipelineContext();
   
   // Calcular total de leads
   const totalLeads = allLeads.length;
@@ -29,17 +30,28 @@ export function PipelineContainer() {
             ) : null}
           </div>
         </div>
-        <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
-          <Plus className="mr-2 size-4" />
-          Adicionar novo lead
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
+            <Plus className="mr-2 size-4" />
+            Adicionar novo lead
+          </Button>
+          <LeadImportButton onImportComplete={refreshLeads} />
+        </div>
       </div>
 
       {/* Table */}
       <PipelineTable />
 
       {/* Dialog */}
-      <PipelineDialog />
+      <LeadDialog
+        open={open}
+        setOpen={setOpen}
+        lead={lead}
+        user={user}
+        userLoading={userLoading}
+        refreshLeads={refreshLeads}
+        finalizeContract={finalizeContract}
+      />
     </div>
   )
 }

@@ -11,22 +11,22 @@ export class UpdatePermanentSubscriptionUseCase {
 
   /**
    * Atualiza a flag hasPermanentSubscription de um perfil
-   * @param targetProfileId - ID do perfil a ser atualizado
+   * @param targetSupabaseId - SupabaseID do perfil a ser atualizado
    * @param hasPermanentSubscription - Novo valor da flag
    * @param requestingUserId - ID do usuário que está fazendo a requisição
    */
   async updatePermanentSubscription(
-    targetProfileId: string,
+    targetSupabaseId: string,
     hasPermanentSubscription: boolean,
     requestingUserId: string
   ): Promise<Output> {
     try {
       // 1. Validações de entrada
-      if (!targetProfileId) {
+      if (!targetSupabaseId) {
         return new Output(
           false,
           [],
-          ['ID do perfil é obrigatório'],
+          ['SupabaseID do perfil é obrigatório'],
           null
         );
       }
@@ -62,8 +62,8 @@ export class UpdatePermanentSubscriptionUseCase {
         );
       }
 
-      // 4. Buscar perfil alvo
-      const targetProfile = await this.profileRepository.findById(targetProfileId);
+      // 4. Buscar perfil alvo por supabaseId
+      const targetProfile = await this.profileRepository.findBySupabaseId(targetSupabaseId);
 
       if (!targetProfile) {
         return new Output(
@@ -74,9 +74,9 @@ export class UpdatePermanentSubscriptionUseCase {
         );
       }
 
-      // 5. Atualizar flag hasPermanentSubscription
+      // 5. Atualizar flag hasPermanentSubscription usando o ID interno
       const updatedProfile = await prisma.profile.update({
-        where: { id: targetProfileId },
+        where: { id: targetProfile.id },
         data: { hasPermanentSubscription }
       });
 

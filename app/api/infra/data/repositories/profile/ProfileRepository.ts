@@ -51,7 +51,8 @@ class PrismaProfileRepository implements IProfileRepository {
                             fullName: true,
                             profileIconUrl: true,
                             email: true,
-                            role: true
+                            role: true,
+                            functions: true
                         }
                     },
                     manager: {
@@ -60,7 +61,8 @@ class PrismaProfileRepository implements IProfileRepository {
                             fullName: true,
                             profileIconUrl: true,
                             email: true,
-                            role: true
+                            role: true,
+                            functions: true
                         }
                     }
                 }
@@ -85,7 +87,8 @@ class PrismaProfileRepository implements IProfileRepository {
                         fullName: true,
                         profileIconUrl: true,
                         email: true,
-                        role: true
+                        role: true,
+                        functions: true
                     }
                 });
 
@@ -114,6 +117,16 @@ class PrismaProfileRepository implements IProfileRepository {
 
     }
 
+    async findByEmail(email: string): Promise<Profile | null> {
+        try {
+            const profile = await prisma.profile.findUnique({ where: { email } });
+            return profile ?? null;
+        } catch (error) {
+            console.error("Error fetching profile by email:", error);
+            return null;
+        }
+    }
+
     async createProfile(
     fullName: string,
     phone: string,
@@ -131,6 +144,7 @@ class PrismaProfileRepository implements IProfileRepository {
     postalCode?: string,
     address?: string,
     addressNumber?: string,
+    neighborhood?: string,
     complement?: string,
     city?: string,
     state?: string,
@@ -164,7 +178,10 @@ class PrismaProfileRepository implements IProfileRepository {
         const { data: user, error: authError } = await supabase.auth.admin.createUser({
           email,
           password,
-          email_confirm: true
+          email_confirm: true,
+          app_metadata: {
+            provider: "email"
+          }
         });
 
         if (authError || !user.user) {
@@ -192,6 +209,13 @@ class PrismaProfileRepository implements IProfileRepository {
         // 2. NÃO tem managerId (não foi criado por outro usuário)
         isMaster: !managerId,
       };
+
+      if (
+        profileData.isMaster &&
+        (subscriptionId || asaasCustomerId || subscriptionPlan)
+      ) {
+        profileData.functions = ["SDR", "CLOSER"];
+      }
 
       // Se tem managerId, adicionar ao profileData
       if (managerId) {
@@ -226,14 +250,29 @@ class PrismaProfileRepository implements IProfileRepository {
         profileData.trialEndDate = trialEndDate;
       }
 
-      // Adicionar endereço se fornecido
-      if (postalCode) profileData.postalCode = postalCode;
-      if (address) profileData.address = address;
-      if (addressNumber) profileData.addressNumber = addressNumber;
-      if (complement) profileData.complement = complement;
-      if (city) profileData.city = city;
-      if (state) profileData.state = state;
+      // Adicionar endereço se fornecido (undefined check ao invés de truthy)
+      console.info('🔍 [ProfileRepository] Valores de endereço ANTES de adicionar:', {
+        postalCode, address, addressNumber, neighborhood, complement, city, state
+      });
+      
+      if (postalCode !== undefined) profileData.postalCode = postalCode;
+      if (address !== undefined) profileData.address = address;
+      if (addressNumber !== undefined) profileData.addressNumber = addressNumber;
+      if (neighborhood !== undefined) profileData.neighborhood = neighborhood;
+      if (complement !== undefined) profileData.complement = complement;
+      if (city !== undefined) profileData.city = city;
+      if (state !== undefined) profileData.state = state;
 
+      console.info('📝 [ProfileRepository] profileData APÓS adicionar endereço:', {
+        postalCode: profileData.postalCode,
+        address: profileData.address,
+        addressNumber: profileData.addressNumber,
+        neighborhood: profileData.neighborhood,
+        complement: profileData.complement,
+        city: profileData.city,
+        state: profileData.state
+      });
+      
       console.info('📝 [ProfileRepository] profileData final:', {
         hasSubscriptionId: !!profileData.subscriptionId,
         hasAsaasCustomerId: !!profileData.asaasCustomerId,
@@ -317,9 +356,128 @@ class PrismaProfileRepository implements IProfileRepository {
     }
   }
 
+  async createProfileWithSupabaseId(
+    supabaseId: string,
+    fullName: string,
+    phone: string,
+    email: string,
+    role: UserRole,
+    asaasCustomerId?: string,
+    subscriptionId?: string,
+    cpfCnpj?: string,
+    subscriptionStatus?: string,
+    subscriptionPlan?: string,
+    operatorCount?: number,
+    subscriptionStartDate?: Date,
+    trialEndDate?: Date,
+    postalCode?: string,
+    address?: string,
+    addressNumber?: string,
+    neighborhood?: string,
+    complement?: string,
+    city?: string,
+    state?: string,
+    managerId?: string
+  ): Promise<{ profileId: string; supabaseId: string } | null> {
+    try {
+      if (!supabaseId) {
+        throw new Error("Supabase ID é obrigatório");
+      }
+
+      const existingProfile = await prisma.profile.findUnique({ where: { supabaseId } });
+      if (existingProfile) {
+        throw new Error("Perfil já existe para este usuário");
+      }
+
+      const profileData: any = {
+        supabaseId,
+        fullName,
+        phone,
+        email,
+        role,
+        isMaster: !managerId,
+      };
+
+      if (
+        profileData.isMaster &&
+        (subscriptionId || asaasCustomerId || subscriptionPlan)
+      ) {
+        profileData.functions = ["SDR", "CLOSER"];
+      }
+
+      if (managerId) {
+        profileData.managerId = managerId;
+      }
+
+      if (cpfCnpj) {
+        profileData.cpfCnpj = cpfCnpj;
+      }
+      if (asaasCustomerId) {
+        profileData.asaasCustomerId = asaasCustomerId;
+      }
+      if (subscriptionId) {
+        profileData.subscriptionId = subscriptionId;
+      }
+      if (subscriptionStatus) {
+        profileData.subscriptionStatus = subscriptionStatus;
+      }
+      if (subscriptionPlan) {
+        profileData.subscriptionPlan = subscriptionPlan;
+      }
+      if (operatorCount !== undefined) {
+        profileData.operatorCount = operatorCount;
+      }
+      if (subscriptionStartDate) {
+        profileData.subscriptionStartDate = subscriptionStartDate;
+      }
+      if (trialEndDate) {
+        profileData.trialEndDate = trialEndDate;
+      }
+
+      if (postalCode !== undefined) profileData.postalCode = postalCode;
+      if (address !== undefined) profileData.address = address;
+      if (addressNumber !== undefined) profileData.addressNumber = addressNumber;
+      if (neighborhood !== undefined) profileData.neighborhood = neighborhood;
+      if (complement !== undefined) profileData.complement = complement;
+      if (city !== undefined) profileData.city = city;
+      if (state !== undefined) profileData.state = state;
+
+      const profile = await prisma.profile.create({ data: profileData });
+
+      return { profileId: profile.id, supabaseId };
+    } catch (error: any) {
+      console.error("❌ [ProfileRepository] Erro ao criar profile OAuth:", error);
+
+      if (error.message.includes('Unique constraint failed on the fields: (`email`)')) {
+        throw new Error("Este e-mail já está cadastrado");
+      }
+      if (error.message.includes('Unique constraint failed on the fields: (`phone`)')) {
+        throw new Error("Este telefone já está cadastrado");
+      }
+      if (error.message && error.message.includes('já está cadastrado')) {
+        throw error;
+      }
+
+      throw new Error("Erro ao criar conta. Tente novamente em alguns instantes.");
+    }
+  }
+
     async updateProfile(
         supabaseId: string,
-        updates: { fullName?: string; phone?: string; email?: string }
+        updates: { 
+            fullName?: string; 
+            phone?: string; 
+            email?: string;
+            cpfCnpj?: string;
+            postalCode?: string;
+            address?: string;
+            addressNumber?: string;
+            neighborhood?: string;
+            complement?: string;
+            city?: string;
+            state?: string;
+            functions?: ("SDR" | "CLOSER")[];
+        }
     ): Promise<Profile | null> {
         try {
             // Primeiro, atualizar no Supabase Auth se o email foi alterado
@@ -361,6 +519,42 @@ class PrismaProfileRepository implements IProfileRepository {
                 updateData.email = updates.email;
             }
 
+            if (updates.cpfCnpj !== undefined) {
+                updateData.cpfCnpj = updates.cpfCnpj;
+            }
+
+            if (updates.postalCode !== undefined) {
+                updateData.postalCode = updates.postalCode;
+            }
+
+            if (updates.address !== undefined) {
+                updateData.address = updates.address;
+            }
+
+            if (updates.addressNumber !== undefined) {
+                updateData.addressNumber = updates.addressNumber;
+            }
+
+            if (updates.neighborhood !== undefined) {
+                updateData.neighborhood = updates.neighborhood;
+            }
+
+            if (updates.complement !== undefined) {
+                updateData.complement = updates.complement;
+            }
+
+            if (updates.city !== undefined) {
+                updateData.city = updates.city;
+            }
+
+            if (updates.state !== undefined) {
+                updateData.state = updates.state;
+            }
+
+            if (updates.functions !== undefined) {
+                updateData.functions = updates.functions;
+            }
+
             const profile = await prisma.profile.update({
                 where: { supabaseId },
                 data: updateData,
@@ -384,7 +578,7 @@ class PrismaProfileRepository implements IProfileRepository {
 
     async updateProfileById(
         profileId: string,
-        updates: { fullName?: string; phone?: string; email?: string; role?: string }
+        updates: { fullName?: string; phone?: string; email?: string; role?: string; functions?: ("SDR" | "CLOSER")[] }
     ): Promise<Profile | null> {
         try {
             console.info("🔄 [updateProfileById] Iniciando atualização para profileId:", profileId);
@@ -480,6 +674,11 @@ class PrismaProfileRepository implements IProfileRepository {
                 console.info("👤 [updateProfileById] Atualizando role:", `${existingProfile.role} → ${updates.role}`);
             }
 
+            if (updates.functions !== undefined) {
+                updateData.functions = updates.functions;
+                console.info("🧩 [updateProfileById] Atualizando functions:", updates.functions);
+            }
+
             const profile = await prisma.profile.update({
                 where: { id: profileId },
                 data: updateData,
@@ -542,6 +741,36 @@ class PrismaProfileRepository implements IProfileRepository {
             return profile;
         } catch (error) {
             console.error("Error updating profile icon:", error);
+            return null;
+        }
+    }
+
+    async updateGoogleCalendarAuth(
+        supabaseId: string,
+        updates: {
+            accessToken?: string | null;
+            refreshToken?: string | null;
+            expiresAt?: Date | null;
+            email?: string | null;
+            connected?: boolean;
+        }
+    ): Promise<Profile | null> {
+        try {
+            const profile = await prisma.profile.update({
+                where: { supabaseId },
+                data: {
+                    googleAccessToken: updates.accessToken ?? undefined,
+                    googleRefreshToken: updates.refreshToken ?? undefined,
+                    googleTokenExpiresAt: updates.expiresAt ?? undefined,
+                    googleEmail: updates.email ?? undefined,
+                    googleCalendarConnected: updates.connected ?? undefined,
+                },
+            });
+
+            console.info("Google Calendar auth updated:", profile.id);
+            return profile;
+        } catch (error) {
+            console.error("Error updating Google Calendar auth:", error);
             return null;
         }
     }

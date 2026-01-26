@@ -22,6 +22,14 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        closer: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
         _count: {
           select: {
             attachments: true,
@@ -50,6 +58,14 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        closer: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
         activities: {
           include: {
             author: {
@@ -70,6 +86,12 @@ export class LeadRepository implements ILeadRepository {
           },
         },
       },
+    });
+  }
+
+  async findByLeadCode(leadCode: string): Promise<Lead | null> {
+    return await prisma.lead.findUnique({
+      where: { leadCode },
     });
   }
 
@@ -101,6 +123,7 @@ export class LeadRepository implements ILeadRepository {
       ...(assignedTo && { assignedTo }),
       ...(search && {
         OR: [
+          { leadCode: { contains: search, mode: 'insensitive' } },
           { name: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
           { phone: { contains: search, mode: 'insensitive' } },
@@ -171,6 +194,14 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        closer: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
         _count: {
           select: {
             attachments: true,
@@ -206,6 +237,14 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        closer: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
         _count: {
           select: {
             attachments: true,
@@ -228,6 +267,14 @@ export class LeadRepository implements ILeadRepository {
           },
         },
         assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+        closer: {
           select: {
             id: true,
             fullName: true,
@@ -266,6 +313,19 @@ export class LeadRepository implements ILeadRepository {
             profileIconUrl: true,
           },
         },
+        closer: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+        _count: {
+          select: {
+            attachments: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -296,6 +356,14 @@ export class LeadRepository implements ILeadRepository {
           },
         },
         assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+        closer: {
           select: {
             id: true,
             fullName: true,
@@ -345,6 +413,7 @@ export class LeadRepository implements ILeadRepository {
       ...(assignedTo && { assignedTo }),
       ...(search && {
         OR: [
+          { leadCode: { contains: search, mode: 'insensitive' } },
           { name: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
           { phone: { contains: search, mode: 'insensitive' } },
@@ -374,6 +443,19 @@ export class LeadRepository implements ILeadRepository {
             fullName: true,
             email: true,
             profileIconUrl: true,
+          },
+        },
+        closer: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+        _count: {
+          select: {
+            attachments: true,
           },
         },
       },
@@ -409,6 +491,7 @@ export class LeadRepository implements ILeadRepository {
       ...(status && { status }),
       ...(search && {
         OR: [
+          { leadCode: { contains: search, mode: 'insensitive' } },
           { name: { contains: search, mode: 'insensitive' } },
           { email: { contains: search, mode: 'insensitive' } },
           { phone: { contains: search, mode: 'insensitive' } },
@@ -438,6 +521,11 @@ export class LeadRepository implements ILeadRepository {
             fullName: true,
             email: true,
             profileIconUrl: true,
+          },
+        },
+        _count: {
+          select: {
+            attachments: true,
           },
         },
       },

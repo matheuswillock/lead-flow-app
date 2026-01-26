@@ -1,5 +1,5 @@
 import { Output } from "@/lib/output";
-import { RequestToRegisterUserProfile } from "../../v1/profiles/DTO/requestToRegisterUserProfile";
+import { RequestToRegisterUserProfile, RequestToRegisterUserProfileOAuth } from "../../v1/profiles/DTO/requestToRegisterUserProfile";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository";
 import { UserRole } from "@prisma/client";
@@ -11,7 +11,7 @@ import { createProfileUpdateOutput } from "../../v1/profiles/DTO/profileUpdateRe
 export class RegisterNewUserProfile implements IProfileUseCase {
     constructor(private readonly repo: IProfileRepository = profileRepository) {}
 
-    async registerUserProfile(input: RequestToRegisterUserProfile): Promise<Output> {
+    async registerUserProfile(input: RequestToRegisterUserProfile | RequestToRegisterUserProfileOAuth): Promise<Output> {
         try {
             console.info('🎯 [ProfileUseCase] registerUserProfile iniciado');
             console.info('📦 [ProfileUseCase] Input recebido:', {
@@ -27,40 +27,52 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 role: input.role
             });
             
-            if (!input || !input.fullname || !input.email || !input.phone || !input.password) {
+            const typedInput = input as RequestToRegisterUserProfile;
+            if (!typedInput || !typedInput.fullname || !typedInput.email || !typedInput.phone || !typedInput.password) {
                 return new Output(false, [], ["Dados inválidos"], {
-                    fullName: !input?.fullname ? "Nome completo é obrigatório" : undefined,
-                    email: !input?.email ? "E-mail é obrigatório" : undefined,
-                    phone: !input?.phone ? "Telefone é obrigatório" : undefined,
-                    password: !input?.password ? "Senha é obrigatória" : undefined,
+                    fullName: !typedInput?.fullname ? "Nome completo é obrigatório" : undefined,
+                    email: !typedInput?.email ? "E-mail é obrigatório" : undefined,
+                    phone: !typedInput?.phone ? "Telefone é obrigatório" : undefined,
+                    password: !typedInput?.password ? "Senha é obrigatória" : undefined,
                 });
             }
 
-            const alreadyExists = await this.repo.existingByEmailOrPhone(input.email, input.phone);
+            const alreadyExists = await this.repo.existingByEmailOrPhone(typedInput.email, typedInput.phone);
             if (alreadyExists) {
                 return new Output(false, [], ["Usuário já cadastrado com este e-mail ou telefone"], null);
             }
 
+            console.info('🔍 [ProfileUseCase] Valores de endereço do INPUT:', {
+                postalCode: input.postalCode,
+                address: input.address,
+                addressNumber: input.addressNumber,
+                neighborhood: input.neighborhood,
+                complement: input.complement,
+                city: input.city,
+                state: input.state
+            });
+            
             const result = await this.repo.createProfile(
-                input.fullname,
-                input.phone,
-                input.password,
-                input.email,
-                input.role || UserRole.manager,
-                input.asaasCustomerId,
-                input.subscriptionId,
-                input.cpfCnpj,
-                input.subscriptionStatus,
-                input.subscriptionPlan,
-                input.operatorCount,
-                input.subscriptionStartDate,
-                input.trialEndDate,
-                input.postalCode,
-                input.address,
-                input.addressNumber,
-                input.complement,
-                input.city,
-                input.state
+                typedInput.fullname,
+                typedInput.phone,
+                typedInput.password,
+                typedInput.email,
+                typedInput.role || UserRole.manager,
+                typedInput.asaasCustomerId,
+                typedInput.subscriptionId,
+                typedInput.cpfCnpj,
+                typedInput.subscriptionStatus,
+                typedInput.subscriptionPlan,
+                typedInput.operatorCount,
+                typedInput.subscriptionStartDate,
+                typedInput.trialEndDate,
+                typedInput.postalCode,
+                typedInput.address,
+                typedInput.addressNumber,
+                typedInput.neighborhood,
+                typedInput.complement,
+                typedInput.city,
+                typedInput.state
             );
 
             if (!result) {
@@ -147,7 +159,24 @@ export class RegisterNewUserProfile implements IProfileUseCase {
         }
     }
 
-    async updateProfile(supabaseId: string, updates: { fullName?: string; phone?: string; email?: string; password?: string }): Promise<Output> {
+    async updateProfile(
+        supabaseId: string, 
+        updates: { 
+            fullName?: string; 
+            phone?: string; 
+            email?: string; 
+            password?: string;
+            cpfCnpj?: string;
+            postalCode?: string;
+            address?: string;
+            addressNumber?: string;
+            neighborhood?: string;
+            complement?: string;
+            city?: string;
+            state?: string;
+            functions?: ("SDR" | "CLOSER")[];
+        }
+    ): Promise<Output> {
         try {
             if (!supabaseId) {
                 return new Output(false, [], ["Supabase ID is required"], null);
@@ -182,11 +211,24 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 }
             }
 
+            if (updates.functions !== undefined && !existingProfile.isMaster) {
+                return new Output(false, [], ["Apenas o usuário master pode atualizar funções"], null);
+            }
+
             // Atualizar perfil
             const updatedProfile = await this.repo.updateProfile(supabaseId, {
                 fullName: updates.fullName,
                 phone: updates.phone,
                 email: updates.email,
+                cpfCnpj: updates.cpfCnpj,
+                postalCode: updates.postalCode,
+                address: updates.address,
+                addressNumber: updates.addressNumber,
+                neighborhood: updates.neighborhood,
+                complement: updates.complement,
+                city: updates.city,
+                state: updates.state,
+                functions: updates.functions,
             });
 
             if (!updatedProfile) {
@@ -345,5 +387,119 @@ export class RegisterNewUserProfile implements IProfileUseCase {
             console.error("Error deleting profile:", error);
             return new Output(false, [], ["Failed to delete profile"], null);
         }
+    }
+}
+
+export class RegisterExistingUserProfile implements IProfileUseCase {
+    constructor(private readonly repo: IProfileRepository = profileRepository) {}
+
+    async registerUserProfile(input: RequestToRegisterUserProfileOAuth): Promise<Output> {
+        try {
+            if (!input || !input.fullname || !input.email || !input.phone) {
+                return new Output(false, [], ["Dados inválidos"], {
+                    fullName: !input?.fullname ? "Nome completo é obrigatório" : undefined,
+                    email: !input?.email ? "E-mail é obrigatório" : undefined,
+                    phone: !input?.phone ? "Telefone é obrigatório" : undefined,
+                });
+            }
+
+            const alreadyExists = await this.repo.existingByEmailOrPhone(input.email, input.phone);
+            if (alreadyExists) {
+                return new Output(false, [], ["Usuário já cadastrado com este e-mail ou telefone"], null);
+            }
+
+            const supabaseId = (input as any).supabaseId;
+            if (!supabaseId) {
+                return new Output(false, [], ["Supabase ID é obrigatório"], null);
+            }
+
+            const result = await this.repo.createProfileWithSupabaseId(
+                supabaseId,
+                input.fullname,
+                input.phone,
+                input.email,
+                input.role || UserRole.manager,
+                input.asaasCustomerId,
+                input.subscriptionId,
+                input.cpfCnpj,
+                input.subscriptionStatus,
+                input.subscriptionPlan,
+                input.operatorCount,
+                input.subscriptionStartDate,
+                input.trialEndDate,
+                input.postalCode,
+                input.address,
+                input.addressNumber,
+                input.neighborhood,
+                input.complement,
+                input.city,
+                input.state
+            );
+
+            if (!result) {
+                return new Output(false, [], ["Falha ao criar perfil do usuário"], null);
+            }
+
+            return new Output(true, ["Perfil de usuário registrado com sucesso"], [], { 
+                profileId: result.profileId,
+                supabaseId: result.supabaseId 
+            });
+        } catch (error: any) {
+            console.error("Erro ao registrar perfil OAuth:", error);
+            const errorMessage = error.message || "Falha ao registrar perfil do usuário";
+            return new Output(false, [], [errorMessage], null);
+        }
+    }
+
+    async getProfileBySupabaseId(supabaseId: string): Promise<Output> {
+        const base = new RegisterNewUserProfile(this.repo);
+        return base.getProfileBySupabaseId(supabaseId);
+    }
+
+    async getProfileInfoBySupabaseId(supabaseId: string): Promise<ProfileInfo | null> {
+        const base = new RegisterNewUserProfile(this.repo);
+        return base.getProfileInfoBySupabaseId(supabaseId);
+    }
+
+    async getProfileById(profileId: string): Promise<ProfileInfo | null> {
+        const base = new RegisterNewUserProfile(this.repo);
+        return base.getProfileById(profileId);
+    }
+
+    async updateProfile(
+        supabaseId: string, 
+        updates: { 
+            fullName?: string; 
+            phone?: string; 
+            email?: string; 
+            password?: string;
+            cpfCnpj?: string;
+            postalCode?: string;
+            address?: string;
+            addressNumber?: string;
+            neighborhood?: string;
+            complement?: string;
+            city?: string;
+            state?: string;
+            functions?: ("SDR" | "CLOSER")[];
+        }
+    ): Promise<Output> {
+        const base = new RegisterNewUserProfile(this.repo);
+        return base.updateProfile(supabaseId, updates);
+    }
+
+    async updatePassword(supabaseId: string, newPassword: string): Promise<Output> {
+        const base = new RegisterNewUserProfile(this.repo);
+        return base.updatePassword(supabaseId, newPassword);
+    }
+
+    async updateProfileIcon(supabaseId: string, profileIconId: string | null, profileIconUrl?: string | null): Promise<Output> {
+        const base = new RegisterNewUserProfile(this.repo);
+        return base.updateProfileIcon(supabaseId, profileIconId, profileIconUrl);
+    }
+
+    async deleteProfile(supabaseId: string): Promise<Output> {
+        const base = new RegisterNewUserProfile(this.repo);
+        return base.deleteProfile(supabaseId);
     }
 }

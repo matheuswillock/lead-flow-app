@@ -1,9 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, ArrowRight } from 'lucide-react';
+import { AlertCircle, ArrowRight, LogOut } from 'lucide-react';
+import { createSupabaseBrowser } from '@/lib/supabase/browser';
+import { toast } from 'sonner';
 
 interface ActiveSubscriptionMessageProps {
   userExists: boolean;
@@ -18,11 +21,30 @@ interface ActiveSubscriptionMessageProps {
 }
 
 export function ActiveSubscriptionMessage({
-  userExists,
+  userExists: _userExists,
   matchSource,
   matchedIdentifier,
   subscription,
 }: ActiveSubscriptionMessageProps) {
+  const router = useRouter();
+  
+  const handleNotMe = async () => {
+    try {
+      const supabase = createSupabaseBrowser();
+      if (!supabase) {
+        toast.error('Erro ao conectar. Tente novamente.');
+        return;
+      }
+      
+      await supabase.auth.signOut();
+      toast.success('Sessão encerrada com sucesso');
+      router.push('/sign-up');
+    } catch (error) {
+      console.error('Erro ao deslogar:', error);
+      toast.error('Erro ao encerrar sessão. Tente novamente.');
+    }
+  };
+
   const renderMatchText = () => {
     if (!matchSource || !matchedIdentifier) return null;
     let label = '';
@@ -94,7 +116,17 @@ export function ActiveSubscriptionMessage({
               </Link>
             </Button>
 
-            <Button asChild variant="outline" className="w-full">
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              size="lg"
+              onClick={handleNotMe}
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Não sou eu
+            </Button>
+
+            <Button asChild variant="ghost" className="w-full">
               <Link href="/">
                 Voltar para Home
               </Link>

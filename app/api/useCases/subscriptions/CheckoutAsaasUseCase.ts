@@ -3,6 +3,16 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createClient } from "@supabase/supabase-js";
+import { getFullUrl } from "@/lib/utils/app-url";
+
+// Helper para detectar ambiente de produção
+function getIsProduction() {
+  const asaasEnv = process.env.ASAAS_ENV;
+  if (asaasEnv) {
+    return asaasEnv === 'production';
+  }
+  return process.env.NODE_ENV === 'production';
+}
 
 // Função para criar cliente Supabase admin
 function createSupabaseAdminClient() {
@@ -28,11 +38,31 @@ export interface CreateCheckoutData {
   email: string;
   phone: string;
   cpfCnpj?: string;
+  postalCode?: string;
+  address?: string;
+  addressNumber?: string;
+  neighborhood?: string;
+  complement?: string;
+  city?: string;
+  state?: string;
+  billingType?: 'CREDIT_CARD' | 'PIX' | 'BOLETO';
+}
+
+export interface CreateOperatorCheckoutData {
+  managerId: string;
+  operatorData: {
+    name: string;
+    email: string;
+    role: string;
+    functions?: ("SDR" | "CLOSER")[];
+  };
 }
 
 export interface ICheckoutAsaasUseCase {
   createSubscriptionCheckout(data: CreateCheckoutData): Promise<Output>;
+  createOperatorCheckout(data: CreateOperatorCheckoutData): Promise<Output>;
   processCheckoutPaid(checkoutId: string): Promise<Output>;
+  processOperatorCheckoutPaid(checkoutSessionId: string, paymentId: string): Promise<Output>;
 }
 
 export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
@@ -78,15 +108,33 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       if (!asaasCustomerId) {
         console.info('👤 [createSubscriptionCheckout] Criando cliente no Asaas...');
         
+        // Usar dados do Profile (recém-criado) ou fallback dos dados do request
         const customerData: any = {
-          name: data.fullName,
-          email: data.email,
-          mobilePhone: data.phone?.replace(/\D/g, '') || undefined,
+          name: profile.fullName || data.fullName,
+          email: profile.email || data.email,
+          mobilePhone: (profile.phone || data.phone)?.replace(/\D/g, '') || undefined,
+          cpfCnpj: (profile.cpfCnpj || data.cpfCnpj)?.replace(/\D/g, '') || undefined,
+          postalCode: (profile.postalCode || data.postalCode)?.replace(/\D/g, '') || '01310100',
+          address: profile.address || data.address || 'Não informado',
+          addressNumber: profile.addressNumber || data.addressNumber || 'S/N',
+          province: profile.neighborhood || data.neighborhood || 'Centro', // Province = Bairro
         };
 
-        if (data.cpfCnpj) {
-          customerData.cpfCnpj = data.cpfCnpj.replace(/\D/g, '');
+        // Adicionar complemento se fornecido
+        if (profile.complement || data.complement) {
+          customerData.complement = profile.complement || data.complement;
         }
+
+        console.info('📍 [createSubscriptionCheckout] Dados do cliente:', {
+          name: customerData.name,
+          email: customerData.email,
+          postalCode: customerData.postalCode,
+          address: customerData.address,
+          addressNumber: customerData.addressNumber,
+          province: customerData.province,
+          complement: customerData.complement,
+          dataSource: profile.neighborhood ? 'profile' : 'request',
+        });
 
         try {
           const customer = await asaasFetch(asaasApi.customers, {
@@ -115,67 +163,86 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         }
       }
 
-      // 2. Criar assinatura no Asaas
-      const nextDueDate = new Date();
-      nextDueDate.setMonth(nextDueDate.getMonth() + 1); // 1 mês de prazo para primeira cobrança
-      const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
+      // 2. Criar Asaas Checkout com assinatura recorrente
+      // nextDueDate = data da PRIMEIRA cobrança (hoje, para cobrar no ato)
+      // A segunda cobrança será automaticamente agendada para +1 mês (MONTHLY)
+      const now = new Date();
+      const nextDueDateStr = now.toISOString().slice(0, 19).replace('T', ' '); // "2026-01-18 12:00:00"
+      
+      const endDate = new Date();
+      endDate.setFullYear(endDate.getFullYear() + 1);
+      const endDateStr = endDate.toISOString().slice(0, 19).replace('T', ' '); // "2027-01-18 12:00:00"
 
-      console.info('📝 [createSubscriptionCheckout] Criando assinatura no Asaas...');
+      console.info('📝 [createSubscriptionCheckout] Criando Asaas Checkout...');
+      console.info('📅 [createSubscriptionCheckout] Datas da assinatura:', {
+        firstPayment: nextDueDateStr,
+        endDate: endDateStr,
+        cycle: 'MONTHLY - próxima cobrança em +30 dias'
+      });
 
-      const subscriptionData = {
+      // ✅ IMPORTANTE: Para múltiplas formas de pagamento no checkout
+      // Use array com todos os billingTypes desejados:
+      // - PIX
+      // - BOLETO (Boleto Bancário)
+      // - CREDIT_CARD (Cartão de Crédito)
+      //
+      // ⚠️ LIMITAÇÃO ASAAS: chargeTypes RECURRENT só funciona com CREDIT_CARD
+      // Para PIX/Boleto com assinatura, precisamos usar DETACHED e criar
+      // subscription separadamente via webhook após primeiro pagamento
+      const billingTypes = ['PIX', 'BOLETO', 'CREDIT_CARD']; // ✅ Todas as opções
+      const chargeTypes = ['DETACHED']; // ✅ Pagamento único (não recorrente)
+
+      console.info('💳 [createSubscriptionCheckout] Configuração:', {
+        billingTypes,
+        chargeTypes,
+        note: 'Múltiplas formas de pagamento - primeiro pagamento apenas'
+      });
+
+      const checkoutData: any = {
         customer: asaasCustomerId,
-        billingType: 'UNDEFINED', // Cliente escolhe forma de pagamento
-        nextDueDate: nextDueDateStr,
-        value: 59.90,
-        cycle: 'MONTHLY',
-        description: 'Corretor Studio - Plano Professional | Gerencie leads, equipe e resultados em um só lugar. Pipeline Kanban completo, analytics em tempo real, automações inteligentes e gestão de operadores. Leads ilimitados, relatórios personalizados e atualizações automáticas. R$ 59,90/mês - Assinatura base para gerenciar sua operação de vendas com eficiência e escala.',
+        billingTypes, // ✅ PIX, Boleto e Cartão
+        chargeTypes, // ✅ DETACHED para pagamento único
+        items: [
+          {
+            name: 'Plano Professional',
+            description: 'Sistema completo de gestão de leads com pipeline Kanban, analytics em tempo real e gestão de equipe.',
+            value: 59.90,
+            quantity: 1,
+          }
+        ],
         callback: {
-          successUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/checkout-return`,
+          successUrl: getFullUrl('/checkout-return'),
+          cancelUrl: getFullUrl(`/sign-up?deleteUser=${data.supabaseId}`),
+          expiredUrl: getFullUrl(`/sign-up?deleteUser=${data.supabaseId}`),
           autoRedirect: true,
         },
       };
 
-      const subscription = await asaasFetch(asaasApi.subscriptions, {
+      // ❌ IMPORTANTE: Com chargeTypes DETACHED não podemos incluir subscription
+      // A subscription será criada via webhook após o primeiro pagamento ser confirmado
+      // Isso permite que o usuário escolha PIX, Boleto ou Cartão
+      console.info('ℹ️ [createSubscriptionCheckout] Checkout para primeiro pagamento');
+      console.info('ℹ️ [createSubscriptionCheckout] Subscription será criada via webhook após confirmação');
+
+      const checkout = await asaasFetch(asaasApi.checkouts, {
         method: 'POST',
-        body: JSON.stringify(subscriptionData),
+        body: JSON.stringify(checkoutData),
       });
 
-      console.info('✅ [createSubscriptionCheckout] Assinatura criada:', subscription.id);
+      console.info('✅ [createSubscriptionCheckout] Checkout criado:', checkout.id);
 
-      // 3. Buscar primeira cobrança gerada pela assinatura
-      console.info('🔍 [createSubscriptionCheckout] Buscando cobranças da assinatura...');
-      
-      const payments = await asaasFetch(
-        `${asaasApi.subscriptions}/${subscription.id}/payments`,
-        { method: 'GET' }
-      );
+      // 3. Construir URL do checkout
+      const checkoutUrl = `https://${getIsProduction() ? 'www' : 'sandbox'}.asaas.com/checkoutSession/show?id=${checkout.id}`;
+      console.info('🔗 [createSubscriptionCheckout] Checkout URL:', checkoutUrl);
 
-      if (!payments.data || payments.data.length === 0) {
-        return new Output(
-          false,
-          [],
-          ['Erro ao gerar cobrança da assinatura'],
-          null
-        );
-      }
-
-      const firstPayment = payments.data[0];
-      console.info('✅ [createSubscriptionCheckout] Primeira cobrança:', firstPayment.id);
-
-      // 4. Salvar informações temporárias no profile
+      // 3. Salvar informações no profile
       await prisma.profile.update({
         where: { supabaseId: data.supabaseId },
         data: {
-          asaasSubscriptionId: subscription.id,
-          subscriptionNextDueDate: new Date(subscription.nextDueDate),
-          subscriptionCycle: subscription.cycle,
-          subscriptionStatus: 'trial', // Aguardando primeiro pagamento
+          subscriptionStatus: 'trial',
           subscriptionPlan: 'manager_base',
         }
       });
-
-      // 5. Retornar URL da fatura para checkout
-      const checkoutUrl = firstPayment.invoiceUrl;
 
       console.info('🎉 [createSubscriptionCheckout] Checkout criado com sucesso!');
 
@@ -185,10 +252,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         [],
         {
           checkoutUrl,
-          subscriptionId: subscription.id,
-          paymentId: firstPayment.id,
-          dueDate: firstPayment.dueDate,
-          value: firstPayment.value,
+          checkoutId: checkout.id,
         }
       );
 
@@ -283,6 +347,378 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
   }
 
   /**
+   * Cria checkout para adicionar operador à assinatura existente do manager
+   * Incrementa o valor da assinatura em +R$ 19,90
+   */
+  async createOperatorCheckout(data: CreateOperatorCheckoutData): Promise<Output> {
+    let pendingOperatorId: string | null = null;
+
+    try {
+      console.info('🛒 [createOperatorCheckout] Iniciando criação de checkout para operador:', {
+        managerId: data.managerId,
+        operatorEmail: data.operatorData.email
+      });
+
+      // 1. Buscar manager e validar
+      const manager = await prisma.profile.findUnique({
+        where: { supabaseId: data.managerId }
+      });
+
+      if (!manager) {
+        return new Output(false, [], ['Manager não encontrado'], null);
+      }
+
+      if (manager.role !== 'manager') {
+        return new Output(false, [], ['Apenas managers podem adicionar operadores'], null);
+      }
+
+      if (!manager.subscriptionStatus || manager.subscriptionStatus === 'canceled') {
+        return new Output(false, [], ['Manager não possui assinatura ativa'], null);
+      }
+
+      if (!manager.asaasCustomerId) {
+        return new Output(false, [], ['Manager não possui customer Asaas configurado'], null);
+      }
+
+      if (!manager.asaasSubscriptionId) {
+        return new Output(false, [], ['Manager não possui assinatura Asaas configurada'], null);
+      }
+
+      // 2. Verificar se email do operador já existe
+      const existingUser = await prisma.profile.findFirst({
+        where: { email: data.operatorData.email }
+      });
+
+      if (existingUser) {
+        return new Output(false, [], ['Email já está em uso'], null);
+      }
+
+      // 3. Criar pendingOperator no banco
+      const pendingOperator = await prisma.pendingOperator.create({
+        data: {
+          managerId: manager.id,
+          name: data.operatorData.name,
+          email: data.operatorData.email,
+          role: data.operatorData.role,
+          functions: data.operatorData.functions ?? [],
+          paymentId: 'pending',
+          subscriptionId: manager.asaasSubscriptionId,
+          paymentStatus: 'PENDING',
+          paymentMethod: 'UNDEFINED',
+        }
+      });
+
+      pendingOperatorId = pendingOperator.id;
+      console.info('💾 [createOperatorCheckout] PendingOperator criado:', pendingOperatorId);
+
+      // 4. Criar Asaas Checkout para licença adicional
+      // Usar checkout hospedado do Asaas (permite escolher forma de pagamento)
+      const now = new Date();
+      const nextDueDateStr = now.toISOString().slice(0, 19).replace('T', ' ');
+      
+      const endDate = new Date();
+      endDate.setFullYear(endDate.getFullYear() + 1);
+      const endDateStr = endDate.toISOString().slice(0, 19).replace('T', ' ');
+
+      console.info('📝 [createOperatorCheckout] Criando Asaas Checkout...');
+      console.info('📅 [createOperatorCheckout] Datas:', {
+        firstPayment: nextDueDateStr,
+        endDate: endDateStr,
+      });
+
+      const checkoutData: any = {
+        customer: manager.asaasCustomerId,
+        billingTypes: ['CREDIT_CARD'], // Apenas cartão para assinatura recorrente
+        chargeTypes: ['RECURRENT'],
+        subscription: {
+          cycle: 'MONTHLY',
+          nextDueDate: nextDueDateStr,
+          endDate: endDateStr,
+          externalReference: `pending-operator-${pendingOperatorId}`, // ExternalReference na subscription
+        },
+        items: [
+          {
+            name: 'Licença Operador',
+            description: `Acesso completo à plataforma - ${data.operatorData.email}`,
+            value: 19.90,
+            quantity: 1,
+          }
+        ],
+        callback: {
+          successUrl: getFullUrl(`/${data.managerId}/manager-users?operatorAdded=true`),
+          cancelUrl: getFullUrl(`/${data.managerId}/manager-users?operatorCanceled=true`),
+          expiredUrl: getFullUrl(`/${data.managerId}/manager-users?operatorExpired=true`),
+          autoRedirect: true,
+        },
+      };
+
+      const checkout = await asaasFetch(asaasApi.checkouts, {
+        method: 'POST',
+        body: JSON.stringify(checkoutData),
+      });
+
+      console.info('✅ [createOperatorCheckout] Checkout criado:', checkout.id);
+
+      // 5. Atualizar pendingOperator com checkoutId
+      await prisma.pendingOperator.update({
+        where: { id: pendingOperatorId },
+        data: { paymentId: checkout.id }
+      });
+
+      // 6. Construir URL do checkout
+      const checkoutUrl = `https://${getIsProduction() ? 'www' : 'sandbox'}.asaas.com/checkoutSession/show?id=${checkout.id}`;
+      console.info('🔗 [createOperatorCheckout] Checkout URL:', checkoutUrl);
+
+      console.info('🎉 [createOperatorCheckout] Checkout criado com sucesso!');
+
+      return new Output(
+        true,
+        ['Checkout criado com sucesso'],
+        [],
+        {
+          checkoutUrl,
+          checkoutId: checkout.id,
+          pendingOperatorId,
+        }
+      );
+
+    } catch (error: any) {
+      console.error('❌ [createOperatorCheckout] Erro:', error);
+
+      // Rollback: deletar pendingOperator se foi criado
+      if (pendingOperatorId) {
+        try {
+          console.warn('🔄 [createOperatorCheckout] Rollback: Deletando pendingOperator...');
+          await prisma.pendingOperator.delete({
+            where: { id: pendingOperatorId }
+          });
+          console.info('✅ [createOperatorCheckout] Rollback concluído');
+        } catch (rollbackError) {
+          console.error('❌ [createOperatorCheckout] Erro no rollback:', rollbackError);
+        }
+      }
+
+      // Traduzir mensagens de erro comuns do Asaas
+      let errorMessage = error.message || 'Erro desconhecido';
+      
+      if (errorMessage.includes('domínio')) {
+        errorMessage = 'Configure um domínio na sua conta Asaas para criar checkouts. Acesse: Minha Conta → Informações';
+      }
+      
+      return new Output(
+        false,
+        [],
+        [`Erro ao criar checkout: ${errorMessage}`],
+        null
+      );
+    }
+  }
+
+  /**
+   * Processa webhook quando checkout de operador é pago
+   * Incrementa assinatura do manager e cria operador
+   * @param checkoutSessionId - ID da sessão de checkout (checkoutSession do payment)
+   * @param paymentId - ID do pagamento confirmado
+   */
+  async processOperatorCheckoutPaid(checkoutSessionId: string, paymentId: string): Promise<Output> {
+    try {
+      console.info('💰 [processOperatorCheckoutPaid] Processando pagamento:', {
+        checkoutSessionId,
+        paymentId
+      });
+
+      // 1. Buscar pendingOperator pelo checkoutSessionId (salvo como paymentId)
+      const pendingOperator = await prisma.pendingOperator.findFirst({
+        where: { paymentId: checkoutSessionId },
+        include: { manager: true }
+      });
+
+      if (!pendingOperator) {
+        console.warn('⚠️ [processOperatorCheckoutPaid] PendingOperator não encontrado para checkoutSessionId:', checkoutSessionId);
+        return new Output(false, [], ['Operador pendente não encontrado'], null);
+      }
+
+      if (pendingOperator.operatorCreated) {
+        console.info('ℹ️ [processOperatorCheckoutPaid] Operador já foi criado anteriormente');
+        return new Output(false, [], ['Operador já foi criado'], null);
+      }
+
+      // 2. Buscar payment no Asaas para obter subscription
+      const payment = await asaasFetch(
+        `${asaasApi.payments}/${paymentId}`,
+        { method: 'GET' }
+      );
+
+      if (!payment.subscription) {
+        console.warn('⚠️ [processOperatorCheckoutPaid] Pagamento não vinculado a subscription');
+        return new Output(false, [], ['Pagamento não vinculado a assinatura'], null);
+      }
+
+      const newSubscriptionId = payment.subscription;
+      console.info('📋 [processOperatorCheckoutPaid] Informações:', {
+        paymentId,
+        subscriptionId: newSubscriptionId,
+        checkoutSessionId
+      });
+
+      // 3. CRÍTICO: Atualizar assinatura do manager no Asaas
+      // Buscar assinatura antiga e nova
+      const manager = pendingOperator.manager;
+      const oldSubscriptionId = manager.asaasSubscriptionId;
+
+      if (!oldSubscriptionId) {
+        return new Output(false, [], ['Manager não possui assinatura anterior'], null);
+      }
+
+      console.info('🔍 [processOperatorCheckoutPaid] Buscando assinaturas:', {
+        old: oldSubscriptionId,
+        new: newSubscriptionId
+      });
+
+      // Buscar valor atual da assinatura antiga
+      const oldSubscription = await asaasFetch(
+        `${asaasApi.subscriptions}/${oldSubscriptionId}`,
+        { method: 'GET' }
+      );
+
+      const newValue = oldSubscription.value + 19.90;
+      console.info('💰 [processOperatorCheckoutPaid] Incrementando valor:', {
+        oldValue: oldSubscription.value,
+        newValue,
+        increment: 19.90
+      });
+
+      // Atualizar assinatura antiga com novo valor
+      await asaasFetch(
+        `${asaasApi.subscriptions}/${oldSubscriptionId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ value: newValue })
+        }
+      );
+
+      console.info('✅ [processOperatorCheckoutPaid] Assinatura do manager atualizada');
+
+      // Cancelar nova subscription (usamos apenas para gerar o checkout)
+      try {
+        await asaasFetch(
+          `${asaasApi.subscriptions}/${newSubscriptionId}`,
+          {
+            method: 'DELETE'
+          }
+        );
+        console.info('✅ [processOperatorCheckoutPaid] Nova subscription cancelada');
+      } catch (cancelError) {
+        console.warn('⚠️ [processOperatorCheckoutPaid] Erro ao cancelar nova subscription:', cancelError);
+        // Não bloqueia o fluxo
+      }
+
+      // 4. Criar usuário no Supabase Auth
+      console.info('👤 [processOperatorCheckoutPaid] Criando usuário no Supabase...');
+      
+      const supabaseAdmin = createSupabaseAdminClient();
+      if (!supabaseAdmin) {
+        return new Output(false, [], ['Erro ao conectar com autenticação'], null);
+      }
+
+      // Gerar senha temporária
+      const tempPassword = Math.random().toString(36).slice(-12);
+      
+      const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: pendingOperator.email,
+        password: tempPassword,
+        email_confirm: true,
+        user_metadata: {
+          full_name: pendingOperator.name,
+          role: pendingOperator.role,
+          manager_id: manager.supabaseId,
+        }
+      });
+
+      if (authError || !authUser?.user) {
+        console.error('❌ [processOperatorCheckoutPaid] Erro ao criar usuário:', authError);
+        return new Output(false, [], ['Erro ao criar usuário no sistema de autenticação'], null);
+      }
+
+      console.info('✅ [processOperatorCheckoutPaid] Usuário criado no Supabase:', authUser.user.id);
+
+      // 5. Criar perfil do operador no banco
+      const operator = await prisma.profile.create({
+        data: {
+          supabaseId: authUser.user.id,
+          fullName: pendingOperator.name,
+          email: pendingOperator.email,
+          role: pendingOperator.role as any,
+          functions: pendingOperator.functions ?? [],
+          managerId: manager.id,
+          subscriptionStatus: 'active',
+          subscriptionPlan: null, // Operadores não têm plano próprio
+        }
+      });
+
+      console.info('✅ [processOperatorCheckoutPaid] Operador criado no banco:', operator.id);
+
+      // 6. Deletar pendingOperator (já foi processado)
+      await prisma.pendingOperator.delete({
+        where: { id: pendingOperator.id }
+      });
+
+      console.info('✅ [processOperatorCheckoutPaid] PendingOperator removido da fila');
+
+      // 7. Incrementar contador de operadores no manager
+      await prisma.profile.update({
+        where: { id: manager.id },
+        data: {
+          operatorCount: { increment: 1 }
+        }
+      });
+
+      console.info('✅ [processOperatorCheckoutPaid] Contador do manager incrementado');
+
+      // 8. Enviar e-mail de convite para operador
+      try {
+        const emailService = getEmailService();
+        const inviteUrl = getFullUrl('/set-password');
+
+        await emailService.sendOperatorInviteEmail({
+          operatorName: pendingOperator.name,
+          operatorEmail: pendingOperator.email,
+          operatorRole: pendingOperator.role,
+          managerName: manager.fullName || manager.email,
+          inviteUrl,
+        });
+
+        console.info('✅ [processOperatorCheckoutPaid] E-mail de convite enviado');
+      } catch (emailError) {
+        console.warn('⚠️ [processOperatorCheckoutPaid] Erro ao enviar e-mail:', emailError);
+        // Não bloqueia o fluxo
+      }
+
+      console.info('🎉 [processOperatorCheckoutPaid] Operador criado com sucesso!');
+
+      return new Output(
+        true,
+        ['Operador criado com sucesso'],
+        [],
+        {
+          operatorId: operator.id,
+          operatorEmail: operator.email,
+        }
+      );
+
+    } catch (error: any) {
+      console.error('❌ [processOperatorCheckoutPaid] Erro:', error);
+      
+      return new Output(
+        false,
+        [],
+        ['Erro ao processar pagamento do operador'],
+        null
+      );
+    }
+  }
+
+  /**
    * Processa webhook quando checkout é pago
    * Ativa a conta do usuário
    */
@@ -333,8 +769,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       // Enviar e-mail de boas-vindas
       try {
         const emailService = getEmailService();
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-        const loginUrl = `${appUrl}/sign-in`;
+        const loginUrl = getFullUrl('/sign-in');
 
         await emailService.sendWelcomeEmail({
           userName: profile.fullName || profile.email,

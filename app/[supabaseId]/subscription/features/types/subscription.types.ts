@@ -8,6 +8,7 @@ export interface SubscriptionData {
   cycle: string;
   description: string;
   billingType: string;
+  hasPermanentSubscription: boolean; // Assinatura vitalícia (sem custo)
   customer: {
     name: string;
     email: string;

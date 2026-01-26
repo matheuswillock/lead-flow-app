@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LandingHeader } from "@/components/landing/landingHeader";
 import { FeaturesSection } from "@/components/landing/FeaturesSection";
@@ -9,11 +9,18 @@ import { PricingSection } from "@/components/landing/PricingSection";
 import { div as MotionDiv, h1 as MotionH1, p as MotionP } from "framer-motion/client";
 import { ArrowRight } from "lucide-react";
 import { HeartIcon } from "@/components/ui/heart"
+import Link from "next/link";
 // import Link from "next/link";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 export default function Home() {
   const router = useRouter();
+  const [showCookieConsent, setShowCookieConsent] = useState(false);
+
+  useEffect(() => {
+    const consent = localStorage.getItem("cookieConsent");
+    setShowCookieConsent(!consent);
+  }, []);
 
   useEffect(() => {
     // Verificar se há token de recovery/invite no hash da URL
@@ -102,7 +109,7 @@ export default function Home() {
                   color: "transparent",
                 }}
               >
-                Apresente, gerencie e cresça — em um único lugar.
+                Apresente, gerencie e cresça em um único lugar.
               </MotionH1>
 
               <MotionP
@@ -167,6 +174,14 @@ export default function Home() {
         <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
             <p>© {new Date().getFullYear()} Corretor Studio. Todos os direitos reservados.</p>
+            <div className="flex items-center gap-4">
+              <Link className="underline underline-offset-4" href="/privacy-policy">
+                Política de Privacidade
+              </Link>
+              <Link className="underline underline-offset-4" href="/terms">
+                Termos de Uso
+              </Link>
+            </div>
             <div className="flex items-center gap-2">
               <span>Made with</span>
               <HeartIcon style={{ color: "var(--primary)" }} />
@@ -177,6 +192,53 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {showCookieConsent && (
+        <div
+          className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-2xl border p-4 shadow-2xl backdrop-blur-xl"
+          style={{
+            borderColor: "rgba(255, 255, 255, 0.12)",
+            background:
+              "linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04))",
+            boxShadow:
+              "0 8px 32px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.06)",
+          }}
+        >
+          <p className="text-sm text-muted-foreground">
+            Usamos cookies para melhorar sua experiência e analisar o uso da plataforma.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                localStorage.setItem("cookieConsent", "accepted");
+                setShowCookieConsent(false);
+              }}
+              className="cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold"
+              style={{
+                background: "var(--primary)",
+                color: "var(--primary-foreground)",
+              }}
+            >
+              Aceitar
+            </button>
+            <button
+              onClick={() => {
+                localStorage.setItem("cookieConsent", "declined");
+                setShowCookieConsent(false);
+              }}
+              className="cursor-pointer inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold text-muted-foreground"
+              style={{
+                borderColor: "rgba(255, 255, 255, 0.16)",
+              }}
+            >
+              Recusar
+            </button>
+            <Link className="text-sm underline underline-offset-4" href="/cookies">
+              Saiba mais
+            </Link>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

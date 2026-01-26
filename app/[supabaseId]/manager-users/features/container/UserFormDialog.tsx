@@ -4,6 +4,7 @@ import React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 import {
   CreateManagerUserSchema,
@@ -67,11 +69,13 @@ export function UserFormDialog({
           name: user?.name || "",
           email: user?.email || "",
           role: user?.role || "operator",
+          functions: user?.functions || [],
         }
       : {
           name: "",
           email: "",
           role: "operator",
+          functions: [],
         },
   });
 
@@ -83,12 +87,14 @@ export function UserFormDialog({
           name: user.name,
           email: user.email,
           role: user.role,
+          functions: user.functions || [],
         });
       } else {
         form.reset({
           name: "",
           email: "",
           role: "operator",
+          functions: [],
         });
       }
     }
@@ -96,10 +102,27 @@ export function UserFormDialog({
 
   const handleSubmit = async (data: CreateManagerUserFormData | UpdateManagerUserFormData) => {
     try {
+      const nextEmail = (data as { email?: string }).email?.trim() || "";
+      const currentEmail = user?.email?.trim() || "";
+      const shouldValidateEmail = !!nextEmail && currentUserId && (!isEditing || nextEmail.toLowerCase() !== currentEmail.toLowerCase());
+
+      if (shouldValidateEmail) {
+        const response = await fetch(
+          `/api/v1/manager/${currentUserId}/users?email=${encodeURIComponent(nextEmail)}`,
+        );
+        const payload = await response.json().catch(() => null);
+        const isAvailable = response.ok && payload?.isValid && payload?.result?.available === true;
+        if (!isAvailable) {
+          toast.error(payload?.errorMessages?.join(", ") || "Email já está em uso");
+          return;
+        }
+      }
+
       await onSubmit(data);
       form.reset();
     } catch (error) {
       console.error("Erro ao salvar usuário:", error);
+      toast.error("Erro ao salvar usuário");
     }
   };
 
@@ -198,6 +221,50 @@ export function UserFormDialog({
                       ? "Managers não podem alterar seu próprio papel."
                       : "Define as permissões do usuário na aplicação."
                     }
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="functions"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Funções</FormLabel>
+                  <FormControl>
+                    <div className="space-y-2">
+                      {([
+                        { label: "SDR", value: "SDR" as const },
+                        { label: "Closer", value: "CLOSER" as const },
+                      ]).map((item) => {
+                        const current = field.value ?? [];
+                        const isChecked = current.includes(item.value);
+                        return (
+                          <div
+                            key={item.value}
+                            className="flex items-center justify-between rounded-md border border-input px-3 py-2"
+                          >
+                            <span className="text-sm font-medium">{item.label}</span>
+                            <Switch
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  field.onChange(Array.from(new Set([...current, item.value])));
+                                } else {
+                                  field.onChange(current.filter((value) => value !== item.value));
+                                }
+                              }}
+                              disabled={loading}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </FormControl>
+                  <FormDescription>
+                    Selecione SDR, Closer ou ambos.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

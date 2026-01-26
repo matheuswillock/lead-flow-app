@@ -34,6 +34,16 @@ enum UserRole {
   operator
 }
 
+enum UserFunction {
+  SDR
+  CLOSER
+}
+
+enum MeetingHeald {
+  yes
+  no
+}
+
 enum LeadStatus {
   new_opportunity
   scheduled
@@ -110,14 +120,21 @@ model Profile {
   postalCode               String?             @db.Text
   address                  String?             @db.Text
   addressNumber            String?             @db.Text
+  neighborhood             String?             @db.Text
   complement               String?             @db.Text
   city                     String?             @db.Text
   state                    String?             @db.Text
   profileIconId            String?             @db.Text
   profileIconUrl           String?             @db.Text
   role                     UserRole            @default(manager)
+  functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
+  googleCalendarConnected  Boolean             @default(false)
+  googleAccessToken        String?             @db.Text
+  googleRefreshToken       String?             @db.Text
+  googleTokenExpiresAt     DateTime?           @db.Timestamptz(6)
+  googleEmail              String?             @db.Text
   managerId                String?             @db.Uuid
   asaasCustomerId          String?             @db.Text
   subscriptionId           String?             @db.Text
@@ -141,6 +158,7 @@ model Profile {
   // Lead relations
   leadsAsManager  Lead[]           @relation("LeadManager")
   leadsAsAssignee Lead[]           @relation("LeadAssignee")
+  leadsAsCloser   Lead[]           @relation("LeadCloser")
   leadsAsCreator  Lead[]           @relation("LeadCreator")
   leadsAsUpdater  Lead[]           @relation("LeadUpdater")
   activities      LeadActivity[]
@@ -163,8 +181,10 @@ model Profile {
 
 model Lead {
   id                String      @id @unique @default(uuid()) @db.Uuid
+  leadCode          String      @unique @db.Text
   managerId         String      @db.Uuid
   assignedTo        String?     @db.Uuid
+  closerId          String?     @db.Uuid
   status            LeadStatus  @default(new_opportunity)
   name              String      @db.Text
   email             String?     @db.Text
@@ -176,15 +196,26 @@ model Lead {
   referenceHospital String?     @db.Text
   currentTreatment  String?     @db.Text
   meetingDate       DateTime?   @db.Timestamptz(6)
+  meetingTitle      String?     @db.Text
+  meetingNotes      String?     @db.Text
+  meetingLink       String?     @db.Text
+  meetingHeald      MeetingHeald?
   notes             String?     @db.Text
-  createdBy         String?     @db.Uuid
-  updatedBy         String?     @db.Uuid
-  createdAt         DateTime    @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime    @updatedAt @db.Timestamptz(6)
+
+  // Novos campos para leads finalizados (apenas em edição)
+  ticket          Decimal?    @db.Decimal(12, 2) // Valor que foi vendido
+  contractDueDate DateTime?   @db.Timestamptz(6) // Data de vigência do contrato
+  soldPlan        HealthPlan? // Plano vendido
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
   // Relations
   manager       Profile          @relation("LeadManager", fields: [managerId], references: [id], onDelete: Cascade)
   assignee      Profile?         @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  closer        Profile?         @relation("LeadCloser", fields: [closerId], references: [id], onDelete: SetNull)
   creator       Profile?         @relation("LeadCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater       Profile?         @relation("LeadUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
   activities    LeadActivity[]
@@ -198,6 +229,7 @@ model Lead {
   @@unique([managerId, cnpj])
   @@index([managerId])
   @@index([assignedTo])
+  @@index([closerId])
   @@index([createdBy])
   @@index([updatedBy])
   @@index([meetingDate])
@@ -226,12 +258,17 @@ model LeadActivity {
 }
 
 model LeadsSchedule {
-  id        String   @id @default(uuid()) @db.Uuid
-  leadId    String   @db.Uuid
-  date      DateTime @db.Timestamptz(6)
-  notes     String?  @db.Text
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+  id          String   @id @default(uuid()) @db.Uuid
+  leadId      String   @db.Uuid
+  date        DateTime @db.Timestamptz(6)
+  meetingTitle String?  @db.Text
+  notes       String?  @db.Text
+  meetingLink String?  @db.Text
+  extraGuests String[] @default([])
+  googleEventId    String?  @db.Text
+  googleCalendarId String?  @db.Text
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
 
   // Relations
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -263,14 +300,15 @@ model LeadFinalized {
 // -----------------------------
 
 model LeadAttachment {
-  id         String   @id @default(uuid()) @db.Uuid
-  leadId     String   @db.Uuid
-  fileName   String   @db.Text
-  fileUrl    String   @db.Text
-  fileType   String   @db.Text // mime type: application/pdf, image/png, etc
-  fileSize   Int // size in bytes
-  uploadedBy String   @db.Uuid
-  uploadedAt DateTime @default(now()) @db.Timestamptz(6)
+  id          String   @id @default(uuid()) @db.Uuid
+  leadId      String   @db.Uuid
+  fileName    String   @db.Text
+  fileUrl     String   @db.Text
+  storagePath String   @default("") @db.Text // Caminho do arquivo no storage: "leadId/timestamp-random-filename"
+  fileType    String   @db.Text // mime type: application/pdf, image/png, etc
+  fileSize    Int // size in bytes
+  uploadedBy  String   @db.Uuid
+  uploadedAt  DateTime @default(now()) @db.Timestamptz(6)
 
   // Relations
   lead     Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -290,6 +328,7 @@ model PendingOperator {
   name            String   @db.Text
   email           String   @db.Text
   role            String   @db.Text // "operator" geralmente
+  functions       UserFunction[] @default([])
   paymentId       String?  @unique @db.Text // ID do pagamento no Asaas (opcional para assinaturas)
   subscriptionId  String?  @db.Text // ID da assinatura no Asaas
   paymentStatus   String   @db.Text // PENDING, CONFIRMED, FAILED

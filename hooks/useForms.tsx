@@ -2,7 +2,7 @@
 
 import { useForm, UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { leadFormData, leadFormSchema, loginFormData, loginFormSchema, signUpFormData, signupFormSchema, updateAccountFormData, updateAccountFormSchema } from "@/lib/validations/validationForms";
+import { leadFormData, leadFormSchema, loginFormData, loginFormSchema, signUpFormData, signUpOAuthFormData, signupFormSchema, signupFormSchemaOAuth, updateAccountFormData, updateAccountFormSchema } from "@/lib/validations/validationForms";
 
 export function useLoginForm(): UseFormReturn<loginFormData> {
   return useForm<loginFormData>({
@@ -14,13 +14,22 @@ export function useLoginForm(): UseFormReturn<loginFormData> {
   });
 }
 
-export function useSignUpForm(): UseFormReturn<signUpFormData> {
-  return useForm<signUpFormData>({
-    resolver: zodResolver(signupFormSchema),
+export function useSignUpForm(mode: "default" | "oauth" = "default"): UseFormReturn<signUpFormData | signUpOAuthFormData> {
+  return useForm<signUpFormData | signUpOAuthFormData>({
+    resolver: zodResolver(mode === "oauth" ? signupFormSchemaOAuth : signupFormSchema),
+    mode: "onChange", // Valida em tempo real para habilitar botão
     defaultValues: {
       fullName: "",
       email: "",
       phone: "",
+      cpfCnpj: "", // Campo obrigatório no schema
+      postalCode: "",
+      address: "",
+      addressNumber: "",
+      neighborhood: "",
+      complement: "",
+      city: "",
+      state: "",
       password: "",
       confirmPassword: "",
     },
@@ -38,6 +47,7 @@ export function useUpdateAccountForm(): UseFormReturn<updateAccountFormData> {
       postalCode: "",
       address: "",
       addressNumber: "",
+      neighborhood: "",
       complement: "",
       city: "",
       state: "",
@@ -49,16 +59,19 @@ export function useUpdateAccountForm(): UseFormReturn<updateAccountFormData> {
 export function useLeadForm() {
   return useForm<leadFormData>({
     resolver: zodResolver(leadFormSchema),
+    mode: "onChange",
     defaultValues: {
       name: "",
       phone: "",
       email: "",
       cnpj: "",
+      closerId: "",
       age: "",
       currentValue: "",
       referenceHospital: "",
       ongoingTreatment: "",
       meetingDate: "",
+      meetingHeald: undefined,
       additionalNotes: "",
       responsible: "",
     },

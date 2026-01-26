@@ -1,6 +1,7 @@
 'use client';
 
 import { useDashboardContext } from '../context/DashboardContext';
+import { getLeadStatusLabel } from '@/lib/lead-status';
 
 export function DashboardMetricsWithContext() {
   const { 
@@ -174,7 +175,7 @@ export function DashboardMetricsWithContext() {
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-sm font-medium text-gray-500">Receita Total</h3>
           <p className="text-2xl font-bold text-green-600">
-            R$ {metrics.receitaTotal.toLocaleString('pt-BR')}
+            R$ {metrics.receitaTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
         
@@ -225,16 +226,16 @@ export function DashboardMetricsWithContext() {
                 {detailedMetrics.map((metric: any, index: number) => (
                   <tr key={index}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {metric.status}
+                      {getLeadStatusLabel(metric.status)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {metric.count}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      R$ {metric.averageValue.toLocaleString('pt-BR')}
+                      R$ {metric.averageValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      R$ {metric.totalValue.toLocaleString('pt-BR')}
+                      R$ {metric.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                   </tr>
                 ))}

@@ -4,6 +4,7 @@ export interface LeadMetricsData {
   id: string;
   status: LeadStatus;
   currentValue: any; // Prisma Decimal type
+  ticket: any; // Prisma Decimal type
   createdAt: Date;
 }
 

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Output } from "@/lib/output";
-import type { UserRole } from "@prisma/client";
+import type { UserRole, UserFunction } from "@prisma/client";
 
 /**
  * Interface para os dados do usuário
@@ -17,12 +17,16 @@ export interface UserData {
   postalCode: string | null;
   address: string | null;
   addressNumber: string | null;
+  neighborhood: string | null;
   complement: string | null;
   city: string | null;
   state: string | null;
   profileIconId: string | null;
   profileIconUrl: string | null;
+  googleCalendarConnected: boolean;
+  googleEmail: string | null;
   role: UserRole;
+  functions: UserFunction[];
   isMaster: boolean;
   hasPermanentSubscription: boolean;
   managerId: string | null;
@@ -154,8 +158,11 @@ export const UserProvider: React.FC<UserProviderProps> = ({
       const output: Output = await response.json();
 
       if (output.isValid && output.result) {
-        // Atualiza o estado local com os novos dados
-        setUser(output.result);
+        // Atualiza o estado local com os novos dados sem perder campos existentes
+        setUser((prev) => (prev ? { ...prev, ...output.result } : output.result));
+        if (updates.functions !== undefined) {
+          await fetchUser();
+        }
       } else {
         setError(output.errorMessages?.join(", ") || "Failed to update user");
       }

@@ -1,6 +1,6 @@
 // DTOs para os endpoints de Manager Users
 import { z } from "zod";
-import { UserRole } from "@prisma/client";
+import { UserRole, UserFunction } from "@prisma/client";
 
 // Request Schemas
 export const CreateUserSchema = z.object({
@@ -9,7 +9,11 @@ export const CreateUserSchema = z.object({
   role: z.enum(["manager", "operator"], { 
     message: "Role deve ser 'manager' ou 'operator'"
   }),
-  profileIconUrl: z.string().url("URL do ícone deve ser válida").optional()
+  functions: z.array(z.enum(["SDR", "CLOSER"]))
+    .max(2, "Selecione no máximo 2 funções")
+    .optional(),
+  profileIconUrl: z.string().url("URL do ícone deve ser válida").optional(),
+  hasPermanentSubscription: z.boolean().optional().default(false)
 });
 
 export const UpdateUserSchema = z.object({
@@ -19,6 +23,9 @@ export const UpdateUserSchema = z.object({
   role: z.enum(["manager", "operator"], { 
     message: "Role deve ser 'manager' ou 'operator'"
   }).optional(),
+  functions: z.array(z.enum(["SDR", "CLOSER"]))
+    .max(2, "Selecione no máximo 2 funções")
+    .optional(),
   profileIconUrl: z.string().url("URL do ícone deve ser válida").optional().nullable()
 });
 
@@ -39,6 +46,7 @@ export interface UserResponseDTO {
   name: string;
   email: string;
   role: UserRole;
+  functions?: UserFunction[];
   profileIconUrl?: string;
   managerId?: string; // For operators
   createdAt: Date;
