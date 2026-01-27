@@ -1,9 +1,9 @@
-import { createContext, ReactNode, useMemo, useState, useEffect } from "react";
+import { createContext, ReactNode, useMemo, useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { IBoardService } from "../services/IBoardServices";
 import { Lead, ColumnKey } from "./BoardTypes";
 import { createBoardService } from "../services/BoardService";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { FinalizeContractData } from "../container/FinalizeContractDialog";
 
@@ -82,6 +82,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 }) => {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
+  const searchParams = useSearchParams();
+  const sharedLeadCode = searchParams.get("leadCode");
+  const shareHandledRef = useRef(false);
   
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -250,6 +253,20 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     loadUser();
     loadLeads();
   }, [supabaseId]);
+
+  useEffect(() => {
+    if (!sharedLeadCode || shareHandledRef.current) return;
+    if (isLoading) return;
+    const allLeads = Object.values(data).flat();
+    const targetLead = allLeads.find((lead) => lead.leadCode === sharedLeadCode);
+    if (targetLead) {
+      setSelected(targetLead);
+      setOpen(true);
+    } else {
+      toast.info("Lead não encontrado ou sem permissão no seu time.");
+    }
+    shareHandledRef.current = true;
+  }, [data, sharedLeadCode, isLoading]);
 
   let dragStarted = false
     const handleCardMouseDown = () => { dragStarted = false }
