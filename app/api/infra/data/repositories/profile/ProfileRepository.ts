@@ -151,19 +151,6 @@ class PrismaProfileRepository implements IProfileRepository {
     managerId?: string
   ): Promise<{ profileId: string; supabaseId: string } | null> {
     try {
-      console.info('💾 [ProfileRepository] createProfile iniciado');
-      console.info('📦 [ProfileRepository] Parâmetros recebidos:', {
-        hasSubscriptionId: !!subscriptionId,
-        hasAsaasCustomerId: !!asaasCustomerId,
-        hasSubscriptionPlan: !!subscriptionPlan,
-        hasOperatorCount: operatorCount !== undefined,
-        subscriptionId,
-        asaasCustomerId,
-        subscriptionPlan,
-        operatorCount,
-        subscriptionStatus,
-        role
-      });
       
       const supabase = createSupabaseClient();
       if (!supabase) {
@@ -211,8 +198,7 @@ class PrismaProfileRepository implements IProfileRepository {
       };
 
       if (
-        profileData.isMaster &&
-        (subscriptionId || asaasCustomerId || subscriptionPlan)
+        profileData.isMaster
       ) {
         profileData.functions = ["SDR", "CLOSER"];
       }
