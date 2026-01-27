@@ -20,6 +20,8 @@
     "prisma:seed": "bunx prisma db seed",
     "prisma:migrate": "bunx prisma migrate dev",
     "prisma:backfill-leadcode": "bunx tsx scripts/backfill-leadcode.ts",
+    "prisma:generate-import-leads-sql": "bunx tsx scripts/generate-backfill-import-leads.ts",
+    "prisma:backfill-import-leads": "bunx tsx scripts/backfill-import-leads.ts",
     "prisma:migrate:reset": "bunx prisma migrate reset",
     "prisma:migrate:deploy": "bunx prisma migrate deploy",
     "prisma:migrate:status": "bunx prisma migrate status",
