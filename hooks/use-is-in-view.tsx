@@ -1,25 +1,50 @@
-import * as React from 'react';
-import { useInView, type UseInViewOptions } from 'motion/react';
+"use client";
 
-interface UseIsInViewOptions {
-  inView?: boolean;
-  inViewOnce?: boolean;
-  inViewMargin?: UseInViewOptions['margin'];
+import { useEffect, useRef, useState } from "react";
+
+export interface UseIsInViewOptions {
+  threshold?: number;
+  rootMargin?: string;
+  triggerOnce?: boolean;
 }
 
-function useIsInView<T extends HTMLElement = HTMLElement>(
-  ref: React.Ref<T>,
-  options: UseIsInViewOptions = {},
-) {
-  const { inView, inViewOnce = false, inViewMargin = '0px' } = options;
-  const localRef = React.useRef<T>(null);
-  React.useImperativeHandle(ref, () => localRef.current as T);
-  const inViewResult = useInView(localRef, {
-    once: inViewOnce,
-    margin: inViewMargin,
-  });
-  const isInView = !inView || inViewResult;
-  return { ref: localRef, isInView };
-}
+export function useIsInView(options: UseIsInViewOptions = {}) {
+  const { threshold = 0, rootMargin = "0px", triggerOnce = false } = options;
+  const ref = useRef<HTMLElement>(null);
+  const [isInView, setIsInView] = useState(false);
+  const [hasBeenInView, setHasBeenInView] = useState(false);
 
-export { useIsInView, type UseIsInViewOptions };
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    if (triggerOnce && hasBeenInView) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const inView = entry.isIntersecting;
+        setIsInView(inView);
+
+        if (inView && !hasBeenInView) {
+          setHasBeenInView(true);
+        }
+
+        if (triggerOnce && inView) {
+          observer.disconnect();
+        }
+      },
+      {
+        threshold,
+        rootMargin,
+      }
+    );
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [threshold, rootMargin, triggerOnce, hasBeenInView]);
+
+  return { ref, isInView, hasBeenInView };
+}

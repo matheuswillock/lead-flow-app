@@ -2,22 +2,25 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { LeadForm } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLeads } from "@/hooks/useLeads";
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, X } from "lucide-react";
+import { CheckCircle, Mail, MessageCircle, MessageSquare, X } from "lucide-react";
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
-import { useParams } from "next/navigation";
+import { useParams, usePathname } from "next/navigation";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { ExternalLink } from "@/components/animate-ui/icons/external-link";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface LeadDialogProps {
   open: boolean;
@@ -51,8 +54,47 @@ export default function LeadDialog({
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
   const [scheduleTitle, setScheduleTitle] = useState<string | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [origin, setOrigin] = useState("");
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOrigin(window.location.origin);
+    }
+  }, []);
+
+  const shareUrl = useMemo(() => {
+    if (!lead || !origin || !lead.leadCode) return "";
+    const isPipeline = pathname.includes("/pipeline");
+    const basePath = isPipeline ? "/pipeline" : "/board";
+    const url = new URL(basePath, origin);
+    url.searchParams.set("leadCode", lead.leadCode);
+    return url.toString();
+  }, [lead, origin, pathname]);
+
+  const shareMessage = useMemo(() => {
+    if (!lead) return shareUrl;
+    return `Lead: ${lead.name}\n${shareUrl}`;
+  }, [lead, shareUrl]);
+
+  const whatsappShare = useMemo(() => {
+    if (!shareUrl) return "#";
+    return `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
+  }, [shareMessage, shareUrl]);
+
+  const messengerShare = useMemo(() => {
+    if (!shareUrl) return "#";
+    return `https://www.messenger.com/share?link=${encodeURIComponent(shareUrl)}`;
+  }, [shareUrl]);
+
+  const emailShare = useMemo(() => {
+    if (!shareUrl) return "#";
+    const subject = encodeURIComponent("Lead compartilhado");
+    return `mailto:?subject=${subject}&body=${encodeURIComponent(shareMessage)}`;
+  }, [shareMessage, shareUrl]);
 
   const canFinalizeContract = lead && (
     lead.status === "invoicePayment" ||
@@ -99,6 +141,17 @@ export default function LeadDialog({
     } catch (error) {
       console.error("Erro ao copiar ID do lead:", error);
       toast.error("Nao foi possivel copiar o ID");
+    }
+  };
+
+  const handleCopyShareLink = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success("Link de compartilhamento copiado");
+    } catch (error) {
+      console.error("Erro ao copiar link de compartilhamento:", error);
+      toast.error("Nao foi possivel copiar o link");
     }
   };
 
@@ -593,6 +646,24 @@ export default function LeadDialog({
                 )}
               </div>
               <div className="ml-4 flex items-center gap-2">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setShareOpen(true)}
+                        disabled={!lead}
+                        className="h-9 w-9"
+                        aria-label="Compartilhar lead"
+                      >
+                        <ExternalLink className="h-5 w-5" animateOnHover />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Compartilhar lead</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 {canMarkNoShow && (
                   <Button size="sm" variant="outline" onClick={handleNoShow}>
                     Marcar No-show
@@ -760,6 +831,71 @@ export default function LeadDialog({
           onFinalize={handleFinalizeSubmit}
         />
       )}
+
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Compartilhar</DialogTitle>
+            <DialogDescription>
+              Compartilhe este lead com sua equipe.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid grid-cols-3 gap-3">
+              <Button
+                asChild
+                variant="ghost"
+                className="h-auto flex-col gap-2 py-3"
+                disabled={!shareUrl}
+              >
+                <a href={whatsappShare} target="_blank" rel="noreferrer">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
+                    <MessageCircle className="h-5 w-5" />
+                  </div>
+                  <span className="text-xs">WhatsApp</span>
+                </a>
+              </Button>
+              <Button
+                asChild
+                variant="ghost"
+                className="h-auto flex-col gap-2 py-3"
+                disabled={!shareUrl}
+              >
+                <a href={messengerShare} target="_blank" rel="noreferrer">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/15 text-blue-400">
+                    <MessageSquare className="h-5 w-5" />
+                  </div>
+                  <span className="text-xs">Messenger</span>
+                </a>
+              </Button>
+              <Button
+                asChild
+                variant="ghost"
+                className="h-auto flex-col gap-2 py-3"
+                disabled={!shareUrl}
+              >
+                <a href={emailShare} target="_blank" rel="noreferrer">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-500/15 text-slate-200">
+                    <Mail className="h-5 w-5" />
+                  </div>
+                  <span className="text-xs">Email</span>
+                </a>
+              </Button>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Link para compartilhar</Label>
+              <div className="flex items-center gap-2">
+                <Input value={shareUrl} readOnly />
+                <Button type="button" variant="secondary" onClick={handleCopyShareLink} disabled={!shareUrl}>
+                  <CopyIcon size={16} />
+                  Copiar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

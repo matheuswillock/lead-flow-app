@@ -27,6 +27,7 @@ interface CreateColumnsProps {
   onDeletePendingOperator: (user: ManagerUserTableRow) => void;
   onTogglePermanentSubscription?: (userId: string, currentValue: boolean) => void;
   currentUserIsMaster?: boolean;
+  canDelete?: boolean;
 }
 
 export function createColumns({ 
@@ -35,7 +36,8 @@ export function createColumns({
   onResendInvite,
   onDeletePendingOperator,
   onTogglePermanentSubscription: _onTogglePermanentSubscription,
-  currentUserIsMaster: _currentUserIsMaster = false
+  currentUserIsMaster: _currentUserIsMaster = false,
+  canDelete = false
 }: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
   return [
     {
@@ -365,23 +367,26 @@ export function createColumns({
                       <Pencil className="h-4 w-4" />
                       Editar usuário
                     </DropdownMenuItem>
-                  
+                    {canDelete && (
+                      <DropdownMenuItem
+                        onClick={() => onDelete(user)}
+                        className="flex items-center gap-2 text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Remover usuário
+                      </DropdownMenuItem>
+                    )}
+                  </>
+                ) : (
+                  canDelete ? (
                     <DropdownMenuItem
-                      onClick={() => onDelete(user)}
+                      onClick={() => onDeletePendingOperator(user)}
                       className="flex items-center gap-2 text-destructive focus:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
-                      Remover usuário
+                      Deletar operador pendente
                     </DropdownMenuItem>
-                  </>
-                ) : (
-                  <DropdownMenuItem
-                    onClick={() => onDeletePendingOperator(user)}
-                    className="flex items-center gap-2 text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Deletar operador pendente
-                  </DropdownMenuItem>
+                  ) : null
                 )}
                 
               </DropdownMenuContent>
