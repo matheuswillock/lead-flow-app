@@ -2,7 +2,6 @@ import type { IMetaLeadUseCase, CreateLeadFromMetaDTO } from "./IMetaLeadUseCase
 import { Output } from "@/lib/output";
 import { metaLeadService, type MetaWebhookPayload } from "../../services/MetaLeadService";
 import { leadRepository } from "../../infra/data/repositories/lead/LeadRepository";
-import { profileRepository } from "../../infra/data/repositories/profile/ProfileRepository";
 import { prisma } from "../../infra/data/prisma";
 import { LeadStatus, ActivityType, HealthPlan } from "@prisma/client";
 
@@ -193,10 +192,12 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
 
       // Mapear plano de saúde
       const healthPlan = this.mapHealthPlan(metaData.currentHealthPlan);
+      const leadCode = await this.generateLeadCode(metaData.name || "Lead");
 
       // Criar lead
       const lead = await leadRepository.create({
         manager: { connect: { id: managerId } },
+        leadCode,
         name: metaData.name,
         email: metaData.email || null,
         phone: metaData.phone || null,
@@ -226,6 +227,25 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
       console.error('❌ Erro ao criar lead do Meta:', error);
       throw error;
     }
+  }
+
+  private async generateLeadCode(name: string): Promise<string> {
+    const clean = name.replace(/[^A-Za-zÀ-ÿ]/g, "");
+    const firstLetter = (clean[0] || "L").toUpperCase();
+    const lastLetter = (clean[clean.length - 1] || "D").toUpperCase();
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const digitsLength = 4 + Math.floor(Math.random() * 3);
+      const digits = Array.from({ length: digitsLength }, () => Math.floor(Math.random() * 10)).join("");
+      const code = `${firstLetter}${digits}${lastLetter}`;
+      const existing = await leadRepository.findByLeadCode(code);
+      if (!existing) {
+        return code;
+      }
+    }
+
+    const fallbackDigits = Date.now().toString().slice(-6);
+    return `${firstLetter}${fallbackDigits}${lastLetter}`;
   }
 
   /**
