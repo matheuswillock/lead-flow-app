@@ -408,7 +408,7 @@ export class EmailService {
         <h3 style="color: #333; margin-top: 20px;">Como Gerente, você poderá:</h3>
         <ul style="color: #555; line-height: 1.8;">
           <li>✅ Gerenciar todos os leads da equipe</li>
-          <li>✅ Adicionar e gerenciar operadores</li>
+          <li>✅ Adicionar e gerenciar operadores e managers</li>
           <li>✅ Acompanhar métricas da equipe</li>
           <li>✅ Distribuir leads entre operadores</li>
           <li>✅ Visualizar dashboards completos</li>

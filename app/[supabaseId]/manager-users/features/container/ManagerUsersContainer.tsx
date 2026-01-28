@@ -33,6 +33,7 @@ export function ManagerUsersContainer({
   currentUserIsMaster = false,
   hasPermanentSubscription = false,
 }: ManagerUsersContainerProps) {
+  const canCreateOrDelete = currentUserIsMaster;
   const [isDeletePendingDialogOpen, setIsDeletePendingDialogOpen] = useState(false);
   const [pendingOperatorToDelete, setPendingOperatorToDelete] = useState<ManagerUserTableRow | null>(null);
 
@@ -150,6 +151,7 @@ export function ManagerUsersContainer({
     onResendInvite: resendInvite,
     onTogglePermanentSubscription: togglePermanentSubscription,
     currentUserIsMaster,
+    canDelete: canCreateOrDelete,
   });
 
   return (
@@ -157,25 +159,27 @@ export function ManagerUsersContainer({
       {/* Header */}
         <div className="flex items-center justify-between">
             <div>
-            <h1 className="text-3xl font-bold tracking-tight">Gerenciar Operadores</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Gerenciar Usuários</h1>
             <p className="text-muted-foreground">
-                Gerencie operadores do seu sistema
+                Gerencie os usuários do seu studio.
                 {hasPendingOperators && (
                   <span className="inline-flex items-center gap-1 ml-2 text-yellow-600 dark:text-yellow-400">
-                    • {pendingCount} operador{pendingCount > 1 ? 'es' : ''} pendente{pendingCount > 1 ? 's' : ''}
+                    • {pendingCount} usuário{pendingCount > 1 ? 's' : ''} pendente{pendingCount > 1 ? 's' : ''}
                   </span>
                 )}
             </p>
             </div>
 
-            <Button 
-                onClick={openCreateModal} 
-                className="gap-2 text-base cursor-pointer font-medium" 
-                variant="outline"
-            >
-                <UserRoundPlusIcon />
-                Adicionar Usuário
-            </Button>
+            {canCreateOrDelete && (
+              <Button 
+                  onClick={openCreateModal} 
+                  className="gap-2 text-base cursor-pointer font-medium" 
+                  variant="outline"
+              >
+                  <UserRoundPlusIcon />
+                  Adicionar Usuário
+              </Button>
+            )}
         </div>
 
       {/* Alerta de operadores pendentes */}
@@ -247,13 +251,15 @@ export function ManagerUsersContainer({
       </Card>
 
       {/* Modais */}
-      <UserFormDialog
-        open={isCreateModalOpen}
-        onOpenChange={closeCreateModal}
-        onSubmit={createUser}
-        loading={loading}
-        currentUserId={supabaseId}
-      />
+      {canCreateOrDelete && (
+        <UserFormDialog
+          open={isCreateModalOpen}
+          onOpenChange={closeCreateModal}
+          onSubmit={createUser}
+          loading={loading}
+          currentUserId={supabaseId}
+        />
+      )}
 
       <UserFormDialog
         open={isEditModalOpen}
@@ -264,21 +270,25 @@ export function ManagerUsersContainer({
         currentUserId={supabaseId}
       />
 
-      <DeleteUserDialog
-        open={isDeleteDialogOpen}
-        onOpenChange={closeDeleteDialog}
-        onConfirm={() => selectedUser ? deleteUser(selectedUser.id) : undefined}
-        user={selectedUser}
-        loading={loading}
-      />
+      {canCreateOrDelete && (
+        <>
+          <DeleteUserDialog
+            open={isDeleteDialogOpen}
+            onOpenChange={closeDeleteDialog}
+            onConfirm={() => selectedUser ? deleteUser(selectedUser.id) : undefined}
+            user={selectedUser}
+            loading={loading}
+          />
 
-      <DeletePendingOperatorDialog
-        open={isDeletePendingDialogOpen}
-        onOpenChange={setIsDeletePendingDialogOpen}
-        operatorName={pendingOperatorToDelete?.name || ''}
-        operatorEmail={pendingOperatorToDelete?.email || ''}
-        onConfirm={handleConfirmDeletePending}
-      />
+          <DeletePendingOperatorDialog
+            open={isDeletePendingDialogOpen}
+            onOpenChange={setIsDeletePendingDialogOpen}
+            operatorName={pendingOperatorToDelete?.name || ''}
+            operatorEmail={pendingOperatorToDelete?.email || ''}
+            onConfirm={handleConfirmDeletePending}
+          />
+        </>
+      )}
     </div>
   );
 }

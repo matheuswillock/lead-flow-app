@@ -60,6 +60,7 @@ export default function PipelineTable() {
     setSelected,
     refreshLeads,
     user,
+    errors,
   } = usePipelineContext();
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -224,6 +225,17 @@ export default function PipelineTable() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Carregando leads...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (errors?.api) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="text-center">
+          <p className="text-destructive mb-2">Erro ao carregar leads</p>
+          <p className="text-muted-foreground text-sm">{errors.api}</p>
         </div>
       </div>
     );

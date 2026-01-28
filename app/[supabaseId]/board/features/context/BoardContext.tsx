@@ -108,6 +108,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [selected, setSelected] = useState<Lead | null>(null);
   const [user, setUser] = useState<ProfileResponseDTO | null>(null);
   const [userLoading, setUserLoading] = useState(true);
+  const userRef = useRef<ProfileResponseDTO | null>(null);
+  const accessDeniedShownRef = useRef(false);
 
   // Função para carregar dados do usuário
   const loadUser = async () => {
@@ -147,6 +149,27 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       
       if (!supabaseId) {
         setErrors({ api: 'ID do usuário não encontrado' });
+        return;
+      }
+
+      const currentUser = userRef.current;
+      if (!currentUser) {
+        return;
+      }
+      if (currentUser?.role === "operator" && !currentUser.functions?.includes("SDR")) {
+        setData(() => {
+          const empty: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
+          COLUMNS.forEach(({ key }) => {
+            empty[key] = [];
+          });
+          return empty;
+        });
+        setErrors({ api: "Acesso negado: função SDR necessária para visualizar leads." });
+        if (!accessDeniedShownRef.current) {
+          toast.info("Acesso negado: função SDR necessária para visualizar leads.");
+          accessDeniedShownRef.current = true;
+        }
+        setIsLoading(false);
         return;
       }
       
@@ -251,8 +274,16 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   // Carregar dados quando o componente montar
   useEffect(() => {
     loadUser();
-    loadLeads();
   }, [supabaseId]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    if (userLoading) return;
+    loadLeads();
+  }, [userLoading, supabaseId]);
 
   useEffect(() => {
     if (!sharedLeadCode || shareHandledRef.current) return;

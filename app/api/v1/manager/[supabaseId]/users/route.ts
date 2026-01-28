@@ -325,6 +325,10 @@ export async function GET(
       return NextResponse.json(output, { status: 200 });
     }
 
+    const teamManagerId = requesterProfile.isMaster
+      ? requesterProfile.id
+      : requesterProfile.managerId ?? requesterProfile.id;
+
     // Listar usuários com filtro opcional por role
     if (roleFilter === 'manager') {
       // Para managers, retornar apenas outros managers (excluindo o próprio)
@@ -333,19 +337,19 @@ export async function GET(
       return NextResponse.json(output, { status: 200 });
     } else if (roleFilter === 'operator') {
       // Get operators managed by this manager
-      const operators = await managerUserRepository.getOperatorsByManager(requesterProfile.id);
+      const operators = await managerUserRepository.getOperatorsByManager(teamManagerId);
       const output = new Output(true, [], [], operators);
       return NextResponse.json(output, { status: 200 });
     } else {
       // Return operators and pending operators with stats
-      const operators = await managerUserRepository.getOperatorsByManager(requesterProfile.id);
-      const stats = await managerUserRepository.getManagerStats(requesterProfile.id);
+      const operators = await managerUserRepository.getOperatorsByManager(teamManagerId);
+      const stats = await managerUserRepository.getManagerStats(teamManagerId);
       
       // Buscar operadores pendentes (pagamento não confirmado)
       const { prisma } = await import('../../../../infra/data/prisma');
       const pendingOperators = await prisma.pendingOperator.findMany({
         where: { 
-          managerId: requesterProfile.id,
+          managerId: teamManagerId,
           operatorCreated: false,
         },
         orderBy: { createdAt: 'desc' },
@@ -358,7 +362,7 @@ export async function GET(
         email: pending.email,
         role: pending.role,
         profileIconUrl: null,
-        managerId: requesterProfile.id,
+        managerId: teamManagerId,
         leadsCount: 0,
         meetingsCount: 0,
         createdAt: pending.createdAt,
@@ -374,7 +378,9 @@ export async function GET(
       }));
       
       // Combinar operadores ativos e pendentes
-      const allUsers = [...operators, ...pendingAsUsers];
+      const allUsers = requesterProfile.isMaster
+        ? [...operators, ...pendingAsUsers]
+        : [...operators, ...pendingAsUsers].filter((user) => user.id !== requesterProfile.id);
       
       const output = new Output(true, [], [], allUsers);
       // Add stats to the response
@@ -477,9 +483,12 @@ export async function PUT(
         managerId: userToUpdate.managerId
       });
 
-      // Se for operator, verificar se pertence ao manager
-      if (userToUpdate.role === 'operator' && userToUpdate.managerId !== requesterProfile.id) {
-        const output = new Output(false, [], ["Você só pode atualizar seus próprios operadores"], null);
+      const teamManagerId = requesterProfile.isMaster
+        ? requesterProfile.id
+        : requesterProfile.managerId ?? requesterProfile.id;
+
+      if (!requesterProfile.isMaster && userToUpdate.managerId !== teamManagerId) {
+        const output = new Output(false, [], ["Você só pode atualizar usuários do seu time"], null);
         return NextResponse.json(output, { status: 403 });
       }
 
@@ -590,6 +599,10 @@ export async function DELETE(
     const requesterProfile = await profileUseCase.getProfileInfoBySupabaseId(requesterId);
     if (!requesterProfile || requesterProfile.role !== 'manager') {
       const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+    if (!requesterProfile.isMaster) {
+      const output = new Output(false, [], ["Apenas masters podem excluir usuários"], null);
       return NextResponse.json(output, { status: 403 });
     }
 

@@ -482,7 +482,7 @@ function SetPasswordContent() {
               className="w-full mt-4 cursor-pointer" 
               disabled={isLoading || !password || !confirmPassword}
             >
-              {isLoading ? 'Definindo senha...' : 'Definir Senha e Acessar'}
+              {isLoading ? 'Definindo senha...' : 'Gerar senha'}
             </Button>
           </CardFooter>
         </form>
