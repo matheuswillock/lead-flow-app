@@ -100,9 +100,6 @@ export async function POST(request: NextRequest) {
     // 4. Processar webhook via UseCase
     const result = await metaLeadUseCase.processWebhook(payload, managerId);
 
-    // 5. Retornar resposta
-    const statusCode = result.isValid ? 200 : 400;
-
     // Meta espera uma resposta rápida (200 OK)
     // Mesmo se houver erros, retornamos 200 para não ser bloqueado
     return NextResponse.json(

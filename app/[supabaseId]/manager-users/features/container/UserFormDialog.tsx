@@ -25,13 +25,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
 import {
@@ -201,21 +194,36 @@ export function UserFormDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Papel</FormLabel>
-                  <Select 
-                    onValueChange={field.onChange} 
-                    defaultValue={field.value}
-                    disabled={loading || !canEditRole}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o papel" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="operator">Operator</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FormControl>
+                    <div className="space-y-2">
+                      {([
+                        { label: "Manager", value: "manager" as const },
+                        { label: "Operator", value: "operator" as const },
+                      ]).map((item) => {
+                        const isChecked = field.value === item.value;
+                        return (
+                          <div
+                            key={item.value}
+                            className="flex items-center justify-between rounded-md border border-input px-3 py-2"
+                          >
+                            <div className="space-y-1">
+                              <span className="text-sm font-medium">{item.label}</span>
+                              <p className="text-xs text-muted-foreground">
+                                {item.value === "manager"
+                                  ? "Gerencia usuários e configurações do time."
+                                  : "Acesso operacional aos leads e atividades do time."}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={isChecked}
+                              onCheckedChange={() => field.onChange(item.value)}
+                              disabled={loading || !canEditRole}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </FormControl>
                   <FormDescription>
                     {!canEditRole 
                       ? "Managers não podem alterar seu próprio papel."
@@ -246,7 +254,14 @@ export function UserFormDialog({
                             key={item.value}
                             className="flex items-center justify-between rounded-md border border-input px-3 py-2"
                           >
-                            <span className="text-sm font-medium">{item.label}</span>
+                            <div className="space-y-1">
+                              <span className="text-sm font-medium">{item.label}</span>
+                              <p className="text-xs text-muted-foreground">
+                                {item.value === "SDR"
+                                  ? "Pode visualizar, editar e agendar os leads."
+                                  : "Mesmo acesso do SDR nos leads, mas só ele pode fechar contratos."}
+                              </p>
+                            </div>
                             <Switch
                               checked={isChecked}
                               onCheckedChange={(checked) => {

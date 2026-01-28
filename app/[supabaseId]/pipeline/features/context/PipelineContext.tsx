@@ -1,11 +1,11 @@
 'use client';
 
-import { createContext, ReactNode, useMemo, useState, useEffect } from "react";
+import { createContext, ReactNode, useMemo, useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { Lead, ColumnKey } from "./PipelineTypes";
 import { createBoardService } from "@/app/[supabaseId]/board/features/services/BoardService";
 import { IBoardService } from "@/app/[supabaseId]/board/features/services/IBoardServices";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 
@@ -81,6 +81,9 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
 }) => {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
+  const searchParams = useSearchParams();
+  const sharedLeadCode = searchParams.get("leadCode");
+  const shareHandledRef = useRef(false);
   
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -93,6 +96,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [selected, setSelected] = useState<Lead | null>(null);
   const [user, setUser] = useState<ProfileResponseDTO | null>(null);
   const [userLoading, setUserLoading] = useState(true);
+  const userRef = useRef<ProfileResponseDTO | null>(null);
+  const accessDeniedShownRef = useRef(false);
 
   // Mapeamento de status para labels legíveis
   const statusLabels: Record<ColumnKey, string> = useMemo(() => {
@@ -141,6 +146,23 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       
       if (!supabaseId) {
         setErrors({ api: 'ID do usuário não encontrado' });
+        setIsLoading(false);
+        return;
+      }
+
+      const currentUser = userRef.current;
+      if (!currentUser) {
+        setIsLoading(false);
+        return;
+      }
+      if (currentUser?.role === "operator" && !currentUser.functions?.includes("SDR")) {
+        setAllLeads([]);
+        setErrors({ api: "Acesso negado: função SDR necessária para visualizar leads." });
+        if (!accessDeniedShownRef.current) {
+          toast.info("Acesso negado: função SDR necessária para visualizar leads.");
+          accessDeniedShownRef.current = true;
+        }
+        setIsLoading(false);
         return;
       }
       
@@ -201,8 +223,30 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   // Carregar dados quando o componente montar
   useEffect(() => {
     loadUser();
-    loadLeads();
   }, [supabaseId]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    if (!userLoading) {
+      loadLeads();
+    }
+  }, [userLoading]);
+
+  useEffect(() => {
+    if (!sharedLeadCode || shareHandledRef.current) return;
+    if (isLoading) return;
+    const targetLead = allLeads.find((lead) => lead.leadCode === sharedLeadCode);
+    if (targetLead) {
+      setSelected(targetLead);
+      setOpen(true);
+    } else {
+      toast.info("Lead não encontrado ou sem permissão no seu time.");
+    }
+    shareHandledRef.current = true;
+  }, [allLeads, sharedLeadCode, isLoading]);
 
   // Função para finalizar contrato
   const finalizeContract = async (leadId: string, contractData: FinalizeContractData) => {

@@ -55,7 +55,9 @@ export async function middleware(request: NextRequest) {
   // If the user is logged in and is trying to access auth pages, redirect to board with supabaseId
   const authPages = ["/login", "/sign-in", "/sign-up"]
   if (user && authPages.includes(pathname)) {
-    return NextResponse.redirect(new URL(`/${user.id}/board`, request.url))
+    const url = new URL(`/${user.id}/board`, request.url)
+    url.search = request.nextUrl.search
+    return NextResponse.redirect(url)
   }
 
   // For API routes, handle authentication and add user ID to headers
@@ -90,7 +92,9 @@ export async function middleware(request: NextRequest) {
   if (protectedPrefixes.some(prefix => pathname.startsWith(prefix))) {
     const routeName = pathSegments[0]
     if (routeName !== 'subscribe') {
-      return NextResponse.redirect(new URL(`/${user.id}/${routeName}`, request.url))
+      const url = new URL(`/${user.id}/${routeName}`, request.url)
+      url.search = request.nextUrl.search
+      return NextResponse.redirect(url)
     }
   }
 
@@ -101,7 +105,9 @@ export async function middleware(request: NextRequest) {
     
     // If the supabaseId in URL doesn't match the authenticated user, redirect to correct URL
     if (urlSupabaseId !== user.id) {
-      return NextResponse.redirect(new URL(`/${user.id}/${routeName}`, request.url))
+      const url = new URL(`/${user.id}/${routeName}`, request.url)
+      url.search = request.nextUrl.search
+      return NextResponse.redirect(url)
     }
   }
 

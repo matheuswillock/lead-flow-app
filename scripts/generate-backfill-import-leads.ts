@@ -204,9 +204,9 @@ function main() {
   const importStamp = new Date().toISOString();
   const yyyymmdd = importStamp.slice(0, 10).replace(/-/g, "");
 
-  console.log(`[generate] Lendo: ${path.relative(root, inputPath)}`);
+  console.info(`[generate] Lendo: ${path.relative(root, inputPath)}`);
   const rows = loadRows(inputPath);
-  console.log(`[generate] Linhas detectadas: ${rows.length}`);
+  console.info(`[generate] Linhas detectadas: ${rows.length}`);
 
   const outDir = path.join(root, "scripts");
   ensureDir(outDir);
@@ -232,6 +232,7 @@ function main() {
     const name = pick(row, ["Task Name", "Nome", "name"]);
     if (!name) {
       skipped++;
+      console.info(`[generate] Linha ${idx} ignorada: nome ausente`);
       continue;
     }
 
@@ -339,10 +340,10 @@ function main() {
   fs.writeFileSync(outSqlPath, sql.join("\n"), "utf-8");
   fs.writeFileSync(outMetaPath, JSON.stringify(meta, null, 2), "utf-8");
 
-  console.log(`[generate] SQL gerado: ${path.relative(root, outSqlPath)}`);
-  console.log(`[generate] META gerado: ${path.relative(root, outMetaPath)}`);
-  console.log(`[generate] Leads gerados: ${produced}`);
-  console.log(`[generate] Linhas ignoradas (sem nome): ${skipped}`);
+  console.info(`[generate] SQL gerado: ${path.relative(root, outSqlPath)}`);
+  console.info(`[generate] META gerado: ${path.relative(root, outMetaPath)}`);
+  console.info(`[generate] Leads gerados: ${produced}`);
+  console.info(`[generate] Linhas ignoradas (sem nome): ${skipped}`);
 }
 
 main();

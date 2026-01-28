@@ -71,9 +71,9 @@ async function main() {
   fs.writeFileSync(errorsSqlPath, `-- backfill-import-leads.errors.sql\n-- generatedAt: ${nowIso()}\n\n`, "utf-8");
 
   appendLog(logPath, `--- START backfill-import-leads (${statements.length} inserts) ---`);
-  console.log(`[run] Iniciando execução: ${statements.length} inserts`);
-  console.log(`[run] Log: ${path.relative(root, logPath)}`);
-  console.log(`[run] Errors SQL: ${path.relative(root, errorsSqlPath)}`);
+  console.info(`[run] Iniciando execução: ${statements.length} inserts`);
+  console.info(`[run] Log: ${path.relative(root, logPath)}`);
+  console.info(`[run] Errors SQL: ${path.relative(root, errorsSqlPath)}`);
 
   if (statements.length === 0) {
     const msg = `Nenhum INSERT foi encontrado no arquivo SQL. Verifique scripts/backfill-import-leads.sql`;
@@ -103,12 +103,12 @@ async function main() {
       if (typeof affected === "number" && affected > 0) {
         inserted++;
         const msg = `OK inserted (${label})`;
-        console.log(msg);
+        console.info(msg);
         appendLog(logPath, msg);
       } else {
         skipped++;
         const msg = `SKIP (conflict) (${label})`;
-        console.log(msg);
+        console.info(msg);
         appendLog(logPath, msg);
       }
     } catch (err: any) {
@@ -127,7 +127,7 @@ async function main() {
   }
 
   const summary = `--- DONE inserted=${inserted} skipped=${skipped} failed=${failed} ---`;
-  console.log(summary);
+  console.info(summary);
   appendLog(logPath, summary);
 
   await prisma.$disconnect();
