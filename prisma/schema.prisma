@@ -104,6 +104,24 @@ enum SubscriptionPlan {
   @@map("subscription_plan")
 }
 
+enum PendingActionType {
+  create_team
+  add_member
+  add_user
+  transfer_team
+
+  @@map("pending_action_type")
+}
+
+enum PendingActionStatus {
+  pending
+  applied
+  failed
+  canceled
+
+  @@map("pending_action_status")
+}
+
 // -----------------------------
 // PROFILES (public.profiles)
 // - Primary key is also a FK to auth.users.id (1:1)
@@ -147,6 +165,7 @@ model Profile {
   asaasSubscriptionId      String?             @db.Text // ID da assinatura no Asaas
   subscriptionNextDueDate  DateTime?           @db.Timestamptz(6) // Próxima data de vencimento
   subscriptionCycle        String?             @db.Text // MONTHLY, QUARTERLY, etc
+  activeTeamId             String?             @db.Uuid
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
@@ -166,6 +185,9 @@ model Profile {
 
   // Pending Operators relations
   pendingOperators PendingOperator[] @relation("PendingOperatorManager")
+  pendingActions   PendingAction[]   @relation("PendingActionMaster")
+  teamsOwned       Team[]            @relation("TeamMaster")
+  teamMemberships  TeamMember[]
 
   @@index([role])
   @@index([managerId])
@@ -183,6 +205,7 @@ model Lead {
   id                String      @id @unique @default(uuid()) @db.Uuid
   leadCode          String      @unique @db.Text
   managerId         String      @db.Uuid
+  teamId            String?     @db.Uuid
   assignedTo        String?     @db.Uuid
   closerId          String?     @db.Uuid
   status            LeadStatus  @default(new_opportunity)
@@ -214,6 +237,7 @@ model Lead {
 
   // Relations
   manager       Profile          @relation("LeadManager", fields: [managerId], references: [id], onDelete: Cascade)
+  team          Team?            @relation(fields: [teamId], references: [id], onDelete: Cascade)
   assignee      Profile?         @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
   closer        Profile?         @relation("LeadCloser", fields: [closerId], references: [id], onDelete: SetNull)
   creator       Profile?         @relation("LeadCreator", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -224,10 +248,10 @@ model Lead {
   attachments   LeadAttachment[]
 
   // Unique per tenant
-  @@unique([managerId, email])
-  @@unique([managerId, phone])
-  @@unique([managerId, cnpj])
-  @@index([managerId])
+  @@unique([teamId, email])
+  @@unique([teamId, phone])
+  @@unique([teamId, cnpj])
+  @@index([teamId])
   @@index([assignedTo])
   @@index([closerId])
   @@index([createdBy])
@@ -325,6 +349,7 @@ model LeadAttachment {
 model PendingOperator {
   id              String   @id @default(uuid()) @db.Uuid
   managerId       String   @db.Uuid
+  teamId          String?  @db.Uuid
   name            String   @db.Text
   email           String   @db.Text
   role            String   @db.Text // "operator" geralmente
@@ -340,9 +365,77 @@ model PendingOperator {
 
   // Relations
   manager Profile @relation("PendingOperatorManager", fields: [managerId], references: [id], onDelete: Cascade)
+  team    Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([managerId])
   @@index([subscriptionId])
   @@index([email])
   @@map("pending_operators")
+}
+
+// -----------------------------
+// TEAMS (public.teams)
+// -----------------------------
+
+model Team {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.Text
+  masterId  String   @db.Uuid
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  master  Profile      @relation("TeamMaster", fields: [masterId], references: [id], onDelete: Cascade)
+  members TeamMember[]
+  leads   Lead[]
+  pendingOperators PendingOperator[]
+  pendingActions   PendingAction[]
+
+  @@index([masterId])
+  @@map("teams")
+}
+
+// -----------------------------
+// PENDING ACTIONS (public.pending_actions)
+// -----------------------------
+model PendingAction {
+  id         String              @id @default(uuid()) @db.Uuid
+  masterId   String              @db.Uuid
+  teamId     String?             @db.Uuid
+  actionType PendingActionType
+  status     PendingActionStatus @default(pending)
+  payload    Json
+  checkoutId String?             @db.Text
+  paymentId  String?             @db.Text
+  createdAt  DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime            @updatedAt @db.Timestamptz(6)
+
+  master Profile @relation("PendingActionMaster", fields: [masterId], references: [id], onDelete: Cascade)
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([masterId])
+  @@index([checkoutId])
+  @@index([paymentId])
+  @@map("pending_actions")
+}
+
+// -----------------------------
+// TEAM MEMBERS (public.team_members)
+// -----------------------------
+
+model TeamMember {
+  id        String         @id @default(uuid()) @db.Uuid
+  teamId    String         @db.Uuid
+  profileId String         @db.Uuid
+  role      UserRole
+  functions UserFunction[] @default([])
+  createdAt DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime       @updatedAt @db.Timestamptz(6)
+
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, profileId])
+  @@index([profileId])
+  @@map("team_members")
 }

@@ -130,6 +130,7 @@ export async function POST(request: NextRequest) {
       // Verificar se é pagamento de operador através do checkoutSessionId
       // Buscar diretamente no banco porque o Asaas não retorna externalReference no webhook
       let isOperatorPayment = false;
+      let isPendingActionPayment = false;
       
       if (checkoutSessionId) {
         try {
@@ -139,11 +140,18 @@ export async function POST(request: NextRequest) {
           });
           
           isOperatorPayment = !!pendingOperator;
+
+          const pendingAction = await prisma.pendingAction.findFirst({
+            where: { checkoutId: checkoutSessionId, status: 'pending' }
+          });
+
+          isPendingActionPayment = !!pendingAction;
           
           console.info('🔍 [Webhook Asaas] Verificação de operador:', {
             hasCheckoutSessionId: true,
             checkoutSessionId,
             pendingOperatorFound: isOperatorPayment,
+            pendingActionFound: isPendingActionPayment,
             willProcess: isOperatorPayment && (result.isPaid || paymentStatus === 'CONFIRMED')
           });
         } catch (error) {
@@ -184,6 +192,22 @@ export async function POST(request: NextRequest) {
         }
       } else if (!isOperatorPayment) {
         console.info('ℹ️ [Webhook Asaas] Não é pagamento de operador (externalReference diferente)');
+      }
+
+      if (isPendingActionPayment && (result.isPaid || paymentStatus === 'CONFIRMED')) {
+        try {
+          console.info('🔄 [Webhook Asaas] Detectado pagamento de AÇÃO PENDENTE (checkout)');
+          const { pendingActionUseCase } = await import('@/app/api/useCases/pendingActions/PendingActionUseCase');
+          const actionResult = await pendingActionUseCase.applyPendingActionByCheckout(checkoutSessionId, paymentId);
+
+          if (actionResult.isValid) {
+            console.info('✅ [Webhook Asaas] Ação pendente aplicada com sucesso');
+          } else {
+            console.error('❌ [Webhook Asaas] Falha ao aplicar ação pendente:', actionResult.errorMessages);
+          }
+        } catch (error) {
+          console.error('❌ [Webhook Asaas] Erro ao aplicar ação pendente:', error);
+        }
       }
 
       const isPendingOperatorRef = !!externalReference && externalReference.startsWith('pending-operator-');

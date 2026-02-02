@@ -23,11 +23,11 @@ export class DashboardMetricsService implements IDashboardMetricsService {
   /**
    * Gera chave única para cache baseada nos parâmetros
    */
-  private getCacheKey(supabaseId: string, filters?: MetricsFilters): string {
+  private getCacheKey(supabaseId: string, teamId: string, filters?: MetricsFilters): string {
     const filterKey = filters 
       ? `_${filters.period || 'default'}_${filters.startDate || ''}_${filters.endDate || ''}`
       : '_default';
-    return `${CACHE_KEY_PREFIX}_${supabaseId}${filterKey}`;
+    return `${CACHE_KEY_PREFIX}_${supabaseId}_${teamId}${filterKey}`;
   }
 
   /**
@@ -121,8 +121,8 @@ export class DashboardMetricsService implements IDashboardMetricsService {
   /**
    * Limpa cache específico
    */
-  public clearCache(supabaseId: string, filters?: MetricsFilters): void {
-    const cacheKey = this.getCacheKey(supabaseId, filters);
+  public clearCache(supabaseId: string, teamId: string, filters?: MetricsFilters): void {
+    const cacheKey = this.getCacheKey(supabaseId, teamId, filters);
     localStorage.removeItem(cacheKey);
   }
 
@@ -152,10 +152,10 @@ export class DashboardMetricsService implements IDashboardMetricsService {
   /**
    * Busca métricas gerais do dashboard (com cache)
    */
-  async getMetrics(supabaseId: string, filters?: MetricsFilters): Promise<DashboardMetricsData> {
+  async getMetrics(supabaseId: string, teamId: string, filters?: MetricsFilters): Promise<DashboardMetricsData> {
     try {
       // Tentar buscar do cache
-      const cacheKey = this.getCacheKey(supabaseId, filters);
+      const cacheKey = this.getCacheKey(supabaseId, teamId, filters);
       const cachedData = this.getFromCache<DashboardMetricsData>(cacheKey);
 
       if (cachedData) {
@@ -163,9 +163,7 @@ export class DashboardMetricsService implements IDashboardMetricsService {
       }
 
       // Construir query params
-      const params = new URLSearchParams({
-        supabaseId,
-      });
+      const params = new URLSearchParams();
 
       if (filters?.period) {
         params.append('period', filters.period);
@@ -184,6 +182,8 @@ export class DashboardMetricsService implements IDashboardMetricsService {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
         cache: 'no-store',
       });
@@ -216,13 +216,15 @@ export class DashboardMetricsService implements IDashboardMetricsService {
   /**
    * Busca métricas detalhadas por status
    */
-  async getDetailedMetrics(supabaseId: string): Promise<DetailedMetricsData[]> {
+  async getDetailedMetrics(supabaseId: string, teamId: string): Promise<DetailedMetricsData[]> {
     try {
       // Fazer requisição para a API usando URL relativa
       const response = await fetch(`/api/v1/dashboard/metrics/detailed/${supabaseId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': teamId,
         },
         cache: 'no-store',
       });

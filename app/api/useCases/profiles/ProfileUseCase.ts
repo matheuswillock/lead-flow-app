@@ -125,7 +125,8 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 managerId: profile.managerId,
                 isMaster: profile.isMaster,
                 fullName: profile.fullName,
-                email: profile.email
+                email: profile.email,
+                activeTeamId: profile.activeTeamId ?? null
             };
         } catch (error) {
             console.error("Error getting profile info:", error);
@@ -151,7 +152,8 @@ export class RegisterNewUserProfile implements IProfileUseCase {
                 managerId: profile.managerId,
                 isMaster: profile.isMaster,
                 fullName: profile.fullName,
-                email: profile.email
+                email: profile.email,
+                activeTeamId: profile.activeTeamId ?? null
             };
         } catch (error) {
             console.error("Error getting profile by id:", error);

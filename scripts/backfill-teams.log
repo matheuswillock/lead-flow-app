@@ -1,0 +1,19 @@
+[2026-01-28T01:38:44.445Z] --- START backfill-teams ---
+[2026-01-28T01:38:44.746Z] STEP precheck: start
+[2026-01-28T01:38:44.847Z] STEP precheck: ok
+[2026-01-28T01:38:44.848Z] STEP create_default_teams: start
+[2026-01-28T01:38:44.903Z] STEP create_default_teams: ok affected=6
+[2026-01-28T01:38:44.903Z] STEP create_tmp_table: start
+[2026-01-28T01:38:44.961Z] STEP create_tmp_table: ok
+[2026-01-28T01:38:44.961Z] STEP ensure_master_member: start
+[2026-01-28T01:38:44.990Z] STEP ensure_master_member: ok affected=6
+[2026-01-28T01:38:44.990Z] STEP migrate_team_members: start
+[2026-01-28T01:38:45.012Z] STEP migrate_team_members: ok affected=7
+[2026-01-28T01:38:45.013Z] STEP update_leads_teamId: start
+[2026-01-28T01:38:45.090Z] STEP update_leads_teamId: ok affected=289
+[2026-01-28T01:38:45.092Z] STEP update_pending_operators_teamId: start
+[2026-01-28T01:38:45.113Z] STEP update_pending_operators_teamId: ok affected=2
+[2026-01-28T01:38:45.133Z] STEP update_profiles_activeTeamId: start
+[2026-01-28T01:38:45.164Z] STEP update_profiles_activeTeamId: ok affected=13
+[2026-01-28T01:38:45.210Z] SANITY leads_missing_teamId=0 pending_missing_teamId=0
+[2026-01-28T01:38:45.221Z] --- DONE backfill-teams OK ---

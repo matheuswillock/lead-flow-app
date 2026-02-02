@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"  
-import { LayoutDashboard, KanbanSquare, ChartBarBig, Users, HeartPulse, CalendarDays } from "lucide-react"
+import { LayoutDashboard, KanbanSquare, ChartBarBig, Users, HeartPulse, CalendarDays, Users2 } from "lucide-react"
 
 import {
   Sidebar,
@@ -17,9 +17,12 @@ import {
 } from "@/components/ui/sidebar"
 import { NavUser } from "./nav-user"
 import { useUserContext } from "@/app/context/UserContext"
+import { useTeamContext } from "@/app/context/TeamContext"
+import { TeamSwitcher } from "@/components/team-switcher"
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const { user } = useUserContext();
+  const { teams, activeTeamId, setActiveTeamId, isTeamMaster } = useTeamContext();
   const isMaster = user?.isMaster === true;
   const isManager = user?.role === "manager";
 
@@ -34,27 +37,38 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       icon: Users,
       managerOnly: true
     },
+    {
+      title: "Gerenciar Times",
+      url: `/${supabaseId}/teams`,
+      icon: Users2,
+      masterOnly: true
+    },
   ];
 
   return (
     <Sidebar collapsible="offcanvas" {...sidebarProps}>
       <SidebarHeader>
-        <SidebarMenu>
-            <SidebarMenuItem>
-                <SidebarMenuButton
-                    asChild
-                    className="data-[slot=sidebar-menu-button]:!p-1.5"
-                >
-                    <a href="#">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-                            <HeartPulse className="h-5 w-5 text-primary-foreground" />
-                        </div>
-                        <span className="text-base font-semibold">Corretor Studio</span>
-                    </a>
-                </SidebarMenuButton>
-            </SidebarMenuItem>
-        </SidebarMenu>
-  </SidebarHeader>
+        <div className="flex items-start justify-between flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
+              <HeartPulse className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <span className="text-base font-semibold">Corretor Studio</span>
+          </div>
+          {teams.length > 0 ? (
+            <TeamSwitcher
+              teams={teams.map((team) => ({
+                id: team.id,
+                name: team.name,
+              }))}
+              activeTeamId={activeTeamId}
+              onChange={setActiveTeamId}
+              variant="compact"
+              inline
+            />
+          ) : null}
+        </div>
+      </SidebarHeader>
         <SidebarContent>
             <SidebarGroup>
                 <SidebarGroupLabel>Navegação</SidebarGroupLabel>
@@ -62,6 +76,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                     <SidebarMenu>
                         {items.map((item) => {
                           if (item.managerOnly && !isManager && !isMaster) {
+                            return null;
+                          }
+                          if (item.masterOnly && !isTeamMaster) {
                             return null;
                           }
 

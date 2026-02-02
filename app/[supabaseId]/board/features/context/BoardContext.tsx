@@ -6,6 +6,7 @@ import { createBoardService } from "../services/BoardService";
 import { useParams, useSearchParams } from "next/navigation";
 import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { FinalizeContractData } from "../container/FinalizeContractDialog";
+import { useTeamContext } from "@/app/context/TeamContext";
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -82,6 +83,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 }) => {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
+  const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
   const searchParams = useSearchParams();
   const sharedLeadCode = searchParams.get("leadCode");
   const shareHandledRef = useRef(false);
@@ -149,14 +151,22 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       
       if (!supabaseId) {
         setErrors({ api: 'ID do usuário não encontrado' });
+        setIsLoading(false);
+        return;
+      }
+
+      if (!activeTeamId) {
+        setErrors({ api: "Selecione um time para visualizar os leads." });
+        setIsLoading(false);
         return;
       }
 
       const currentUser = userRef.current;
       if (!currentUser) {
+        setIsLoading(false);
         return;
       }
-      if (currentUser?.role === "operator" && !currentUser.functions?.includes("SDR")) {
+      if (activeRole === "operator" && !activeFunctions?.includes("SDR")) {
         setData(() => {
           const empty: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
           COLUMNS.forEach(({ key }) => {
@@ -173,7 +183,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         return;
       }
       
-      const result = await boardService.fetchLeads(supabaseId, 'manager'); // Assumindo que é um manager por enquanto
+      const roleToSend = activeRole || "manager";
+      const result = await boardService.fetchLeads(supabaseId, roleToSend, activeTeamId);
 
       if (result.isValid && result.result) {
         console.info('[BoardContext] Leads fetched from API:', result.result.length, 'leads');
@@ -282,8 +293,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
   useEffect(() => {
     if (userLoading) return;
+    if (teamLoading) return;
     loadLeads();
-  }, [userLoading, supabaseId]);
+  }, [userLoading, teamLoading, supabaseId, activeTeamId]);
 
   useEffect(() => {
     if (!sharedLeadCode || shareHandledRef.current) return;
@@ -364,7 +376,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
-              'x-supabase-user-id': supabaseId
+              'x-supabase-user-id': supabaseId,
+              'x-team-id': activeTeamId || ''
             },
             body: JSON.stringify({ status: newStatus })
           });

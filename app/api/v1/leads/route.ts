@@ -15,10 +15,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     
     const supabaseId = request.headers.get('x-supabase-user-id') || body.supabaseId;
+    const teamId = request.headers.get('x-team-id') || body.teamId;
     
     if (!supabaseId) {
       const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
       return NextResponse.json(output, { status: 401 });
+    }
+    if (!teamId) {
+      const output = new Output(false, [], ["Team ID é obrigatório"], null);
+      return NextResponse.json(output, { status: 400 });
     }
 
     let validatedData;
@@ -29,7 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
-    const output = await leadUseCase.createLead(supabaseId, validatedData);
+    const output = await leadUseCase.createLead(supabaseId, validatedData, teamId);
     const status = output.isValid ? 201 : 400;
     return NextResponse.json(output, { status });
 
@@ -61,12 +66,18 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const teamId = request.headers.get('x-team-id') || searchParams.get('teamId');
 
-    console.info('[API /leads] Query params:', { role, status, assignedTo, search, startDate, endDate });
+    console.info('[API /leads] Query params:', { role, status, assignedTo, search, startDate, endDate, teamId });
 
     if (!role) {
       console.warn('[API /leads] No role in query params');
       const output = new Output(false, [], ["Role do usuário é obrigatório"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
+    if (!teamId) {
+      const output = new Output(false, [], ["Team ID é obrigatório"], null);
       return NextResponse.json(output, { status: 400 });
     }
 
@@ -77,6 +88,7 @@ export async function GET(request: NextRequest) {
       ...(startDate && { startDate: new Date(startDate) }),
       ...(endDate && { endDate: new Date(endDate) }),
       role, // Adiciona o role nas opções
+      teamId,
     };
 
     console.info('[API /leads] Calling LeadUseCase with options:', options);

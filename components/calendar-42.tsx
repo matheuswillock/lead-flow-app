@@ -27,6 +27,7 @@ import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes"
 import { getLeadStatusLabel } from "@/lib/lead-status"
 import { CalendarDayButton } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
+import { useTeamContext } from "@/app/context/TeamContext"
 
 const SLOT_MINUTES = 30
 
@@ -124,6 +125,7 @@ export default function Calendar42() {
   const [leadToCancel, setLeadToCancel] = React.useState<Lead | null>(null)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
+  const { activeTeamId } = useTeamContext()
   const timeListRef = React.useRef<HTMLDivElement | null>(null)
 
   const timeSlots = React.useMemo(() => buildTimeSlots(), [])
@@ -215,6 +217,7 @@ export default function Calendar42() {
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
         },
       })
       const result = await response.json()

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { useTeamContext } from "@/app/context/TeamContext"
 
 interface ScheduleData {
   id: string
@@ -40,6 +41,7 @@ interface UpcomingMeetingsProps {
 }
 
 export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
+  const { activeTeamId } = useTeamContext()
   const [schedules, setSchedules] = React.useState<ScheduleData[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -52,6 +54,7 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
         const response = await fetch('/api/v1/dashboard/schedules', {
           headers: {
             'x-supabase-user-id': supabaseId,
+            'x-team-id': activeTeamId || '',
           },
         })
 
@@ -80,10 +83,10 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
       }
     }
 
-    if (supabaseId) {
+    if (supabaseId && activeTeamId) {
       fetchSchedules()
     }
-  }, [supabaseId])
+  }, [supabaseId, activeTeamId])
 
   const getInitials = (name: string) => {
     const names = name.split(' ')

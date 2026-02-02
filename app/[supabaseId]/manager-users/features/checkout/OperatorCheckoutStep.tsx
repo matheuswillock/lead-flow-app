@@ -42,6 +42,7 @@ const getCountdown = (deadline?: number | null) => {
 
 interface OperatorCheckoutStepProps {
   managerId: string;
+  teamId: string;
   operatorData: CreateManagerUserFormData;
   onCancel: () => void;
   onComplete: () => void;
@@ -49,6 +50,7 @@ interface OperatorCheckoutStepProps {
 
 export function OperatorCheckoutStep({
   managerId,
+  teamId,
   operatorData,
   onCancel,
   onComplete,
@@ -207,6 +209,7 @@ export function OperatorCheckoutStep({
     try {
       const payload: any = {
         managerId,
+        teamId,
         operatorData: {
           name: operatorData.name,
           email: operatorData.email,

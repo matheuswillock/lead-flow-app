@@ -11,14 +11,17 @@ import {
   ManagerUserTableRow
 } from "../types";
 import { ManagerUsersService } from "../services/ManagerUsersService";
+import { useTeamContext } from "@/app/context/TeamContext";
 
 interface UseManagerUsersProps {
   supabaseId: string;
   currentUserRole: string;
+  currentProfileId?: string;
   hasPermanentSubscription?: boolean;
 }
 
-export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubscription = false }: UseManagerUsersProps) {
+export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId, hasPermanentSubscription = false }: UseManagerUsersProps) {
+  const { activeTeamId, activeRole } = useTeamContext();
   const [state, setState] = useState<ManagerUsersState>({
     users: [],
     loading: true,
@@ -37,21 +40,27 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
   });
 
 
-  const [permissions] = useState<UserPermissions>({
-    canCreateUser: currentUserRole === "manager",
-    canEditUser: currentUserRole === "manager", 
-    canDeleteUser: currentUserRole === "manager",
-    canManageOperators: currentUserRole === "manager",
-  });
+  const resolvedRole = activeRole ?? currentUserRole;
+  const permissions = useMemo<UserPermissions>(() => ({
+    canCreateUser: resolvedRole === "manager",
+    canEditUser: resolvedRole === "manager",
+    canDeleteUser: resolvedRole === "manager",
+    canManageOperators: resolvedRole === "manager",
+  }), [resolvedRole]);
 
   // Criar instância do serviço com o supabaseId
   const managerUsersService = useMemo(() => {
-    return new ManagerUsersService(supabaseId);
-  }, [supabaseId]);
+    return new ManagerUsersService(supabaseId, activeTeamId);
+  }, [supabaseId, activeTeamId]);
 
   // Carregar usuários
   const loadUsers = useCallback(async () => {
     try {
+      if (!activeTeamId) {
+        setState(prev => ({ ...prev, users: [], loading: false, error: "Selecione um time para continuar." }));
+        return;
+      }
+
       setState(prev => ({ ...prev, loading: true, error: null }));
       
       const response = await managerUsersService.getUsers();
@@ -80,7 +89,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
         loading: false 
       }));
     }
-  }, [managerUsersService]);
+  }, [managerUsersService, activeTeamId]);
 
   // Criar usuário - se tem assinatura permanente, cria direto; senão redireciona para checkout do Asaas
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
@@ -116,6 +125,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
           headers: { 
             'Content-Type': 'application/json',
             'x-supabase-user-id': supabaseId,
+            ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
           },
           body: JSON.stringify({
             name: userData.name,
@@ -146,6 +156,11 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
       }
       // Fechar modal e abrir checkout
       setState(prev => ({ ...prev, isCreateModalOpen: false }));
+      if (!activeTeamId) {
+        toast.error("Selecione um time para continuar");
+        setState(prev => ({ ...prev, loading: false }));
+        return;
+      }
       // Fluxo normal: abrir checkout interno para pagamento do operador
       setOperatorCheckout({
         isOpen: true,
@@ -157,7 +172,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
       toast.error("Erro ao criar usuário");
       setState(prev => ({ ...prev, loading: false }));
     }
-  }, [supabaseId, hasPermanentSubscription, loadUsers, managerUsersService, state.users]);
+  }, [supabaseId, hasPermanentSubscription, loadUsers, managerUsersService, state.users, activeTeamId]);
 
   // Atualizar usuário
   const updateUser = useCallback(async (userId: string, userData: UpdateManagerUserFormData) => {
@@ -223,6 +238,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
   }, [supabaseId, loadUsers]);
 
   // Preparar dados da tabela com permissões
+  const resolvedProfileId = currentProfileId ?? supabaseId;
   const tableData: ManagerUserTableRow[] = state.users.map(user => {
     // Determinar status baseado em isPending e pendingPayment
     let status: ManagerUserTableRow['status'] = 'active';
@@ -243,8 +259,8 @@ export function useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubsc
     
     return {
       ...user,
-      canEdit: permissions.canEditUser && managerUsersService.canEditUser(supabaseId, user.id, user.role) && !user.isPending,
-      canDelete: permissions.canDeleteUser && (user.id !== supabaseId) && !user.isPending,
+      canEdit: permissions.canEditUser && managerUsersService.canEditUser(resolvedProfileId, user.id, user.role) && !user.isPending,
+      canDelete: permissions.canDeleteUser && (user.id !== resolvedProfileId) && !user.isPending,
       status,
       pendingPayment: user.pendingPayment ? {
         id: user.pendingPayment.id,

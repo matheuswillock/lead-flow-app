@@ -48,6 +48,14 @@ export class MetricsUseCase implements IMetricsUseCase {
           null
         );
       }
+      if (!filters.teamId) {
+        return new Output(
+          false,
+          [],
+          ['teamId é obrigatório'],
+          null
+        );
+      }
 
       // Converter período em datas se necessário
       let startDate = filters.startDate;
@@ -62,6 +70,7 @@ export class MetricsUseCase implements IMetricsUseCase {
       // Converter para o formato do serviço
       const serviceFilters: DashboardFilters = {
         supabaseId: filters.supabaseId,
+        teamId: filters.teamId,
         period: filters.period || '30d',
         ...(startDate && { startDate }),
         ...(endDate && { endDate }),
@@ -92,7 +101,7 @@ export class MetricsUseCase implements IMetricsUseCase {
   /**
    * Busca métricas detalhadas por status
    */
-  async getDetailedStatusMetrics(supabaseId: string): Promise<Output> {
+  async getDetailedStatusMetrics(supabaseId: string, teamId: string): Promise<Output> {
     try {
       // Validar entrada
       if (!supabaseId) {
@@ -103,9 +112,17 @@ export class MetricsUseCase implements IMetricsUseCase {
           null
         );
       }
+      if (!teamId) {
+        return new Output(
+          false,
+          [],
+          ['teamId é obrigatório'],
+          null
+        );
+      }
 
       // Chamar o serviço
-      const detailedMetrics = await this.dashboardInfosService.getDetailedStatusMetrics(supabaseId);
+      const detailedMetrics = await this.dashboardInfosService.getDetailedStatusMetrics(supabaseId, teamId);
 
       return new Output(
         true,

@@ -34,10 +34,11 @@ export class DashboardInfosService implements IDashboardInfosService {
    * Busca todas as métricas do dashboard
    */
  async getDashboardMetrics(filters: DashboardFilters): Promise<DashboardMetrics> {
-    const { supabaseId, startDate, endDate } = filters;
+    const { supabaseId, teamId, startDate, endDate } = filters;
     
     const repositoryFilters: MetricsFilters = {
       supabaseId,
+      teamId,
       startDate,
       endDate,
     };
@@ -129,8 +130,8 @@ export class DashboardInfosService implements IDashboardInfosService {
   /**
    * Busca leads agrupados por período com dados de conversão
    */
-  private async getLeadsByPeriod(filters: DashboardFilters) {
-    const { supabaseId, period = '30d' } = filters;
+ private async getLeadsByPeriod(filters: DashboardFilters) {
+    const { supabaseId, teamId, period = '30d' } = filters;
     
     let startDate: Date;
     const endDate = new Date();
@@ -156,11 +157,12 @@ export class DashboardInfosService implements IDashboardInfosService {
     }
 
     // Buscar leads criados no período
-    const leads = await metricsRepository.getLeadsByPeriod(supabaseId, startDate, endDate);
+    const leads = await metricsRepository.getLeadsByPeriod(supabaseId, teamId, startDate, endDate);
     
     // Buscar conversões (vendas finalizadas) no período
     const repositoryFilters: MetricsFilters = {
       supabaseId,
+      teamId,
       startDate,
       endDate,
     };
@@ -244,8 +246,8 @@ export class DashboardInfosService implements IDashboardInfosService {
   /**
    * Busca métricas detalhadas por status
    */
- async getDetailedStatusMetrics(supabaseId: string) : Promise<DetailedStatusMetrics[]> {
-    const statusMetrics = await metricsRepository.getStatusMetrics(supabaseId);
+ async getDetailedStatusMetrics(supabaseId: string, teamId: string) : Promise<DetailedStatusMetrics[]> {
+    const statusMetrics = await metricsRepository.getStatusMetrics(supabaseId, teamId);
 
     return statusMetrics.map((metric) => ({
       status: metric.status,

@@ -194,9 +194,23 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
       const healthPlan = this.mapHealthPlan(metaData.currentHealthPlan);
       const leadCode = await this.generateLeadCode(metaData.name || "Lead");
 
+      const team = await prisma.team.findFirst({
+        where: { masterId: managerId },
+        orderBy: [
+          { isDefault: "desc" },
+          { createdAt: "asc" },
+        ],
+        select: { id: true }
+      });
+
+      if (!team) {
+        throw new Error("Time padrao nao encontrado para o manager.");
+      }
+
       // Criar lead
       const lead = await leadRepository.create({
         manager: { connect: { id: managerId } },
+        team: { connect: { id: team.id } },
         leadCode,
         name: metaData.name,
         email: metaData.email || null,

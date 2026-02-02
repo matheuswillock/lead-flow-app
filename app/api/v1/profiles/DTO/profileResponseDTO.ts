@@ -35,6 +35,7 @@ export interface ProfileResponseDTO {
   googleEmail: string | null;
   subscriptionId: string | null;
   subscriptionStatus: string | null;
+  activeTeamId: string | null;
   createdAt: string;
   updatedAt: string;
   usersAssociated: UserAssociated[];
@@ -101,6 +102,7 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     googleEmail: profile.googleEmail ?? null,
     subscriptionId: profile.subscriptionId ?? null,
     subscriptionStatus: profile.subscriptionStatus ?? null,
+    activeTeamId: profile.activeTeamId ?? null,
     createdAt: (profile.createdAt instanceof Date ? profile.createdAt.toISOString() : profile.createdAt) as string,
     updatedAt: (profile.updatedAt instanceof Date ? profile.updatedAt.toISOString() : profile.updatedAt) as string,
     usersAssociated,

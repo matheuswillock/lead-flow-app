@@ -1,32 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
+import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 
 export async function GET(request: NextRequest) {
   try {
-    const supabaseId = request.headers.get('x-supabase-user-id');
-    
-    if (!supabaseId) {
-      const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
-      return NextResponse.json(output, { status: 401 });
+    const teamAccess = await getTeamAccess(request);
+    if (teamAccess.error) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
-
-    // Buscar o perfil para verificar se é Manager ou Operator
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { 
-        id: true, 
-        role: true,
-        fullName: true,
-        operators: {
-          select: { id: true }
-        }
-      },
-    });
-
-    if (!profile) {
-      const output = new Output(false, [], ["Perfil não encontrado"], null);
-      return NextResponse.json(output, { status: 404 });
+    if (!hasLeadAccess(teamAccess.access.teamMember)) {
+      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+      return NextResponse.json(output, { status: 403 });
     }
 
     // Data de hoje (início e fim do dia)
@@ -37,15 +22,11 @@ export async function GET(request: NextRequest) {
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (profile.role === 'manager') {
-      // Manager: buscar agendamentos do manager E de seus operators
-      const operatorIds = profile.operators.map((op: { id: string }) => op.id);
+    if (teamAccess.access.teamMember.role === 'manager') {
+      // Manager: buscar agendamentos do time
       whereClause = {
         lead: {
-          OR: [
-            { managerId: profile.id },
-            { assignedTo: { in: operatorIds } }
-          ],
+          teamId: teamAccess.access.teamId,
         },
         date: {
           gte: startOfDay, // Desde o início do dia
@@ -56,7 +37,11 @@ export async function GET(request: NextRequest) {
       // Operator: buscar apenas agendamentos atribuídos a ele
       whereClause = {
         lead: {
-          assignedTo: profile.id,
+          teamId: teamAccess.access.teamId,
+          OR: [
+            { assignedTo: teamAccess.access.profileId },
+            { createdBy: teamAccess.access.profileId },
+          ],
         },
         date: {
           gte: startOfDay,
@@ -83,7 +68,6 @@ export async function GET(request: NextRequest) {
             email: true,
             phone: true,
             assignedTo: true,
-            managerId: true,
             assignee: {
               select: {
                 id: true,

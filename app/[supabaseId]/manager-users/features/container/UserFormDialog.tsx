@@ -34,6 +34,7 @@ import {
   UpdateManagerUserFormData,
   ManagerUser,
 } from "../types";
+import { useTeamContext } from "@/app/context/TeamContext";
 
 interface UserFormDialogProps {
   open: boolean;
@@ -41,7 +42,8 @@ interface UserFormDialogProps {
   onSubmit: (data: any) => Promise<void>; // Simplificado para aceitar ambos os tipos
   user?: ManagerUser | null;
   loading?: boolean;
-  currentUserId?: string;
+  supabaseId?: string;
+  currentProfileId?: string;
 }
 
 export function UserFormDialog({
@@ -50,8 +52,10 @@ export function UserFormDialog({
   onSubmit,
   user = null,
   loading = false,
-  currentUserId,
+  supabaseId,
+  currentProfileId,
 }: UserFormDialogProps) {
+  const { activeTeamId } = useTeamContext();
   const isEditing = !!user;
   const schema = isEditing ? UpdateManagerUserSchema : CreateManagerUserSchema;
   
@@ -97,11 +101,14 @@ export function UserFormDialog({
     try {
       const nextEmail = (data as { email?: string }).email?.trim() || "";
       const currentEmail = user?.email?.trim() || "";
-      const shouldValidateEmail = !!nextEmail && currentUserId && (!isEditing || nextEmail.toLowerCase() !== currentEmail.toLowerCase());
+      const shouldValidateEmail = !!nextEmail && supabaseId && (!isEditing || nextEmail.toLowerCase() !== currentEmail.toLowerCase());
 
       if (shouldValidateEmail) {
         const response = await fetch(
-          `/api/v1/manager/${currentUserId}/users?email=${encodeURIComponent(nextEmail)}`,
+          `/api/v1/manager/${supabaseId}/users?email=${encodeURIComponent(nextEmail)}`,
+          {
+            headers: activeTeamId ? { "x-team-id": activeTeamId } : undefined,
+          }
         );
         const payload = await response.json().catch(() => null);
         const isAvailable = response.ok && payload?.isValid && payload?.result?.available === true;
@@ -125,7 +132,7 @@ export function UserFormDialog({
   };
 
   // Verificar se é o próprio usuário editando seu papel
-  const isOwnProfile = isEditing && user?.id === currentUserId;
+  const isOwnProfile = isEditing && user?.id === currentProfileId;
   const isManager = user?.role === "manager";
   const canEditRole = !isOwnProfile || !isManager;
 

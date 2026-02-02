@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { LeadStatus } from '@prisma/client';
+import { useTeamContext } from '@/app/context/TeamContext';
 import { 
   LeadResponseDTO, 
   LeadListResponseDTO,
@@ -25,6 +26,7 @@ interface UseLeadsOptions {
 export const useLeads = () => {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
+  const { activeTeamId } = useTeamContext();
 
   const [leads, setLeads] = useState<LeadResponseDTO[]>([]);
   const [loading, setLoading] = useState(false);
@@ -53,7 +55,7 @@ export const useLeads = () => {
     } catch (err) {
       console.error('Error fetching user profile:', err);
     }
-  }, [supabaseId]);
+  }, [supabaseId, activeTeamId]);
 
   // Load user profile when hook initializes
   useEffect(() => {
@@ -71,6 +73,9 @@ export const useLeads = () => {
       // Always include role in the request
       const roleToUse = finalOptions.role || userRole;
       searchParams.append('role', roleToUse);
+      if (activeTeamId) {
+        searchParams.append('teamId', activeTeamId);
+      }
 
       if (finalOptions.status) searchParams.append('status', finalOptions.status);
       if (finalOptions.assignedTo) searchParams.append('assignedTo', finalOptions.assignedTo);
@@ -83,6 +88,7 @@ export const useLeads = () => {
       const response = await fetch(`/api/v1/leads?${searchParams.toString()}`, {
         headers: {
           'x-supabase-user-id': supabaseId,
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
         },
       });
       
@@ -99,7 +105,7 @@ export const useLeads = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabaseId, userRole]);
+  }, [supabaseId, userRole, activeTeamId]);
 
   const createLead = useCallback(async (leadData: CreateLeadRequest): Promise<CreateLeadResponseDTO> => {
     setLoading(true);
@@ -113,6 +119,7 @@ export const useLeads = () => {
         headers: {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
         },
         body: JSON.stringify(leadData),
       });
@@ -152,7 +159,7 @@ export const useLeads = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabaseId]);
+  }, [supabaseId, activeTeamId]);
 
   const updateLead = useCallback(async (id: string, leadData: UpdateLeadRequest): Promise<UpdateLeadResponseDTO> => {
     setLoading(true);
@@ -164,6 +171,7 @@ export const useLeads = () => {
         headers: {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
         },
         body: JSON.stringify(leadData),
       });
@@ -198,7 +206,7 @@ export const useLeads = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabaseId]);
+  }, [supabaseId, activeTeamId]);
 
   const deleteLead = useCallback(async (id: string): Promise<DeleteLeadResponseDTO> => {
     setLoading(true);
@@ -209,6 +217,7 @@ export const useLeads = () => {
         method: 'DELETE',
         headers: {
           'x-supabase-user-id': supabaseId,
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
         },
       });
 
@@ -240,7 +249,7 @@ export const useLeads = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabaseId]);
+  }, [supabaseId, activeTeamId]);
 
   const updateLeadStatus = useCallback(async (id: string, status: LeadStatus): Promise<UpdateLeadResponseDTO> => {
     setLoading(true);
@@ -248,10 +257,11 @@ export const useLeads = () => {
 
     try {
       const response = await fetch(`/api/v1/leads/${id}/status`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
         },
         body: JSON.stringify({ status }),
       });
@@ -279,7 +289,7 @@ export const useLeads = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabaseId]);
+  }, [supabaseId, activeTeamId]);
 
   const assignLeadToOperator = useCallback(async (id: string, operatorId: string): Promise<UpdateLeadResponseDTO> => {
     setLoading(true);
@@ -291,6 +301,7 @@ export const useLeads = () => {
         headers: {
           'Content-Type': 'application/json',
           'x-supabase-user-id': supabaseId,
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
         },
         body: JSON.stringify({ operatorId }),
       });
@@ -338,6 +349,7 @@ export const useLeads = () => {
 export function useLead(id: string) {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
+  const { activeTeamId } = useTeamContext();
   
   const [lead, setLead] = useState<LeadResponseDTO | null>(null);
   const [loading, setLoading] = useState(false);
@@ -353,6 +365,7 @@ export function useLead(id: string) {
       const response = await fetch(`/api/v1/leads/${id}`, {
         headers: {
           'x-supabase-user-id': supabaseId,
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
         },
       });
       
@@ -367,7 +380,7 @@ export function useLead(id: string) {
     } finally {
       setLoading(false);
     }
-  }, [id, supabaseId]);
+  }, [id, supabaseId, activeTeamId]);
 
   return {
     lead,

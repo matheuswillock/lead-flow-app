@@ -5,6 +5,7 @@ import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSc
 import { prisma } from "@/app/api/infra/data/prisma";
 import { resendCalendarInvite } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 import { emailService } from "@/lib/services/EmailService";
+import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 
 const resendSchema = z.object({
   target: z.enum(["all", "single", "new"]),
@@ -17,10 +18,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabaseId = request.headers.get("x-supabase-user-id");
-    if (!supabaseId) {
-      const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
-      return NextResponse.json(output, { status: 401 });
+    const teamAccess = await getTeamAccess(request);
+    if (teamAccess.error) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    }
+    if (!hasLeadAccess(teamAccess.access.teamMember)) {
+      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+      return NextResponse.json(output, { status: 403 });
     }
 
     const { id: leadId } = await params;
@@ -55,8 +59,8 @@ export async function POST(
       },
     });
 
-    if (!lead) {
-      const output = new Output(false, [], ["Lead não encontrado"], null);
+    if (!lead || lead.teamId !== teamAccess.access.teamId) {
+      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
     }
 

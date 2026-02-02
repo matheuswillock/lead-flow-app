@@ -8,10 +8,12 @@ import {
 class ManagerUsersService {
   private baseUrl: string;
   private supabaseId: string;
+  private teamId: string | null;
 
-  constructor(supabaseId: string) {
+  constructor(supabaseId: string, teamId: string | null) {
     this.baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
     this.supabaseId = supabaseId;
+    this.teamId = teamId;
   }
 
   private async makeRequest<T>(
@@ -23,6 +25,7 @@ class ManagerUsersService {
     const defaultHeaders = {
       "Content-Type": "application/json",
       "x-supabase-user-id": this.supabaseId,
+      ...(this.teamId ? { "x-team-id": this.teamId } : {}),
     };
 
     const response = await fetch(url, {
@@ -118,6 +121,7 @@ class ManagerUsersService {
       headers: {
         "Content-Type": "application/json",
         "x-supabase-user-id": this.supabaseId,
+        ...(this.teamId ? { "x-team-id": this.teamId } : {}),
       },
     });
 

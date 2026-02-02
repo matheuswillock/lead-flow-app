@@ -157,6 +157,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
+    const teamId = request.headers.get("x-team-id") || profileInfo.activeTeamId;
+    if (!teamId) {
+      const output = new Output(false, [], ["Team ID é obrigatório"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
     const buffer = Buffer.from(await (file as File).arrayBuffer());
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -197,7 +203,7 @@ export async function POST(request: NextRequest) {
       emails.size || phones.size || cnpjs.size
         ? await prisma.lead.findMany({
             where: {
-              managerId,
+              teamId,
               OR: [
                 emails.size ? { email: { in: Array.from(emails) } } : undefined,
                 phones.size ? { phone: { in: Array.from(phones) } } : undefined,
@@ -307,7 +313,7 @@ export async function POST(request: NextRequest) {
         ticket: ticket ?? undefined,
         contractDueDate: undefined,
         soldPlan: undefined,
-      });
+      }, teamId);
 
       if (!output.isValid) {
         skipped += 1;

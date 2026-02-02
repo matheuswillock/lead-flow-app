@@ -507,6 +507,43 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         return new Output(false, [], ['Erro ao criar perfil do operador'], null);
       }
 
+      // 6.1 Vincular operador ao time
+      try {
+        let targetTeamId = pendingOperator.teamId as string | null | undefined;
+        if (!targetTeamId) {
+          const defaultTeam = await prisma.team.findFirst({
+            where: { masterId: pendingOperator.managerId, isDefault: true },
+            select: { id: true },
+          });
+          targetTeamId = defaultTeam?.id || null;
+        }
+
+        if (targetTeamId) {
+          const existingMember = await prisma.teamMember.findUnique({
+            where: {
+              teamId_profileId: {
+                teamId: targetTeamId,
+                profileId: operator.id,
+              },
+            },
+          });
+
+          if (!existingMember) {
+            await prisma.teamMember.create({
+              data: {
+                teamId: targetTeamId,
+                profileId: operator.id,
+                role: (pendingOperator.role || 'operator') as any,
+                functions: pendingOperator.functions ?? [],
+              },
+            });
+          }
+        }
+      } catch (error) {
+        console.error('❌ [createOperatorFromPending] Erro ao vincular operador ao time:', error);
+        // Não bloqueia o fluxo, operador já foi criado
+      }
+
       // 7. Atualizar status do operador pendente (CRÍTICO - deve ser bem-sucedido)
       console.info('🔄 [createOperatorFromPending] Atualizando PendingOperator...');
       try {

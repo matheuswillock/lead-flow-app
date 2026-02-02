@@ -19,6 +19,8 @@ import { PendingOperatorsAlert } from "./PendingOperatorsAlert";
 import { OperatorCheckoutStep } from "../checkout/OperatorCheckoutStep";
 import type { ManagerUserTableRow } from "../types";
 import { createColumns } from "./ManagerUsersColumns";
+import { useTeamContext } from "@/app/context/TeamContext";
+import { useUserContext } from "@/app/context/UserContext";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;
@@ -33,7 +35,11 @@ export function ManagerUsersContainer({
   currentUserIsMaster = false,
   hasPermanentSubscription = false,
 }: ManagerUsersContainerProps) {
-  const canCreateOrDelete = currentUserIsMaster;
+  const { user } = useUserContext();
+  const { activeRole, isTeamMaster, activeTeamId } = useTeamContext();
+  const resolvedRole = activeRole ?? currentUserRole;
+  const resolvedIsMaster = isTeamMaster ?? currentUserIsMaster;
+  const canCreateOrDelete = resolvedIsMaster;
   const [isDeletePendingDialogOpen, setIsDeletePendingDialogOpen] = useState(false);
   const [pendingOperatorToDelete, setPendingOperatorToDelete] = useState<ManagerUserTableRow | null>(null);
 
@@ -66,7 +72,7 @@ export function ManagerUsersContainer({
     closeEditModal,
     openDeleteDialog,
     closeDeleteDialog,
-  } = useManagerUsers({ supabaseId, currentUserRole, hasPermanentSubscription });
+  } = useManagerUsers({ supabaseId, currentUserRole, currentProfileId: user?.id, hasPermanentSubscription });
 
   // Handler para abrir dialog de deletar operador pendente
   const handleDeletePendingOperator = (user: ManagerUserTableRow) => {
@@ -112,7 +118,7 @@ export function ManagerUsersContainer({
   const pendingCount = users.filter(user => user.isPending).length;
 
   // Verificar se é manager
-  if (currentUserRole !== "manager") {
+  if (resolvedRole !== "manager") {
     return (
       <div className="container mx-auto py-8 px-6">
         <Card>
@@ -137,6 +143,7 @@ export function ManagerUsersContainer({
     return (
       <OperatorCheckoutStep
         managerId={supabaseId}
+        teamId={activeTeamId || ""}
         operatorData={operatorCheckout.operatorData}
         onCancel={closeOperatorCheckout}
         onComplete={completeOperatorCheckout}
@@ -150,7 +157,7 @@ export function ManagerUsersContainer({
     onDeletePendingOperator: handleDeletePendingOperator,
     onResendInvite: resendInvite,
     onTogglePermanentSubscription: togglePermanentSubscription,
-    currentUserIsMaster,
+    currentUserIsMaster: resolvedIsMaster,
     canDelete: canCreateOrDelete,
   });
 
@@ -257,7 +264,8 @@ export function ManagerUsersContainer({
           onOpenChange={closeCreateModal}
           onSubmit={createUser}
           loading={loading}
-          currentUserId={supabaseId}
+          supabaseId={supabaseId}
+          currentProfileId={user?.id}
         />
       )}
 
@@ -267,7 +275,8 @@ export function ManagerUsersContainer({
         onSubmit={(data) => selectedUser ? updateUser(selectedUser.id, data) : Promise.resolve()}
         user={selectedUser}
         loading={loading}
-        currentUserId={supabaseId}
+        supabaseId={supabaseId}
+        currentProfileId={user?.id}
       />
 
       {canCreateOrDelete && (

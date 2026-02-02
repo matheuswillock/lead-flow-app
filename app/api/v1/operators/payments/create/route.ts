@@ -10,11 +10,18 @@ const OPERATOR_PRICE = 19.9;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { managerId, operatorData, billingType, creditCard } = body;
+    const { managerId, operatorData, billingType, creditCard, teamId } = body;
 
     if (!managerId || !operatorData) {
       return NextResponse.json(
         new Output(false, [], ["Dados incompletos"], null),
+        { status: 400 }
+      );
+    }
+
+    if (!teamId) {
+      return NextResponse.json(
+        new Output(false, [], ["Team ID é obrigatório"], null),
         { status: 400 }
       );
     }
@@ -51,6 +58,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { id: true, masterId: true },
+    });
+
+    if (!team) {
+      return NextResponse.json(
+        new Output(false, [], ["Time nao encontrado"], null),
+        { status: 404 }
+      );
+    }
+
+    if (team.masterId !== manager.id) {
+      return NextResponse.json(
+        new Output(false, [], ["Apenas o master do time pode adicionar operadores"], null),
+        { status: 403 }
+      );
+    }
+
     if (!manager.subscriptionStatus || manager.subscriptionStatus === "canceled") {
       return NextResponse.json(
         new Output(false, [], ["Manager nao possui assinatura ativa"], null),
@@ -83,6 +109,7 @@ export async function POST(request: NextRequest) {
     const pendingOperator = await prisma.pendingOperator.create({
       data: {
         managerId: manager.id,
+        teamId: team.id,
         name: operatorData.name,
         email: operatorData.email,
         role: operatorData.role || "operator",

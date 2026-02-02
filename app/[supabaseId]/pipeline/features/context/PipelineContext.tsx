@@ -8,6 +8,7 @@ import { IBoardService } from "@/app/[supabaseId]/board/features/services/IBoard
 import { useParams, useSearchParams } from "next/navigation";
 import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
+import { useTeamContext } from "@/app/context/TeamContext";
 
 interface IPipelineProviderProps {
   children: ReactNode;
@@ -81,6 +82,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
 }) => {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
+  const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
   const searchParams = useSearchParams();
   const sharedLeadCode = searchParams.get("leadCode");
   const shareHandledRef = useRef(false);
@@ -150,12 +152,18 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         return;
       }
 
+      if (!activeTeamId) {
+        setErrors({ api: "Selecione um time para visualizar os leads." });
+        setIsLoading(false);
+        return;
+      }
+
       const currentUser = userRef.current;
       if (!currentUser) {
         setIsLoading(false);
         return;
       }
-      if (currentUser?.role === "operator" && !currentUser.functions?.includes("SDR")) {
+      if (activeRole === "operator" && !activeFunctions?.includes("SDR")) {
         setAllLeads([]);
         setErrors({ api: "Acesso negado: função SDR necessária para visualizar leads." });
         if (!accessDeniedShownRef.current) {
@@ -166,7 +174,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         return;
       }
       
-      const result = await pipelineService.fetchLeads(supabaseId, 'manager');
+      const roleToSend = activeRole || "manager";
+      const result = await pipelineService.fetchLeads(supabaseId, roleToSend, activeTeamId);
 
       if (result.isValid && result.result) {
         console.info('[PipelineContext] Leads fetched from API:', result.result.length, 'leads');
@@ -230,10 +239,10 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   }, [user]);
 
   useEffect(() => {
-    if (!userLoading) {
+    if (!userLoading && !teamLoading) {
       loadLeads();
     }
-  }, [userLoading]);
+  }, [userLoading, teamLoading, activeTeamId, supabaseId]);
 
   useEffect(() => {
     if (!sharedLeadCode || shareHandledRef.current) return;
@@ -255,7 +264,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-supabase-user-id': supabaseId
+          'x-supabase-user-id': supabaseId,
+          'x-team-id': activeTeamId || ''
         },
         body: JSON.stringify(contractData)
       });

@@ -20,7 +20,7 @@ interface UseDashboardMetricsReturn {
 /**
  * Hook personalizado para gerenciar métricas do dashboard
  */
-export function useDashboardMetrics(supabaseId: string, initialFilters?: MetricsFilters): UseDashboardMetricsReturn {
+export function useDashboardMetrics(supabaseId: string, teamId: string, initialFilters?: MetricsFilters): UseDashboardMetricsReturn {
   const [metrics, setMetrics] = useState<DashboardMetricsData | null>(null);
   const [detailedMetrics, setDetailedMetrics] = useState<DetailedMetricsData[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,8 +33,8 @@ export function useDashboardMetrics(supabaseId: string, initialFilters?: Metrics
       setError(null);
 
       const [metricsData, detailedData] = await Promise.all([
-        dashboardMetricsService.getMetrics(supabaseId, filters),
-        dashboardMetricsService.getDetailedMetrics(supabaseId),
+        dashboardMetricsService.getMetrics(supabaseId, teamId, filters),
+        dashboardMetricsService.getDetailedMetrics(supabaseId, teamId),
       ]);
 
       setMetrics(metricsData);
@@ -55,10 +55,10 @@ export function useDashboardMetrics(supabaseId: string, initialFilters?: Metrics
 
   // Buscar métricas quando supabaseId ou filtros mudarem
   useEffect(() => {
-    if (supabaseId) {
+    if (supabaseId && teamId) {
       fetchMetrics();
     }
-  }, [supabaseId, filters]);
+  }, [supabaseId, teamId, filters]);
 
   return {
     metrics,
@@ -73,7 +73,7 @@ export function useDashboardMetrics(supabaseId: string, initialFilters?: Metrics
 /**
  * Hook mais simples para buscar apenas métricas gerais
  */
-export function useDashboardMetricsSimple(supabaseId: string, period: '7d' | '30d' | '3m' | '6m' | '1y' = '30d') {
+export function useDashboardMetricsSimple(supabaseId: string, teamId: string, period: '7d' | '30d' | '3m' | '6m' | '1y' = '30d') {
   const [metrics, setMetrics] = useState<DashboardMetricsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +84,7 @@ export function useDashboardMetricsSimple(supabaseId: string, period: '7d' | '30
         setLoading(true);
         setError(null);
 
-        const data = await dashboardMetricsService.getMetrics(supabaseId, { period });
+        const data = await dashboardMetricsService.getMetrics(supabaseId, teamId, { period });
         setMetrics(data);
 
       } catch (err) {
@@ -95,10 +95,10 @@ export function useDashboardMetricsSimple(supabaseId: string, period: '7d' | '30
       }
     };
 
-    if (supabaseId) {
+    if (supabaseId && teamId) {
       fetchMetrics();
     }
-  }, [supabaseId, period]);
+  }, [supabaseId, teamId, period]);
 
   return { metrics, loading, error };
 }
