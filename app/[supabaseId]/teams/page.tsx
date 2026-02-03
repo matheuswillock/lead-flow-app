@@ -519,7 +519,7 @@ export default function TeamsPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[760px]">
+        <DialogContent className="sm:max-w-[760px] max-h-[90vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Gerenciar time</DialogTitle>
             <DialogDescription>
@@ -529,12 +529,13 @@ export default function TeamsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {manageLoading ? (
-            <div className="flex items-center justify-center rounded-lg border border-border/60 py-10 text-sm text-muted-foreground">
-              Carregando dados do time...
-            </div>
-          ) : (
-            <div className="space-y-6">
+          <div className="flex-1 overflow-y-auto pr-2">
+            {manageLoading ? (
+              <div className="flex items-center justify-center rounded-lg border border-border/60 py-10 text-sm text-muted-foreground">
+                Carregando dados do time...
+              </div>
+            ) : (
+              <div className="space-y-6">
               <div className="space-y-3">
                 <Label>Nome do time</Label>
                 <div className="flex flex-wrap items-center gap-2">
@@ -742,8 +743,9 @@ export default function TeamsPage() {
                   </div>
                 </>
               ) : null}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
