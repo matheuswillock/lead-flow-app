@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { RefreshCw, Settings, UserPlus, ShieldAlert, Trash2 } from "lucide-react";
@@ -20,19 +20,6 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
 import { TeamCheckoutStep } from "./features/checkout/TeamCheckoutStep";
 
-type BillingSummary = {
-  teamCount: number;
-  distinctUserCount: number;
-  totalUsersIncludingMaster: number;
-  billableTeams: number;
-  billableUsers: number;
-  basePrice: number;
-  extraTeamsPrice: number;
-  extraUsersPrice: number;
-  totalPrice: number;
-  hasPermanentSubscription: boolean;
-};
-
 type TeamMember = {
   id: string;
   profileId: string;
@@ -50,9 +37,6 @@ type EligibleProfile = {
   email: string;
 };
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
-
 export default function TeamsPage() {
   const { user } = useUser();
   const { teams, activeTeamId, setActiveTeamId, refreshTeams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
@@ -61,8 +45,6 @@ export default function TeamsPage() {
   const [newTeamName, setNewTeamName] = useState("");
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
   const [teamCheckout, setTeamCheckout] = useState<{ teamName: string; amount: number } | null>(null);
-  const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
-  const [billingLoading, setBillingLoading] = useState(false);
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [manageTeamId, setManageTeamId] = useState<string | null>(null);
   const [manageTeamName, setManageTeamName] = useState("");
@@ -142,7 +124,6 @@ export default function TeamsPage() {
       setIsCreateTeamOpen(false);
       setNewTeamName("");
       await refreshTeams();
-      await loadBillingSummary();
     } catch (error: any) {
       console.error("Erro ao criar time:", error);
       toast.error(error?.message || "Erro ao criar time.");
@@ -316,7 +297,6 @@ export default function TeamsPage() {
         toast.success("Time deletado com sucesso.");
         setIsManageOpen(false);
         await refreshTeams();
-        await loadBillingSummary();
       }
 
       if (confirmAction === "transfer") {
@@ -342,7 +322,6 @@ export default function TeamsPage() {
         toast.success("Time transferido com sucesso.");
         setIsManageOpen(false);
         await refreshTeams();
-        await loadBillingSummary();
       }
     } catch (error: any) {
       console.error("Erro ao confirmar acao:", error);
@@ -354,37 +333,6 @@ export default function TeamsPage() {
     }
   };
 
-
-  const loadBillingSummary = async () => {
-    if (!user?.isMaster || !supabaseId) {
-      setBillingSummary(null);
-      return;
-    }
-
-    setBillingLoading(true);
-    try {
-      const response = await fetch("/api/v1/billing/summary", {
-        headers: { "x-supabase-user-id": supabaseId },
-      });
-      const result = await response.json();
-
-      if (response.ok && result?.isValid) {
-        setBillingSummary(result.result as BillingSummary);
-      } else {
-        setBillingSummary(null);
-      }
-    } catch (error) {
-      console.error("Erro ao buscar resumo de cobrança:", error);
-      setBillingSummary(null);
-    } finally {
-      setBillingLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadBillingSummary();
-  }, [user?.isMaster, supabaseId, teams.length]);
-
   if (teamCheckout) {
     return (
       <TeamCheckoutStep
@@ -395,7 +343,6 @@ export default function TeamsPage() {
         onComplete={() => {
           setTeamCheckout(null);
           void refreshTeams();
-          void loadBillingSummary();
         }}
       />
     );
@@ -403,7 +350,7 @@ export default function TeamsPage() {
 
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
-      <div className="container mx-auto max-w-4xl px-4 py-10">
+      <div className="container mx-auto py-6 px-6 space-y-6">
         <Card className="border-border/60 shadow-sm">
           <CardHeader className="space-y-2">
             <CardTitle className="text-2xl">Gerenciar times</CardTitle>
@@ -442,70 +389,6 @@ export default function TeamsPage() {
                 </Button>
               </div>
             </div>
-
-            {user?.isMaster ? (
-              <Card className="border-border/60">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Resumo de cobranca</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {billingLoading ? (
-                    <p className="text-sm text-muted-foreground">Carregando resumo...</p>
-                  ) : billingSummary ? (
-                    <>
-                      <div className="grid gap-3 text-sm text-muted-foreground">
-                        <div className="flex items-center justify-between">
-                          <span>Times cadastrados</span>
-                          <span className="font-medium text-foreground">
-                            {billingSummary.teamCount}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Usuarios (distinct)</span>
-                          <span className="font-medium text-foreground">
-                            {billingSummary.distinctUserCount}
-                          </span>
-                        </div>
-                      </div>
-                      <Separator />
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between">
-                          <span>Base (1 time)</span>
-                          <span className="font-medium">
-                            {formatCurrency(billingSummary.basePrice)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Times adicionais</span>
-                          <span className="font-medium">
-                            {formatCurrency(billingSummary.extraTeamsPrice)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Usuarios adicionais</span>
-                          <span className="font-medium">
-                            {formatCurrency(billingSummary.extraUsersPrice)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-base font-semibold">
-                          <span>Total</span>
-                          <span>{formatCurrency(billingSummary.totalPrice)}</span>
-                        </div>
-                      </div>
-                      <div className="rounded-lg border border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground">
-                        {billingSummary.hasPermanentSubscription
-                          ? "Assinatura permanente ativa. Nenhuma cobranca sera gerada."
-                          : "Base inclui 1 time. Times extras custam R$ 29,90 cada e usuarios adicionais R$ 19,90 cada (master incluso na base)."}
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Nao foi possivel carregar o resumo de cobranca.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            ) : null}
 
             {teamsError ? (
               <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
