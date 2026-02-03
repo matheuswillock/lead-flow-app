@@ -32,7 +32,8 @@
     "prisma:db:push": "bunx prisma db push",
     "prisma:db:reset": "bunx prisma migrate reset --force",
     "prisma:db:deploy": "bunx prisma migrate deploy",
-    "db:check": "bunx tsx check-database.ts"
+    "db:check": "bunx tsx check-database.ts",
+    "admin:reset-karen-henrique": "bunx tsx scripts/admin/reset-karen-henrique.ts --confirm"
   },
   "prisma": {
     "seed": "bunx tsx prisma/seed.ts"
