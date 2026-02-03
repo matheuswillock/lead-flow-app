@@ -47,7 +47,7 @@ export function TeamSwitcher({
     variant === "compact" ? (
       <button
         type="button"
-        className="cursor-pointer inline-flex w-full items-center justify-start gap-2 rounded-md px-2 py-1 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        className="cursor-pointer flex w-full items-center justify-start gap-2 rounded-md px-2 py-1 text-xs font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
       >
         <ChevronsUpDown className="h-4 w-4" />
         <span className="max-w-[140px] truncate">{activeTeam.name}</span>

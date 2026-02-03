@@ -1,26 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasApi, asaasFetch } from "@/lib/asaas";
-import { getFullUrl } from "@/lib/utils/app-url";
 import { getBillingSummary, BILLING_PRICES } from "@/app/api/services/billing/TeamBillingService";
 import { z } from "zod";
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
 });
-
-function getIsProduction() {
-  const asaasEnv = process.env.ASAAS_ENV;
-  if (asaasEnv) {
-    return asaasEnv === "production";
-  }
-  return process.env.NODE_ENV === "production";
-}
-
-function getCheckoutUrl(checkoutId: string) {
-  return `https://${getIsProduction() ? "www" : "sandbox"}.asaas.com/checkoutSession/show?id=${checkoutId}`;
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -172,67 +158,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!profile.asaasCustomerId) {
-      return NextResponse.json(
-        new Output(false, [], ["Customer Asaas não encontrado para este master"], null),
-        { status: 400 }
-      );
-    }
-
-    const pendingAction = await prisma.pendingAction.create({
-      data: {
-        masterId: profile.id,
-        actionType: "create_team",
-        status: "pending",
-        payload: { name: validatedData.name },
-      },
-    });
-
-    const checkoutData: any = {
-      customer: profile.asaasCustomerId,
-      billingTypes: ["CREDIT_CARD"],
-      chargeTypes: ["DETACHED"],
-      items: [
-        {
-          name: "Time adicional",
-          description: `Ativacao de time adicional (${validatedData.name})`,
-          value: delta,
-          quantity: 1,
-        },
-      ],
-      callback: {
-        successUrl: getFullUrl(`/${supabaseId}/account?teamPayment=success`),
-        cancelUrl: getFullUrl(`/${supabaseId}/account?teamPayment=cancel`),
-        expiredUrl: getFullUrl(`/${supabaseId}/account?teamPayment=expired`),
-        autoRedirect: true,
-      },
-    };
-
-    let checkout: any;
-    try {
-      checkout = await asaasFetch(asaasApi.checkouts, {
-        method: "POST",
-        body: JSON.stringify(checkoutData),
-      });
-    } catch (error: any) {
-      await prisma.pendingAction.update({
-        where: { id: pendingAction.id },
-        data: { status: "failed" },
-      });
-
-      const message = error?.message || "Erro ao criar checkout no Asaas";
-      return NextResponse.json(new Output(false, [], [message], null), { status: 502 });
-    }
-
-    await prisma.pendingAction.update({
-      where: { id: pendingAction.id },
-      data: { checkoutId: checkout.id },
-    });
-
     return NextResponse.json(
-      new Output(true, ["Checkout criado com sucesso"], [], {
-        checkoutUrl: getCheckoutUrl(checkout.id),
-        pendingActionId: pendingAction.id,
+      new Output(true, ["Pagamento necessário para criar time"], [], {
+        requiresPayment: true,
+        amount: delta,
+        teamName: validatedData.name,
       }),
       { status: 200 }
     );

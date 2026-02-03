@@ -161,6 +161,9 @@ export function ManagerUsersContainer({
     canDelete: canCreateOrDelete,
   });
 
+  // O usuário logado não deve se ver na tabela de gerenciamento.
+  const visibleTableData = user?.id ? tableData.filter((row) => row.id !== user.id) : tableData;
+
   return (
     <div className="container mx-auto py-6 px-6 space-y-6">
       {/* Header */}
@@ -251,7 +254,7 @@ export function ManagerUsersContainer({
         <CardContent className="p-6">
           <DataTable
             columns={columns}
-            data={tableData}
+            data={visibleTableData}
             loading={loading}
           />
         </CardContent>

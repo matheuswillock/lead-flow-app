@@ -210,6 +210,23 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      const isPendingActionRef = !!externalReference && externalReference.startsWith('pending-action-');
+      if (!isPendingActionPayment && isPendingActionRef && (result.isPaid || paymentStatus === 'CONFIRMED')) {
+        try {
+          console.info('🔄 [Webhook Asaas] Detectado pagamento de AÇÃO PENDENTE (payment)');
+          const { pendingActionUseCase } = await import('@/app/api/useCases/pendingActions/PendingActionUseCase');
+          const actionResult = await pendingActionUseCase.applyPendingActionByPaymentId(paymentId);
+
+          if (actionResult.isValid) {
+            console.info('✅ [Webhook Asaas] Ação pendente aplicada com sucesso (payment)');
+          } else {
+            console.error('❌ [Webhook Asaas] Falha ao aplicar ação pendente (payment):', actionResult.errorMessages);
+          }
+        } catch (error) {
+          console.error('❌ [Webhook Asaas] Erro ao aplicar ação pendente (payment):', error);
+        }
+      }
+
       const isPendingOperatorRef = !!externalReference && externalReference.startsWith('pending-operator-');
       if (!isOperatorPayment && isPendingOperatorRef && result.isPaid) {
         try {

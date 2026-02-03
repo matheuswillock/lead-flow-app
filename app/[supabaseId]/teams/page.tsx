@@ -4,7 +4,7 @@ import * as React from "react";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { Settings, UserPlus, ShieldAlert, Trash2 } from "lucide-react";
+import { RefreshCw, Settings, UserPlus, ShieldAlert, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
+import { TeamCheckoutStep } from "./features/checkout/TeamCheckoutStep";
 
 type BillingSummary = {
   teamCount: number;
@@ -59,6 +60,7 @@ export default function TeamsPage() {
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
+  const [teamCheckout, setTeamCheckout] = useState<{ teamName: string; amount: number } | null>(null);
   const [billingSummary, setBillingSummary] = useState<BillingSummary | null>(null);
   const [billingLoading, setBillingLoading] = useState(false);
   const [isManageOpen, setIsManageOpen] = useState(false);
@@ -124,8 +126,15 @@ export default function TeamsPage() {
         throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel criar o time.");
       }
 
-      if (result?.result?.checkoutUrl) {
-        window.location.href = result.result.checkoutUrl as string;
+      const payload = result?.result as any;
+
+      if (payload?.requiresPayment) {
+        setIsCreateTeamOpen(false);
+        setNewTeamName("");
+        setTeamCheckout({
+          teamName: payload.teamName || trimmedName,
+          amount: Number(payload.amount ?? 0),
+        });
         return;
       }
 
@@ -376,6 +385,22 @@ export default function TeamsPage() {
     loadBillingSummary();
   }, [user?.isMaster, supabaseId, teams.length]);
 
+  if (teamCheckout) {
+    return (
+      <TeamCheckoutStep
+        supabaseId={supabaseId}
+        teamName={teamCheckout.teamName}
+        amount={teamCheckout.amount}
+        onCancel={() => setTeamCheckout(null)}
+        onComplete={() => {
+          setTeamCheckout(null);
+          void refreshTeams();
+          void loadBillingSummary();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
       <div className="container mx-auto max-w-4xl px-4 py-10">
@@ -392,14 +417,21 @@ export default function TeamsPage() {
                 {teams.length} time(s) encontrado(s).
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={refreshTeams}
-                  disabled={teamsLoading}
-                >
-                  {teamsLoading ? "Atualizando..." : "Atualizar"}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={refreshTeams}
+                      disabled={teamsLoading}
+                      aria-label="Atualizar"
+                    >
+                      <RefreshCw className={teamsLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Atualizar</TooltipContent>
+                </Tooltip>
                 <Button
                   type="button"
                   variant="secondary"
@@ -561,7 +593,7 @@ export default function TeamsPage() {
             <DialogTitle>Criar novo time</DialogTitle>
             <DialogDescription>
               Informe um nome para o time. Se houver cobranca adicional, voce sera direcionado ao
-              checkout.
+              pagamento para concluir a ativacao.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
