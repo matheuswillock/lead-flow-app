@@ -4,15 +4,18 @@ import * as React from "react";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { Settings, UserPlus, ShieldAlert } from "lucide-react";
+import { Settings, UserPlus, ShieldAlert, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
 
@@ -686,44 +689,65 @@ export default function TeamsPage() {
                   </div>
                 ) : null}
 
-                <div className="space-y-2">
-                  {members.length === 0 ? (
-                    <div className="rounded-lg border border-border/60 p-4 text-sm text-muted-foreground">
-                      Nenhum membro encontrado para este time.
-                    </div>
-                  ) : (
-                    members.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 p-3"
-                      >
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium">{member.name}</p>
-                          <p className="text-xs text-muted-foreground">{member.email}</p>
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <span>Papel: {member.role === "manager" ? "Manager" : "Operator"}</span>
-                            {member.functions?.length ? (
-                              <span>Funcoes: {member.functions.join(", ")}</span>
-                            ) : (
-                              <span>Sem funcoes</span>
-                            )}
-                            {member.isMaster ? <Badge variant="secondary">Master</Badge> : null}
-                          </div>
-                        </div>
-                        {user?.isMaster && !member.isMaster ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRemoveMember(member.profileId)}
-                            disabled={removingMemberId === member.profileId}
-                          >
-                            {removingMemberId === member.profileId ? "Removendo..." : "Remover"}
-                          </Button>
-                        ) : null}
-                      </div>
-                    ))
-                  )}
+                <div className="rounded-lg border border-border/60">
+                  <ScrollArea className="h-[320px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Nome</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Papel</TableHead>
+                          <TableHead>Funções</TableHead>
+                          <TableHead className="w-[80px] text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {members.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                              Nenhum membro encontrado para este time.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          members.map((member) => (
+                            <TableRow key={member.id}>
+                              <TableCell className="text-sm font-medium">{member.name}</TableCell>
+                              <TableCell className="text-xs text-muted-foreground">{member.email}</TableCell>
+                              <TableCell className="text-sm">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span>{member.role === "manager" ? "Manager" : "Operator"}</span>
+                                  {member.isMaster ? <Badge variant="secondary">Master</Badge> : null}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
+                                {member.functions?.length ? member.functions.join(", ") : "Sem funções"}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {user?.isMaster && !member.isMaster ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handleRemoveMember(member.profileId)}
+                                        disabled={removingMemberId === member.profileId}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Remover</TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
                 </div>
               </div>
 

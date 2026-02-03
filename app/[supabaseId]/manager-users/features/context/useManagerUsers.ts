@@ -239,7 +239,9 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
 
   // Preparar dados da tabela com permissões
   const resolvedProfileId = currentProfileId ?? supabaseId;
-  const tableData: ManagerUserTableRow[] = state.users.map(user => {
+  const tableData: ManagerUserTableRow[] = state.users
+    .filter(user => user.id !== resolvedProfileId)
+    .map(user => {
     // Determinar status baseado em isPending e pendingPayment
     let status: ManagerUserTableRow['status'] = 'active';
     
@@ -277,7 +279,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
         updatedAt: typeof user.updatedAt === 'string' ? user.updatedAt : user.updatedAt.toISOString(),
       } : undefined
     };
-  });
+    });
 
   // Ações de UI
   const openCreateModal = useCallback(() => {
