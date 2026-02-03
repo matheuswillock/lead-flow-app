@@ -32,7 +32,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Pipeline", url: `/${supabaseId}/pipeline`, icon: ChartBarBig },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays },
     { 
-      title: "Manager Users", 
+      title: "Gerenciar Usuários", 
       url: `/${supabaseId}/manager-users`, 
       icon: Users,
       managerOnly: true
