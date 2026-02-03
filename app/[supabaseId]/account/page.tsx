@@ -430,7 +430,7 @@ export default function AccountProfilePage() {
               </div>
             ) : (
               <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-4 mb-6">
+                <TabsList className="mb-6 grid w-full grid-cols-3">
                   <TabsTrigger value="profile">Perfil</TabsTrigger>
                   <TabsTrigger value="security">Segurança</TabsTrigger>
                   <TabsTrigger value="connections">Conexões</TabsTrigger>
