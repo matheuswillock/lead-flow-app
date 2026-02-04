@@ -24,7 +24,11 @@ const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
 const formatCardNumber = (value: string) =>
-  value.replace(/\D/g, "").replace(/(.{4})/g, "$1 ").trim();
+  value
+    .replace(/\D/g, "")
+    .slice(0, 19)
+    .replace(/(\d{4})(?=\d)/g, "$1 ")
+    .trim();
 
 const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 
@@ -425,7 +429,7 @@ export function TeamCheckoutStep({
                                   onChange={(event) =>
                                     field.onChange(event.target.value.replace(/\D/g, "").slice(0, 19))
                                   }
-                                  maxLength={19}
+                                  maxLength={23}
                                 />
                               </FormControl>
                               <FormMessage />

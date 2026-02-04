@@ -350,7 +350,7 @@ export default function TeamsPage() {
 
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
-      <div className="container mx-auto py-6 px-6 space-y-6">
+      <div className="w-full py-6 px-6 space-y-6">
         <Card className="border-border/60 shadow-sm">
           <CardHeader className="space-y-2">
             <CardTitle className="text-2xl">Gerenciar times</CardTitle>
@@ -519,7 +519,7 @@ export default function TeamsPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[760px] max-h-[90vh] flex flex-col overflow-hidden">
+        <DialogContent className="w-[min(760px,calc(100vw-2rem))] max-h-[calc(100svh-2rem)] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Gerenciar time</DialogTitle>
             <DialogDescription>
@@ -529,7 +529,7 @@ export default function TeamsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto pr-2">
+          <ScrollArea className="flex-1 pr-4">
             {manageLoading ? (
               <div className="flex items-center justify-center rounded-lg border border-border/60 py-10 text-sm text-muted-foreground">
                 Carregando dados do time...
@@ -745,7 +745,7 @@ export default function TeamsPage() {
               ) : null}
               </div>
             )}
-          </div>
+          </ScrollArea>
         </DialogContent>
       </Dialog>
 
