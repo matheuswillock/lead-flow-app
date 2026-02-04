@@ -55,9 +55,18 @@ export function useDashboardMetrics(supabaseId: string, teamId: string, initialF
 
   // Buscar métricas quando supabaseId ou filtros mudarem
   useEffect(() => {
-    if (supabaseId && teamId) {
-      fetchMetrics();
+    if (!supabaseId) return;
+
+    if (!teamId) {
+      // Avoid infinite loading when team isn't selected/initialized.
+      setLoading(false);
+      setMetrics(null);
+      setDetailedMetrics(null);
+      setError("Selecione um time para visualizar as métricas.");
+      return;
     }
+
+    fetchMetrics();
   }, [supabaseId, teamId, filters]);
 
   return {
@@ -95,9 +104,16 @@ export function useDashboardMetricsSimple(supabaseId: string, teamId: string, pe
       }
     };
 
-    if (supabaseId && teamId) {
-      fetchMetrics();
+    if (!supabaseId) return;
+
+    if (!teamId) {
+      setLoading(false);
+      setMetrics(null);
+      setError("Selecione um time para visualizar as métricas.");
+      return;
     }
+
+    fetchMetrics();
   }, [supabaseId, teamId, period]);
 
   return { metrics, loading, error };

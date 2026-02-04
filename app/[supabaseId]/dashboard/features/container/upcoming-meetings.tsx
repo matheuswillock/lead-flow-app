@@ -41,15 +41,32 @@ interface UpcomingMeetingsProps {
 }
 
 export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
-  const { activeTeamId } = useTeamContext()
+  const { activeTeamId, isLoading: isTeamLoading } = useTeamContext()
   const [schedules, setSchedules] = React.useState<ScheduleData[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
+    if (!supabaseId) return
+
+    // While TeamContext is still resolving activeTeamId, keep this card loading.
+    if (isTeamLoading) {
+      setIsLoading(true)
+      return
+    }
+
+    if (!activeTeamId) {
+      // Avoid infinite loading when no team is selected/available.
+      setIsLoading(false)
+      setSchedules([])
+      setError("Selecione um time para visualizar os agendamentos.")
+      return
+    }
+
     const fetchSchedules = async () => {
       try {
         setIsLoading(true)
+        setError(null)
         
         const response = await fetch('/api/v1/dashboard/schedules', {
           headers: {
@@ -83,10 +100,8 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
       }
     }
 
-    if (supabaseId && activeTeamId) {
-      fetchSchedules()
-    }
-  }, [supabaseId, activeTeamId])
+    fetchSchedules()
+  }, [supabaseId, activeTeamId, isTeamLoading])
 
   const getInitials = (name: string) => {
     const names = name.split(' ')
