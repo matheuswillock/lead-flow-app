@@ -4,6 +4,7 @@ export type Lead = {
   id: string;
   leadCode: string;
   managerId: string;
+  teamId: string | null;
   assignedTo: string | null;
   status: LeadStatus;
   name: string;

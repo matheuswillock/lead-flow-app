@@ -50,6 +50,7 @@ export interface CreateCheckoutData {
 
 export interface CreateOperatorCheckoutData {
   managerId: string;
+  teamId?: string;
   operatorData: {
     name: string;
     email: string;
@@ -180,17 +181,13 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         cycle: 'MONTHLY - próxima cobrança em +30 dias'
       });
 
-      // ✅ IMPORTANTE: Para múltiplas formas de pagamento no checkout
-      // Use array com todos os billingTypes desejados:
-      // - PIX
-      // - BOLETO (Boleto Bancário)
-      // - CREDIT_CARD (Cartão de Crédito)
-      //
+      // ✅ IMPORTANTE: Asaas exige billingTypes com um único valor.
+      // billingTypes: ['CREDIT_CARD'] habilita PIX, Boleto e Cartão no checkout.
       // ⚠️ LIMITAÇÃO ASAAS: chargeTypes RECURRENT só funciona com CREDIT_CARD
-      // Para PIX/Boleto com assinatura, precisamos usar DETACHED e criar
-      // subscription separadamente via webhook após primeiro pagamento
-      const billingTypes = ['PIX', 'BOLETO', 'CREDIT_CARD']; // ✅ Todas as opções
-      const chargeTypes = ['DETACHED']; // ✅ Pagamento único (não recorrente)
+      // Para PIX/Boleto com assinatura, usamos DETACHED e criamos
+      // subscription via webhook após o primeiro pagamento.
+      const billingTypes = ['CREDIT_CARD'];
+      const chargeTypes = ['DETACHED'];
 
       console.info('💳 [createSubscriptionCheckout] Configuração:', {
         billingTypes,
@@ -200,8 +197,8 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       const checkoutData: any = {
         customer: asaasCustomerId,
-        billingTypes, // ✅ PIX, Boleto e Cartão
-        chargeTypes, // ✅ DETACHED para pagamento único
+        billingTypes,
+        chargeTypes,
         items: [
           {
             name: 'Plano Professional',
@@ -394,9 +391,24 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       }
 
       // 3. Criar pendingOperator no banco
+      const resolvedTeamId = data.teamId;
+      if (resolvedTeamId) {
+        const team = await prisma.team.findUnique({
+          where: { id: resolvedTeamId },
+          select: { id: true, masterId: true },
+        });
+        if (!team) {
+          return new Output(false, [], ['Time não encontrado'], null);
+        }
+        if (team.masterId !== manager.id) {
+          return new Output(false, [], ['Apenas o master do time pode adicionar operadores'], null);
+        }
+      }
+
       const pendingOperator = await prisma.pendingOperator.create({
         data: {
           managerId: manager.id,
+          teamId: resolvedTeamId ?? null,
           name: data.operatorData.name,
           email: data.operatorData.email,
           role: data.operatorData.role,
@@ -657,6 +669,38 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       });
 
       console.info('✅ [processOperatorCheckoutPaid] Operador criado no banco:', operator.id);
+
+      // 5.1 Vincular operador ao time (TeamMember)
+      let targetTeamId = pendingOperator.teamId;
+      if (!targetTeamId) {
+        const defaultTeam = await prisma.team.findFirst({
+          where: { masterId: manager.id, isDefault: true },
+          select: { id: true },
+        });
+        targetTeamId = defaultTeam?.id || null;
+      }
+
+      if (targetTeamId) {
+        const existingMember = await prisma.teamMember.findUnique({
+          where: {
+            teamId_profileId: {
+              teamId: targetTeamId,
+              profileId: operator.id,
+            },
+          },
+        });
+
+        if (!existingMember) {
+          await prisma.teamMember.create({
+            data: {
+              teamId: targetTeamId,
+              profileId: operator.id,
+              role: (pendingOperator.role || 'operator') as any,
+              functions: pendingOperator.functions ?? [],
+            },
+          });
+        }
+      }
 
       // 6. Deletar pendingOperator (já foi processado)
       await prisma.pendingOperator.delete({

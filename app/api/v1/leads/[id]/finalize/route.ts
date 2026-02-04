@@ -1,12 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { Output } from '@/lib/output';
+import { getTeamAccess, hasLeadAccess } from '@/app/api/v1/utils/teamAccess';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const teamAccess = await getTeamAccess(request);
+    if (teamAccess.error) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    }
+    if (!hasLeadAccess(teamAccess.access.teamMember)) {
+      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
     const { id: leadId } = await params;
     const body = await request.json();
 
@@ -39,9 +49,9 @@ export async function POST(
       where: { id: leadId },
     });
 
-    if (!lead) {
+    if (!lead || lead.teamId !== teamAccess.access.teamId) {
       return NextResponse.json(
-        new Output(false, [], ['Lead não encontrado'], null),
+        new Output(false, [], ['Lead não encontrado ou sem permissão no seu time.'], null),
         { status: 404 }
       );
     }

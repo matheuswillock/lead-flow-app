@@ -5,12 +5,13 @@ import { Output } from "@/lib/output";
 const API_BASE_URL = '/api/v1';
 
 export class BoardService implements IBoardService {
-    updateLeadStatus(leadId: string, newStatus: string, supabaseId: string): Promise<Output> {
+    updateLeadStatus(leadId: string, newStatus: string, supabaseId: string, teamId?: string | null): Promise<Output> {
         return fetch(`${API_BASE_URL}/leads/${leadId}/status`, {
             method: "PUT",
             headers: {
                 "Content-Type": "application/json",
-                "x-supabase-user-id": supabaseId
+                "x-supabase-user-id": supabaseId,
+                ...(teamId ? { "x-team-id": teamId } : {})
             },
             body: JSON.stringify({ status: newStatus }),
         })
@@ -26,20 +27,24 @@ export class BoardService implements IBoardService {
             );
         });
     }
-    async fetchLeads(supabaseId: string, role: string): Promise<Output> {
+    async fetchLeads(supabaseId: string, role: string, teamId?: string | null): Promise<Output> {
         try {
             const searchParams = new URLSearchParams();
             searchParams.append('role', role);
+            if (teamId) {
+                searchParams.append('teamId', teamId);
+            }
 
             const url = `${API_BASE_URL}/leads?${searchParams.toString()}`;
             console.info('[BoardService] Fetching leads from:', url);
-            console.info('[BoardService] Headers:', { supabaseId, role });
+            console.info('[BoardService] Headers:', { supabaseId, role, teamId });
 
             const response = await fetch(url, {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
-                    "x-supabase-user-id": supabaseId
+                    "x-supabase-user-id": supabaseId,
+                    ...(teamId ? { "x-team-id": teamId } : {})
                 },
             });
 
@@ -75,13 +80,14 @@ export class BoardService implements IBoardService {
         }
     }
 
-    async createLead(leadToCreate: CreateLeadRequest, supabaseId: string): Promise<Output> {
+    async createLead(leadToCreate: CreateLeadRequest, supabaseId: string, teamId?: string | null): Promise<Output> {
         try {
             const response = await fetch(`${API_BASE_URL}/leads`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "x-supabase-user-id": supabaseId
+                    "x-supabase-user-id": supabaseId,
+                    ...(teamId ? { "x-team-id": teamId } : {})
                 },
                 body: JSON.stringify(leadToCreate),
             });

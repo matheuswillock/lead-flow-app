@@ -30,6 +30,7 @@ export interface LeadsPeriodData {
 
 export interface MetricsFilters {
   supabaseId: string;
+  teamId: string;
   startDate?: Date;
   endDate?: Date;
 }
@@ -60,12 +61,12 @@ export interface IMetricsRepository {
   /**
    * Busca métricas detalhadas por status
    */
-  getStatusMetrics(supabaseId: string): Promise<StatusMetricsData[]>;
+  getStatusMetrics(supabaseId: string, teamId: string): Promise<StatusMetricsData[]>;
 
   /**
    * Busca leads agrupados por período
    */
-  getLeadsByPeriod(supabaseId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]>;
+  getLeadsByPeriod(supabaseId: string, teamId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]>;
 
   /**
    * Busca agendamentos da tabela LeadsSchedule

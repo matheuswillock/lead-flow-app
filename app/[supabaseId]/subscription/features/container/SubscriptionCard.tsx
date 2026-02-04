@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Calendar, CreditCard, Users, AlertCircle } from 'lucide-react';
+import { Calendar, CreditCard, Users, AlertCircle, Layers } from 'lucide-react';
 import type { SubscriptionData } from '../types/subscription.types';
 import { toast } from 'sonner';
 import { useState } from 'react';
@@ -64,22 +64,16 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
     }).format(value);
   };
 
-  // Calcular breakdown do preço
-  const calculatePriceBreakdown = () => {
-    const basePrice = 59.90;
-    const operatorPrice = 19.90;
-    const operatorCount = subscription.planDetails?.operatorCount || 0;
-    
-    return {
-      basePrice,
-      operatorPrice,
-      operatorCount,
-      operatorTotal: operatorCount * operatorPrice,
-      total: basePrice + (operatorCount * operatorPrice)
-    };
-  };
-
-  const priceBreakdown = calculatePriceBreakdown();
+  const billingSummary = subscription.billingSummary;
+  const basePrice = billingSummary?.basePrice ?? 59.9;
+  const billableTeams = billingSummary?.billableTeams ?? 0;
+  const billableUsers = billingSummary?.billableUsers ?? (subscription.planDetails?.operatorCount ?? 0);
+  const extraTeamsPrice = billingSummary?.extraTeamsPrice ?? 0;
+  const extraUsersPrice =
+    billingSummary?.extraUsersPrice ?? Number(((subscription.planDetails?.operatorCount ?? 0) * 19.9).toFixed(2));
+  const totalPrice = billingSummary?.totalPrice ?? subscription.value;
+  const extraTeamUnitPrice = billableTeams > 0 ? extraTeamsPrice / billableTeams : 29.9;
+  const extraUserUnitPrice = billableUsers > 0 ? extraUsersPrice / billableUsers : 19.9;
 
   const handleCancel = async () => {
     setIsCanceling(true);
@@ -156,15 +150,29 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
 
                     <div className="flex items-center gap-2 text-sm">
                       <div className="rounded-full bg-amber-500/20 p-2">
+                        <Layers className="h-4 w-4 text-amber-700 dark:text-amber-300" />
+                      </div>
+                      <div>
+                        <span className="text-amber-700 dark:text-amber-300 font-medium">
+                          Times:
+                        </span>
+                        <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">
+                          {billingSummary?.teamCount ?? 0}{" "}
+                          {(billingSummary?.teamCount ?? 0) === 1 ? "time" : "times"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm">
+                      <div className="rounded-full bg-amber-500/20 p-2">
                         <Users className="h-4 w-4 text-amber-700 dark:text-amber-300" />
                       </div>
                       <div>
                         <span className="text-amber-700 dark:text-amber-300 font-medium">
-                          Operadores:
+                          Usuários (distinct):
                         </span>
                         <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">
-                          {priceBreakdown.operatorCount}{" "}
-                          {priceBreakdown.operatorCount === 1 ? "operador" : "operadores"}
+                          {billingSummary?.distinctUserCount ?? billableUsers}
                         </span>
                       </div>
                     </div>
@@ -179,20 +187,6 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                         </span>
                         <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">
                           Sem vencimento
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-sm">
-                      <div className="rounded-full bg-amber-500/20 p-2">
-                        <Users className="h-4 w-4 text-amber-700 dark:text-amber-300" />
-                      </div>
-                      <div>
-                        <span className="text-amber-700 dark:text-amber-300 font-medium">
-                          Custo por Operador:
-                        </span>
-                        <span className="ml-2 font-bold text-amber-900 dark:text-amber-100">
-                          R$ 0,00
                         </span>
                       </div>
                     </div>
@@ -236,20 +230,28 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm">
                   <CreditCard className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">Plano Manager Base:</span>
-                  <span className="font-semibold">{formatCurrency(priceBreakdown.basePrice)}</span>
+                  <span className="text-muted-foreground">Base (1 time):</span>
+                  <span className="font-semibold">{formatCurrency(basePrice)}</span>
                 </div>
 
-                {priceBreakdown.operatorCount > 0 && (
+                {billableTeams > 0 && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Layers className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      Times adicionais ({billableTeams} × {formatCurrency(extraTeamUnitPrice)}):
+                    </span>
+                    <span className="font-semibold">{formatCurrency(extraTeamsPrice)}</span>
+                  </div>
+                )}
+
+                {billableUsers > 0 && (
                   <div className="flex items-center gap-2 text-sm">
                     <Users className="h-4 w-4 text-muted-foreground" />
                     <span className="text-muted-foreground">
-                      {priceBreakdown.operatorCount} Operador
-                      {priceBreakdown.operatorCount > 1 ? "es" : ""} ×{" "}
-                      {formatCurrency(priceBreakdown.operatorPrice)}:
+                      Usuários adicionais ({billableUsers} × {formatCurrency(extraUserUnitPrice)}):
                     </span>
                     <span className="font-semibold">
-                      {formatCurrency(priceBreakdown.operatorTotal)}
+                      {formatCurrency(extraUsersPrice)}
                     </span>
                   </div>
                 )}
@@ -257,7 +259,7 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                 <div className="flex items-center gap-2 text-sm pt-2 border-t">
                   <CreditCard className="h-4 w-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Valor Mensal Total:</span>
-                  <span className="font-bold text-lg">{formatCurrency(priceBreakdown.total)}</span>
+                  <span className="font-bold text-lg">{formatCurrency(totalPrice)}</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-sm">

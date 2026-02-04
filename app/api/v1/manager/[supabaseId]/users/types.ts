@@ -31,13 +31,14 @@ export const UpdateUserSchema = z.object({
 
 export const AssociateOperatorSchema = z.object({
   action: z.literal("associate"),
-  managerId: z.string().uuid("ID do manager deve ser um UUID válido"),
-  operatorId: z.string().uuid("ID do operator deve ser um UUID válido")
+  profileId: z.string().uuid("ID do usuário deve ser um UUID válido"),
+  role: z.enum(["manager", "operator"]).optional(),
+  functions: z.array(z.enum(["SDR", "CLOSER"])).optional()
 });
 
 export const DissociateOperatorSchema = z.object({
   action: z.literal("dissociate"),
-  operatorId: z.string().uuid("ID do operator deve ser um UUID válido")
+  profileId: z.string().uuid("ID do usuário deve ser um UUID válido")
 });
 
 // Response Types

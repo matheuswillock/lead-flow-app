@@ -3,12 +3,14 @@
 import { useDashboardMetrics } from '../hooks/useDashboardMetrics';
 import { MetricsFilters } from '../services/DashboardMetricsService';
 import { getLeadStatusLabel } from '@/lib/lead-status';
+import { useTeamContext } from '@/app/context/TeamContext';
 
 interface DashboardMetricsProps {
   supabaseId: string;
 }
 
 export function DashboardMetrics({ supabaseId }: DashboardMetricsProps) {
+  const { activeTeamId } = useTeamContext();
   const { 
     metrics, 
     detailedMetrics, 
@@ -16,7 +18,7 @@ export function DashboardMetrics({ supabaseId }: DashboardMetricsProps) {
     error, 
     refetch, 
     updateFilters 
-  } = useDashboardMetrics(supabaseId, { period: '30d' });
+  } = useDashboardMetrics(supabaseId, activeTeamId || '', { period: '30d' });
 
   const handlePeriodChange = (period: '7d' | '30d' | '3m' | '6m' | '1y') => {
     const filters: MetricsFilters = { period };

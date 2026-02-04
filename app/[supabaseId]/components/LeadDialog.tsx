@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useTeamContext } from "@/app/context/TeamContext";
 
 interface LeadDialogProps {
   open: boolean;
@@ -58,6 +59,7 @@ export default function LeadDialog({
   const [origin, setOrigin] = useState("");
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
+  const { activeTeamId } = useTeamContext();
   const pathname = usePathname();
 
   useEffect(() => {
@@ -272,6 +274,7 @@ export default function LeadDialog({
                 headers: {
                   "Content-Type": "application/json",
                   "x-supabase-user-id": supabaseId || "",
+                  "x-team-id": activeTeamId || "",
                 },
                 body: JSON.stringify({
                   date: meetingDateValue,
@@ -393,6 +396,7 @@ export default function LeadDialog({
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
         },
         body: JSON.stringify({ status: "no_show" }),
       });
@@ -493,6 +497,7 @@ export default function LeadDialog({
           headers: {
             "Content-Type": "application/json",
             "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId || "",
           },
         });
         if (!response.ok) {
@@ -514,7 +519,7 @@ export default function LeadDialog({
     };
 
     fetchScheduleGuests();
-  }, [lead, open, supabaseId]);
+  }, [lead, open, supabaseId, activeTeamId]);
 
   const handleResendInvite = async () => {
     if (!lead || !supabaseId) return;

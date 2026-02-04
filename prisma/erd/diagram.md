@@ -84,6 +84,24 @@ manager_base manager_base
 with_operators with_operators
         }
     
+
+
+        pending_action_type {
+            create_team create_team
+add_member add_member
+add_user add_user
+transfer_team transfer_team
+        }
+    
+
+
+        pending_action_status {
+            pending pending
+applied applied
+failed failed
+canceled canceled
+        }
+    
   "profiles" {
     String id "🗝️"
     String email 
@@ -120,6 +138,7 @@ with_operators with_operators
     String asaasSubscriptionId "❓"
     DateTime subscriptionNextDueDate "❓"
     String subscriptionCycle "❓"
+    String activeTeamId "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -214,6 +233,36 @@ with_operators with_operators
     DateTime updatedAt 
     }
   
+
+  "teams" {
+    String id "🗝️"
+    String name 
+    Boolean isDefault 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "pending_actions" {
+    String id "🗝️"
+    PendingActionType actionType 
+    PendingActionStatus status 
+    Json payload 
+    String checkoutId "❓"
+    String paymentId "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "team_members" {
+    String id "🗝️"
+    UserRole role 
+    UserFunction functions 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "profiles" o|--|| "UserRole" : "enum:role"
     "profiles" o|--}o "UserFunction" : "enum:functions"
     "profiles" o|--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -228,11 +277,15 @@ with_operators with_operators
     "profiles" o{--}o "lead_activities" : "activities"
     "profiles" o{--}o "lead_attachments" : "attachments"
     "profiles" o{--}o "pending_operators" : "pendingOperators"
+    "profiles" o{--}o "pending_actions" : "pendingActions"
+    "profiles" o{--}o "teams" : "teamsOwned"
+    "profiles" o{--}o "team_members" : "teamMemberships"
     "leads" o|--|| "LeadStatus" : "enum:status"
     "leads" o|--|o "HealthPlan" : "enum:currentHealthPlan"
     "leads" o|--|o "MeetingHeald" : "enum:meetingHeald"
     "leads" o|--|o "HealthPlan" : "enum:soldPlan"
     "leads" o|--|| "profiles" : "manager"
+    "leads" o|--|o "teams" : "team"
     "leads" o|--|o "profiles" : "assignee"
     "leads" o|--|o "profiles" : "closer"
     "leads" o|--|o "profiles" : "creator"
@@ -250,4 +303,18 @@ with_operators with_operators
     "lead_attachments" o|--|| "profiles" : "uploader"
     "pending_operators" o|--}o "UserFunction" : "enum:functions"
     "pending_operators" o|--|| "profiles" : "manager"
+    "pending_operators" o|--|o "teams" : "team"
+    "teams" o|--|| "profiles" : "master"
+    "teams" o{--}o "team_members" : "members"
+    "teams" o{--}o "leads" : "leads"
+    "teams" o{--}o "pending_operators" : "pendingOperators"
+    "teams" o{--}o "pending_actions" : "pendingActions"
+    "pending_actions" o|--|| "PendingActionType" : "enum:actionType"
+    "pending_actions" o|--|| "PendingActionStatus" : "enum:status"
+    "pending_actions" o|--|| "profiles" : "master"
+    "pending_actions" o|--|o "teams" : "team"
+    "team_members" o|--|| "UserRole" : "enum:role"
+    "team_members" o|--}o "UserFunction" : "enum:functions"
+    "team_members" o|--|| "teams" : "team"
+    "team_members" o|--|| "profiles" : "profile"
 ```

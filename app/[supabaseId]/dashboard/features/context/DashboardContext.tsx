@@ -6,6 +6,7 @@ import { DashboardContextType, IDashboardContext } from './DashboardTypes';
 import { useDashboardHook } from './DashboardHook';
 import { IDashboardMetricsService, MetricsFilters } from '../services/IDashboardMetricsService';
 import { dashboardMetricsService } from '../services/DashboardMetricsService';
+import { useTeamContext } from '@/app/context/TeamContext';
 
 interface IDashboardProviderProps {
   children: ReactNode;
@@ -24,20 +25,22 @@ export const DashboardProvider: React.FC<IDashboardProviderProps> = ({
 }) => {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
+  const { activeTeamId } = useTeamContext();
 
   // Hook com toda a lógica
   const dashboardState = useDashboardHook({
     supabaseId,
+    teamId: activeTeamId || '',
     dashboardService,
     initialFilters
   });
 
   // Buscar métricas quando o componente montar ou filtros mudarem
   useEffect(() => {
-    if (supabaseId) {
+    if (supabaseId && activeTeamId) {
       dashboardState.fetchMetrics();
     }
-  }, [supabaseId, dashboardState.fetchMetrics, dashboardState.filters, dashboardState.customDateRange]);
+  }, [supabaseId, activeTeamId, dashboardState.fetchMetrics, dashboardState.filters, dashboardState.customDateRange]);
 
   return (
     <DashboardContext.Provider value={dashboardState}>

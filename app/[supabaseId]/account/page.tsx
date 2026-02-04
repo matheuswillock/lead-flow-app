@@ -50,6 +50,7 @@ export default function AccountProfilePage() {
   
   const router = useRouter();
   const params = useParams();
+  const supabaseId = params.supabaseId as string;
 
   const form = useUpdateAccountForm();
   
@@ -375,8 +376,6 @@ export default function AccountProfilePage() {
     setIsDeletingAccount(true);
 
     try {
-      const supabaseId = params.supabaseId as string;
-      
       const response = await fetch(`/api/v1/profiles/${supabaseId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -412,6 +411,7 @@ export default function AccountProfilePage() {
     setDeleteDialogOpen(false);
   }
 
+
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
       <div className="container mx-auto max-w-3xl px-4 py-10">
@@ -430,7 +430,7 @@ export default function AccountProfilePage() {
               </div>
             ) : (
               <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 mb-6">
+                <TabsList className="mb-6 grid w-full grid-cols-3">
                   <TabsTrigger value="profile">Perfil</TabsTrigger>
                   <TabsTrigger value="security">Segurança</TabsTrigger>
                   <TabsTrigger value="connections">Conexões</TabsTrigger>
@@ -664,6 +664,7 @@ export default function AccountProfilePage() {
                     </div>
                   </section>
                 </TabsContent>
+
 
                 {/* Aba de Segurança */}
                 <TabsContent value="security" className="space-y-6">

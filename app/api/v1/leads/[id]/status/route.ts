@@ -4,6 +4,8 @@ import { LeadUseCase } from "../../../../useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "../../../../useCases/profiles/ProfileUseCase";
 import { Output } from "@/lib/output";
 import { LeadStatus } from "@prisma/client";
+import { prisma } from "@/app/api/infra/data/prisma";
+import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -14,12 +16,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Extrair supabaseId dos headers
-    const supabaseId = request.headers.get('x-supabase-user-id');
-    
-    if (!supabaseId) {
-      const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
-      return NextResponse.json(output, { status: 401 });
+    const teamAccess = await getTeamAccess(request);
+    if (teamAccess.error) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    }
+    if (!hasLeadAccess(teamAccess.access.teamMember)) {
+      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+      return NextResponse.json(output, { status: 403 });
     }
 
     const body = await request.json();
@@ -37,7 +40,17 @@ export async function PUT(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const output = await leadUseCase.updateLeadStatus(supabaseId, id, status);
+    const lead = await prisma.lead.findUnique({
+      where: { id },
+      select: { id: true, teamId: true },
+    });
+
+    if (!lead || lead.teamId !== teamAccess.access.teamId) {
+      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    const output = await leadUseCase.updateLeadStatus(teamAccess.access.supabaseId, id, status);
     const responseStatus = output.isValid ? 200 : 400;
     return NextResponse.json(output, { status: responseStatus });
 

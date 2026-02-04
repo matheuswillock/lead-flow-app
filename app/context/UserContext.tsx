@@ -32,6 +32,7 @@ export interface UserData {
   managerId: string | null;
   subscriptionStatus: string | null;
   subscriptionId: string | null;
+  activeTeamId: string | null;
   createdAt: string;
   updatedAt: string;
 }

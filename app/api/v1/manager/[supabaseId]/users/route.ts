@@ -1,48 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ManagerUserRepository } from "../../../../infra/data/repositories/managerUser/ManagerUserRepository";
-import { ManagerUserUseCase } from "../../../../useCases/managerUser/ManagerUserUseCase";
-import { RegisterNewUserProfile } from "../../../../useCases/profiles/ProfileUseCase";
 import { Output } from "@/lib/output";
-import { 
-  CreateUserSchema,
-  UpdateUserSchema, 
-  AssociateOperatorSchema, 
-  DissociateOperatorSchema 
-} from "./types";
+import { CreateUserSchema, UpdateUserSchema, AssociateOperatorSchema, DissociateOperatorSchema } from "./types";
 import { getEmailService } from "@/lib/services/EmailService";
-import { LeadRepository } from "../../../../infra/data/repositories/lead/LeadRepository";
-import { profileRepository } from "../../../../infra/data/repositories/profile/ProfileRepository";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
+import { prisma } from "@/app/api/infra/data/prisma";
+import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { UserRole } from "@prisma/client";
+import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 
-const managerUserRepository = new ManagerUserRepository();
-const leadRepository = new LeadRepository();
-const profileUseCase = new RegisterNewUserProfile();
-const managerUserUseCase = new ManagerUserUseCase(managerUserRepository, leadRepository, profileRepository);
+async function getTeamMasterId(teamId: string) {
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: { masterId: true },
+  });
+
+  return team?.masterId ?? null;
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
 
 /**
  * POST /api/v1/manager/[supabaseId]/users
- * Cria um novo manager ou operator
+ * Cria um novo manager ou operator no time ativo
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
   try {
-    const body = await request.json();
-    const requesterId = request.headers.get('x-supabase-user-id');
+    const requesterId = request.headers.get("x-supabase-user-id");
     const { supabaseId } = await params;
-    
+
     if (!requesterId) {
       const output = new Output(false, [], ["Header x-supabase-user-id é obrigatório"], null);
       return NextResponse.json(output, { status: 401 });
-    }
-
-    // Verificar se o usuário atual é um manager e se está acessando seus próprios recursos
-    const requesterProfile = await profileUseCase.getProfileInfoBySupabaseId(requesterId);
-    if (!requesterProfile || requesterProfile.role !== 'manager') {
-      const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
-      return NextResponse.json(output, { status: 403 });
     }
 
     if (requesterId !== supabaseId) {
@@ -50,7 +44,30 @@ export async function POST(
       return NextResponse.json(output, { status: 403 });
     }
 
-    // Validar dados de entrada
+    const teamAccess = await getTeamAccess(request);
+    if ("error" in teamAccess) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    }
+
+    const { teamId, profileId, teamMember } = teamAccess.access;
+    if (teamMember.role !== "manager") {
+      const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    const masterId = await getTeamMasterId(teamId);
+    if (!masterId) {
+      const output = new Output(false, [], ["Time não encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    if (masterId !== profileId) {
+      const output = new Output(false, [], ["Apenas o master do time pode adicionar usuários"], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    const body = await request.json();
+
     let validatedData;
     try {
       validatedData = CreateUserSchema.parse(body);
@@ -60,213 +77,128 @@ export async function POST(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const { role } = validatedData;
+    const email = normalizeEmail(validatedData.email);
 
-    console.info('🎯 [POST /users] Criando usuário:', {
-      role,
-      name: validatedData.name,
-      email: validatedData.email,
-      hasPermanentSubscription: validatedData.hasPermanentSubscription,
-      requesterId: requesterProfile.id,
+    const existingProfile = await prisma.profile.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+      select: { id: true },
     });
 
-    if (role === 'manager') {
-      const output = await managerUserUseCase.createManager({
-        fullName: validatedData.name,
-        email: validatedData.email,
-        hasPermanentSubscription: validatedData.hasPermanentSubscription || false,
-        managerId: requesterProfile.id, // Sub-manager criado por este manager
-        functions: validatedData.functions
-      });
-
-      console.info('📦 [POST /users] Output do createManager:', {
-        isValid: output.isValid,
-        hasResult: !!output.result,
-        result: output.result,
-        errorMessages: output.errorMessages,
-      });
-      
-      // Se criação foi bem-sucedida, criar usuário no Supabase Auth e enviar convite
-      if (output.isValid && output.result) {
-        console.info('✅ [POST /users] Manager criado, gerando convite...');
-        try {
-          // Criar usuário no Supabase Auth com link de convite
-          console.info('🔐 [POST /users] Gerando link de convite Supabase para email:', validatedData.email);
-          
-          const supabaseAdmin = createSupabaseAdmin();
-          if (!supabaseAdmin) {
-            console.error('❌ [POST /users] Falha ao criar cliente Supabase Admin');
-            throw new Error('Falha ao criar cliente Supabase Admin');
-          }
-
-          const redirectTo = getFullUrl('/set-password');
-
-          const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-            type: 'invite',
-            email: validatedData.email,
-            options: {
-              redirectTo,
-              data: { 
-                name: validatedData.name,
-                invited: true,
-                first_access: true 
-              }
-            }
-          });
-
-          console.info('📧 [POST /users] Resultado Supabase generateLink:', {
-            success: !!data,
-            hasUser: !!(data as any)?.user,
-            userId: (data as any)?.user?.id,
-            error: linkError,
-          });
-
-          if (linkError || !data.properties?.action_link) {
-            console.error('❌ [POST /users] Erro ao gerar link de convite:', linkError);
-            throw new Error('Erro ao gerar link de convite');
-          }
-
-          const supabaseUserId = (data as any)?.user?.id;
-          const inviteLink = data.properties.action_link;
-          console.info('🔗 [POST /users] Link de convite gerado com sucesso');
-
-          // Atualizar perfil com supabaseId
-          console.info('💾 [POST /users] Atualizando perfil com supabaseId:', supabaseUserId);
-          await managerUserUseCase.updateManagerSupabaseId(output.result.id, supabaseUserId);
-
-          // Enviar email personalizado com link de convite
-          console.info('📬 [POST /users] Enviando email de convite...');
-          const emailService = getEmailService();
-          await emailService.sendOperatorInviteEmail({
-            operatorName: validatedData.name,
-            operatorEmail: validatedData.email,
-            operatorRole: role,
-            managerName: requesterProfile.fullName || requesterProfile.email,
-            inviteUrl: inviteLink,
-          });
-          
-          console.info('✅ [POST /users] Email de convite enviado com sucesso');
-        } catch (emailError) {
-          console.error("❌ [POST /users] Erro ao criar usuário Supabase ou enviar email:", emailError);
-          // Reverter criação do perfil se falhar
-          console.info('🔄 [POST /users] Revertendo criação do perfil...');
-          await managerUserUseCase.deleteManager(output.result.id);
-          const failureOutput = new Output(false, [], ["Erro ao enviar convite. Tente novamente."], null);
-          return NextResponse.json(failureOutput, { status: 500 });
-        }
-      } else {
-        console.warn('⚠️ [POST /users] Não foi possível criar manager:', {
-          isValid: output.isValid,
-          hasResult: !!output.result,
-          errorMessages: output.errorMessages,
-        });
-      }
-      
-      const status = output.isValid ? 200 : 400;
-      console.info('📤 [POST /users] Retornando resposta para criação de manager:', { status, isValid: output.isValid });
-      return NextResponse.json(output, { status });
-    } else if (role === 'operator') {
-      console.info('👤 [POST /users] Criando operador...');
-      // For operator creation, we need managerId from the requester
-      const output = await managerUserUseCase.createOperator({
-        fullName: validatedData.name,
-        email: validatedData.email,
-        managerId: requesterProfile.id, // Use the manager who is creating the operator
-        hasPermanentSubscription: validatedData.hasPermanentSubscription || false,
-        functions: validatedData.functions
-      });
-
-      console.info('📦 [POST /users] Output do createOperator:', {
-        isValid: output.isValid,
-        hasResult: !!output.result,
-        result: output.result,
-        errorMessages: output.errorMessages,
-      });
-      
-      // Se criação foi bem-sucedida, criar usuário no Supabase Auth e enviar convite
-      if (output.isValid && output.result) {
-        console.info('✅ [POST /users] Operador criado, gerando convite...');
-        try {
-          // Criar usuário no Supabase Auth com link de convite
-          console.info('🔐 [POST /users] Gerando link de convite Supabase para email:', validatedData.email);
-          
-          const supabaseAdmin = createSupabaseAdmin();
-          if (!supabaseAdmin) {
-            console.error('❌ [POST /users] Falha ao criar cliente Supabase Admin');
-            throw new Error('Falha ao criar cliente Supabase Admin');
-          }
-
-          const redirectTo = getFullUrl('/set-password');
-
-          const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-            type: 'invite',
-            email: validatedData.email,
-            options: {
-              redirectTo,
-              data: { 
-                name: validatedData.name,
-                invited: true,
-                first_access: true 
-              }
-            }
-          });
-
-          console.info('📧 [POST /users] Resultado Supabase generateLink:', {
-            success: !!data,
-            hasUser: !!(data as any)?.user,
-            userId: (data as any)?.user?.id,
-            error: linkError,
-          });
-
-          if (linkError || !data.properties?.action_link) {
-            console.error('❌ [POST /users] Erro ao gerar link de convite:', linkError);
-            throw new Error('Erro ao gerar link de convite');
-          }
-
-          const supabaseUserId = (data as any)?.user?.id;
-          const inviteLink = data.properties.action_link;
-          console.info('🔗 [POST /users] Link de convite gerado com sucesso');
-
-          // Atualizar perfil com supabaseId
-          console.info('💾 [POST /users] Atualizando perfil com supabaseId:', supabaseUserId);
-          await managerUserUseCase.updateOperatorSupabaseId(output.result.id, supabaseUserId);
-
-          // Enviar email personalizado com link de convite
-          console.info('📬 [POST /users] Enviando email de convite...');
-          const emailService = getEmailService();
-          await emailService.sendOperatorInviteEmail({
-            operatorName: validatedData.name,
-            operatorEmail: validatedData.email,
-            operatorRole: role,
-            managerName: requesterProfile.fullName || requesterProfile.email,
-            inviteUrl: inviteLink,
-          });
-          
-          console.info('✅ [POST /users] Email de convite enviado com sucesso');
-        } catch (emailError) {
-          console.error("❌ [POST /users] Erro ao criar usuário Supabase ou enviar email:", emailError);
-          // Reverter criação do perfil se falhar
-          console.info('🔄 [POST /users] Revertendo criação do perfil...');
-          await managerUserUseCase.deleteOperator(output.result.id);
-          const failureOutput = new Output(false, [], ["Erro ao enviar convite. Tente novamente."], null);
-          return NextResponse.json(failureOutput, { status: 500 });
-        }
-      } else {
-        console.warn('⚠️ [POST /users] Não foi possível criar operador:', {
-          isValid: output.isValid,
-          hasResult: !!output.result,
-          errorMessages: output.errorMessages,
-        });
-      }
-      
-      const status = output.isValid ? 200 : 400;
-      console.info('📤 [POST /users] Retornando resposta para criação de operador:', { status, isValid: output.isValid });
-      return NextResponse.json(output, { status });
-    } else {
-      const output = new Output(false, [], ["Role deve ser 'manager' ou 'operator'"], null);
-      return NextResponse.json(output, { status: 400 });
+    if (existingProfile) {
+      const output = new Output(false, [], ["Email já está em uso"], null);
+      return NextResponse.json(output, { status: 409 });
     }
 
+    const profile = await prisma.profile.create({
+      data: {
+        fullName: validatedData.name,
+        email,
+        role: validatedData.role as UserRole,
+        functions: validatedData.functions ?? [],
+        managerId: masterId,
+        isMaster: false,
+        hasPermanentSubscription: validatedData.hasPermanentSubscription ?? false,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        profileIconUrl: true,
+      },
+    });
+
+    const teamMemberRecord = await prisma.teamMember.create({
+      data: {
+        teamId,
+        profileId: profile.id,
+        role: validatedData.role as UserRole,
+        functions: validatedData.functions ?? [],
+      },
+      select: {
+        role: true,
+        functions: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    try {
+      const supabaseAdmin = createSupabaseAdmin();
+      if (!supabaseAdmin) {
+        throw new Error("Falha ao criar cliente Supabase Admin");
+      }
+
+      const redirectTo = getFullUrl("/set-password");
+
+      const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+        type: "invite",
+        email,
+        options: {
+          redirectTo,
+          data: {
+            name: validatedData.name,
+            invited: true,
+            first_access: true,
+          },
+        },
+      });
+
+      if (linkError || !data?.properties?.action_link) {
+        throw new Error("Erro ao gerar link de convite");
+      }
+
+      const supabaseUserId = (data as any)?.user?.id as string | undefined;
+      const inviteLink = data.properties.action_link;
+
+      if (supabaseUserId) {
+        await prisma.profile.update({
+          where: { id: profile.id },
+          data: { supabaseId: supabaseUserId },
+        });
+      }
+
+      const requesterProfile = await prisma.profile.findUnique({
+        where: { id: profileId },
+        select: { fullName: true, email: true },
+      });
+
+      const emailService = getEmailService();
+      await emailService.sendOperatorInviteEmail({
+        operatorName: validatedData.name,
+        operatorEmail: email,
+        operatorRole: validatedData.role,
+        managerName: requesterProfile?.fullName || requesterProfile?.email || "Manager",
+        inviteUrl: inviteLink,
+      });
+    } catch (_inviteError) {
+      await prisma.teamMember.delete({
+        where: {
+          teamId_profileId: {
+            teamId,
+            profileId: profile.id,
+          },
+        },
+      });
+
+      await prisma.profile.delete({ where: { id: profile.id } });
+
+      const failureOutput = new Output(false, [], ["Erro ao enviar convite. Tente novamente."], null);
+      return NextResponse.json(failureOutput, { status: 500 });
+    }
+
+    const output = new Output(true, ["Usuário criado com sucesso"], [], {
+      id: profile.id,
+      name: profile.fullName || validatedData.name,
+      email: profile.email,
+      role: teamMemberRecord.role.toLowerCase(),
+      functions: teamMemberRecord.functions,
+      profileIconUrl: profile.profileIconUrl,
+      managerId: masterId,
+      createdAt: teamMemberRecord.createdAt,
+      updatedAt: teamMemberRecord.updatedAt,
+    });
+
+    return NextResponse.json(output, { status: 200 });
   } catch (error) {
     console.error("Erro ao criar usuário:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
@@ -276,29 +208,21 @@ export async function POST(
 
 /**
  * GET /api/v1/manager/[supabaseId]/users?role=MANAGER|OPERATOR
- * Lista todos os usuários ou filtra por role
+ * Lista usuários do time ativo
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
   try {
-    const requesterId = request.headers.get('x-supabase-user-id');
+    const requesterId = request.headers.get("x-supabase-user-id");
     const { supabaseId } = await params;
     const { searchParams } = new URL(request.url);
-    const roleFilter = searchParams.get('role');
-    const emailToCheck = searchParams.get('email');
-    
+    const emailToCheck = searchParams.get("email");
+
     if (!requesterId) {
       const output = new Output(false, [], ["Header x-supabase-user-id é obrigatório"], null);
       return NextResponse.json(output, { status: 401 });
-    }
-
-    // Verificar se o usuário atual é um manager
-    const requesterProfile = await profileUseCase.getProfileInfoBySupabaseId(requesterId);
-    if (!requesterProfile || requesterProfile.role !== 'manager') {
-      const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
-      return NextResponse.json(output, { status: 403 });
     }
 
     if (requesterId !== supabaseId) {
@@ -306,14 +230,27 @@ export async function GET(
       return NextResponse.json(output, { status: 403 });
     }
 
+    const teamAccess = await getTeamAccess(request);
+    if ("error" in teamAccess) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    }
+
+    const { teamId, profileId, teamMember } = teamAccess.access;
+    if (teamMember.role !== "manager") {
+      const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
     if (emailToCheck) {
-      const normalizedEmail = emailToCheck.trim().toLowerCase();
-      const { prisma } = await import('../../../../infra/data/prisma');
+      const normalizedEmail = normalizeEmail(emailToCheck);
+
       const existingProfile = await prisma.profile.findFirst({
-        where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+        where: { email: { equals: normalizedEmail, mode: "insensitive" } },
+        select: { id: true },
       });
       const existingPending = await prisma.pendingOperator.findFirst({
-        where: { email: { equals: normalizedEmail, mode: 'insensitive' }, operatorCreated: false },
+        where: { email: { equals: normalizedEmail, mode: "insensitive" }, operatorCreated: false },
+        select: { id: true },
       });
 
       if (existingProfile || existingPending) {
@@ -325,44 +262,79 @@ export async function GET(
       return NextResponse.json(output, { status: 200 });
     }
 
-    const teamManagerId = requesterProfile.isMaster
-      ? requesterProfile.id
-      : requesterProfile.managerId ?? requesterProfile.id;
+    const masterId = await getTeamMasterId(teamId);
+    if (!masterId) {
+      const output = new Output(false, [], ["Time não encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
 
-    // Listar usuários com filtro opcional por role
-    if (roleFilter === 'manager') {
-      // Para managers, retornar apenas outros managers (excluindo o próprio)
-      // Por enquanto retornaremos vazio até definir a regra de negócio
-      const output = new Output(true, [], [], []);
-      return NextResponse.json(output, { status: 200 });
-    } else if (roleFilter === 'operator') {
-      // Get operators managed by this manager
-      const operators = await managerUserRepository.getOperatorsByManager(teamManagerId);
-      const output = new Output(true, [], [], operators);
-      return NextResponse.json(output, { status: 200 });
-    } else {
-      // Return operators and pending operators with stats
-      const operators = await managerUserRepository.getOperatorsByManager(teamManagerId);
-      const stats = await managerUserRepository.getManagerStats(teamManagerId);
-      
-      // Buscar operadores pendentes (pagamento não confirmado)
-      const { prisma } = await import('../../../../infra/data/prisma');
+    const isTeamMaster = masterId === profileId;
+
+    const teamMembers = await prisma.teamMember.findMany({
+      where: { teamId },
+      include: {
+        profile: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+            hasPermanentSubscription: true,
+            _count: {
+              select: {
+                leadsAsAssignee: {
+                  where: { teamId },
+                },
+                leadsAsCloser: {
+                  where: { teamId, status: "scheduled" },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        profile: { fullName: "asc" },
+      },
+    });
+
+    const totalManagers = teamMembers.filter((member) => member.role === "manager").length;
+    const totalOperators = teamMembers.filter((member) => member.role === "operator").length;
+
+    const activeUsers = teamMembers
+      .filter((member) => (isTeamMaster ? true : member.profileId !== profileId))
+      .map((member) => ({
+        id: member.profile.id,
+        name: member.profile.fullName || "Usuário",
+        email: member.profile.email,
+        role: member.role.toLowerCase(),
+        functions: member.functions,
+        profileIconUrl: member.profile.profileIconUrl,
+        managerId: masterId,
+        leadsCount: member.profile._count?.leadsAsAssignee ?? 0,
+        meetingsCount: member.profile._count?.leadsAsCloser ?? 0,
+        createdAt: member.createdAt,
+        updatedAt: member.updatedAt,
+        hasPermanentSubscription: member.profile.hasPermanentSubscription,
+      }));
+
+    let pendingAsUsers: any[] = [];
+    if (isTeamMaster) {
       const pendingOperators = await prisma.pendingOperator.findMany({
-        where: { 
-          managerId: teamManagerId,
+        where: {
+          teamId,
           operatorCreated: false,
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       });
-      
-      // Mapear operadores pendentes para formato de tabela
-      const pendingAsUsers = pendingOperators.map(pending => ({
+
+      pendingAsUsers = pendingOperators.map((pending) => ({
         id: pending.id,
         name: pending.name,
         email: pending.email,
-        role: pending.role,
+        role: String(pending.role).toLowerCase(),
         profileIconUrl: null,
-        managerId: teamManagerId,
+        managerId: masterId,
         leadsCount: 0,
         meetingsCount: 0,
         createdAt: pending.createdAt,
@@ -376,22 +348,19 @@ export async function GET(
           operatorCreated: pending.operatorCreated,
         },
       }));
-      
-      // Combinar operadores ativos e pendentes
-      const allUsers = requesterProfile.isMaster
-        ? [...operators, ...pendingAsUsers]
-        : [...operators, ...pendingAsUsers].filter((user) => user.id !== requesterProfile.id);
-      
-      const output = new Output(true, [], [], allUsers);
-      // Add stats to the response
-      const responseWithStats = {
-        ...output,
-        stats
-      };
-      
-      return NextResponse.json(responseWithStats, { status: 200 });
     }
 
+    const output = new Output(true, [], [], [...activeUsers, ...pendingAsUsers]);
+    const responseWithStats = {
+      ...output,
+      stats: {
+        totalOperators,
+        totalManagers,
+        totalUsers: totalManagers + totalOperators,
+      },
+    };
+
+    return NextResponse.json(responseWithStats, { status: 200 });
   } catch (error) {
     console.error("Erro ao listar usuários:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
@@ -401,27 +370,19 @@ export async function GET(
 
 /**
  * PUT /api/v1/manager/[supabaseId]/users
- * Atualiza usuário ou Associa/desassocia operator de manager
+ * Atualiza usuário ou associa/desassocia membro do time
  */
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
   try {
-    const body = await request.json();
-    const requesterId = request.headers.get('x-supabase-user-id');
+    const requesterId = request.headers.get("x-supabase-user-id");
     const { supabaseId } = await params;
-    
+
     if (!requesterId) {
       const output = new Output(false, [], ["Header x-supabase-user-id é obrigatório"], null);
       return NextResponse.json(output, { status: 401 });
-    }
-
-    // Verificar se o usuário atual é um manager
-    const requesterProfile = await profileUseCase.getProfileInfoBySupabaseId(requesterId);
-    if (!requesterProfile || requesterProfile.role !== 'manager') {
-      const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
-      return NextResponse.json(output, { status: 403 });
     }
 
     if (requesterId !== supabaseId) {
@@ -429,98 +390,29 @@ export async function PUT(
       return NextResponse.json(output, { status: 403 });
     }
 
-    const { action } = body;
-
-    // Se não tiver action, é uma atualização de usuário
-    if (!action) {
-      console.info("🔄 [PUT /users] Iniciando atualização de usuário");
-      console.info("📦 [PUT /users] Body recebido:", JSON.stringify(body, null, 2));
-      
-      // Validar dados de atualização
-      let validatedData;
-      try {
-        validatedData = UpdateUserSchema.parse(body);
-        console.info("✅ [PUT /users] Dados validados:", JSON.stringify(validatedData, null, 2));
-      } catch (validationError: any) {
-        console.error("❌ [PUT /users] Erro de validação:", validationError);
-        const errors = validationError.errors?.map((err: any) => err.message) || [validationError.message];
-        const output = new Output(false, [], errors, null);
-        return NextResponse.json(output, { status: 400 });
-      }
-
-      // Verificar se o usuário sendo atualizado pertence ao manager
-      let userToUpdate = await profileUseCase.getProfileById(validatedData.id);
-      let resolvedUserId = validatedData.id;
-      if (!userToUpdate) {
-        const userBySupabase = await profileUseCase.getProfileInfoBySupabaseId(validatedData.id);
-        if (userBySupabase) {
-          userToUpdate = userBySupabase;
-          resolvedUserId = userBySupabase.id;
-        }
-      }
-      if (!userToUpdate && validatedData.email) {
-        const userByEmail = await profileRepository.findByEmail(validatedData.email);
-        if (userByEmail) {
-          userToUpdate = {
-            id: userByEmail.id,
-            role: userByEmail.role as 'manager' | 'operator',
-            managerId: userByEmail.managerId,
-            isMaster: userByEmail.isMaster,
-            fullName: userByEmail.fullName,
-            email: userByEmail.email
-          };
-          resolvedUserId = userByEmail.id;
-        }
-      }
-      if (!userToUpdate) {
-        const output = new Output(false, [], ["Usuário não encontrado"], null);
-        return NextResponse.json(output, { status: 404 });
-      }
-
-      console.info("👤 [PUT /users] Usuário atual:", {
-        id: userToUpdate.id,
-        currentRole: userToUpdate.role,
-        managerId: userToUpdate.managerId
-      });
-
-      const teamManagerId = requesterProfile.isMaster
-        ? requesterProfile.id
-        : requesterProfile.managerId ?? requesterProfile.id;
-
-      if (!requesterProfile.isMaster && userToUpdate.managerId !== teamManagerId) {
-        const output = new Output(false, [], ["Você só pode atualizar usuários do seu time"], null);
-        return NextResponse.json(output, { status: 403 });
-      }
-
-      // Atualizar usuário
-      console.info("🚀 [PUT /users] Chamando updateOperator com:", {
-        userId: validatedData.id,
-        fullName: validatedData.name,
-        email: validatedData.email,
-        role: validatedData.role,
-        functions: validatedData.functions
-      });
-      
-      const output = await managerUserUseCase.updateOperator(resolvedUserId, {
-        fullName: validatedData.name,
-        email: validatedData.email,
-        role: validatedData.role,
-        functions: validatedData.functions
-      });
-
-      console.info("📤 [PUT /users] Resultado:", {
-        isValid: output.isValid,
-        successMessages: output.successMessages,
-        errorMessages: output.errorMessages,
-        result: output.result ? { id: output.result.id, role: output.result.role } : null
-      });
-
-      return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
+    const teamAccess = await getTeamAccess(request);
+    if ("error" in teamAccess) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
-    // Ações de associação/dissociação
-    if (action === 'associate') {
-      // Validar dados para associação
+    const { teamId, profileId, teamMember } = teamAccess.access;
+    if (teamMember.role !== "manager") {
+      const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    const masterId = await getTeamMasterId(teamId);
+    if (!masterId) {
+      const output = new Output(false, [], ["Time não encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    const isTeamMaster = masterId === profileId;
+
+    const body = await request.json();
+    const { action } = body;
+
+    if (action === "associate") {
       let validatedData;
       try {
         validatedData = AssociateOperatorSchema.parse(body);
@@ -530,14 +422,39 @@ export async function PUT(
         return NextResponse.json(output, { status: 400 });
       }
 
-      const output = await managerUserUseCase.associateOperatorToManager(
-        validatedData.managerId, 
-        validatedData.operatorId
-      );
-      return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
+      if (!isTeamMaster) {
+        const output = new Output(false, [], ["Apenas o master do time pode adicionar usuários"], null);
+        return NextResponse.json(output, { status: 403 });
+      }
 
-    } else if (action === 'dissociate') {
-      // Validar dados para dissociação
+      const existingMember = await prisma.teamMember.findUnique({
+        where: {
+          teamId_profileId: {
+            teamId,
+            profileId: validatedData.profileId,
+          },
+        },
+      });
+
+      if (existingMember) {
+        const output = new Output(false, [], ["Usuário já pertence a este time"], null);
+        return NextResponse.json(output, { status: 409 });
+      }
+
+      const newMember = await prisma.teamMember.create({
+        data: {
+          teamId,
+          profileId: validatedData.profileId,
+          role: (validatedData.role ?? "operator") as UserRole,
+          functions: validatedData.functions ?? [],
+        },
+      });
+
+      const output = new Output(true, ["Usuário adicionado ao time com sucesso"], [], newMember);
+      return NextResponse.json(output, { status: 200 });
+    }
+
+    if (action === "dissociate") {
       let validatedData;
       try {
         validatedData = DissociateOperatorSchema.parse(body);
@@ -547,21 +464,110 @@ export async function PUT(
         return NextResponse.json(output, { status: 400 });
       }
 
-      // Note: dissociateOperatorFromManager needs managerId and operatorId
-      // We'll need the managerId from the requester profile
-      const output = await managerUserUseCase.dissociateOperatorFromManager(
-        requesterProfile.id,
-        validatedData.operatorId
-      );
-      return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
+      if (!isTeamMaster) {
+        const output = new Output(false, [], ["Apenas o master do time pode remover usuários"], null);
+        return NextResponse.json(output, { status: 403 });
+      }
 
-    } else {
-      const output = new Output(false, [], ["Ação deve ser 'associate' ou 'dissociate'"], null);
+      if (validatedData.profileId === masterId) {
+        const output = new Output(false, [], ["Não é possível remover o master do time"], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      await prisma.teamMember.delete({
+        where: {
+          teamId_profileId: {
+            teamId,
+            profileId: validatedData.profileId,
+          },
+        },
+      });
+
+      const output = new Output(true, ["Usuário removido do time com sucesso"], [], null);
+      return NextResponse.json(output, { status: 200 });
+    }
+
+    let validatedData;
+    try {
+      validatedData = UpdateUserSchema.parse(body);
+    } catch (validationError: any) {
+      const errors = validationError.errors?.map((err: any) => err.message) || [validationError.message];
+      const output = new Output(false, [], errors, null);
       return NextResponse.json(output, { status: 400 });
     }
 
+    const targetMember = await prisma.teamMember.findUnique({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId: validatedData.id,
+        },
+      },
+    });
+
+    if (!targetMember) {
+      const output = new Output(false, [], ["Usuário não encontrado no time"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    if (!isTeamMaster && validatedData.id === masterId) {
+      const output = new Output(false, [], ["Você não pode editar o master do time"], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    if (validatedData.name || validatedData.email) {
+      await profileRepository.updateProfileById(validatedData.id, {
+        ...(validatedData.name ? { fullName: validatedData.name } : {}),
+        ...(validatedData.email ? { email: normalizeEmail(validatedData.email) } : {}),
+      });
+    }
+
+    if (validatedData.role || validatedData.functions) {
+      await prisma.teamMember.update({
+        where: {
+          teamId_profileId: {
+            teamId,
+            profileId: validatedData.id,
+          },
+        },
+        data: {
+          ...(validatedData.role ? { role: validatedData.role as UserRole } : {}),
+          ...(validatedData.functions ? { functions: validatedData.functions } : {}),
+        },
+      });
+    }
+
+    const updatedMember = await prisma.teamMember.findUnique({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId: validatedData.id,
+        },
+      },
+      include: {
+        profile: {
+          select: {
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+      },
+    });
+
+    const output = new Output(true, ["Usuário atualizado com sucesso"], [], {
+      id: validatedData.id,
+      name: updatedMember?.profile.fullName || validatedData.name,
+      email: updatedMember?.profile.email,
+      role: updatedMember?.role ? updatedMember.role.toLowerCase() : validatedData.role,
+      functions: updatedMember?.functions ?? validatedData.functions,
+      profileIconUrl: updatedMember?.profile.profileIconUrl,
+      managerId: masterId,
+    });
+
+    return NextResponse.json(output, { status: 200 });
   } catch (error) {
-    console.error("Erro ao gerenciar associação:", error);
+    console.error("Erro ao gerenciar usuário:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }
@@ -569,45 +575,54 @@ export async function PUT(
 
 /**
  * DELETE /api/v1/manager/[supabaseId]/users?userId=xxx
- * Exclui um manager ou operator
+ * Remove um usuário do time ativo
  */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
   try {
-    const requesterId = request.headers.get('x-supabase-user-id');
+    const requesterId = request.headers.get("x-supabase-user-id");
     const { supabaseId } = await params;
-    
-    // Tentar pegar userId do body ou query param
+
     let userId: string | null = null;
     try {
       const body = await request.json();
       userId = body.userId;
     } catch {
-      // Se não conseguir parsear o body, tentar query param
       const { searchParams } = new URL(request.url);
-      userId = searchParams.get('userId');
+      userId = searchParams.get("userId");
     }
-    
+
     if (!requesterId) {
       const output = new Output(false, [], ["Header x-supabase-user-id é obrigatório"], null);
       return NextResponse.json(output, { status: 401 });
     }
 
-    // Verificar se o usuário atual é um manager
-    const requesterProfile = await profileUseCase.getProfileInfoBySupabaseId(requesterId);
-    if (!requesterProfile || requesterProfile.role !== 'manager') {
-      const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
-      return NextResponse.json(output, { status: 403 });
-    }
-    if (!requesterProfile.isMaster) {
-      const output = new Output(false, [], ["Apenas masters podem excluir usuários"], null);
+    if (requesterId !== supabaseId) {
+      const output = new Output(false, [], ["Você só pode gerenciar seus próprios recursos"], null);
       return NextResponse.json(output, { status: 403 });
     }
 
-    if (requesterId !== supabaseId) {
-      const output = new Output(false, [], ["Você só pode gerenciar seus próprios recursos"], null);
+    const teamAccess = await getTeamAccess(request);
+    if ("error" in teamAccess) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    }
+
+    const { teamId, profileId, teamMember } = teamAccess.access;
+    if (teamMember.role !== "manager") {
+      const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    const masterId = await getTeamMasterId(teamId);
+    if (!masterId) {
+      const output = new Output(false, [], ["Time não encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    if (masterId !== profileId) {
+      const output = new Output(false, [], ["Apenas o master do time pode remover usuários"], null);
       return NextResponse.json(output, { status: 403 });
     }
 
@@ -616,36 +631,36 @@ export async function DELETE(
       return NextResponse.json(output, { status: 400 });
     }
 
-    // Verificar se não está tentando excluir a si mesmo
-    if (userId === requesterProfile.id) {
-      const output = new Output(false, [], ["Você não pode excluir a si mesmo"], null);
+    if (userId === masterId) {
+      const output = new Output(false, [], ["Você não pode remover o master do time"], null);
       return NextResponse.json(output, { status: 400 });
     }
 
-    // Verificar se o usuário a ser deletado é um operador do manager
-    const userToDelete = await profileUseCase.getProfileById(userId);
-    
-    if (!userToDelete) {
-      const output = new Output(false, [], ["Usuário não encontrado"], null);
+    const targetMember = await prisma.teamMember.findUnique({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId: userId,
+        },
+      },
+    });
+
+    if (!targetMember) {
+      const output = new Output(false, [], ["Usuário não encontrado no time"], null);
       return NextResponse.json(output, { status: 404 });
     }
 
-    // Se for operador, usar o novo método com atualização de assinatura
-    if (userToDelete.role === 'operator' && userToDelete.managerId === requesterProfile.id) {
-      const output = await managerUserUseCase.deleteOperatorWithSubscriptionUpdate(userId);
-      return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
-    }
+    await prisma.teamMember.delete({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId: userId,
+        },
+      },
+    });
 
-    // Para outros casos (manager), usar métodos antigos
-    let output = await managerUserUseCase.deleteManager(userId);
-    
-    if (!output.isValid) {
-      // Se falhou como manager, tentar como operator
-      output = await managerUserUseCase.deleteOperator(userId);
-    }
-
-    return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
-
+    const output = new Output(true, ["Usuário removido do time com sucesso"], [], null);
+    return NextResponse.json(output, { status: 200 });
   } catch (error) {
     console.error("Erro ao excluir usuário:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);

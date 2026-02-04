@@ -11,6 +11,7 @@ import useBoardContext from "../context/BoardHook";
 import { Lead } from "../context/BoardTypes";
 import { toast } from "sonner";
 import { useParams } from "next/navigation";
+import { useTeamContext } from "@/app/context/TeamContext";
 
 export function BoardContainer() {
   const { finalizeContract, refreshLeads, open, setOpen, selected: lead, user, userLoading } = useBoardContext();
@@ -19,6 +20,7 @@ export function BoardContainer() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
+  const { activeTeamId } = useTeamContext();
 
   const closers = useMemo(() => {
     const users = user?.usersAssociated || [];
@@ -47,6 +49,7 @@ export function BoardContainer() {
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
         },
         body: JSON.stringify({ status: "no_show" }),
       });

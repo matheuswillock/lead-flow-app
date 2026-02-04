@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { useTeamContext } from "@/app/context/TeamContext"
 
 interface ScheduleData {
   id: string
@@ -40,18 +41,37 @@ interface UpcomingMeetingsProps {
 }
 
 export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
+  const { activeTeamId, isLoading: isTeamLoading } = useTeamContext()
   const [schedules, setSchedules] = React.useState<ScheduleData[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
+    if (!supabaseId) return
+
+    // While TeamContext is still resolving activeTeamId, keep this card loading.
+    if (isTeamLoading) {
+      setIsLoading(true)
+      return
+    }
+
+    if (!activeTeamId) {
+      // Avoid infinite loading when no team is selected/available.
+      setIsLoading(false)
+      setSchedules([])
+      setError("Selecione um time para visualizar os agendamentos.")
+      return
+    }
+
     const fetchSchedules = async () => {
       try {
         setIsLoading(true)
+        setError(null)
         
         const response = await fetch('/api/v1/dashboard/schedules', {
           headers: {
             'x-supabase-user-id': supabaseId,
+            'x-team-id': activeTeamId || '',
           },
         })
 
@@ -80,10 +100,8 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
       }
     }
 
-    if (supabaseId) {
-      fetchSchedules()
-    }
-  }, [supabaseId])
+    fetchSchedules()
+  }, [supabaseId, activeTeamId, isTeamLoading])
 
   const getInitials = (name: string) => {
     const names = name.split(' ')

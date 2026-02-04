@@ -12,15 +12,16 @@ export function SiteHeader() {
   const routeName = pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0] || ''
   
   const titleMap: Record<string, string> = {
-    dashboard: 'Dashboard',
-    board: 'Board',
-    pipeline: 'Pipeline',
-    calendar: 'Calendario',
-    account: 'Account',
-    subscription: 'Assinatura',
-    'manager-users': 'Manager Users',
+    dashboard: "Dashboard",
+    board: "Board",
+    pipeline: "Pipeline",
+    calendar: "Calendario",
+    account: "Account",
+    subscription: "Assinatura",
+    "manager-users": "Gerenciar Usuários",
+    teams: "Gerenciar Times",
   }
-  const currentTitle = titleMap[routeName] ?? 'Dashboard'
+  const currentTitle = titleMap[routeName] ?? ''
   return (
   <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b box-border transition-[height] ease-linear">
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">

@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { X } from "lucide-react";
+import { useTeamContext } from "@/app/context/TeamContext";
 
 interface ScheduleMeetingDialogProps {
   open: boolean;
@@ -47,6 +48,7 @@ export function ScheduleMeetingDialog({
 }: ScheduleMeetingDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
+  const { activeTeamId } = useTeamContext();
 
   const [meetingDate, setMeetingDate] = useState<Date>();
   const [meetingTitle, setMeetingTitle] = useState<string>("");
@@ -131,6 +133,7 @@ export function ScheduleMeetingDialog({
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
         },
         body: JSON.stringify({
           date: meetingDate.toISOString(),
@@ -158,6 +161,7 @@ export function ScheduleMeetingDialog({
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
         },
         body: JSON.stringify({
           status: "scheduled",

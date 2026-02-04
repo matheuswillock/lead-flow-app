@@ -4,6 +4,7 @@ import { LeadUseCase } from "../../../useCases/leads/LeadUseCase";
 import { RegisterNewUserProfile } from "../../../useCases/profiles/ProfileUseCase";
 import { UpdateLeadRequestSchema } from "../DTO/requestToUpdateLead";
 import { Output } from "@/lib/output";
+import { prisma } from "@/app/api/infra/data/prisma";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -15,13 +16,56 @@ export async function GET(
 ) {
   try {
     const supabaseId = request.headers.get('x-supabase-user-id');
+    const teamId = request.headers.get('x-team-id') || new URL(request.url).searchParams.get('teamId');
     
     if (!supabaseId) {
       const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
       return NextResponse.json(output, { status: 401 });
     }
+    if (!teamId) {
+      const output = new Output(false, [], ["Team ID é obrigatório"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
 
     const { id } = await params;
+
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true }
+    });
+
+    if (!profile) {
+      const output = new Output(false, [], ["Perfil não encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    const membership = await prisma.teamMember.findUnique({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId: profile.id
+        }
+      }
+    });
+
+    if (!membership) {
+      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+    if (membership.role === "operator" && !membership.functions?.includes("SDR")) {
+      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    const lead = await prisma.lead.findUnique({
+      where: { id },
+      select: { id: true, teamId: true }
+    });
+
+    if (!lead || lead.teamId !== teamId) {
+      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
+      return NextResponse.json(output, { status: 404 });
+    }
 
     const output = await leadUseCase.getLeadById(supabaseId, id);
     const status = output.isValid ? 200 : (output.errorMessages.includes("Lead não encontrado") ? 404 : 400);
@@ -41,10 +85,15 @@ export async function PUT(
   try {
     // Extrair supabaseId dos headers
     const supabaseId = request.headers.get('x-supabase-user-id');
+    const teamId = request.headers.get('x-team-id') || new URL(request.url).searchParams.get('teamId');
     
     if (!supabaseId) {
       const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
       return NextResponse.json(output, { status: 401 });
+    }
+    if (!teamId) {
+      const output = new Output(false, [], ["Team ID é obrigatório"], null);
+      return NextResponse.json(output, { status: 400 });
     }
 
     const body = await request.json();
@@ -58,6 +107,44 @@ export async function PUT(
     }
 
     const { id } = await params;
+
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true }
+    });
+
+    if (!profile) {
+      const output = new Output(false, [], ["Perfil não encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    const membership = await prisma.teamMember.findUnique({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId: profile.id
+        }
+      }
+    });
+
+    if (!membership) {
+      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+    if (membership.role === "operator" && !membership.functions?.includes("SDR")) {
+      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    const lead = await prisma.lead.findUnique({
+      where: { id },
+      select: { id: true, teamId: true }
+    });
+
+    if (!lead || lead.teamId !== teamId) {
+      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
+      return NextResponse.json(output, { status: 404 });
+    }
 
     const output = await leadUseCase.updateLead(supabaseId, id, validatedData);
     const status = output.isValid ? 200 : 400;
@@ -77,13 +164,56 @@ export async function DELETE(
   try {
     // Extrair supabaseId dos headers
     const supabaseId = request.headers.get('x-supabase-user-id');
+    const teamId = request.headers.get('x-team-id') || new URL(request.url).searchParams.get('teamId');
     
     if (!supabaseId) {
       const output = new Output(false, [], ["ID do usuário é obrigatório"], null);
       return NextResponse.json(output, { status: 401 });
     }
+    if (!teamId) {
+      const output = new Output(false, [], ["Team ID é obrigatório"], null);
+      return NextResponse.json(output, { status: 400 });
+    }
 
     const { id } = await params;
+
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true }
+    });
+
+    if (!profile) {
+      const output = new Output(false, [], ["Perfil não encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    const membership = await prisma.teamMember.findUnique({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId: profile.id
+        }
+      }
+    });
+
+    if (!membership) {
+      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+    if (membership.role === "operator" && !membership.functions?.includes("SDR")) {
+      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    const lead = await prisma.lead.findUnique({
+      where: { id },
+      select: { id: true, teamId: true }
+    });
+
+    if (!lead || lead.teamId !== teamId) {
+      const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
+      return NextResponse.json(output, { status: 404 });
+    }
 
     const output = await leadUseCase.deleteLead(supabaseId, id);
     const status = output.isValid ? 200 : 400;

@@ -6,6 +6,7 @@ import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 
 export interface ILeadUseCase {
   createLead(supabaseId: string, data: CreateLeadRequest): Promise<Output>;
+  createLead(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output>;
   createLeadFromImport(supabaseId: string, data: CreateLeadRequest): Promise<Output>;
   getLeadById(supabaseId: string, id: string): Promise<Output>;
   getLeadsByManager(
@@ -29,6 +30,7 @@ export interface ILeadUseCase {
       startDate?: Date;
       endDate?: Date;
       role: string;
+      teamId?: string;
     }
   ): Promise<Output>;
   updateLead(supabaseId: string, id: string, data: UpdateLeadRequest): Promise<Output>;

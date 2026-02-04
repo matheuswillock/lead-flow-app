@@ -3,6 +3,7 @@ import { DashboardInfosService } from '@/app/api/services/DashboardInfos/Dashboa
 import { IMetricsUseCase } from '@/app/api/useCases';
 import { MetricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
 import { NextRequest, NextResponse } from 'next/server';
+import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
 
 const dashboardInfosService : IDashboardInfosService = new DashboardInfosService();
 const metricsUseCase : IMetricsUseCase = new MetricsUseCase(dashboardInfosService);
@@ -12,9 +13,16 @@ export async function GET(
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
   try {
-    const { supabaseId } = await params;
+    const { supabaseId: _supabaseId } = await params;
+    const teamAccess = await getTeamAccess(request);
+    if (teamAccess.error) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    }
 
-    const result = await metricsUseCase.getDetailedStatusMetrics(supabaseId);
+    const result = await metricsUseCase.getDetailedStatusMetrics(
+      teamAccess.access.supabaseId,
+      teamAccess.access.teamId
+    );
 
     const statusCode = result.isValid ? 200 : 400;
     

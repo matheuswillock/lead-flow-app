@@ -22,6 +22,7 @@ import { ScheduleMeetingDialog } from '@/app/[supabaseId]/board/features/contain
 import { FinalizeContractDialog, FinalizeContractData } from '@/app/[supabaseId]/board/features/container/FinalizeContractDialog';
 import { UserAssociated } from '@/app/api/v1/profiles/DTO/profileResponseDTO';
 import { useParams } from 'next/navigation';
+import { useTeamContext } from '@/app/context/TeamContext';
 
 interface ChangeStatusDialogProps {
   open: boolean;
@@ -44,6 +45,7 @@ export function ChangeStatusDialog({
 }: ChangeStatusDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
+  const { activeTeamId } = useTeamContext();
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
@@ -77,10 +79,11 @@ export function ChangeStatusDialog({
     try {
       const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
-        },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
+        ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
+      },
         body: JSON.stringify({ status: newStatus }),
       });
 
@@ -107,7 +110,11 @@ export function ChangeStatusDialog({
 
     const response = await fetch(`/api/v1/leads/${lead.id}/finalize`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
+        ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
+      },
       body: JSON.stringify(data),
     });
 
