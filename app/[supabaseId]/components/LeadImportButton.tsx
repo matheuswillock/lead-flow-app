@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
+import { useTeamContext } from "@/app/context/TeamContext";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ interface LeadImportButtonProps {
 export default function LeadImportButton({ onImportComplete }: LeadImportButtonProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
+  const { activeTeamId } = useTeamContext();
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,6 +30,10 @@ export default function LeadImportButton({ onImportComplete }: LeadImportButtonP
       toast.error("Usuario nao identificado");
       return;
     }
+    if (!activeTeamId) {
+      toast.error("Selecione um time para importar leads");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -38,6 +44,7 @@ export default function LeadImportButton({ onImportComplete }: LeadImportButtonP
         method: "POST",
         headers: {
           "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId,
         },
         body: formData,
       });

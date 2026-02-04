@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService";
 import type { 
   ISubscriptionManagementUseCase, 
   UpdatePaymentMethodDTO 
@@ -33,6 +34,11 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
+      // Assinatura é sempre gerida pelo master pagante.
+      // Para manter compatibilidade com cenários legados, quando um usuário não-master consultar,
+      // usamos o managerId como masterId, se existir.
+      const masterIdForBilling = profile.isMaster ? profile.id : profile.managerId;
+
       // Verificar se tem asaasSubscriptionId (campo mais confiável)
       if (!profile.asaasSubscriptionId && !profile.hasPermanentSubscription) {
         return new Output(
@@ -43,27 +49,37 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // Contar operadores reais linkados a este manager
-      // Incluindo tanto operadores quanto managers (pode ter manager linkado como operador)
+      // Calcular valor com base na nova regra (Times + usuários distinct) sempre que possível.
+      // Se não for possível (ex.: masterId ausente), fazemos fallback para regra antiga.
+      const basePrice = 59.9;
+      const extraTeamPrice = 29.9;
+      const extraUserPrice = 19.9;
+
+      let billingSummary: any | null = null;
+      if (masterIdForBilling) {
+        try {
+          billingSummary = await getBillingSummary(masterIdForBilling);
+        } catch (err) {
+          console.warn("[SubscriptionManagementUseCase] Falha ao calcular billing summary:", err);
+          billingSummary = null;
+        }
+      }
+
+      // Fallback legacy: contar usuários linkados via managerId (modelo antigo).
       const actualOperatorCount = await prisma.profile.count({
         where: {
           managerId: profile.id,
-          role: { in: ['operator', 'manager'] }
-        }
+          role: { in: ['operator', 'manager'] },
+        },
       });
 
-      // Calcular valor total: plano base + operadores
-      const basePrice = 59.90;
-      const operatorPrice = 19.90;
-      const operatorCount = actualOperatorCount;
-      
-      let totalValue = 0;
-      // Assinatura vitalícia não tem custo
-      if (profile.hasPermanentSubscription) {
-        totalValue = 0;
-      } else if (profile.subscriptionPlan !== 'free_trial') {
-        totalValue = basePrice + (operatorCount * operatorPrice);
-      }
+      const legacyTotal = basePrice + (actualOperatorCount * extraUserPrice);
+      const totalValue =
+        profile.hasPermanentSubscription
+          ? 0
+          : profile.subscriptionPlan === "free_trial"
+            ? 0
+            : billingSummary?.totalPrice ?? Number(legacyTotal.toFixed(2));
 
       // Formatar dados da assinatura
       const subscriptionData = {
@@ -76,7 +92,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         description: profile.hasPermanentSubscription ? 'Assinatura Vitalícia (Sem Custo)' :
                      profile.subscriptionPlan === 'free_trial' ? 'Período de teste' :
                      profile.subscriptionPlan === 'manager_base' ? 'Plano Manager Base' :
-                     `Plano Manager + ${operatorCount} Operador${operatorCount > 1 ? 'es' : ''}`,
+                     `Plano Manager Base`,
         billingType: 'CREDIT_CARD',
         hasPermanentSubscription: profile.hasPermanentSubscription || false,
         customer: {
@@ -85,9 +101,22 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         },
         externalReference: profile.asaasCustomerId || undefined,
         createdAt: profile.subscriptionStartDate?.toISOString() || profile.createdAt.toISOString(),
+        billingSummary: billingSummary
+          ? {
+              ...billingSummary,
+              // Garantir preços e arredondamento consistente no frontend
+              basePrice,
+              extraTeamsPrice: Number((billingSummary.billableTeams * extraTeamPrice).toFixed(2)),
+              extraUsersPrice: Number((billingSummary.billableUsers * extraUserPrice).toFixed(2)),
+              totalPrice: Number(Number(billingSummary.totalPrice).toFixed(2)),
+            }
+          : null,
         planDetails: {
           plan: profile.subscriptionPlan,
-          operatorCount: operatorCount,
+          // Mantemos operatorCount por compatibilidade (UI antiga). Agora representa usuários cobrados (distinct, exceto master).
+          operatorCount: billingSummary?.billableUsers ?? actualOperatorCount,
+          teamCount: billingSummary?.teamCount,
+          distinctUserCount: billingSummary?.distinctUserCount,
           trialEndDate: profile.trialEndDate?.toISOString()
         }
       };

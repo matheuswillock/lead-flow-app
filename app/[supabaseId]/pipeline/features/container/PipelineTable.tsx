@@ -50,8 +50,13 @@ import { useState } from "react";
 import { ScheduleMeetingDialog } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
 import { ChangeStatusDialog } from "./ChangeStatusDialog";
 import { createColumns } from "./PipelineColumns";
+import { useParams } from "next/navigation";
+import { useTeamContext } from "@/app/context/TeamContext";
 
 export default function PipelineTable() {
+  const params = useParams();
+  const supabaseId = params.supabaseId as string | undefined;
+  const { activeTeamId } = useTeamContext();
   const { 
     filtered, 
     handleRowClick, 
@@ -159,6 +164,10 @@ export default function PipelineTable() {
     try {
       const response = await fetch(`/api/v1/leads/${lead.id}`, {
         method: 'DELETE',
+        headers: {
+          ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
+        },
       });
 
       if (!response.ok) {

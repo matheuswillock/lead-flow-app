@@ -1,5 +1,6 @@
 import { cookies } from "next/headers"
 import { UserProvider } from "@/app/context/UserContext"
+import { TeamProvider } from "@/app/context/TeamContext"
 import { LayoutContent } from "./components/LayoutContent"
 
 interface ProtectedLayoutProps {
@@ -19,9 +20,11 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
   
   return (
     <UserProvider supabaseId={supabaseId}>
-      <LayoutContent supabaseId={supabaseId} defaultOpen={defaultOpen}>
-        {children}
-      </LayoutContent>
+      <TeamProvider supabaseId={supabaseId}>
+        <LayoutContent supabaseId={supabaseId} defaultOpen={defaultOpen}>
+          {children}
+        </LayoutContent>
+      </TeamProvider>
     </UserProvider>
   )
 }

@@ -19,9 +19,24 @@ export interface SubscriptionData {
   };
   externalReference?: string;
   createdAt: string;
+  billingSummary?: {
+    masterId: string;
+    teamCount: number;
+    distinctUserCount: number;
+    totalUsersIncludingMaster: number;
+    billableTeams: number;
+    billableUsers: number;
+    basePrice: number;
+    extraTeamsPrice: number;
+    extraUsersPrice: number;
+    totalPrice: number;
+    hasPermanentSubscription: boolean;
+  } | null;
   planDetails?: {
     plan?: string;
     operatorCount?: number;
+    teamCount?: number;
+    distinctUserCount?: number;
     trialEndDate?: string;
   };
 }

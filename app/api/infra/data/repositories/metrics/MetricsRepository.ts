@@ -10,6 +10,36 @@ import type {
 } from "./IMetricsRepository";
 
 export class MetricsRepository implements IMetricsRepository {
+  private async getTeamContext(supabaseId: string, teamId: string) {
+    const profile = await prisma.profile.findUnique({
+      where: { supabaseId },
+      select: { id: true },
+    });
+
+    if (!profile) {
+      throw new Error("Profile não encontrado");
+    }
+
+    const teamMember = await prisma.teamMember.findUnique({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId: profile.id,
+        },
+      },
+      select: { role: true, functions: true },
+    });
+
+    if (!teamMember) {
+      throw new Error("Acesso negado para este time");
+    }
+
+    if (teamMember.role === "operator" && !teamMember.functions.includes("SDR")) {
+      throw new Error("Acesso negado: função SDR necessária para visualizar leads.");
+    }
+
+    return { profileId: profile.id, teamMember };
+  }
   
   /**
    * Busca leads básicos para cálculo de métricas
@@ -18,40 +48,16 @@ export class MetricsRepository implements IMetricsRepository {
    * - Se supabaseId for de um Operator: busca apenas os leads do operator
    */
   async findLeadsForMetrics(filters: MetricsFilters): Promise<LeadMetricsData[]> {
-    const { supabaseId, startDate, endDate } = filters;
-    
-    // Buscar o perfil para verificar se é Manager ou Operator
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { 
-        id: true, 
-        role: true,
-        isMaster: true,
-        managerId: true,
-        operators: {
-          select: { id: true }
-        }
-      },
-    });
-
-    if (!profile) {
-      throw new Error('Profile não encontrado');
-    }
+    const { supabaseId, teamId, startDate, endDate } = filters;
+    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
 
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (profile.role === 'manager') {
-      // Determinar o masterId
-      const masterId = profile.isMaster ? profile.id : profile.managerId;
-      
-      if (!masterId) {
-        throw new Error('Master ID não encontrado');
-      }
-
-      // Buscar leads do master (todos da equipe)
+    if (teamMember.role === 'manager') {
+      // Manager: buscar leads do time
       whereClause = {
-        managerId: masterId,
+        teamId,
         ...(startDate && endDate && {
           createdAt: {
             gte: startDate,
@@ -63,9 +69,10 @@ export class MetricsRepository implements IMetricsRepository {
       // Operator: buscar apenas leads atribuídos a ele OU criados por ele
       whereClause = {
         OR: [
-          { assignedTo: profile.id },
-          { createdBy: profile.id }
+          { assignedTo: profileId },
+          { createdBy: profileId }
         ],
+        teamId,
         ...(startDate && endDate && {
           createdAt: {
             gte: startDate,
@@ -93,47 +100,25 @@ export class MetricsRepository implements IMetricsRepository {
    * - Se supabaseId for de um Manager não-master: busca leads do master (todos da equipe)
    * - Se supabaseId for de um Operator: busca apenas os leads do operator
    */
-  async getStatusMetrics(supabaseId: string): Promise<StatusMetricsData[]> {
-    // Buscar o perfil para verificar se é Manager ou Operator
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { 
-        id: true, 
-        role: true,
-        isMaster: true,
-        managerId: true,
-        operators: {
-          select: { id: true }
-        }
-      },
-    });
-
-    if (!profile) {
-      throw new Error('Profile não encontrado');
-    }
+  async getStatusMetrics(supabaseId: string, teamId: string): Promise<StatusMetricsData[]> {
+    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
 
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (profile.role === 'manager') {
-      // Determinar o masterId
-      const masterId = profile.isMaster ? profile.id : profile.managerId;
-      
-      if (!masterId) {
-        throw new Error('Master ID não encontrado');
-      }
-
-      // Buscar leads do master (todos da equipe)
+    if (teamMember.role === 'manager') {
+      // Manager: buscar leads do time
       whereClause = {
-        managerId: masterId,
+        teamId,
       };
     } else {
       // Operator: buscar apenas leads atribuídos a ele OU criados por ele
       whereClause = {
         OR: [
-          { assignedTo: profile.id },
-          { createdBy: profile.id }
+          { assignedTo: profileId },
+          { createdBy: profileId }
         ],
+        teamId,
       };
     }
 
@@ -167,39 +152,16 @@ export class MetricsRepository implements IMetricsRepository {
    * - Se supabaseId for de um Manager não-master: busca leads do master (todos da equipe)
    * - Se supabaseId for de um Operator: busca apenas os leads do operator
    */
-  async getLeadsByPeriod(supabaseId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]> {
-    // Buscar o perfil para verificar se é Manager ou Operator
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { 
-        id: true, 
-        role: true,
-        isMaster: true,
-        managerId: true,
-        operators: {
-          select: { id: true }
-        }
-      },
-    });
-
-    if (!profile) {
-      throw new Error('Profile não encontrado');
-    }
+  async getLeadsByPeriod(supabaseId: string, teamId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]> {
+    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
 
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (profile.role === 'manager') {
-      // Determinar o masterId
-      const masterId = profile.isMaster ? profile.id : profile.managerId;
-      
-      if (!masterId) {
-        throw new Error('Master ID não encontrado');
-      }
-
-      // Buscar leads do master (todos da equipe)
+    if (teamMember.role === 'manager') {
+      // Manager: buscar leads do time
       whereClause = {
-        managerId: masterId,
+        teamId,
         createdAt: {
           gte: startDate,
           lte: endDate,
@@ -209,9 +171,10 @@ export class MetricsRepository implements IMetricsRepository {
       // Operator: buscar apenas leads atribuídos a ele OU criados por ele
       whereClause = {
         OR: [
-          { assignedTo: profile.id },
-          { createdBy: profile.id }
+          { assignedTo: profileId },
+          { createdBy: profileId }
         ],
+        teamId,
         createdAt: {
           gte: startDate,
           lte: endDate,
@@ -245,41 +208,17 @@ export class MetricsRepository implements IMetricsRepository {
    * - Se supabaseId for de um Operator: busca apenas agendamentos do operator
    */
   async getScheduledLeads(filters: MetricsFilters): Promise<ScheduleMetricsData[]> {
-    const { supabaseId, startDate, endDate } = filters;
-    
-    // Buscar o perfil para verificar se é Manager ou Operator
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { 
-        id: true, 
-        role: true,
-        isMaster: true,
-        managerId: true,
-        operators: {
-          select: { id: true }
-        }
-      },
-    });
-
-    if (!profile) {
-      throw new Error('Profile não encontrado');
-    }
+    const { supabaseId, teamId, startDate, endDate } = filters;
+    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
 
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (profile.role === 'manager') {
-      // Determinar o masterId
-      const masterId = profile.isMaster ? profile.id : profile.managerId;
-      
-      if (!masterId) {
-        throw new Error('Master ID não encontrado');
-      }
-
-      // Buscar agendamentos do master (todos da equipe)
+    if (teamMember.role === 'manager') {
+      // Manager: buscar agendamentos do time
       whereClause = {
         lead: {
-          managerId: masterId,
+          teamId,
         },
         ...(startDate && endDate && {
           createdAt: {
@@ -293,9 +232,10 @@ export class MetricsRepository implements IMetricsRepository {
       whereClause = {
         lead: {
           OR: [
-            { assignedTo: profile.id },
-            { createdBy: profile.id }
+            { assignedTo: profileId },
+            { createdBy: profileId }
           ],
+          teamId,
         },
         ...(startDate && endDate && {
           createdAt: {
@@ -324,41 +264,17 @@ export class MetricsRepository implements IMetricsRepository {
    * - Se supabaseId for de um Operator: busca apenas vendas do operator
    */
   async getFinalizedLeads(filters: MetricsFilters): Promise<SaleMetricsData[]> {
-    const { supabaseId, startDate, endDate } = filters;
-    
-    // Buscar o perfil para verificar se é Manager ou Operator
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { 
-        id: true, 
-        role: true,
-        isMaster: true,
-        managerId: true,
-        operators: {
-          select: { id: true }
-        }
-      },
-    });
-
-    if (!profile) {
-      throw new Error('Profile não encontrado');
-    }
+    const { supabaseId, teamId, startDate, endDate } = filters;
+    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
 
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (profile.role === 'manager') {
-      // Determinar o masterId
-      const masterId = profile.isMaster ? profile.id : profile.managerId;
-      
-      if (!masterId) {
-        throw new Error('Master ID não encontrado');
-      }
-
-      // Buscar vendas do master (todos da equipe)
+    if (teamMember.role === 'manager') {
+      // Manager: buscar vendas do time
       whereClause = {
         lead: {
-          managerId: masterId,
+          teamId,
         },
         ...(startDate && endDate && {
           createdAt: {
@@ -372,9 +288,10 @@ export class MetricsRepository implements IMetricsRepository {
       whereClause = {
         lead: {
           OR: [
-            { assignedTo: profile.id },
-            { createdBy: profile.id }
+            { assignedTo: profileId },
+            { createdBy: profileId }
           ],
+          teamId,
         },
         ...(startDate && endDate && {
           createdAt: {

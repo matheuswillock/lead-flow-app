@@ -2,6 +2,7 @@ import type { Output } from "@/lib/output";
 
 export interface MetricsFilters {
   supabaseId: string;
+  teamId: string;
   startDate?: Date;
   endDate?: Date;
   period?: '7d' | '30d' | '3m' | '6m' | '1y';
@@ -13,5 +14,5 @@ export interface MetricsFilters {
  */
 export interface IMetricsUseCase {
   getDashboardMetrics(filters: MetricsFilters): Promise<Output>;
-  getDetailedStatusMetrics(supabaseId: string): Promise<Output>;
+  getDetailedStatusMetrics(supabaseId: string, teamId: string): Promise<Output>;
 }

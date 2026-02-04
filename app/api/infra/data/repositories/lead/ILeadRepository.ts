@@ -26,8 +26,28 @@ export interface ILeadRepository {
       endDate?: Date;
     }
   ): Promise<{ leads: Lead[] }>;
+  findAllByTeamId(
+    teamId: string,
+    options?: {
+      status?: LeadStatus;
+      assignedTo?: string;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+    }
+  ): Promise<{ leads: Lead[] }>;
   findAllByOperatorId(
     operatorId: string, 
+    options?: {
+      status?: LeadStatus;
+      search?: string;
+      startDate?: Date;
+      endDate?: Date;
+    }
+  ): Promise<{ leads: Lead[] }>;
+  findAllByOperatorIdInTeam(
+    operatorId: string,
+    teamId: string,
     options?: {
       status?: LeadStatus;
       search?: string;

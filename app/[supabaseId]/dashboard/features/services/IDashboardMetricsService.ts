@@ -31,6 +31,6 @@ export interface MetricsFilters {
 }
 
 export interface IDashboardMetricsService {
-  getMetrics(supabaseId: string, filters?: MetricsFilters): Promise<DashboardMetricsData>;
-  getDetailedMetrics(supabaseId: string): Promise<DetailedMetricsData[]>;
+  getMetrics(supabaseId: string, teamId: string, filters?: MetricsFilters): Promise<DashboardMetricsData>;
+  getDetailedMetrics(supabaseId: string, teamId: string): Promise<DetailedMetricsData[]>;
 }

@@ -4,5 +4,5 @@ import { DetailedStatusMetrics } from "./types/DetailedStatusMetrics";
 
 export interface IDashboardInfosService {
   getDashboardMetrics(filters: DashboardFilters): Promise<DashboardMetrics>;
-  getDetailedStatusMetrics(supabaseId: string): Promise<DetailedStatusMetrics[]>;
+  getDetailedStatusMetrics(supabaseId: string, teamId: string): Promise<DetailedStatusMetrics[]>;
 }

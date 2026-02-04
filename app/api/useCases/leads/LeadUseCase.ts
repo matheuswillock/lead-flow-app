@@ -18,12 +18,12 @@ export class LeadUseCase implements ILeadUseCase {
     private profileUseCase: IProfileUseCase,
   ) {}
 
-  async createLead(supabaseId: string, data: CreateLeadRequest): Promise<Output> {
-    return this.createLeadInternal(supabaseId, data, false);
+  async createLead(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
+    return this.createLeadInternal(supabaseId, data, false, teamId);
   }
 
-  async createLeadFromImport(supabaseId: string, data: CreateLeadRequest): Promise<Output> {
-    const output = await this.createLeadInternal(supabaseId, data, true);
+  async createLeadFromImport(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
+    const output = await this.createLeadInternal(supabaseId, data, true, teamId);
 
     if (output.isValid && data.status === LeadStatus.contract_finalized && output.result?.id) {
       const amount = Number(data.ticket ?? data.currentValue ?? 0);
@@ -43,7 +43,8 @@ export class LeadUseCase implements ILeadUseCase {
   private async createLeadInternal(
     supabaseId: string,
     data: CreateLeadRequest,
-    skipAutoAssign: boolean
+    skipAutoAssign: boolean,
+    teamId?: string
   ): Promise<Output> {
     try {
       // Buscar informações do perfil através do ProfileUseCase
@@ -68,8 +69,13 @@ export class LeadUseCase implements ILeadUseCase {
 
       const leadCode = await this.generateLeadCode(data.name);
 
+      if (!teamId) {
+        return new Output(false, [], ["Team ID é obrigatório para criar lead"], null);
+      }
+
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
+        team: { connect: { id: teamId } },
         leadCode,
         name: data.name,
         email: data.email || null,
@@ -230,6 +236,7 @@ export class LeadUseCase implements ILeadUseCase {
       startDate?: Date;
       endDate?: Date;
       role: string;
+      teamId?: string;
     }
   ): Promise<Output> {
     try {
@@ -240,43 +247,53 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      let leads: any[] = [];
+      const teamId = options?.teamId;
+      if (!teamId) {
+        return new Output(false, [], ["Team ID é obrigatório"], null);
+      }
 
-      if (options?.role === 'manager') {
-        // Determinar o managerId base (master)
-        // Se o usuário é master, usa o próprio ID
-        // Se não é master, usa o managerId (aponta para o master)
-        const baseMasterId = profileInfo.isMaster 
-          ? profileInfo.id 
-          : profileInfo.managerId;
-        
-        if (!baseMasterId) {
-          return new Output(false, [], ["Master não identificado"], null);
+      const membership = await prisma.teamMember.findUnique({
+        where: {
+          teamId_profileId: {
+            teamId,
+            profileId: profileInfo.id
+          }
+        },
+        select: {
+          role: true,
+          functions: true
         }
+      });
 
-        // Manager (master ou não-master) vê todos os leads do master
-        const result = await this.leadRepository.findAllByManagerId(baseMasterId, {
+      if (!membership) {
+        return new Output(false, [], ["Sem acesso ao time ativo"], null);
+      }
+
+      let leads: any[] = [];
+      const teamRole = membership.role;
+
+      if (teamRole === 'manager') {
+        const result = await this.leadRepository.findAllByTeamId(teamId, {
           status: options.status,
           assignedTo: options.assignedTo,
           search: options.search,
           startDate: options.startDate,
           endDate: options.endDate,
         });
-        
+
         leads = result.leads;
-      } else if (options?.role === 'operator') {
-        // Operator vê apenas leads criados por ele OU atribuídos a ele
-        if (profileInfo.role !== 'operator') {
-          return new Output(false, [], ["Usuário não é um operator"], null);
+      } else if (teamRole === 'operator') {
+        if (!membership.functions?.includes("SDR")) {
+          return new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
         }
 
-        const result = await this.leadRepository.findAllByOperatorId(profileInfo.id, {
+        const result = await this.leadRepository.findAllByOperatorIdInTeam(profileInfo.id, teamId, {
           status: options.status,
           search: options.search,
           startDate: options.startDate,
           endDate: options.endDate,
         });
-        
+
         leads = result.leads;
       } else {
         return new Output(false, [], ["Role inválido. Use 'manager' ou 'operator'"], null);
@@ -590,6 +607,7 @@ export class LeadUseCase implements ILeadUseCase {
       id: lead.id,
       leadCode: lead.leadCode,
       managerId: lead.managerId,
+      teamId: lead.teamId ?? null,
       assignedTo: lead.assignedTo,
       status: lead.status,
       name: lead.name,

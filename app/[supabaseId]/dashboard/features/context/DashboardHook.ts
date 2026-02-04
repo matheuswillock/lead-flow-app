@@ -6,6 +6,7 @@ import { IDashboardMetricsService, MetricsFilters } from '../services/IDashboard
 
 interface UseDashboardHookProps {
   supabaseId: string;
+  teamId: string;
   dashboardService: IDashboardMetricsService;
   initialFilters?: MetricsFilters;
 }
@@ -14,6 +15,7 @@ interface UseDashboardHookReturn extends IDashboardState, IDashboardActions {}
 
 export function useDashboardHook({ 
   supabaseId, 
+  teamId,
   dashboardService, 
   initialFilters 
 }: UseDashboardHookProps): UseDashboardHookReturn {
@@ -49,8 +51,8 @@ export function useDashboardHook({
 
       // Buscar dados em paralelo
       const [metricsData, detailedData] = await Promise.all([
-        dashboardService.getMetrics(supabaseId, finalFilters),
-        dashboardService.getDetailedMetrics(supabaseId),
+        dashboardService.getMetrics(supabaseId, teamId, finalFilters),
+        dashboardService.getDetailedMetrics(supabaseId, teamId),
       ]);
 
       setMetrics(metricsData);
@@ -63,7 +65,7 @@ export function useDashboardHook({
     } finally {
       setIsLoading(false);
     }
-  }, [supabaseId, dashboardService, filters, customDateRange]);
+  }, [supabaseId, teamId, dashboardService, filters, customDateRange]);
 
   // Ação para atualizar filtros
   const updateFilters = useCallback((newFilters: Partial<MetricsFilters>) => {
@@ -122,11 +124,11 @@ export function useDashboardHook({
           }
         : filters;
       
-      dashboardService.clearCache(supabaseId, finalFilters);
+      dashboardService.clearCache(supabaseId, teamId, finalFilters);
     }
     
     await fetchMetrics();
-  }, [fetchMetrics, dashboardService, supabaseId, filters, customDateRange]);
+  }, [fetchMetrics, dashboardService, supabaseId, teamId, filters, customDateRange]);
   
   // Ação para toggle de blur
   const toggleBlur = useCallback(() => {
