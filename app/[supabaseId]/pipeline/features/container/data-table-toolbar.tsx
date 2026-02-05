@@ -7,11 +7,19 @@ import { Input } from "@/components/ui/input";
 import { DataTableFacetedFilter } from "./data-table-faceted-filter";
 import { DataTableDateFilter } from "./data-table-date-filter";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import usePipelineContext from "../context/PipelineHook";
 
 interface DataTableToolbarProps<TData> {
   table: Table<TData>;
@@ -26,7 +34,8 @@ export function DataTableToolbar<TData>({
   responsibleOptions,
   closerOptions,
 }: DataTableToolbarProps<TData>) {
-  const isFiltered = table.getState().columnFilters.length > 0;
+  const { onlyMeetingsHeld, setOnlyMeetingsHeld } = usePipelineContext();
+  const isFiltered = table.getState().columnFilters.length > 0 || onlyMeetingsHeld;
 
   return (
     <div className="flex items-center justify-between">
@@ -66,10 +75,25 @@ export function DataTableToolbar<TData>({
             title="Data de Criação"
           />
         )}
+        <Select
+          value={onlyMeetingsHeld ? "held" : "all"}
+          onValueChange={(value) => setOnlyMeetingsHeld(value === "held")}
+        >
+          <SelectTrigger className="h-8 w-[160px]">
+            <SelectValue placeholder="Reuniões" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas</SelectItem>
+            <SelectItem value="held">Realizadas</SelectItem>
+          </SelectContent>
+        </Select>
         {isFiltered && (
           <Button
             variant="ghost"
-            onClick={() => table.resetColumnFilters()}
+            onClick={() => {
+              table.resetColumnFilters();
+              setOnlyMeetingsHeld(false);
+            }}
             className="h-8 px-2 lg:px-3"
           >
             Limpar

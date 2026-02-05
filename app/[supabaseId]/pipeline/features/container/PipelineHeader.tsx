@@ -2,7 +2,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
 import { Filter, Table2, User, Plus } from "lucide-react";
 import usePipelineContext from "../context/PipelineHook";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";

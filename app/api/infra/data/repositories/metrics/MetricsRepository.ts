@@ -6,6 +6,7 @@ import type {
   LeadsPeriodData,
   MetricsFilters,
   ScheduleMetricsData,
+  MeetingHeldLeadMetricsData,
   SaleMetricsData
 } from "./IMetricsRepository";
 
@@ -323,6 +324,50 @@ export class MetricsRepository implements IMetricsRepository {
             createdAt: true,
           },
         },
+      },
+    });
+  }
+
+  async getMeetingsHeldLeads(filters: MetricsFilters): Promise<MeetingHeldLeadMetricsData[]> {
+    const { supabaseId, teamId, startDate, endDate } = filters;
+    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
+
+    let whereClause: any;
+
+    if (teamMember.role === 'manager') {
+      whereClause = {
+        teamId,
+        meetingHeald: 'yes',
+        ...(startDate && endDate && {
+          meetingDate: {
+            gte: startDate,
+            lte: endDate,
+          },
+        }),
+      };
+    } else {
+      whereClause = {
+        teamId,
+        meetingHeald: 'yes',
+        OR: [
+          { assignedTo: profileId },
+          { createdBy: profileId },
+        ],
+        ...(startDate && endDate && {
+          meetingDate: {
+            gte: startDate,
+            lte: endDate,
+          },
+        }),
+      };
+    }
+
+    return await prisma.lead.findMany({
+      where: whereClause,
+      select: {
+        meetingDate: true,
+        assignedTo: true,
+        closerId: true,
       },
     });
   }

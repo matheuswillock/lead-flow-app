@@ -2,7 +2,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
 import { Filter, ScrollText, User, Plus } from "lucide-react";
 import useBoardContext from "../context/BoardHook";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";

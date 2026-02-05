@@ -45,6 +45,12 @@ export interface ScheduleMetricsData {
   createdAt: Date;
 }
 
+export interface MeetingHeldLeadMetricsData {
+  meetingDate: Date | null;
+  assignedTo: string | null;
+  closerId: string | null;
+}
+
 export interface SaleMetricsData {
   id: string;
   leadId: string;
@@ -80,4 +86,9 @@ export interface IMetricsRepository {
    * Busca vendas finalizadas da tabela LeadFinalized
    */
   getFinalizedLeads(filters: MetricsFilters): Promise<SaleMetricsData[]>;
+
+  /**
+   * Busca reuniões realizadas (meetingHeald = yes) por período (meetingDate)
+   */
+  getMeetingsHeldLeads(filters: MetricsFilters): Promise<MeetingHeldLeadMetricsData[]>;
 }

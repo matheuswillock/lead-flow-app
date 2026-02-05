@@ -1,6 +1,7 @@
 import { LeadStatus } from "@prisma/client";
 import { metricsRepository } from "@/app/api/infra/data/repositories/metrics/MetricsRepository";
 import type { MetricsFilters } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository";
+import { prisma } from "@/app/api/infra/data/prisma";
 import { IDashboardInfosService } from "./IDashboardInfosService";
 import { DashboardMetrics } from "./types/DashboardMetrics";
 import { DashboardFilters } from "./types/DashboardFilters";
@@ -51,6 +52,55 @@ export class DashboardInfosService implements IDashboardInfosService {
     // Buscar vendas da tabela LeadFinalized
     const finalizedLeads = await metricsRepository.getFinalizedLeads(repositoryFilters);
     const vendas = finalizedLeads.length;
+
+    // Buscar reuniões realizadas (meetingHeald = yes) pela data da reunião (meetingDate)
+    const meetingsHeldLeads = await metricsRepository.getMeetingsHeldLeads(repositoryFilters);
+
+    const closerCounts = new Map<string, number>();
+    const sdrCounts = new Map<string, number>();
+
+    meetingsHeldLeads.forEach((lead) => {
+      if (lead.closerId) {
+        closerCounts.set(lead.closerId, (closerCounts.get(lead.closerId) || 0) + 1);
+      }
+      if (lead.assignedTo) {
+        sdrCounts.set(lead.assignedTo, (sdrCounts.get(lead.assignedTo) || 0) + 1);
+      }
+    });
+
+    const reunioesRealizadasCloser = Array.from(closerCounts.values()).reduce((sum, value) => sum + value, 0);
+    const reunioesRealizadasSdr = Array.from(sdrCounts.values()).reduce((sum, value) => sum + value, 0);
+
+    const rankingProfileIds = Array.from(
+      new Set<string>([...closerCounts.keys(), ...sdrCounts.keys()])
+    );
+
+    const rankingProfiles = rankingProfileIds.length
+      ? await prisma.profile.findMany({
+          where: { id: { in: rankingProfileIds } },
+          select: { id: true, fullName: true, email: true, profileIconUrl: true },
+        })
+      : [];
+
+    const profileById = new Map(rankingProfiles.map((profile) => [profile.id, profile]));
+
+    const buildRanking = (counts: Map<string, number>) => {
+      return Array.from(counts.entries())
+        .map(([id, count]) => {
+          const profile = profileById.get(id);
+          return {
+            id,
+            name: profile?.fullName || profile?.email || "Usuário",
+            email: profile?.email || "",
+            avatarUrl: profile?.profileIconUrl || null,
+            count,
+          };
+        })
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    };
+
+    const reunioesRealizadasCloserRanking = buildRanking(closerCounts);
+    const reunioesRealizadasSdrRanking = buildRanking(sdrCounts);
 
     // Contar por status (para as outras métricas)
     const statusCount = leads.reduce((acc: Record<LeadStatus, number>, lead) => {
@@ -106,6 +156,8 @@ export class DashboardInfosService implements IDashboardInfosService {
       negociacao,
       implementacao,
       vendas,
+      reunioesRealizadasCloser,
+      reunioesRealizadasSdr,
       taxaConversao: Math.round(taxaConversao * 100) / 100,
       receitaTotal,
       ticket,
@@ -113,6 +165,8 @@ export class DashboardInfosService implements IDashboardInfosService {
       noShowRate: Math.round(noShowRate * 100) / 100,
       cadencia,
       leadsPorPeriodo,
+      reunioesRealizadasCloserRanking,
+      reunioesRealizadasSdrRanking,
       statusCount,
     };
   }

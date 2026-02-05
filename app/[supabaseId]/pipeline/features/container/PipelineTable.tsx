@@ -40,6 +40,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import usePipelineContext from "../context/PipelineHook";
 import { Lead } from "../context/PipelineTypes";
 // import { createColumns } from "./columns";
@@ -230,10 +231,39 @@ export default function PipelineTable() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando leads...</p>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-1 flex-wrap items-center gap-2">
+            <Skeleton className="h-8 w-[220px]" />
+            <Skeleton className="h-8 w-[140px]" />
+            <Skeleton className="h-8 w-[140px]" />
+            <Skeleton className="h-8 w-[140px]" />
+            <Skeleton className="h-8 w-[160px]" />
+          </div>
+          <Skeleton className="h-8 w-[110px]" />
+        </div>
+
+        <div className="rounded-md border">
+          <div className="border-b p-2">
+            <Skeleton className="h-10 w-full" />
+          </div>
+          <div className="space-y-2 p-2">
+            {Array.from({ length: 10 }).map((_, idx) => (
+              <Skeleton key={idx} className="h-12 w-full" />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end px-2">
+          <div className="flex items-center space-x-6 lg:space-x-8">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-8 w-32" />
+            <div className="flex items-center space-x-2">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <Skeleton key={idx} className="h-8 w-8" />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );

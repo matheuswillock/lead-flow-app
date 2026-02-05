@@ -13,6 +13,7 @@ import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -368,17 +369,21 @@ export default function Calendar42() {
               ref={timeListRef}
               className="no-scrollbar flex max-h-[40dvh] flex-col gap-2 overflow-y-auto px-2 lg:max-h-none lg:min-h-0 lg:flex-1"
             >
-              {timeSlots.map((time) => (
-                <Button
-                  key={time}
-                  variant={selectedTime === time ? "default" : "outline"}
-                  onClick={() => setSelectedTime(time)}
-                  className="w-full shadow-none"
-                  data-time={time}
-                >
-                  {time}
-                </Button>
-              ))}
+              {isLoading
+                ? Array.from({ length: 12 }).map((_, idx) => (
+                    <Skeleton key={idx} className="h-10 w-full rounded-md" />
+                  ))
+                : timeSlots.map((time) => (
+                    <Button
+                      key={time}
+                      variant={selectedTime === time ? "default" : "outline"}
+                      onClick={() => setSelectedTime(time)}
+                      className="w-full shadow-none"
+                      data-time={time}
+                    >
+                      {time}
+                    </Button>
+                  ))}
             </div>
           </CardContent>
         </Card>
@@ -503,9 +508,9 @@ export default function Calendar42() {
 
             <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
               {isLoading ? (
-                <div className="flex h-full flex-1 items-center justify-center text-sm text-muted-foreground">
-                  Carregando agendas...
-                </div>
+                Array.from({ length: 6 }).map((_, idx) => (
+                  <Skeleton key={idx} className="h-28 w-full rounded-md" />
+                ))
               ) : filteredEvents.length === 0 ? (
                 <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 rounded-md border border-dashed p-6 text-center">
                   <p className="text-sm text-muted-foreground">

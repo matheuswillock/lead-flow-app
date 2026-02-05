@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -395,8 +396,29 @@ export default function TeamsPage() {
                 {teamsError}
               </div>
             ) : teamsLoading ? (
-              <div className="flex items-center justify-center rounded-lg border border-border/60 py-10 text-sm text-muted-foreground">
-                Carregando times...
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-border/60 p-4"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Skeleton className="h-4 w-52" />
+                        <Skeleton className="h-5 w-16 rounded-full" />
+                        <Skeleton className="h-5 w-20 rounded-full" />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Skeleton className="h-3 w-32" />
+                        <Skeleton className="h-3 w-48" />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Skeleton className="h-9 w-28" />
+                      <Skeleton className="h-9 w-9" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : teams.length === 0 ? (
               <div className="rounded-lg border border-border/60 p-4 text-sm text-muted-foreground">
@@ -519,7 +541,7 @@ export default function TeamsPage() {
           }
         }}
       >
-        <DialogContent className="w-[min(760px,calc(100vw-2rem))] max-h-[calc(100svh-2rem)] flex flex-col overflow-hidden">
+          <DialogContent className="w-[min(760px,calc(100vw-2rem))] max-h-[calc(100svh-2rem)] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Gerenciar time</DialogTitle>
             <DialogDescription>
@@ -531,8 +553,20 @@ export default function TeamsPage() {
 
           <ScrollArea className="flex-1 pr-4">
             {manageLoading ? (
-              <div className="flex items-center justify-center rounded-lg border border-border/60 py-10 text-sm text-muted-foreground">
-                Carregando dados do time...
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-9 w-full" />
+                </div>
+
+                <Separator />
+
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-44" />
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <Skeleton key={idx} className="h-12 w-full" />
+                  ))}
+                </div>
               </div>
             ) : (
               <div className="space-y-6">
