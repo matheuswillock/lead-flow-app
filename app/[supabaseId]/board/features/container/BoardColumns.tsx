@@ -38,12 +38,12 @@ export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, on
     }
 
     return (
-        <div className="relative">
+        <div className="relative flex min-h-0 flex-1 flex-col">
             <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none" />
             <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
 
             <div
-                className="grid auto-cols-[minmax(18rem,20rem)] grid-flow-col gap-4 overflow-x-auto pb-2 pr-2"
+                className="grid auto-cols-[minmax(18rem,20rem)] grid-flow-col gap-4 overflow-x-auto pb-2 pr-2 flex-1 min-h-0 h-full items-stretch"
                 style={{ scrollSnapType: "x proximity" }}
             >
                 {COLUMNS.map(({ key, title }) => {
@@ -51,7 +51,7 @@ export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, on
                     return (
                         <MotionDiv
                             key={key}
-                            className="col-span-1 flex min-h-[70vh] flex-col rounded-2xl border bg-card p-3 shadow-sm"
+                            className="group col-span-1 flex h-full min-h-0 flex-col rounded-2xl border bg-card p-3 shadow-sm"
                             drag={false}
                             style={{ scrollSnapAlign: "start" }}
                             onDrop={(e) => onDrop(e, key)}
@@ -66,9 +66,9 @@ export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, on
                             </div>
 
                             {/* Cards Zone */}
-                            <div className="flex flex-1 flex-col gap-2">
+                            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-hidden pr-1 group-hover:overflow-y-auto">
                                 {items.length === 0 && (
-                                    <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
+                                    <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
                                         Solte aqui
                                     </div>
                                 )}

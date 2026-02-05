@@ -85,7 +85,7 @@ export function BoardContainer() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-2rem)] w-full flex-col gap-3 p-4">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 p-4">
 
       <BoardHeader />
 
