@@ -14,7 +14,7 @@ import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 
 export function BoardContainer() {
-  const { finalizeContract, refreshLeads, open, setOpen, selected: lead, user, userLoading } = useBoardContext();
+  const { finalizeContract, refreshLeads, open, setOpen, selected: lead, user, userLoading, patchLead } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -105,6 +105,7 @@ export function BoardContainer() {
         userLoading={userLoading}
         refreshLeads={refreshLeads}
         finalizeContract={finalizeContract}
+        patchLead={patchLead}
       />
 
       {selectedLead && (

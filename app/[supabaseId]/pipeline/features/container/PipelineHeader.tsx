@@ -2,6 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
 import { Filter, Table2, User, Plus } from "lucide-react";
 import usePipelineContext from "../context/PipelineHook";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
@@ -16,6 +17,8 @@ export default function PipelineHeader() {
         setPeriodEnd, 
         assignedUser, 
         setAssignedUser, 
+        onlyMeetingsHeld,
+        setOnlyMeetingsHeld,
         taskOwners,
         user,
         userLoading,
@@ -87,6 +90,20 @@ export default function PipelineHeader() {
                   </div>
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          {/* Filtro por reuniões realizadas */}
+          <Select
+            value={onlyMeetingsHeld ? "held" : "all"}
+            onValueChange={(value) => setOnlyMeetingsHeld(value === "held")}
+          >
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="Reuniões" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as reuniões</SelectItem>
+              <SelectItem value="held">Reuniões realizadas</SelectItem>
             </SelectContent>
           </Select>
 

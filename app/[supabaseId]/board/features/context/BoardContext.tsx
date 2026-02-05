@@ -23,6 +23,8 @@ interface IBoardContextState {
   isLoading: boolean;
   query: string;
   setQuery: (query: string) => void;
+  onlyMeetingsHeld: boolean;
+  setOnlyMeetingsHeld: (value: boolean) => void;
   data: Record<ColumnKey, Lead[]>;
   filtered: Record<ColumnKey, Lead[]>;
   periodStart: string; 
@@ -47,6 +49,7 @@ interface IBoardContextState {
   onDrop: (e: React.DragEvent, to: ColumnKey) => void;
   onDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
   refreshLeads: () => Promise<void>;
+  patchLead: (leadId: string, patch: Partial<Lead>) => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
@@ -90,6 +93,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
   const [data, setData] = useState<Record<ColumnKey, Lead[]>>(() => {
     // Inicializa todas as colunas com arrays vazios
     const initialData: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
@@ -451,6 +455,18 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setErrors({});
   };
 
+  const patchLead = (leadId: string, patch: Partial<Lead>) => {
+    setData((prev) => {
+      const next: Record<ColumnKey, Lead[]> = { ...prev } as Record<ColumnKey, Lead[]>;
+      COLUMNS.forEach(({ key }) => {
+        const column = prev[key] || [];
+        next[key] = column.map((l) => (l.id === leadId ? ({ ...l, ...patch } as Lead) : l));
+      });
+      return next;
+    });
+    setSelected((prev) => (prev?.id === leadId ? ({ ...prev, ...patch } as Lead) : prev));
+  };
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const inQuery = (l: Lead) =>
@@ -459,6 +475,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       l.leadCode.toLowerCase().includes(q) ||
       formatDate(l.createdAt).includes(q);
     const inResponsible = (l: Lead) => assignedUser === "todos" || l.assignedTo === assignedUser;
+    const inMeetingsHeld = (l: Lead) => !onlyMeetingsHeld || l.meetingHeald === "yes";
     const inPeriod = (l: Lead) => {
       const d = l.createdAt; // ISO date string
       const afterStart = !periodStart || d >= periodStart;
@@ -471,11 +488,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     // Garante que todas as colunas existam no resultado filtrado
     COLUMNS.forEach(({ key }) => {
       const columnData = data[key] || []; // Fallback para array vazio se não existir
-      next[key] = columnData.filter((l) => inQuery(l) && inResponsible(l) && inPeriod(l));
+      next[key] = columnData.filter((l) => inQuery(l) && inResponsible(l) && inMeetingsHeld(l) && inPeriod(l));
     });
     
     return next;
-  }, [data, query, assignedUser, periodStart, periodEnd]);
+  }, [data, query, assignedUser, onlyMeetingsHeld, periodStart, periodEnd]);
 
   const responsaveis = useMemo(() => {
     // Usar todos os usuários associados ao invés de apenas aqueles com leads atribuídos
@@ -496,6 +513,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     isLoading,
     query,
     setQuery,
+    onlyMeetingsHeld,
+    setOnlyMeetingsHeld,
     data,
     filtered,
     periodStart,
@@ -520,6 +539,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     onDrop,
     onDragStart,
     refreshLeads: loadLeads,
+    patchLead,
     finalizeContract
   };
   

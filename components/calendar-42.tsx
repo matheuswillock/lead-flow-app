@@ -28,6 +28,7 @@ import { getLeadStatusLabel } from "@/lib/lead-status"
 import { CalendarDayButton } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { useTeamContext } from "@/app/context/TeamContext"
+import { Checkbox } from "@/components/ui/checkbox"
 
 const SLOT_MINUTES = 30
 
@@ -110,6 +111,7 @@ export default function Calendar42() {
     handleCardClick,
     refreshLeads,
     finalizeContract,
+    patchLead,
   } = useBoardContext()
 
   const [date, setDate] = React.useState<Date | undefined>(new Date())
@@ -123,10 +125,57 @@ export default function Calendar42() {
   const [leadPickerQuery, setLeadPickerQuery] = React.useState("")
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
   const [leadToCancel, setLeadToCancel] = React.useState<Lead | null>(null)
+  const [meetingHealdSavingId, setMeetingHealdSavingId] = React.useState<string | null>(null)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
-  const { activeTeamId } = useTeamContext()
+  const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext()
   const timeListRef = React.useRef<HTMLDivElement | null>(null)
+
+  const canToggleMeetingHeald = React.useMemo(() => {
+    return isTeamMaster || activeFunctions.includes("CLOSER")
+  }, [isTeamMaster, activeFunctions])
+
+  const handleToggleMeetingHeald = React.useCallback(
+    async (lead: Lead, checked: boolean) => {
+      if (!supabaseId || !activeTeamId) return
+      if (lead.status !== "scheduled") return
+      if (!canToggleMeetingHeald) return
+
+      const previous = (lead.meetingHeald ?? "no") as "yes" | "no"
+      const next = checked ? ("yes" as const) : ("no" as const)
+
+      setMeetingHealdSavingId(lead.id)
+      patchLead?.(lead.id, { meetingHeald: next })
+
+      try {
+        const response = await fetch(`/api/v1/leads/${lead.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId,
+          },
+          body: JSON.stringify({ meetingHeald: next }),
+        })
+
+        const result = await response.json().catch(() => null)
+        if (!response.ok || !result?.isValid) {
+          throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel atualizar a reuniao.")
+        }
+
+        const serverValue = result?.result?.meetingHeald ?? next
+        patchLead?.(lead.id, { meetingHeald: serverValue })
+      } catch (err) {
+        patchLead?.(lead.id, { meetingHeald: previous })
+        toast.warning(
+          err instanceof Error ? err.message : "Nao foi possivel atualizar a reuniao.",
+        )
+      } finally {
+        setMeetingHealdSavingId(null)
+      }
+    },
+    [supabaseId, activeTeamId, canToggleMeetingHeald, patchLead],
+  )
 
   const timeSlots = React.useMemo(() => buildTimeSlots(), [])
   const todayStart = React.useMemo(() => {
@@ -473,7 +522,7 @@ export default function Calendar42() {
                   const closerLabel = getCloserLabel(lead, closersById)
                   const meetingTitle = lead.meetingTitle || `Reunião com ${lead.name}`
                   const showLeadName = meetingTitle !== lead.name
-                  const isCanceled = lead.meetingHeald === "no" || lead.status === "no_show"
+                  const isCanceled = lead.status === "no_show"
                   const isOverdue =
                     !!meetingStart &&
                     meetingStart.getTime() < Date.now() &&
@@ -533,6 +582,26 @@ export default function Calendar42() {
                           </div>
                         )}
                       </button>
+                      {lead.status === "scheduled" && (
+                        <div
+                          className="mt-2 flex items-center justify-between gap-2"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <label className="flex items-center gap-2 text-xs font-medium">
+                            <Checkbox
+                              checked={lead.meetingHeald === "yes"}
+                              disabled={meetingHealdSavingId === lead.id || !canToggleMeetingHeald}
+                              onCheckedChange={(checked) => {
+                                void handleToggleMeetingHeald(lead, checked === true)
+                              }}
+                            />
+                            Reuniao realizada?
+                          </label>
+                          {meetingHealdSavingId === lead.id && (
+                            <span className="text-xs text-muted-foreground">Salvando...</span>
+                          )}
+                        </div>
+                      )}
                       <div className="mt-2 flex flex-wrap justify-end gap-2">
                         <Button
                           size="sm"
@@ -574,6 +643,7 @@ export default function Calendar42() {
         userLoading={userLoading}
         refreshLeads={refreshLeads}
         finalizeContract={finalizeContract}
+        patchLead={patchLead}
       />
 
       <Dialog open={leadPickerOpen} onOpenChange={setLeadPickerOpen}>

@@ -63,6 +63,10 @@ export interface ILeadFormProps {
     onCancel: () => void;
     className?: string;
     initialData?: leadFormData;
+    showMeetingHeald?: boolean;
+    meetingHealdReadOnly?: boolean;
+    meetingHealdSaving?: boolean;
+    onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
     usersToAssign: UserAssociated[];
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     meetingInfo?: {
@@ -84,6 +88,10 @@ export function LeadForm({
     onCancel,
     className,
     initialData,
+    showMeetingHeald,
+    meetingHealdReadOnly,
+    meetingHealdSaving,
+    onMeetingHealdChange,
     usersToAssign,
     leadId,
     meetingInfo,
@@ -165,7 +173,7 @@ export function LeadForm({
                 (watchedValues.additionalNotes && watchedValues.additionalNotes.trim() !== '') ||
                 (watchedValues.meetingDate && watchedValues.meetingDate.trim() !== '') ||
                 (watchedValues.meetingTitle && watchedValues.meetingTitle.trim() !== '') ||
-                (watchedValues.meetingHeald && watchedValues.meetingHeald.trim() !== '') ||
+                (!onMeetingHealdChange && watchedValues.meetingHeald && watchedValues.meetingHeald.trim() !== '') ||
                 (watchedValues.responsible && watchedValues.responsible.trim() !== '') ||
                 (watchedValues.closerId && watchedValues.closerId.trim() !== '');
 
@@ -187,12 +195,12 @@ export function LeadForm({
                 watchedValues.additionalNotes !== initialData.additionalNotes ||
                 watchedValues.meetingDate !== initialData.meetingDate ||
                 watchedValues.meetingTitle !== initialData.meetingTitle ||
-                watchedValues.meetingHeald !== initialData.meetingHeald ||
+                (!onMeetingHealdChange && watchedValues.meetingHeald !== initialData.meetingHeald) ||
                 watchedValues.responsible !== initialData.responsible ||
                 watchedValues.closerId !== initialData.closerId;
 
         setHasChanges(hasFormChanges);
-    }, [watchedValues, initialData]);
+    }, [watchedValues, initialData, onMeetingHealdChange]);
 
     // Auto-select responsible when there's only one user available
     useEffect(() => {
@@ -501,27 +509,41 @@ export function LeadForm({
                     <h3 className="text-sm font-semibold text-foreground">
                         Informacoes de agendamento
                     </h3>
-                    <FormField
-                        control={form.control}
-                        name="meetingHeald"
-                        render={({ field }) => (
-                            <FormItem className="flex items-center gap-2">
-                                <FormControl>
-                                    <Checkbox
-                                        checked={field.value === "yes"}
-                                        onCheckedChange={(value) => {
-                                            field.onChange(value ? "yes" : "no");
-                                        }}
-                                        className="mt-[1px]"
-                                        disabled={isLoading || isUpdating}
-                                    />
-                                </FormControl>
-                                <FormLabel className="text-sm font-medium leading-none mb-2">
-                                    Reunião realizada?
-                                </FormLabel>
-                            </FormItem>
-                        )}
-                    />
+                    {!!showMeetingHeald && (
+                        <FormField
+                            control={form.control}
+                            name="meetingHeald"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center gap-2">
+                                    <FormControl>
+                                        <Checkbox
+                                            checked={field.value === "yes"}
+                                            onCheckedChange={(value) => {
+                                                const checked = value === true;
+                                                const next = checked ? "yes" : "no";
+                                                // Keep UI state in sync without forcing a full submit.
+                                                field.onChange(next);
+                                                onMeetingHealdChange?.(next);
+                                            }}
+                                            className="mt-[1px]"
+                                            disabled={
+                                                isLoading ||
+                                                isUpdating ||
+                                                meetingHealdSaving ||
+                                                !!meetingHealdReadOnly
+                                            }
+                                        />
+                                    </FormControl>
+                                    <FormLabel className="text-sm font-medium leading-none mb-2">
+                                        Reunião realizada?
+                                    </FormLabel>
+                                    {meetingHealdSaving && (
+                                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                    )}
+                                </FormItem>
+                            )}
+                        />
+                    )}
                 </div>
             </div>
 

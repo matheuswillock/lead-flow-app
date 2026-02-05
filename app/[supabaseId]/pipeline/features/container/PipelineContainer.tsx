@@ -8,7 +8,7 @@ import usePipelineContext from "../context/PipelineHook";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
 
 export function PipelineContainer() {
-  const { user, userLoading, allLeads, isLoading, openNewLeadDialog, open, setOpen, selected: lead, refreshLeads, finalizeContract } = usePipelineContext();
+  const { user, userLoading, allLeads, isLoading, openNewLeadDialog, open, setOpen, selected: lead, refreshLeads, finalizeContract, patchLead } = usePipelineContext();
   
   // Calcular total de leads
   const totalLeads = allLeads.length;
@@ -51,6 +51,7 @@ export function PipelineContainer() {
         userLoading={userLoading}
         refreshLeads={refreshLeads}
         finalizeContract={finalizeContract}
+        patchLead={patchLead}
       />
     </div>
   )

@@ -1,4 +1,4 @@
-import { LeadStatus } from "@prisma/client";
+import { LeadStatus, MeetingHeald } from "@prisma/client";
 
 export interface LeadMetricsData {
   id: string;
@@ -6,6 +6,9 @@ export interface LeadMetricsData {
   currentValue: any; // Prisma Decimal type
   ticket: any; // Prisma Decimal type
   createdAt: Date;
+  meetingHeald: MeetingHeald | null;
+  assignedTo: string | null;
+  closerId: string | null;
 }
 
 export interface StatusMetricsData {

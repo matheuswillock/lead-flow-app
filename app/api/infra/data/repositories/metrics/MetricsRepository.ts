@@ -34,8 +34,12 @@ export class MetricsRepository implements IMetricsRepository {
       throw new Error("Acesso negado para este time");
     }
 
-    if (teamMember.role === "operator" && !teamMember.functions.includes("SDR")) {
-      throw new Error("Acesso negado: função SDR necessária para visualizar leads.");
+    if (
+      teamMember.role === "operator" &&
+      !teamMember.functions.includes("SDR") &&
+      !teamMember.functions.includes("CLOSER")
+    ) {
+      throw new Error("Acesso negado: função SDR ou CLOSER necessária para visualizar leads.");
     }
 
     return { profileId: profile.id, teamMember };
@@ -90,6 +94,9 @@ export class MetricsRepository implements IMetricsRepository {
         currentValue: true,
         ticket: true,
         createdAt: true,
+        meetingHeald: true,
+        assignedTo: true,
+        closerId: true,
       },
     });
   }

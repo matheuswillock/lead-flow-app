@@ -30,6 +30,7 @@ interface LeadDialogProps {
   user: ProfileResponseDTO | null;
   userLoading: boolean;
   refreshLeads: () => Promise<void>;
+  patchLead?: (leadId: string, patch: Partial<Lead>) => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
@@ -40,11 +41,13 @@ export default function LeadDialog({
   user,
   userLoading,
   refreshLeads,
+  patchLead,
   finalizeContract,
 }: LeadDialogProps) {
   const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [meetingHealdSaving, setMeetingHealdSaving] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [finalizeCompleted, setFinalizeCompleted] = useState(false);
   const [resendDialogOpen, setResendDialogOpen] = useState(false);
@@ -59,7 +62,7 @@ export default function LeadDialog({
   const [origin, setOrigin] = useState("");
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
-  const { activeTeamId } = useTeamContext();
+  const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
   const pathname = usePathname();
 
   useEffect(() => {
@@ -104,6 +107,9 @@ export default function LeadDialog({
     lead.status === "offerSubmission"
   );
   const canMarkNoShow = lead?.status === "scheduled";
+  const shouldShowMeetingHeald = !!lead && lead.status === "scheduled";
+  const canEditMeetingHeald =
+    shouldShowMeetingHeald && (isTeamMaster || activeFunctions.includes("CLOSER"));
 
   const buildParticipantOptions = () => {
     const options: { label: string; email: string }[] = [];
@@ -208,7 +214,6 @@ export default function LeadDialog({
       meetingTitle: data.meetingTitle || undefined,
       meetingNotes: data.meetingNotes || undefined,
       meetingLink: data.meetingLink || undefined,
-      meetingHeald: data.meetingHeald || undefined,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
       closerId: data.closerId || undefined,
@@ -234,7 +239,6 @@ export default function LeadDialog({
       meetingTitle: data.meetingTitle || undefined,
       meetingNotes: data.meetingNotes || undefined,
       meetingLink: data.meetingLink || undefined,
-      meetingHeald: data.meetingHeald || undefined,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
       closerId: data.closerId || undefined,
@@ -242,6 +246,46 @@ export default function LeadDialog({
       contractDueDate: parseMeetingDate(data.contractDueDate || ""),
       soldPlan: data.soldPlan || undefined,
     };
+  };
+
+  const handleMeetingHealdChange = async (next: "yes" | "no") => {
+    if (!lead || !supabaseId || !activeTeamId) return;
+    if (lead.status !== "scheduled") return;
+    if (!canEditMeetingHeald) return;
+
+    const previous = (lead.meetingHeald ?? "no") as "yes" | "no";
+
+    // Optimistic UI update (board/pipeline selected lead + lists).
+    patchLead?.(lead.id, { meetingHeald: next });
+    setMeetingHealdSaving(true);
+
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId,
+        },
+        body: JSON.stringify({ meetingHeald: next }),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel atualizar a reuniao.");
+      }
+
+      // Keep local state aligned with server response.
+      const serverValue = (result?.result?.meetingHeald ?? next) as "yes" | "no";
+      patchLead?.(lead.id, { meetingHeald: serverValue });
+      form.setValue("meetingHeald", serverValue, { shouldDirty: false });
+    } catch (error) {
+      patchLead?.(lead.id, { meetingHeald: previous });
+      form.setValue("meetingHeald", previous, { shouldDirty: false });
+      toast.warning(error instanceof Error ? error.message : "Nao foi possivel atualizar a reuniao.");
+    } finally {
+      setMeetingHealdSaving(false);
+    }
   };
 
   const onSubmit = async (data: leadFormData) => {
@@ -454,7 +498,7 @@ export default function LeadDialog({
         meetingTitle: lead.meetingTitle || scheduleTitle || "",
         meetingNotes: lead.meetingNotes || "",
         meetingLink: lead.meetingLink || "",
-        meetingHeald: lead.meetingHeald || undefined,
+        meetingHeald: lead.meetingHeald === "yes" ? "yes" : undefined,
         extraGuests: scheduleGuests.join(", "),
         responsible: lead.assignedTo || "",
         ticket: lead.ticket ? formatCurrency(lead.ticket) : "",
@@ -711,6 +755,10 @@ export default function LeadDialog({
             onCancel={() => setOpen(false)}
             usersToAssign={user.usersAssociated || []}
             leadId={lead?.id}
+            showMeetingHeald={shouldShowMeetingHeald}
+            meetingHealdReadOnly={shouldShowMeetingHeald && !canEditMeetingHeald}
+            meetingHealdSaving={meetingHealdSaving}
+            onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
             meetingInfo={{
               date: lead?.meetingDate || null,
               title: lead?.meetingTitle || scheduleTitle || null,
