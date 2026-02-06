@@ -23,15 +23,22 @@ interface IBoardContextState {
   isLoading: boolean;
   query: string;
   setQuery: (query: string) => void;
+  onlyMeetingsHeld: boolean;
+  setOnlyMeetingsHeld: (value: boolean) => void;
   data: Record<ColumnKey, Lead[]>;
   filtered: Record<ColumnKey, Lead[]>;
   periodStart: string; 
   setPeriodStart: (date: string) => void;
   periodEnd: string;
   setPeriodEnd: (date: string) => void;
-  assignedUser: string; 
-  setAssignedUser: (user: string) => void;
+  assignedUsers: string[]; 
+  setAssignedUsers: (users: string[]) => void;
+  statusFilter: ColumnKey[];
+  setStatusFilter: (statuses: ColumnKey[]) => void;
+  closerFilter: string[];
+  setCloserFilter: (closers: string[]) => void;
   taskOwners: TaskOwner[];
+  statusLabels: Record<ColumnKey, string>;
   errors: Record<string, string>;
   open: boolean;
   user: ProfileResponseDTO | null;
@@ -47,6 +54,7 @@ interface IBoardContextState {
   onDrop: (e: React.DragEvent, to: ColumnKey) => void;
   onDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
   refreshLeads: () => Promise<void>;
+  patchLead: (leadId: string, patch: Partial<Lead>) => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
@@ -75,6 +83,20 @@ function formatDate(iso: string) {
   }
 }
 
+function formatDateKey(iso: string) {
+  try {
+    const date = new Date(iso);
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch {
+    return "";
+  }
+}
+
 export const BoardContext = createContext<IBoardContextState | undefined>(undefined);
 
 export const BoardProvider: React.FC<IBoardProviderProps> = ({ 
@@ -90,6 +112,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
   const [data, setData] = useState<Record<ColumnKey, Lead[]>>(() => {
     // Inicializa todas as colunas com arrays vazios
     const initialData: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
@@ -104,7 +127,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
   const [periodStart, setPeriodStart] = useState<string>(""); // yyyy-mm-dd
   const [periodEnd, setPeriodEnd] = useState<string>(""); // yyyy-mm-dd
-  const [assignedUser, setAssignedUser] = useState<string>("todos");
+  const [assignedUsers, setAssignedUsers] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<ColumnKey[]>([]);
+  const [closerFilter, setCloserFilter] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
@@ -451,6 +476,27 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setErrors({});
   };
 
+  const patchLead = (leadId: string, patch: Partial<Lead>) => {
+    setData((prev) => {
+      const next: Record<ColumnKey, Lead[]> = { ...prev } as Record<ColumnKey, Lead[]>;
+      COLUMNS.forEach(({ key }) => {
+        const column = prev[key] || [];
+        next[key] = column.map((l) => (l.id === leadId ? ({ ...l, ...patch } as Lead) : l));
+      });
+      return next;
+    });
+    setSelected((prev) => (prev?.id === leadId ? ({ ...prev, ...patch } as Lead) : prev));
+  };
+
+  // Mapeamento de status para labels legíveis
+  const statusLabels: Record<ColumnKey, string> = useMemo(() => {
+    const labels: Record<ColumnKey, string> = {} as Record<ColumnKey, string>;
+    COLUMNS.forEach(({ key, title }) => {
+      labels[key] = title;
+    });
+    return labels;
+  }, []);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const inQuery = (l: Lead) =>
@@ -458,11 +504,16 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       l.name.toLowerCase().includes(q) ||
       l.leadCode.toLowerCase().includes(q) ||
       formatDate(l.createdAt).includes(q);
-    const inResponsible = (l: Lead) => assignedUser === "todos" || l.assignedTo === assignedUser;
+    const inResponsible = (l: Lead) =>
+      assignedUsers.length === 0 || (l.assignedTo ? assignedUsers.includes(l.assignedTo) : false);
+    const inCloser = (l: Lead) =>
+      closerFilter.length === 0 || (l.closerId ? closerFilter.includes(l.closerId) : false);
+    const inMeetingsHeld = (l: Lead) => !onlyMeetingsHeld || l.meetingHeald === "yes";
     const inPeriod = (l: Lead) => {
-      const d = l.createdAt; // ISO date string
-      const afterStart = !periodStart || d >= periodStart;
-      const beforeEnd = !periodEnd || d <= periodEnd;
+      const createdKey = formatDateKey(l.createdAt);
+      if (!createdKey) return false;
+      const afterStart = !periodStart || createdKey >= periodStart;
+      const beforeEnd = !periodEnd || createdKey <= periodEnd;
       return afterStart && beforeEnd;
     };
     
@@ -471,11 +522,16 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     // Garante que todas as colunas existam no resultado filtrado
     COLUMNS.forEach(({ key }) => {
       const columnData = data[key] || []; // Fallback para array vazio se não existir
-      next[key] = columnData.filter((l) => inQuery(l) && inResponsible(l) && inPeriod(l));
+      const statusSelected = statusFilter.length === 0 || statusFilter.includes(key);
+      next[key] = statusSelected
+        ? columnData.filter(
+            (l) => inQuery(l) && inResponsible(l) && inCloser(l) && inMeetingsHeld(l) && inPeriod(l)
+          )
+        : [];
     });
     
     return next;
-  }, [data, query, assignedUser, periodStart, periodEnd]);
+  }, [data, query, assignedUsers, closerFilter, onlyMeetingsHeld, periodStart, periodEnd, statusFilter]);
 
   const responsaveis = useMemo(() => {
     // Usar todos os usuários associados ao invés de apenas aqueles com leads atribuídos
@@ -492,22 +548,29 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [user]);
 
-  const value: IBoardContextState = {
-    isLoading,
-    query,
-    setQuery,
-    data,
-    filtered,
-    periodStart,
-    setPeriodStart,
-    periodEnd,
-    setPeriodEnd,
-    assignedUser,
-    setAssignedUser,
-    taskOwners: responsaveis,
-    errors,
-    open,
-    user,
+    const value: IBoardContextState = {
+      isLoading,
+      query,
+      setQuery,
+      onlyMeetingsHeld,
+      setOnlyMeetingsHeld,
+      data,
+      filtered,
+      periodStart,
+      setPeriodStart,
+      periodEnd,
+      setPeriodEnd,
+      assignedUsers,
+      setAssignedUsers,
+      statusFilter,
+      setStatusFilter,
+      closerFilter,
+      setCloserFilter,
+      taskOwners: responsaveis,
+      statusLabels,
+      errors,
+      open,
+      user,
     userLoading,
     setOpen,
     selected,
@@ -520,6 +583,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     onDrop,
     onDragStart,
     refreshLeads: loadLeads,
+    patchLead,
     finalizeContract
   };
   

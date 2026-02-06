@@ -10,12 +10,14 @@ export type { DashboardMetricsData, DetailedMetricsData, MetricsFilters };
 
 // Configuração de cache
 const CACHE_KEY_PREFIX = 'dashboard_metrics';
+const CACHE_VERSION = '3';
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutos em milissegundos
 
 interface CachedData<T> {
   data: T;
   timestamp: number;
   filters?: MetricsFilters;
+  version: string;
 }
 
 export class DashboardMetricsService implements IDashboardMetricsService {
@@ -40,7 +42,12 @@ export class DashboardMetricsService implements IDashboardMetricsService {
       const cached = localStorage.getItem(cacheKey);
       if (!cached) return null;
 
-      const { data, timestamp }: CachedData<T> = JSON.parse(cached);
+      const cachedParsed = JSON.parse(cached) as CachedData<T>;
+      if (!cachedParsed.version || cachedParsed.version !== CACHE_VERSION) {
+        localStorage.removeItem(cacheKey);
+        return null;
+      }
+      const { data, timestamp } = cachedParsed;
       const now = Date.now();
 
       // Verificar se o cache ainda é válido (15 minutos)
@@ -67,7 +74,8 @@ export class DashboardMetricsService implements IDashboardMetricsService {
       const cachedData: CachedData<T> = {
         data,
         timestamp: Date.now(),
-        filters
+        filters,
+        version: CACHE_VERSION
       };
 
       localStorage.setItem(cacheKey, JSON.stringify(cachedData));

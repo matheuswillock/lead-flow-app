@@ -6,6 +6,8 @@ export type DashboardMetrics = {
   negociacao: number;
   implementacao: number;
   vendas: number;
+  reunioesRealizadasCloser: number;
+  reunioesRealizadasSdr: number;
   
   // Métricas calculadas
   taxaConversao: number; // (vendas / agendamentos) * 100
@@ -21,6 +23,22 @@ export type DashboardMetrics = {
     leads: number;
     conversoes: number;
   }[];
+
+  reunioesRealizadasCloserRanking: Array<{
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl: string | null;
+    count: number;
+  }>;
+
+  reunioesRealizadasSdrRanking: Array<{
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl: string | null;
+    count: number;
+  }>;
   
   // Dados detalhados por status
   statusCount: Record<LeadStatus, number>;

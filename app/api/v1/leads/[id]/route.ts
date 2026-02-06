@@ -52,8 +52,12 @@ export async function GET(
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
     }
-    if (membership.role === "operator" && !membership.functions?.includes("SDR")) {
-      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+    if (
+      membership.role === "operator" &&
+      !membership.functions?.includes("SDR") &&
+      !membership.functions?.includes("CLOSER")
+    ) {
+      const output = new Output(false, [], ["Acesso negado: funcao SDR ou Closer necessaria para visualizar leads."], null);
       return NextResponse.json(output, { status: 403 });
     }
 
@@ -131,19 +135,45 @@ export async function PUT(
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
     }
-    if (membership.role === "operator" && !membership.functions?.includes("SDR")) {
-      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+    if (
+      membership.role === "operator" &&
+      !membership.functions?.includes("SDR") &&
+      !membership.functions?.includes("CLOSER")
+    ) {
+      const output = new Output(false, [], ["Acesso negado: funcao SDR ou Closer necessaria para visualizar leads."], null);
       return NextResponse.json(output, { status: 403 });
     }
 
+    const wantsMeetingHealdUpdate = Object.prototype.hasOwnProperty.call(body, "meetingHeald");
+
     const lead = await prisma.lead.findUnique({
       where: { id },
-      select: { id: true, teamId: true }
+      select: { id: true, teamId: true, status: true }
     });
 
     if (!lead || lead.teamId !== teamId) {
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
+    }
+
+    if (wantsMeetingHealdUpdate) {
+      const team = await prisma.team.findUnique({
+        where: { id: teamId },
+        select: { masterId: true },
+      });
+
+      const isTeamMaster = !!(team && team.masterId === profile.id);
+      const canMarkMeetingHeald = isTeamMaster || membership.functions?.includes("CLOSER");
+
+      if (lead.status !== "scheduled") {
+        const output = new Output(false, [], ["Reuniao so pode ser marcada como realizada para leads agendados."], null);
+        return NextResponse.json(output, { status: 400 });
+      }
+
+      if (!canMarkMeetingHeald) {
+        const output = new Output(false, [], ["Acesso negado: somente o closer (ou master) pode marcar reuniao como realizada."], null);
+        return NextResponse.json(output, { status: 403 });
+      }
     }
 
     const output = await leadUseCase.updateLead(supabaseId, id, validatedData);
@@ -200,8 +230,12 @@ export async function DELETE(
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
     }
-    if (membership.role === "operator" && !membership.functions?.includes("SDR")) {
-      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+    if (
+      membership.role === "operator" &&
+      !membership.functions?.includes("SDR") &&
+      !membership.functions?.includes("CLOSER")
+    ) {
+      const output = new Output(false, [], ["Acesso negado: funcao SDR ou Closer necessaria para visualizar leads."], null);
       return NextResponse.json(output, { status: 403 });
     }
 

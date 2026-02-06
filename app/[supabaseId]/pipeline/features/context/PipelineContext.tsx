@@ -25,6 +25,8 @@ interface IPipelineContextState {
   isLoading: boolean;
   query: string;
   setQuery: (query: string) => void;
+  onlyMeetingsHeld: boolean;
+  setOnlyMeetingsHeld: (value: boolean) => void;
   allLeads: Lead[]; // Todos os leads em um array flat
   filtered: Lead[]; // Leads filtrados
   periodStart: string; 
@@ -45,6 +47,7 @@ interface IPipelineContextState {
   handleRowClick: (lead: Lead) => void;
   openNewLeadDialog: () => void;
   refreshLeads: () => Promise<void>;
+  patchLead: (leadId: string, patch: Partial<Lead>) => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
   statusLabels: Record<ColumnKey, string>;
 }
@@ -89,6 +92,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [periodStart, setPeriodStart] = useState<string>("");
   const [periodEnd, setPeriodEnd] = useState<string>("");
@@ -296,6 +300,11 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     setOpen(true);
   };
 
+  const patchLead = (leadId: string, patch: Partial<Lead>) => {
+    setAllLeads((prev) => prev.map((l) => (l.id === leadId ? ({ ...l, ...patch } as Lead) : l)));
+    setSelected((prev) => (prev?.id === leadId ? ({ ...prev, ...patch } as Lead) : prev));
+  };
+
   // Filtrar leads
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -315,10 +324,12 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       const afterStart = !periodStart || d >= periodStart;
       const beforeEnd = !periodEnd || d <= periodEnd;
       const matchesPeriod = afterStart && beforeEnd;
-      
-      return matchesQuery && matchesResponsible && matchesPeriod;
+
+      const matchesMeetingsHeld = !onlyMeetingsHeld || lead.meetingHeald === "yes";
+
+      return matchesQuery && matchesResponsible && matchesMeetingsHeld && matchesPeriod;
     });
-  }, [allLeads, query, assignedUser, periodStart, periodEnd]);
+  }, [allLeads, query, assignedUser, onlyMeetingsHeld, periodStart, periodEnd]);
 
   // Extrair lista de responsáveis únicos
   const taskOwners = useMemo(() => {
@@ -340,6 +351,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     isLoading,
     query,
     setQuery,
+    onlyMeetingsHeld,
+    setOnlyMeetingsHeld,
     allLeads,
     filtered,
     periodStart,
@@ -360,6 +373,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     handleRowClick,
     openNewLeadDialog,
     refreshLeads: loadLeads,
+    patchLead,
     finalizeContract,
     statusLabels
   };

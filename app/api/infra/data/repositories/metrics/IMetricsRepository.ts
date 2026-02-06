@@ -1,4 +1,4 @@
-import { LeadStatus } from "@prisma/client";
+import { LeadStatus, MeetingHeald } from "@prisma/client";
 
 export interface LeadMetricsData {
   id: string;
@@ -6,6 +6,9 @@ export interface LeadMetricsData {
   currentValue: any; // Prisma Decimal type
   ticket: any; // Prisma Decimal type
   createdAt: Date;
+  meetingHeald: MeetingHeald | null;
+  assignedTo: string | null;
+  closerId: string | null;
 }
 
 export interface StatusMetricsData {
@@ -40,6 +43,12 @@ export interface ScheduleMetricsData {
   leadId: string;
   date: Date;
   createdAt: Date;
+}
+
+export interface MeetingHeldLeadMetricsData {
+  meetingDate: Date | null;
+  assignedTo: string | null;
+  closerId: string | null;
 }
 
 export interface SaleMetricsData {
@@ -77,4 +86,9 @@ export interface IMetricsRepository {
    * Busca vendas finalizadas da tabela LeadFinalized
    */
   getFinalizedLeads(filters: MetricsFilters): Promise<SaleMetricsData[]>;
+
+  /**
+   * Busca reuniões realizadas (meetingHeald = yes) por período (meetingDate)
+   */
+  getMeetingsHeldLeads(filters: MetricsFilters): Promise<MeetingHeldLeadMetricsData[]>;
 }

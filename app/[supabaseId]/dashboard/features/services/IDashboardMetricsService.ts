@@ -3,6 +3,8 @@ export interface DashboardMetricsData {
   negociacao: number;
   implementacao: number;
   vendas: number;
+  reunioesRealizadasCloser: number;
+  reunioesRealizadasSdr: number;
   noShowRate: number;
   taxaConversao: number;
   receitaTotal: number;
@@ -13,6 +15,20 @@ export interface DashboardMetricsData {
     periodo: string;
     leads: number;
     conversoes: number;
+  }>;
+  reunioesRealizadasCloserRanking: Array<{
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl: string | null;
+    count: number;
+  }>;
+  reunioesRealizadasSdrRanking: Array<{
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl: string | null;
+    count: number;
   }>;
   statusCount: Record<string, number>;
 }

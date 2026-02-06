@@ -1,7 +1,7 @@
 'use client';
 
-import { useDashboardMetrics } from '../hooks/useDashboardMetrics';
-import { MetricsFilters } from '../services/DashboardMetricsService';
+import { useDashboardMetrics } from '../../hooks/useDashboardMetrics';
+import { MetricsFilters } from '../../services/DashboardMetricsService';
 import { getLeadStatusLabel } from '@/lib/lead-status';
 import { useTeamContext } from '@/app/context/TeamContext';
 

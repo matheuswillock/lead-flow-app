@@ -1,6 +1,6 @@
 'use client';
 
-import { useDashboardContext } from '../context/DashboardContext';
+import { useDashboardContext } from '../../context/DashboardContext';
 import { getLeadStatusLabel } from '@/lib/lead-status';
 
 export function DashboardMetricsWithContext() {

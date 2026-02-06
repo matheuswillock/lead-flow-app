@@ -27,7 +27,11 @@ const formatCurrency = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
 const formatCardNumber = (value: string) =>
-  value.replace(/\D/g, "").replace(/(.{4})/g, "$1 ").trim();
+  value
+    .replace(/\D/g, "")
+    .slice(0, 19)
+    .replace(/(\d{4})(?=\d)/g, "$1 ")
+    .trim();
 
 const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 
@@ -415,9 +419,9 @@ export function OperatorCheckoutStep({
                                   autoComplete={isSecureContext ? "cc-number" : "off"}
                                   value={formatCardNumber(field.value || "")}
                                   onChange={(event) =>
-                                    field.onChange(event.target.value.replace(/\D/g, ""))
+                                    field.onChange(event.target.value.replace(/\D/g, "").slice(0, 19))
                                   }
-                                  maxLength={19}
+                                  maxLength={23}
                                 />
                               </FormControl>
                               <FormMessage />
@@ -439,7 +443,7 @@ export function OperatorCheckoutStep({
                                     maxLength={2}
                                     value={field.value || ""}
                                     onChange={(event) =>
-                                      field.onChange(event.target.value.replace(/\D/g, ""))
+                                      field.onChange(event.target.value.replace(/\D/g, "").slice(0, 2))
                                     }
                                   />
                                 </FormControl>
@@ -461,7 +465,7 @@ export function OperatorCheckoutStep({
                                     maxLength={4}
                                     value={field.value || ""}
                                     onChange={(event) =>
-                                      field.onChange(event.target.value.replace(/\D/g, ""))
+                                      field.onChange(event.target.value.replace(/\D/g, "").slice(0, 4))
                                     }
                                   />
                                 </FormControl>
@@ -483,7 +487,7 @@ export function OperatorCheckoutStep({
                                     maxLength={4}
                                     value={field.value || ""}
                                     onChange={(event) =>
-                                      field.onChange(event.target.value.replace(/\D/g, ""))
+                                      field.onChange(event.target.value.replace(/\D/g, "").slice(0, 4))
                                     }
                                   />
                                 </FormControl>
