@@ -431,9 +431,15 @@ export default function AccountProfilePage() {
             ) : (
               <Tabs defaultValue="profile" className="w-full">
                 <TabsList className="mb-6 grid w-full grid-cols-3">
-                  <TabsTrigger value="profile">Perfil</TabsTrigger>
-                  <TabsTrigger value="security">Segurança</TabsTrigger>
-                  <TabsTrigger value="connections">Conexões</TabsTrigger>
+                  <TabsTrigger value="profile" className="w-full">
+                    Perfil
+                  </TabsTrigger>
+                  <TabsTrigger value="security" className="w-full">
+                    Segurança
+                  </TabsTrigger>
+                  <TabsTrigger value="connections" className="w-full">
+                    Conexões
+                  </TabsTrigger>
                 </TabsList>
 
                 {/* Aba de Perfil */}

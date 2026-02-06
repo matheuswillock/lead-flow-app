@@ -196,7 +196,8 @@ export const leadFormSchema = z.object({
   meetingTitle: z.string().min(0).optional(),
   meetingNotes: z.string().min(0).optional(),
   meetingLink: z.string().url("Link da reuniao invalido").optional().or(z.literal("")),
-  meetingHeald: z.enum(["yes", "no"]).optional(),
+  // Allow null so UI can explicitly clear the "reuniao realizada" flag.
+  meetingHeald: z.enum(["yes", "no"]).nullable().optional(),
   extraGuests: z
     .string()
     .optional()

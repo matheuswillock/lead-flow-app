@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import { DashboardProvider } from "./features/context/DashboardContext";
 import { useDashboardContext } from "./features/context/DashboardContext";
-import { DashboardSkeleton } from "./features/components/DashboardSkeleton";
+import { DashboardSkeleton } from "./features/container/components/DashboardSkeleton";
 import { SectionCardsWithContext } from "./features/container/section-cards-with-context";
 import { ChartAreaInteractive } from "./features/container/chart-area-interactive";
 import { UpcomingMeetings } from "./features/container/upcoming-meetings";

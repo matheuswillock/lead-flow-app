@@ -40,10 +40,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import usePipelineContext from "../context/PipelineHook";
 import { Lead } from "../context/PipelineTypes";
-// import { createColumns } from "./columns";
-import { DataTableToolbar } from "./data-table-toolbar";
 import { DraggableRow } from "./DraggableRow";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -52,6 +58,12 @@ import { ChangeStatusDialog } from "./ChangeStatusDialog";
 import { createColumns } from "./PipelineColumns";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { DateRange } from "react-day-picker";
+import { ChevronDown, X } from "lucide-react";
+import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
+import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
+import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
+import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 
 export default function PipelineTable() {
   const params = useParams();
@@ -66,6 +78,8 @@ export default function PipelineTable() {
     refreshLeads,
     user,
     errors,
+    onlyMeetingsHeld,
+    setOnlyMeetingsHeld,
   } = usePipelineContext();
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -76,6 +90,7 @@ export default function PipelineTable() {
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showChangeStatusDialog, setShowChangeStatusDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
   // Atualizar data quando filtered mudar
   React.useEffect(() => {
@@ -228,12 +243,67 @@ export default function PipelineTable() {
     getRowId: (row) => row.id,
   });
 
+  const statusColumn = table.getColumn("status");
+  const assignedToColumn = table.getColumn("assignedTo");
+  const closerColumn = table.getColumn("closerId");
+  const createdAtColumn = table.getColumn("createdAt");
+
+  const selectedStatuses = (statusColumn?.getFilterValue() as string[]) ?? [];
+  const selectedResponsibles =
+    (assignedToColumn?.getFilterValue() as string[]) ?? [];
+  const selectedClosers = (closerColumn?.getFilterValue() as string[]) ?? [];
+
+  const handleDateChange = (range: DateRange | undefined) => {
+    setDateRange(range);
+    if (!createdAtColumn) return;
+    if (!range || (!range.from && !range.to)) {
+      createdAtColumn.setFilterValue(undefined);
+      return;
+    }
+    if (range.from && range.to) {
+      createdAtColumn.setFilterValue([range.from, range.to]);
+    } else if (range.from) {
+      createdAtColumn.setFilterValue([range.from, undefined]);
+    }
+  };
+
+  const isFiltered = table.getState().columnFilters.length > 0 || onlyMeetingsHeld;
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Carregando leads...</p>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-1 flex-wrap items-center gap-2">
+            <Skeleton className="h-8 w-[220px]" />
+            <Skeleton className="h-8 w-[140px]" />
+            <Skeleton className="h-8 w-[140px]" />
+            <Skeleton className="h-8 w-[140px]" />
+            <Skeleton className="h-8 w-[160px]" />
+          </div>
+          <Skeleton className="h-8 w-[110px]" />
+        </div>
+
+        <div className="rounded-md border">
+          <div className="border-b p-2">
+            <Skeleton className="h-10 w-full" />
+          </div>
+          <div className="space-y-2 p-2">
+            {Array.from({ length: 10 }).map((_, idx) => (
+              <Skeleton key={idx} className="h-12 w-full" />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end px-2">
+          <div className="flex items-center space-x-6 lg:space-x-8">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-8 w-32" />
+            <div className="flex items-center space-x-2">
+              {Array.from({ length: 4 }).map((_, idx) => (
+                <Skeleton key={idx} className="h-8 w-8" />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -252,12 +322,98 @@ export default function PipelineTable() {
 
   return (
     <div className="space-y-4">
-      <DataTableToolbar 
-        table={table} 
-        statusOptions={statusOptions}
-        responsibleOptions={responsibleOptions}
-        closerOptions={closerOptions}
-      />
+      <LeadsFiltersLayout
+        actions={
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="h-8">
+                Colunas <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {table
+                .getAllColumns()
+                .filter((column) => column.getCanHide())
+                .map((column) => {
+                  const label =
+                    (column.columnDef.meta as { label?: string } | undefined)?.label ??
+                    column.id;
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={column.id}
+                      className="capitalize"
+                      checked={column.getIsVisible()}
+                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                    >
+                      {label}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      >
+        <Input
+          placeholder="Filtrar por nome..."
+          value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+          onChange={(event) =>
+            table.getColumn("name")?.setFilterValue(event.target.value)
+          }
+          className="h-8 w-[150px] lg:w-[250px]"
+        />
+        {statusColumn && (
+          <LeadsStatusFilter
+            statusOptions={statusOptions}
+            selectedStatuses={selectedStatuses}
+            onChangeStatuses={(values) =>
+              statusColumn.setFilterValue(values.length ? values : undefined)
+            }
+            meetingHeld={onlyMeetingsHeld}
+            onToggleMeetingHeld={setOnlyMeetingsHeld}
+          />
+        )}
+        {assignedToColumn && responsibleOptions.length > 0 && (
+          <LeadsMultiFilter
+            title="Responsável"
+            options={responsibleOptions}
+            selectedValues={selectedResponsibles}
+            onChange={(values) =>
+              assignedToColumn.setFilterValue(values.length ? values : undefined)
+            }
+          />
+        )}
+        {closerColumn && closerOptions.length > 0 && (
+          <LeadsMultiFilter
+            title="Closer"
+            options={closerOptions}
+            selectedValues={selectedClosers}
+            onChange={(values) =>
+              closerColumn.setFilterValue(values.length ? values : undefined)
+            }
+          />
+        )}
+        {createdAtColumn && (
+          <LeadsDateFilter
+            title="Data de Criação"
+            value={dateRange}
+            onChange={handleDateChange}
+          />
+        )}
+        {isFiltered && (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              table.resetColumnFilters();
+              setOnlyMeetingsHeld(false);
+              setDateRange(undefined);
+            }}
+            className="h-8 px-2 lg:px-3"
+          >
+            Limpar
+            <X className="ml-2 h-4 w-4" />
+          </Button>
+        )}
+      </LeadsFiltersLayout>
       <div className="rounded-md border">
         <DndContext
           sensors={sensors}

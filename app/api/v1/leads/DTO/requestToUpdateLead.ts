@@ -15,7 +15,8 @@ export const UpdateLeadRequestSchema = z.object({
   meetingTitle: z.string().nullish().transform(val => val || undefined),
   meetingNotes: z.string().nullish().transform(val => val || undefined),
   meetingLink: z.string().url("Link da reunião inválido").nullish().transform(val => val || undefined),
-  meetingHeald: z.nativeEnum(MeetingHeald).nullish().transform(val => val || undefined),
+  // Allow explicit null so we can clear the flag (unchecked) via PATCH/PUT.
+  meetingHeald: z.nativeEnum(MeetingHeald).nullable().optional(),
   notes: z.string().nullish().transform(val => val || undefined),
   assignedTo: z.string().uuid("ID do operador deve ser um UUID válido").nullish().transform(val => val || undefined),
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").nullish().transform(val => val || undefined),

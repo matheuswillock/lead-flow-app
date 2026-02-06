@@ -66,14 +66,26 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       }
 
       // Fallback legacy: contar usuários linkados via managerId (modelo antigo).
+      // Quando um usuário não-master consulta esta tela, precisamos computar na ótica do master pagante,
+      // não do próprio usuário.
+      const legacyMasterId = masterIdForBilling ?? profile.id;
+
       const actualOperatorCount = await prisma.profile.count({
         where: {
-          managerId: profile.id,
-          role: { in: ['operator', 'manager'] },
+          managerId: legacyMasterId,
+          role: { in: ["operator", "manager"] },
         },
       });
 
-      const legacyTotal = basePrice + (actualOperatorCount * extraUserPrice);
+      const legacyTeamCount = await prisma.team.count({
+        where: { masterId: legacyMasterId },
+      });
+
+      const legacyBillableTeams = Math.max(0, legacyTeamCount - 1);
+      const legacyTotal =
+        basePrice +
+        legacyBillableTeams * extraTeamPrice +
+        actualOperatorCount * extraUserPrice;
       const totalValue =
         profile.hasPermanentSubscription
           ? 0

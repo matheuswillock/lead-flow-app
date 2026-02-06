@@ -2,7 +2,7 @@ import usePipelineContext from "../context/PipelineHook";
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog";
 
 export default function PipelineDialog() {
-  const { open, setOpen, selected: lead, user, userLoading, refreshLeads, finalizeContract } = usePipelineContext();
+  const { open, setOpen, selected: lead, user, userLoading, refreshLeads, finalizeContract, patchLead } = usePipelineContext();
 
   return (
     <LeadDialog
@@ -13,6 +13,7 @@ export default function PipelineDialog() {
       userLoading={userLoading}
       refreshLeads={refreshLeads}
       finalizeContract={finalizeContract}
+      patchLead={patchLead}
     />
   );
 }

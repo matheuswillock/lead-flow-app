@@ -16,6 +16,8 @@ export default function PipelineHeader() {
         setPeriodEnd, 
         assignedUser, 
         setAssignedUser, 
+        onlyMeetingsHeld,
+        setOnlyMeetingsHeld,
         taskOwners,
         user,
         userLoading,
@@ -87,6 +89,20 @@ export default function PipelineHeader() {
                   </div>
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          {/* Filtro por reuniões realizadas */}
+          <Select
+            value={onlyMeetingsHeld ? "held" : "all"}
+            onValueChange={(value) => setOnlyMeetingsHeld(value === "held")}
+          >
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="Reuniões" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as reuniões</SelectItem>
+              <SelectItem value="held">Reuniões realizadas</SelectItem>
             </SelectContent>
           </Select>
 

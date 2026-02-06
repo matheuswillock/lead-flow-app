@@ -1,104 +1,172 @@
+import { useMemo, useState } from "react";
+import { format } from "date-fns";
+import { DateRange } from "react-day-picker";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Filter, ScrollText, User, Plus } from "lucide-react";
+import { ScrollText, Plus } from "lucide-react";
 import useBoardContext from "../context/BoardHook";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
+import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
+import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
+import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
+import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 
 export default function BoardHeader() {
-    const { 
-        query, 
-        setQuery, 
-        periodStart, 
-        setPeriodStart, 
-        periodEnd, 
-        setPeriodEnd, 
-        assignedUser, 
-        setAssignedUser, 
-        taskOwners: responsaveis,
-        user,
-        userLoading,
-        data,
-        isLoading,
-        openNewLeadDialog,
-        refreshLeads
-    } = useBoardContext();
+  const {
+    query,
+    setQuery,
+    periodStart,
+    setPeriodStart,
+    periodEnd,
+    setPeriodEnd,
+    assignedUsers,
+    setAssignedUsers,
+    statusFilter,
+    setStatusFilter,
+    closerFilter,
+    setCloserFilter,
+    onlyMeetingsHeld,
+    setOnlyMeetingsHeld,
+    taskOwners,
+    statusLabels,
+    user,
+    userLoading,
+    data,
+    isLoading,
+    openNewLeadDialog,
+    refreshLeads,
+  } = useBoardContext();
 
-    // Calcular total de leads
-    const totalLeads = Object.values(data).flat().length;
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
-    return (
-      <div className="flex flex-wrap items-center gap-2">
-        <ScrollText className="size-5" />
-        <h1 className="text-xl font-semibold">Kanban de Leads</h1>
-        
-        {/* Informações do usuário e status */}
-        {userLoading ? (
-          <div className="ml-2 text-sm text-muted-foreground">Carregando usuário...</div>
-        ) : user ? (
-          <div className="ml-2 flex items-center gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <User className="size-4" />
-              <span>{user.email} ({user.role})</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span>•</span>
-              <span>{isLoading ? 'Carregando...' : `${totalLeads} leads`}</span>
-            </div>
+  const totalLeads = Object.values(data).flat().length;
+
+  const statusOptions = useMemo(
+    () =>
+      Object.entries(statusLabels).map(([value, label]) => ({
+        value,
+        label,
+      })),
+    [statusLabels]
+  );
+
+  const responsibleOptions = useMemo(
+    () =>
+      taskOwners.map((owner) => ({
+        value: owner.id,
+        label: owner.name,
+      })),
+    [taskOwners]
+  );
+
+  const closerOptions = useMemo(() => {
+    const users = user?.usersAssociated || [];
+    return users
+      .filter((u) => u.functions?.includes("CLOSER"))
+      .map((closer) => ({
+        value: closer.id,
+        label: closer.name || closer.email,
+      }));
+  }, [user]);
+
+  const handleDateChange = (range: DateRange | undefined) => {
+    setDateRange(range);
+    if (!range?.from) {
+      setPeriodStart("");
+      setPeriodEnd("");
+      return;
+    }
+    setPeriodStart(format(range.from, "yyyy-MM-dd"));
+    setPeriodEnd(range.to ? format(range.to, "yyyy-MM-dd") : "");
+  };
+
+  const isFiltered =
+    query.trim().length > 0 ||
+    assignedUsers.length > 0 ||
+    statusFilter.length > 0 ||
+    closerFilter.length > 0 ||
+    onlyMeetingsHeld ||
+    Boolean(periodStart) ||
+    Boolean(periodEnd);
+
+  const clearFilters = () => {
+    setQuery("");
+    setAssignedUsers([]);
+    setStatusFilter([]);
+    setCloserFilter([]);
+    setOnlyMeetingsHeld(false);
+    setPeriodStart("");
+    setPeriodEnd("");
+    setDateRange(undefined);
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <ScrollText className="size-6" />
+          <div>
+            <h1 className="text-2xl font-semibold">Kanban de Leads</h1>
+            {userLoading ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : user ? (
+              <p className="text-sm text-muted-foreground">
+                {user.email} ({user.role}) •{" "}
+                {isLoading ? "Carregando..." : `${totalLeads} leads`}
+              </p>
+            ) : null}
           </div>
-        ) : null}
-        
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <div className="relative">
-            <Filter className="pointer-events-none absolute left-2 top-2.5 size-4 opacity-70" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar por nome, ID ou data (dd/mm/aaaa)"
-              className="pl-8 w-96"
-            />
-          </div>
-
-          {/* Filtro por período */}
-          <div className="flex items-center gap-2">
-            <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="w-40" />
-            <span className="text-sm text-muted-foreground">até</span>
-            <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="w-40" />
-          </div>
-
-          {/* Filtro por responsável */}
-          <Select value={assignedUser} onValueChange={setAssignedUser}>
-            <SelectTrigger className="w-56">
-              <SelectValue placeholder="Responsável" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os responsáveis</SelectItem>
-              {responsaveis.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  <div className="flex items-center gap-2">
-                    <Avatar className="size-6">
-                      <AvatarImage src={r.avatarUrl || undefined} alt={r.name} />
-                      <AvatarFallback className="text-xs">
-                        {r.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span>{r.name}</span>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Button 
-            onClick={openNewLeadDialog}
-            className="ml-2 cursor-pointer"
-          >
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
             <Plus className="mr-2 size-4" />
             Adicionar novo lead
           </Button>
           <LeadImportButton onImportComplete={refreshLeads} />
         </div>
       </div>
-    );
+
+      <LeadsFiltersLayout>
+        <Input
+          placeholder="Filtrar por nome..."
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="h-8 w-[150px] lg:w-[250px]"
+        />
+        <LeadsStatusFilter
+          statusOptions={statusOptions}
+          selectedStatuses={statusFilter}
+          onChangeStatuses={(values) => setStatusFilter(values as typeof statusFilter)}
+          meetingHeld={onlyMeetingsHeld}
+          onToggleMeetingHeld={setOnlyMeetingsHeld}
+        />
+        {responsibleOptions.length > 0 && (
+          <LeadsMultiFilter
+            title="Responsável"
+            options={responsibleOptions}
+            selectedValues={assignedUsers}
+            onChange={setAssignedUsers}
+          />
+        )}
+        {closerOptions.length > 0 && (
+          <LeadsMultiFilter
+            title="Closer"
+            options={closerOptions}
+            selectedValues={closerFilter}
+            onChange={setCloserFilter}
+          />
+        )}
+        <LeadsDateFilter
+          title="Data de Criação"
+          value={dateRange}
+          onChange={handleDateChange}
+        />
+        {isFiltered && (
+          <Button variant="ghost" className="h-8 px-2 lg:px-3" onClick={clearFilters}>
+            Limpar
+          </Button>
+        )}
+      </LeadsFiltersLayout>
+    </div>
+  );
 }
