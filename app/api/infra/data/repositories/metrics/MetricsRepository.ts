@@ -352,6 +352,7 @@ export class MetricsRepository implements IMetricsRepository {
         OR: [
           { assignedTo: profileId },
           { createdBy: profileId },
+          { closerId: profileId },
         ],
         ...(startDate && endDate && {
           meetingDate: {
