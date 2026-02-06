@@ -1,16 +1,17 @@
 "use client"
 
 import { div as MotionDiv } from "framer-motion/client"
-import { Check, Users, Zap } from "lucide-react"
+import { Check, Users, Users2, Zap } from "lucide-react"
 import Link from "next/link"
 
 const mainFeatures = [
   "Leads ilimitados",
-  "Pipeline Kanban completo",
-  "Dashboard com analytics",
-  "Automações inteligentes",
-  "Gestão de operadores",
-  "Relatórios personalizados",
+  "Pipeline Kanban + Tabela",
+  "Crie reuniões com Google Calendar",
+  "Times com troca de time",
+  "Gestão de operadores e funções",
+  "Dashboard com métricas",
+  "Anexos por lead",
   "Suporte via email",
   "Atualizações automáticas"
 ]
@@ -20,7 +21,13 @@ const additionalInfo = [
     icon: Zap,
     title: "Assinatura Base",
     price: "R$ 59,90",
-    description: "Valor fixo mensal para acesso à plataforma"
+    description: "Inclui 1 time e o usuário master"
+  },
+  {
+    icon: Users2,
+    title: "Times Adicionais",
+    price: "R$ 29,90",
+    description: "Por time adicional na sua operação"
   },
   {
     icon: Users,
@@ -74,7 +81,7 @@ export function PricingSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          className="max-w-4xl mx-auto mb-16"
+          className="max-w-5xl mx-auto mb-16"
         >
           <div
             className="relative rounded-3xl border-2 p-10 shadow-2xl backdrop-blur ring-2 ring-primary ring-opacity-20"
@@ -100,43 +107,49 @@ export function PricingSection() {
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6 mb-8">
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-6 mb-8 items-stretch">
               {additionalInfo.map((info) => (
                 <div
                   key={info.title}
-                  className="flex items-start gap-4 p-6 rounded-xl border"
+                  className="flex h-full flex-col gap-4 p-6 rounded-xl border"
                   style={{
                     borderColor: "var(--border)",
                     background: "color-mix(in oklab, var(--card) 50%, transparent)",
                   }}
                 >
-                  <div
-                    className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg"
-                    style={{
-                      background: "color-mix(in oklab, var(--primary) 15%, transparent)",
-                      color: "var(--primary)",
-                    }}
-                  >
-                    <info.icon className="h-6 w-6" />
+                  <div className="text-xl font-bold leading-snug">
+                    {info.title}
                   </div>
-                  <div className="flex-1">
-                    <div className="text-xl font-bold mb-1">{info.title}</div>
+                  <div className="flex items-center gap-4">
                     <div
-                      className="text-3xl font-extrabold mb-2"
-                      style={{ color: "var(--primary)" }}
+                      className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg"
+                      style={{
+                        background: "color-mix(in oklab, var(--primary) 15%, transparent)",
+                        color: "var(--primary)",
+                      }}
                     >
-                      {info.price}
-                      <span className="text-base text-muted-foreground font-normal">/mês</span>
+                      <info.icon className="h-6 w-6" />
                     </div>
-                    <p className="text-sm text-muted-foreground">{info.description}</p>
+                    <div className="flex items-baseline gap-1">
+                      <span
+                        className="text-3xl font-extrabold"
+                        style={{ color: "var(--primary)" }}
+                      >
+                        {info.price}
+                      </span>
+                      <span className="text-sm text-muted-foreground font-medium">/mês</span>
+                    </div>
                   </div>
+                  <p className="mt-auto text-sm text-muted-foreground min-h-[2.25rem]">
+                    {info.description}
+                  </p>
                 </div>
               ))}
             </div>
 
             <div className="mb-8">
               <h4 className="text-lg font-semibold mb-4 text-center">Tudo incluído no plano:</h4>
-              <div className="grid md:grid-cols-2 gap-3">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {mainFeatures.map((feature) => (
                   <div key={feature} className="flex items-start gap-3">
                     <Check
@@ -189,6 +202,10 @@ export function PricingSection() {
                 <span className="font-semibold">R$ 59,90</span>
               </div>
               <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">1 time adicional × R$ 29,90</span>
+                <span className="font-semibold">R$ 29,90</span>
+              </div>
+              <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">3 operadores × R$ 19,90</span>
                 <span className="font-semibold">R$ 59,70</span>
               </div>
@@ -199,12 +216,12 @@ export function PricingSection() {
               <div className="flex justify-between items-center text-lg">
                 <span className="font-bold">Total mensal</span>
                 <span className="font-bold" style={{ color: "var(--primary)" }}>
-                  R$ 119,60
+                  R$ 149,50
                 </span>
               </div>
             </div>
             <p className="text-sm text-center text-muted-foreground">
-              Escale sua equipe sem limites de leads. Adicione ou remova operadores a qualquer momento.
+              Escale times e equipe sem limites de leads. Adicione ou remova times e operadores quando precisar.
             </p>
           </div>
         </MotionDiv>

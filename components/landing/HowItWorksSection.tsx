@@ -1,7 +1,7 @@
 "use client"
 
 import { div as MotionDiv } from "framer-motion/client"
-import { ArrowRight, CheckCircle2, Filter, Target, TrendingUp, UserPlus } from "lucide-react"
+import { ArrowRight, BarChart3, CalendarDays, Filter, UserPlus, Users2 } from "lucide-react"
 
 const steps = [
   {
@@ -17,21 +17,21 @@ const steps = [
     color: "var(--chart-2)"
   },
   {
-    icon: Target,
-    title: "3. Acompanhe Visualmente",
-    description: "Arraste e solte cards conforme avança no processo de venda. Veja o status de cada negociação em tempo real.",
+    icon: CalendarDays,
+    title: "3. Agende Reuniões",
+    description: "Marque reuniões direto do lead com integração ao Google Calendar e controle seus compromissos diários.",
     color: "var(--chart-3)"
   },
   {
-    icon: TrendingUp,
-    title: "4. Analise & Otimize",
-    description: "Dashboard com métricas completas: taxa de conversão, tempo médio por etapa, performance de operadores e mais.",
+    icon: Users2,
+    title: "4. Trabalhe em Times",
+    description: "Separe operações por time, gerencie funções (SDR/Closer) e mantenha o trabalho organizado por workspace.",
     color: "var(--chart-4)"
   },
   {
-    icon: CheckCircle2,
-    title: "5. Feche Mais Vendas",
-    description: "Com processos claros e automações inteligentes, sua equipe foca no que importa: vender mais e melhor.",
+    icon: BarChart3,
+    title: "5. Analise & Cresça",
+    description: "Acompanhe métricas essenciais e indicadores de performance para tomar decisões rápidas.",
     color: "var(--primary)"
   }
 ]
@@ -136,10 +136,10 @@ export function HowItWorksSection() {
             }}
           >
             <p className="text-lg font-semibold mb-2">
-              Pronto para simplificar sua gestão de leads?
+              Pronto para organizar seu time, agenda e funil?
             </p>
             <p className="text-muted-foreground mb-4">
-              Comece gratuitamente e veja resultados em poucos dias
+              Crie sua conta e comece a usar o Corretor Studio hoje mesmo.
             </p>
             <a
               href="/subscribe"
@@ -149,7 +149,7 @@ export function HowItWorksSection() {
                 color: "var(--primary-foreground)",
               }}
             >
-              Começar Agora
+              Criar minha conta
               <ArrowRight className="ml-2 h-5 w-5" />
             </a>
           </div>
