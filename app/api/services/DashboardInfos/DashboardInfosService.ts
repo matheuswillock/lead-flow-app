@@ -46,9 +46,6 @@ export class DashboardInfosService implements IDashboardInfosService {
 
     const leads = await metricsRepository.findLeadsForMetrics(repositoryFilters);
 
-    // Buscar agendamentos da tabela LeadsSchedule
-    const scheduledLeads = await metricsRepository.getScheduledLeads(repositoryFilters);
-
     // Buscar vendas da tabela LeadFinalized
     const finalizedLeads = await metricsRepository.getFinalizedLeads(repositoryFilters);
     const vendas = finalizedLeads.length;
@@ -157,10 +154,27 @@ export class DashboardInfosService implements IDashboardInfosService {
     const churn = this.countByStatusGroup(statusCount, STATUS_GROUPS.CHURN);
     const noShowCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.NO_SHOW);
 
-    const scheduledLeadIds = new Set(scheduledLeads.map((lead) => lead.leadId));
-    const scheduledFromStatus =
-      this.countByStatusGroup(statusCount, STATUS_GROUPS.SCHEDULED) + noShowCount;
-    const agendamentos = Math.max(scheduledLeadIds.size, scheduledFromStatus);
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { masterId: true },
+    });
+
+    const masterLeadCount = team?.masterId
+      ? await prisma.lead.count({
+          where: {
+            managerId: team.masterId,
+            teamId,
+            ...(startDate && endDate && {
+              createdAt: {
+                gte: startDate,
+                lte: endDate,
+              },
+            }),
+          },
+        })
+      : leads.length;
+
+    const agendamentos = masterLeadCount;
 
     const taxaConversao = agendamentos > 0 ? (vendas / agendamentos) * 100 : 0;
     const churnRate = vendas > 0 ? (churn / vendas) * 100 : 0;

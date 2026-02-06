@@ -10,7 +10,7 @@ export type { DashboardMetricsData, DetailedMetricsData, MetricsFilters };
 
 // Configuração de cache
 const CACHE_KEY_PREFIX = 'dashboard_metrics';
-const CACHE_VERSION = '3';
+const CACHE_VERSION = '4';
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutos em milissegundos
 
 interface CachedData<T> {
