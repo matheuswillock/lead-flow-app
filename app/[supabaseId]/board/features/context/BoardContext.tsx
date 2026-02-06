@@ -83,6 +83,20 @@ function formatDate(iso: string) {
   }
 }
 
+function formatDateKey(iso: string) {
+  try {
+    const date = new Date(iso);
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch {
+    return "";
+  }
+}
+
 export const BoardContext = createContext<IBoardContextState | undefined>(undefined);
 
 export const BoardProvider: React.FC<IBoardProviderProps> = ({ 
@@ -496,14 +510,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       closerFilter.length === 0 || (l.closerId ? closerFilter.includes(l.closerId) : false);
     const inMeetingsHeld = (l: Lead) => !onlyMeetingsHeld || l.meetingHeald === "yes";
     const inPeriod = (l: Lead) => {
-      const createdAt = new Date(l.createdAt);
-      const start = periodStart ? new Date(periodStart) : null;
-      const end = periodEnd ? new Date(periodEnd) : null;
-      if (end) {
-        end.setHours(23, 59, 59, 999);
-      }
-      const afterStart = !start || createdAt >= start;
-      const beforeEnd = !end || createdAt <= end;
+      const createdKey = formatDateKey(l.createdAt);
+      if (!createdKey) return false;
+      const afterStart = !periodStart || createdKey >= periodStart;
+      const beforeEnd = !periodEnd || createdKey <= periodEnd;
       return afterStart && beforeEnd;
     };
     
