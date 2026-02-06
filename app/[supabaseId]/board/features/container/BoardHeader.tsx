@@ -65,7 +65,7 @@ export default function BoardHeader() {
       .filter((u) => u.functions?.includes("CLOSER"))
       .map((closer) => ({
         value: closer.id,
-        label: closer.fullName || closer.name || closer.email,
+        label: closer.name || closer.email,
       }));
   }, [user]);
 
