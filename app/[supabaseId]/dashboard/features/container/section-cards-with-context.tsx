@@ -234,10 +234,10 @@ export function SectionCardsWithContext() {
         <Card className="@container/card border-blue-500/20 bg-gradient-to-br from-blue-500/5 via-blue-500/3 to-transparent shadow-md">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
                 🎯 Taxa de Conversão
-                <InfoTooltip text="Vendas divididas pelo total de agendados no periodo selecionado." />
-              </CardTitle>
+                <InfoTooltip text="Vendas divididas pelo total de leads do master no periodo selecionado." />
+                </CardTitle>
               <div className="rounded-full bg-blue-500/10 p-2">
                 <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
@@ -298,7 +298,7 @@ export function SectionCardsWithContext() {
                 <Calendar className="h-4 w-4 text-blue-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Agendamentos
-                  <InfoTooltip text="Total de leads agendados no periodo (status Agendado + No Show). Se houver registros de agendamento, eles sao usados como base." />
+                  <InfoTooltip text="Total de leads cadastrados pelo master no periodo selecionado." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -311,7 +311,7 @@ export function SectionCardsWithContext() {
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">Leads agendados</CardAction>
+              <CardAction className="text-xs text-muted-foreground">Leads cadastrados</CardAction>
             </CardFooter>
           </Card>
 
@@ -460,7 +460,7 @@ export function SectionCardsWithContext() {
                 <UserX className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Taxa de No-show
-                  <InfoTooltip text="No-show dividido pelo total de agendados no periodo selecionado." />
+                  <InfoTooltip text="No-show dividido pelo total de leads do master no periodo selecionado." />
                 </CardTitle>
               </div>
               <CardDescription
