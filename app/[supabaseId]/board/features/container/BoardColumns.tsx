@@ -43,8 +43,7 @@ export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, on
             <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
 
             <div
-                className="grid auto-cols-[minmax(18rem,20rem)] grid-flow-col gap-4 overflow-x-auto pb-2 pr-2 flex-1 min-h-0 h-full items-stretch"
-                style={{ scrollSnapType: "x proximity" }}
+                className="kanban-scrollbar grid auto-cols-[minmax(18rem,20rem)] grid-flow-col gap-4 overflow-x-auto pb-2 pr-2 flex-1 min-h-0 h-full items-stretch"
             >
                 {COLUMNS.map(({ key, title }) => {
                     const items = filtered[key] || [];
@@ -53,7 +52,6 @@ export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, on
                             key={key}
                             className="group col-span-1 flex h-full min-h-0 flex-col rounded-2xl border bg-card p-3 shadow-sm"
                             drag={false}
-                            style={{ scrollSnapAlign: "start" }}
                             onDrop={(e) => onDrop(e, key)}
                             onDragOver={onDragOver}
                         >
@@ -66,7 +64,7 @@ export default function BoardColumns({ onFinalizeContract, onScheduleMeeting, on
                             </div>
 
                             {/* Cards Zone */}
-                            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-hidden pr-1 group-hover:overflow-y-auto">
+                            <div className="kanban-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pr-3">
                                 {items.length === 0 && (
                                     <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">
                                         Solte aqui

@@ -8,8 +8,7 @@ export function LeadsLoader() {
       <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
 
       <div
-        className="grid auto-cols-[minmax(18rem,20rem)] grid-flow-col gap-4 overflow-x-auto pb-2 pr-2 flex-1 min-h-0 h-full items-stretch"
-        style={{ scrollSnapType: "x proximity" }}
+        className="kanban-scrollbar grid auto-cols-[minmax(18rem,20rem)] grid-flow-col gap-4 overflow-x-auto pb-2 pr-2 flex-1 min-h-0 h-full items-stretch"
       >
         {Array.from({ length: 4 }).map((_, idx) => (
           <Card

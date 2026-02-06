@@ -135,3 +135,39 @@ h1, h2, h3, h4, h5, h6 {
     @apply bg-background text-foreground;
   }
 }
+
+/* Kanban-specific scrollbar styling (board only) */
+.kanban-scrollbar {
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(190, 190, 190, 0.9) rgba(5, 5, 5, 0.75);
+  scrollbar-width: none;
+}
+
+.kanban-scrollbar:hover {
+  scrollbar-width: thin;
+}
+
+.kanban-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.kanban-scrollbar:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.kanban-scrollbar::-webkit-scrollbar-track {
+  background: rgba(5, 5, 5, 0.75);
+  border-radius: 999px;
+}
+
+.kanban-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(190, 190, 190, 0.9);
+  border-radius: 999px;
+  border: 2px solid rgba(5, 5, 5, 0.75);
+}
+
+.kanban-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(220, 220, 220, 0.95);
+}
