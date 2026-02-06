@@ -56,14 +56,49 @@ export class DashboardInfosService implements IDashboardInfosService {
     // Buscar reuniões realizadas (meetingHeald = yes) pela data da reunião (meetingDate)
     const meetingsHeldLeads = await metricsRepository.getMeetingsHeldLeads(repositoryFilters);
 
+    const teamMembers = await prisma.teamMember.findMany({
+      where: {
+        teamId,
+      },
+      select: {
+        profileId: true,
+        functions: true,
+        profile: {
+          select: {
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+            functions: true,
+          },
+        },
+      },
+    });
+
+    const hasFunction = (member: { functions: string[]; profile?: { functions: string[] | null } | null }, fn: "SDR" | "CLOSER") => {
+      const memberFunctions = member.functions ?? [];
+      const profileFunctions = member.profile?.functions ?? [];
+      return memberFunctions.includes(fn) || profileFunctions.includes(fn);
+    };
+
+    const sdrIds = new Set(
+      teamMembers
+        .filter((member) => hasFunction(member, "SDR"))
+        .map((member) => member.profileId)
+    );
+    const closerIds = new Set(
+      teamMembers
+        .filter((member) => hasFunction(member, "CLOSER"))
+        .map((member) => member.profileId)
+    );
+
     const closerCounts = new Map<string, number>();
     const sdrCounts = new Map<string, number>();
 
     meetingsHeldLeads.forEach((lead) => {
-      if (lead.closerId) {
+      if (lead.closerId && closerIds.has(lead.closerId)) {
         closerCounts.set(lead.closerId, (closerCounts.get(lead.closerId) || 0) + 1);
       }
-      if (lead.assignedTo) {
+      if (lead.assignedTo && sdrIds.has(lead.assignedTo)) {
         sdrCounts.set(lead.assignedTo, (sdrCounts.get(lead.assignedTo) || 0) + 1);
       }
     });
@@ -71,36 +106,38 @@ export class DashboardInfosService implements IDashboardInfosService {
     const reunioesRealizadasCloser = Array.from(closerCounts.values()).reduce((sum, value) => sum + value, 0);
     const reunioesRealizadasSdr = Array.from(sdrCounts.values()).reduce((sum, value) => sum + value, 0);
 
-    const rankingProfileIds = Array.from(
-      new Set<string>([...closerCounts.keys(), ...sdrCounts.keys()])
-    );
+    const toProfileRankingItem = (member: typeof teamMembers[number]) => {
+      const profile = member.profile;
+      return {
+        id: member.profileId,
+        name: profile?.fullName || profile?.email || "Usuário",
+        email: profile?.email || "",
+        avatarUrl: profile?.profileIconUrl || null,
+      };
+    };
 
-    const rankingProfiles = rankingProfileIds.length
-      ? await prisma.profile.findMany({
-          where: { id: { in: rankingProfileIds } },
-          select: { id: true, fullName: true, email: true, profileIconUrl: true },
-        })
-      : [];
+    const closerProfiles = teamMembers
+      .filter((member) => hasFunction(member, "CLOSER"))
+      .map(toProfileRankingItem);
 
-    const profileById = new Map(rankingProfiles.map((profile) => [profile.id, profile]));
+    const sdrProfiles = teamMembers
+      .filter((member) => hasFunction(member, "SDR"))
+      .map(toProfileRankingItem);
 
-    const buildRanking = (counts: Map<string, number>) => {
-      return Array.from(counts.entries())
-        .map(([id, count]) => {
-          const profile = profileById.get(id);
-          return {
-            id,
-            name: profile?.fullName || profile?.email || "Usuário",
-            email: profile?.email || "",
-            avatarUrl: profile?.profileIconUrl || null,
-            count,
-          };
-        })
+    const buildRanking = (
+      profiles: Array<{ id: string; name: string; email: string; avatarUrl: string | null }>,
+      counts: Map<string, number>
+    ) => {
+      return profiles
+        .map((profile) => ({
+          ...profile,
+          count: counts.get(profile.id) || 0,
+        }))
         .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
     };
 
-    const reunioesRealizadasCloserRanking = buildRanking(closerCounts);
-    const reunioesRealizadasSdrRanking = buildRanking(sdrCounts);
+    const reunioesRealizadasCloserRanking = buildRanking(closerProfiles, closerCounts);
+    const reunioesRealizadasSdrRanking = buildRanking(sdrProfiles, sdrCounts);
 
     // Contar por status (para as outras métricas)
     const statusCount = leads.reduce((acc: Record<LeadStatus, number>, lead) => {

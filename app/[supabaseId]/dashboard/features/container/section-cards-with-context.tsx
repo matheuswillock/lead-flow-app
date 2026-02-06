@@ -1,7 +1,7 @@
 'use client';
 
 import { useDashboardContext } from '../context/DashboardContext';
-import { DashboardCardsSkeleton } from '../components/DashboardSkeleton';
+import { DashboardCardsSkeleton } from './components/DashboardSkeleton';
 import {
   Card,
   CardAction,
@@ -12,7 +12,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { 
   TrendingUp, 
   Calendar, 
@@ -104,8 +103,10 @@ export function SectionCardsWithContext() {
       );
     }
 
+    const maxCount = Math.max(...items.map((item) => item.count), 0);
+
     return (
-      <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+      <div className="max-h-56 space-y-5 overflow-y-auto pr-2">
         {items.map((item) => {
           const label = item.name || item.email || "Usuário";
           const initials = label
@@ -115,22 +116,35 @@ export function SectionCardsWithContext() {
             .join("")
             .toUpperCase()
             .slice(0, 2);
+          const width = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
 
           return (
-            <div key={item.id} className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <Avatar className="h-6 w-6">
-                  <AvatarImage src={item.avatarUrl || undefined} alt={label} />
-                  <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
-                </Avatar>
-                <span className="truncate text-xs text-foreground">{label}</span>
+            <div key={item.id} className="flex items-center gap-4">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex min-w-0 items-center">
+                    <Avatar className="h-12 w-12 shrink-0" aria-label={label}>
+                      <AvatarImage src={item.avatarUrl || undefined} alt={label} />
+                      <AvatarFallback className="text-[11px]">{initials}</AvatarFallback>
+                    </Avatar>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>{label}</TooltipContent>
+              </Tooltip>
+              <div className="flex-1 h-4 rounded-full bg-muted/40 shadow-inner">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-primary to-orange-500"
+                  style={{ width: `${width}%` }}
+                />
               </div>
-              <Badge
-                variant="secondary"
-                className={cn("shrink-0", isBlurred && "blur-sm select-none")}
+              <div
+                className={cn(
+                  "min-w-[2.5rem] shrink-0 text-right text-xl font-semibold text-foreground",
+                  isBlurred && "blur-sm select-none"
+                )}
               >
                 {item.count}
-              </Badge>
+              </div>
             </div>
           );
         })}
@@ -381,56 +395,50 @@ export function SectionCardsWithContext() {
           📅 Reuniões realizadas
         </h3>
         <div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
-          <Card className="@container/card">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-primary" />
-                <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Reuniões realizadas (Closer)
-                  <InfoTooltip text="Conta reuniões com 'Reunião realizada' marcada no período selecionado. Cada reunião conta tanto para o closer quanto para o SDR." />
-                </CardTitle>
+          <Card className="@container/card h-full">
+            <CardHeader className="pb-2">
+              <div className="grid grid-cols-[1fr_auto] items-center gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Calendar className="h-4 w-4 text-primary" />
+                  <CardTitle className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                    Reuniões realizadas (Closer)
+                    <InfoTooltip text="Conta reuniões com 'Reunião realizada' marcada no período selecionado. Cada reunião conta tanto para o closer quanto para o SDR." />
+                  </CardTitle>
+                </div>
+                <div className="whitespace-nowrap text-xs text-muted-foreground">
+                  Total: {metrics.reunioesRealizadasCloser}
+                </div>
               </div>
-              <CardDescription
-                className={cn(
-                  "text-2xl font-bold text-foreground transition-all duration-200",
-                  isBlurred && "blur-sm select-none",
-                )}
-              >
-                {metrics.reunioesRealizadasCloser}
-              </CardDescription>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className="pt-0 flex-1">
               {renderMeetingsHeldRanking(metrics.reunioesRealizadasCloserRanking)}
             </CardContent>
-            <CardFooter className="pt-0">
+            <CardFooter className="pt-0 mt-auto justify-start">
               <CardAction className="text-xs text-muted-foreground">
                 Ranking de closers nos {periodText}
               </CardAction>
             </CardFooter>
           </Card>
 
-          <Card className="@container/card">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-primary" />
-                <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Reuniões realizadas (SDR)
-                  <InfoTooltip text="Conta reuniões com 'Reunião realizada' marcada no período selecionado. Cada reunião conta tanto para o closer quanto para o SDR (responsável)." />
-                </CardTitle>
+          <Card className="@container/card h-full">
+            <CardHeader className="pb-2">
+              <div className="grid grid-cols-[1fr_auto] items-center gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Calendar className="h-4 w-4 text-primary" />
+                  <CardTitle className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                    Reuniões realizadas (SDR)
+                    <InfoTooltip text="Conta reuniões com 'Reunião realizada' marcada no período selecionado. Cada reunião conta tanto para o closer quanto para o SDR (responsável)." />
+                  </CardTitle>
+                </div>
+                <div className="whitespace-nowrap text-xs text-muted-foreground">
+                  Total: {metrics.reunioesRealizadasSdr}
+                </div>
               </div>
-              <CardDescription
-                className={cn(
-                  "text-2xl font-bold text-foreground transition-all duration-200",
-                  isBlurred && "blur-sm select-none",
-                )}
-              >
-                {metrics.reunioesRealizadasSdr}
-              </CardDescription>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className="pt-0 flex-1">
               {renderMeetingsHeldRanking(metrics.reunioesRealizadasSdrRanking)}
             </CardContent>
-            <CardFooter className="pt-0">
+            <CardFooter className="pt-0 mt-auto justify-start">
               <CardAction className="text-xs text-muted-foreground">
                 Ranking de SDRs nos {periodText}
               </CardAction>
