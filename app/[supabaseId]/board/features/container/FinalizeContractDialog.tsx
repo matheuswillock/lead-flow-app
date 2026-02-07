@@ -23,6 +23,9 @@ import {
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 
+const MAX_CURRENCY_VALUE = 9_999_999_999.99;
+const MAX_CURRENCY_LABEL = "10.000.000.000,00";
+
 interface FinalizeContractDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -49,6 +52,7 @@ export function FinalizeContractDialog({
   const [notes, setNotes] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [amountError, setAmountError] = useState<string>('');
 
   // Formatar valor como moeda brasileira
   const formatCurrencyDisplay = (value: string): string => {
@@ -75,6 +79,12 @@ export function FinalizeContractDialog({
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatCurrencyDisplay(e.target.value);
+    const numericValue = parseFormattedValue(formatted);
+    if (numericValue > MAX_CURRENCY_VALUE) {
+      setAmountError(`O valor deve ser menor que ${MAX_CURRENCY_LABEL}`);
+      return;
+    }
+    setAmountError('');
     setAmount(formatted);
   };
 
@@ -88,6 +98,12 @@ export function FinalizeContractDialog({
     if (!amount || numericAmount <= 0) {
       toast.error('Por favor, insira um valor válido para o contrato.');
       setError('Por favor, insira um valor válido para o contrato.');
+      return;
+    }
+
+    if (numericAmount > MAX_CURRENCY_VALUE) {
+      toast.error(`O valor deve ser menor que ${MAX_CURRENCY_LABEL}`);
+      setError(`O valor deve ser menor que ${MAX_CURRENCY_LABEL}`);
       return;
     }
 
@@ -138,6 +154,7 @@ export function FinalizeContractDialog({
       setStartDate(undefined);
       setFinalizedDate(undefined);
       setNotes('');
+      setAmountError('');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao finalizar contrato';
       
@@ -162,6 +179,7 @@ export function FinalizeContractDialog({
     setFinalizedDate(undefined);
     setNotes('');
     setError('');
+    setAmountError('');
     onOpenChange(false);
   };
 
@@ -267,9 +285,9 @@ export function FinalizeContractDialog({
             </div>
 
             {/* Mensagem de Erro */}
-            {error && (
+            {(error || amountError) && (
               <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
-                {error}
+                {amountError || error}
               </div>
             )}
           </div>

@@ -32,6 +32,9 @@ const formatCurrencyNumber = (value: number): string =>
         maximumFractionDigits: 2
     })}`;
 
+const MAX_CURRENCY_VALUE = 9_999_999_999.99;
+const MAX_CURRENCY_LABEL = "10.000.000.000,00";
+
 const parseCurrencyValue = (value: string): number | null => {
     const digits = value.replace(/\D/g, '');
     if (!digits) return null;
@@ -100,6 +103,8 @@ export function LeadForm({
     const [hasChanges, setHasChanges] = useState(false);
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
     const [ticketDisplay, setTicketDisplay] = useState("");
+    const [currentValueError, setCurrentValueError] = useState<string | null>(null);
+    const [ticketError, setTicketError] = useState<string | null>(null);
     const [extraGuestsDraft, setExtraGuestsDraft] = useState("");
     const closers = React.useMemo(
         () => usersToAssign?.filter((user) => user.functions?.includes("CLOSER")) ?? [],
@@ -431,8 +436,18 @@ export function LeadForm({
                                 <Input
                                     value={currentValueDisplay}
                                     onChange={(e) => {
-                                        const formatted = formatCurrencyInput(e.target.value);
-                                        const storage = toCurrencyStorageValue(e.target.value);
+                                        const raw = e.target.value;
+                                        const parsed = parseCurrencyValue(raw);
+                                        if (parsed !== null && parsed > MAX_CURRENCY_VALUE) {
+                                            const message = `Valor deve ser menor que ${MAX_CURRENCY_LABEL}`;
+                                            setCurrentValueError(message);
+                                            form.setError("currentValue", { type: "manual", message });
+                                            return;
+                                        }
+                                        setCurrentValueError(null);
+                                        form.clearErrors("currentValue");
+                                        const formatted = formatCurrencyInput(raw);
+                                        const storage = toCurrencyStorageValue(raw);
                                         setCurrentValueDisplay(formatted);
                                         field.onChange(storage ?? "");
                                     }}
@@ -442,6 +457,9 @@ export function LeadForm({
                                     disabled={isLoading || isUpdating}
                                 />
                             </FormControl>
+                            {currentValueError && (
+                                <p className="text-xs text-destructive">{currentValueError}</p>
+                            )}
                         </FormItem>
                     );
                 }}
@@ -850,8 +868,18 @@ export function LeadForm({
                                         <Input
                                             value={ticketDisplay}
                                             onChange={(e) => {
-                                                const formatted = formatCurrencyInput(e.target.value);
-                                                const storage = toCurrencyStorageValue(e.target.value);
+                                                const raw = e.target.value;
+                                                const parsed = parseCurrencyValue(raw);
+                                                if (parsed !== null && parsed > MAX_CURRENCY_VALUE) {
+                                                    const message = `Ticket deve ser menor que ${MAX_CURRENCY_LABEL}`;
+                                                    setTicketError(message);
+                                                    form.setError("ticket", { type: "manual", message });
+                                                    return;
+                                                }
+                                                setTicketError(null);
+                                                form.clearErrors("ticket");
+                                                const formatted = formatCurrencyInput(raw);
+                                                const storage = toCurrencyStorageValue(raw);
                                                 setTicketDisplay(formatted);
                                                 field.onChange(storage ?? "");
                                             }}
@@ -860,6 +888,9 @@ export function LeadForm({
                                             disabled={isLoading || isUpdating}
                                         />
                                     </FormControl>
+                                    {ticketError && (
+                                        <p className="text-xs text-destructive">{ticketError}</p>
+                                    )}
                                 </FormItem>
                             );
                         }}
