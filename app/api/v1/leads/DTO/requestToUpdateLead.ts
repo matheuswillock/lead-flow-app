@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LeadStatus, HealthPlan, MeetingHeald } from "@prisma/client";
+import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "./leadValueLimits";
 
 export const UpdateLeadRequestSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório").optional(),
@@ -8,7 +9,12 @@ export const UpdateLeadRequestSchema = z.object({
   cnpj: z.string().nullish().transform(val => val || undefined),
   age: z.string().nullish().transform(val => val || undefined),
   currentHealthPlan: z.nativeEnum(HealthPlan).nullish().transform(val => val || undefined),
-  currentValue: z.number().min(0, "Valor deve ser maior ou igual a zero").nullish().transform(val => val || undefined),
+  currentValue: z
+    .number()
+    .min(0, "Valor deve ser maior ou igual a zero")
+    .max(MAX_DECIMAL_VALUE, `Valor deve ser menor que ${MAX_DECIMAL_LABEL}`)
+    .nullish()
+    .transform(val => val || undefined),
   referenceHospital: z.string().nullish().transform(val => val || undefined),
   currentTreatment: z.string().nullish().transform(val => val || undefined),
   meetingDate: z.string().datetime().nullish().transform(val => val || undefined),
@@ -23,7 +29,12 @@ export const UpdateLeadRequestSchema = z.object({
   status: z.nativeEnum(LeadStatus).optional(),
   updatedBy: z.string().uuid("ID do atualizador deve ser um UUID válido").optional(),
   // Novos campos de venda (podem ser atualizados)
-  ticket: z.number().min(0).nullish().transform(val => val || undefined),
+  ticket: z
+    .number()
+    .min(0)
+    .max(MAX_DECIMAL_VALUE, `Ticket deve ser menor que ${MAX_DECIMAL_LABEL}`)
+    .nullish()
+    .transform(val => val || undefined),
   contractDueDate: z.string().datetime().nullish().transform(val => val || undefined),
   soldPlan: z.nativeEnum(HealthPlan).nullish().transform(val => val || undefined)
 });
