@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { metaLeadUseCase } from '@/app/api/useCases/metaLeads/MetaLeadUseCase';
 import { metaLeadService } from '@/app/api/services/MetaLeadService';
+import { metaLeadIntegrationRepository } from '@/app/api/infra/data/repositories/integrations/MetaLeadIntegrationRepository';
+import { decryptToken } from '@/lib/integrations-crypto';
 
 /**
  * GET - Verificação do webhook (Meta envia para validar)
@@ -17,20 +19,19 @@ export async function GET(request: NextRequest) {
     const token = searchParams.get('hub.verify_token');
     const challenge = searchParams.get('hub.challenge');
 
-    const verifyToken = process.env.META_VERIFY_TOKEN || 'meta_lead_webhook_verify_token';
-
     console.info('🔍 Verificação do webhook Meta recebida:', {
       mode,
-      token: token ? '***' : null,
-      challenge: challenge ? '***' : null
+      hasToken: !!token,
+      hasChallenge: !!challenge
     });
 
-    // Validar token de verificação
-    if (mode === 'subscribe' && token === verifyToken) {
-      console.info('✅ Webhook Meta verificado com sucesso');
-      
-      // Retornar o challenge para confirmar
-      return new NextResponse(challenge, { status: 200 });
+    if (mode === 'subscribe' && token) {
+      const integration = await metaLeadIntegrationRepository.findByVerifyToken(token);
+
+      if (integration) {
+        console.info('✅ Webhook Meta verificado com sucesso');
+        return new NextResponse(challenge, { status: 200 });
+      }
     }
 
     console.error('❌ Token de verificação inválido');
@@ -91,14 +92,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.info('📋 Payload recebido:', JSON.stringify(payload, null, 2));
+    const pageId =
+      payload?.entry?.[0]?.changes?.[0]?.value?.page_id ||
+      payload?.entry?.[0]?.id;
 
-    // 3. Extrair managerId dos query params (opcional)
-    const { searchParams } = new URL(request.url);
-    const managerId = searchParams.get('managerId') || undefined;
+    if (!pageId) {
+      console.warn('⚠️ Page ID não encontrado no payload');
+      return NextResponse.json(
+        { success: false, message: 'Page ID não encontrado no payload' },
+        { status: 200 }
+      );
+    }
+
+    const integration = await metaLeadIntegrationRepository.findByPageId(pageId);
+    if (!integration || !integration.isActive) {
+      console.warn('⚠️ Integração Meta não encontrada ou inativa para pageId:', pageId);
+      return NextResponse.json(
+        { success: false, message: 'Integração Meta não encontrada ou inativa' },
+        { status: 200 }
+      );
+    }
+
+    const accessToken = decryptToken(integration.pageAccessTokenEnc);
 
     // 4. Processar webhook via UseCase
-    const result = await metaLeadUseCase.processWebhook(payload, managerId);
+    const result = await metaLeadUseCase.processWebhook(payload, {
+      managerId: integration.managerId,
+      teamId: integration.teamId,
+      pageAccessToken: accessToken,
+      defaultAssigneeId: integration.defaultAssigneeId,
+      metaPageId: pageId
+    });
 
     // Meta espera uma resposta rápida (200 OK)
     // Mesmo se houver erros, retornamos 200 para não ser bloqueado

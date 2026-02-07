@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { normalizePhone } from '@/lib/phone';
 
 /**
  * MetaLeadService
@@ -9,19 +10,21 @@ import crypto from 'crypto';
  */
 export class MetaLeadService {
   private readonly graphApiUrl = 'https://graph.facebook.com/v21.0';
-  private readonly accessToken: string;
   private readonly appSecret: string;
 
   constructor() {
-    this.accessToken = process.env.META_ACCESS_TOKEN || '';
     this.appSecret = process.env.META_APP_SECRET || '';
-
-    if (!this.accessToken) {
-      console.warn('⚠️  META_ACCESS_TOKEN não configurado');
-    }
     if (!this.appSecret) {
       console.warn('⚠️  META_APP_SECRET não configurado');
     }
+  }
+
+  private resolveAccessToken(accessToken?: string): string {
+    const token = accessToken || process.env.META_ACCESS_TOKEN || '';
+    if (!token) {
+      throw new Error('META_ACCESS_TOKEN não configurado');
+    }
+    return token;
   }
 
   /**
@@ -79,16 +82,13 @@ export class MetaLeadService {
    * @param leadgenId - ID do leadgen recebido no webhook
    * @returns Dados do lead formatados
    */
-  async getLeadData(leadgenId: string): Promise<MetaLeadData | null> {
-    if (!this.accessToken) {
-      console.error('❌ META_ACCESS_TOKEN não configurado');
-      throw new Error('META_ACCESS_TOKEN não configurado');
-    }
+  async getLeadData(leadgenId: string, accessToken?: string): Promise<MetaLeadData | null> {
+    const token = this.resolveAccessToken(accessToken);
 
     try {
       console.info(`🔍 Buscando dados do lead ${leadgenId} via Graph API...`);
       
-      const url = `${this.graphApiUrl}/${leadgenId}?access_token=${this.accessToken}`;
+      const url = `${this.graphApiUrl}/${leadgenId}?access_token=${token}`;
       
       const response = await fetch(url, {
         method: 'GET',
@@ -142,7 +142,7 @@ export class MetaLeadService {
       adId: metaData.ad_id,
       name: fields.full_name || fields.name || '',
       email: fields.email || '',
-      phone: this.normalizePhone(fields.phone_number || fields.phone || ''),
+      phone: normalizePhone(fields.phone_number || fields.phone || '') || '',
       age: fields.age || fields.idade || '',
       currentHealthPlan: fields.current_health_plan || fields.plano_atual || '',
       city: fields.city || fields.cidade || '',
@@ -157,15 +157,13 @@ export class MetaLeadService {
    * @param pageId - ID da página do Facebook
    * @returns Lista de formulários
    */
-  async getLeadgenForms(pageId: string): Promise<MetaLeadgenForm[]> {
-    if (!this.accessToken) {
-      throw new Error('META_ACCESS_TOKEN não configurado');
-    }
+  async getLeadgenForms(pageId: string, accessToken?: string): Promise<MetaLeadgenForm[]> {
+    const token = this.resolveAccessToken(accessToken);
 
     try {
       console.info(`📋 Buscando formulários da página ${pageId}...`);
       
-      const url = `${this.graphApiUrl}/${pageId}/leadgen_forms?access_token=${this.accessToken}`;
+      const url = `${this.graphApiUrl}/${pageId}/leadgen_forms?access_token=${token}`;
       
       const response = await fetch(url, {
         method: 'GET',
@@ -198,15 +196,13 @@ export class MetaLeadService {
    * @param limit - Limite de leads (default: 100)
    * @returns Lista de leads do formulário
    */
-  async getFormLeads(formId: string, limit: number = 100): Promise<MetaFormLead[]> {
-    if (!this.accessToken) {
-      throw new Error('META_ACCESS_TOKEN não configurado');
-    }
+  async getFormLeads(formId: string, accessToken?: string, limit: number = 100): Promise<MetaFormLead[]> {
+    const token = this.resolveAccessToken(accessToken);
 
     try {
       console.info(`📊 Buscando leads do formulário ${formId}...`);
       
-      const url = `${this.graphApiUrl}/${formId}/leads?limit=${limit}&access_token=${this.accessToken}`;
+      const url = `${this.graphApiUrl}/${formId}/leads?limit=${limit}&access_token=${token}`;
       
       const response = await fetch(url, {
         method: 'GET',
@@ -238,9 +234,9 @@ export class MetaLeadService {
    * @param formId - ID do formulário
    * @returns Total de leads
    */
-  async countFormLeads(formId: string): Promise<number> {
+  async countFormLeads(formId: string, accessToken?: string): Promise<number> {
     try {
-      const leads = await this.getFormLeads(formId, 1000); // Busca até 1000
+      const leads = await this.getFormLeads(formId, accessToken, 1000); // Busca até 1000
       return leads.length;
     } catch (error) {
       console.error('❌ Erro ao contar leads:', error);
@@ -254,16 +250,14 @@ export class MetaLeadService {
    * @param formId - ID do formulário
    * @returns Estatísticas do formulário
    */
-  async getFormStats(formId: string): Promise<MetaFormStats> {
-    if (!this.accessToken) {
-      throw new Error('META_ACCESS_TOKEN não configurado');
-    }
+  async getFormStats(formId: string, accessToken?: string): Promise<MetaFormStats> {
+    const token = this.resolveAccessToken(accessToken);
 
     try {
       console.info(`📈 Buscando estatísticas do formulário ${formId}...`);
       
       // Buscar informações do formulário
-      const formUrl = `${this.graphApiUrl}/${formId}?fields=id,name,status,leads_count,created_time&access_token=${this.accessToken}`;
+      const formUrl = `${this.graphApiUrl}/${formId}?fields=id,name,status,leads_count,created_time&access_token=${token}`;
       
       const response = await fetch(formUrl, {
         method: 'GET',
@@ -281,7 +275,7 @@ export class MetaLeadService {
       const formData = await response.json();
       
       // Buscar leads para contar
-      const leads = await this.getFormLeads(formId, 1000);
+      const leads = await this.getFormLeads(formId, token, 1000);
       
       const stats: MetaFormStats = {
         formId: formData.id,
@@ -299,26 +293,6 @@ export class MetaLeadService {
       console.error('❌ Erro ao buscar estatísticas:', error);
       throw error;
     }
-  }
-
-  /**
-   * Normaliza número de telefone
-   */
-  private normalizePhone(phone: string): string {
-    // Remove tudo que não for número
-    let normalized = phone.replace(/\D/g, '');
-    
-    // Adiciona +55 se não tiver código do país
-    if (normalized.length === 11 || normalized.length === 10) {
-      normalized = '55' + normalized;
-    }
-    
-    // Adiciona + no início
-    if (!normalized.startsWith('+')) {
-      normalized = '+' + normalized;
-    }
-    
-    return normalized;
   }
 
   /**

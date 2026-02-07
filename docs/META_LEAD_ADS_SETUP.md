@@ -22,6 +22,7 @@ A integração com Meta Lead Ads permite que leads capturados através de formul
 
 - ✅ **Webhook em tempo real** - Leads criados instantaneamente ao submeter formulário
 - ✅ **Validação de segurança** - HMAC SHA256 para verificar autenticidade
+- ✅ **Multi-tenant** - Credenciais e verify token por cliente/time
 - ✅ **Detecção de duplicados** - Evita criar leads com mesmo email/telefone
 - ✅ **Mapeamento automático** - Campos do Meta → campos do Lead Flow
 - ✅ **Status inicial** - Leads criados na coluna "new_opportunity"
@@ -38,9 +39,14 @@ app/api/
 ├── services/
 │   └── MetaLeadService.ts          # Serviço para Graph API e validação
 ├── useCases/
-│   └── metaLeads/
-│       ├── IMetaLeadUseCase.ts     # Interface
-│       └── MetaLeadUseCase.ts      # Implementação
+│   ├── metaLeads/
+│   │   ├── IMetaLeadUseCase.ts     # Interface
+│   │   └── MetaLeadUseCase.ts      # Implementação
+│   └── integrations/
+│       └── MetaLeadIntegrationUseCase.ts
+├── infra/data/repositories/
+│   └── integrations/
+│       └── MetaLeadIntegrationRepository.ts
 └── webhooks/
     └── meta/
         └── route.ts                 # Endpoint do webhook (GET + POST)
@@ -454,7 +460,7 @@ https://abc123.ngrok-free.app/api/webhooks/meta
 | Campo | Valor |
 |-------|-------|
 | **URL de Retorno de Chamada** | `https://seu-dominio.com/api/webhooks/meta` |
-| **Verificar Token** | `meta_lead_webhook_verify_token` (defina o mesmo no `.env`) |
+| **Verificar Token** | Token definido na UI de Integrações (por cliente) |
 
 3. Clique em **"Verificar e Salvar"**
 
@@ -625,7 +631,7 @@ Se a opção **"Conectar ao CRM"** não aparecer:
 ### 📝 Passo a Passo Completo (Resumo)
 
 1. ✅ Webhook configurado e verificado (seção 4️⃣)
-2. ✅ Variáveis de ambiente no `.env` (seção 🔐)
+2. ✅ Chaves no `.env` + integração criada na UI (pageId, token e verify token)
 3. ✅ Servidor Next.js rodando (`bun run dev`)
 4. ✅ ngrok ativo (`ngrok http 3000`)
 5. ✅ Formulário criado no Meta
@@ -642,19 +648,23 @@ Se a opção **"Conectar ao CRM"** não aparecer:
 Adicione no arquivo `.env`:
 
 ```env
-# Meta Lead Ads
+# Integrações Meta/WhatsApp
 META_APP_SECRET=sua_app_secret_aqui
-META_ACCESS_TOKEN=sua_page_access_token_aqui
-META_VERIFY_TOKEN=meta_lead_webhook_verify_token
+INTEGRATIONS_ENCRYPTION_KEY=sua_chave_de_criptografia
+
+# Opcional (apenas legado/debug)
+META_ACCESS_TOKEN=token_de_pagina_para_testes
 ```
 
 ### Descrição
 
 | Variável | Descrição | Onde Obter |
 |----------|-----------|------------|
-| `META_APP_SECRET` | Chave secreta do app | Meta App → Configurações → Básico |
-| `META_ACCESS_TOKEN` | Page Access Token (long-lived) | Graph API Explorer + troca por long-lived |
-| `META_VERIFY_TOKEN` | Token customizado para verificação | Você define (use algo seguro) |
+| `META_APP_SECRET` | Chave secreta do app (assinaturas) | Meta App → Configurações → Básico |
+| `INTEGRATIONS_ENCRYPTION_KEY` | Chave para criptografar tokens salvos no banco | Defina internamente (32 bytes) |
+| `META_ACCESS_TOKEN` (opcional) | Token fallback para testes | Graph API Explorer |
+
+> ⚠️ **Importante:** os tokens de página e o `verify token` agora são configurados por cliente na UI de Integrações. Eles **não** ficam mais no `.env`.
 
 ---
 
@@ -729,7 +739,7 @@ Se nenhum método acima funcionar, você pode criar um lead de teste via API:
 
 ```bash
 # 1. Obter seu Form ID
-curl "http://localhost:3000/api/v1/meta/forms?pageId=SEU_PAGE_ID"
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" "http://localhost:3000/api/v1/meta/forms?pageId=SEU_PAGE_ID"
 
 # 2. Criar lead de teste via Graph API
 curl -X POST "https://graph.facebook.com/v21.0/SEU_FORM_ID/test_lead" \
@@ -836,7 +846,7 @@ bun run prisma studio
 1. **Webhook está verificado?**
    ```bash
    # Meta App → Webhooks → Status deve estar verde ✅
-   # Se não, verifique META_VERIFY_TOKEN no .env
+   # Se não, verifique o verify token configurado na UI de Integrações
    ```
 
 2. **Servidor está rodando?**
@@ -883,8 +893,8 @@ Antes de testar, confirme:
 - [ ] ngrok rodando e URL atualizada no webhook
 - [ ] Variáveis de ambiente configuradas:
   - `META_APP_SECRET` ✅
-  - `META_ACCESS_TOKEN` ✅
-  - `META_VERIFY_TOKEN` ✅
+  - `INTEGRATIONS_ENCRYPTION_KEY` ✅
+- [ ] Tokens e verify token configurados na UI ✅
 - [ ] Manager ativo no banco de dados
 - [ ] Testando via **celular** (recomendado)
 
@@ -908,7 +918,7 @@ Antes de testar, confirme:
 O Meta faz uma requisição GET para verificar:
 
 ```bash
-curl "http://localhost:3000/api/webhooks/meta?hub.mode=subscribe&hub.verify_token=meta_lead_webhook_verify_token&hub.challenge=test_challenge"
+curl "http://localhost:3000/api/webhooks/meta?hub.mode=subscribe&hub.verify_token=SEU_VERIFY_TOKEN_DA_UI&hub.challenge=test_challenge"
 ```
 
 **Resposta esperada:**
@@ -1111,7 +1121,8 @@ Na configuração inicial do webhook:
 
 ```typescript
 // GET /api/webhooks/meta?hub.mode=subscribe&hub.verify_token=...
-if (mode === 'subscribe' && token === process.env.META_VERIFY_TOKEN) {
+const integration = await metaLeadIntegrationRepository.findByVerifyToken(token);
+if (mode === 'subscribe' && integration) {
   return new NextResponse(challenge, { status: 200 });
 }
 ```
@@ -1172,8 +1183,9 @@ await prisma.lead.update({
 Antes de ir para produção:
 
 - [x] `META_APP_SECRET` configurado corretamente
-- [x] `META_ACCESS_TOKEN` é long-lived (60 dias)
-- [x] `META_VERIFY_TOKEN` é único e seguro
+- [x] `INTEGRATIONS_ENCRYPTION_KEY` configurada
+- [x] Tokens de página configurados na UI e long-lived
+- [x] Verify token único por integração e seguro
 - [x] Webhook usa HTTPS (não HTTP)
 - [x] Validação de assinatura ativa
 - [ ] Monitoramento de tentativas de ataque
@@ -1215,15 +1227,16 @@ curl https://seu-dominio.com/api/webhooks/meta
 
 ### Erro ao buscar dados do lead
 
-**Causa:** `META_ACCESS_TOKEN` expirado ou sem permissões
+**Causa:** Token de página da integração expirado ou sem permissões
 
 **Solução:**
 
 1. Gere novo token no **Graph API Explorer**
-2. Permissões necessárias:
+2. Atualize o token na UI de Integrações
+3. Permissões necessárias:
    - `pages_manage_ads`
    - `leads_retrieval`
-3. Converta para long-lived token (ver seção de credenciais)
+4. Converta para long-lived token (ver seção de credenciais)
 
 ### Lead não aparece no Kanban
 
@@ -1248,10 +1261,13 @@ curl https://seu-dominio.com/api/webhooks/meta
 
 Você pode consultar formulários e estatísticas via API:
 
+> **Autenticação:** todos os endpoints abaixo exigem o header `x-supabase-user-id`. O token utilizado é o da integração ativa do manager para a página informada.
+
 #### 1. **Listar Formulários de uma Página**
 
 ```bash
-GET /api/v1/meta/forms?pageId=123456789
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" \
+  "https://seu-dominio.com/api/v1/meta/forms?pageId=123456789"
 ```
 
 **Resposta:**
@@ -1274,7 +1290,8 @@ GET /api/v1/meta/forms?pageId=123456789
 #### 2. **Listar Leads de um Formulário**
 
 ```bash
-GET /api/v1/meta/forms/{formId}/leads?limit=100
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" \
+  "https://seu-dominio.com/api/v1/meta/forms/{formId}/leads?limit=100"
 ```
 
 **Resposta:**
@@ -1306,7 +1323,8 @@ GET /api/v1/meta/forms/{formId}/leads?limit=100
 #### 3. **Estatísticas de um Formulário**
 
 ```bash
-GET /api/v1/meta/forms/{formId}/stats
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" \
+  "https://seu-dominio.com/api/v1/meta/forms/{formId}/stats"
 ```
 
 **Resposta:**
@@ -1358,7 +1376,7 @@ curl "https://graph.facebook.com/v21.0/me/accounts?access_token=SEU_ACCESS_TOKEN
 
 **Opção 1: Via API do Lead Flow**
 ```bash
-curl "http://localhost:3000/api/v1/meta/forms?pageId=123456789"
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" "http://localhost:3000/api/v1/meta/forms?pageId=123456789"
 ```
 
 **Resposta:**
@@ -1396,7 +1414,7 @@ curl "https://graph.facebook.com/v21.0/me/accounts?access_token=EAAMit0obxTwBQex
 
 ```bash
 # Com a API do Lead Flow (recomendado)
-curl "http://localhost:3000/api/v1/meta/forms?pageId=SEU_PAGE_ID"
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" "http://localhost:3000/api/v1/meta/forms?pageId=SEU_PAGE_ID"
 
 # OU direto via Graph API do Meta
 curl "https://graph.facebook.com/v21.0/SEU_PAGE_ID/leadgen_forms?access_token=SEU_ACCESS_TOKEN"
@@ -1425,10 +1443,10 @@ curl "https://graph.facebook.com/v21.0/SEU_PAGE_ID/leadgen_forms?access_token=SE
 
 ```bash
 # Estatísticas completas (recomendado)
-curl "http://localhost:3000/api/v1/meta/forms/987654321/stats"
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" "http://localhost:3000/api/v1/meta/forms/987654321/stats"
 
 # OU apenas listar leads
-curl "http://localhost:3000/api/v1/meta/forms/987654321/leads?limit=100"
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" "http://localhost:3000/api/v1/meta/forms/987654321/leads?limit=100"
 ```
 
 **Resultado (stats):**
@@ -1461,7 +1479,7 @@ curl "http://localhost:3000/api/v1/meta/forms/987654321/leads?limit=100"
 
 ```bash
 # Buscar stats e extrair totalLeads
-curl "http://localhost:3000/api/v1/meta/forms/987654321/stats" | grep -o '"totalLeads":[0-9]*'
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" "http://localhost:3000/api/v1/meta/forms/987654321/stats" | grep -o '"totalLeads":[0-9]*'
 
 # OU via Graph API (menos confiável)
 curl "https://graph.facebook.com/v21.0/987654321?fields=leads_count&access_token=SEU_ACCESS_TOKEN"
@@ -1471,7 +1489,7 @@ curl "https://graph.facebook.com/v21.0/987654321?fields=leads_count&access_token
 
 ```bash
 # 1. Ver total no Meta
-META_TOTAL=$(curl -s "http://localhost:3000/api/v1/meta/forms/987654321/stats" | jq '.result.totalLeads')
+META_TOTAL=$(curl -s -H "x-supabase-user-id: SEU_SUPABASE_ID" "http://localhost:3000/api/v1/meta/forms/987654321/stats" | jq '.result.totalLeads')
 
 # 2. Ver total no banco (via API do Lead Flow)
 BANCO_TOTAL=$(curl -s "http://localhost:3000/api/v1/leads?managerId=SEU_MANAGER_ID" | jq '.result | length')
@@ -1488,13 +1506,13 @@ echo "Diferença: $(($META_TOTAL - $BANCO_TOTAL))"
 
 ```bash
 # Listar formulários
-curl "http://localhost:3000/api/v1/meta/forms?pageId=123456789"
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" "http://localhost:3000/api/v1/meta/forms?pageId=123456789"
 
 # Ver leads de um formulário
-curl "http://localhost:3000/api/v1/meta/forms/form_123/leads?limit=50"
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" "http://localhost:3000/api/v1/meta/forms/form_123/leads?limit=50"
 
 # Ver estatísticas
-curl "http://localhost:3000/api/v1/meta/forms/form_123/stats"
+curl -H "x-supabase-user-id: SEU_SUPABASE_ID" "http://localhost:3000/api/v1/meta/forms/form_123/stats"
 ```
 
 **Com JavaScript (Frontend):**
@@ -1640,3 +1658,4 @@ async getFormStats(formId: string) {
 ---
 
 **✅ Setup completo!** Agora seus leads do Facebook/Instagram serão criados automaticamente no Lead Flow. 🎉
+

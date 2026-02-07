@@ -1,4 +1,4 @@
-import type { LeadStatus, HealthPlan, MeetingHeald } from '@prisma/client';
+import type { LeadStatus, HealthPlan, MeetingHeald, LeadSource } from '@prisma/client';
 
 export interface LeadResponseDTO {
   id: string;
@@ -23,6 +23,14 @@ export interface LeadResponseDTO {
   meetingHeald: MeetingHeald | null;
   closerId: string | null;
   notes: string | null;
+  source: LeadSource;
+  metaLeadgenId: string | null;
+  metaFormId: string | null;
+  metaAdId: string | null;
+  metaPageId: string | null;
+  whatsappFrom: string | null;
+  whatsappMessageId: string | null;
+  phoneNormalized: string | null;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: string;

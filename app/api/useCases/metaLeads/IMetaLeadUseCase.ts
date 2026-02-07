@@ -9,19 +9,27 @@ export interface IMetaLeadUseCase {
    * Processa um lead recebido do Meta Lead Ads
    * 
    * @param leadgenId - ID do leadgen recebido no webhook
-   * @param managerId - ID do manager que receberá o lead (opcional, usa default se não informado)
+   * @param context - Contexto do tenant e credenciais
    * @returns Output com o lead criado
    */
-  processMetaLead(leadgenId: string, managerId?: string): Promise<Output>;
+  processMetaLead(leadgenId: string, context: MetaLeadContext): Promise<Output>;
 
   /**
    * Processa webhook do Meta
    * 
    * @param payload - Payload do webhook
-   * @param managerId - ID do manager (opcional)
+   * @param context - Contexto do tenant e credenciais
    * @returns Output com resultado do processamento
    */
-  processWebhook(payload: any, managerId?: string): Promise<Output>;
+  processWebhook(payload: any, context: MetaLeadContext): Promise<Output>;
+}
+
+export interface MetaLeadContext {
+  managerId: string;
+  teamId?: string | null;
+  pageAccessToken: string;
+  defaultAssigneeId?: string | null;
+  metaPageId?: string | null;
 }
 
 /**
@@ -30,5 +38,7 @@ export interface IMetaLeadUseCase {
 export interface CreateLeadFromMetaDTO {
   metaData: MetaLeadData;
   managerId: string;
-  assignedTo?: string;
+  teamId?: string | null;
+  assignedTo?: string | null;
+  metaPageId?: string | null;
 }

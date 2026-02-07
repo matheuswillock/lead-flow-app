@@ -1,9 +1,10 @@
-import type { IMetaLeadUseCase, CreateLeadFromMetaDTO } from "./IMetaLeadUseCase";
+import type { IMetaLeadUseCase, CreateLeadFromMetaDTO, MetaLeadContext } from "./IMetaLeadUseCase";
 import { Output } from "@/lib/output";
 import { metaLeadService, type MetaWebhookPayload } from "../../services/MetaLeadService";
 import { leadRepository } from "../../infra/data/repositories/lead/LeadRepository";
 import { prisma } from "../../infra/data/prisma";
-import { LeadStatus, ActivityType, HealthPlan } from "@prisma/client";
+import { LeadStatus, ActivityType, HealthPlan, LeadSource } from "@prisma/client";
+import { normalizePhone } from "@/lib/phone";
 
 /**
  * MetaLeadUseCase
@@ -19,12 +20,11 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
   /**
    * Processa um lead recebido do Meta Lead Ads
    */
-  async processMetaLead(leadgenId: string, managerId?: string): Promise<Output> {
+  async processMetaLead(leadgenId: string, context: MetaLeadContext): Promise<Output> {
     try {
       // 1. Buscar dados do lead via Meta Graph API
       console.info(`📥 Buscando dados do lead ${leadgenId} no Meta...`);
-      
-      const metaData = await metaLeadService.getLeadData(leadgenId);
+      const metaData = await metaLeadService.getLeadData(leadgenId, context.pageAccessToken);
       
       if (!metaData) {
         return new Output(
@@ -35,24 +35,15 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
         );
       }
 
-      // 2. Determinar manager
-      const finalManagerId = await this.getManagerId(managerId);
-      
-      if (!finalManagerId) {
-        return new Output(
-          false,
-          [],
-          ['Manager não encontrado para processar o lead'],
-          null
-        );
-      }
-
       // 3. Criar lead no sistema
-      console.info(`📝 Criando lead no sistema para manager ${finalManagerId}...`);
+      console.info(`📝 Criando lead no sistema para manager ${context.managerId}...`);
       
       const lead = await this.createLeadFromMeta({
         metaData,
-        managerId: finalManagerId
+        managerId: context.managerId,
+        teamId: context.teamId ?? undefined,
+        assignedTo: context.defaultAssigneeId ?? undefined,
+        metaPageId: context.metaPageId ?? undefined
       });
 
       return new Output(
@@ -86,7 +77,7 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
   /**
    * Processa webhook do Meta
    */
-  async processWebhook(payload: MetaWebhookPayload, managerId?: string): Promise<Output> {
+  async processWebhook(payload: MetaWebhookPayload, context: MetaLeadContext): Promise<Output> {
     try {
       // Validar estrutura do payload
       if (!payload.entry || payload.entry.length === 0) {
@@ -118,7 +109,7 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
           console.info(`📨 Processando leadgen_id: ${leadgenId}`);
 
           // Processar lead
-          const result = await this.processMetaLead(leadgenId, managerId);
+          const result = await this.processMetaLead(leadgenId, context);
           
           if (result.isValid) {
             results.push(result.result);
@@ -160,9 +151,22 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
    * Cria lead no sistema a partir dos dados do Meta
    */
   private async createLeadFromMeta(dto: CreateLeadFromMetaDTO): Promise<any> {
-    const { metaData, managerId, assignedTo } = dto;
+    const { metaData, managerId, assignedTo, teamId, metaPageId } = dto;
 
     try {
+      if (metaData.leadgenId) {
+        const existingByLeadgen = await prisma.lead.findFirst({
+          where: {
+            managerId,
+            metaLeadgenId: metaData.leadgenId
+          }
+        });
+
+        if (existingByLeadgen) {
+          return existingByLeadgen;
+        }
+      }
+
       // Verificar se já existe lead com este email ou telefone
       const existingLead = await this.checkDuplicateLead(
         managerId,
@@ -194,31 +198,41 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
       const healthPlan = this.mapHealthPlan(metaData.currentHealthPlan);
       const leadCode = await this.generateLeadCode(metaData.name || "Lead");
 
-      const team = await prisma.team.findFirst({
-        where: { masterId: managerId },
-        orderBy: [
-          { isDefault: "desc" },
-          { createdAt: "asc" },
-        ],
-        select: { id: true }
-      });
+      let resolvedTeamId = teamId;
+      if (!resolvedTeamId) {
+        const team = await prisma.team.findFirst({
+          where: { masterId: managerId },
+          orderBy: [
+            { isDefault: "desc" },
+            { createdAt: "asc" },
+          ],
+          select: { id: true }
+        });
 
-      if (!team) {
-        throw new Error("Time padrao nao encontrado para o manager.");
+        if (!team) {
+          throw new Error("Time padrao nao encontrado para o manager.");
+        }
+        resolvedTeamId = team.id;
       }
 
       // Criar lead
       const lead = await leadRepository.create({
         manager: { connect: { id: managerId } },
-        team: { connect: { id: team.id } },
+        team: { connect: { id: resolvedTeamId } },
         leadCode,
         name: metaData.name,
         email: metaData.email || null,
         phone: metaData.phone || null,
+        phoneNormalized: normalizePhone(metaData.phone) || null,
         age: metaData.age || null,
         currentHealthPlan: healthPlan,
         notes: metaData.notes,
         status: LeadStatus.new_opportunity,
+        source: LeadSource.meta_lead_ads,
+        metaLeadgenId: metaData.leadgenId,
+        metaFormId: metaData.formId || null,
+        metaAdId: metaData.adId || null,
+        metaPageId: metaPageId || null,
         creator: { connect: { id: managerId } },
         updater: { connect: { id: managerId } },
         ...(assignedTo && {
@@ -282,10 +296,14 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
       }
 
       if (phone) {
+        const normalized = normalizePhone(phone);
         const byPhone = await prisma.lead.findFirst({
           where: {
             managerId,
-            phone
+            OR: [
+              { phone },
+              ...(normalized ? [{ phoneNormalized: normalized }] : [])
+            ]
           }
         });
         if (byPhone) return byPhone;
@@ -332,33 +350,6 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
     return HealthPlan.OUTROS;
   }
 
-  /**
-   * Obtém ID do manager
-   * Se não informado, busca o primeiro manager master ativo
-   */
-  private async getManagerId(managerId?: string): Promise<string | null> {
-    if (managerId) {
-      return managerId;
-    }
-
-    try {
-      // Buscar primeiro manager master com assinatura ativa
-      const manager = await prisma.profile.findFirst({
-        where: {
-          role: 'manager',
-          isMaster: true,
-          subscriptionStatus: {
-            in: ['active', 'trial']
-          }
-        }
-      });
-
-      return manager?.id || null;
-    } catch (error) {
-      console.error('Erro ao buscar manager:', error);
-      return null;
-    }
-  }
 }
 
 // Instância singleton

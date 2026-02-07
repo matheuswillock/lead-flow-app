@@ -22,6 +22,7 @@
     "prisma:backfill-leadcode": "bunx tsx scripts/backfill-leadcode.ts",
     "prisma:generate-import-leads-sql": "bunx tsx scripts/generate-backfill-import-leads.ts",
     "prisma:backfill-import-leads": "bunx tsx scripts/backfill-import-leads.ts",
+    "prisma:backfill-phone-normalized": "bunx tsx scripts/backfill-phone-normalized.ts",
     "prisma:backfill-teams": "bunx tsx scripts/backfill-teams.ts",
     "prisma:migrate:reset": "bunx prisma migrate reset",
     "prisma:migrate:deploy": "bunx prisma migrate deploy",

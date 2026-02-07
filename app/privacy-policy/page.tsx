@@ -30,7 +30,7 @@ export default function PrivacyPolicyPage() {
                 Política de Privacidade
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                Última atualização: 27/01/2026
+                Última atualização: 07/02/2026
               </p>
               <p className="mt-4 text-base text-muted-foreground">
                 Esta Política de Privacidade explica como o Corretor Studio coleta, usa e
@@ -48,6 +48,7 @@ export default function PrivacyPolicyPage() {
                   <li>Endereço: CEP, endereço, número, bairro, cidade e UF.</li>
                   <li>Dados de leads e agendamentos inseridos por você e sua equipe.</li>
                   <li>Integrações: tokens do Google Calendar e informações de eventos.</li>
+                  <li>Integrações Meta (Lead Ads) e WhatsApp Cloud API: IDs técnicos, formulários e mensagens quando habilitados.</li>
                   <li>Dados de cobrança via Asaas (ex.: assinatura e pagamentos).</li>
                 </ul>
               </article>
@@ -60,6 +61,7 @@ export default function PrivacyPolicyPage() {
                   <li>Gerenciar contas, permissões e acesso à plataforma.</li>
                   <li>Organizar leads, atividades e reuniões.</li>
                   <li>Integrar com Google Calendar para criar e cancelar eventos.</li>
+                  <li>Receber leads do Meta Lead Ads e automatizar fluxos pelo WhatsApp, quando ativados.</li>
                   <li>Processar pagamentos e assinaturas.</li>
                   <li>Melhorar a experiência e a segurança do serviço.</li>
                 </ul>
@@ -69,12 +71,13 @@ export default function PrivacyPolicyPage() {
                 style={{ borderColor: "var(--border)", background: "var(--card)" }}
               >
                 <h2 className="text-lg font-semibold">3. Compartilhamento</h2>
-                <p className="mt-3 text-sm text-muted-foreground">
-                  Compartilhamos dados apenas quando necessário para operar o serviço:
-                </p>
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Compartilhamos dados apenas quando necessário para operar o serviço:
+                  </p>
                 <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
                   <li>Supabase (autenticação e armazenamento).</li>
                   <li>Google (Calendar e convites de reunião).</li>
+                  <li>Meta Platforms (Facebook/WhatsApp) quando integrações estiverem ativas.</li>
                   <li>Asaas (processamento de pagamentos).</li>
                 </ul>
               </article>
@@ -85,7 +88,7 @@ export default function PrivacyPolicyPage() {
                 <h2 className="text-lg font-semibold">4. Segurança</h2>
                 <p className="mt-3 text-sm text-muted-foreground">
                   Adotamos medidas técnicas e organizacionais para proteger suas informações,
-                  incluindo criptografia em trânsito e controle de acesso.
+                  incluindo criptografia em trânsito, controle de acesso e proteção de tokens de integrações.
                 </p>
               </article>
 

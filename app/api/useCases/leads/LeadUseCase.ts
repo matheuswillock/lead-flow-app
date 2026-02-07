@@ -2,7 +2,7 @@ import { ILeadUseCase } from "./ILeadUseCase";
 import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
 import { IProfileUseCase } from "../profiles/IProfileUseCase";
 import { Output } from "@/lib/output";
-import { LeadStatus, ActivityType } from "@prisma/client";
+import { LeadStatus, ActivityType, LeadSource } from "@prisma/client";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
@@ -11,6 +11,7 @@ import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinal
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import { upsertCalendarEvent } from "../../services/googleCalendar/GoogleCalendarService";
 import { prisma } from "../../infra/data/prisma";
+import { normalizePhone } from "@/lib/phone";
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -19,11 +20,11 @@ export class LeadUseCase implements ILeadUseCase {
   ) {}
 
   async createLead(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
-    return this.createLeadInternal(supabaseId, data, false, teamId);
+    return this.createLeadInternal(supabaseId, data, false, teamId, LeadSource.manual);
   }
 
   async createLeadFromImport(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
-    const output = await this.createLeadInternal(supabaseId, data, true, teamId);
+    const output = await this.createLeadInternal(supabaseId, data, true, teamId, LeadSource.import);
 
     if (output.isValid && data.status === LeadStatus.contract_finalized && output.result?.id) {
       const amount = Number(data.ticket ?? data.currentValue ?? 0);
@@ -44,7 +45,8 @@ export class LeadUseCase implements ILeadUseCase {
     supabaseId: string,
     data: CreateLeadRequest,
     skipAutoAssign: boolean,
-    teamId?: string
+    teamId?: string,
+    source: LeadSource = LeadSource.manual
   ): Promise<Output> {
     try {
       // Buscar informações do perfil através do ProfileUseCase
@@ -80,6 +82,7 @@ export class LeadUseCase implements ILeadUseCase {
         name: data.name,
         email: data.email || null,
         phone: data.phone || null,
+        phoneNormalized: normalizePhone(data.phone) || null,
         cnpj: data.cnpj || null,
         age: data.age || null,
         currentHealthPlan: data.currentHealthPlan || null,
@@ -93,6 +96,7 @@ export class LeadUseCase implements ILeadUseCase {
         meetingHeald: data.meetingHeald || null,
         notes: data.notes || null,
         status: data.status || LeadStatus.new_opportunity,
+        source,
         // Novos campos de venda (sempre null na criação)
         ticket: data.ticket || null,
         contractDueDate: data.contractDueDate ? new Date(data.contractDueDate) : null,
@@ -319,7 +323,10 @@ export class LeadUseCase implements ILeadUseCase {
       
       if (data.name !== undefined) updateData.name = data.name;
       if (data.email !== undefined) updateData.email = data.email || null;
-      if (data.phone !== undefined) updateData.phone = data.phone || null;
+      if (data.phone !== undefined) {
+        updateData.phone = data.phone || null;
+        updateData.phoneNormalized = normalizePhone(data.phone) || null;
+      }
       if (data.cnpj !== undefined) updateData.cnpj = data.cnpj || null;
       if (data.age !== undefined) updateData.age = data.age;
       if (data.currentHealthPlan !== undefined) updateData.currentHealthPlan = data.currentHealthPlan || null;
@@ -626,6 +633,14 @@ export class LeadUseCase implements ILeadUseCase {
       meetingHeald: lead.meetingHeald,
       closerId: lead.closerId ?? null,
       notes: lead.notes,
+      source: lead.source,
+      metaLeadgenId: lead.metaLeadgenId ?? null,
+      metaFormId: lead.metaFormId ?? null,
+      metaAdId: lead.metaAdId ?? null,
+      metaPageId: lead.metaPageId ?? null,
+      whatsappFrom: lead.whatsappFrom ?? null,
+      whatsappMessageId: lead.whatsappMessageId ?? null,
+      phoneNormalized: lead.phoneNormalized ?? null,
       createdBy: lead.createdBy,
       updatedBy: lead.updatedBy,
       createdAt: lead.createdAt.toISOString(),
