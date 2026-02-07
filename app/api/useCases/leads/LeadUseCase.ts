@@ -11,6 +11,7 @@ import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinal
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import { upsertCalendarEvent } from "../../services/googleCalendar/GoogleCalendarService";
 import { prisma } from "../../infra/data/prisma";
+import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "../../v1/leads/DTO/leadValueLimits";
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -71,6 +72,14 @@ export class LeadUseCase implements ILeadUseCase {
 
       if (!teamId) {
         return new Output(false, [], ["Team ID é obrigatório para criar lead"], null);
+      }
+
+      if (typeof data.currentValue === "number" && data.currentValue > MAX_DECIMAL_VALUE) {
+        return new Output(false, [], [`Valor atual deve ser menor que ${MAX_DECIMAL_LABEL}`], null);
+      }
+
+      if (typeof data.ticket === "number" && data.ticket > MAX_DECIMAL_VALUE) {
+        return new Output(false, [], [`Ticket deve ser menor que ${MAX_DECIMAL_LABEL}`], null);
       }
 
       const lead = await this.leadRepository.create({

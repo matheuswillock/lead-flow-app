@@ -1,5 +1,5 @@
 import prisma from "@/app/api/infra/data/prisma";
-import type { UserRole, Profile } from "@prisma/client";
+import type { UserRole, Profile, Prisma } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js"
 import type { IProfileRepository } from "./IProfileRepository";
 
@@ -19,6 +19,58 @@ function createSupabaseClient() {
 }
 
 class PrismaProfileRepository implements IProfileRepository {
+    private async ensureDefaultTeamForMaster(
+        tx: Prisma.TransactionClient,
+        profile: Profile
+    ): Promise<{ teamId: string | null }> {
+        if (!profile.isMaster) {
+            return { teamId: null };
+        }
+
+        const existingDefaultTeam = await tx.team.findFirst({
+            where: { masterId: profile.id, isDefault: true },
+            orderBy: { createdAt: "asc" }
+        });
+
+        const team =
+            existingDefaultTeam ??
+            (await tx.team.create({
+                data: {
+                    name: "Meu Time",
+                    masterId: profile.id,
+                    isDefault: true
+                }
+            }));
+
+        await tx.teamMember.upsert({
+            where: {
+                teamId_profileId: {
+                    teamId: team.id,
+                    profileId: profile.id
+                }
+            },
+            create: {
+                teamId: team.id,
+                profileId: profile.id,
+                role: "manager",
+                functions: profile.functions ?? []
+            },
+            update: {
+                role: "manager",
+                functions: profile.functions ?? []
+            }
+        });
+
+        if (!profile.activeTeamId) {
+            await tx.profile.update({
+                where: { id: profile.id },
+                data: { activeTeamId: team.id }
+            });
+        }
+
+        return { teamId: team.id };
+    }
+
     async findById(id: string): Promise<Profile | null> {
         try {
             const profile = await prisma.profile.findUnique({ where: { id } });
@@ -275,9 +327,14 @@ class PrismaProfileRepository implements IProfileRepository {
         role: profileData.role
       });
 
-        // Criar profile no banco
-        const profile = await prisma.profile.create({
-          data: profileData
+        const profile = await prisma.$transaction(async (tx) => {
+          const createdProfile = await tx.profile.create({
+            data: profileData
+          });
+
+          await this.ensureDefaultTeamForMaster(tx, createdProfile);
+
+          return createdProfile;
         });
 
         console.info('✅ [ProfileRepository] Profile criado com sucesso:', {
@@ -428,7 +485,13 @@ class PrismaProfileRepository implements IProfileRepository {
       if (city !== undefined) profileData.city = city;
       if (state !== undefined) profileData.state = state;
 
-      const profile = await prisma.profile.create({ data: profileData });
+      const profile = await prisma.$transaction(async (tx) => {
+        const createdProfile = await tx.profile.create({ data: profileData });
+
+        await this.ensureDefaultTeamForMaster(tx, createdProfile);
+
+        return createdProfile;
+      });
 
       return { profileId: profile.id, supabaseId };
     } catch (error: any) {
