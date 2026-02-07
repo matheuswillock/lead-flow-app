@@ -1,53 +1,76 @@
 "use client"
 
 import { div as MotionDiv } from "framer-motion/client"
-import { ArrowRight, BarChart3, Kanban, Users, Zap } from "lucide-react"
+import { ArrowRight, BarChart3, CalendarDays, Kanban, Paperclip, Users, Users2 } from "lucide-react"
 
 const features = [
   {
     icon: Kanban,
-    title: "Pipeline Visual Kanban",
-    description: "Acompanhe seus leads em tempo real com um quadro Kanban intuitivo. Arraste e solte cards entre as etapas do funil de vendas.",
+    title: "Pipeline Kanban + Tabela",
+    description:
+      "Organize o funil com duas visões: Kanban para mover etapas e tabela para revisar todos os leads.",
     benefits: [
-      "Visualização clara do status de cada lead",
-      "Drag & drop para mover leads entre etapas",
-      "Customização completa das fases do pipeline",
-      "Filtros inteligentes por operador, data e status"
-    ]
+      "Arraste e solte por etapa",
+      "Visão em lista com filtros rápidos",
+      "Status e responsáveis sempre visíveis",
+      "Detalhes completos do lead em um clique",
+    ],
+  },
+  {
+    icon: CalendarDays,
+    title: "Calendário & Reuniões",
+    description: "Agenda diária/semanal com agendamentos integrados ao Google Calendar.",
+    benefits: [
+      "Agende reuniões direto do lead",
+      "Convites com link e participantes",
+      "Controle de reuniões realizadas/no-show",
+      "Reagendamento e cancelamento centralizados",
+    ],
+  },
+  {
+    icon: Users2,
+    title: "Times / Workspaces",
+    description: "Separe operações por time e alterne o workspace ativo com um clique.",
+    benefits: [
+      "Múltiplos times por conta",
+      "Troca rápida de time ativo",
+      "Dados isolados por time",
+      "Gestão de membros e permissões",
+    ],
   },
   {
     icon: Users,
     title: "Gestão de Operadores",
-    description: "Sistema robusto de multi-usuários com permissões diferenciadas para gestores e operadores de vendas.",
+    description: "Cadastre operadores, defina funções (SDR/Closer) e controle acessos.",
     benefits: [
-      "Roles: Manager (admin) e Operator (vendedor)",
-      "Atribuição automática de leads aos operadores",
-      "Dashboard individual para cada vendedor",
-      "Histórico completo de ações por usuário"
-    ]
+      "Papéis Manager e Operator",
+      "Funções por time",
+      "Convites e reenvio de acesso",
+      "Controle de usuários pendentes",
+    ],
   },
   {
     icon: BarChart3,
-    title: "Analytics & Métricas",
-    description: "Dashboard completo com insights de performance, taxas de conversão e análise de resultados.",
+    title: "Dashboard & Métricas",
+    description: "KPIs, gráficos e indicadores para acompanhar a performance.",
     benefits: [
-      "Taxa de conversão por etapa do funil",
-      "Ranking de performance dos operadores",
-      "Gráficos de evolução temporal",
-      "Exportação de relatórios em PDF/Excel"
-    ]
+      "Cards de métricas essenciais",
+      "Gráficos por período",
+      "Indicadores de reuniões e vendas",
+      "Visão rápida do funil",
+    ],
   },
   {
-    icon: Zap,
-    title: "Automação Inteligente",
-    description: "Fluxos automatizados para economizar tempo e garantir que nenhum lead seja esquecido.",
+    icon: Paperclip,
+    title: "Anexos por Lead",
+    description: "Guarde contratos, imagens e documentos junto ao lead.",
     benefits: [
-      "Notificações por email e in-app",
-      "Lembretes automáticos de follow-up",
-      "Templates de mensagens personalizáveis",
-      "Integração com WhatsApp e Telegram"
-    ]
-  }
+      "Upload de PDF e imagens",
+      "Lista de anexos com download",
+      "Organização centralizada",
+      "Acesso direto no card do lead",
+    ],
+  },
 ]
 
 export function FeaturesSection() {
@@ -84,7 +107,7 @@ export function FeaturesSection() {
             </span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            Funcionalidades completas para gestão de leads, equipe e resultados — tudo em um só lugar.
+            Funcionalidades completas para gestão de leads, equipe, agenda e resultados tudo em um só lugar.
           </p>
         </MotionDiv>
 
