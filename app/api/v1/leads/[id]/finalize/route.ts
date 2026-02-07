@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/api/infra/data/prisma';
 import { Output } from '@/lib/output';
 import { getTeamAccess, hasLeadAccess } from '@/app/api/v1/utils/teamAccess';
+import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from '../../DTO/leadValueLimits';
 
 export async function POST(
   request: NextRequest,
@@ -26,6 +27,13 @@ export async function POST(
     if (!amount || amount <= 0) {
       return NextResponse.json(
         new Output(false, [], ['O valor do contrato deve ser maior que zero'], null),
+        { status: 400 }
+      );
+    }
+
+    if (amount > MAX_DECIMAL_VALUE) {
+      return NextResponse.json(
+        new Output(false, [], [`O valor do contrato deve ser menor que ${MAX_DECIMAL_LABEL}`], null),
         { status: 400 }
       );
     }

@@ -1,0 +1,2 @@
+export const MAX_DECIMAL_VALUE = 9_999_999_999.99;
+export const MAX_DECIMAL_LABEL = "10.000.000.000,00";
