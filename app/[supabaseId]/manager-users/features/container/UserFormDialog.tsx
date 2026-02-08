@@ -369,14 +369,14 @@ export function UserFormDialog({
                 <div className="space-y-1">
                   <h4 className="text-sm font-medium">Times do usuário</h4>
                   <p className="text-xs text-muted-foreground">
-                    Outros times em que o usuário participa, com leads sob responsabilidade e agendamentos com reunião realizada. Apenas leitura.
+                    Times em que o usuário participa, com leads sob responsabilidade e reuniões realizadas.
                   </p>
                 </div>
                 <div className="rounded-md border border-input">
                   <Table className="text-xs">
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
-                        <TableHead>Time</TableHead>
+                        <TableHead className="text-center">Time</TableHead>
                         <TableHead className="text-center">Leads</TableHead>
                         <TableHead className="text-center">Reuniões realizadas</TableHead>
                       </TableRow>
@@ -403,7 +403,7 @@ export function UserFormDialog({
                       ) : (
                         otherTeams.map((team) => (
                           <TableRow key={team.id}>
-                            <TableCell className="font-medium">{team.name}</TableCell>
+                            <TableCell className="font-medium text-center">{team.name}</TableCell>
                             <TableCell className="text-center">{team.leadsCount ?? 0}</TableCell>
                             <TableCell className="text-center">{team.meetingsCount ?? 0}</TableCell>
                           </TableRow>
