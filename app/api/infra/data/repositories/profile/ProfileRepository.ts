@@ -1,4 +1,4 @@
-import prisma from "@/app/api/infra/data/prisma";
+import prisma, { withPrismaRetry } from "@/app/api/infra/data/prisma";
 import type { UserRole, Profile, Prisma } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js"
 import type { IProfileRepository } from "./IProfileRepository";
@@ -84,7 +84,6 @@ class PrismaProfileRepository implements IProfileRepository {
     async findBySupabaseId(supabaseId: string): Promise<Profile | null> {
         try {
             const profile = await prisma.profile.findUnique({ where: { supabaseId } });
-            console.info("Fetched profile:", profile);
             return profile ?? null;
         } catch (error) {
             console.error("Error fetching profile:", error);
@@ -94,61 +93,64 @@ class PrismaProfileRepository implements IProfileRepository {
 
     async findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null> {
         try {
-            const profile = await prisma.profile.findUnique({ 
-                where: { supabaseId },
-                include: {
-                    operators: {
-                        select: {
-                            id: true,
-                            fullName: true,
-                            profileIconUrl: true,
-                            email: true,
-                            role: true,
-                            functions: true
+            const profile = await withPrismaRetry(async () => {
+                const found = await prisma.profile.findUnique({ 
+                    where: { supabaseId },
+                    include: {
+                        operators: {
+                            select: {
+                                id: true,
+                                fullName: true,
+                                profileIconUrl: true,
+                                email: true,
+                                role: true,
+                                functions: true
+                            }
+                        },
+                        manager: {
+                            select: {
+                                id: true,
+                                fullName: true,
+                                profileIconUrl: true,
+                                email: true,
+                                role: true,
+                                functions: true
+                            }
                         }
-                    },
-                    manager: {
-                        select: {
-                            id: true,
-                            fullName: true,
-                            profileIconUrl: true,
-                            email: true,
-                            role: true,
-                            functions: true
-                        }
-                    }
-                }
-            });
-
-            if (!profile) {
-                return null;
-            }
-
-            // Se o usuário é um manager não-master, buscar todos os usuários do master
-            if (profile.role === 'manager' && !profile.isMaster && profile.managerId) {
-                // Buscar todos os usuários associados ao master (incluindo o próprio master)
-                const allTeamMembers = await prisma.profile.findMany({
-                    where: {
-                        OR: [
-                            { id: profile.managerId }, // O master
-                            { managerId: profile.managerId }, // Todos os usuários do master
-                        ]
-                    },
-                    select: {
-                        id: true,
-                        fullName: true,
-                        profileIconUrl: true,
-                        email: true,
-                        role: true,
-                        functions: true
                     }
                 });
 
-                // Substituir operators pelos membros da equipe completa
-                (profile as any).operators = allTeamMembers;
-            }
+                if (!found) {
+                    return null;
+                }
 
-            console.info("Fetched profile with relations:", profile);
+                // Se o usuário é um manager não-master, buscar todos os usuários do master
+                if (found.role === 'manager' && !found.isMaster && found.managerId) {
+                    // Buscar todos os usuários associados ao master (incluindo o próprio master)
+                    const allTeamMembers = await prisma.profile.findMany({
+                        where: {
+                            OR: [
+                                { id: found.managerId }, // O master
+                                { managerId: found.managerId }, // Todos os usuários do master
+                            ]
+                        },
+                        select: {
+                            id: true,
+                            fullName: true,
+                            profileIconUrl: true,
+                            email: true,
+                            role: true,
+                            functions: true
+                        }
+                    });
+
+                    // Substituir operators pelos membros da equipe completa
+                    (found as any).operators = allTeamMembers;
+                }
+
+                return found;
+            }, { label: "ProfileRepository.findBySupabaseIdWithRelations" });
+
             return profile ?? null;
         } catch (error) {
             console.error("Error fetching profile with relations:", error);
