@@ -46,7 +46,7 @@ export default function LandingSection() {
                 style={{ background: "color-mix(in oklab, var(--card) 60%, transparent)" }}
               >
                 <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--primary)" }} />
-                Lançamento — experiência mais rápida e clara
+                Lançamento: experiência mais rápida e clara
               </motion.div>
 
               <motion.h1

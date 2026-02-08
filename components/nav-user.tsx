@@ -95,15 +95,21 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem className="cursor-pointer">
-                <NavLink icon={CircleUser} href={`/${supabaseId}/account`} text="Minha Conta" />
+              <DropdownMenuItem asChild className="cursor-pointer">
+                <NavLink
+                  icon={CircleUser}
+                  href={`/${supabaseId}/account`}
+                  text="Minha Conta"
+                  className="w-full"
+                />
               </DropdownMenuItem>
               {isMaster && (
-                <DropdownMenuItem className="cursor-pointer">
+                <DropdownMenuItem asChild className="cursor-pointer">
                   <NavLink
                     icon={CreditCard}
                     href={`/${supabaseId}/subscription`}
                     text="Assinatura"
+                    className="w-full"
                   />
                 </DropdownMenuItem>
               )}

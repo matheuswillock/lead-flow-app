@@ -26,6 +26,14 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 import {
   CreateManagerUserSchema,
@@ -33,8 +41,10 @@ import {
   CreateManagerUserFormData,
   UpdateManagerUserFormData,
   ManagerUser,
+  ManagerUserTeamSummary,
 } from "../types";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { ManagerUsersService } from "../services/ManagerUsersService";
 
 interface UserFormDialogProps {
   open: boolean;
@@ -58,6 +68,14 @@ export function UserFormDialog({
   const { activeTeamId } = useTeamContext();
   const isEditing = !!user;
   const schema = isEditing ? UpdateManagerUserSchema : CreateManagerUserSchema;
+  const [otherTeams, setOtherTeams] = React.useState<ManagerUserTeamSummary[]>([]);
+  const [isLoadingTeams, setIsLoadingTeams] = React.useState(false);
+  const [teamsError, setTeamsError] = React.useState<string | null>(null);
+
+  const managerUsersService = React.useMemo(() => {
+    if (!supabaseId) return null;
+    return new ManagerUsersService(supabaseId, activeTeamId ?? null);
+  }, [supabaseId, activeTeamId]);
   
   const form = useForm<CreateManagerUserFormData | UpdateManagerUserFormData>({
     resolver: zodResolver(schema),
@@ -96,6 +114,59 @@ export function UserFormDialog({
       }
     }
   }, [open, isEditing, user, form]);
+
+  React.useEffect(() => {
+    let isActive = true;
+
+    const loadOtherTeams = async () => {
+      if (!open || !isEditing || !user?.id) {
+        if (isActive) {
+          setOtherTeams([]);
+          setTeamsError(null);
+          setIsLoadingTeams(false);
+        }
+        return;
+      }
+
+      if (!managerUsersService || !activeTeamId) {
+        if (isActive) {
+          setOtherTeams([]);
+          setTeamsError("Selecione um time para visualizar os outros times do usuário.");
+          setIsLoadingTeams(false);
+        }
+        return;
+      }
+
+      setIsLoadingTeams(true);
+      setTeamsError(null);
+
+      try {
+        const response = await managerUsersService.getUserTeams(user.id);
+        if (!isActive) return;
+
+        if (response.isValid && response.result) {
+          setOtherTeams(response.result.teams || []);
+        } else {
+          setOtherTeams([]);
+          setTeamsError(response.errorMessages?.join(", ") || "Erro ao carregar times.");
+        }
+      } catch (error) {
+        if (!isActive) return;
+        console.error("Erro ao carregar times do usuário:", error);
+        setOtherTeams([]);
+        setTeamsError("Erro ao carregar times.");
+      } finally {
+        if (isActive) {
+          setIsLoadingTeams(false);
+        }
+      }
+    };
+
+    loadOtherTeams();
+    return () => {
+      isActive = false;
+    };
+  }, [open, isEditing, user?.id, managerUsersService, activeTeamId]);
 
   const handleSubmit = async (data: CreateManagerUserFormData | UpdateManagerUserFormData) => {
     try {
@@ -138,7 +209,7 @@ export function UserFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Editar Usuário" : "Criar Novo Usuário"}
@@ -292,6 +363,57 @@ export function UserFormDialog({
                 </FormItem>
               )}
             />
+
+            {isEditing && (
+              <div className="space-y-2">
+                <div className="space-y-1">
+                  <h4 className="text-sm font-medium">Times do usuário</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Times em que o usuário participa, com leads sob responsabilidade e reuniões realizadas.
+                  </p>
+                </div>
+                <div className="rounded-md border border-input">
+                  <Table className="text-xs">
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="text-center">Time</TableHead>
+                        <TableHead className="text-center">Leads</TableHead>
+                        <TableHead className="text-center">Reuniões realizadas</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {isLoadingTeams ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center text-muted-foreground">
+                            Carregando times...
+                          </TableCell>
+                        </TableRow>
+                      ) : teamsError ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center text-muted-foreground">
+                            {teamsError}
+                          </TableCell>
+                        </TableRow>
+                      ) : otherTeams.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-center text-muted-foreground">
+                            Usuário não participa de outros times.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        otherTeams.map((team) => (
+                          <TableRow key={team.id}>
+                            <TableCell className="font-medium text-center">{team.name}</TableCell>
+                            <TableCell className="text-center">{team.leadsCount ?? 0}</TableCell>
+                            <TableCell className="text-center">{team.meetingsCount ?? 0}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
 
             <DialogFooter className="gap-2">
                 <Button

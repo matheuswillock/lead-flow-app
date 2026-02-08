@@ -7,6 +7,14 @@ function getSupabaseEnv() {
   return { url, anon };
 }
 
+function hasSupabaseAuthCookie(request: NextRequest) {
+  return request.cookies.getAll().some(({ name }) =>
+    name === "sb-access-token" ||
+    name === "sb-refresh-token" ||
+    name.includes("-auth-token")
+  );
+}
+
 export async function updateSession(request: NextRequest) {
   const response = NextResponse.next()
   const isDev = process.env.NODE_ENV === "development"
@@ -36,12 +44,18 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  let user = null;
+  let userError: Error | null = null;
 
-  if (userError && isDev) console.error("[middleware] Error fetching user:", userError)
+  if (hasSupabaseAuthCookie(request)) {
+    const { data, error } = await supabase.auth.getUser();
+    user = data.user ?? null;
+    userError = error ?? null;
+  }
+
+  if (userError && userError.name !== "AuthSessionMissingError" && isDev) {
+    console.error("[middleware] Error fetching user:", userError)
+  }
 
   return {
     supabase,
