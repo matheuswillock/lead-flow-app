@@ -60,6 +60,13 @@ export interface ManagerUserTableRow extends ManagerUser {
   pendingPayment?: PendingOperator;
 }
 
+export interface ManagerUserTeamSummary {
+  id: string;
+  name: string;
+  leadsCount: number;
+  meetingsCount: number;
+}
+
 // Schemas de validação para formulários
 export const CreateManagerUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(100, "Nome muito longo"),
@@ -121,6 +128,13 @@ export interface ManagerUserApiResponse {
   successMessages: string[];
   errorMessages: string[];
   result: ManagerUser | null;
+}
+
+export interface ManagerUserTeamsApiResponse {
+  isValid: boolean;
+  successMessages: string[];
+  errorMessages: string[];
+  result: { teams: ManagerUserTeamSummary[] } | null;
 }
 
 // Permissões
