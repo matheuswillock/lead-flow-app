@@ -2,7 +2,8 @@ import {
   CreateManagerUserFormData, 
   UpdateManagerUserFormData,
   ManagerUsersApiResponse,
-  ManagerUserApiResponse 
+  ManagerUserApiResponse,
+  ManagerUserTeamsApiResponse
 } from "../types";
 
 class ManagerUsersService {
@@ -137,6 +138,11 @@ class ManagerUsersService {
     return {
       available: payload?.result?.available === true,
     };
+  }
+
+  // Buscar times do usuário (exceto o time ativo)
+  async getUserTeams(userId: string): Promise<ManagerUserTeamsApiResponse> {
+    return this.makeRequest<ManagerUserTeamsApiResponse>(`/${this.supabaseId}/users/${userId}/teams`);
   }
 
   // Reenviar convite por e-mail para operador

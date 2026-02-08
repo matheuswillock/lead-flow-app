@@ -93,7 +93,7 @@ export default function Home() {
                   className="inline-block h-2 w-2 rounded-full"
                   style={{ background: "var(--primary)" }}
                 />
-                Lançamento — experiência mais rápida e clara
+                Lançamento: experiência mais rápida e clara
               </MotionDiv>
 
               <MotionH1
