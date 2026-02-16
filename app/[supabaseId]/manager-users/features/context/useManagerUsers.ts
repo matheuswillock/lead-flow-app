@@ -22,7 +22,7 @@ interface UseManagerUsersProps {
 }
 
 export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId, hasPermanentSubscription = false }: UseManagerUsersProps) {
-  const { activeTeamId, activeRole } = useTeamContext();
+  const { activeTeamId, activeRole, isLoading: isTeamLoading, teams } = useTeamContext();
   const [state, setState] = useState<ManagerUsersState>({
     users: [],
     loading: true,
@@ -63,6 +63,10 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
   const loadUsers = useCallback(async () => {
     try {
       if (!activeTeamId) {
+        if (isTeamLoading || teams.length > 0) {
+          setState(prev => ({ ...prev, loading: true, error: null }));
+          return;
+        }
         const message = notifyManagerUsersError({
           operation: "loadUsers",
           errorMessages: ["Selecione um time para continuar."],
@@ -110,7 +114,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
         loading: false 
       }));
     }
-  }, [managerUsersService, activeTeamId, errorContext]);
+  }, [managerUsersService, activeTeamId, errorContext, isTeamLoading, teams.length]);
 
   // Criar usuário - se tem assinatura permanente, cria direto; senão redireciona para checkout do Asaas
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
