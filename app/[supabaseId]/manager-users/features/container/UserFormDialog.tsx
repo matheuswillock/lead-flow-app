@@ -4,7 +4,6 @@ import React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -45,6 +44,7 @@ import {
 } from "../types";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { ManagerUsersService } from "../services/ManagerUsersService";
+import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 
 interface UserFormDialogProps {
   open: boolean;
@@ -71,6 +71,11 @@ export function UserFormDialog({
   const [otherTeams, setOtherTeams] = React.useState<ManagerUserTeamSummary[]>([]);
   const [isLoadingTeams, setIsLoadingTeams] = React.useState(false);
   const [teamsError, setTeamsError] = React.useState<string | null>(null);
+  const errorContext = React.useMemo(() => ({
+    supabaseId,
+    teamId: activeTeamId ?? undefined,
+    userId: currentProfileId,
+  }), [supabaseId, activeTeamId, currentProfileId]);
 
   const managerUsersService = React.useMemo(() => {
     if (!supabaseId) return null;
@@ -130,8 +135,13 @@ export function UserFormDialog({
 
       if (!managerUsersService || !activeTeamId) {
         if (isActive) {
+          const message = notifyManagerUsersError({
+            operation: "loadUserTeams",
+            errorMessages: ["Selecione um time para visualizar os outros times do usuário."],
+            context: errorContext,
+          });
           setOtherTeams([]);
-          setTeamsError("Selecione um time para visualizar os outros times do usuário.");
+          setTeamsError(message);
           setIsLoadingTeams(false);
         }
         return;
@@ -147,14 +157,24 @@ export function UserFormDialog({
         if (response.isValid && response.result) {
           setOtherTeams(response.result.teams || []);
         } else {
+          const message = notifyManagerUsersError({
+            operation: "loadUserTeams",
+            errorMessages: response.errorMessages,
+            context: errorContext,
+          });
           setOtherTeams([]);
-          setTeamsError(response.errorMessages?.join(", ") || "Erro ao carregar times.");
+          setTeamsError(message);
         }
       } catch (error) {
         if (!isActive) return;
         console.error("Erro ao carregar times do usuário:", error);
+        const message = notifyManagerUsersError({
+          operation: "loadUserTeams",
+          error,
+          context: errorContext,
+        });
         setOtherTeams([]);
-        setTeamsError("Erro ao carregar times.");
+        setTeamsError(message);
       } finally {
         if (isActive) {
           setIsLoadingTeams(false);
@@ -184,7 +204,11 @@ export function UserFormDialog({
         const payload = await response.json().catch(() => null);
         const isAvailable = response.ok && payload?.isValid && payload?.result?.available === true;
         if (!isAvailable) {
-          toast.error(payload?.errorMessages?.join(", ") || "Email já está em uso");
+          notifyManagerUsersError({
+            operation: "checkEmail",
+            errorMessages: payload?.errorMessages?.length ? payload.errorMessages : ["Email já está em uso"],
+            context: errorContext,
+          });
           return;
         }
       }
@@ -193,7 +217,11 @@ export function UserFormDialog({
       form.reset();
     } catch (error) {
       console.error("Erro ao salvar usuário:", error);
-      toast.error("Erro ao salvar usuário");
+      notifyManagerUsersError({
+        operation: isEditing ? "updateUser" : "createUser",
+        error,
+        context: errorContext,
+      });
     }
   };
 

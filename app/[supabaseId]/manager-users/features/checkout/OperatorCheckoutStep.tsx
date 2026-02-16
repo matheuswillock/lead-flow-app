@@ -20,6 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { signUpCheckoutSchema, type SignUpCheckoutFormData } from "@/lib/validations/checkoutSchema";
 import { toast } from "sonner";
 import type { CreateManagerUserFormData } from "../types";
+import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 
 const OPERATOR_PRICE = 19.9;
 
@@ -77,6 +78,11 @@ export function OperatorCheckoutStep({
     dueDate: string;
   } | null>(null);
   const [countdown, setCountdown] = useState<string | null>(null);
+  const errorContext = {
+    supabaseId: managerId,
+    teamId,
+    userId: managerId,
+  };
 
   const form = useForm<SignUpCheckoutFormData>({
     resolver: zodResolver(signUpCheckoutSchema),
@@ -86,9 +92,13 @@ export function OperatorCheckoutStep({
   });
 
   const billingType = form.watch("billingType");
-  const handleError = (message: string) => {
-    setError(message);
-    toast.error(message);
+  const handleError = (message: string, operation: "createPayment" | "checkPaymentStatus" | "cancelPayment" | "confirmPayment" | "copyCode") => {
+    const mappedMessage = notifyManagerUsersError({
+      operation,
+      errorMessages: [message],
+      context: errorContext,
+    });
+    setError(mappedMessage);
   };
 
   useEffect(() => {
@@ -133,7 +143,7 @@ export function OperatorCheckoutStep({
 
   const checkPaymentStatus = async () => {
     if (!paymentId) {
-      handleError("Pagamento nao encontrado. Gere o pagamento novamente.");
+      handleError("Pagamento nao encontrado. Gere o pagamento novamente.", "checkPaymentStatus");
       return;
     }
 
@@ -159,7 +169,12 @@ export function OperatorCheckoutStep({
       });
     } catch (err) {
       console.error(err);
-      toast.error("Nao foi possivel validar o pagamento.");
+      notifyManagerUsersError({
+        operation: "checkPaymentStatus",
+        error: err,
+        errorMessages: ["Nao foi possivel validar o pagamento."],
+        context: errorContext,
+      });
     }
   };
 
@@ -176,7 +191,12 @@ export function OperatorCheckoutStep({
       toast.success("Codigo copiado!");
     } catch (copyError) {
       console.error(copyError);
-      toast.error("Nao foi possivel copiar o codigo.");
+      notifyManagerUsersError({
+        operation: "copyCode",
+        error: copyError,
+        errorMessages: ["Nao foi possivel copiar o codigo."],
+        context: errorContext,
+      });
     }
   };
 
@@ -186,7 +206,12 @@ export function OperatorCheckoutStep({
         await fetch(`/api/v1/operators/pending/${pendingOperatorId}`, { method: "DELETE" });
       } catch (err) {
         console.error(err);
-        toast.error("Nao foi possivel cancelar o pagamento.");
+        notifyManagerUsersError({
+          operation: "cancelPayment",
+          error: err,
+          errorMessages: ["Nao foi possivel cancelar o pagamento."],
+          context: errorContext,
+        });
       }
     }
     toast.info("Pagamento cancelado", {
@@ -244,7 +269,7 @@ export function OperatorCheckoutStep({
       if (!response.ok || !result?.isValid) {
         const message =
           result?.errorMessages?.join(", ") || "Nao foi possivel gerar o pagamento.";
-        handleError(message);
+        handleError(message, "createPayment");
         return;
       }
 
@@ -260,7 +285,12 @@ export function OperatorCheckoutStep({
       }
     } catch (err) {
       console.error(err);
-      handleError("Erro ao processar pagamento. Tente novamente.");
+      notifyManagerUsersError({
+        operation: "createPayment",
+        error: err,
+        errorMessages: ["Erro ao processar pagamento. Tente novamente."],
+        context: errorContext,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -306,7 +336,11 @@ export function OperatorCheckoutStep({
                   onSubmit={form.handleSubmit(handleSubmit, (errors) => {
                     const firstError = Object.values(errors)[0];
                     const message = firstError?.message || "Verifique os campos obrigatorios.";
-                    toast.error(message);
+                    notifyManagerUsersError({
+                      operation: "formValidation",
+                      errorMessages: [message],
+                      context: errorContext,
+                    });
                   })}
                   className="space-y-6"
                 >

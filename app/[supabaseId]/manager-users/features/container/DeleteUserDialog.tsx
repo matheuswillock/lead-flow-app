@@ -39,39 +39,37 @@ export function DeleteUserDialog({
             <span className="font-semibold">{user.fullName || user.email}</span>?
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-3 py-4">
           <p className="text-sm text-muted-foreground">
-            Esta ação não pode ser desfeita. O usuário será permanentemente
-            removido do sistema e perderá acesso a todas as funcionalidades.
+            Esta ação não pode ser desfeita. O usuário será permanentemente removido do sistema e
+            perderá acesso a todas as funcionalidades.
           </p>
           {user.role === "manager" && (
             <p className="text-sm text-orange-600 dark:text-orange-400">
-              ⚠️ Atenção: Este usuário é um Manager e pode ter operators
-              associados.
+              ⚠️ Atenção: Este usuário é um Manager e pode ter operators associados.
             </p>
           )}
         </div>
         <DialogFooter className="gap-2">
-            <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={loading}
-                className="cursor-pointer font-medium"
-            >
-                Cancelar
-            </Button>
-            <Button
-                variant="destructive"
-                onClick={onConfirm}
-                disabled={loading}
-                className="cursor-pointer font-medium"
-            >
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {loading ? "Removendo..." : "Remover Usuário"}
-            </Button>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={loading}
+            className="cursor-pointer font-medium"
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={loading}
+            className="h-9 font-medium border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500 hover:text-white cursor-pointer"
+          >
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {loading ? "Removendo..." : "Remover Usuário"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
+  )
 }
