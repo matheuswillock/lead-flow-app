@@ -734,7 +734,7 @@ export class EmailService {
       hour: "2-digit",
       minute: "2-digit",
     });
-    const title = data.meetingTitle || `Reunião com ${data.leadName}`;
+    const title = data.meetingTitle || `Estudo Plano de Saúde: ${data.leadName}`;
     const linkMarkup = data.meetingLink
       ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
       : "Link não informado";

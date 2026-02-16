@@ -444,7 +444,7 @@ export class LeadUseCase implements ILeadUseCase {
       // Se o status for scheduled, criar ou atualizar registro na tabela LeadsSchedule
       if (status === LeadStatus.scheduled) {
         const meetingDate = existingLead.meetingDate || new Date();
-        const fallbackMeetingTitle = existingLead.meetingTitle || `Reuniao com ${existingLead.name}`;
+        const fallbackMeetingTitle = existingLead.meetingTitle || `Estudo Plano de Saúde: ${existingLead.name}`;
         
         // Verificar se já existe um agendamento para este lead
         const existingSchedule = await leadScheduleRepository.findLatestByLeadId(id);
