@@ -76,7 +76,7 @@ export async function POST(
       : lead.closer;
 
     const closerEmail = closerProfile?.email || null;
-    const resolvedMeetingTitle = meetingTitle || `Reunião com ${lead.name}`;
+    const resolvedMeetingTitle = meetingTitle || `Estudo Plano de Saúde: ${lead.name}`;
 
     const canUseGoogleCalendar = !!lead.manager.googleCalendarConnected && !!lead.manager.googleRefreshToken;
     let calendarResult: { eventId: string; calendarId: string; meetLink?: string | null } | null = null;

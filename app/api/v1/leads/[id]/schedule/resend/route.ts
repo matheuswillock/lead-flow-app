@@ -136,7 +136,6 @@ export async function POST(
       meetingLink: schedule.meetingLink,
       organizerName,
       closerName,
-      notes: schedule.notes,
     });
 
     if (!emailResult.success) {

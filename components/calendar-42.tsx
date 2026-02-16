@@ -525,7 +525,7 @@ export default function Calendar42() {
                     ? new Date(meetingStart.getTime() + 60 * 60 * 1000)
                     : null
                   const closerLabel = getCloserLabel(lead, closersById)
-                  const meetingTitle = lead.meetingTitle || `Reunião com ${lead.name}`
+                    const meetingTitle = lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`
                   const showLeadName = meetingTitle !== lead.name
                   const isCanceled = lead.status === "no_show"
                   const isOverdue =

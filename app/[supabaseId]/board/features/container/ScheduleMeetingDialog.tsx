@@ -63,7 +63,7 @@ export function ScheduleMeetingDialog({
   useEffect(() => {
     if (!open) return;
     setMeetingDate(lead.meetingDate ? new Date(lead.meetingDate) : undefined);
-    setMeetingTitle(lead.meetingTitle || `Reunião com ${lead.name}`);
+    setMeetingTitle(lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`);
     setNotes(lead.meetingNotes || "");
     setMeetingLink(lead.meetingLink || "");
     setCloserId(lead.closerId || "");
