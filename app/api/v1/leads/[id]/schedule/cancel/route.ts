@@ -35,6 +35,7 @@ export async function POST(
       where: { id: leadId },
       include: {
         manager: true,
+        closer: true,
       },
     });
 
@@ -44,14 +45,15 @@ export async function POST(
     }
 
     let calendarWarning: string | null = null;
-    const canUseGoogleCalendar = !!lead.manager.googleCalendarConnected && !!lead.manager.googleRefreshToken;
+    const closerProfile = lead.closer;
+    const canUseGoogleCalendar = !!closerProfile && !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
     if (schedule.googleEventId) {
-      if (!canUseGoogleCalendar) {
+      if (!closerProfile || !canUseGoogleCalendar) {
         calendarWarning = "Conta Google não conectada. Evento não foi cancelado no Google Calendar.";
       } else {
         try {
           await cancelCalendarEvent({
-            organizer: lead.manager,
+            organizer: closerProfile,
             eventId: schedule.googleEventId,
             calendarId: schedule.googleCalendarId ?? "primary",
           });

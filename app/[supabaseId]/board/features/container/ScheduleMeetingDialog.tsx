@@ -59,6 +59,7 @@ export function ScheduleMeetingDialog({
   const [extraGuestsDraft, setExtraGuestsDraft] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const members = teamMembers && teamMembers.length > 0 ? teamMembers : closers;
+  const canSubmit = !!meetingDate && meetingTitle.trim().length > 0 && !!closerId;
 
   useEffect(() => {
     if (!open) return;
@@ -116,7 +117,7 @@ export function ScheduleMeetingDialog({
       toast.error("Informe o titulo da reunião");
       return;
     }
-    if (closers.length > 0 && !closerId) {
+    if (!closerId) {
       toast.error("Selecione um closer para a reuniao");
       return;
     }
@@ -362,6 +363,11 @@ export function ScheduleMeetingDialog({
                   ))}
                 </SelectContent>
               </Select>
+              {!closers.length && (
+                <p className="text-xs text-muted-foreground">
+                  Nenhum closer disponível para este time.
+                </p>
+              )}
             </div>
           </div>
 
@@ -374,7 +380,7 @@ export function ScheduleMeetingDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || !canSubmit}>
               {isSubmitting ? "Agendando..." : "Agendar Reunião"}
             </Button>
           </DialogFooter>

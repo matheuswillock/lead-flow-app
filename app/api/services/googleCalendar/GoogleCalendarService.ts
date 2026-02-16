@@ -151,10 +151,12 @@ export async function resendCalendarInvite({
   organizer,
   eventId,
   calendarId = "primary",
+  attendeeEmails,
 }: {
   organizer: Profile;
   eventId: string;
   calendarId?: string;
+  attendeeEmails?: string[];
 }): Promise<void> {
   const accessToken = await getValidAccessToken(organizer);
   const baseUrl = `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`;
@@ -170,7 +172,9 @@ export async function resendCalendarInvite({
     description: "Reunião agendada pelo Corretor Studio.",
     start: event.start,
     end: event.end,
-    attendees: event.attendees,
+    attendees: attendeeEmails
+      ? attendeeEmails.map((email) => ({ email }))
+      : event.attendees,
   };
 
   if (event.location) {
@@ -206,6 +210,7 @@ export async function upsertCalendarEvent({
   organizer,
   lead,
   closerEmail,
+  sdrEmail,
   meetingDate,
   meetingTitle,
   notes,
@@ -216,6 +221,7 @@ export async function upsertCalendarEvent({
   organizer: Profile;
   lead: Lead;
   closerEmail?: string | null;
+  sdrEmail?: string | null;
   meetingDate: Date;
   meetingTitle?: string | null;
   notes?: string | null;
@@ -231,7 +237,7 @@ export async function upsertCalendarEvent({
   const attendeeEmails = [
     lead.email,
     closerEmail,
-    organizer.email,
+    sdrEmail,
     ...(extraGuests ?? []),
   ]
     .filter(Boolean)
