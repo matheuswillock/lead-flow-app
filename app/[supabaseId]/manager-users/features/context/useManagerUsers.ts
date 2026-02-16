@@ -12,6 +12,7 @@ import {
 } from "../types";
 import { ManagerUsersService } from "../services/ManagerUsersService";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 
 interface UseManagerUsersProps {
   supabaseId: string;
@@ -52,12 +53,22 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
   const managerUsersService = useMemo(() => {
     return new ManagerUsersService(supabaseId, activeTeamId);
   }, [supabaseId, activeTeamId]);
+  const errorContext = useMemo(() => ({
+    supabaseId,
+    teamId: activeTeamId ?? undefined,
+    userId: currentProfileId ?? supabaseId,
+  }), [supabaseId, activeTeamId, currentProfileId]);
 
   // Carregar usuários
   const loadUsers = useCallback(async () => {
     try {
       if (!activeTeamId) {
-        setState(prev => ({ ...prev, users: [], loading: false, error: "Selecione um time para continuar." }));
+        const message = notifyManagerUsersError({
+          operation: "loadUsers",
+          errorMessages: ["Selecione um time para continuar."],
+          context: errorContext,
+        });
+        setState(prev => ({ ...prev, users: [], loading: false, error: message }));
         return;
       }
 
@@ -74,22 +85,32 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
           loading: false 
         }));
       } else {
+        const message = notifyManagerUsersError({
+          operation: "loadUsers",
+          errorMessages: response.errorMessages,
+          context: errorContext,
+        });
         setState(prev => ({ 
           ...prev, 
           users: [],
-          error: response.errorMessages.join(", ") || "Erro ao carregar usuários",
+          error: message,
           loading: false 
         }));
       }
     } catch (error) {
       console.error("Erro ao carregar usuários:", error);
+      const message = notifyManagerUsersError({
+        operation: "loadUsers",
+        error,
+        context: errorContext,
+      });
       setState(prev => ({ 
         ...prev, 
-        error: "Erro ao carregar usuários",
+        error: message,
         loading: false 
       }));
     }
-  }, [managerUsersService, activeTeamId]);
+  }, [managerUsersService, activeTeamId, errorContext]);
 
   // Criar usuário - se tem assinatura permanente, cria direto; senão redireciona para checkout do Asaas
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
@@ -99,14 +120,22 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
       const normalizedEmail = userData.email.trim().toLowerCase();
       const emailInList = state.users.some(user => user.email?.toLowerCase() === normalizedEmail);
       if (emailInList) {
-        toast.error("Email já está em uso");
+        notifyManagerUsersError({
+          operation: "checkEmail",
+          errorMessages: ["Email já está em uso"],
+          context: errorContext,
+        });
         setState(prev => ({ ...prev, loading: false, isCreateModalOpen: true }));
         return;
       }
       
       const emailCheck = await managerUsersService.checkEmailAvailability(userData.email);
       if (!emailCheck.available) {
-        toast.error(emailCheck.error || "Email já está em uso");
+        notifyManagerUsersError({
+          operation: "checkEmail",
+          errorMessages: [emailCheck.error || "Email já está em uso"],
+          context: errorContext,
+        });
         setState(prev => ({ ...prev, loading: false, isCreateModalOpen: true }));
         return;
       }
@@ -149,7 +178,11 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
           setState(prev => ({ ...prev, loading: false }));
           await loadUsers(); // Recarregar lista
         } else {
-          toast.error(result.errorMessages?.join(', ') || 'Erro ao criar usuário');
+          notifyManagerUsersError({
+            operation: "createUser",
+            errorMessages: result.errorMessages,
+            context: errorContext,
+          });
           setState(prev => ({ ...prev, loading: false }));
         }
         return;
@@ -157,7 +190,11 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
       // Fechar modal e abrir checkout
       setState(prev => ({ ...prev, isCreateModalOpen: false }));
       if (!activeTeamId) {
-        toast.error("Selecione um time para continuar");
+        notifyManagerUsersError({
+          operation: "createUser",
+          errorMessages: ["Selecione um time para continuar"],
+          context: errorContext,
+        });
         setState(prev => ({ ...prev, loading: false }));
         return;
       }
@@ -169,10 +206,15 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
       setState(prev => ({ ...prev, loading: false }));
     } catch (error) {
       console.error("Erro ao criar usuário:", error);
-      toast.error("Erro ao criar usuário");
+      toast.dismiss();
+      notifyManagerUsersError({
+        operation: "createUser",
+        error,
+        context: errorContext,
+      });
       setState(prev => ({ ...prev, loading: false }));
     }
-  }, [supabaseId, hasPermanentSubscription, loadUsers, managerUsersService, state.users, activeTeamId]);
+  }, [supabaseId, hasPermanentSubscription, loadUsers, managerUsersService, state.users, activeTeamId, errorContext]);
 
   // Atualizar usuário
   const updateUser = useCallback(async (userId: string, userData: UpdateManagerUserFormData) => {
@@ -191,15 +233,23 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
         }));
         await loadUsers(); // Recarregar lista
       } else {
-        toast.error(response.errorMessages.join(", ") || "Erro ao atualizar usuário");
+        notifyManagerUsersError({
+          operation: "updateUser",
+          errorMessages: response.errorMessages,
+          context: errorContext,
+        });
         setState(prev => ({ ...prev, loading: false }));
       }
     } catch (error) {
       console.error("Erro ao atualizar usuário:", error);
-      toast.error("Erro ao atualizar usuário");
+      notifyManagerUsersError({
+        operation: "updateUser",
+        error,
+        context: errorContext,
+      });
       setState(prev => ({ ...prev, loading: false }));
     }
-  }, [managerUsersService, loadUsers]);
+  }, [managerUsersService, loadUsers, errorContext]);
 
   // Deletar usuário
   const deleteUser = useCallback(async (userId: string) => {
@@ -210,7 +260,11 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
       const canDelete = await managerUsersService.canDeleteUser(userId);
       
       if (!canDelete) {
-        toast.error("Não é possível deletar este usuário");
+        notifyManagerUsersError({
+          operation: "deleteUser",
+          errorMessages: ["Não é possível deletar este usuário"],
+          context: errorContext,
+        });
         setState(prev => ({ ...prev, loading: false }));
         return;
       }
@@ -227,15 +281,23 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
         }));
         await loadUsers(); // Recarregar lista
       } else {
-        toast.error(response.errorMessages.join(", ") || "Erro ao remover usuário");
+        notifyManagerUsersError({
+          operation: "deleteUser",
+          errorMessages: response.errorMessages,
+          context: errorContext,
+        });
         setState(prev => ({ ...prev, loading: false }));
       }
     } catch (error) {
       console.error("Erro ao deletar usuário:", error);
-      toast.error("Erro ao remover usuário");
+      notifyManagerUsersError({
+        operation: "deleteUser",
+        error,
+        context: errorContext,
+      });
       setState(prev => ({ ...prev, loading: false }));
     }
-  }, [supabaseId, loadUsers]);
+  }, [supabaseId, loadUsers, errorContext]);
 
   // Preparar dados da tabela com permissões
   const resolvedProfileId = currentProfileId ?? supabaseId;
@@ -394,14 +456,22 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
       if (result.isValid) {
         toast.success('Email de reset de senha enviado com sucesso!');
       } else {
-        toast.error(result.errorMessages.join(', ') || 'Erro ao enviar email');
+        notifyManagerUsersError({
+          operation: "resendInvite",
+          errorMessages: result.errorMessages,
+          context: errorContext,
+        });
       }
     } catch (error) {
       toast.dismiss(toastId);
       console.error('Erro ao enviar email de reset:', error);
-      toast.error('Erro ao enviar email');
+      notifyManagerUsersError({
+        operation: "resendInvite",
+        error,
+        context: errorContext,
+      });
     }
-  }, [managerUsersService]);
+  }, [managerUsersService, errorContext]);
 
   // Alternar assinatura permanente
   const togglePermanentSubscription = useCallback(async (userId: string, currentValue: boolean) => {
@@ -424,13 +494,21 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
         // Recarregar usuários
         await loadUsers();
       } else {
-        toast.error(result.errorMessages.join(', ') || `Erro ao ${action} assinatura permanente`);
+        notifyManagerUsersError({
+          operation: "togglePermanentSubscription",
+          errorMessages: result.errorMessages,
+          context: errorContext,
+        });
       }
     } catch (error) {
       console.error('Erro ao alternar assinatura permanente:', error);
-      toast.error('Erro ao alterar assinatura permanente');
+      notifyManagerUsersError({
+        operation: "togglePermanentSubscription",
+        error,
+        context: errorContext,
+      });
     }
-  }, [loadUsers]);
+  }, [loadUsers, errorContext]);
 
   return {
     // Estado
