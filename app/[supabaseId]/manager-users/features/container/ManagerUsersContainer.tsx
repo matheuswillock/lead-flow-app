@@ -21,6 +21,7 @@ import type { ManagerUserTableRow } from "../types";
 import { createColumns } from "./ManagerUsersColumns";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
+import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;
@@ -42,6 +43,11 @@ export function ManagerUsersContainer({
   const canCreateOrDelete = resolvedIsMaster;
   const [isDeletePendingDialogOpen, setIsDeletePendingDialogOpen] = useState(false);
   const [pendingOperatorToDelete, setPendingOperatorToDelete] = useState<ManagerUserTableRow | null>(null);
+  const errorContext = {
+    supabaseId,
+    teamId: activeTeamId ?? undefined,
+    userId: user?.id,
+  };
 
   const {
     // Estado
@@ -83,7 +89,11 @@ export function ManagerUsersContainer({
   // Handler para confirmar deleção de operador pendente
   const handleConfirmDeletePending = async () => {
     if (!pendingOperatorToDelete?.pendingPayment?.id) {
-      toast.error('ID do operador pendente não encontrado');
+      notifyManagerUsersError({
+        operation: "deletePendingOperator",
+        errorMessages: ["ID do operador pendente não encontrado"],
+        context: errorContext,
+      });
       return;
     }
 
@@ -109,7 +119,12 @@ export function ManagerUsersContainer({
 
     } catch (error) {
       console.error('Erro ao deletar operador pendente:', error);
-      toast.error('Erro ao deletar operador pendente', { id: loadingToast });
+      notifyManagerUsersError({
+        operation: "deletePendingOperator",
+        error,
+        toastId: loadingToast,
+        context: errorContext,
+      });
     }
   };
 

@@ -812,7 +812,7 @@ export default function AccountProfilePage() {
                         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                           <AlertDialogTrigger asChild>
                             <Button
-                              className="h-9 font-medium border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-foreground cursor-pointer"
+                              className="h-9 font-medium border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white cursor-pointer"
                               disabled={isDeletingAccount}
                             >
                               Deletar conta
