@@ -11,7 +11,11 @@ export default function LandingSection() {
       <header className="sticky top-0 z-20 border-b" style={{ borderColor: "var(--border)" }}>
         <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
-            <span className="inline-block h-6 w-6 rounded-md" style={{ background: "var(--primary)" }} aria-hidden />
+            <span
+              className="inline-block h-6 w-6 rounded-md"
+              style={{ background: "var(--primary)" }}
+              aria-hidden
+            />
             <span>Seu Produto</span>
           </Link>
 
@@ -45,24 +49,22 @@ export default function LandingSection() {
                 className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1 text-xs sm:text-sm text-muted-foreground shadow-sm backdrop-blur"
                 style={{ background: "color-mix(in oklab, var(--card) 60%, transparent)" }}
               >
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: "var(--primary)" }} />
-                Lançamento: experiência mais rápida e clara
+                <span
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ background: "var(--primary)" }}
+                />
+                Sistema completo para corretores de saúde
               </motion.div>
 
               <motion.h1
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.05 }}
-                className="mt-5 text-4xl sm:text-5xl md:text-6xl font-extrabold leading-tight tracking-tight"
-                style={{
-                  background:
-                    "linear-gradient(180deg, var(--foreground), color-mix(in oklab, var(--foreground) 80%, transparent))",
-                  WebkitBackgroundClip: "text",
-                  backgroundClip: "text",
-                  color: "transparent",
-                }}
+                className="mt-5 max-w-[22ch] text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight tracking-tight text-foreground"
               >
-                Apresente, gerencie e cresça em um único lugar.
+                <span className="block">Corretores comuns mandam cotações.</span>
+                <span className="block text-primary">Os de Alta Performance</span>
+                <span className="block">usam Corretor Studio.</span>
               </motion.h1>
 
               <motion.p
@@ -71,8 +73,7 @@ export default function LandingSection() {
                 transition={{ duration: 0.6, delay: 0.1 }}
                 className="mt-5 max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground"
               >
-                Uma plataforma elegante e objetiva para automatizar seu fluxo e encantar clientes.
-                Simples de começar, poderosa para escalar.
+                Tudo que você precisa para ter mais eficiência no seu dia a dia vendendo planos de saúde.
               </motion.p>
 
               <motion.div
@@ -107,7 +108,10 @@ export default function LandingSection() {
             >
               <figure
                 className="relative rounded-2xl border shadow-xl backdrop-blur overflow-hidden"
-                style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--card) 70%, transparent)" }}
+                style={{
+                  borderColor: "var(--border)",
+                  background: "color-mix(in oklab, var(--card) 70%, transparent)",
+                }}
               >
                 <div className="relative aspect-[4/3] w-full">
                   <Image

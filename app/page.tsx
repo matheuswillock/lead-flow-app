@@ -93,23 +93,18 @@ export default function Home() {
                   className="inline-block h-2 w-2 rounded-full"
                   style={{ background: "var(--primary)" }}
                 />
-                Lançamento: experiência mais rápida e clara
+                Sistema completo para corretores de saúde
               </MotionDiv>
 
               <MotionH1
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.05 }}
-                className="mt-5 text-2xl sm:text-4xl md:text-5xl font-extrabold leading-14 tracking-tight"
-                style={{
-                  background:
-                    "linear-gradient(180deg, var(--foreground), color-mix(in oklab, var(--foreground) 80%, transparent))",
-                  WebkitBackgroundClip: "text",
-                  backgroundClip: "text",
-                  color: "transparent",
-                }}
+                className="mt-5 max-w-[22ch] text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight tracking-tight text-foreground"
               >
-                Apresente, gerencie e cresça em um único lugar.
+                <span className="block">Corretores comuns mandam cotações.</span>
+                <span className="block text-primary">Os de Alta Performance</span>
+                <span className="block">usam Corretor Studio.</span>
               </MotionH1>
 
               <MotionP
@@ -118,8 +113,7 @@ export default function Home() {
                 transition={{ duration: 0.6, delay: 0.1 }}
                 className="mt-3 max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground leading-6"
               >
-                Uma plataforma elegante e objetiva para automatizar seu fluxo e encantar clientes.
-                Simples de começar, poderosa para escalar.
+                Tudo que você precisa para ter mais eficiência no seu dia a dia vendendo planos de saúde.
               </MotionP>
 
               <MotionDiv
