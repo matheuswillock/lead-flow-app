@@ -88,7 +88,7 @@ export default function LandingSection() {
             >
               <div className="text-center">
                 <Link
-                  href="/subscribe"
+                  href="#demo"
                   className="group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
                   style={{
                     background: "var(--primary)",
@@ -97,12 +97,9 @@ export default function LandingSection() {
                       "0 10px 25px -10px color-mix(in oklab, var(--primary) 55%, transparent)",
                   }}
                 >
-                  Contratar / Assinar
+                  Agendar demonstração
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />
                 </Link>
-                <p className="mt-3 text-xs sm:text-sm text-muted-foreground">
-                  14 dias grátis • sem cartão • cancele quando quiser
-                </p>
               </div>
             </motion.div>
           </div>

@@ -20,8 +20,8 @@ export function LandingHeader() {
                     <Link href="#how-it-works" className="hover:text-foreground transition-colors">
                         Como funciona
                     </Link>
-                    <Link href="#pricing" className="hover:text-foreground transition-colors">
-                        Começar
+                    <Link href="#demo" className="hover:text-foreground transition-colors">
+                        Demonstração
                     </Link>
                 </nav>
 

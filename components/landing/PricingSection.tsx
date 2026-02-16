@@ -1,45 +1,11 @@
 "use client"
 
 import { div as MotionDiv } from "framer-motion/client"
-import { Check, Users, Users2, Zap } from "lucide-react"
-import Link from "next/link"
-
-const mainFeatures = [
-  "Leads ilimitados",
-  "Pipeline Kanban + Tabela",
-  "Crie reuniões com Google Calendar",
-  "Times com troca de time",
-  "Gestão de operadores e funções",
-  "Dashboard com métricas",
-  "Anexos por lead",
-  "Suporte via email",
-  "Atualizações automáticas"
-]
-
-const additionalInfo = [
-  {
-    icon: Zap,
-    title: "Assinatura Base",
-    price: "R$ 59,90",
-    description: "Inclui 1 time e o usuário master"
-  },
-  {
-    icon: Users2,
-    title: "Times Adicionais",
-    price: "R$ 29,90",
-    description: "Por time adicional na sua operação"
-  },
-  {
-    icon: Users,
-    title: "Operadores Adicionais",
-    price: "R$ 19,90",
-    description: "Por operador adicional na sua equipe"
-  }
-]
+import { ArrowRight } from "lucide-react"
 
 export function PricingSection() {
   return (
-    <section id="pricing" className="relative py-20 md:py-28">
+    <section id="demo" className="relative py-20 md:py-28">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-20"
@@ -49,192 +15,86 @@ export function PricingSection() {
         }}
       />
 
-      <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
+      <div className="relative z-10 mx-auto max-w-6xl px-6 sm:px-8 lg:px-10">
         <MotionDiv
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-16"
+          className="text-center mb-12"
         >
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
-            Preços{" "}
-            <span
-              style={{
-                background: "linear-gradient(135deg, var(--primary), var(--chart-2))",
-                WebkitBackgroundClip: "text",
-                backgroundClip: "text",
-                color: "transparent",
-              }}
-            >
-              simples e transparentes
-            </span>
+            Agende uma <span className="text-primary">demonstração</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            Um único plano com tudo que você precisa. Pague apenas pelo que usar, sem surpresas.
+            Fale com um especialista e veja o Corretor Studio em ação.
           </p>
         </MotionDiv>
 
-        {/* Plano Principal */}
         <MotionDiv
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          className="max-w-5xl mx-auto mb-16"
+          className="mx-auto max-w-2xl"
         >
           <div
-            className="relative rounded-3xl border-2 p-10 shadow-2xl backdrop-blur ring-2 ring-primary ring-opacity-20"
+            className="rounded-3xl border p-8 sm:p-10 shadow-2xl backdrop-blur"
             style={{
-              borderColor: "var(--primary)",
+              borderColor: "var(--border)",
               background: "color-mix(in oklab, var(--card) 90%, transparent)",
             }}
           >
-            <div
-              className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full px-6 py-2 text-sm font-semibold shadow-lg"
-              style={{
-                background: "var(--primary)",
-                color: "var(--primary-foreground)",
-              }}
-            >
-              Plano Único
-            </div>
-
-            <div className="text-center mb-8">
-              <h3 className="text-3xl font-bold mb-2">Corretor Studio Professional</h3>
-              <p className="text-muted-foreground">
-                Tudo que você precisa para gerenciar seu time de vendas
-              </p>
-            </div>
-
-            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-6 mb-8 items-stretch">
-              {additionalInfo.map((info) => (
-                <div
-                  key={info.title}
-                  className="flex h-full flex-col gap-4 p-6 rounded-xl border"
-                  style={{
-                    borderColor: "var(--border)",
-                    background: "color-mix(in oklab, var(--card) 50%, transparent)",
-                  }}
-                >
-                  <div className="text-xl font-bold leading-snug">
-                    {info.title}
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div
-                      className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg"
-                      style={{
-                        background: "color-mix(in oklab, var(--primary) 15%, transparent)",
-                        color: "var(--primary)",
-                      }}
-                    >
-                      <info.icon className="h-6 w-6" />
-                    </div>
-                    <div className="flex items-baseline gap-1">
-                      <span
-                        className="text-3xl font-extrabold"
-                        style={{ color: "var(--primary)" }}
-                      >
-                        {info.price}
-                      </span>
-                      <span className="text-sm text-muted-foreground font-medium">/mês</span>
-                    </div>
-                  </div>
-                  <p className="mt-auto text-sm text-muted-foreground min-h-[2.25rem]">
-                    {info.description}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mb-8">
-              <h4 className="text-lg font-semibold mb-4 text-center">Tudo incluído no plano:</h4>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {mainFeatures.map((feature) => (
-                  <div key={feature} className="flex items-start gap-3">
-                    <Check
-                      className="h-5 w-5 flex-shrink-0 mt-0.5"
-                      style={{ color: "var(--primary)" }}
-                    />
-                    <span className="text-muted-foreground">{feature}</span>
-                  </div>
-                ))}
+            <form className="space-y-5">
+              <div>
+                <label className="text-sm font-semibold text-foreground/90">
+                  Nome completo
+                </label>
+                <input
+                  type="text"
+                  placeholder="Seu nome"
+                  className="mt-2 w-full rounded-2xl border bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                  style={{ borderColor: "var(--border)" }}
+                />
               </div>
-            </div>
 
-            <div className="text-center">
-              <Link
-                href="/sign-up"
-                className="cursor-pointer inline-flex items-center justify-center rounded-xl px-8 py-4 text-lg font-semibold shadow-xl transition-all hover:shadow-2xl hover:scale-105"
+              <div>
+                <label className="text-sm font-semibold text-foreground/90">
+                  E-mail profissional
+                </label>
+                <input
+                  type="email"
+                  placeholder="seu@email.com"
+                  className="mt-2 w-full rounded-2xl border bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                  style={{ borderColor: "var(--border)" }}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-foreground/90">
+                  WhatsApp
+                </label>
+                <input
+                  type="tel"
+                  placeholder="(00) 00000-0000"
+                  className="mt-2 w-full rounded-2xl border bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                  style={{ borderColor: "var(--border)" }}
+                />
+              </div>
+
+              <button
+                type="button"
+                className="w-full inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg transition-all hover:shadow-xl"
                 style={{
                   background: "var(--primary)",
                   color: "var(--primary-foreground)",
                 }}
               >
-                Começar Agora
-              </Link>
-              <p className="mt-4 text-sm text-muted-foreground">
-                Sem contratos de fidelidade • Cancele quando quiser
-              </p>
-            </div>
+                Agendar demonstração
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </button>
+            </form>
           </div>
-        </MotionDiv>
-
-        {/* Exemplo de Cálculo */}
-        <MotionDiv
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="max-w-2xl mx-auto"
-        >
-          <div
-            className="rounded-2xl border p-8 backdrop-blur"
-            style={{
-              borderColor: "var(--border)",
-              background: "color-mix(in oklab, var(--card) 70%, transparent)",
-            }}
-          >
-            <h4 className="text-xl font-bold mb-4 text-center">Exemplo de cálculo:</h4>
-            <div className="space-y-3 mb-4">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Assinatura base</span>
-                <span className="font-semibold">R$ 59,90</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">1 time adicional × R$ 29,90</span>
-                <span className="font-semibold">R$ 29,90</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">3 operadores × R$ 19,90</span>
-                <span className="font-semibold">R$ 59,70</span>
-              </div>
-              <div
-                className="h-px w-full"
-                style={{ background: "var(--border)" }}
-              />
-              <div className="flex justify-between items-center text-lg">
-                <span className="font-bold">Total mensal</span>
-                <span className="font-bold" style={{ color: "var(--primary)" }}>
-                  R$ 149,50
-                </span>
-              </div>
-            </div>
-            <p className="text-sm text-center text-muted-foreground">
-              Escale times e equipe sem limites de leads. Adicione ou remova times e operadores quando precisar.
-            </p>
-          </div>
-        </MotionDiv>
-
-        <MotionDiv
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-          className="mt-12 text-center text-sm text-muted-foreground"
-        >
-          <p>💳 Aceitamos PIX, Boleto e Cartão de Crédito</p>
-          <p className="mt-2">🔒 Ambiente seguro com criptografia SSL</p>
         </MotionDiv>
       </div>
     </section>
