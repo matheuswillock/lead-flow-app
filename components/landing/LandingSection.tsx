@@ -28,7 +28,7 @@ export default function LandingSection() {
         </div>
       </header>
 
-      <section className="relative overflow-hidden">
+      <section className="relative overflow-hidden min-h-[calc(100dvh-4rem)]">
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0"
@@ -38,7 +38,7 @@ export default function LandingSection() {
           }}
         />
 
-        <div className="relative z-10 mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 py-14 md:py-20">
+        <div className="relative z-10 mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 py-14 md:py-20 min-h-[calc(100dvh-4rem)] flex items-center justify-center">
           <div className="flex flex-col items-center text-center">
             <motion.div
               initial={{ opacity: 0, y: -8 }}
@@ -58,7 +58,7 @@ export default function LandingSection() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.05 }}
-              className="mt-5 mx-auto max-w-[26ch] sm:max-w-[30ch] md:max-w-none text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold leading-tight tracking-tight text-foreground text-center"
+              className="mt-5 mx-auto max-w-[26ch] sm:max-w-[30ch] md:max-w-none text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight text-foreground text-center"
             >
               <span className="md:block">Corretores comuns mandam</span>
               <span className="md:block">
