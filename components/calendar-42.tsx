@@ -626,7 +626,7 @@ export default function Calendar42() {
                             setLeadToCancel(lead)
                             setCancelDialogOpen(true)
                           }}
-                          className="border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-foreground cursor-pointer"
+                          className="border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white cursor-pointer"
                         >
                           Cancelar agenda
                         </Button>
@@ -743,7 +743,7 @@ export default function Calendar42() {
             </Button>
             <Button
               onClick={handleCancelSchedule}
-              className="h-9 border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-foreground"
+              className="h-9 border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white"
             >
               Cancelar agenda
             </Button>
