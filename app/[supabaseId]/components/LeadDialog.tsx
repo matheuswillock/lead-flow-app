@@ -734,7 +734,7 @@ export default function LeadDialog({
         meetingTitle: lead.meetingTitle || "",
         meetingNotes: lead.meetingNotes || "",
         meetingLink: lead.meetingLink || "",
-        meetingHeald: lead.meetingHeald === "yes" ? "yes" : undefined,
+        meetingHeald: lead.meetingHeald === "yes" ? "yes" : "no",
         extraGuests: scheduleGuests.join(", "),
         responsible: lead.assignedTo || "",
         ticket: lead.ticket ? formatCurrency(lead.ticket) : "",
@@ -758,7 +758,7 @@ export default function LeadDialog({
         meetingTitle: "",
         meetingNotes: "",
         meetingLink: "",
-        meetingHeald: undefined,
+        meetingHeald: "no",
         extraGuests: "",
         responsible: user?.usersAssociated?.[0]?.id || "",
         ticket: "",
@@ -901,8 +901,12 @@ export default function LeadDialog({
   return (
     <>
       <Dialog open={open && !showFinalizeDialog} onOpenChange={setOpen}>
-        <DialogContent className="bg-transparent border-none shadow-none p-0 w-screen max-w-screen h-screen max-h-screen flex items-center justify-center [&>button]:hidden !left-0 !top-0 !translate-x-0 !translate-y-0">
-          <div className="w-[95vw] max-w-[95vw] sm:w-[90vw] sm:max-w-[90vw] lg:w-[60vw] lg:max-w-[60vw] h-[90vh] max-h-[90vh] flex flex-col gap-2 lg:flex-row lg:items-stretch">
+        <DialogContent
+          className="bg-transparent border-none shadow-none p-0 w-[95vw] max-w-[95vw] sm:w-[90vw] sm:max-w-[90vw] lg:w-[60vw] lg:max-w-[60vw] max-h-[90vh] flex items-center justify-center [&>button]:hidden"
+          onEscapeKeyDown={() => setOpen(false)}
+          onPointerDownOutside={() => setOpen(false)}
+        >
+          <div className="w-full max-w-full h-[90vh] max-h-[90vh] flex flex-col gap-2 lg:flex-row lg:items-stretch">
             <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm flex flex-col h-full min-h-0 lg:flex-[0_0_80%] lg:h-[95%] lg:max-h-[95%] lg:self-center dialog-scrollbar overflow-y-auto">
               <DialogHeader>
                 <div className="flex items-center justify-between">
@@ -939,6 +943,11 @@ export default function LeadDialog({
                     >
                       {statusLabel}
                     </Button>
+                    {canMarkNoShow && (
+                      <Button size="sm" variant="outline" onClick={handleNoShow}>
+                        Marcar No-show
+                      </Button>
+                    )}
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -957,11 +966,6 @@ export default function LeadDialog({
                         <TooltipContent>Compartilhar lead</TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-                    {canMarkNoShow && (
-                      <Button size="sm" variant="outline" onClick={handleNoShow}>
-                        Marcar No-show
-                      </Button>
-                    )}
                     {canFinalizeContract && (
                       <Button
                         size="sm"
@@ -976,11 +980,6 @@ export default function LeadDialog({
                         Fechar Contrato
                       </Button>
                     )}
-                    <DialogClose asChild>
-                      <Button type="button" size="icon" variant="ghost" className="h-9 w-9">
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </DialogClose>
                   </div>
                 </div>
               </DialogHeader>
@@ -1018,6 +1017,11 @@ export default function LeadDialog({
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm flex flex-col min-h-0 lg:flex-[0_0_24%] lg:h-[95%] lg:max-h-[95%] lg:self-center">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-semibold">Feed de Atividades</h3>
+                <DialogClose asChild>
+                  <Button type="button" size="icon" variant="ghost" className="h-8 w-8">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </DialogClose>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 Registro de criação, comentários e mudanças importantes.
@@ -1342,7 +1346,7 @@ export default function LeadDialog({
                 disabled={!shareUrl}
               >
                 <a href={emailShare} target="_blank" rel="noreferrer">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-500/15 text-slate-200">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary">
                     <Mail className="h-5 w-5" />
                   </div>
                   <span className="text-xs">Email</span>

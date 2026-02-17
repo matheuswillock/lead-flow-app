@@ -888,16 +888,19 @@ export function LeadForm({
                         control={form.control}
                         name="contractDueDate"
                         render={({ field }) => (
-                            <FormItem>
+                            <FormItem className="">
+                                
+                                    <FormLabel className="block text-sm font-medium mb-1">Data de Vigência do Contrato</FormLabel>
                                 <FormControl>
                                     <DateTimePicker
                                         date={field.value ? new Date(field.value) : undefined}
                                         onDateChange={(date) => {
                                             field.onChange(date ? date.toISOString() : '');
                                         }}
-                                        label="Data de Vigência do Contrato"
+                                        label=""
                                         disabled={isLoading || isUpdating}
                                         disablePastDates={false}
+                                        showTime={false}
                                     />
                                 </FormControl>
                             </FormItem>
@@ -1053,7 +1056,7 @@ export function LeadForm({
                 />
             </div>
 
-            <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
+            <div className="sm:col-span-2 flex justify-end gap-2 pt-2 mb-4">
                 <Button 
                     className="cursor-pointer" 
                     type="button" 
