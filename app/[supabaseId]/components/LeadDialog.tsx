@@ -8,7 +8,7 @@ import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, Mail, MessageCircle, MessageSquare, Phone, X } from "lucide-react";
+import { Calendar, CheckCircle, Mail, MessageCircle, MessageSquare, Phone, X } from "lucide-react";
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useTeamContext } from "@/app/context/TeamContext";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext";
 
 interface LeadDialogProps {
   open: boolean;
@@ -60,7 +61,6 @@ export default function LeadDialog({
   const [newParticipantDraft, setNewParticipantDraft] = useState("");
   const [newParticipants, setNewParticipants] = useState<string[]>([]);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
-  const [scheduleTitle, setScheduleTitle] = useState<string | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [origin, setOrigin] = useState("");
@@ -68,6 +68,9 @@ export default function LeadDialog({
   const [activityBody, setActivityBody] = useState("");
   const [activitySubmitting, setActivitySubmitting] = useState(false);
   const [optimisticActivities, setOptimisticActivities] = useState<LeadActivityResponseDTO[]>([]);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [statusSelection, setStatusSelection] = useState<string>("");
+  const [statusUpdating, setStatusUpdating] = useState(false);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
@@ -98,6 +101,12 @@ export default function LeadDialog({
   useEffect(() => {
     setOptimisticActivities([]);
   }, [lead?.id]);
+
+  useEffect(() => {
+    if (lead?.status) {
+      setStatusSelection(lead.status);
+    }
+  }, [lead?.status]);
 
   const shareUrl = useMemo(() => {
     if (!lead || !origin || !lead.leadCode) return "";
@@ -138,6 +147,10 @@ export default function LeadDialog({
   const shouldShowMeetingHeald = !!lead && lead.status === "scheduled";
   const canEditMeetingHeald =
     shouldShowMeetingHeald && (isTeamMaster || activeFunctions.includes("CLOSER"));
+  const showMeetingLink = !!lead && lead.status !== "new_opportunity";
+  const statusLabel = lead
+    ? COLUMNS.find((column) => column.key === lead.status)?.title || lead.status
+    : "Status";
 
   const buildParticipantOptions = () => {
     const options: { label: string; email: string }[] = [];
@@ -314,6 +327,18 @@ export default function LeadDialog({
       default:
         return "Comentário";
     }
+  };
+
+  const isScheduleActivity = (activity: LeadActivityResponseDTO) => {
+    if (activity?.payload && typeof activity.payload === "object") {
+      const payload = activity.payload as { kind?: string };
+      if (payload.kind === "schedule") return true;
+    }
+    return (
+      activity.body?.startsWith("Agendamento") ||
+      activity.body?.startsWith("Reagendamento") ||
+      false
+    );
   };
 
   const mergedActivities = useMemo(() => {
@@ -635,6 +660,39 @@ export default function LeadDialog({
     }
   };
 
+  const handleStatusUpdate = async () => {
+    if (!lead || !supabaseId) return;
+    const nextStatus = statusSelection || lead.status;
+    if (!nextStatus || nextStatus === lead.status) {
+      setStatusDialogOpen(false);
+      return;
+    }
+    setStatusUpdating(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Erro ao atualizar status");
+      }
+      patchLead?.(lead.id, { status: nextStatus as Lead["status"] });
+      toast.success("Status atualizado");
+      setStatusDialogOpen(false);
+      await refreshLeads();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao atualizar status");
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
   useEffect(() => {
     if (lead && open) {
       const formatCurrency = (value: number): string => {
@@ -673,7 +731,7 @@ export default function LeadDialog({
         ongoingTreatment: lead.currentTreatment || "",
         additionalNotes: lead.notes || "",
         meetingDate: lead.meetingDate || "",
-        meetingTitle: lead.meetingTitle || scheduleTitle || "",
+        meetingTitle: lead.meetingTitle || "",
         meetingNotes: lead.meetingNotes || "",
         meetingLink: lead.meetingLink || "",
         meetingHeald: lead.meetingHeald === "yes" ? "yes" : undefined,
@@ -708,7 +766,7 @@ export default function LeadDialog({
         soldPlan: undefined,
       });
     }
-  }, [lead, open, form, user, scheduleGuests, scheduleTitle]);
+  }, [lead, open, form, user, scheduleGuests]);
 
   useEffect(() => {
     const fetchScheduleGuests = async () => {
@@ -728,11 +786,9 @@ export default function LeadDialog({
         const data = await response.json();
         const schedules = (data?.result || []) as Array<{
           extraGuests?: string[];
-          meetingTitle?: string | null;
         }>;
         const latest = schedules[0];
         setScheduleGuests(latest?.extraGuests || []);
-        setScheduleTitle(latest?.meetingTitle || null);
       } catch (error) {
         console.error("Erro ao carregar convidados extras:", error);
       } finally {
@@ -875,6 +931,14 @@ export default function LeadDialog({
                     )}
                   </div>
                   <div className="ml-4 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setStatusDialogOpen(true)}
+                      disabled={!lead}
+                    >
+                      {statusLabel}
+                    </Button>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -945,15 +1009,7 @@ export default function LeadDialog({
                     meetingHealdReadOnly={shouldShowMeetingHeald && !canEditMeetingHeald}
                     meetingHealdSaving={meetingHealdSaving}
                     onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
-                    meetingInfo={{
-                      date: lead?.meetingDate || null,
-                      title: lead?.meetingTitle || scheduleTitle || null,
-                      link: lead?.meetingLink || null,
-                      notes: lead?.meetingNotes || null,
-                      guests: scheduleGuests,
-                      closerName: lead?.closer?.fullName || lead?.closer?.email || null,
-                    }}
-                    onResendInvite={() => setResendDialogOpen(true)}
+                    showMeetingLink={showMeetingLink}
                   />
                 )}
               </div>
@@ -996,6 +1052,9 @@ export default function LeadDialog({
                           const initials = getInitials(authorName);
                           const fallbackEmail = activity.author?.email || "guest";
                           const avatarSrc = activity.author?.avatarUrl || `https://avatar.vercel.sh/${fallbackEmail}.png`;
+                          const activityIcon = isScheduleActivity(activity)
+                            ? <Calendar className="h-4 w-4 text-primary" />
+                            : getActivityIcon(activity.type);
                           return (
                             <div
                               key={activity.id}
@@ -1015,7 +1074,7 @@ export default function LeadDialog({
                                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                                     <span>{formatActivityDate(activity.createdAt)}</span>
                                     <span className="inline-flex items-center">
-                                      {getActivityIcon(activity.type)}
+                                      {activityIcon}
                                       <span className="sr-only">{getActivityLabel(activity.type)}</span>
                                     </span>
                                   </div>
@@ -1172,6 +1231,54 @@ export default function LeadDialog({
               </Button>
               <Button onClick={handleResendInvite}>
                 Reenviar convite
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Alterar status</DialogTitle>
+            <DialogDescription>
+              Selecione o novo status do lead.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Status</Label>
+              <Select value={statusSelection} onValueChange={setStatusSelection}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {COLUMNS.map((column) => (
+                    <SelectItem key={column.key} value={column.key}>
+                      {column.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setStatusDialogOpen(false)}
+                disabled={statusUpdating}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleStatusUpdate}
+                disabled={
+                  statusUpdating ||
+                  !lead ||
+                  !statusSelection ||
+                  statusSelection === lead?.status
+                }
+              >
+                {statusUpdating ? "Salvando..." : "Confirmar"}
               </Button>
             </div>
           </div>

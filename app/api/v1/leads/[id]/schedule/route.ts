@@ -26,11 +26,18 @@ const formatMeetingDate = (date: Date) =>
     minute: "2-digit",
   });
 
-const formatParticipant = (label: string, name?: string | null, email?: string | null) => {
-  if (!name && !email) return null;
-  const displayName = name || email;
-  const displayEmail = email && email !== displayName ? ` (${email})` : "";
-  return `- ${label}: ${displayName}${displayEmail}`;
+const buildUniqueEmails = (emails: Array<string | null | undefined>) => {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const email of emails) {
+    if (!email) continue;
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(normalized);
+  }
+  return unique;
 };
 
 export async function POST(
@@ -219,26 +226,13 @@ export async function POST(
       const schedulerLabel = schedulerProfile?.fullName || schedulerProfile?.email || "Usuário";
       const actionLabel = existingSchedule ? "Reagendamento feito por" : "Agendamento feito por";
 
-      const participantLines: string[] = [];
-      const leadLine = formatParticipant("Lead", lead.name, lead.email);
-      if (leadLine) participantLines.push(leadLine);
-      const closerLine = formatParticipant(
-        "Closer",
-        closerProfile.fullName,
-        closerProfile.email
-      );
-      if (closerLine) participantLines.push(closerLine);
-      const sdrLine = formatParticipant(
-        "SDR",
-        lead.assignee?.fullName,
-        lead.assignee?.email
-      );
-      if (sdrLine) participantLines.push(sdrLine);
-      (extraGuests ?? []).forEach((guestEmail) => {
-        if (guestEmail) {
-          participantLines.push(`- Convidado: ${guestEmail}`);
-        }
-      });
+      const participants = buildUniqueEmails([
+        lead.email,
+        closerProfile.email,
+        lead.assignee?.email,
+        ...(extraGuests ?? []),
+      ]);
+      const participantLines = participants.map((email) => `• ${email}`);
 
       const bodyLines = [
         `${actionLabel} ${schedulerLabel} para ${formatMeetingDate(meetingDate)}.`,
@@ -253,8 +247,10 @@ export async function POST(
           type: "note",
           body: bodyLines.join("\n"),
           payload: {
+            kind: "schedule",
             meetingDate: meetingDate.toISOString(),
             meetingTitle: resolvedMeetingTitle,
+            participants,
           },
           createdBy: teamAccess.access.profileId,
         },
