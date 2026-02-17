@@ -336,7 +336,7 @@ export default function AccountProfilePage() {
       const params: SignInWithOAuthCredentials = {
         provider: "google",
         options: {
-          scopes: "https://www.googleapis.com/auth/calendar.events",
+          scopes: "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
           redirectTo,
           queryParams: {
             access_type: "offline",

@@ -4,6 +4,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { z } from "zod";
 import { upsertCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
+import { emailService } from "@/lib/services/EmailService";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 
 const scheduleSchema = z.object({
@@ -57,6 +58,7 @@ export async function POST(
       include: {
         manager: true,
         closer: true,
+        assignee: true,
       },
     });
 
@@ -68,26 +70,36 @@ export async function POST(
     // Verificar se já existe um agendamento para este lead
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
 
-    const closerProfile = closerId
-      ? await prisma.profile.findUnique({
-          where: { id: closerId },
-          select: { email: true },
-        })
-      : lead.closer;
+    const resolvedCloserId = closerId || lead.closerId;
+    if (!resolvedCloserId) {
+      const output = new Output(false, [], ["Selecione um closer para a reunião."], null);
+      return NextResponse.json(output, { status: 400 });
+    }
 
-    const closerEmail = closerProfile?.email || null;
-    const resolvedMeetingTitle = meetingTitle || `Reunião com ${lead.name}`;
+    const closerProfile = await prisma.profile.findUnique({
+      where: { id: resolvedCloserId },
+    });
 
-    const canUseGoogleCalendar = !!lead.manager.googleCalendarConnected && !!lead.manager.googleRefreshToken;
+    if (!closerProfile || !closerProfile.email) {
+      const output = new Output(false, [], ["Closer não encontrado ou sem e-mail válido."], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
+    const closerEmail = closerProfile.email;
+    const sdrEmail = lead.assignee?.email || null;
+    const resolvedMeetingTitle = meetingTitle || `Estudo Plano de Saúde: ${lead.name}`;
+
+    const canUseGoogleCalendar = !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
     let calendarResult: { eventId: string; calendarId: string; meetLink?: string | null } | null = null;
     let calendarWarning: string | null = null;
 
     if (canUseGoogleCalendar) {
       try {
         calendarResult = await upsertCalendarEvent({
-          organizer: lead.manager,
+          organizer: closerProfile,
           lead,
           closerEmail,
+          sdrEmail,
           meetingDate,
           meetingTitle: resolvedMeetingTitle,
           notes,
@@ -135,6 +147,36 @@ export async function POST(
         googleCalendarId: calendarResult?.calendarId,
       });
       message = "Agendamento criado com sucesso";
+    }
+
+    if (!canUseGoogleCalendar) {
+      const attendeeEmails = [
+        lead.email,
+        closerEmail,
+        sdrEmail,
+        ...(extraGuests ?? []),
+      ]
+        .filter(Boolean)
+        .map((email) => (email as string).trim().toLowerCase())
+        .filter((email, index, list) => list.indexOf(email) === index);
+
+      if (attendeeEmails.length > 0) {
+        const organizerName = closerProfile.fullName || closerProfile.email;
+        const emailResult = await emailService.sendMeetingInviteEmail({
+          to: attendeeEmails,
+          leadName: lead.name,
+          meetingTitle: resolvedMeetingTitle,
+          meetingDate,
+          meetingLink: resolvedMeetingLink,
+          organizerName,
+        });
+        if (!emailResult.success) {
+          console.warn("Erro ao enviar convites por e-mail:", emailResult.error);
+          if (!calendarWarning) {
+            calendarWarning = "Convite por e-mail não pôde ser enviado.";
+          }
+        }
+      }
     }
 
     // Atualizar o campo meetingDate do lead

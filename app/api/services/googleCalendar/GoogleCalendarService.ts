@@ -33,7 +33,7 @@ function getOAuthCredentials() {
 
 function getEventEnd(start: Date) {
   const end = new Date(start);
-  end.setHours(end.getHours() + 1);
+  end.setMinutes(end.getMinutes() + 30);
   return end;
 }
 
@@ -147,14 +147,51 @@ async function googleCalendarFetch<T>(url: string, accessToken: string, options:
   }
 }
 
+export async function getCalendarBusyIntervals({
+  organizer,
+  timeMin,
+  timeMax,
+  calendarId = "primary",
+}: {
+  organizer: Profile;
+  timeMin: string;
+  timeMax: string;
+  calendarId?: string;
+}): Promise<Array<{ start: string; end: string }>> {
+  const accessToken = await getValidAccessToken(organizer);
+  const url = `${GOOGLE_CALENDAR_API}/freeBusy`;
+  const body = {
+    timeMin,
+    timeMax,
+    timeZone: DEFAULT_TIMEZONE,
+    items: [{ id: calendarId }],
+  };
+
+  const response = await googleCalendarFetch<any>(url, accessToken, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+  const busy = response?.calendars?.[calendarId]?.busy;
+  if (!Array.isArray(busy)) {
+    return [];
+  }
+
+  return busy
+    .filter((item: any) => item?.start && item?.end)
+    .map((item: any) => ({ start: item.start, end: item.end }));
+}
+
 export async function resendCalendarInvite({
   organizer,
   eventId,
   calendarId = "primary",
+  attendeeEmails,
 }: {
   organizer: Profile;
   eventId: string;
   calendarId?: string;
+  attendeeEmails?: string[];
 }): Promise<void> {
   const accessToken = await getValidAccessToken(organizer);
   const baseUrl = `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`;
@@ -167,10 +204,12 @@ export async function resendCalendarInvite({
 
   const body: Record<string, unknown> = {
     summary: event.summary,
-    description: event.description,
+    description: "Reunião agendada pelo Corretor Studio.",
     start: event.start,
     end: event.end,
-    attendees: event.attendees,
+    attendees: attendeeEmails
+      ? attendeeEmails.map((email) => ({ email }))
+      : event.attendees,
   };
 
   if (event.location) {
@@ -206,6 +245,7 @@ export async function upsertCalendarEvent({
   organizer,
   lead,
   closerEmail,
+  sdrEmail,
   meetingDate,
   meetingTitle,
   notes,
@@ -216,6 +256,7 @@ export async function upsertCalendarEvent({
   organizer: Profile;
   lead: Lead;
   closerEmail?: string | null;
+  sdrEmail?: string | null;
   meetingDate: Date;
   meetingTitle?: string | null;
   notes?: string | null;
@@ -231,7 +272,7 @@ export async function upsertCalendarEvent({
   const attendeeEmails = [
     lead.email,
     closerEmail,
-    organizer.email,
+    sdrEmail,
     ...(extraGuests ?? []),
   ]
     .filter(Boolean)
@@ -239,10 +280,11 @@ export async function upsertCalendarEvent({
     .filter((email, index, list) => list.indexOf(email) === index);
   const attendees = attendeeEmails.map((email) => ({ email }));
 
-  const summary = meetingTitle || `Reuniao com ${lead.name}`;
+  const summary = meetingTitle || `Estudo Plano de Saúde: ${lead.name}`;
+  const description = "Reunião agendada pelo Corretor Studio.";
   const body: Record<string, unknown> = {
     summary,
-    description: notes || `Lead ${lead.name} agendado pelo Lead Flow`,
+    description,
     start: { dateTime: meetingDate.toISOString(), timeZone: DEFAULT_TIMEZONE },
     end: { dateTime: endTime.toISOString(), timeZone: DEFAULT_TIMEZONE },
     attendees,

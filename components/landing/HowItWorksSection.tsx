@@ -121,6 +121,7 @@ export function HowItWorksSection() {
           </div>
         </div>
 
+        {/*
         <MotionDiv
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -154,6 +155,7 @@ export function HowItWorksSection() {
             </a>
           </div>
         </MotionDiv>
+        */}
       </div>
     </section>
   )

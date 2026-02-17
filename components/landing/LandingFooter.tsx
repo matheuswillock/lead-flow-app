@@ -9,7 +9,7 @@ const footerLinks = {
     links: [
       { label: "Funcionalidades", href: "#features" },
       { label: "Como Funciona", href: "#how-it-works" },
-      { label: "Preços", href: "#pricing" },
+      { label: "Demonstração", href: "#demo" },
       { label: "Roadmap", href: "#" }
     ]
   },

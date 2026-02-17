@@ -13,6 +13,18 @@ export function LandingHeader() {
                     <span>Corretor Studio</span>
                 </Link>
 
+                <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-muted-foreground">
+                    <Link href="/#features" className="hover:text-foreground transition-colors">
+                        Funcionalidades
+                    </Link>
+                    <Link href="/#how-it-works" className="hover:text-foreground transition-colors">
+                        Como funciona
+                    </Link>
+                    <Link href="/#demo" className="hover:text-foreground transition-colors">
+                        Demonstração
+                    </Link>
+                </nav>
+
                 <Button
                     className="cursor-pointer inline-flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-lg font-semibold text-foreground/80 hover:text-foreground "
                     variant="link"

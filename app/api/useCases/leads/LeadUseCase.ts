@@ -444,7 +444,7 @@ export class LeadUseCase implements ILeadUseCase {
       // Se o status for scheduled, criar ou atualizar registro na tabela LeadsSchedule
       if (status === LeadStatus.scheduled) {
         const meetingDate = existingLead.meetingDate || new Date();
-        const fallbackMeetingTitle = existingLead.meetingTitle || `Reuniao com ${existingLead.name}`;
+        const fallbackMeetingTitle = existingLead.meetingTitle || `Estudo Plano de Saúde: ${existingLead.name}`;
         
         // Verificar se já existe um agendamento para este lead
         const existingSchedule = await leadScheduleRepository.findLatestByLeadId(id);
@@ -457,15 +457,18 @@ export class LeadUseCase implements ILeadUseCase {
             include: {
               manager: true,
               closer: true,
+              assignee: true,
             },
           });
 
-          if (leadWithManager?.manager.googleCalendarConnected && leadWithManager.manager.googleRefreshToken) {
+          const closerProfile = leadWithManager?.closer;
+          if (closerProfile && closerProfile.googleCalendarConnected && closerProfile.googleRefreshToken) {
             try {
               calendarEventResult = await upsertCalendarEvent({
-                organizer: leadWithManager.manager,
+                organizer: closerProfile,
                 lead: leadWithManager,
-                closerEmail: leadWithManager.closer?.email || null,
+                closerEmail: closerProfile.email || null,
+                sdrEmail: leadWithManager.assignee?.email || null,
                 meetingDate,
                 meetingTitle: existingLead.meetingTitle || undefined,
                 notes: existingLead.meetingNotes || undefined,
