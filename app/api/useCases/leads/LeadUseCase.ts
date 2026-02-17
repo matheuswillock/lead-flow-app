@@ -341,10 +341,12 @@ export class LeadUseCase implements ILeadUseCase {
       if (!profileInfo) {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
+      const actorLabel = profileInfo.fullName || profileInfo.email || "Usuário";
 
       const shouldTrackAssignment = data.assignedTo !== undefined;
       const shouldTrackCloser = data.closerId !== undefined;
-      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser;
+      const shouldTrackMeetingHeald = data.meetingHeald !== undefined;
+      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald;
       const existingLead = shouldTrackChanges ? await this.leadRepository.findById(id) : null;
       if (shouldTrackChanges && !existingLead) {
         return new Output(false, [], ["Lead não encontrado"], null);
@@ -391,9 +393,16 @@ export class LeadUseCase implements ILeadUseCase {
       updateData.updater = { connect: { id: profileInfo.id } };
 
       const lead = await this.leadRepository.update(id, updateData);
+      const leadWithRelations = lead as typeof lead & {
+        assignee?: { fullName?: string | null; email?: string | null };
+        closer?: { fullName?: string | null; email?: string | null };
+      };
 
       if (shouldTrackAssignment && existingLead?.assignedTo !== data.assignedTo) {
-        const assigneeLabel = lead.assignee?.fullName || lead.assignee?.email || "Responsável";
+        const assigneeLabel =
+          leadWithRelations.assignee?.fullName ||
+          leadWithRelations.assignee?.email ||
+          "Responsável";
         try {
           await prisma.leadActivity.create({
             data: {
@@ -414,7 +423,7 @@ export class LeadUseCase implements ILeadUseCase {
 
       if (shouldTrackCloser && existingLead?.closerId !== data.closerId) {
         const closerLabel = data.closerId
-          ? (lead.closer?.fullName || lead.closer?.email || "Closer")
+          ? (leadWithRelations.closer?.fullName || leadWithRelations.closer?.email || "Closer")
           : "Nenhum closer";
         try {
           await prisma.leadActivity.create({
@@ -431,6 +440,29 @@ export class LeadUseCase implements ILeadUseCase {
           });
         } catch (error) {
           console.warn("Não foi possível registrar atividade de alteração de closer:", error);
+        }
+      }
+
+      if (
+        shouldTrackMeetingHeald &&
+        existingLead?.meetingHeald !== data.meetingHeald &&
+        data.meetingHeald === "yes"
+      ) {
+        try {
+          await prisma.leadActivity.create({
+            data: {
+              leadId: id,
+              type: ActivityType.note,
+              body: `Reunião marcada como realizada por ${actorLabel}`,
+              payload: {
+                previousMeetingHeald: existingLead?.meetingHeald ?? null,
+                meetingHeald: data.meetingHeald ?? null,
+              },
+              createdBy: profileInfo.id,
+            },
+          });
+        } catch (error) {
+          console.warn("Não foi possível registrar atividade de reunião realizada:", error);
         }
       }
 
@@ -480,6 +512,7 @@ export class LeadUseCase implements ILeadUseCase {
       if (!profileInfo) {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
+      const actorLabel = profileInfo.fullName || profileInfo.email || "Usuário";
 
       // Buscar o lead para obter informações
       const existingLead = await this.leadRepository.findById(id);
@@ -611,6 +644,25 @@ export class LeadUseCase implements ILeadUseCase {
         } catch (error) {
           console.warn("Não foi possível registrar atividade de status:", error);
         }
+
+        if (status === LeadStatus.no_show) {
+          try {
+            await prisma.leadActivity.create({
+              data: {
+                leadId: id,
+                type: ActivityType.note,
+                body: `No-show marcado por ${actorLabel}`,
+                payload: {
+                  from: existingLead.status,
+                  to: status,
+                },
+                createdBy: profileInfo.id,
+              },
+            });
+          } catch (error) {
+            console.warn("Não foi possível registrar atividade de no-show:", error);
+          }
+        }
       }
 
       return new Output(true, ["Status do lead atualizado com sucesso"], [], this.transformToDTO(lead));
@@ -635,9 +687,15 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const lead = await this.leadRepository.assignToOperator(id, operatorId);
+      const leadWithRelations = lead as typeof lead & {
+        assignee?: { fullName?: string | null; email?: string | null };
+      };
 
       if (existingLead.assignedTo !== operatorId) {
-        const assigneeLabel = lead.assignee?.fullName || lead.assignee?.email || "Responsável";
+        const assigneeLabel =
+          leadWithRelations.assignee?.fullName ||
+          leadWithRelations.assignee?.email ||
+          "Responsável";
         try {
           await prisma.leadActivity.create({
             data: {

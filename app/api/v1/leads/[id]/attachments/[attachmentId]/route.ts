@@ -83,7 +83,7 @@ export async function DELETE(
       return NextResponse.json(output, { status: 404 });
     }
 
-    const result = await leadAttachmentUseCase.deleteAttachment(attachmentId, leadId);
+    const result = await leadAttachmentUseCase.deleteAttachment(attachmentId, leadId, profile.id);
 
     return NextResponse.json(result, { status: result.isValid ? 200 : 400 });
   } catch (error) {

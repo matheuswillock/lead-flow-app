@@ -961,7 +961,7 @@ export default function LeadDialog({
 
             <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm flex flex-col min-h-0 lg:flex-[0_0_24%] lg:h-[95%] lg:max-h-[95%] lg:self-center">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold">Atividades</h3>
+                <h3 className="text-base font-semibold">Feed de Atividades</h3>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 Registro de criação, comentários e mudanças importantes.

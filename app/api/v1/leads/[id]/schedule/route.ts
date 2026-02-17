@@ -26,6 +26,13 @@ const formatMeetingDate = (date: Date) =>
     minute: "2-digit",
   });
 
+const formatParticipant = (label: string, name?: string | null, email?: string | null) => {
+  if (!name && !email) return null;
+  const displayName = name || email;
+  const displayEmail = email && email !== displayName ? ` (${email})` : "";
+  return `- ${label}: ${displayName}${displayEmail}`;
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -205,12 +212,46 @@ export async function POST(
     });
 
     try {
-      const actionLabel = existingSchedule ? "Reunião atualizada" : "Reunião agendada";
+      const schedulerProfile = await prisma.profile.findUnique({
+        where: { id: teamAccess.access.profileId },
+        select: { fullName: true, email: true },
+      });
+      const schedulerLabel = schedulerProfile?.fullName || schedulerProfile?.email || "Usuário";
+      const actionLabel = existingSchedule ? "Reagendamento feito por" : "Agendamento feito por";
+
+      const participantLines: string[] = [];
+      const leadLine = formatParticipant("Lead", lead.name, lead.email);
+      if (leadLine) participantLines.push(leadLine);
+      const closerLine = formatParticipant(
+        "Closer",
+        closerProfile.fullName,
+        closerProfile.email
+      );
+      if (closerLine) participantLines.push(closerLine);
+      const sdrLine = formatParticipant(
+        "SDR",
+        lead.assignee?.fullName,
+        lead.assignee?.email
+      );
+      if (sdrLine) participantLines.push(sdrLine);
+      (extraGuests ?? []).forEach((guestEmail) => {
+        if (guestEmail) {
+          participantLines.push(`- Convidado: ${guestEmail}`);
+        }
+      });
+
+      const bodyLines = [
+        `${actionLabel} ${schedulerLabel} para ${formatMeetingDate(meetingDate)}.`,
+      ];
+      if (participantLines.length > 0) {
+        bodyLines.push("Participantes:", ...participantLines);
+      }
+
       await prisma.leadActivity.create({
         data: {
           leadId,
           type: "note",
-          body: `${actionLabel} para ${formatMeetingDate(meetingDate)}`,
+          body: bodyLines.join("\n"),
           payload: {
             meetingDate: meetingDate.toISOString(),
             meetingTitle: resolvedMeetingTitle,

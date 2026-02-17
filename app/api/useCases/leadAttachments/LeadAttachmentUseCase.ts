@@ -2,6 +2,7 @@ import { Output } from "@/lib/output";
 import { ILeadAttachmentUseCase } from "./ILeadAttachmentUseCase";
 import { leadAttachmentService } from "@/app/api/services/LeadAttachment/LeadAttachmentService";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { ActivityType } from "@prisma/client";
 
 export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
   /**
@@ -40,11 +41,13 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
         );
       }
 
+      const resolvedFileName = uploadResult.fileName || file.name;
+
       // Salvar registro no banco de dados
       const attachment = await prisma.leadAttachment.create({
         data: {
           leadId,
-          fileName: uploadResult.fileName || file.name,
+          fileName: resolvedFileName,
           fileUrl: uploadResult.publicUrl,
           storagePath: uploadResult.fileId, // Caminho do arquivo no storage
           fileType: uploadResult.fileType || file.type,
@@ -62,6 +65,24 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
         },
       });
 
+      try {
+        await prisma.leadActivity.create({
+          data: {
+            leadId,
+            type: ActivityType.note,
+            body: `Arquivo enviado: ${resolvedFileName}`,
+            payload: {
+              fileName: resolvedFileName,
+              fileType: uploadResult.fileType || file.type,
+              fileSize: uploadResult.fileSize || file.size,
+            },
+            createdBy: uploadedBy,
+          },
+        });
+      } catch (error) {
+        console.warn("Não foi possível registrar atividade de upload de anexo:", error);
+      }
+
       return new Output(true, ["File uploaded successfully"], [], attachment);
     } catch (error) {
       console.error("Error uploading attachment:", error);
@@ -77,7 +98,7 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
   /**
    * Deleta um attachment do storage e do banco de dados
    */
-  async deleteAttachment(attachmentId: string, leadId: string): Promise<Output> {
+  async deleteAttachment(attachmentId: string, leadId: string, deletedBy: string): Promise<Output> {
     try {
       // Buscar attachment no banco
       const attachment = await prisma.leadAttachment.findUnique({
@@ -109,6 +130,24 @@ export class LeadAttachmentUseCase implements ILeadAttachmentUseCase {
       await prisma.leadAttachment.delete({
         where: { id: attachmentId },
       });
+
+      try {
+        await prisma.leadActivity.create({
+          data: {
+            leadId,
+            type: ActivityType.note,
+            body: `Arquivo removido: ${attachment.fileName}`,
+            payload: {
+              fileName: attachment.fileName,
+              fileType: attachment.fileType,
+              fileSize: attachment.fileSize,
+            },
+            createdBy: deletedBy,
+          },
+        });
+      } catch (error) {
+        console.warn("Não foi possível registrar atividade de remoção de anexo:", error);
+      }
 
       return new Output(true, ["Anexo deletado com sucesso"], [], null);
     } catch (error) {
