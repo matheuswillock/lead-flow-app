@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ActivityType } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
-import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import { getTeamAccess, hasLeadActivityAccess } from "@/app/api/v1/utils/teamAccess";
 
 const activitySchema = z.object({
   type: z.enum(["note", "call", "whatsapp", "email"]),
@@ -19,8 +19,8 @@ export async function POST(
     if (teamAccess.error) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
-    if (!hasLeadAccess(teamAccess.access.teamMember)) {
-      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+    if (!hasLeadActivityAccess(teamAccess.access.teamMember)) {
+      const output = new Output(false, [], ["Acesso negado: função SDR ou CLOSER necessária para registrar atividades."], null);
       return NextResponse.json(output, { status: 403 });
     }
 

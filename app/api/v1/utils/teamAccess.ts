@@ -85,3 +85,11 @@ export function hasLeadAccess(teamMember: { role: UserRole; functions: UserFunct
 
   return teamMember.functions?.includes("SDR");
 }
+
+export function hasLeadActivityAccess(teamMember: { role: UserRole; functions: UserFunction[] }) {
+  if (teamMember.role === "manager") {
+    return true;
+  }
+
+  return teamMember.functions?.includes("SDR") || teamMember.functions?.includes("CLOSER");
+}

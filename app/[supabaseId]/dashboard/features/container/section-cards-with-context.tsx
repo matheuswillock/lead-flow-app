@@ -390,7 +390,7 @@ export function SectionCardsWithContext() {
       </div>
 
       {/* SEÇÃO 3: REUNIÕES REALIZADAS */}
-      <div>
+      {/* <div>
         <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
           📅 Reuniões realizadas
         </h3>
@@ -445,7 +445,7 @@ export function SectionCardsWithContext() {
             </CardFooter>
           </Card>
         </div>
-      </div>
+      </div> */}
 
       {/* SEÇÃO 3: INDICADORES DE PERFORMANCE */}
       <div>
