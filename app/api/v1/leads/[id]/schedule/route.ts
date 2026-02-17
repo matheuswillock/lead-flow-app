@@ -16,6 +16,16 @@ const scheduleSchema = z.object({
   extraGuests: z.array(z.string().email("Email inválido")).optional(),
 });
 
+const formatMeetingDate = (date: Date) =>
+  date.toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -66,6 +76,9 @@ export async function POST(
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
     }
+
+    const previousCloserId = lead.closerId ?? null;
+    const shouldLogCloserChange = !!closerId && closerId !== previousCloserId;
 
     // Verificar se já existe um agendamento para este lead
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
@@ -190,6 +203,45 @@ export async function POST(
         ...(closerId ? { closerId } : {}),
       },
     });
+
+    try {
+      const actionLabel = existingSchedule ? "Reunião atualizada" : "Reunião agendada";
+      await prisma.leadActivity.create({
+        data: {
+          leadId,
+          type: "note",
+          body: `${actionLabel} para ${formatMeetingDate(meetingDate)}`,
+          payload: {
+            meetingDate: meetingDate.toISOString(),
+            meetingTitle: resolvedMeetingTitle,
+          },
+          createdBy: teamAccess.access.profileId,
+        },
+      });
+    } catch (error) {
+      console.warn("Não foi possível registrar atividade de agendamento:", error);
+    }
+
+    if (shouldLogCloserChange) {
+      try {
+        const newCloserId = closerId as string;
+        const closerLabel = closerProfile.fullName || closerProfile.email || "Closer";
+        await prisma.leadActivity.create({
+          data: {
+            leadId,
+            type: "note",
+            body: `Closer alterado para ${closerLabel}`,
+            payload: {
+              previousCloserId,
+              closerId: newCloserId,
+            },
+            createdBy: teamAccess.access.profileId,
+          },
+        });
+      } catch (error) {
+        console.warn("Não foi possível registrar atividade de alteração de closer:", error);
+      }
+    }
 
     const successMessages = [message];
     if (calendarWarning) {

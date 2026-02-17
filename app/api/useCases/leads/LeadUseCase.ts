@@ -13,6 +13,24 @@ import { upsertCalendarEvent } from "../../services/googleCalendar/GoogleCalenda
 import { prisma } from "../../infra/data/prisma";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "../../v1/leads/DTO/leadValueLimits";
 
+const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+  new_opportunity: "Nova oportunidade",
+  scheduled: "Agendado",
+  no_show: "No Show",
+  pricingRequest: "Cotação",
+  offerNegotiation: "Negociação",
+  pending_documents: "Documentos pendentes",
+  offerSubmission: "Proposta",
+  dps_agreement: "DPS | Contrato",
+  invoicePayment: "Boleto",
+  disqualified: "Desqualificado",
+  opportunityLost: "Perdido",
+  operator_denied: "Negado operadora",
+  contract_finalized: "Negócio fechado",
+};
+
+const getStatusLabel = (status: LeadStatus) => LEAD_STATUS_LABELS[status] ?? status;
+
 export class LeadUseCase implements ILeadUseCase {
   constructor(
     private leadRepository: ILeadRepository,
@@ -324,6 +342,14 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
+      const shouldTrackAssignment = data.assignedTo !== undefined;
+      const shouldTrackCloser = data.closerId !== undefined;
+      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser;
+      const existingLead = shouldTrackChanges ? await this.leadRepository.findById(id) : null;
+      if (shouldTrackChanges && !existingLead) {
+        return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
       const updateData: any = {};
       
       if (data.name !== undefined) updateData.name = data.name;
@@ -365,6 +391,48 @@ export class LeadUseCase implements ILeadUseCase {
       updateData.updater = { connect: { id: profileInfo.id } };
 
       const lead = await this.leadRepository.update(id, updateData);
+
+      if (shouldTrackAssignment && existingLead?.assignedTo !== data.assignedTo) {
+        const assigneeLabel = lead.assignee?.fullName || lead.assignee?.email || "Responsável";
+        try {
+          await prisma.leadActivity.create({
+            data: {
+              leadId: id,
+              type: ActivityType.note,
+              body: `Lead atribuído para ${assigneeLabel}`,
+              payload: {
+                previousAssignedTo: existingLead?.assignedTo ?? null,
+                assignedTo: data.assignedTo ?? null,
+              },
+              createdBy: profileInfo.id,
+            },
+          });
+        } catch (error) {
+          console.warn("Não foi possível registrar atividade de atribuição:", error);
+        }
+      }
+
+      if (shouldTrackCloser && existingLead?.closerId !== data.closerId) {
+        const closerLabel = data.closerId
+          ? (lead.closer?.fullName || lead.closer?.email || "Closer")
+          : "Nenhum closer";
+        try {
+          await prisma.leadActivity.create({
+            data: {
+              leadId: id,
+              type: ActivityType.note,
+              body: `Closer alterado para ${closerLabel}`,
+              payload: {
+                previousCloserId: existingLead?.closerId ?? null,
+                closerId: data.closerId ?? null,
+              },
+              createdBy: profileInfo.id,
+            },
+          });
+        } catch (error) {
+          console.warn("Não foi possível registrar atividade de alteração de closer:", error);
+        }
+      }
 
       return new Output(true, ["Lead atualizado com sucesso"], [], this.transformToDTO(lead));
     } catch (error) {
@@ -522,6 +590,29 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
+      if (existingLead.status !== status) {
+        const fromLabel = getStatusLabel(existingLead.status);
+        const toLabel = getStatusLabel(status);
+        try {
+          await prisma.leadActivity.create({
+            data: {
+              leadId: id,
+              type: ActivityType.status_change,
+              body: `Status alterado de ${fromLabel} para ${toLabel}`,
+              payload: {
+                from: existingLead.status,
+                to: status,
+                fromLabel,
+                toLabel,
+              },
+              createdBy: profileInfo.id,
+            },
+          });
+        } catch (error) {
+          console.warn("Não foi possível registrar atividade de status:", error);
+        }
+      }
+
       return new Output(true, ["Status do lead atualizado com sucesso"], [], this.transformToDTO(lead));
     } catch (error) {
       console.error("Erro ao atualizar status do lead:", error);
@@ -538,7 +629,33 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
+      const existingLead = await this.leadRepository.findById(id);
+      if (!existingLead) {
+        return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
       const lead = await this.leadRepository.assignToOperator(id, operatorId);
+
+      if (existingLead.assignedTo !== operatorId) {
+        const assigneeLabel = lead.assignee?.fullName || lead.assignee?.email || "Responsável";
+        try {
+          await prisma.leadActivity.create({
+            data: {
+              leadId: id,
+              type: ActivityType.note,
+              body: `Lead atribuído para ${assigneeLabel}`,
+              payload: {
+                previousAssignedTo: existingLead.assignedTo ?? null,
+                assignedTo: operatorId,
+              },
+              createdBy: profileInfo.id,
+            },
+          });
+        } catch (error) {
+          console.warn("Não foi possível registrar atividade de atribuição:", error);
+        }
+      }
+
       return new Output(true, ["Lead atribuído ao operador com sucesso"], [], this.transformToDTO(lead));
     } catch (error) {
       console.error("Erro ao atribuir lead ao operador:", error);
@@ -682,6 +799,7 @@ export class LeadUseCase implements ILeadUseCase {
               id: activity.author.id,
               fullName: activity.author.fullName,
               email: activity.author.email,
+              avatarUrl: activity.author.profileIconUrl || null,
             }
           })
         }))

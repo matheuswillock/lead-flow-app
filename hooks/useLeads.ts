@@ -373,8 +373,16 @@ export function useLead(id: string) {
         throw new Error('Erro ao buscar lead');
       }
 
-      const data: LeadResponseDTO = await response.json();
-      setLead(data);
+      const data = await response.json();
+      if (data?.isValid) {
+        setLead(data.result as LeadResponseDTO);
+      } else {
+        const message = Array.isArray(data?.errorMessages) && data.errorMessages.length > 0
+          ? data.errorMessages.join(", ")
+          : "Erro ao buscar lead";
+        setLead(null);
+        setError(message);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
     } finally {

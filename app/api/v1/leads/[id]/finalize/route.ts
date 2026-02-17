@@ -108,6 +108,7 @@ export async function POST(
             finalizedDateAt,
             duration: durationInDays,
           },
+          createdBy: teamAccess.access.profileId,
         },
       }),
     ]);
