@@ -58,8 +58,15 @@ export function ScheduleMeetingDialog({
   const [extraGuests, setExtraGuests] = useState<string[]>([]);
   const [extraGuestsDraft, setExtraGuestsDraft] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableTimes, setAvailableTimes] = useState<string[] | null>(null);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const members = teamMembers && teamMembers.length > 0 ? teamMembers : closers;
-  const canSubmit = !!meetingDate && meetingTitle.trim().length > 0 && !!closerId;
+  const canSubmit =
+    !!meetingDate &&
+    meetingTitle.trim().length > 0 &&
+    !!closerId &&
+    (!availableTimes || availableTimes.length > 0);
 
   useEffect(() => {
     if (!open) return;
@@ -74,6 +81,79 @@ export function ScheduleMeetingDialog({
       setCloserId(closers[0].id);
     }
   }, [open, lead, closers]);
+
+  const toDateKey = (date: Date) =>
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+
+  const formatTime = (date: Date) =>
+    date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+  useEffect(() => {
+    if (!open || !meetingDate || !closerId || !supabaseId) {
+      setAvailableTimes(null);
+      setAvailabilityError(null);
+      return;
+    }
+
+    const dateKey = toDateKey(meetingDate);
+    let isMounted = true;
+
+    const fetchAvailability = async () => {
+      setAvailabilityLoading(true);
+      setAvailabilityError(null);
+      try {
+        const response = await fetch("/api/v1/calendar/availability", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId || "",
+          },
+          body: JSON.stringify({ closerId, date: dateKey }),
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result?.isValid) {
+          throw new Error(result?.errorMessages?.join(", ") || "Erro ao buscar disponibilidade.");
+        }
+
+        const times = result?.result?.availableTimes ?? [];
+        if (!isMounted) return;
+        setAvailableTimes(times);
+
+        if (meetingDate) {
+          const currentTime = formatTime(meetingDate);
+          if (times.length > 0 && !times.includes(currentTime)) {
+            const [hours, minutes] = times[0].split(":").map(Number);
+            const nextDate = new Date(meetingDate);
+            nextDate.setHours(hours, minutes, 0, 0);
+            setMeetingDate(nextDate);
+          }
+        }
+      } catch (error) {
+        if (!isMounted) return;
+        setAvailableTimes(null);
+        setAvailabilityError(
+          error instanceof Error ? error.message : "Erro ao buscar disponibilidade."
+        );
+      } finally {
+        if (isMounted) {
+          setAvailabilityLoading(false);
+        }
+      }
+    };
+
+    fetchAvailability();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open, meetingDate, closerId, supabaseId, activeTeamId]);
 
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -235,7 +315,17 @@ export function ScheduleMeetingDialog({
               label="Data e Horário da Reunião"
               required
               disablePastDates
+              availableTimes={availableTimes ?? undefined}
             />
+            {availabilityLoading && (
+              <p className="text-xs text-muted-foreground">Carregando horários disponíveis...</p>
+            )}
+            {availabilityError && (
+              <p className="text-xs text-destructive">{availabilityError}</p>
+            )}
+            {availableTimes && availableTimes.length === 0 && !availabilityLoading && !availabilityError && (
+              <p className="text-xs text-muted-foreground">Nenhum horário disponível para este dia.</p>
+            )}
 
             {/* Titulo da reuniao */}
             <div className="grid gap-2">
