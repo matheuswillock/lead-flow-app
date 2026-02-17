@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"  
-import { LayoutDashboard, KanbanSquare, ChartBarBig, Users, HeartPulse, CalendarDays, Users2 } from "lucide-react"
+import Image from "next/image"
+import { LayoutDashboard, KanbanSquare, ChartBarBig, Users, CalendarDays, Users2 } from "lucide-react"
 
 import {
   Sidebar,
@@ -50,9 +51,14 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       <SidebarHeader>
         <div className="flex items-start justify-between flex-col gap-3">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-              <HeartPulse className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <Image
+              src="/corretor-studio-icon.svg"
+              alt="Corretor Studio"
+              width={32}
+              height={32}
+              className="h-8 w-8"
+              priority
+            />
             <span className="text-base font-semibold">Corretor Studio</span>
           </div>
           {teams.length > 0 ? (

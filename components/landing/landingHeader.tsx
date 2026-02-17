@@ -1,15 +1,21 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "../ui/button";
-import { LogIn, HeartPulse } from "lucide-react";
+import { LogIn } from "lucide-react";
 
 export function LandingHeader() {
     return (
         <header className="sticky top-0 z-20 border-b bg-background" style={{ borderColor: "var(--border)" }}>
             <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">
                 <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-                        <HeartPulse className="h-5 w-5 text-primary-foreground" />
-                    </div>
+                    <Image
+                        src="/corretor-studio-icon.svg"
+                        alt="Corretor Studio"
+                        width={32}
+                        height={32}
+                        className="h-8 w-8"
+                        priority
+                    />
                     <span>Corretor Studio</span>
                 </Link>
 

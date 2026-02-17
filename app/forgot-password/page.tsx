@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Mail, ArrowLeft, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
 import Link from 'next/link'
-import { HeartPulse } from 'lucide-react'
+import Image from 'next/image'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -138,8 +138,15 @@ export default function ForgotPasswordPage() {
         <Card className="border-2">
           <CardHeader className="text-center space-y-3">
             <div className="flex justify-center">
-              <Link href="/" className="flex h-12 w-12 items-center justify-center rounded-md bg-primary">
-                <HeartPulse className="h-6 w-6 text-primary-foreground" />
+              <Link href="/" className="flex h-12 w-12 items-center justify-center">
+                <Image
+                  src="/corretor-studio-icon.svg"
+                  alt="Corretor Studio"
+                  width={80}
+                  height={80}
+                  className="h-20 w-20"
+                  priority
+                />
               </Link>
             </div>
             <div>

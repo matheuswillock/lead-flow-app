@@ -1,9 +1,10 @@
-import { HeartPulse, Eye, EyeOff, ShieldCheck, Check, X, Search } from "lucide-react"
+import { Eye, EyeOff, ShieldCheck, Check, X, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form"
 import Link from "next/link"
+import Image from "next/image"
 import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData, signUpOAuthFormData } from "@/lib/validations/validationForms"
 import { maskPhone, maskCPFOrCNPJ, unmask } from "@/lib/masks"
@@ -176,9 +177,14 @@ export function SignupForm({
               href="/"
               className="flex flex-col items-center gap-2 font-medium"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary">
-                <HeartPulse className="h-6 w-6 text-primary-foreground" />
-              </div>
+              <Image
+                src="/corretor-studio-icon.svg"
+                alt="Corretor Studio"
+                width={40}
+                height={40}
+                className="h-10 w-10"
+                priority
+              />
               <span className="sr-only">Corretor Studio</span>
             </Link>
             <h1 className="text-xl font-bold">

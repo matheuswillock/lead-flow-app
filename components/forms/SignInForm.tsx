@@ -1,9 +1,10 @@
-import { HeartPulse, Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form"
 import Link from "next/link"
+import Image from "next/image"
 import { Badge } from "@/components/ui/badge"
 import { useState } from "react"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
@@ -59,9 +60,14 @@ export function SignInForm({
               href="/"
               className="flex flex-col items-center gap-2 font-medium"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary">
-                <HeartPulse className="h-6 w-6 text-primary-foreground" />
-              </div>
+              <Image
+                src="/corretor-studio-icon.svg"
+                alt="Corretor Studio"
+                width={52}
+                height={52}
+                className="h-20 w-20"
+                priority
+              />
               <span className="sr-only">Corretor Studio</span>
             </Link>
             {fromSubscribe && (
