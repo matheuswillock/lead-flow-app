@@ -1,9 +1,63 @@
 "use client"
 
+import { useMemo, useState, type FormEvent } from "react"
 import { div as MotionDiv } from "framer-motion/client"
 import { ArrowRight } from "lucide-react"
+import { toast } from "sonner"
+import { isValidPhone, maskPhone, unmask } from "@/lib/masks"
 
 export function PricingSection() {
+  const [fullName, setFullName] = useState("")
+  const [email, setEmail] = useState("")
+  const [whatsapp, setWhatsapp] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+
+  const isFormValid = useMemo(() => {
+    return (
+      fullName.trim().length >= 2 &&
+      isValidEmail(email.trim()) &&
+      isValidPhone(whatsapp)
+    )
+  }, [fullName, email, whatsapp])
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!isFormValid || isSubmitting) return
+
+    setIsSubmitting(true)
+    try {
+      const response = await fetch("/api/demo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: fullName.trim(),
+          email: email.trim(),
+          whatsapp: whatsapp.trim(),
+        }),
+      })
+
+      const result = await response.json()
+      if (!response.ok) {
+        const message =
+          (result?.errorMessages && result.errorMessages.join(", ")) ||
+          "Erro ao enviar. Tente novamente."
+        toast.error(message)
+        return
+      }
+
+      toast.success("Solicitação enviada! Em breve entraremos em contato.")
+      setFullName("")
+      setEmail("")
+      setWhatsapp("")
+    } catch (error) {
+      toast.error("Erro ao enviar. Tente novamente.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   return (
     <section id="demo" className="relative py-20 md:py-28">
       <div
@@ -45,7 +99,7 @@ export function PricingSection() {
               background: "color-mix(in oklab, var(--card) 90%, transparent)",
             }}
           >
-            <form className="space-y-5">
+            <form className="space-y-5" onSubmit={handleSubmit}>
               <div>
                 <label className="text-sm font-semibold text-foreground/90">
                   Nome completo
@@ -53,6 +107,9 @@ export function PricingSection() {
                 <input
                   type="text"
                   placeholder="Seu nome"
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  required
                   className="mt-2 w-full rounded-2xl border bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
                   style={{ borderColor: "var(--border)" }}
                 />
@@ -65,6 +122,9 @@ export function PricingSection() {
                 <input
                   type="email"
                   placeholder="seu@email.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
                   className="mt-2 w-full rounded-2xl border bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
                   style={{ borderColor: "var(--border)" }}
                 />
@@ -77,20 +137,28 @@ export function PricingSection() {
                 <input
                   type="tel"
                   placeholder="(00) 00000-0000"
+                  value={maskPhone(whatsapp)}
+                  onChange={(event) => {
+                    const masked = maskPhone(event.target.value)
+                    const unmasked = unmask(masked)
+                    setWhatsapp(unmasked)
+                  }}
+                  required
                   className="mt-2 w-full rounded-2xl border bg-transparent px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
                   style={{ borderColor: "var(--border)" }}
                 />
               </div>
 
               <button
-                type="button"
-                className="w-full inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg transition-all hover:shadow-xl"
+                type="submit"
+                disabled={!isFormValid || isSubmitting}
+                className="w-full inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg transition-all hover:shadow-xl cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
                 style={{
                   background: "var(--primary)",
                   color: "var(--primary-foreground)",
                 }}
               >
-                Agendar demonstração
+                {isSubmitting ? "Enviando..." : "Agendar demonstração"}
                 <ArrowRight className="ml-2 h-5 w-5" />
               </button>
             </form>
