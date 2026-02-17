@@ -11,6 +11,7 @@ import { Paperclip } from "@/components/ui/paperclip";
 import { Badge } from "@/components/ui/badge";
 import { CopyIcon } from "@/components/ui/copy";
 import { toast } from "sonner";
+import useBoardContext from "../context/BoardHook";
 
 interface LeadCardProps {
     lead: LeadResponseDTO;
@@ -35,6 +36,16 @@ export function LeadCard({
     onNoShow,
     attachmentCount = 0,
 }: LeadCardProps) {
+    const { leadCardDisplay } = useBoardContext();
+    const showName = leadCardDisplay.name;
+    const showId = leadCardDisplay.id;
+    const showEntryDate = leadCardDisplay.entryDate;
+    const showMeetingInfo = leadCardDisplay.meetingInfo;
+    const showNotes = leadCardDisplay.notes;
+    const notesValue = lead.notes?.trim() || "";
+    const showNotesSection = showNotes && notesValue.length > 0;
+    const hasHeaderInfo = showName || showId || showEntryDate;
+
     // Verifica se o lead está em uma coluna que permite finalizar contrato
     const canFinalizeContract = columnKey === 'invoicePayment' || 
                                 columnKey === 'dps_agreement' ||
@@ -114,25 +125,33 @@ export function LeadCard({
             onClick={() => handleCardClick(lead)}
             className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent m-0"
         >
-            <CardHeader >
-                <CardTitle className="text-base font-semibold leading-tight">
-                    {lead.name}
-                </CardTitle>
-                <div className="mt-1 flex items-center gap-2 text-xs text-accent-foreground">
-                    <span>ID: {lead.leadCode}</span>
-                    <button
-                        type="button"
-                        onClick={handleCopyLeadCode}
-                        className="rounded-md p-1 transition-colors hover:bg-accent/60"
-                        aria-label="Copiar ID do lead"
-                    >
-                        <CopyIcon size={16} />
-                    </button>
-                </div>
-                <div className="mt-1 text-xs text-accent-foreground">
-                    Entrada: {formatDate(lead.createdAt)}
-                </div>
-            </CardHeader>
+            {hasHeaderInfo && (
+                <CardHeader>
+                    {showName && (
+                        <CardTitle className="text-base font-semibold leading-tight">
+                            {lead.name}
+                        </CardTitle>
+                    )}
+                    {showId && (
+                        <div className="mt-1 flex items-center gap-2 text-xs text-accent-foreground">
+                            <span>ID: {lead.leadCode}</span>
+                            <button
+                                type="button"
+                                onClick={handleCopyLeadCode}
+                                className="rounded-md p-1 transition-colors hover:bg-accent/60"
+                                aria-label="Copiar ID do lead"
+                            >
+                                <CopyIcon size={16} />
+                            </button>
+                        </div>
+                    )}
+                    {showEntryDate && (
+                        <div className="mt-1 text-xs text-accent-foreground">
+                            Entrada: {formatDate(lead.createdAt)}
+                        </div>
+                    )}
+                </CardHeader>
+            )}
             <CardContent>
                 {canScheduleMeeting && (
                     <Button
@@ -190,7 +209,7 @@ export function LeadCard({
                         Fechar Contrato
                     </Button>
                 )}
-                {hasMeetingInfo && (
+                {showMeetingInfo && hasMeetingInfo && (
                     <div className="mt-3 pt-3 border-t border-border/60 text-xs text-accent-foreground space-y-3">
                         <div className="text-sm font-semibold text-foreground">Informações de agendamento</div>
                         {lead.meetingDate && (
@@ -202,6 +221,12 @@ export function LeadCard({
                         {closerName && (
                             <div>Closer: {closerName}</div>
                         )}
+                    </div>
+                )}
+                {showNotesSection && (
+                    <div className="mt-3 pt-3 border-t border-border/60 text-xs text-accent-foreground space-y-2">
+                        <div className="text-sm font-semibold text-foreground">Observações</div>
+                        <div className="whitespace-pre-line break-words">{notesValue}</div>
                     </div>
                 )}
             </CardContent>

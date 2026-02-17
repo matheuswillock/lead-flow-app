@@ -3,13 +3,26 @@ import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ScrollText, Plus } from "lucide-react";
+import { ScrollText, Plus, Settings } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import useBoardContext from "../context/BoardHook";
+import type { LeadCardField } from "../context/BoardContext";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
+
+const LEAD_CARD_OPTIONS: { key: LeadCardField; label: string }[] = [
+  { key: "name", label: "Nome" },
+  { key: "entryDate", label: "Data de Entrada" },
+  { key: "meetingInfo", label: "Infos de agendamento" },
+  { key: "notes", label: "Observações" },
+  { key: "id", label: "Id" },
+];
 
 export default function BoardHeader() {
   const {
@@ -35,6 +48,8 @@ export default function BoardHeader() {
     isLoading,
     openNewLeadDialog,
     refreshLeads,
+    leadCardDisplay,
+    setLeadCardDisplay,
   } = useBoardContext();
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
@@ -123,6 +138,65 @@ export default function BoardHeader() {
             Adicionar novo lead
           </Button>
           <LeadImportButton onImportComplete={refreshLeads} />
+          <Dialog>
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9"
+                      aria-label="Configuração dos cards"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Configuração dos cards</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <DialogContent className="sm:max-w-[420px]">
+              <DialogHeader>
+                <DialogTitle>Configuração dos cards</DialogTitle>
+                <DialogDescription>
+                  Selecione quais informações aparecem no card do lead.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3">
+                {LEAD_CARD_OPTIONS.map((option) => {
+                  const checkboxId = `lead-card-display-${option.key}`;
+                  return (
+                    <div
+                      key={option.key}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id={checkboxId}
+                          checked={leadCardDisplay[option.key]}
+                          onCheckedChange={(value) => {
+                            const nextChecked = value === true;
+                            setLeadCardDisplay((prev) => ({
+                              ...prev,
+                              [option.key]: nextChecked,
+                            }));
+                          }}
+                        />
+                        <Label htmlFor={checkboxId} className="text-sm font-medium leading-none">
+                          {option.label}
+                        </Label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Isso afeta apenas os cards do board.
+              </p>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

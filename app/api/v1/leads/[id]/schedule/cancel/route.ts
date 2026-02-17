@@ -80,6 +80,19 @@ export async function POST(
       },
     });
 
+    try {
+      await prisma.leadActivity.create({
+        data: {
+          leadId,
+          type: "note",
+          body: "Agendamento cancelado",
+          createdBy: teamAccess.access.profileId,
+        },
+      });
+    } catch (error) {
+      console.warn("Não foi possível registrar atividade de cancelamento:", error);
+    }
+
     const successMessages = ["Agendamento cancelado com sucesso"];
     if (calendarWarning) {
       successMessages.push("Aviso: evento no Google Calendar não foi removido.");

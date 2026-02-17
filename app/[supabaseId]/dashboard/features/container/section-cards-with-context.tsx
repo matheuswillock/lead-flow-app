@@ -202,13 +202,13 @@ export function SectionCardsWithContext() {
           </CardFooter>
         </Card>
 
-        {/* Ticket - DESTAQUE AMARELO */}
+        {/* Valor da Venda - DESTAQUE AMARELO */}
         <Card className="@container/card border-amber-500/30 bg-gradient-to-br from-amber-50 via-amber-50/50 to-transparent shadow-md dark:from-amber-900/20 dark:via-amber-900/10">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                📊 Ticket
-                <InfoTooltip text="Soma do ticket de todos os leads no periodo selecionado." />
+                📊 Valor da Venda
+                <InfoTooltip text="Soma do valor da venda de todos os leads no período selecionado." />
               </CardTitle>
               <div className="rounded-full bg-amber-500/10 p-2">
                 <TrendingUp className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -225,7 +225,7 @@ export function SectionCardsWithContext() {
           </CardHeader>
           <CardFooter className="pt-0">
             <CardAction className="text-xs font-medium text-amber-600 dark:text-amber-400">
-              Valor total de intenção de compra
+              Valor total de vendas
             </CardAction>
           </CardFooter>
         </Card>
@@ -258,13 +258,13 @@ export function SectionCardsWithContext() {
           </CardFooter>
         </Card>
 
-        {/* Cadência - DESTAQUE */}
+        {/* Potencial de Receita - DESTAQUE */}
         <Card className="@container/card border-purple-500/20 bg-gradient-to-br from-purple-500/5 via-purple-500/3 to-transparent shadow-md">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                💼 Cadência
-                <InfoTooltip text="Soma do valor atual (currentValue) de todos os leads no periodo selecionado." />
+                💼 Potencial de Receita
+                <InfoTooltip text="Soma do valor atual de todos os leads no período selecionado." />
               </CardTitle>
               <div className="rounded-full bg-purple-500/10 p-2">
                 <Wallet className="h-5 w-5 text-purple-600 dark:text-purple-400" />
@@ -390,7 +390,7 @@ export function SectionCardsWithContext() {
       </div>
 
       {/* SEÇÃO 3: REUNIÕES REALIZADAS */}
-      <div>
+      {/* <div>
         <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
           📅 Reuniões realizadas
         </h3>
@@ -445,7 +445,7 @@ export function SectionCardsWithContext() {
             </CardFooter>
           </Card>
         </div>
-      </div>
+      </div> */}
 
       {/* SEÇÃO 3: INDICADORES DE PERFORMANCE */}
       <div>

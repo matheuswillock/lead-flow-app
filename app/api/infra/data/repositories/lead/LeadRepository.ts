@@ -73,6 +73,7 @@ export class LeadRepository implements ILeadRepository {
                 id: true,
                 fullName: true,
                 email: true,
+                profileIconUrl: true,
               },
             },
           },

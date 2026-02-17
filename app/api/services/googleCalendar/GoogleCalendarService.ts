@@ -248,7 +248,7 @@ export async function upsertCalendarEvent({
   sdrEmail,
   meetingDate,
   meetingTitle,
-  notes,
+  notes: _notes,
   meetingLink,
   extraGuests,
   existingEventId,

@@ -25,6 +25,7 @@ interface DateTimePickerProps {
   label?: string
   required?: boolean
   availableTimes?: string[]
+  showTime?: boolean
 }
 
 export function DateTimePicker({
@@ -36,27 +37,35 @@ export function DateTimePicker({
   label = "Data e Hora",
   required = false,
   availableTimes,
+  showTime = true,
 }: DateTimePickerProps) {
   const initialDate = date && isValid(date) ? date : undefined
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(initialDate)
   const [time, setTime] = React.useState<string>(
-    initialDate ? format(initialDate, "HH:mm") : "10:00"
+    initialDate && showTime ? format(initialDate, "HH:mm") : showTime ? "10:00" : "00:00"
   )
 
   React.useEffect(() => {
     if (date && isValid(date)) {
-      setSelectedDate(date)
-      setTime(format(date, "HH:mm"))
+      const nextDate = new Date(date)
+      if (!showTime) {
+        nextDate.setHours(0, 0, 0, 0)
+        setTime("00:00")
+      } else {
+        setTime(format(nextDate, "HH:mm"))
+      }
+      setSelectedDate(nextDate)
       return
     }
 
     if (!date) {
       setSelectedDate(undefined)
-      setTime("10:00")
+      setTime(showTime ? "10:00" : "00:00")
     }
-  }, [date])
+  }, [date, showTime])
 
   React.useEffect(() => {
+    if (!showTime) return
     if (!availableTimes || availableTimes.length === 0) return
     if (!availableTimes.includes(time)) {
       const nextTime = availableTimes[0]
@@ -78,13 +87,14 @@ export function DateTimePicker({
       return
     }
 
-    const [hours, minutes] = time.split(":").map(Number)
+    const [hours, minutes] = (showTime ? time : "00:00").split(":").map(Number)
     newDate.setHours(hours, minutes, 0, 0)
     setSelectedDate(newDate)
     onDateChange(newDate)
   }
 
   const handleTimeChange = (newTime: string) => {
+    if (!showTime) return
     setTime(newTime)
 
     if (selectedDate) {
@@ -148,49 +158,51 @@ export function DateTimePicker({
         </div>
 
         {/* Time Picker */}
-        <div className="flex flex-col gap-2">
-          {availableTimes ? (
-            <>
-              <Select
+        {showTime && (
+          <div className="flex flex-col gap-2">
+            {availableTimes ? (
+              <>
+                <Select
+                  value={time}
+                  onValueChange={handleTimeChange}
+                  disabled={disabled || availableTimes.length === 0}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Selecione um horário" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTimes.map((slot) => (
+                      <SelectItem key={slot} value={slot}>
+                        {slot}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {availableTimes.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Nenhum horário disponível para este dia.
+                  </p>
+                )}
+              </>
+            ) : (
+              <input
+                id="time-picker"
+                type="time"
                 value={time}
-                onValueChange={handleTimeChange}
-                disabled={disabled || availableTimes.length === 0}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Selecione um horário" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableTimes.map((slot) => (
-                    <SelectItem key={slot} value={slot}>
-                      {slot}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {availableTimes.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Nenhum horário disponível para este dia.
-                </p>
-              )}
-            </>
-          ) : (
-            <input
-              id="time-picker"
-              type="time"
-              value={time}
-              onChange={(e) => handleTimeChange(e.target.value)}
-              disabled={disabled}
-              className={cn(
-                "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors",
-                "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
-                "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-                "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
-              )}
-              required={required}
-            />
-          )}
-        </div>
+                onChange={(e) => handleTimeChange(e.target.value)}
+                disabled={disabled}
+                className={cn(
+                  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors",
+                  "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
+                  "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                  "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+                  "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                )}
+                required={required}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

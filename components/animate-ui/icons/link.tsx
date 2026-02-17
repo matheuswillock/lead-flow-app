@@ -132,8 +132,14 @@ function IconComponent({ size, ...props }: LinkProps) {
   );
 }
 
-function Link(props: LinkProps) {
-  return <IconWrapper icon={IconComponent} {...props} />;
+function Link({ animateOnHover, ...props }: LinkProps) {
+  return (
+    <IconWrapper
+      icon={IconComponent}
+      animateOnHover={animateOnHover ?? true}
+      {...props}
+    />
+  );
 }
 
 export {

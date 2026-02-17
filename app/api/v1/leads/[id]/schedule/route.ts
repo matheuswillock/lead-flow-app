@@ -16,6 +16,30 @@ const scheduleSchema = z.object({
   extraGuests: z.array(z.string().email("Email inválido")).optional(),
 });
 
+const formatMeetingDate = (date: Date) =>
+  date.toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+const buildUniqueEmails = (emails: Array<string | null | undefined>) => {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const email of emails) {
+    if (!email) continue;
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    unique.push(normalized);
+  }
+  return unique;
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -66,6 +90,9 @@ export async function POST(
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
     }
+
+    const previousCloserId = lead.closerId ?? null;
+    const shouldLogCloserChange = !!closerId && closerId !== previousCloserId;
 
     // Verificar se já existe um agendamento para este lead
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
@@ -190,6 +217,68 @@ export async function POST(
         ...(closerId ? { closerId } : {}),
       },
     });
+
+    try {
+      const schedulerProfile = await prisma.profile.findUnique({
+        where: { id: teamAccess.access.profileId },
+        select: { fullName: true, email: true },
+      });
+      const schedulerLabel = schedulerProfile?.fullName || schedulerProfile?.email || "Usuário";
+      const actionLabel = existingSchedule ? "Reagendamento feito por" : "Agendamento feito por";
+
+      const participants = buildUniqueEmails([
+        lead.email,
+        closerProfile.email,
+        lead.assignee?.email,
+        ...(extraGuests ?? []),
+      ]);
+      const participantLines = participants.map((email) => `• ${email}`);
+
+      const bodyLines = [
+        `${actionLabel} ${schedulerLabel} para ${formatMeetingDate(meetingDate)}.`,
+      ];
+      if (participantLines.length > 0) {
+        bodyLines.push("Participantes:", ...participantLines);
+      }
+
+      await prisma.leadActivity.create({
+        data: {
+          leadId,
+          type: "note",
+          body: bodyLines.join("\n"),
+          payload: {
+            kind: "schedule",
+            meetingDate: meetingDate.toISOString(),
+            meetingTitle: resolvedMeetingTitle,
+            participants,
+          },
+          createdBy: teamAccess.access.profileId,
+        },
+      });
+    } catch (error) {
+      console.warn("Não foi possível registrar atividade de agendamento:", error);
+    }
+
+    if (shouldLogCloserChange) {
+      try {
+        const newCloserId = closerId as string;
+        const closerLabel = closerProfile.fullName || closerProfile.email || "Closer";
+        await prisma.leadActivity.create({
+          data: {
+            leadId,
+            type: "note",
+            body: `Closer alterado para ${closerLabel}`,
+            payload: {
+              previousCloserId,
+              closerId: newCloserId,
+            },
+            createdBy: teamAccess.access.profileId,
+          },
+        });
+      } catch (error) {
+        console.warn("Não foi possível registrar atividade de alteração de closer:", error);
+      }
+    }
 
     const successMessages = [message];
     if (calendarWarning) {

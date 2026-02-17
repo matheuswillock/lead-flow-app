@@ -25,6 +25,7 @@ import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
 import { Loader2, X } from "lucide-react";
 import { LinkIcon } from "@/components/animate-ui/icons/link";
+import { CopyIcon } from "@/components/ui/copy";
 
 const formatCurrencyNumber = (value: number): string =>
     `R$ ${value.toLocaleString('pt-BR', {
@@ -72,15 +73,7 @@ export interface ILeadFormProps {
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
     usersToAssign: UserAssociated[];
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
-    meetingInfo?: {
-        date?: string | null;
-        title?: string | null;
-        link?: string | null;
-        notes?: string | null;
-        guests?: string[];
-        closerName?: string | null;
-    };
-    onResendInvite?: () => void;
+    showMeetingLink?: boolean;
 }
 
 export function LeadForm({
@@ -97,8 +90,7 @@ export function LeadForm({
     onMeetingHealdChange,
     usersToAssign,
     leadId,
-    meetingInfo,
-    onResendInvite
+    showMeetingLink
 }: ILeadFormProps) {
     const [hasChanges, setHasChanges] = useState(false);
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
@@ -177,7 +169,6 @@ export function LeadForm({
                 (watchedValues.ongoingTreatment && watchedValues.ongoingTreatment.trim() !== '') ||
                 (watchedValues.additionalNotes && watchedValues.additionalNotes.trim() !== '') ||
                 (watchedValues.meetingDate && watchedValues.meetingDate.trim() !== '') ||
-                (watchedValues.meetingTitle && watchedValues.meetingTitle.trim() !== '') ||
                 (!onMeetingHealdChange && watchedValues.meetingHeald && watchedValues.meetingHeald.trim() !== '') ||
                 (watchedValues.responsible && watchedValues.responsible.trim() !== '') ||
                 (watchedValues.closerId && watchedValues.closerId.trim() !== '');
@@ -199,7 +190,6 @@ export function LeadForm({
                 watchedValues.ongoingTreatment !== initialData.ongoingTreatment ||
                 watchedValues.additionalNotes !== initialData.additionalNotes ||
                 watchedValues.meetingDate !== initialData.meetingDate ||
-                watchedValues.meetingTitle !== initialData.meetingTitle ||
                 (!onMeetingHealdChange && watchedValues.meetingHeald !== initialData.meetingHeald) ||
                 watchedValues.responsible !== initialData.responsible ||
                 watchedValues.closerId !== initialData.closerId;
@@ -668,33 +658,13 @@ export function LeadForm({
 
             </div>
 
-            {meetingInfo?.date && (
-                <div className="sm:col-span-2 rounded-lg border border-dashed border-muted-foreground/40 p-3 text-sm text-muted-foreground">
-                    <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-1">
-                            <div className="font-medium text-foreground">Resumo do agendamento</div>
-                            {meetingInfo.title && <div>Titulo: {meetingInfo.title}</div>}
-                            {meetingInfo.closerName && <div>Closer: {meetingInfo.closerName}</div>}
-                            {meetingInfo.guests && meetingInfo.guests.length > 0 && (
-                                <div>Convidados extras: {meetingInfo.guests.join(", ")}</div>
-                            )}
-                        </div>
-                        {onResendInvite && (
-                            <Button type="button" variant="outline" onClick={onResendInvite}>
-                                Reenviar convite
-                            </Button>
-                        )}
-                    </div>
-                </div>
-            )}
-
             <FormField
                 control={form.control}
                 name="meetingNotes"
                 render={({ field }) => (
                     <FormItem className="sm:col-span-2">
                         <FormLabel className="block text-sm font-medium mb-1">
-                            Observacoes
+                            Observações
                         </FormLabel>
                         <FormControl>
                             <Textarea
@@ -708,38 +678,56 @@ export function LeadForm({
                 )}
             />
 
-                    <FormField
-                        control={form.control}
-                        name="meetingLink"
-                        render={({ field }) => (
-                            <FormItem className="sm:col-span-2">
-                                <FormLabel className="block text-sm font-medium mb-1">
-                                    Link da reuniao
-                                </FormLabel>
-                                <FormControl>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            {...field}
-                                            type="url"
-                                            placeholder="https://meet.google.com/..."
-                                            disabled={isLoading || isUpdating}
-                                        />
-                                        {field.value ? (
-                                            <a
-                                                href={field.value}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                                                aria-label="Abrir link da reuniao"
-                                            >
-                                                <LinkIcon size={18} />
-                                            </a>
-                                        ) : null}
-                                    </div>
-                                </FormControl>
-                            </FormItem>
-                        )}
-                    />
+                    {showMeetingLink && (
+                        <FormField
+                            control={form.control}
+                            name="meetingLink"
+                            render={({ field }) => (
+                                <FormItem className="sm:col-span-2">
+                                    <FormLabel className="block text-sm font-medium mb-1">
+                                        Link da reuniao
+                                    </FormLabel>
+                                    <FormControl>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                {...field}
+                                                type="url"
+                                                placeholder="https://meet.google.com/..."
+                                                readOnly
+                                            />
+                                            {field.value ? (
+                                                <>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="icon"
+                                                        className="h-9 w-9"
+                                                        onClick={() => {
+                                                            if (field.value) {
+                                                                navigator.clipboard.writeText(field.value);
+                                                            }
+                                                        }}
+                                                        aria-label="Copiar link da reuniao"
+                                                    >
+                                                        <CopyIcon size={16} />
+                                                    </Button>
+                                                    <a
+                                                        href={field.value}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                                        aria-label="Abrir link da reuniao"
+                                                    >
+                                                        <LinkIcon size={18} />
+                                                    </a>
+                                                </>
+                                            ) : null}
+                                        </div>
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                    )}
 
             <FormField
                 control={form.control}
@@ -900,16 +888,19 @@ export function LeadForm({
                         control={form.control}
                         name="contractDueDate"
                         render={({ field }) => (
-                            <FormItem>
+                            <FormItem className="">
+                                
+                                    <FormLabel className="block text-sm font-medium mb-1">Data de Vigência do Contrato</FormLabel>
                                 <FormControl>
                                     <DateTimePicker
                                         date={field.value ? new Date(field.value) : undefined}
                                         onDateChange={(date) => {
                                             field.onChange(date ? date.toISOString() : '');
                                         }}
-                                        label="Data de Vigência do Contrato"
+                                        label=""
                                         disabled={isLoading || isUpdating}
                                         disablePastDates={false}
+                                        showTime={false}
                                     />
                                 </FormControl>
                             </FormItem>
@@ -956,24 +947,6 @@ export function LeadForm({
             />
         </div>
 
-        <FormField
-            control={form.control}
-            name="meetingTitle"
-            render={({ field }) => (
-                <FormItem className="sm:col-span-2">
-                    <FormLabel className="block text-sm font-medium mb-1">
-                        Titulo da reuniao
-                    </FormLabel>
-                    <FormControl>
-                        <Input
-                            {...field}
-                            placeholder="Ex: Apresentacao da proposta"
-                            disabled={isLoading || isUpdating}
-                        />
-                    </FormControl>
-                </FormItem>
-            )}
-        />
                 </>
             )}
 
@@ -1083,7 +1056,7 @@ export function LeadForm({
                 />
             </div>
 
-            <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
+            <div className="sm:col-span-2 flex justify-end gap-2 pt-2 mb-4">
                 <Button 
                     className="cursor-pointer" 
                     type="button" 

@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useMemo, useState, useEffect, useRef } from "react";
+import { createContext, ReactNode, useMemo, useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
 import { IBoardService } from "../services/IBoardServices";
 import { Lead, ColumnKey } from "./BoardTypes";
@@ -13,6 +13,17 @@ interface IBoardProviderProps {
   boardService?: IBoardService;
 }
 
+export type LeadCardField = "name" | "entryDate" | "meetingInfo" | "notes" | "id";
+export type LeadCardDisplaySettings = Record<LeadCardField, boolean>;
+
+export const DEFAULT_LEAD_CARD_DISPLAY: LeadCardDisplaySettings = {
+  name: true,
+  entryDate: true,
+  meetingInfo: true,
+  notes: false,
+  id: true,
+};
+
 interface TaskOwner {
   id: string;
   name: string;
@@ -25,6 +36,8 @@ interface IBoardContextState {
   setQuery: (query: string) => void;
   onlyMeetingsHeld: boolean;
   setOnlyMeetingsHeld: (value: boolean) => void;
+  leadCardDisplay: LeadCardDisplaySettings;
+  setLeadCardDisplay: Dispatch<SetStateAction<LeadCardDisplaySettings>>;
   data: Record<ColumnKey, Lead[]>;
   filtered: Record<ColumnKey, Lead[]>;
   periodStart: string; 
@@ -113,6 +126,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [onlyMeetingsHeld, setOnlyMeetingsHeld] = useState(false);
+  const [leadCardDisplay, setLeadCardDisplay] = useState<LeadCardDisplaySettings>(
+    DEFAULT_LEAD_CARD_DISPLAY
+  );
   const [data, setData] = useState<Record<ColumnKey, Lead[]>>(() => {
     // Inicializa todas as colunas com arrays vazios
     const initialData: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
@@ -137,6 +153,12 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [userLoading, setUserLoading] = useState(true);
   const userRef = useRef<ProfileResponseDTO | null>(null);
   const accessDeniedShownRef = useRef(false);
+  const skipPersistLeadCardDisplayRef = useRef(false);
+
+  const leadCardDisplayStorageKey = useMemo(() => {
+    if (!supabaseId) return null;
+    return `leadCardDisplay:${supabaseId}:${activeTeamId || "default"}`;
+  }, [supabaseId, activeTeamId]);
 
   // Função para carregar dados do usuário
   const loadUser = async () => {
@@ -167,6 +189,55 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       setUserLoading(false);
     }
   };
+
+  useEffect(() => {
+    skipPersistLeadCardDisplayRef.current = true;
+    if (!leadCardDisplayStorageKey || typeof window === "undefined") {
+      setLeadCardDisplay(DEFAULT_LEAD_CARD_DISPLAY);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(leadCardDisplayStorageKey);
+      if (!raw) {
+        setLeadCardDisplay(DEFAULT_LEAD_CARD_DISPLAY);
+        return;
+      }
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== "object") {
+        setLeadCardDisplay(DEFAULT_LEAD_CARD_DISPLAY);
+        return;
+      }
+      const nextDisplay: LeadCardDisplaySettings = { ...DEFAULT_LEAD_CARD_DISPLAY };
+      (Object.keys(DEFAULT_LEAD_CARD_DISPLAY) as LeadCardField[]).forEach((key) => {
+        const value = parsed[key];
+        if (typeof value === "boolean") {
+          nextDisplay[key] = value;
+        }
+      });
+      setLeadCardDisplay(nextDisplay);
+    } catch (error) {
+      console.error("Erro ao carregar configuracoes do card:", error);
+      setLeadCardDisplay(DEFAULT_LEAD_CARD_DISPLAY);
+    }
+  }, [leadCardDisplayStorageKey]);
+
+  useEffect(() => {
+    if (!leadCardDisplayStorageKey || typeof window === "undefined") {
+      return;
+    }
+    if (skipPersistLeadCardDisplayRef.current) {
+      skipPersistLeadCardDisplayRef.current = false;
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        leadCardDisplayStorageKey,
+        JSON.stringify(leadCardDisplay)
+      );
+    } catch (error) {
+      console.error("Erro ao salvar configuracoes do card:", error);
+    }
+  }, [leadCardDisplayStorageKey, leadCardDisplay]);
 
   // Função para carregar leads da API
   const loadLeads = async () => {
@@ -554,6 +625,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       setQuery,
       onlyMeetingsHeld,
       setOnlyMeetingsHeld,
+      leadCardDisplay,
+      setLeadCardDisplay,
       data,
       filtered,
       periodStart,
@@ -571,21 +644,21 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       errors,
       open,
       user,
-    userLoading,
-    setOpen,
-    selected,
-    onDragOver,
-    clearErrors,
-    handleCardClick,
-    handleCardMouseDown,
-    handleCardDragStart,
-    openNewLeadDialog,
-    onDrop,
-    onDragStart,
-    refreshLeads: loadLeads,
-    patchLead,
-    finalizeContract
-  };
+      userLoading,
+      setOpen,
+      selected,
+      onDragOver,
+      clearErrors,
+      handleCardClick,
+      handleCardMouseDown,
+      handleCardDragStart,
+      openNewLeadDialog,
+      onDrop,
+      onDragStart,
+      refreshLeads: loadLeads,
+      patchLead,
+      finalizeContract
+    };
   
   return (
     <BoardContext.Provider value={value}>

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { CreditCard, QrCode, FileText, ArrowLeft, HeartPulse } from "lucide-react";
+import { CreditCard, QrCode, FileText, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { PaymentMethod } from "./signUpContext";
+import Image from "next/image";
 
 interface PaymentSelectionProps {
   onSelectPayment: (method: PaymentMethod) => void;
@@ -60,9 +61,14 @@ export function PaymentSelection({
       <div className="w-full max-w-md space-y-6">
         {/* Header */}
         <div className="flex flex-col items-center gap-4">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary">
-            <HeartPulse className="h-6 w-6 text-primary-foreground" />
-          </div>
+          <Image
+            src="/corretor-studio-icon.svg"
+            alt="Corretor Studio"
+            width={80}
+            height={80}
+            className="h-20 w-20"
+            priority
+          />
           <div className="text-center space-y-2">
             <h1 className="text-2xl font-bold">Escolha a forma de pagamento</h1>
             <p className="text-sm text-muted-foreground">

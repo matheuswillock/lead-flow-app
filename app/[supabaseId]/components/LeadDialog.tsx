@@ -1,18 +1,19 @@
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { LeadForm } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
 import { useEffect, useMemo, useState } from "react";
-import { useLeads } from "@/hooks/useLeads";
+import { useLead, useLeads } from "@/hooks/useLeads";
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, Mail, MessageCircle, MessageSquare, X } from "lucide-react";
+import { Calendar, CheckCircle, Mail, MessageCircle, MessageSquare, Phone, X } from "lucide-react";
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+import type { LeadActivityResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 import { useParams, usePathname } from "next/navigation";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -22,6 +23,9 @@ import { Input } from "@/components/ui/input";
 import { ExternalLink } from "@/components/animate-ui/icons/external-link";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext";
 
 interface LeadDialogProps {
   open: boolean;
@@ -46,6 +50,7 @@ export default function LeadDialog({
 }: LeadDialogProps) {
   const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
+  const { lead: leadDetails, loading: leadDetailsLoading, error: leadDetailsError, fetchLead } = useLead(lead?.id ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [meetingHealdSaving, setMeetingHealdSaving] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
@@ -56,20 +61,52 @@ export default function LeadDialog({
   const [newParticipantDraft, setNewParticipantDraft] = useState("");
   const [newParticipants, setNewParticipants] = useState<string[]>([]);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
-  const [scheduleTitle, setScheduleTitle] = useState<string | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [origin, setOrigin] = useState("");
+  const [activityType, setActivityType] = useState<"note" | "call" | "whatsapp" | "email">("note");
+  const [activityBody, setActivityBody] = useState("");
+  const [activitySubmitting, setActivitySubmitting] = useState(false);
+  const [optimisticActivities, setOptimisticActivities] = useState<LeadActivityResponseDTO[]>([]);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [statusSelection, setStatusSelection] = useState<string>("");
+  const [statusUpdating, setStatusUpdating] = useState(false);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
   const pathname = usePathname();
+  const currentActivitiesLead = leadDetails?.id === lead?.id ? leadDetails : null;
+  const isActivityLoading = leadDetailsLoading || (!!lead && leadDetails?.id !== lead.id);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setOrigin(window.location.origin);
     }
   }, []);
+
+  useEffect(() => {
+    if (lead?.id && open) {
+      fetchLead();
+    }
+  }, [lead?.id, open, fetchLead]);
+
+  useEffect(() => {
+    if (!open) {
+      setActivityBody("");
+      setActivityType("note");
+      setOptimisticActivities([]);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    setOptimisticActivities([]);
+  }, [lead?.id]);
+
+  useEffect(() => {
+    if (lead?.status) {
+      setStatusSelection(lead.status);
+    }
+  }, [lead?.status]);
 
   const shareUrl = useMemo(() => {
     if (!lead || !origin || !lead.leadCode) return "";
@@ -110,6 +147,10 @@ export default function LeadDialog({
   const shouldShowMeetingHeald = !!lead && lead.status === "scheduled";
   const canEditMeetingHeald =
     shouldShowMeetingHeald && (isTeamMaster || activeFunctions.includes("CLOSER"));
+  const showMeetingLink = !!lead && lead.status !== "new_opportunity";
+  const statusLabel = lead
+    ? COLUMNS.find((column) => column.key === lead.status)?.title || lead.status
+    : "Status";
 
   const buildParticipantOptions = () => {
     const options: { label: string; email: string }[] = [];
@@ -161,6 +202,168 @@ export default function LeadDialog({
       console.error("Erro ao copiar link de compartilhamento:", error);
       toast.error("Nao foi possivel copiar o link");
     }
+  };
+
+  const handleAddActivity = async () => {
+    if (!lead?.id || !supabaseId) return;
+    const trimmed = activityBody.trim();
+    if (!trimmed) {
+      toast.error("Informe uma mensagem para registrar a atividade");
+      return;
+    }
+    setActivitySubmitting(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}/activities`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify({
+          type: activityType,
+          body: trimmed,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        const message = Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+          ? result.errorMessages.join(", ")
+          : "Erro ao adicionar atividade";
+        throw new Error(message);
+      }
+      const createdActivity = result?.result as LeadActivityResponseDTO | undefined;
+      if (createdActivity) {
+        const normalizedActivity: LeadActivityResponseDTO = {
+          ...createdActivity,
+          author: createdActivity.author
+            ? {
+                ...createdActivity.author,
+                avatarUrl:
+                  createdActivity.author.avatarUrl ??
+                  (createdActivity.author as { profileIconUrl?: string | null }).profileIconUrl ??
+                  null,
+              }
+            : null,
+        };
+        setOptimisticActivities((prev) => {
+          const existing = prev.find((activity) => activity.id === normalizedActivity.id);
+          if (existing) {
+            return prev.map((activity) =>
+              activity.id === normalizedActivity.id ? normalizedActivity : activity
+            );
+          }
+          return [normalizedActivity, ...prev];
+        });
+      }
+      setActivityBody("");
+      toast.success("Atividade registrada");
+      fetchLead();
+    } catch (error) {
+      console.error("Erro ao adicionar atividade:", error);
+      toast.error(error instanceof Error ? error.message : "Erro ao adicionar atividade");
+    } finally {
+      setActivitySubmitting(false);
+    }
+  };
+
+  const formatActivityDate = (value: string) => {
+    try {
+      const date = new Date(value);
+      return date.toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return value;
+    }
+  };
+
+  const getInitials = (name: string) => {
+    const words = name.trim().split(" ").filter(Boolean);
+    if (words.length === 0) return "LF";
+    if (words.length === 1) return words[0].charAt(0).toUpperCase();
+    return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+  };
+
+  const activityTypeOptions = [
+    { value: "note", label: "Comentário", icon: <MessageSquare className="h-4 w-4 text-primary" /> },
+    { value: "call", label: "Ligação", icon: <Phone className="h-4 w-4 text-primary" /> },
+    { value: "whatsapp", label: "WhatsApp", icon: <MessageCircle className="h-4 w-4 text-primary" /> },
+    { value: "email", label: "Email", icon: <Mail className="h-4 w-4 text-primary" /> },
+  ];
+
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case "call":
+        return <Phone className="h-4 w-4 text-primary" />;
+      case "whatsapp":
+        return <MessageCircle className="h-4 w-4 text-primary" />;
+      case "email":
+        return <Mail className="h-4 w-4 text-primary" />;
+      case "status_change":
+        return <CheckCircle className="h-4 w-4 text-primary" />;
+      case "note":
+      default:
+        return <MessageSquare className="h-4 w-4 text-primary" />;
+    }
+  };
+
+  const getActivityLabel = (type: string) => {
+    switch (type) {
+      case "call":
+        return "Ligação";
+      case "whatsapp":
+        return "WhatsApp";
+      case "email":
+        return "Email";
+      case "status_change":
+        return "Status";
+      case "note":
+      default:
+        return "Comentário";
+    }
+  };
+
+  const isScheduleActivity = (activity: LeadActivityResponseDTO) => {
+    if (activity?.payload && typeof activity.payload === "object") {
+      const payload = activity.payload as { kind?: string };
+      if (payload.kind === "schedule") return true;
+    }
+    return (
+      activity.body?.startsWith("Agendamento") ||
+      activity.body?.startsWith("Reagendamento") ||
+      false
+    );
+  };
+
+  const mergedActivities = useMemo(() => {
+    const serverActivities = currentActivitiesLead?.activities || [];
+    const map = new Map<string, LeadActivityResponseDTO>();
+    optimisticActivities.forEach((activity) => {
+      map.set(activity.id, activity);
+    });
+    serverActivities.forEach((activity) => {
+      map.set(activity.id, activity);
+    });
+    return Array.from(map.values()).sort((a, b) => {
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return dateB - dateA;
+    });
+  }, [optimisticActivities, currentActivitiesLead?.activities]);
+
+  const handleActivityKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter") return;
+    if (event.shiftKey) return;
+    if (event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    if (!activityBody.trim() || activitySubmitting) return;
+    handleAddActivity();
   };
 
   const parseCurrentValue = (value: string): number | undefined => {
@@ -457,6 +660,39 @@ export default function LeadDialog({
     }
   };
 
+  const handleStatusUpdate = async () => {
+    if (!lead || !supabaseId) return;
+    const nextStatus = statusSelection || lead.status;
+    if (!nextStatus || nextStatus === lead.status) {
+      setStatusDialogOpen(false);
+      return;
+    }
+    setStatusUpdating(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Erro ao atualizar status");
+      }
+      patchLead?.(lead.id, { status: nextStatus as Lead["status"] });
+      toast.success("Status atualizado");
+      setStatusDialogOpen(false);
+      await refreshLeads();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao atualizar status");
+    } finally {
+      setStatusUpdating(false);
+    }
+  };
+
   useEffect(() => {
     if (lead && open) {
       const formatCurrency = (value: number): string => {
@@ -495,10 +731,10 @@ export default function LeadDialog({
         ongoingTreatment: lead.currentTreatment || "",
         additionalNotes: lead.notes || "",
         meetingDate: lead.meetingDate || "",
-        meetingTitle: lead.meetingTitle || scheduleTitle || "",
+        meetingTitle: lead.meetingTitle || "",
         meetingNotes: lead.meetingNotes || "",
         meetingLink: lead.meetingLink || "",
-        meetingHeald: lead.meetingHeald === "yes" ? "yes" : undefined,
+        meetingHeald: lead.meetingHeald === "yes" ? "yes" : "no",
         extraGuests: scheduleGuests.join(", "),
         responsible: lead.assignedTo || "",
         ticket: lead.ticket ? formatCurrency(lead.ticket) : "",
@@ -522,7 +758,7 @@ export default function LeadDialog({
         meetingTitle: "",
         meetingNotes: "",
         meetingLink: "",
-        meetingHeald: undefined,
+        meetingHeald: "no",
         extraGuests: "",
         responsible: user?.usersAssociated?.[0]?.id || "",
         ticket: "",
@@ -530,12 +766,29 @@ export default function LeadDialog({
         soldPlan: undefined,
       });
     }
-  }, [lead, open, form, user, scheduleGuests, scheduleTitle]);
+  }, [lead, open, form, user, scheduleGuests]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let isActive = true;
+
     const fetchScheduleGuests = async () => {
-      if (!lead || !open || !supabaseId) return;
-      setScheduleLoading(true);
+      if (!lead || !open) {
+        setScheduleGuests([]);
+        return;
+      }
+      if (!supabaseId) return;
+      if (!lead.id) {
+        setScheduleGuests([]);
+        return;
+      }
+      if (!lead.meetingDate && !lead.meetingTitle && !lead.meetingLink) {
+        setScheduleGuests([]);
+        return;
+      }
+      if (isActive) {
+        setScheduleLoading(true);
+      }
       try {
         const response = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
           headers: {
@@ -543,26 +796,43 @@ export default function LeadDialog({
             "x-supabase-user-id": supabaseId,
             "x-team-id": activeTeamId || "",
           },
+          signal: controller.signal,
         });
         if (!response.ok) {
+          if (isActive) {
+            setScheduleGuests([]);
+          }
           return;
         }
-        const data = await response.json();
+        const data = await response.json().catch(() => null);
         const schedules = (data?.result || []) as Array<{
           extraGuests?: string[];
-          meetingTitle?: string | null;
         }>;
         const latest = schedules[0];
-        setScheduleGuests(latest?.extraGuests || []);
-        setScheduleTitle(latest?.meetingTitle || null);
+        if (isActive) {
+          setScheduleGuests(latest?.extraGuests || []);
+        }
       } catch (error) {
-        console.error("Erro ao carregar convidados extras:", error);
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        if (isActive) {
+          setScheduleGuests([]);
+        }
+        console.warn("Falha ao carregar convidados extras:", error);
       } finally {
-        setScheduleLoading(false);
+        if (isActive) {
+          setScheduleLoading(false);
+        }
       }
     };
 
     fetchScheduleGuests();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
   }, [lead, open, supabaseId, activeTeamId]);
 
   const handleResendInvite = async () => {
@@ -667,109 +937,245 @@ export default function LeadDialog({
   return (
     <>
       <Dialog open={open && !showFinalizeDialog} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle>
-                  {lead ? "Editar Lead" : "Novo Lead"}
-                </DialogTitle>
-                <DialogDescription>
-                  {lead
-                    ? "Faça as alterações necessárias nos dados do lead."
-                    : "Preencha os dados para criar um novo lead."
-                  }
-                </DialogDescription>
-                {lead?.leadCode && (
-                  <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>ID: {lead.leadCode}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyLeadCode(lead.leadCode)}
-                      className="rounded-md p-1 transition-colors hover:bg-accent/60"
-                      aria-label="Copiar ID do lead"
+        <DialogContent
+          className="bg-transparent border-none shadow-none p-0 w-[95vw] max-w-[95vw] sm:w-[90vw] sm:max-w-[90vw] lg:w-[60vw] lg:max-w-[60vw] max-h-[90vh] flex items-center justify-center [&>button]:hidden"
+          onEscapeKeyDown={() => setOpen(false)}
+          onPointerDownOutside={() => setOpen(false)}
+        >
+          <div className="w-full max-w-full h-[90vh] max-h-[90vh] flex flex-col gap-2 lg:flex-row lg:items-stretch">
+            <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm flex flex-col h-full min-h-0 lg:flex-[0_0_80%] lg:h-[95%] lg:max-h-[95%] lg:self-center dialog-scrollbar overflow-y-auto">
+              <DialogHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <DialogTitle>
+                      {lead ? "Editar Lead" : "Novo Lead"}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {lead
+                        ? "Faça as alterações necessárias nos dados do lead."
+                        : "Preencha os dados para criar um novo lead."
+                      }
+                    </DialogDescription>
+                    {lead?.leadCode && (
+                      <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>ID: {lead.leadCode}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyLeadCode(lead.leadCode)}
+                          className="rounded-md p-1 transition-colors hover:bg-accent/60"
+                          aria-label="Copiar ID do lead"
+                        >
+                          <CopyIcon size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="ml-4 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setStatusDialogOpen(true)}
+                      disabled={!lead}
                     >
-                      <CopyIcon size={16} />
-                    </button>
+                      {statusLabel}
+                    </Button>
+                    {canMarkNoShow && (
+                      <Button size="sm" variant="outline" onClick={handleNoShow}>
+                        Marcar No-show
+                      </Button>
+                    )}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setShareOpen(true)}
+                            disabled={!lead}
+                            className="h-9 w-9"
+                            aria-label="Compartilhar lead"
+                          >
+                            <ExternalLink className="h-5 w-5" animateOnHover />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Compartilhar lead</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {canFinalizeContract && (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => {
+                          setFinalizeCompleted(false);
+                          setShowFinalizeDialog(true);
+                          setOpen(false);
+                        }}
+                      >
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Fechar Contrato
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <div className="mt-6 flex-1 min-h-0">
+                {userLoading ? (
+                  <div className="flex items-center justify-center p-8">
+                    <div className="text-center">
+                      <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
+                      <p className="text-sm text-muted-foreground">Carregando dados do usuário...</p>
+                    </div>
+                  </div>
+                ) : !user ? (
+                  <div className="flex items-center justify-center p-8">
+                    <p className="text-sm text-destructive">Erro ao carregar dados do usuário</p>
+                  </div>
+                ) : (
+                  <LeadForm
+                    form={form}
+                    onSubmit={onSubmit}
+                    isLoading={isSubmitting}
+                    onCancel={() => setOpen(false)}
+                    usersToAssign={user.usersAssociated || []}
+                    leadId={lead?.id}
+                    showMeetingHeald={shouldShowMeetingHeald}
+                    meetingHealdReadOnly={shouldShowMeetingHeald && !canEditMeetingHeald}
+                    meetingHealdSaving={meetingHealdSaving}
+                    onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
+                    showMeetingLink={showMeetingLink}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm flex flex-col min-h-0 lg:flex-[0_0_24%] lg:h-[95%] lg:max-h-[95%] lg:self-center">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold">Feed de Atividades</h3>
+                <DialogClose asChild>
+                  <Button type="button" size="icon" variant="ghost" className="h-8 w-8">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </DialogClose>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Registro de criação, comentários e mudanças importantes.
+              </p>
+
+              <div className="mt-4 flex-1 min-h-0 w-full">
+                {!lead ? (
+                  <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground">
+                    Atividades disponíveis após criar o lead.
+                  </div>
+                ) : leadDetailsError ? (
+                  <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                    {leadDetailsError}
+                  </div>
+                ) : isActivityLoading ? (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+                  </div>
+                ) : (
+                  <div className="activity-scrollbar h-full min-h-0 overflow-y-auto pr-2">
+                    <div className="space-y-3">
+                      {mergedActivities.length === 0 ? (
+                        <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground w-full">
+                          Nenhuma atividade registrada.
+                        </div>
+                      ) : (
+                        mergedActivities.map((activity) => {
+                          const authorName =
+                            activity.author?.fullName ||
+                            activity.author?.email ||
+                            "Sistema";
+                          const initials = getInitials(authorName);
+                          const fallbackEmail = activity.author?.email || "guest";
+                          const avatarSrc = activity.author?.avatarUrl || `https://avatar.vercel.sh/${fallbackEmail}.png`;
+                          const activityIcon = isScheduleActivity(activity)
+                            ? <Calendar className="h-4 w-4 text-primary" />
+                            : getActivityIcon(activity.type);
+                          return (
+                            <div
+                              key={activity.id}
+                              className="rounded-lg border border-border/60 bg-background/60 p-3 w-[308px] max-w-full mr-auto"
+                            >
+                              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center-safe">
+                                <Avatar className="h-6 w-6 rounded-lg border border-border/60">
+                                  <AvatarImage src={avatarSrc} />
+                                  <AvatarFallback className="rounded-lg text-[10px]">
+                                    {initials || "LF"}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="text-sm font-medium text-foreground">
+                                    {authorName}
+                                  </span>
+                                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                                    <span>{formatActivityDate(activity.createdAt)}</span>
+                                    <span className="inline-flex items-center">
+                                      {activityIcon}
+                                      <span className="sr-only">{getActivityLabel(activity.type)}</span>
+                                    </span>
+                                  </div>
+                                </div>
+                                {activity.body && (
+                                  <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line break-words">
+                                    {activity.body}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
-              <div className="ml-4 flex items-center gap-2">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setShareOpen(true)}
-                        disabled={!lead}
-                        className="h-9 w-9"
-                        aria-label="Compartilhar lead"
-                      >
-                        <ExternalLink className="h-5 w-5" animateOnHover />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Compartilhar lead</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                {canMarkNoShow && (
-                  <Button size="sm" variant="outline" onClick={handleNoShow}>
-                    Marcar No-show
-                  </Button>
-                )}
-                {canFinalizeContract && (
-                  <Button
-                    size="sm"
-                    variant="default"
-                    onClick={() => {
-                      setFinalizeCompleted(false);
-                      setShowFinalizeDialog(true);
-                      setOpen(false);
-                    }}
-                  >
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Fechar Contrato
-                  </Button>
-                )}
-              </div>
-            </div>
-          </DialogHeader>
 
-          {userLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <div className="text-center">
-                <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
-                <p className="text-sm text-muted-foreground">Carregando dados do usuário...</p>
+              <div className="mt-auto border-t border-border/60 pt-4">
+                <div className="grid gap-2">
+                  <label className="text-xs font-medium text-muted-foreground">Tipo de atividade</label>
+                  <Select value={activityType} onValueChange={(value) => setActivityType(value as typeof activityType)}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activityTypeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <span className="flex items-center gap-2">
+                            {option.icon}
+                            {option.label}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  <Textarea
+                    value={activityBody}
+                    onChange={(event) => setActivityBody(event.target.value)}
+                    onKeyDown={handleActivityKeyDown}
+                    placeholder="Descreva a atividade..."
+                    rows={3}
+                    className="resize-none"
+                    disabled={!lead}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="default"
+                  className="mt-4 w-full"
+                  disabled={!lead || activitySubmitting || !activityBody.trim()}
+                  onClick={handleAddActivity}
+                >
+                  {activitySubmitting ? "Salvando..." : "Adicionar atividade"}
+                </Button>
               </div>
             </div>
-          ) : !user ? (
-            <div className="flex items-center justify-center p-8">
-              <p className="text-sm text-destructive">Erro ao carregar dados do usuário</p>
-            </div>
-          ) : (
-          <LeadForm
-            form={form}
-            onSubmit={onSubmit}
-            isLoading={isSubmitting}
-            onCancel={() => setOpen(false)}
-            usersToAssign={user.usersAssociated || []}
-            leadId={lead?.id}
-            showMeetingHeald={shouldShowMeetingHeald}
-            meetingHealdReadOnly={shouldShowMeetingHeald && !canEditMeetingHeald}
-            meetingHealdSaving={meetingHealdSaving}
-            onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
-            meetingInfo={{
-              date: lead?.meetingDate || null,
-              title: lead?.meetingTitle || scheduleTitle || null,
-              link: lead?.meetingLink || null,
-              notes: lead?.meetingNotes || null,
-              guests: scheduleGuests,
-              closerName: lead?.closer?.fullName || lead?.closer?.email || null,
-            }}
-            onResendInvite={() => setResendDialogOpen(true)}
-          />
-          )}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -871,6 +1277,54 @@ export default function LeadDialog({
         </DialogContent>
       </Dialog>
 
+      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Alterar status</DialogTitle>
+            <DialogDescription>
+              Selecione o novo status do lead.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Status</Label>
+              <Select value={statusSelection} onValueChange={setStatusSelection}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {COLUMNS.map((column) => (
+                    <SelectItem key={column.key} value={column.key}>
+                      {column.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setStatusDialogOpen(false)}
+                disabled={statusUpdating}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleStatusUpdate}
+                disabled={
+                  statusUpdating ||
+                  !lead ||
+                  !statusSelection ||
+                  statusSelection === lead?.status
+                }
+              >
+                {statusUpdating ? "Salvando..." : "Confirmar"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {lead && (
         <FinalizeContractDialog
           open={showFinalizeDialog}
@@ -928,7 +1382,7 @@ export default function LeadDialog({
                 disabled={!shareUrl}
               >
                 <a href={emailShare} target="_blank" rel="noreferrer">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-500/15 text-slate-200">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary">
                     <Mail className="h-5 w-5" />
                   </div>
                   <span className="text-xs">Email</span>

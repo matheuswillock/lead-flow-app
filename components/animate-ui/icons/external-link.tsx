@@ -9,6 +9,7 @@ import {
   IconWrapper,
   type IconProps,
 } from '@/components/animate-ui/icons/icon';
+import { cn } from '@/lib/utils';
 
 type ExternalLinkProps = IconProps<keyof typeof animations>;
 
@@ -89,8 +90,15 @@ function IconComponent({ size, ...props }: ExternalLinkProps) {
   );
 }
 
-function ExternalLink(props: ExternalLinkProps) {
-  return <IconWrapper icon={IconComponent} {...props} />;
+function ExternalLink({ animateOnHover, className, ...props }: ExternalLinkProps) {
+  return (
+    <IconWrapper
+      icon={IconComponent}
+      animateOnHover={animateOnHover ?? true}
+      className={cn("!pointer-events-auto", className)}
+      {...props}
+    />
+  );
 }
 
 export {

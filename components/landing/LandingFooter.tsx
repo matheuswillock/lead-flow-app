@@ -2,6 +2,7 @@
 
 import { Github, Linkedin, Mail, Twitter } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 
 const footerLinks = {
   product: {
@@ -66,15 +67,13 @@ export function LandingFooter() {
           {/* Brand */}
           <div className="col-span-2 md:col-span-1">
             <Link href="/" className="flex items-center gap-2 mb-4">
-              <div
-                className="h-8 w-8 rounded-lg flex items-center justify-center font-bold text-sm"
-                style={{
-                  background: "var(--primary)",
-                  color: "var(--primary-foreground)",
-                }}
-              >
-                L
-              </div>
+              <Image
+                src="/corretor-studio-icon.svg"
+                alt="Corretor Studio"
+                width={32}
+                height={32}
+                className="h-8 w-8"
+              />
               <span className="text-lg font-bold">Corretor Studio</span>
             </Link>
             <p className="text-sm text-muted-foreground mb-4 max-w-xs">
