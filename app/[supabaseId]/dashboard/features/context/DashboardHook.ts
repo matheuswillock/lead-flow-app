@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { IDashboardState, IDashboardActions } from './DashboardTypes';
 import { IDashboardMetricsService, MetricsFilters } from '../services/IDashboardMetricsService';
 
@@ -33,6 +33,46 @@ export function useDashboardHook({
   
   // Estado de privacidade
   const [isBlurred, setIsBlurred] = useState<boolean>(false);
+  const skipPersistBlurRef = useRef(false);
+
+  const blurStorageKey = useMemo(() => {
+    if (!supabaseId) return null;
+    return `dashboardBlur:${supabaseId}:${teamId || 'default'}`;
+  }, [supabaseId, teamId]);
+
+  useEffect(() => {
+    skipPersistBlurRef.current = true;
+    if (!blurStorageKey || typeof window === 'undefined') {
+      setIsBlurred(false);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(blurStorageKey);
+      if (!raw) {
+        setIsBlurred(false);
+        return;
+      }
+      setIsBlurred(raw === 'true');
+    } catch (error) {
+      console.warn('Nao foi possivel carregar a preferencia de blur:', error);
+      setIsBlurred(false);
+    }
+  }, [blurStorageKey]);
+
+  useEffect(() => {
+    if (!blurStorageKey || typeof window === 'undefined') {
+      return;
+    }
+    if (skipPersistBlurRef.current) {
+      skipPersistBlurRef.current = false;
+      return;
+    }
+    try {
+      window.localStorage.setItem(blurStorageKey, String(isBlurred));
+    } catch (error) {
+      console.warn('Nao foi possivel salvar a preferencia de blur:', error);
+    }
+  }, [blurStorageKey, isBlurred]);
 
   // Ação para buscar métricas
   const fetchMetrics = useCallback(async () => {

@@ -184,10 +184,10 @@ export function SectionCards(props: DashboardMetricsData) {
         </CardFooter>
       </Card>
 
-      {/* Cadência */}
+      {/* Potencial de Receita */}
       <Card className="@container/card">
         <CardHeader>
-          <CardDescription>Cadência</CardDescription>
+          <CardDescription>Potencial de Receita</CardDescription>
           <CardTitle className="text-2xl font-semibold tabular-nums @[250px]/card:text-3xl">
             ${props.cadencia.toFixed(2)}
           </CardTitle>
