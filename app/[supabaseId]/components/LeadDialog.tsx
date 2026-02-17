@@ -769,9 +769,26 @@ export default function LeadDialog({
   }, [lead, open, form, user, scheduleGuests]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let isActive = true;
+
     const fetchScheduleGuests = async () => {
-      if (!lead || !open || !supabaseId) return;
-      setScheduleLoading(true);
+      if (!lead || !open) {
+        setScheduleGuests([]);
+        return;
+      }
+      if (!supabaseId) return;
+      if (!lead.id) {
+        setScheduleGuests([]);
+        return;
+      }
+      if (!lead.meetingDate && !lead.meetingTitle && !lead.meetingLink) {
+        setScheduleGuests([]);
+        return;
+      }
+      if (isActive) {
+        setScheduleLoading(true);
+      }
       try {
         const response = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
           headers: {
@@ -779,24 +796,43 @@ export default function LeadDialog({
             "x-supabase-user-id": supabaseId,
             "x-team-id": activeTeamId || "",
           },
+          signal: controller.signal,
         });
         if (!response.ok) {
+          if (isActive) {
+            setScheduleGuests([]);
+          }
           return;
         }
-        const data = await response.json();
+        const data = await response.json().catch(() => null);
         const schedules = (data?.result || []) as Array<{
           extraGuests?: string[];
         }>;
         const latest = schedules[0];
-        setScheduleGuests(latest?.extraGuests || []);
+        if (isActive) {
+          setScheduleGuests(latest?.extraGuests || []);
+        }
       } catch (error) {
-        console.error("Erro ao carregar convidados extras:", error);
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        if (isActive) {
+          setScheduleGuests([]);
+        }
+        console.warn("Falha ao carregar convidados extras:", error);
       } finally {
-        setScheduleLoading(false);
+        if (isActive) {
+          setScheduleLoading(false);
+        }
       }
     };
 
     fetchScheduleGuests();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
   }, [lead, open, supabaseId, activeTeamId]);
 
   const handleResendInvite = async () => {

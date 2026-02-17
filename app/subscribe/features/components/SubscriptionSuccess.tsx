@@ -2,7 +2,8 @@
 
 // app/subscribe/features/components/SubscriptionSuccess.tsx
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, ExternalLink } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
+import { ExternalLink } from '@/components/animate-ui/icons/external-link';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { PixPayment } from './PixPayment';
