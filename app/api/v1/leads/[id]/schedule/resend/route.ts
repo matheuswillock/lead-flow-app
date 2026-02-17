@@ -56,6 +56,7 @@ export async function POST(
       include: {
         manager: true,
         closer: true,
+        assignee: true,
       },
     });
 
@@ -65,28 +66,48 @@ export async function POST(
     }
 
     const { target, email } = validation.data;
-    const canUseGoogleCalendar = !!lead.manager.googleCalendarConnected && !!lead.manager.googleRefreshToken;
+    const closerProfile = lead.closer;
+    if (!closerProfile || !closerProfile.email) {
+      const output = new Output(false, [], ["Closer não encontrado ou sem e-mail válido."], null);
+      return NextResponse.json(output, { status: 400 });
+    }
+
+    const attendeeEmails = [
+      lead.email,
+      closerProfile.email,
+      lead.assignee?.email,
+      ...(schedule.extraGuests ?? []),
+    ]
+      .filter(Boolean)
+      .map((item) => (item as string).trim().toLowerCase())
+      .filter((value, index, list) => list.indexOf(value) === index);
+
+    const canUseGoogleCalendar = !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
 
     if (target === "all") {
-      if (!canUseGoogleCalendar) {
-        const output = new Output(
-          true,
-          ["Convites não reenviados.", "Aviso: conta Google não conectada."],
-          [],
-          null
-        );
-        return NextResponse.json(output, { status: 200 });
-      }
-      if (!schedule.googleEventId) {
-        const output = new Output(false, [], ["Evento do Google Calendar não encontrado"], null);
-        return NextResponse.json(output, { status: 400 });
-      }
+      if (canUseGoogleCalendar && schedule.googleEventId) {
+        await resendCalendarInvite({
+          organizer: closerProfile,
+          eventId: schedule.googleEventId,
+          calendarId: schedule.googleCalendarId ?? "primary",
+          attendeeEmails,
+        });
+      } else {
+        const organizerName = closerProfile.fullName || closerProfile.email;
+        const emailResult = await emailService.sendMeetingInviteEmail({
+          to: attendeeEmails,
+          leadName: lead.name,
+          meetingTitle: schedule.meetingTitle || undefined,
+          meetingDate: schedule.date,
+          meetingLink: schedule.meetingLink,
+          organizerName,
+        });
 
-      await resendCalendarInvite({
-        organizer: lead.manager,
-        eventId: schedule.googleEventId,
-        calendarId: schedule.googleCalendarId ?? "primary",
-      });
+        if (!emailResult.success) {
+          const output = new Output(false, [], [emailResult.error || "Erro ao reenviar convite"], null);
+          return NextResponse.json(output, { status: 500 });
+        }
+      }
 
       const output = new Output(true, ["Convites reenviados para todos os participantes"], [], null);
       return NextResponse.json(output, { status: 200 });
@@ -100,7 +121,7 @@ export async function POST(
         return NextResponse.json(output, { status: 400 });
       }
 
-      const organizerName = lead.manager.fullName || lead.manager.email;
+      const organizerName = closerProfile.fullName || closerProfile.email;
 
       const emailResult = await emailService.sendMeetingInviteEmail({
         to: uniqueEmails,
@@ -125,8 +146,8 @@ export async function POST(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const organizerName = lead.manager.fullName || lead.manager.email;
-    const closerName = lead.closer?.fullName || lead.closer?.email || null;
+    const organizerName = closerProfile.fullName || closerProfile.email;
+    const closerName = closerProfile.fullName || closerProfile.email || null;
 
     const emailResult = await emailService.sendMeetingInviteEmail({
       to: [email],
