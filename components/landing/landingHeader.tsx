@@ -14,13 +14,13 @@ export function LandingHeader() {
                 </Link>
 
                 <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-muted-foreground">
-                    <Link href="#features" className="hover:text-foreground transition-colors">
+                    <Link href="/#features" className="hover:text-foreground transition-colors">
                         Funcionalidades
                     </Link>
-                    <Link href="#how-it-works" className="hover:text-foreground transition-colors">
+                    <Link href="/#how-it-works" className="hover:text-foreground transition-colors">
                         Como funciona
                     </Link>
-                    <Link href="#demo" className="hover:text-foreground transition-colors">
+                    <Link href="/#demo" className="hover:text-foreground transition-colors">
                         Demonstração
                     </Link>
                 </nav>
