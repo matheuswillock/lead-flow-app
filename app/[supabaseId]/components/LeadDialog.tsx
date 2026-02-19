@@ -2,7 +2,16 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, Di
 import { LeadForm } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
 import { useLead, useLeads } from "@/hooks/useLeads";
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
@@ -52,6 +61,13 @@ type EmojiPickerData = {
   unified: string;
 };
 
+type MentionMember = {
+  profileId: string;
+  name: string;
+  email: string | null;
+  profileIconUrl?: string | null;
+};
+
 const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
 
 export default function LeadDialog({
@@ -90,7 +106,15 @@ export default function LeadDialog({
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusSelection, setStatusSelection] = useState<string>("");
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<MentionMember[]>([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [teamMembersError, setTeamMembersError] = useState<string | null>(null);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionStart, setMentionStart] = useState<number | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const activityInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const ignoreMentionUpdateRef = useRef(false);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
@@ -118,6 +142,10 @@ export default function LeadDialog({
       setReactionOverrides({});
       setReactionPickerOpenId(null);
       setCommentEmojiOpen(false);
+      setMentionOpen(false);
+      setMentionQuery("");
+      setMentionStart(null);
+      setMentionIndex(0);
     }
   }, [open]);
 
@@ -126,6 +154,57 @@ export default function LeadDialog({
     setReactionOverrides({});
     setReactionPickerOpenId(null);
   }, [lead?.id]);
+
+  useEffect(() => {
+    if (!open || !activeTeamId || !supabaseId) return;
+    let isMounted = true;
+
+    const fetchTeamMembers = async () => {
+      setTeamMembersLoading(true);
+      setTeamMembersError(null);
+      try {
+        const response = await fetch(`/api/v1/teams/${activeTeamId}/members`, {
+          headers: {
+            "x-supabase-user-id": supabaseId,
+          },
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result?.isValid) {
+          const message = Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+            ? result.errorMessages.join(", ")
+            : "Erro ao carregar membros do time";
+          throw new Error(message);
+        }
+
+        const members = (result?.result?.members ?? []).map((member: any) => ({
+          profileId: member.profileId,
+          name: member.name || member.email || "Usuário",
+          email: member.email ?? null,
+          profileIconUrl: member.profileIconUrl ?? null,
+        })) as MentionMember[];
+
+        if (isMounted) {
+          setTeamMembers(members);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setTeamMembers([]);
+          setTeamMembersError(error instanceof Error ? error.message : "Erro ao carregar membros do time");
+        }
+      } finally {
+        if (isMounted) {
+          setTeamMembersLoading(false);
+        }
+      }
+    };
+
+    fetchTeamMembers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open, activeTeamId, supabaseId]);
 
   useEffect(() => {
     if (lead?.status) {
@@ -178,6 +257,68 @@ export default function LeadDialog({
   const statusLabel = lead
     ? COLUMNS.find((column) => column.key === lead.status)?.title || lead.status
     : "Status";
+
+  const mentionableMembers = useMemo(() => {
+    const currentUserId = user?.id;
+    return teamMembers.filter((member) => member.profileId !== currentUserId);
+  }, [teamMembers, user?.id]);
+
+  const mentionMatches = useMemo(() => {
+    const query = mentionQuery.trim().toLowerCase();
+    if (!query) return mentionableMembers;
+    return mentionableMembers.filter((member) => {
+      const nameMatch = member.name?.toLowerCase().includes(query);
+      const emailMatch = member.email?.toLowerCase().includes(query);
+      return nameMatch || emailMatch;
+    });
+  }, [mentionQuery, mentionableMembers]);
+
+  const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const mentionRegex = useMemo(() => {
+    const names = Array.from(
+      new Set(
+        teamMembers
+          .map((member) => member.name)
+          .filter((name): name is string => !!name && name.trim().length > 0)
+      )
+    );
+    if (names.length === 0) return null;
+    names.sort((a, b) => b.length - a.length);
+    const pattern = names.map((name) => escapeRegex(name.trim())).join("|");
+    if (!pattern) return null;
+    return new RegExp(`@(?:${pattern})(?=$|\\s|[.,;:!?])`, "gi");
+  }, [teamMembers]);
+
+  useEffect(() => {
+    if (!mentionOpen) return;
+    if (mentionIndex >= mentionMatches.length) {
+      setMentionIndex(0);
+    }
+  }, [mentionOpen, mentionIndex, mentionMatches.length]);
+
+  const renderActivityBodyWithMentions = (body: string) => {
+    if (!mentionRegex) return body;
+    const regex = new RegExp(mentionRegex.source, mentionRegex.flags);
+    const parts: ReactNode[] = [];
+    let lastIndex = 0;
+    for (const match of body.matchAll(regex)) {
+      const index = match.index ?? 0;
+      if (index > lastIndex) {
+        parts.push(body.slice(lastIndex, index));
+      }
+      parts.push(
+        <span key={`${index}-${match[0]}`} className="text-primary font-medium">
+          {match[0]}
+        </span>
+      );
+      lastIndex = index + match[0].length;
+    }
+    if (lastIndex < body.length) {
+      parts.push(body.slice(lastIndex));
+    }
+    return parts.length > 0 ? parts : body;
+  };
 
   const buildParticipantOptions = () => {
     const options: { label: string; email: string }[] = [];
@@ -291,6 +432,7 @@ export default function LeadDialog({
         });
       }
       setActivityBody("");
+      closeMentionList();
       toast.success("Atividade registrada");
       fetchLead();
     } catch (error) {
@@ -481,7 +623,119 @@ export default function LeadDialog({
     });
   };
 
-  const handleActivityKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const closeMentionList = () => {
+    setMentionOpen(false);
+    setMentionQuery("");
+    setMentionStart(null);
+    setMentionIndex(0);
+  };
+
+  const getMentionMatch = (value: string, cursor: number) => {
+    if (cursor < 0) return null;
+    const slice = value.slice(0, cursor);
+    const atIndex = slice.lastIndexOf("@");
+    if (atIndex === -1) return null;
+    if (atIndex > 0 && !/\s/.test(slice[atIndex - 1])) return null;
+    const after = slice.slice(atIndex + 1);
+    if (/\s/.test(after)) return null;
+    return { start: atIndex, query: after };
+  };
+
+  const updateMentionState = (
+    value: string,
+    cursor: number | null,
+    options?: { resetIndex?: boolean }
+  ) => {
+    if (cursor === null) {
+      closeMentionList();
+      return;
+    }
+    const match = getMentionMatch(value, cursor);
+    if (!match) {
+      closeMentionList();
+      return;
+    }
+    setMentionOpen(true);
+    setMentionStart(match.start);
+    setMentionQuery(match.query);
+    const shouldReset =
+      options?.resetIndex ||
+      match.start !== mentionStart ||
+      match.query !== mentionQuery;
+    if (shouldReset) {
+      setMentionIndex(0);
+    }
+  };
+
+  const handleActivityChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    const nextValue = event.target.value;
+    setActivityBody(nextValue);
+    updateMentionState(nextValue, event.target.selectionStart, { resetIndex: true });
+  };
+
+  const handleActivityCursorUpdate = (event: SyntheticEvent<HTMLTextAreaElement>) => {
+    if (ignoreMentionUpdateRef.current) {
+      ignoreMentionUpdateRef.current = false;
+      return;
+    }
+    const target = event.currentTarget;
+    updateMentionState(target.value, target.selectionStart);
+  };
+
+  const insertMentionAtCursor = (member: MentionMember) => {
+    const target = activityInputRef.current;
+    const cursor = target?.selectionStart ?? activityBody.length;
+    const start = mentionStart ?? activityBody.lastIndexOf("@", cursor - 1);
+    if (start < 0) return;
+    const before = activityBody.slice(0, start);
+    const after = activityBody.slice(cursor);
+    const mentionText = `@${member.name}`;
+    const nextValue = `${before}${mentionText} ${after}`;
+    ignoreMentionUpdateRef.current = true;
+    setActivityBody(nextValue);
+    closeMentionList();
+    requestAnimationFrame(() => {
+      if (!target) return;
+      const nextCursor = before.length + mentionText.length + 1;
+      target.focus();
+      target.setSelectionRange(nextCursor, nextCursor);
+    });
+  };
+
+  const handleActivityKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionOpen) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        if (mentionMatches.length > 0) {
+          setMentionIndex((prev) => (prev + 1) % mentionMatches.length);
+        }
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        if (mentionMatches.length > 0) {
+          setMentionIndex((prev) => (prev - 1 + mentionMatches.length) % mentionMatches.length);
+        }
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMentionList();
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (mentionMatches.length > 0) {
+          const selected = mentionMatches[mentionIndex] || mentionMatches[0];
+          if (selected) {
+            insertMentionAtCursor(selected);
+          }
+        } else {
+          closeMentionList();
+        }
+        return;
+      }
+    }
     if (event.key !== "Enter") return;
     if (event.shiftKey) return;
     if (event.nativeEvent.isComposing) return;
@@ -1244,11 +1498,11 @@ export default function LeadDialog({
                                     </span>
                                   </div>
                                 </div>
-                                {activity.body && (
-                                  <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line break-words">
-                                    {activity.body}
-                                  </p>
-                                )}
+                        {activity.body && (
+                          <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line break-words">
+                                    {renderActivityBodyWithMentions(activity.body)}
+                          </p>
+                        )}
                                 {(reactions.length > 0 || canReactToActivity) && (
                                   <div className="col-span-2 flex flex-wrap items-center gap-2">
                                     {reactions.map((reaction) => (
@@ -1340,13 +1594,55 @@ export default function LeadDialog({
                     <Textarea
                       ref={activityInputRef}
                       value={activityBody}
-                      onChange={(event) => setActivityBody(event.target.value)}
+                      onChange={handleActivityChange}
+                      onKeyUp={handleActivityCursorUpdate}
+                      onClick={handleActivityCursorUpdate}
                       onKeyDown={handleActivityKeyDown}
                       placeholder="Descreva a atividade..."
                       rows={3}
                       className="resize-none pr-10"
                       disabled={!lead}
                     />
+                    {mentionOpen && lead && (
+                      <div className="absolute bottom-full left-0 mb-2 w-full rounded-md border border-border/60 bg-background shadow-sm z-50">
+                        {teamMembersLoading ? (
+                          <div className="px-3 py-2 text-xs text-muted-foreground">
+                            Carregando membros...
+                          </div>
+                        ) : teamMembersError ? (
+                          <div className="px-3 py-2 text-xs text-destructive">
+                            {teamMembersError}
+                          </div>
+                        ) : mentionMatches.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-muted-foreground">
+                            Nenhum usuário encontrado.
+                          </div>
+                        ) : (
+                          <div className="max-h-44 overflow-y-auto py-1">
+                            {mentionMatches.map((member, index) => {
+                              const isActive = index === mentionIndex;
+                              return (
+                                <button
+                                  key={member.profileId}
+                                  type="button"
+                                  className={cn(
+                                    "flex w-full px-3 py-2 text-left text-sm transition",
+                                    isActive
+                                      ? "bg-muted/60 text-foreground"
+                                      : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                                  )}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onMouseEnter={() => setMentionIndex(index)}
+                                  onClick={() => insertMentionAtCursor(member)}
+                                >
+                                  <span className="font-medium">{member.name}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <Popover open={commentEmojiOpen} onOpenChange={setCommentEmojiOpen}>
                       <PopoverTrigger asChild>
                         <Button
