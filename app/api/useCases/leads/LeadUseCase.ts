@@ -203,7 +203,7 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
-      return new Output(true, [], [], this.transformToDTO(lead));
+      return new Output(true, [], [], this.transformToDTO(lead, profileInfo.id));
     } catch (error) {
       console.error("Erro ao buscar lead:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);
@@ -789,7 +789,7 @@ export class LeadUseCase implements ILeadUseCase {
     }
   }
 
-  private transformToDTO(lead: any): LeadResponseDTO {
+  private transformToDTO(lead: any, viewerProfileId?: string | null): LeadResponseDTO {
     return {
       id: lead.id,
       leadCode: lead.leadCode,
@@ -852,6 +852,7 @@ export class LeadUseCase implements ILeadUseCase {
           body: activity.body,
           payload: activity.payload,
           createdAt: activity.createdAt.toISOString(),
+          reactions: this.aggregateActivityReactions(activity.reactions, viewerProfileId),
           ...(activity.author && {
             author: {
               id: activity.author.id,
@@ -863,5 +864,36 @@ export class LeadUseCase implements ILeadUseCase {
         }))
       })
     };
+  }
+
+  private aggregateActivityReactions(
+    reactions: Array<{ emoji: string; emojiUnified: string; profileId: string }> | undefined,
+    viewerProfileId?: string | null
+  ) {
+    if (!reactions || reactions.length === 0) {
+      return [];
+    }
+
+    const includeViewer = !!viewerProfileId;
+    const map = new Map<string, { emoji: string; unified: string; count: number; reactedByMe?: boolean }>();
+
+    reactions.forEach((reaction) => {
+      const unified = reaction.emojiUnified;
+      const existing = map.get(unified) || {
+        emoji: reaction.emoji,
+        unified,
+        count: 0,
+        reactedByMe: includeViewer ? false : undefined,
+      };
+
+      existing.count += 1;
+      if (includeViewer && reaction.profileId === viewerProfileId) {
+        existing.reactedByMe = true;
+      }
+
+      map.set(unified, existing);
+    });
+
+    return Array.from(map.values());
   }
 }

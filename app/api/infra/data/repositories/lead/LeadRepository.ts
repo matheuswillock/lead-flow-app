@@ -76,6 +76,13 @@ export class LeadRepository implements ILeadRepository {
                 profileIconUrl: true,
               },
             },
+            reactions: {
+              select: {
+                emoji: true,
+                emojiUnified: true,
+                profileId: true,
+              },
+            },
           },
           orderBy: {
             createdAt: 'desc',

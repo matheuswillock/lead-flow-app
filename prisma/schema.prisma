@@ -181,6 +181,7 @@ model Profile {
   leadsAsCreator  Lead[]           @relation("LeadCreator")
   leadsAsUpdater  Lead[]           @relation("LeadUpdater")
   activities      LeadActivity[]
+  activityReactions LeadActivityReaction[]
   attachments     LeadAttachment[] @relation("AttachmentUploader")
 
   // Pending Operators relations
@@ -275,10 +276,28 @@ model LeadActivity {
 
   lead   Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   author Profile? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  reactions LeadActivityReaction[]
 
   @@index([leadId])
   @@index([createdBy])
   @@map("lead_activities")
+}
+
+model LeadActivityReaction {
+  id          String   @id @default(uuid()) @db.Uuid
+  activityId  String   @db.Uuid
+  profileId   String   @db.Uuid
+  emoji       String   @db.Text
+  emojiUnified String  @db.Text
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  activity LeadActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  profile  Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, profileId, emojiUnified])
+  @@index([activityId])
+  @@index([profileId])
+  @@map("lead_activity_reactions")
 }
 
 model LeadsSchedule {

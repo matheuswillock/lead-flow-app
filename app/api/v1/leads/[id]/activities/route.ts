@@ -68,6 +68,13 @@ export async function POST(
             profileIconUrl: true,
           },
         },
+        reactions: {
+          select: {
+            emoji: true,
+            emojiUnified: true,
+            profileId: true,
+          },
+        },
       },
     });
 

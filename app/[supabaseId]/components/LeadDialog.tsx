@@ -2,19 +2,21 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, Di
 import { LeadForm } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLead, useLeads } from "@/hooks/useLeads";
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Calendar, CheckCircle, Mail, MessageCircle, MessageSquare, Phone, X } from "lucide-react";
+import { Calendar, CheckCircle, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
-import type { LeadActivityResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
+import type { LeadActivityReactionSummary, LeadActivityResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 import { useParams, usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
+import { EmojiStyle, Theme } from "emoji-picker-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -26,6 +28,9 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { replaceShortcodes } from "@/lib/emojiShortcodes";
 
 interface LeadDialogProps {
   open: boolean;
@@ -37,6 +42,17 @@ interface LeadDialogProps {
   patchLead?: (leadId: string, patch: Partial<Lead>) => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
+
+const EmojiPicker = dynamic(() => import("emoji-picker-react").then((mod) => mod.default), {
+  ssr: false,
+});
+
+type EmojiPickerData = {
+  emoji: string;
+  unified: string;
+};
+
+const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
 
 export default function LeadDialog({
   open,
@@ -68,9 +84,13 @@ export default function LeadDialog({
   const [activityBody, setActivityBody] = useState("");
   const [activitySubmitting, setActivitySubmitting] = useState(false);
   const [optimisticActivities, setOptimisticActivities] = useState<LeadActivityResponseDTO[]>([]);
+  const [reactionOverrides, setReactionOverrides] = useState<Record<string, LeadActivityReactionSummary[]>>({});
+  const [reactionPickerOpenId, setReactionPickerOpenId] = useState<string | null>(null);
+  const [commentEmojiOpen, setCommentEmojiOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [statusSelection, setStatusSelection] = useState<string>("");
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const activityInputRef = useRef<HTMLTextAreaElement | null>(null);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
@@ -95,11 +115,16 @@ export default function LeadDialog({
       setActivityBody("");
       setActivityType("note");
       setOptimisticActivities([]);
+      setReactionOverrides({});
+      setReactionPickerOpenId(null);
+      setCommentEmojiOpen(false);
     }
   }, [open]);
 
   useEffect(() => {
     setOptimisticActivities([]);
+    setReactionOverrides({});
+    setReactionPickerOpenId(null);
   }, [lead?.id]);
 
   useEffect(() => {
@@ -148,6 +173,8 @@ export default function LeadDialog({
   const canEditMeetingHeald =
     shouldShowMeetingHeald && (isTeamMaster || activeFunctions.includes("CLOSER"));
   const showMeetingLink = !!lead && lead.status !== "new_opportunity";
+  const canReactToActivity =
+    !!user && (user.role === "manager" || activeFunctions.includes("SDR") || activeFunctions.includes("CLOSER"));
   const statusLabel = lead
     ? COLUMNS.find((column) => column.key === lead.status)?.title || lead.status
     : "Status";
@@ -212,6 +239,12 @@ export default function LeadDialog({
       return;
     }
     setActivitySubmitting(true);
+    let normalizedBody = trimmed;
+    try {
+      normalizedBody = await replaceShortcodes(trimmed);
+    } catch (error) {
+      console.warn("Falha ao converter shortcodes de emoji:", error);
+    }
     try {
       const response = await fetch(`/api/v1/leads/${lead.id}/activities`, {
         method: "POST",
@@ -222,7 +255,7 @@ export default function LeadDialog({
         },
         body: JSON.stringify({
           type: activityType,
-          body: trimmed,
+          body: normalizedBody,
         }),
       });
       const result = await response.json();
@@ -236,6 +269,7 @@ export default function LeadDialog({
       if (createdActivity) {
         const normalizedActivity: LeadActivityResponseDTO = {
           ...createdActivity,
+          reactions: createdActivity.reactions ?? [],
           author: createdActivity.author
             ? {
                 ...createdActivity.author,
@@ -356,6 +390,96 @@ export default function LeadDialog({
       return dateB - dateA;
     });
   }, [optimisticActivities, currentActivitiesLead?.activities]);
+
+  const getReactionsForActivity = (activityId: string) => {
+    const override = reactionOverrides[activityId];
+    if (override) return override;
+    const activity = mergedActivities.find((item) => item.id === activityId);
+    return activity?.reactions ?? [];
+  };
+
+  const buildOptimisticReactions = (
+    current: LeadActivityReactionSummary[],
+    emoji: string,
+    unified: string
+  ) => {
+    const existing = current.find((reaction) => reaction.unified === unified);
+    if (!existing) {
+      return [...current, { emoji, unified, count: 1, reactedByMe: true }];
+    }
+
+    if (existing.reactedByMe) {
+      if (existing.count <= 1) {
+        return current.filter((reaction) => reaction.unified !== unified);
+      }
+      return current.map((reaction) =>
+        reaction.unified === unified
+          ? { ...reaction, count: reaction.count - 1, reactedByMe: false }
+          : reaction
+      );
+    }
+
+    return current.map((reaction) =>
+      reaction.unified === unified
+        ? { ...reaction, count: reaction.count + 1, reactedByMe: true }
+        : reaction
+    );
+  };
+
+  const handleToggleReaction = async (activityId: string, emoji: string, unified: string) => {
+    if (!lead?.id || !supabaseId || !activeTeamId) return;
+    if (!canReactToActivity) return;
+
+    const previous = getReactionsForActivity(activityId);
+    const optimistic = buildOptimisticReactions(previous, emoji, unified);
+    setReactionOverrides((prev) => ({ ...prev, [activityId]: optimistic }));
+
+    try {
+      const response = await fetch(
+        `/api/v1/leads/${lead.id}/activities/${activityId}/reactions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId,
+          },
+          body: JSON.stringify({ emoji, unified }),
+        }
+      );
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        const message = Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+          ? result.errorMessages.join(", ")
+          : "Erro ao reagir à atividade";
+        throw new Error(message);
+      }
+
+      const reactions = result?.result?.reactions as LeadActivityReactionSummary[] | undefined;
+      setReactionOverrides((prev) => ({ ...prev, [activityId]: reactions ?? [] }));
+    } catch (error) {
+      setReactionOverrides((prev) => ({ ...prev, [activityId]: previous }));
+      toast.error(error instanceof Error ? error.message : "Erro ao reagir à atividade");
+    }
+  };
+
+  const insertEmojiAtCursor = (emoji: string) => {
+    setActivityBody((current) => {
+      const target = activityInputRef.current;
+      if (!target) {
+        return current + emoji;
+      }
+      const start = target.selectionStart ?? current.length;
+      const end = target.selectionEnd ?? current.length;
+      const next = `${current.slice(0, start)}${emoji}${current.slice(end)}`;
+      const cursor = start + emoji.length;
+      requestAnimationFrame(() => {
+        target.focus();
+        target.setSelectionRange(cursor, cursor);
+      });
+      return next;
+    });
+  };
 
   const handleActivityKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Enter") return;
@@ -1095,6 +1219,7 @@ export default function LeadDialog({
                           const activityIcon = isScheduleActivity(activity)
                             ? <Calendar className="h-4 w-4 text-primary" />
                             : getActivityIcon(activity.type);
+                          const reactions = getReactionsForActivity(activity.id);
                           return (
                             <div
                               key={activity.id}
@@ -1123,6 +1248,63 @@ export default function LeadDialog({
                                   <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line break-words">
                                     {activity.body}
                                   </p>
+                                )}
+                                {(reactions.length > 0 || canReactToActivity) && (
+                                  <div className="col-span-2 flex flex-wrap items-center gap-2">
+                                    {reactions.map((reaction) => (
+                                      <button
+                                        key={`${activity.id}-${reaction.unified}`}
+                                        type="button"
+                                        className={cn(
+                                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition",
+                                          reaction.reactedByMe
+                                            ? "border-primary/40 bg-primary/15 text-primary"
+                                            : "border-border/60 bg-muted/30 text-muted-foreground hover:text-foreground"
+                                        )}
+                                        onClick={() =>
+                                          handleToggleReaction(activity.id, reaction.emoji, reaction.unified)
+                                        }
+                                        disabled={!canReactToActivity}
+                                      >
+                                        <span>{reaction.emoji}</span>
+                                        <span>{reaction.count}</span>
+                                      </button>
+                                    ))}
+                                    {canReactToActivity && (
+                                      <Popover
+                                        open={reactionPickerOpenId === activity.id}
+                                        onOpenChange={(open) =>
+                                          setReactionPickerOpenId(open ? activity.id : null)
+                                        }
+                                      >
+                                        <PopoverTrigger asChild>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 px-2 text-[11px]"
+                                          >
+                                            <Smile className="mr-1 h-3.5 w-3.5" />
+                                            Reagir
+                                          </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0" align="start" side="top">
+                                          <EmojiPicker
+                                            onEmojiClick={(emojiData: EmojiPickerData) => {
+                                              if (!emojiData?.emoji || !emojiData?.unified) return;
+                                              handleToggleReaction(activity.id, emojiData.emoji, emojiData.unified);
+                                              setReactionPickerOpenId(null);
+                                            }}
+                                            reactionsDefaultOpen
+                                            reactions={DEFAULT_REACTION_UNIFIEDS}
+                                            emojiStyle={EmojiStyle.NATIVE}
+                                            theme={Theme.DARK}
+                                            lazyLoadEmojis
+                                          />
+                                        </PopoverContent>
+                                      </Popover>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -1154,15 +1336,44 @@ export default function LeadDialog({
                   </Select>
                 </div>
                 <div className="mt-3 grid gap-2">
-                  <Textarea
-                    value={activityBody}
-                    onChange={(event) => setActivityBody(event.target.value)}
-                    onKeyDown={handleActivityKeyDown}
-                    placeholder="Descreva a atividade..."
-                    rows={3}
-                    className="resize-none"
-                    disabled={!lead}
-                  />
+                  <div className="relative">
+                    <Textarea
+                      ref={activityInputRef}
+                      value={activityBody}
+                      onChange={(event) => setActivityBody(event.target.value)}
+                      onKeyDown={handleActivityKeyDown}
+                      placeholder="Descreva a atividade..."
+                      rows={3}
+                      className="resize-none pr-10"
+                      disabled={!lead}
+                    />
+                    <Popover open={commentEmojiOpen} onOpenChange={setCommentEmojiOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-2 top-2 h-7 w-7"
+                          disabled={!lead}
+                          aria-label="Adicionar emoji"
+                        >
+                          <Smile className="h-4 w-4" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="end" side="top">
+                        <EmojiPicker
+                          onEmojiClick={(emojiData: EmojiPickerData) => {
+                            if (!emojiData?.emoji) return;
+                            insertEmojiAtCursor(emojiData.emoji);
+                            setCommentEmojiOpen(false);
+                          }}
+                          emojiStyle={EmojiStyle.NATIVE}
+                          theme={Theme.DARK}
+                          lazyLoadEmojis
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
                 <Button
                   type="button"
