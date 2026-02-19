@@ -1,4 +1,4 @@
-import { fetchShortcodes, fromHexcodeToUnicode } from "emojibase";
+import { fetchShortcodes, fromCodepointToUnicode } from "emojibase";
 import type { ShortcodesDataset } from "emojibase";
 
 let cachedShortcodeMap: Map<string, string> | null = null;
@@ -25,7 +25,7 @@ export async function loadSlackShortcodes(): Promise<Map<string, string>> {
     const map = new Map<string, string>();
 
     Object.entries(dataset).forEach(([hexcode, shortcodes]) => {
-      const emoji = fromHexcodeToUnicode(hexcode);
+      const emoji = fromCodepointToUnicode(hexcode.split("-").map((h) => parseInt(h, 16)));
       if (!emoji) return;
 
       const list = Array.isArray(shortcodes) ? shortcodes : [shortcodes];

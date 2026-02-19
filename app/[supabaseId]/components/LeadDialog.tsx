@@ -16,6 +16,7 @@ import type { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileRespon
 import type { LeadActivityReactionSummary, LeadActivityResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 import { useParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
+import { EmojiStyle, Theme } from "emoji-picker-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -1296,8 +1297,8 @@ export default function LeadDialog({
                                             }}
                                             reactionsDefaultOpen
                                             reactions={DEFAULT_REACTION_UNIFIEDS}
-                                            emojiStyle="native"
-                                            theme="dark"
+                                            emojiStyle={EmojiStyle.NATIVE}
+                                            theme={Theme.DARK}
                                             lazyLoadEmojis
                                           />
                                         </PopoverContent>
@@ -1366,8 +1367,8 @@ export default function LeadDialog({
                             insertEmojiAtCursor(emojiData.emoji);
                             setCommentEmojiOpen(false);
                           }}
-                          emojiStyle="native"
-                          theme="dark"
+                          emojiStyle={EmojiStyle.NATIVE}
+                          theme={Theme.DARK}
                           lazyLoadEmojis
                         />
                       </PopoverContent>
