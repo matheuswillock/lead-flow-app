@@ -17,6 +17,23 @@ function AuthCallbackContent() {
         return;
       }
 
+      const oauthError = searchParams.get("error");
+      const oauthErrorCode = searchParams.get("error_code");
+      const oauthErrorDescription = searchParams.get("error_description");
+
+      if (oauthError) {
+        const description = oauthErrorDescription || oauthError;
+        if (
+          oauthErrorCode === "identity_already_exists" ||
+          description.toLowerCase().includes("already linked")
+        ) {
+          setMessage("Esta conta Google já está vinculada. Tente reconectar novamente.");
+        } else {
+          setMessage(`Falha ao conectar com o Google: ${description}`);
+        }
+        return;
+      }
+
       const { data, error } = await supabase.auth.getSession();
       if (error || !data.session?.user) {
         setMessage("Sessao invalida. Faca login novamente.");

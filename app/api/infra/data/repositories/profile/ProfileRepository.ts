@@ -810,11 +810,15 @@ class PrismaProfileRepository implements IProfileRepository {
             const profile = await prisma.profile.update({
                 where: { supabaseId },
                 data: {
-                    googleAccessToken: updates.accessToken ?? undefined,
-                    googleRefreshToken: updates.refreshToken ?? undefined,
-                    googleTokenExpiresAt: updates.expiresAt ?? undefined,
-                    googleEmail: updates.email ?? undefined,
-                    googleCalendarConnected: updates.connected ?? undefined,
+                    googleAccessToken:
+                        updates.accessToken === undefined ? undefined : updates.accessToken,
+                    googleRefreshToken:
+                        updates.refreshToken === undefined ? undefined : updates.refreshToken,
+                    googleTokenExpiresAt:
+                        updates.expiresAt === undefined ? undefined : updates.expiresAt,
+                    googleEmail: updates.email === undefined ? undefined : updates.email,
+                    googleCalendarConnected:
+                        updates.connected === undefined ? undefined : updates.connected,
                 },
             });
 

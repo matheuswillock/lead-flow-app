@@ -14,6 +14,7 @@ import { toast } from "sonner"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth"
 
 interface SignUpFormProps {
   form: UseFormReturn<signUpFormData | signUpOAuthFormData>;
@@ -47,7 +48,7 @@ export function SignupForm({
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        scopes: "https://www.googleapis.com/auth/calendar.events",
+        scopes: GOOGLE_CALENDAR_SCOPES,
         redirectTo: `${window.location.origin}/auth/callback?next=/board`,
         queryParams: {
           access_type: "offline",
