@@ -58,12 +58,20 @@ export interface LeadActivityResponseDTO {
   body: string | null;
   payload: any;
   createdAt: string;
+  reactions?: LeadActivityReactionSummary[];
   author?: {
     id: string;
     fullName: string | null;
     email: string;
     avatarUrl?: string | null;
   } | null;
+}
+
+export interface LeadActivityReactionSummary {
+  emoji: string;
+  unified: string;
+  count: number;
+  reactedByMe?: boolean;
 }
 
 export interface LeadListResponseDTO {

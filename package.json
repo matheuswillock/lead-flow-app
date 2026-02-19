@@ -73,6 +73,8 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
+    "emoji-picker-react": "^4.18.0",
+    "emojibase": "^15.3.0",
     "framer-motion": "^12.23.12",
     "input": "^1.0.1",
     "lucide-react": "^0.544.0",

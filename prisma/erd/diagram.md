@@ -180,6 +180,14 @@ canceled canceled
     }
   
 
+  "lead_activity_reactions" {
+    String id "🗝️"
+    String emoji 
+    String emojiUnified 
+    DateTime createdAt 
+    }
+  
+
   "leads_schedule" {
     String id "🗝️"
     DateTime date 
@@ -275,6 +283,7 @@ canceled canceled
     "profiles" o{--}o "leads" : "leadsAsCreator"
     "profiles" o{--}o "leads" : "leadsAsUpdater"
     "profiles" o{--}o "lead_activities" : "activities"
+    "profiles" o{--}o "lead_activity_reactions" : "activityReactions"
     "profiles" o{--}o "lead_attachments" : "attachments"
     "profiles" o{--}o "pending_operators" : "pendingOperators"
     "profiles" o{--}o "pending_actions" : "pendingActions"
@@ -297,6 +306,9 @@ canceled canceled
     "lead_activities" o|--|| "ActivityType" : "enum:type"
     "lead_activities" o|--|| "leads" : "lead"
     "lead_activities" o|--|o "profiles" : "author"
+    "lead_activities" o{--}o "lead_activity_reactions" : "reactions"
+    "lead_activity_reactions" o|--|| "lead_activities" : "activity"
+    "lead_activity_reactions" o|--|| "profiles" : "profile"
     "leads_schedule" o|--|| "leads" : "lead"
     "lead_finalized" o|--|| "leads" : "lead"
     "lead_attachments" o|--|| "leads" : "lead"
