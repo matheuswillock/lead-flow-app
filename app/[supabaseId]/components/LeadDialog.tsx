@@ -1204,10 +1204,19 @@ export default function LeadDialog({
         const data = await response.json().catch(() => null);
         const schedules = (data?.result || []) as Array<{
           extraGuests?: string[];
+          meetingLink?: string | null;
         }>;
         const latest = schedules[0];
         if (isActive) {
           setScheduleGuests(latest?.extraGuests || []);
+          const latestMeetingLink =
+            typeof latest?.meetingLink === "string" ? latest.meetingLink.trim() : "";
+          const currentLeadMeetingLink = (lead.meetingLink || "").trim();
+          const currentFormMeetingLink = (form.getValues("meetingLink") || "").trim();
+          if (latestMeetingLink && !currentLeadMeetingLink && !currentFormMeetingLink) {
+            patchLead?.(lead.id, { meetingLink: latestMeetingLink });
+            form.setValue("meetingLink", latestMeetingLink, { shouldDirty: false });
+          }
         }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -1230,7 +1239,7 @@ export default function LeadDialog({
       isActive = false;
       controller.abort();
     };
-  }, [lead, open, supabaseId, activeTeamId]);
+  }, [lead, open, supabaseId, activeTeamId, form, patchLead]);
 
   const handleResendInvite = async () => {
     if (!lead || !supabaseId) return;

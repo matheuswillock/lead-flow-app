@@ -23,7 +23,10 @@ import {
 import { CirclePlus } from "@/components/animate-ui/icons/circle-plus"
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog"
 import useBoardContext from "@/app/[supabaseId]/board/features/context/BoardHook"
-import { ScheduleMeetingDialog } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog"
+import {
+  ScheduleMeetingDialog,
+  type ScheduleMeetingSuccessPayload,
+} from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog"
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes"
 import { getLeadStatusLabel } from "@/lib/lead-status"
 import { CalendarDayButton } from "@/components/ui/calendar"
@@ -296,6 +299,23 @@ export default function CalendarStudio() {
       toast.error(message)
     }
   }
+
+  const handleScheduleSuccess = React.useCallback(
+    async (payload?: ScheduleMeetingSuccessPayload) => {
+      if (payload) {
+        patchLead?.(payload.leadId, {
+          status: payload.status,
+          meetingDate: payload.meetingDate,
+          meetingTitle: payload.meetingTitle,
+          meetingNotes: payload.meetingNotes,
+          meetingLink: payload.meetingLink,
+          closerId: payload.closerId,
+        })
+      }
+      await refreshLeads()
+    },
+    [patchLead, refreshLeads]
+  )
 
   const selectedClosers = closers.filter((closer) =>
     closerFilter.includes(closer.id)
@@ -709,7 +729,7 @@ export default function CalendarStudio() {
             }
           }}
           lead={leadToSchedule}
-          onScheduleSuccess={refreshLeads}
+          onScheduleSuccess={handleScheduleSuccess}
           closers={closers}
           teamMembers={user?.usersAssociated ?? []}
           mode={scheduleDialogMode}

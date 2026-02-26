@@ -29,11 +29,22 @@ import {
 import { X } from "lucide-react";
 import { useTeamContext } from "@/app/context/TeamContext";
 
+export type ScheduleMeetingSuccessPayload = {
+  leadId: string;
+  status: Lead["status"];
+  meetingDate: string | null;
+  meetingTitle: string | null;
+  meetingNotes: string | null;
+  meetingLink: string | null;
+  closerId: string | null;
+  extraGuests: string[];
+};
+
 interface ScheduleMeetingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lead: Lead;
-  onScheduleSuccess: () => void;
+  onScheduleSuccess: (payload?: ScheduleMeetingSuccessPayload) => void | Promise<void>;
   closers: UserAssociated[];
   teamMembers?: UserAssociated[];
   mode?: "create" | "reschedule";
@@ -296,6 +307,7 @@ export function ScheduleMeetingDialog({
     }
 
     const guests = extraGuests;
+    const normalizedNotes = notes || `Reunião agendada com ${lead.name}`;
 
     setIsSubmitting(true);
     const loadingToast = toast.loading("Agendando reunião...");
@@ -312,7 +324,7 @@ export function ScheduleMeetingDialog({
         body: JSON.stringify({
           date: scheduledMeetingDate.toISOString(),
           meetingTitle: meetingTitle.trim(),
-          notes: notes || `Reunião agendada com ${lead.name}`,
+          notes: normalizedNotes,
           meetingLink: meetingLink || undefined,
           closerId: closerId || undefined,
           extraGuests: guests.length ? guests : undefined,
@@ -361,6 +373,39 @@ export function ScheduleMeetingDialog({
       if (warningMessage) {
         toast.info(warningMessage, { duration: 5000 });
       }
+
+      const scheduleResult = (result?.result || {}) as {
+        date?: string;
+        meetingTitle?: string | null;
+        notes?: string | null;
+        meetingLink?: string | null;
+        extraGuests?: string[];
+      };
+      const resolvedMeetingLink =
+        typeof scheduleResult.meetingLink === "string"
+          ? scheduleResult.meetingLink
+          : meetingLink || null;
+      const schedulePayload: ScheduleMeetingSuccessPayload = {
+        leadId: lead.id,
+        status: "scheduled",
+        meetingDate:
+          typeof scheduleResult.date === "string"
+            ? scheduleResult.date
+            : scheduledMeetingDate.toISOString(),
+        meetingTitle:
+          typeof scheduleResult.meetingTitle === "string"
+            ? scheduleResult.meetingTitle
+            : meetingTitle.trim(),
+        meetingNotes:
+          typeof scheduleResult.notes === "string"
+            ? scheduleResult.notes
+            : normalizedNotes,
+        meetingLink: resolvedMeetingLink,
+        closerId: closerId || lead.closerId || null,
+        extraGuests: Array.isArray(scheduleResult.extraGuests)
+          ? scheduleResult.extraGuests
+          : guests,
+      };
       
       // Limpar form
       setMeetingDate(undefined);
@@ -374,7 +419,7 @@ export function ScheduleMeetingDialog({
       onOpenChange(false);
       
       // 3. Atualizar board (recarregar leads)
-      onScheduleSuccess();
+      await onScheduleSuccess(schedulePayload);
       
     } catch (error) {
       console.error("Erro ao agendar reunião:", error);

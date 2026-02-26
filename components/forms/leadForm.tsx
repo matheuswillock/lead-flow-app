@@ -24,8 +24,8 @@ import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
 import { Loader2, X } from "lucide-react";
-import { LinkIcon } from "@/components/animate-ui/icons/link";
-import { CopyIcon } from "@/components/ui/copy";
+import { CopyIcon } from "@/components/animate-ui/icons/copy";
+import { toast } from "sonner";
 
 const formatCurrencyNumber = (value: number): string =>
     `R$ ${value.toLocaleString('pt-BR', {
@@ -694,34 +694,27 @@ export function LeadForm({
                                                 type="url"
                                                 placeholder="https://meet.google.com/..."
                                                 readOnly
+                                                onFocus={(event) => event.currentTarget.select()}
                                             />
-                                            {field.value ? (
-                                                <>
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="h-9 w-9"
-                                                        onClick={() => {
-                                                            if (field.value) {
-                                                                navigator.clipboard.writeText(field.value);
-                                                            }
-                                                        }}
-                                                        aria-label="Copiar link da reuniao"
-                                                    >
-                                                        <CopyIcon size={16} />
-                                                    </Button>
-                                                    <a
-                                                        href={field.value}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-transparent text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                                                        aria-label="Abrir link da reuniao"
-                                                    >
-                                                        <LinkIcon size={18} />
-                                                    </a>
-                                                </>
-                                            ) : null}
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-9 w-9 shrink-0"
+                                                disabled={!field.value}
+                                                onClick={async () => {
+                                                    if (!field.value) return;
+                                                    try {
+                                                        await navigator.clipboard.writeText(field.value);
+                                                        toast.success("Link da reuniao copiado");
+                                                    } catch {
+                                                        toast.error("Nao foi possivel copiar o link da reuniao");
+                                                    }
+                                                }}
+                                                aria-label="Copiar link da reuniao"
+                                            >
+                                                <CopyIcon size={16} animateOnHover />
+                                            </Button>
                                         </div>
                                     </FormControl>
                                 </FormItem>

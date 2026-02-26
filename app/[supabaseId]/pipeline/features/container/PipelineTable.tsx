@@ -53,7 +53,10 @@ import { Lead } from "../context/PipelineTypes";
 import { DraggableRow } from "./DraggableRow";
 import { toast } from "sonner";
 import { useState } from "react";
-import { ScheduleMeetingDialog } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
+import {
+  ScheduleMeetingDialog,
+  type ScheduleMeetingSuccessPayload,
+} from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
 import { ChangeStatusDialog } from "./ChangeStatusDialog";
 import { createColumns } from "./PipelineColumns";
 import { useParams } from "next/navigation";
@@ -76,6 +79,7 @@ export default function PipelineTable() {
     isLoading,
     setSelected,
     refreshLeads,
+    patchLead,
     user,
     errors,
     onlyMeetingsHeld,
@@ -211,6 +215,43 @@ export default function PipelineTable() {
     setSelectedLead(lead);
     setShowChangeStatusDialog(true);
   };
+
+  const applyScheduledPatch = React.useCallback(
+    (payload: ScheduleMeetingSuccessPayload) => {
+      patchLead(payload.leadId, {
+        status: payload.status,
+        meetingDate: payload.meetingDate,
+        meetingTitle: payload.meetingTitle,
+        meetingNotes: payload.meetingNotes,
+        meetingLink: payload.meetingLink,
+        closerId: payload.closerId,
+      });
+      setSelectedLead((prev) =>
+        prev?.id === payload.leadId
+          ? {
+              ...prev,
+              status: payload.status,
+              meetingDate: payload.meetingDate,
+              meetingTitle: payload.meetingTitle,
+              meetingNotes: payload.meetingNotes,
+              meetingLink: payload.meetingLink,
+              closerId: payload.closerId,
+            }
+          : prev
+      );
+    },
+    [patchLead]
+  );
+
+  const handleScheduleSuccess = React.useCallback(
+    async (payload?: ScheduleMeetingSuccessPayload) => {
+      if (payload) {
+        applyScheduledPatch(payload);
+      }
+      await refreshLeads();
+    },
+    [applyScheduledPatch, refreshLeads]
+  );
 
   const columns = React.useMemo<ColumnDef<Lead>[]>(
     () =>
@@ -537,7 +578,7 @@ export default function PipelineTable() {
             }
           }}
           lead={selectedLead}
-          onScheduleSuccess={refreshLeads}
+          onScheduleSuccess={handleScheduleSuccess}
           closers={closers}
           teamMembers={user?.usersAssociated ?? []}
           mode={scheduleDialogMode}
@@ -553,6 +594,7 @@ export default function PipelineTable() {
           onStatusChanged={refreshLeads}
           closers={closers}
           teamMembers={user?.usersAssociated ?? []}
+          onSchedulePatched={applyScheduledPatch}
         />
       )}
     </div>

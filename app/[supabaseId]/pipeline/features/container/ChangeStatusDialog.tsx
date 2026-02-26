@@ -18,7 +18,10 @@ import {
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Lead } from '../context/PipelineTypes';
-import { ScheduleMeetingDialog } from '@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog';
+import {
+  ScheduleMeetingDialog,
+  type ScheduleMeetingSuccessPayload,
+} from '@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog';
 import { FinalizeContractDialog, FinalizeContractData } from '@/app/[supabaseId]/board/features/container/FinalizeContractDialog';
 import { UserAssociated } from '@/app/api/v1/profiles/DTO/profileResponseDTO';
 import { useParams } from 'next/navigation';
@@ -32,6 +35,7 @@ interface ChangeStatusDialogProps {
   onStatusChanged: () => Promise<void>;
   closers: UserAssociated[];
   teamMembers?: UserAssociated[];
+  onSchedulePatched?: (payload: ScheduleMeetingSuccessPayload) => void;
 }
 
 export function ChangeStatusDialog({
@@ -42,6 +46,7 @@ export function ChangeStatusDialog({
   onStatusChanged,
   closers,
   teamMembers,
+  onSchedulePatched,
 }: ChangeStatusDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
@@ -100,7 +105,10 @@ export function ChangeStatusDialog({
     }
   };
 
-  const handleScheduleSuccess = async () => {
+  const handleScheduleSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
+    if (payload) {
+      onSchedulePatched?.(payload);
+    }
     setShowScheduleDialog(false);
     await onStatusChanged();
   };
