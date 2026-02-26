@@ -29,9 +29,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useParams, useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { CircleCheckBig } from "@/components/animate-ui/icons/circle-check-big";
+import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth";
 
 export default function AccountProfilePage() {
-  const { user, isLoading, updateUser, updatePassword, uploadProfileIcon, deleteProfileIcon } = useUser();
+  const { user, isLoading, updateUser, updatePassword, uploadProfileIcon, deleteProfileIcon, refreshUser } =
+    useUser();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -40,6 +42,8 @@ export default function AccountProfilePage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [functionSelections, setFunctionSelections] = useState<string[]>([]);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
+  const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
+  const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
   
   // Estados para deletar conta
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -336,7 +340,7 @@ export default function AccountProfilePage() {
       const params: SignInWithOAuthCredentials = {
         provider: "google",
         options: {
-          scopes: "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly",
+          scopes: GOOGLE_CALENDAR_SCOPES,
           redirectTo,
           queryParams: {
             access_type: "offline",
@@ -345,12 +349,15 @@ export default function AccountProfilePage() {
         },
       };
 
+      const { data } = await supabase.auth.getUser();
+      const hasGoogleIdentity =
+        data.user?.identities?.some((identity) => identity.provider === "google") ?? false;
+
       const linkIdentity = auth.linkIdentity?.bind(auth);
       const signInWithOAuth = auth.signInWithOAuth.bind(auth);
 
-      const { error } = linkIdentity
-        ? await linkIdentity(params)
-        : await signInWithOAuth(params);
+      const { error } =
+        !hasGoogleIdentity && linkIdentity ? await linkIdentity(params) : await signInWithOAuth(params);
 
       if (error) {
         if (error.message === "Manual linking is disabled") {
@@ -364,6 +371,35 @@ export default function AccountProfilePage() {
       toast.error("Erro inesperado ao conectar Google");
     } finally {
       setIsConnectingGoogle(false);
+    }
+  }
+
+  async function handleDisconnectGoogle() {
+    if (isDisconnectingGoogle) return;
+    setIsDisconnectingGoogle(true);
+    try {
+      const response = await fetch("/api/v1/google/disconnect", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+        },
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        toast.error(result?.errorMessages?.join(", ") || "Erro ao desconectar Google");
+        return;
+      }
+
+      toast.success("Conta Google desconectada.");
+      setDisconnectDialogOpen(false);
+      await refreshUser();
+    } catch (error) {
+      console.error("Erro ao desconectar Google:", error);
+      toast.error("Erro inesperado ao desconectar Google");
+    } finally {
+      setIsDisconnectingGoogle(false);
     }
   }
 
@@ -653,20 +689,61 @@ export default function AccountProfilePage() {
                             : "Necessario para enviar convites e criar eventos."}
                         </p>
                       </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-10 gap-2"
-                        onClick={handleConnectGoogle}
-                        disabled={isConnectingGoogle}
-                      >
-                        <Link2 className="h-4 w-4" />
-                        {isConnectingGoogle
-                          ? "Conectando..."
-                          : user?.googleCalendarConnected
-                            ? "Reconectar Google"
-                            : "Conectar Google"}
-                      </Button>
+                      {user?.googleCalendarConnected ? (
+                        <AlertDialog open={disconnectDialogOpen} onOpenChange={setDisconnectDialogOpen}>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              type="button"
+                              className="h-9 font-medium border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white cursor-pointer"
+                              disabled={isDisconnectingGoogle}
+                            >
+                              {isDisconnectingGoogle ? "Desconectando..." : "Desconectar Google"}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="border-red-600/40">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-500">
+                                <AlertTriangle className="h-5 w-5" />
+                                Desconectar conta Google?
+                              </AlertDialogTitle>
+                              <AlertDialogDescription asChild>
+                                <div className="space-y-2">
+                                  <p>
+                                    Você deixará de criar eventos automaticamente no Google Calendar.
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    Esta ação não remove eventos já criados.
+                                  </p>
+                                </div>
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="cursor-pointer" disabled={isDisconnectingGoogle}>
+                                Cancelar
+                              </AlertDialogCancel>
+                              <Button
+                                variant="destructive"
+                                onClick={handleDisconnectGoogle}
+                                disabled={isDisconnectingGoogle}
+                                className="cursor-pointer bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {isDisconnectingGoogle ? "Desconectando..." : "Desconectar Google"}
+                              </Button>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-10 gap-2"
+                          onClick={handleConnectGoogle}
+                          disabled={isConnectingGoogle}
+                        >
+                          <Link2 className="h-4 w-4" />
+                          {isConnectingGoogle ? "Conectando..." : "Conectar Google"}
+                        </Button>
+                      )}
                     </div>
                   </section>
                 </TabsContent>

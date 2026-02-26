@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator"
 // import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { UseFormReturn } from "react-hook-form"
 import { loginFormData } from "@/lib/validations/validationForms"
+import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth"
 
 interface SignInFormProps {
   form: UseFormReturn<loginFormData>;
@@ -37,7 +38,7 @@ export function SignInForm({
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        scopes: "https://www.googleapis.com/auth/calendar.events",
+        scopes: GOOGLE_CALENDAR_SCOPES,
         redirectTo: `${window.location.origin}/auth/callback?next=/board`,
         queryParams: {
           access_type: "offline",

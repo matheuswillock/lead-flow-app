@@ -4,6 +4,7 @@ import { profileRepository } from "@/app/api/infra/data/repositories/profile/Pro
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 const DEFAULT_TIMEZONE = "America/Sao_Paulo";
+const GOOGLE_LOG_PREFIX = "[GoogleAPI]";
 
 type GoogleTokenResult = {
   access_token: string;
@@ -18,6 +19,45 @@ type CalendarEventResult = {
   calendarId: string;
   htmlLink?: string | null;
   meetLink?: string | null;
+};
+
+type GoogleErrorDetail = {
+  message?: string;
+  reason?: string;
+  domain?: string;
+  location?: string;
+  locationType?: string;
+};
+
+type ParsedGoogleError = {
+  message: string | null;
+  code: number | null;
+  status: string | null;
+  errors?: GoogleErrorDetail[];
+};
+
+const parseGoogleError = (rawBody: string): ParsedGoogleError => {
+  if (!rawBody) {
+    return { message: null, code: null, status: null };
+  }
+
+  try {
+    const payload = JSON.parse(rawBody) as any;
+    const errorObject = payload?.error;
+    const message =
+      (typeof errorObject?.message === "string" && errorObject.message) ||
+      (typeof payload?.error_description === "string" && payload.error_description) ||
+      (typeof errorObject === "string" && errorObject) ||
+      (typeof payload?.message === "string" && payload.message) ||
+      null;
+    const code = typeof errorObject?.code === "number" ? errorObject.code : null;
+    const status = typeof errorObject?.status === "string" ? errorObject.status : null;
+    const errors = Array.isArray(errorObject?.errors) ? (errorObject.errors as GoogleErrorDetail[]) : undefined;
+
+    return { message, code, status, errors };
+  } catch {
+    return { message: null, code: null, status: null };
+  }
 };
 
 function getOAuthCredentials() {
@@ -52,8 +92,19 @@ async function refreshAccessToken(refreshToken: string): Promise<GoogleTokenResu
   });
 
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    const message = payload.error_description || payload.error || "Falha ao renovar token Google";
+    const rawBody = await response.text().catch(() => "");
+    const googleError = parseGoogleError(rawBody);
+
+    console.error(`${GOOGLE_LOG_PREFIX} Token refresh failed`, {
+      status: response.status,
+      statusText: response.statusText,
+      googleError,
+      responseBody: rawBody,
+    });
+
+    const message =
+      googleError.message ||
+      "Falha ao renovar token Google";
     throw new Error(message);
   }
 
@@ -101,12 +152,7 @@ async function googleCalendarFetch<T>(url: string, accessToken: string, options:
 
   if (!response.ok) {
     const rawBody = await response.text().catch(() => "");
-    let payload: any = {};
-    try {
-      payload = rawBody ? JSON.parse(rawBody) : {};
-    } catch {
-      payload = {};
-    }
+    const googleError = parseGoogleError(rawBody);
     const requestHeaders = new Headers({
       "Content-Type": "application/json",
       ...(options.headers || {}),
@@ -122,11 +168,11 @@ async function googleCalendarFetch<T>(url: string, accessToken: string, options:
       requestBody,
       status: response.status,
       statusText: response.statusText,
+      googleError,
       responseBody: rawBody,
     });
     const message =
-      payload.error?.message ||
-      payload.error_description ||
+      googleError.message ||
       `Erro na API Google Calendar: ${response.status}`;
     throw new Error(message);
   }
