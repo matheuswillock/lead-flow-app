@@ -32,6 +32,12 @@ import { useTeamContext } from "@/app/context/TeamContext"
 import { Checkbox } from "@/components/ui/checkbox"
 
 const SLOT_MINUTES = 30
+const ALL_TIME_SLOTS = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => {
+  const totalMinutes = index * SLOT_MINUTES
+  const hour = Math.floor(totalMinutes / 60)
+  const minute = totalMinutes % 60
+  return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`
+})
 
 const getNextSlotTime = () => {
   const now = new Date()
@@ -78,14 +84,6 @@ const toDateKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
     date.getDate()
   ).padStart(2, "0")}`
-
-const toDateKeySaoPaulo = (date: Date) =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date)
 
 const isSameDay = (left: Date, right: Date) =>
   left.getFullYear() === right.getFullYear() &&
@@ -135,9 +133,6 @@ export default function Calendar42() {
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
   const [leadToCancel, setLeadToCancel] = React.useState<Lead | null>(null)
   const [meetingHealdSavingId, setMeetingHealdSavingId] = React.useState<string | null>(null)
-  const [availableTimes, setAvailableTimes] = React.useState<string[] | null>(null)
-  const [availabilityLoading, setAvailabilityLoading] = React.useState(false)
-  const [availabilityError, setAvailabilityError] = React.useState<string | null>(null)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext()
@@ -308,87 +303,6 @@ export default function Calendar42() {
     closerFilter.includes(closer.id)
   )
 
-  const hasClosers = closers.length > 0
-  const closerIdsToQuery = React.useMemo(() => {
-    return closerFilter.length > 0 ? closerFilter : closers.map((closer) => closer.id)
-  }, [closerFilter, closers])
-
-  React.useEffect(() => {
-    if (!date) return
-
-    if (!hasClosers) {
-      setAvailableTimes([])
-      setAvailabilityError("Nenhum closer disponível para este time.")
-      setSelectedTime(null)
-      return
-    }
-
-    if (closerIdsToQuery.length === 0) {
-      setAvailableTimes([])
-      setAvailabilityError("Nenhum closer disponível para este time.")
-      setSelectedTime(null)
-      return
-    }
-
-    if (!supabaseId) return
-
-    const dateKey = toDateKeySaoPaulo(date)
-    let isMounted = true
-
-    const fetchAvailability = async () => {
-      setAvailabilityLoading(true)
-      setAvailabilityError(null)
-      try {
-        const response = await fetch("/api/v1/calendar/availability", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-supabase-user-id": supabaseId,
-            "x-team-id": activeTeamId || "",
-          },
-          body: JSON.stringify({ closerIds: closerIdsToQuery, date: dateKey }),
-        })
-
-        const result = await response.json()
-        if (!response.ok || !result?.isValid) {
-          throw new Error(result?.errorMessages?.join(", ") || "Erro ao buscar disponibilidade.")
-        }
-
-        const times = result?.result?.availableTimes ?? []
-        if (!isMounted) return
-        setAvailableTimes(times)
-      } catch (error) {
-        if (!isMounted) return
-        setAvailableTimes(null)
-        setAvailabilityError(
-          error instanceof Error ? error.message : "Erro ao buscar disponibilidade."
-        )
-      } finally {
-        if (isMounted) {
-          setAvailabilityLoading(false)
-        }
-      }
-    }
-
-    fetchAvailability()
-
-    return () => {
-      isMounted = false
-    }
-  }, [date, closers, closerIdsToQuery, supabaseId, activeTeamId, hasClosers])
-
-  React.useEffect(() => {
-    if (!availableTimes || availableTimes.length === 0) {
-      if (selectedTime) {
-        setSelectedTime(null)
-      }
-      return
-    }
-
-    if (selectedTime && availableTimes.includes(selectedTime)) return
-    setSelectedTime(availableTimes[0])
-  }, [availableTimes, selectedTime])
-
   React.useEffect(() => {
     if (!selectedTime) return
     const target = timeListRef.current?.querySelector(
@@ -456,33 +370,21 @@ export default function Calendar42() {
                 Limpar horario
               </Button>
             </div>
-            {availabilityError && (
-              <p className="px-2 text-xs text-destructive">{availabilityError}</p>
-            )}
-            {!availabilityError && hasClosers && availableTimes?.length === 0 && !availabilityLoading && (
-              <p className="px-2 text-xs text-muted-foreground">
-                Nenhum horário disponível para este dia.
-              </p>
-            )}
             <div
               ref={timeListRef}
               className="no-scrollbar flex max-h-[40dvh] flex-col gap-2 overflow-y-auto px-2 lg:max-h-none lg:min-h-0 lg:flex-1"
             >
-              {isLoading || availabilityLoading
-                ? Array.from({ length: 12 }).map((_, idx) => (
-                    <Skeleton key={idx} className="h-10 w-full rounded-md" />
-                  ))
-                : (availableTimes ?? []).map((time) => (
-                  <Button
-                    key={time}
-                    variant={selectedTime === time ? "default" : "outline"}
-                    onClick={() => setSelectedTime(time)}
-                    className="w-full shadow-none"
-                    data-time={time}
-                  >
-                    {time}
-                  </Button>
-                ))}
+              {ALL_TIME_SLOTS.map((time) => (
+                <Button
+                  key={time}
+                  variant={selectedTime === time ? "default" : "outline"}
+                  onClick={() => setSelectedTime(time)}
+                  className="w-full shadow-none"
+                  data-time={time}
+                >
+                  {time}
+                </Button>
+              ))}
             </div>
           </CardContent>
         </Card>

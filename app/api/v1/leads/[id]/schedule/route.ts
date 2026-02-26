@@ -196,6 +196,8 @@ export async function POST(
           meetingDate,
           meetingLink: resolvedMeetingLink,
           organizerName,
+          organizerEmail: closerEmail,
+          eventUid: schedule.id,
         });
         if (!emailResult.success) {
           console.warn("Erro ao enviar convites por e-mail:", emailResult.error);

@@ -1,5 +1,6 @@
 import { assertResend } from "@/lib/email";
 import { getAppUrl, getFullUrl } from '@/lib/utils/app-url';
+import type { Attachment } from "resend";
 
 export interface EmailOptions {
   to: string[];
@@ -7,6 +8,7 @@ export interface EmailOptions {
   html?: string;
   text?: string;
   from?: string;
+  attachments?: Attachment[];
 }
 
 export interface WelcomeEmailData {
@@ -60,8 +62,10 @@ export interface MeetingInviteEmailData {
   meetingDate: Date;
   meetingLink?: string | null;
   organizerName: string;
+  organizerEmail?: string | null;
   closerName?: string | null;
   notes?: string | null;
+  eventUid?: string | null;
 }
 
 export class EmailService {
@@ -76,6 +80,93 @@ export class EmailService {
       }
     }
     return this.resend;
+  }
+
+  private formatIcsDate(date: Date) {
+    return date
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .replace(/\.\d{3}Z$/, "Z");
+  }
+
+  private escapeIcsText(value?: string | null) {
+    if (!value) return "";
+    return value
+      .replace(/\\/g, "\\\\")
+      .replace(/\n/g, "\\n")
+      .replace(/;/g, "\\;")
+      .replace(/,/g, "\\,");
+  }
+
+  private buildMeetingInviteIcs(data: MeetingInviteEmailData) {
+    const title = data.meetingTitle || `Estudo Plano de Saúde: ${data.leadName}`;
+    const start = data.meetingDate;
+    const end = new Date(start.getTime() + 30 * 60 * 1000);
+    const dtStamp = this.formatIcsDate(new Date());
+    const dtStart = this.formatIcsDate(start);
+    const dtEnd = this.formatIcsDate(end);
+    const rawUid =
+      data.eventUid && data.eventUid.includes("@")
+        ? data.eventUid
+        : `${data.eventUid || `meeting-${start.getTime()}`}@corretorstudio.com`;
+    const uid = this.escapeIcsText(rawUid);
+
+    const descriptionLines = [
+      "Reunião agendada pelo Corretor Studio.",
+      `Lead: ${data.leadName}`,
+    ];
+    if (data.organizerName) {
+      descriptionLines.push(`Organizador: ${data.organizerName}`);
+    }
+    if (data.notes) {
+      descriptionLines.push(`Observações: ${data.notes}`);
+    }
+    if (data.meetingLink) {
+      descriptionLines.push(`Link: ${data.meetingLink}`);
+    }
+
+    const description = this.escapeIcsText(descriptionLines.join("\n"));
+    const summary = this.escapeIcsText(title);
+    const location = data.meetingLink ? this.escapeIcsText(data.meetingLink) : "";
+    const organizerName = this.escapeIcsText(data.organizerName || "Corretor Studio");
+    const organizerEmail = data.organizerEmail?.trim();
+    const attendees = Array.from(
+      new Set(
+        (data.to || [])
+          .map((item) => item.trim().toLowerCase())
+          .filter(Boolean)
+      )
+    );
+
+    const lines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Corretor Studio//Lead Flow//PT-BR",
+      "CALSCALE:GREGORIAN",
+      "METHOD:REQUEST",
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `DTSTAMP:${dtStamp}`,
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:${summary}`,
+      `DESCRIPTION:${description}`,
+    ];
+
+    if (location) {
+      lines.push(`LOCATION:${location}`);
+    }
+
+    if (organizerEmail) {
+      lines.push(`ORGANIZER;CN=${organizerName}:mailto:${organizerEmail}`);
+    }
+
+    for (const attendee of attendees) {
+      lines.push(`ATTENDEE;ROLE=REQ-PARTICIPANT;RSVP=TRUE:mailto:${attendee}`);
+    }
+
+    lines.push("END:VEVENT", "END:VCALENDAR");
+    return lines.join("\r\n");
   }
 
   // Método genérico para enviar emails
@@ -119,6 +210,9 @@ export class EmailService {
       }
       if (options.text) {
         emailData.text = options.text;
+      }
+      if (options.attachments?.length) {
+        emailData.attachments = options.attachments;
       }
 
       const result = await resend.emails.send(emailData);
@@ -793,6 +887,13 @@ export class EmailService {
       to: data.to,
       subject: title,
       html,
+      attachments: [
+        {
+          filename: "invite.ics",
+          content: Buffer.from(this.buildMeetingInviteIcs(data), "utf8"),
+          contentType: "text/calendar; charset=utf-8; method=REQUEST",
+        },
+      ],
     });
   }
 }

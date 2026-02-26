@@ -58,19 +58,23 @@ export function ScheduleMeetingDialog({
   const [extraGuests, setExtraGuests] = useState<string[]>([]);
   const [extraGuestsDraft, setExtraGuestsDraft] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [availableTimes, setAvailableTimes] = useState<string[] | null>(null);
+  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
   const members = teamMembers && teamMembers.length > 0 ? teamMembers : closers;
+  const isValidDate = (value?: Date): value is Date =>
+    value instanceof Date && !Number.isNaN(value.getTime());
   const canSubmit =
-    !!meetingDate &&
+    isValidDate(meetingDate) &&
     meetingTitle.trim().length > 0 &&
     !!closerId &&
-    (!availableTimes || availableTimes.length > 0);
+    availableTimes.length > 0;
+  const hasAvailabilityInputs = isValidDate(meetingDate) && !!closerId && !!supabaseId;
 
   useEffect(() => {
     if (!open) return;
-    setMeetingDate(lead.meetingDate ? new Date(lead.meetingDate) : undefined);
+    const parsedMeetingDate = lead.meetingDate ? new Date(lead.meetingDate) : undefined;
+    setMeetingDate(isValidDate(parsedMeetingDate) ? parsedMeetingDate : undefined);
     setMeetingTitle(lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`);
     setNotes(lead.meetingNotes || "");
     setMeetingLink(lead.meetingLink || "");
@@ -82,25 +86,33 @@ export function ScheduleMeetingDialog({
     }
   }, [open, lead, closers]);
 
-  const toDateKey = (date: Date) =>
-    new Intl.DateTimeFormat("en-CA", {
+  const toDateKey = (date: Date) => {
+    if (!isValidDate(date)) return null;
+    return new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Sao_Paulo",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
     }).format(date);
+  };
 
   const formatTime = (date: Date) =>
     date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
   useEffect(() => {
-    if (!open || !meetingDate || !closerId || !supabaseId) {
-      setAvailableTimes(null);
+    if (!open || !isValidDate(meetingDate) || !closerId || !supabaseId) {
+      setAvailableTimes([]);
       setAvailabilityError(null);
       return;
     }
 
-    const dateKey = toDateKey(meetingDate);
+    const currentMeetingDate = meetingDate;
+    const dateKey = toDateKey(currentMeetingDate);
+    if (!dateKey) {
+      setAvailableTimes([]);
+      setAvailabilityError("Data da reunião inválida. Selecione novamente.");
+      return;
+    }
     let isMounted = true;
 
     const fetchAvailability = async () => {
@@ -126,18 +138,16 @@ export function ScheduleMeetingDialog({
         if (!isMounted) return;
         setAvailableTimes(times);
 
-        if (meetingDate) {
-          const currentTime = formatTime(meetingDate);
-          if (times.length > 0 && !times.includes(currentTime)) {
-            const [hours, minutes] = times[0].split(":").map(Number);
-            const nextDate = new Date(meetingDate);
-            nextDate.setHours(hours, minutes, 0, 0);
-            setMeetingDate(nextDate);
-          }
+        const currentTime = formatTime(currentMeetingDate);
+        if (times.length > 0 && !times.includes(currentTime)) {
+          const [hours, minutes] = times[0].split(":").map(Number);
+          const nextDate = new Date(currentMeetingDate);
+          nextDate.setHours(hours, minutes, 0, 0);
+          setMeetingDate(isValidDate(nextDate) ? nextDate : undefined);
         }
       } catch (error) {
         if (!isMounted) return;
-        setAvailableTimes(null);
+        setAvailableTimes([]);
         setAvailabilityError(
           error instanceof Error ? error.message : "Erro ao buscar disponibilidade."
         );
@@ -189,10 +199,11 @@ export function ScheduleMeetingDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!meetingDate) {
+    if (!isValidDate(meetingDate)) {
       toast.error("Selecione uma data e hora para o agendamento");
       return;
     }
+    const scheduledMeetingDate = meetingDate;
     if (!meetingTitle.trim()) {
       toast.error("Informe o titulo da reunião");
       return;
@@ -217,7 +228,7 @@ export function ScheduleMeetingDialog({
           "x-team-id": activeTeamId || "",
         },
         body: JSON.stringify({
-          date: meetingDate.toISOString(),
+          date: scheduledMeetingDate.toISOString(),
           meetingTitle: meetingTitle.trim(),
           notes: notes || `Reunião agendada com ${lead.name}`,
           meetingLink: meetingLink || undefined,
@@ -254,7 +265,7 @@ export function ScheduleMeetingDialog({
       }
 
       // ✅ Sucesso - Fechar dialog e atualizar UI
-      toast.success(`Reunião agendada para ${meetingDate.toLocaleDateString("pt-BR", {
+      toast.success(`Reunião agendada para ${scheduledMeetingDate.toLocaleDateString("pt-BR", {
         day: "2-digit",
         month: "long",
         year: "numeric",
@@ -315,15 +326,21 @@ export function ScheduleMeetingDialog({
               label="Data e Horário da Reunião"
               required
               disablePastDates
-              availableTimes={availableTimes ?? undefined}
+              availableTimes={availableTimes}
             />
+            {!isValidDate(meetingDate) && (
+              <p className="text-xs text-muted-foreground">Selecione uma data para carregar horários disponíveis.</p>
+            )}
+            {isValidDate(meetingDate) && !closerId && (
+              <p className="text-xs text-muted-foreground">Selecione um closer para carregar horários disponíveis.</p>
+            )}
             {availabilityLoading && (
               <p className="text-xs text-muted-foreground">Carregando horários disponíveis...</p>
             )}
             {availabilityError && (
               <p className="text-xs text-destructive">{availabilityError}</p>
             )}
-            {availableTimes && availableTimes.length === 0 && !availabilityLoading && !availabilityError && (
+            {hasAvailabilityInputs && availableTimes.length === 0 && !availabilityLoading && !availabilityError && (
               <p className="text-xs text-muted-foreground">Nenhum horário disponível para este dia.</p>
             )}
 
