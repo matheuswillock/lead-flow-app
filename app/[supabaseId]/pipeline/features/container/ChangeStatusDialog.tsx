@@ -168,6 +168,7 @@ export function ChangeStatusDialog({
           onScheduleSuccess={handleScheduleSuccess}
           closers={closers}
           teamMembers={teamMembers}
+          mode="create"
         />
       )}
 

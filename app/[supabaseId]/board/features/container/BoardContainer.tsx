@@ -17,6 +17,7 @@ export function BoardContainer() {
   const { finalizeContract, refreshLeads, open, setOpen, selected: lead, user, userLoading, patchLead } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
@@ -34,6 +35,7 @@ export function BoardContainer() {
 
   const handleScheduleMeeting = (lead: Lead) => {
     setSelectedLead(lead);
+    setScheduleDialogMode(lead.status === "no_show" ? "reschedule" : "create");
     setShowScheduleDialog(true);
   };
 
@@ -119,11 +121,17 @@ export function BoardContainer() {
           
           <ScheduleMeetingDialog
             open={showScheduleDialog}
-            onOpenChange={setShowScheduleDialog}
+            onOpenChange={(open) => {
+              setShowScheduleDialog(open);
+              if (!open) {
+                setScheduleDialogMode("create");
+              }
+            }}
             lead={selectedLead}
             onScheduleSuccess={handleScheduleSuccess}
             closers={closers}
             teamMembers={user?.usersAssociated ?? []}
+            mode={scheduleDialogMode}
           />
         </>
       )}

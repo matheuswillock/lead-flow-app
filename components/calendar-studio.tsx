@@ -106,7 +106,7 @@ const getInitials = (name?: string | null) => {
 
 const getStatusLabel = (status: Lead["status"]) => getLeadStatusLabel(status)
 
-export default function Calendar42() {
+export default function CalendarStudio() {
   const {
     data,
     isLoading,
@@ -128,6 +128,7 @@ export default function Calendar42() {
   const [closerFilter, setCloserFilter] = React.useState<string[]>([])
   const [leadPickerOpen, setLeadPickerOpen] = React.useState(false)
   const [leadToSchedule, setLeadToSchedule] = React.useState<Lead | null>(null)
+  const [scheduleDialogMode, setScheduleDialogMode] = React.useState<"create" | "reschedule">("create")
   const [scheduleDialogOpen, setScheduleDialogOpen] = React.useState(false)
   const [leadPickerQuery, setLeadPickerQuery] = React.useState("")
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
@@ -615,6 +616,7 @@ export default function Calendar42() {
                           onClick={(event) => {
                             event.stopPropagation()
                             setLeadToSchedule(lead)
+                            setScheduleDialogMode("reschedule")
                             setScheduleDialogOpen(true)
                           }}
                         >
@@ -675,6 +677,7 @@ export default function Calendar42() {
                       type="button"
                       onClick={() => {
                         setLeadToSchedule(lead)
+                        setScheduleDialogMode("create")
                         setLeadPickerOpen(false)
                         setScheduleDialogOpen(true)
                       }}
@@ -705,12 +708,14 @@ export default function Calendar42() {
             setScheduleDialogOpen(nextOpen)
             if (!nextOpen) {
               setLeadToSchedule(null)
+              setScheduleDialogMode("create")
             }
           }}
           lead={leadToSchedule}
           onScheduleSuccess={refreshLeads}
           closers={closers}
           teamMembers={user?.usersAssociated ?? []}
+          mode={scheduleDialogMode}
         />
       )}
 
@@ -737,6 +742,7 @@ export default function Calendar42() {
                 if (!leadToCancel) return
                 setCancelDialogOpen(false)
                 setLeadToSchedule(leadToCancel)
+                setScheduleDialogMode("reschedule")
                 setScheduleDialogOpen(true)
               }}
             >

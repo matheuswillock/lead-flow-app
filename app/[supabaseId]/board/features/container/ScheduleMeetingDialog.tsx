@@ -36,6 +36,7 @@ interface ScheduleMeetingDialogProps {
   onScheduleSuccess: () => void;
   closers: UserAssociated[];
   teamMembers?: UserAssociated[];
+  mode?: "create" | "reschedule";
 }
 
 export function ScheduleMeetingDialog({
@@ -45,6 +46,7 @@ export function ScheduleMeetingDialog({
   onScheduleSuccess,
   closers,
   teamMembers,
+  mode = "create",
 }: ScheduleMeetingDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
@@ -74,8 +76,15 @@ export function ScheduleMeetingDialog({
   useEffect(() => {
     if (!open) return;
     const parsedMeetingDate = lead.meetingDate ? new Date(lead.meetingDate) : undefined;
+    const defaultMeetingTitle = `Estudo Plano de Saúde: ${lead.name}`;
+    const hasExistingMeetingTitle = !!lead.meetingTitle?.trim();
+    const shouldKeepExistingTitle = mode === "reschedule";
     setMeetingDate(isValidDate(parsedMeetingDate) ? parsedMeetingDate : undefined);
-    setMeetingTitle(lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`);
+    setMeetingTitle(
+      shouldKeepExistingTitle && hasExistingMeetingTitle
+        ? lead.meetingTitle!
+        : defaultMeetingTitle
+    );
     setNotes(lead.meetingNotes || "");
     setMeetingLink(lead.meetingLink || "");
     setCloserId(lead.closerId || "");
@@ -84,7 +93,7 @@ export function ScheduleMeetingDialog({
     if (!lead.closerId && closers.length === 1) {
       setCloserId(closers[0].id);
     }
-  }, [open, lead, closers]);
+  }, [open, lead, closers, mode]);
 
   const toDateKey = (date: Date) => {
     if (!isValidDate(date)) return null;
