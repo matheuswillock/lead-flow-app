@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
+import { createSupabaseServer } from "@/lib/supabase/server";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 
 const LOG_PREFIX = "[GoogleDisconnect]";
@@ -16,12 +17,37 @@ export async function POST(request: NextRequest) {
   let supabaseId: string | null = null;
 
   try {
-    supabaseId = request.headers.get("x-supabase-user-id");
-    if (!supabaseId) {
-      logError("Supabase ID ausente no header.", { status: "error", step: "auth_header" });
-      const output = new Output(false, [], ["ID do usuario e obrigatorio"], null);
+    const supabase = await createSupabaseServer();
+    if (!supabase) {
+      logError("Falha ao criar cliente Supabase.", { status: "error", step: "auth_client" });
+      const output = new Output(false, [], ["Erro ao autenticar usuario"], null);
       return NextResponse.json(output, { status: 401 });
     }
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      logError("Usuario nao autenticado.", { status: "error", step: "auth_session" });
+      const output = new Output(false, [], ["Usuario nao autenticado"], null);
+      return NextResponse.json(output, { status: 401 });
+    }
+
+    const headerSupabaseId = request.headers.get("x-supabase-user-id");
+    if (headerSupabaseId && headerSupabaseId !== user.id) {
+      logError("Supabase ID do header nao corresponde ao usuario autenticado.", {
+        status: "error",
+        step: "auth_header_mismatch",
+        headerSupabaseId,
+        supabaseId: user.id,
+      });
+      const output = new Output(false, [], ["Nao autorizado"], null);
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    supabaseId = user.id;
 
     const profile = await profileRepository.updateGoogleCalendarAuth(supabaseId, {
       accessToken: null,
