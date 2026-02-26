@@ -6,7 +6,7 @@ import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog";
 import { FinalizeContractDialog } from "./FinalizeContractDialog";
-import { ScheduleMeetingDialog } from "./ScheduleMeetingDialog";
+import { ScheduleMeetingDialog, type ScheduleMeetingSuccessPayload } from "./ScheduleMeetingDialog";
 import useBoardContext from "../context/BoardHook";
 import { Lead } from "../context/BoardTypes";
 import { toast } from "sonner";
@@ -81,7 +81,17 @@ export function BoardContainer() {
     }
   };
 
-  const handleScheduleSuccess = async () => {
+  const handleScheduleSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
+    if (payload) {
+      patchLead?.(payload.leadId, {
+        status: payload.status,
+        meetingDate: payload.meetingDate,
+        meetingTitle: payload.meetingTitle,
+        meetingNotes: payload.meetingNotes,
+        meetingLink: payload.meetingLink,
+        closerId: payload.closerId,
+      });
+    }
     await refreshLeads();
     setSelectedLead(null);
   };
