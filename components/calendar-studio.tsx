@@ -197,10 +197,7 @@ export default function CalendarStudio() {
 
   const closers = React.useMemo(() => {
     const list = user?.usersAssociated ?? []
-    const closersOnly = list.filter((closer) =>
-      (closer.functions || []).includes("CLOSER")
-    )
-    return closersOnly.length > 0 ? closersOnly : list
+    return list.filter((closer) => (closer.functions || []).includes("CLOSER"))
   }, [user])
 
   const closersById = React.useMemo(() => {
@@ -589,7 +586,7 @@ export default function CalendarStudio() {
                           </div>
                         )}
                       </button>
-                      {lead.status === "scheduled" && (
+                      {lead.status === "scheduled" && canToggleMeetingHeald && (
                         <div
                           className="mt-2 flex items-center justify-between gap-2"
                           onClick={(event) => event.stopPropagation()}

@@ -63,7 +63,20 @@ export function ScheduleMeetingDialog({
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
-  const members = teamMembers && teamMembers.length > 0 ? teamMembers : closers;
+  const [teamMembersFromApi, setTeamMembersFromApi] = useState<UserAssociated[]>([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const fallbackMembers = teamMembers && teamMembers.length > 0 ? teamMembers : closers;
+  const members = teamMembersFromApi.length > 0 ? teamMembersFromApi : fallbackMembers;
+  const closersFromMembers = members.filter((member) => member.functions?.includes("CLOSER"));
+  const fallbackClosers = closers.filter(
+    (member) => member.functions?.includes("CLOSER") || !member.functions || member.functions.length === 0
+  );
+  const availableClosers =
+    teamMembersFromApi.length > 0
+      ? closersFromMembers
+      : closersFromMembers.length > 0
+        ? closersFromMembers
+        : fallbackClosers;
   const isValidDate = (value?: Date): value is Date =>
     value instanceof Date && !Number.isNaN(value.getTime());
   const canSubmit =
@@ -72,6 +85,62 @@ export function ScheduleMeetingDialog({
     !!closerId &&
     availableTimes.length > 0;
   const hasAvailabilityInputs = isValidDate(meetingDate) && !!closerId && !!supabaseId;
+
+  useEffect(() => {
+    if (!open || !activeTeamId || !supabaseId) {
+      setTeamMembersFromApi([]);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchTeamMembers = async () => {
+      setTeamMembersLoading(true);
+      try {
+        const response = await fetch(`/api/v1/teams/${activeTeamId}/members`, {
+          headers: {
+            "x-supabase-user-id": supabaseId,
+          },
+        });
+        const result = await response.json();
+        if (!response.ok || !result?.isValid) {
+          throw new Error(
+            Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+              ? result.errorMessages.join(", ")
+              : "Erro ao carregar membros do time"
+          );
+        }
+
+        const membersFromResult: UserAssociated[] = (result?.result?.members ?? []).map((member: any) => ({
+          id: member.profileId,
+          name: member.name || member.email || "Usuário",
+          avatarImageUrl: member.profileIconUrl || "",
+          email: member.email || "",
+          role: member.role,
+          functions: member.functions ?? [],
+        }));
+
+        if (isMounted) {
+          setTeamMembersFromApi(membersFromResult);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar membros do time para agendamento:", error);
+        if (isMounted) {
+          setTeamMembersFromApi([]);
+        }
+      } finally {
+        if (isMounted) {
+          setTeamMembersLoading(false);
+        }
+      }
+    };
+
+    fetchTeamMembers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open, activeTeamId, supabaseId]);
 
   useEffect(() => {
     if (!open) return;
@@ -90,10 +159,14 @@ export function ScheduleMeetingDialog({
     setCloserId(lead.closerId || "");
     setExtraGuests([]);
     setExtraGuestsDraft("");
-    if (!lead.closerId && closers.length === 1) {
-      setCloserId(closers[0].id);
+  }, [open, lead, mode]);
+
+  useEffect(() => {
+    if (!open || closerId) return;
+    if (availableClosers.length === 1) {
+      setCloserId(availableClosers[0].id);
     }
-  }, [open, lead, closers, mode]);
+  }, [open, closerId, availableClosers]);
 
   const toDateKey = (date: Date) => {
     if (!isValidDate(date)) return null;
@@ -468,18 +541,26 @@ export function ScheduleMeetingDialog({
             <div className="grid gap-2">
               <Label>Closer</Label>
               <Select value={closerId} onValueChange={setCloserId}>
-                <SelectTrigger>
-                  <SelectValue placeholder={closers.length ? "Selecione um closer" : "Sem closers disponiveis"} />
+                <SelectTrigger disabled={teamMembersLoading}>
+                  <SelectValue
+                    placeholder={
+                      teamMembersLoading
+                        ? "Carregando closers..."
+                        : availableClosers.length
+                          ? "Selecione um closer"
+                          : "Sem closers disponiveis"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {closers.map((closer) => (
+                  {availableClosers.map((closer) => (
                     <SelectItem key={closer.id} value={closer.id}>
                       {closer.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {!closers.length && (
+              {!teamMembersLoading && !availableClosers.length && (
                 <p className="text-xs text-muted-foreground">
                   Nenhum closer disponível para este time.
                 </p>
