@@ -101,6 +101,8 @@ export async function POST(
           meetingDate: schedule.date,
           meetingLink: schedule.meetingLink,
           organizerName,
+          organizerEmail: closerProfile.email,
+          eventUid: schedule.id,
         });
 
         if (!emailResult.success) {
@@ -130,6 +132,8 @@ export async function POST(
         meetingDate: schedule.date,
         meetingLink: schedule.meetingLink,
         organizerName,
+        organizerEmail: closerProfile.email,
+        eventUid: schedule.id,
       });
 
       if (!emailResult.success) {
@@ -157,6 +161,8 @@ export async function POST(
       meetingLink: schedule.meetingLink,
       organizerName,
       closerName,
+      organizerEmail: closerProfile.email,
+      eventUid: schedule.id,
     });
 
     if (!emailResult.success) {

@@ -88,6 +88,7 @@ export default function PipelineTable() {
   const [data, setData] = React.useState<Lead[]>(filtered);
   
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [showChangeStatusDialog, setShowChangeStatusDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
@@ -163,11 +164,13 @@ export default function PipelineTable() {
 
   const handleScheduleMeeting = (lead: Lead) => {
     setSelectedLead(lead);
+    setScheduleDialogMode("create");
     setShowScheduleDialog(true);
   };
 
   const handleRescheduleMeeting = (lead: Lead) => {
     setSelectedLead(lead);
+    setScheduleDialogMode("reschedule");
     setShowScheduleDialog(true);
   };
 
@@ -527,11 +530,17 @@ export default function PipelineTable() {
       {selectedLead && (
         <ScheduleMeetingDialog
           open={showScheduleDialog}
-          onOpenChange={setShowScheduleDialog}
+          onOpenChange={(open) => {
+            setShowScheduleDialog(open);
+            if (!open) {
+              setScheduleDialogMode("create");
+            }
+          }}
           lead={selectedLead}
           onScheduleSuccess={refreshLeads}
           closers={closers}
           teamMembers={user?.usersAssociated ?? []}
+          mode={scheduleDialogMode}
         />
       )}
 

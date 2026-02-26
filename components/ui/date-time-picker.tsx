@@ -178,7 +178,7 @@ export function DateTimePicker({
                     ))}
                   </SelectContent>
                 </Select>
-                {availableTimes.length === 0 && (
+                {availableTimes.length === 0 && selectedDate && (
                   <p className="text-xs text-muted-foreground">
                     Nenhum horário disponível para este dia.
                   </p>

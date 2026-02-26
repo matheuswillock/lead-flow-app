@@ -21,7 +21,7 @@ import { Calendar, CheckCircle, Mail, MessageCircle, MessageSquare, Phone, Smile
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
-import type { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+import type { ProfileResponseDTO, UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import type { LeadActivityReactionSummary, LeadActivityResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
 import { useParams, usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -66,6 +66,8 @@ type MentionMember = {
   name: string;
   email: string | null;
   profileIconUrl?: string | null;
+  role?: UserAssociated["role"];
+  functions?: UserAssociated["functions"];
 };
 
 const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
@@ -182,6 +184,8 @@ export default function LeadDialog({
           name: member.name || member.email || "Usuário",
           email: member.email ?? null,
           profileIconUrl: member.profileIconUrl ?? null,
+          role: member.role,
+          functions: member.functions ?? [],
         })) as MentionMember[];
 
         if (isMounted) {
@@ -251,6 +255,7 @@ export default function LeadDialog({
   const shouldShowMeetingHeald = !!lead && lead.status === "scheduled";
   const canEditMeetingHeald =
     shouldShowMeetingHeald && (isTeamMaster || activeFunctions.includes("CLOSER"));
+  const canShowMeetingHeald = shouldShowMeetingHeald && canEditMeetingHeald;
   const showMeetingLink = !!lead && lead.status !== "new_opportunity";
   const canReactToActivity =
     !!user && (user.role === "manager" || activeFunctions.includes("SDR") || activeFunctions.includes("CLOSER"));
@@ -262,6 +267,20 @@ export default function LeadDialog({
     const currentUserId = user?.id;
     return teamMembers.filter((member) => member.profileId !== currentUserId);
   }, [teamMembers, user?.id]);
+
+  const usersToAssign = useMemo<UserAssociated[]>(() => {
+    if (teamMembers.length > 0) {
+      return teamMembers.map((member) => ({
+        id: member.profileId,
+        name: member.name,
+        avatarImageUrl: member.profileIconUrl || "",
+        email: member.email || "",
+        role: member.role ?? "operator",
+        functions: member.functions ?? [],
+      }));
+    }
+    return user?.usersAssociated || [];
+  }, [teamMembers, user?.usersAssociated]);
 
   const mentionMatches = useMemo(() => {
     const query = mentionQuery.trim().toLowerCase();
@@ -1416,10 +1435,10 @@ export default function LeadDialog({
                     onSubmit={onSubmit}
                     isLoading={isSubmitting}
                     onCancel={() => setOpen(false)}
-                    usersToAssign={user.usersAssociated || []}
+                    usersToAssign={usersToAssign}
                     leadId={lead?.id}
-                    showMeetingHeald={shouldShowMeetingHeald}
-                    meetingHealdReadOnly={shouldShowMeetingHeald && !canEditMeetingHeald}
+                    showMeetingHeald={canShowMeetingHeald}
+                    meetingHealdReadOnly={false}
                     meetingHealdSaving={meetingHealdSaving}
                     onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
                     showMeetingLink={showMeetingLink}

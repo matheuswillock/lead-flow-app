@@ -32,6 +32,12 @@ import { useTeamContext } from "@/app/context/TeamContext"
 import { Checkbox } from "@/components/ui/checkbox"
 
 const SLOT_MINUTES = 30
+const ALL_TIME_SLOTS = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => {
+  const totalMinutes = index * SLOT_MINUTES
+  const hour = Math.floor(totalMinutes / 60)
+  const minute = totalMinutes % 60
+  return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`
+})
 
 const getNextSlotTime = () => {
   const now = new Date()
@@ -79,14 +85,6 @@ const toDateKey = (date: Date) =>
     date.getDate()
   ).padStart(2, "0")}`
 
-const toDateKeySaoPaulo = (date: Date) =>
-  new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date)
-
 const isSameDay = (left: Date, right: Date) =>
   left.getFullYear() === right.getFullYear() &&
   left.getMonth() === right.getMonth() &&
@@ -108,7 +106,7 @@ const getInitials = (name?: string | null) => {
 
 const getStatusLabel = (status: Lead["status"]) => getLeadStatusLabel(status)
 
-export default function Calendar42() {
+export default function CalendarStudio() {
   const {
     data,
     isLoading,
@@ -130,14 +128,12 @@ export default function Calendar42() {
   const [closerFilter, setCloserFilter] = React.useState<string[]>([])
   const [leadPickerOpen, setLeadPickerOpen] = React.useState(false)
   const [leadToSchedule, setLeadToSchedule] = React.useState<Lead | null>(null)
+  const [scheduleDialogMode, setScheduleDialogMode] = React.useState<"create" | "reschedule">("create")
   const [scheduleDialogOpen, setScheduleDialogOpen] = React.useState(false)
   const [leadPickerQuery, setLeadPickerQuery] = React.useState("")
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
   const [leadToCancel, setLeadToCancel] = React.useState<Lead | null>(null)
   const [meetingHealdSavingId, setMeetingHealdSavingId] = React.useState<string | null>(null)
-  const [availableTimes, setAvailableTimes] = React.useState<string[] | null>(null)
-  const [availabilityLoading, setAvailabilityLoading] = React.useState(false)
-  const [availabilityError, setAvailabilityError] = React.useState<string | null>(null)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext()
@@ -201,10 +197,7 @@ export default function Calendar42() {
 
   const closers = React.useMemo(() => {
     const list = user?.usersAssociated ?? []
-    const closersOnly = list.filter((closer) =>
-      (closer.functions || []).includes("CLOSER")
-    )
-    return closersOnly.length > 0 ? closersOnly : list
+    return list.filter((closer) => (closer.functions || []).includes("CLOSER"))
   }, [user])
 
   const closersById = React.useMemo(() => {
@@ -308,87 +301,6 @@ export default function Calendar42() {
     closerFilter.includes(closer.id)
   )
 
-  const hasClosers = closers.length > 0
-  const closerIdsToQuery = React.useMemo(() => {
-    return closerFilter.length > 0 ? closerFilter : closers.map((closer) => closer.id)
-  }, [closerFilter, closers])
-
-  React.useEffect(() => {
-    if (!date) return
-
-    if (!hasClosers) {
-      setAvailableTimes([])
-      setAvailabilityError("Nenhum closer disponível para este time.")
-      setSelectedTime(null)
-      return
-    }
-
-    if (closerIdsToQuery.length === 0) {
-      setAvailableTimes([])
-      setAvailabilityError("Nenhum closer disponível para este time.")
-      setSelectedTime(null)
-      return
-    }
-
-    if (!supabaseId) return
-
-    const dateKey = toDateKeySaoPaulo(date)
-    let isMounted = true
-
-    const fetchAvailability = async () => {
-      setAvailabilityLoading(true)
-      setAvailabilityError(null)
-      try {
-        const response = await fetch("/api/v1/calendar/availability", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-supabase-user-id": supabaseId,
-            "x-team-id": activeTeamId || "",
-          },
-          body: JSON.stringify({ closerIds: closerIdsToQuery, date: dateKey }),
-        })
-
-        const result = await response.json()
-        if (!response.ok || !result?.isValid) {
-          throw new Error(result?.errorMessages?.join(", ") || "Erro ao buscar disponibilidade.")
-        }
-
-        const times = result?.result?.availableTimes ?? []
-        if (!isMounted) return
-        setAvailableTimes(times)
-      } catch (error) {
-        if (!isMounted) return
-        setAvailableTimes(null)
-        setAvailabilityError(
-          error instanceof Error ? error.message : "Erro ao buscar disponibilidade."
-        )
-      } finally {
-        if (isMounted) {
-          setAvailabilityLoading(false)
-        }
-      }
-    }
-
-    fetchAvailability()
-
-    return () => {
-      isMounted = false
-    }
-  }, [date, closers, closerIdsToQuery, supabaseId, activeTeamId, hasClosers])
-
-  React.useEffect(() => {
-    if (!availableTimes || availableTimes.length === 0) {
-      if (selectedTime) {
-        setSelectedTime(null)
-      }
-      return
-    }
-
-    if (selectedTime && availableTimes.includes(selectedTime)) return
-    setSelectedTime(availableTimes[0])
-  }, [availableTimes, selectedTime])
-
   React.useEffect(() => {
     if (!selectedTime) return
     const target = timeListRef.current?.querySelector(
@@ -456,33 +368,21 @@ export default function Calendar42() {
                 Limpar horario
               </Button>
             </div>
-            {availabilityError && (
-              <p className="px-2 text-xs text-destructive">{availabilityError}</p>
-            )}
-            {!availabilityError && hasClosers && availableTimes?.length === 0 && !availabilityLoading && (
-              <p className="px-2 text-xs text-muted-foreground">
-                Nenhum horário disponível para este dia.
-              </p>
-            )}
             <div
               ref={timeListRef}
               className="no-scrollbar flex max-h-[40dvh] flex-col gap-2 overflow-y-auto px-2 lg:max-h-none lg:min-h-0 lg:flex-1"
             >
-              {isLoading || availabilityLoading
-                ? Array.from({ length: 12 }).map((_, idx) => (
-                    <Skeleton key={idx} className="h-10 w-full rounded-md" />
-                  ))
-                : (availableTimes ?? []).map((time) => (
-                  <Button
-                    key={time}
-                    variant={selectedTime === time ? "default" : "outline"}
-                    onClick={() => setSelectedTime(time)}
-                    className="w-full shadow-none"
-                    data-time={time}
-                  >
-                    {time}
-                  </Button>
-                ))}
+              {ALL_TIME_SLOTS.map((time) => (
+                <Button
+                  key={time}
+                  variant={selectedTime === time ? "default" : "outline"}
+                  onClick={() => setSelectedTime(time)}
+                  className="w-full shadow-none"
+                  data-time={time}
+                >
+                  {time}
+                </Button>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -686,7 +586,7 @@ export default function Calendar42() {
                           </div>
                         )}
                       </button>
-                      {lead.status === "scheduled" && (
+                      {lead.status === "scheduled" && canToggleMeetingHeald && (
                         <div
                           className="mt-2 flex items-center justify-between gap-2"
                           onClick={(event) => event.stopPropagation()}
@@ -713,6 +613,7 @@ export default function Calendar42() {
                           onClick={(event) => {
                             event.stopPropagation()
                             setLeadToSchedule(lead)
+                            setScheduleDialogMode("reschedule")
                             setScheduleDialogOpen(true)
                           }}
                         >
@@ -773,6 +674,7 @@ export default function Calendar42() {
                       type="button"
                       onClick={() => {
                         setLeadToSchedule(lead)
+                        setScheduleDialogMode("create")
                         setLeadPickerOpen(false)
                         setScheduleDialogOpen(true)
                       }}
@@ -803,12 +705,14 @@ export default function Calendar42() {
             setScheduleDialogOpen(nextOpen)
             if (!nextOpen) {
               setLeadToSchedule(null)
+              setScheduleDialogMode("create")
             }
           }}
           lead={leadToSchedule}
           onScheduleSuccess={refreshLeads}
           closers={closers}
           teamMembers={user?.usersAssociated ?? []}
+          mode={scheduleDialogMode}
         />
       )}
 
@@ -835,6 +739,7 @@ export default function Calendar42() {
                 if (!leadToCancel) return
                 setCancelDialogOpen(false)
                 setLeadToSchedule(leadToCancel)
+                setScheduleDialogMode("reschedule")
                 setScheduleDialogOpen(true)
               }}
             >
