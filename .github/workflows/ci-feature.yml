@@ -47,6 +47,12 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
+      - name: Governance Check
+        run: bun run governance:check
+
+      - name: Governance Allowlist Warnings
+        run: bun run governance:warn-allowlist
+
       - name: Lint
         run: bun run lint
 
@@ -135,8 +141,10 @@ jobs:
               `**Head:** \`${head}\``,
               `**Base:** \`${base}\``,
               '',
-              '- [ ] Lint OK',
-              '- [ ] Typecheck OK',
+              '- [ ] Seguiu `agents.md`?',
+              '- [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?',
+              '- [ ] Rodou typecheck/lint?',
+              '- [ ] Rodou governance check?',
               '- [ ] Build OK',
               '',
               '*Criado automaticamente pelo GitHub Actions.*'
