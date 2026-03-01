@@ -1,3 +1,7 @@
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: agents.md -->
+<!-- Regenerate with: bun run governance:sync -->
+
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 

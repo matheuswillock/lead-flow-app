@@ -1,0 +1,88 @@
+{
+  "canonical": {
+    "path": "agents.md",
+    "requiredKeywords": [
+      "MUST",
+      "SHOULD",
+      "LEGACY EXCEPTIONS",
+      "FOR NEW FEATURES"
+    ]
+  },
+  "warnings": {
+    "maxExamplesPerCategory": 5
+  },
+  "adapters": [
+    {
+      "path": ".github/copilot-instructions.md",
+      "kind": "copilot"
+    },
+    {
+      "path": ".cursor/rules/lead-flow-agents.mdc",
+      "kind": "cursor"
+    },
+    {
+      "path": "CLAUDE.md",
+      "kind": "claude"
+    },
+    {
+      "path": "AGENTS.md",
+      "kind": "codex"
+    }
+  ],
+  "legacyExceptions": {
+    "prismaInV1RouteAllowlist": [
+      "app/api/v1/auth/forgot-password/route.ts",
+      "app/api/v1/billing/summary/route.ts",
+      "app/api/v1/calendar/availability/route.ts",
+      "app/api/v1/dashboard/schedules/route.ts",
+      "app/api/v1/debug/lead-query/route.ts",
+      "app/api/v1/leads/import/route.ts",
+      "app/api/v1/leads/route.ts",
+      "app/api/v1/leads/[id]/activities/route.ts",
+      "app/api/v1/leads/[id]/activities/[activityId]/reactions/route.ts",
+      "app/api/v1/leads/[id]/assign/route.ts",
+      "app/api/v1/leads/[id]/attachments/route.ts",
+      "app/api/v1/leads/[id]/attachments/[attachmentId]/route.ts",
+      "app/api/v1/leads/[id]/finalize/route.ts",
+      "app/api/v1/leads/[id]/route.ts",
+      "app/api/v1/leads/[id]/schedule/route.ts",
+      "app/api/v1/leads/[id]/schedule/cancel/route.ts",
+      "app/api/v1/leads/[id]/schedule/resend/route.ts",
+      "app/api/v1/leads/[id]/status/route.ts",
+      "app/api/v1/leads/[id]/transfer/route.ts",
+      "app/api/v1/manager/[supabaseId]/users/route.ts",
+      "app/api/v1/manager/[supabaseId]/users/[userId]/teams/route.ts",
+      "app/api/v1/operators/pending/[id]/route.ts",
+      "app/api/v1/operators/pending/[id]/status/route.ts",
+      "app/api/v1/operators/payments/create/route.ts",
+      "app/api/v1/operators/resend-invite/route.ts",
+      "app/api/v1/payments/create-card/route.ts",
+      "app/api/v1/profiles/[supabaseId]/route.ts",
+      "app/api/v1/subscriptions/sync/[supabaseId]/route.ts",
+      "app/api/v1/subscriptions/[subscriptionId]/notify-payment/route.ts",
+      "app/api/v1/teams/active/route.ts",
+      "app/api/v1/teams/confirm-payment/route.ts",
+      "app/api/v1/teams/payments/create/route.ts",
+      "app/api/v1/teams/pending-actions/[id]/route.ts",
+      "app/api/v1/teams/route.ts",
+      "app/api/v1/teams/[teamId]/members/route.ts",
+      "app/api/v1/teams/[teamId]/route.ts",
+      "app/api/v1/teams/[teamId]/transfer/route.ts",
+      "app/api/v1/users/delete/route.ts"
+    ],
+    "useCaseWithoutOutputAllowlist": [
+      "app/api/useCases/payments/PaymentValidationUseCase.ts",
+      "app/api/useCases/subscriptions/CheckSubscriptionUseCase.ts"
+    ],
+    "frontendFeatureStructureAllowlist": [
+      "app/[supabaseId]/account",
+      "app/[supabaseId]/calendar",
+      "app/[supabaseId]/pipeline",
+      "app/[supabaseId]/teams"
+    ],
+    "nonTypeScriptFileAllowlist": [
+      "eslint.config.mjs",
+      "postcss.config.mjs"
+    ]
+  }
+}
