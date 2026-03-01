@@ -59,10 +59,7 @@ function toAbsolutePath(relativePath: string): string {
 function isSamePath(pathA: string, pathB: string): boolean {
   const resolvedA = path.resolve(pathA);
   const resolvedB = path.resolve(pathB);
-  if (process.platform === "win32") {
-    return resolvedA.toLowerCase() === resolvedB.toLowerCase();
-  }
-  return resolvedA === resolvedB;
+  return resolvedA.toLowerCase() === resolvedB.toLowerCase();
 }
 
 function getMaxExamples(config: GovernanceConfig): number {

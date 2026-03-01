@@ -5,7 +5,7 @@
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.1.3
+**Version:** 2.1.4
 **Last Updated:** 2026-03-01
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
@@ -25,7 +25,7 @@ This document defines the implementation governance for AI agents in this reposi
 - Agents **MUST** treat `agents.md` as the canonical instruction file.
 - Adapter files (`.github/copilot-instructions.md`, `.cursor/rules/lead-flow-agents.mdc`, `CLAUDE.md`, `AGENTS.md`) **MUST** be generated from this file.
 - Team members and agents **MUST NOT** manually edit generated adapter files.
-- On case-insensitive filesystems (for example Windows), `AGENTS.md` resolves to the same canonical file path as `agents.md`.
+- `AGENTS.md` is treated as a logical alias for `agents.md` in governance checks to prevent cross-platform case-collision issues.
 - `.github/agents.md` is intentionally not generated to avoid confusion with the canonical file name.
 - Regenerate adapters with:
 
