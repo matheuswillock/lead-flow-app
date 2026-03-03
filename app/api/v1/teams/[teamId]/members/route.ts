@@ -100,15 +100,33 @@ export async function GET(
       orderBy: { createdAt: "asc" },
     });
 
+    const masterAccountProfiles = await prisma.profile.findMany({
+      where: {
+        OR: [{ id: team.masterId }, { managerId: team.masterId }],
+        supabaseId: { not: null },
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        supabaseId: true,
+      },
+    });
+
     const currentMemberIds = new Set(members.map((member) => member.profileId));
-    const eligibleProfiles = masterTeamMembers
-      .filter((member) => member.profile?.supabaseId)
-      .filter((member) => !currentMemberIds.has(member.profileId))
-      .map((member) => ({
-        id: member.profile.id,
-        name: member.profile.fullName || member.profile.email || "Usuário",
-        email: member.profile.email,
-      }));
+    const eligibleProfiles = masterAccountProfiles
+      .filter((accountProfile) => accountProfile.supabaseId)
+      .filter((accountProfile) => !currentMemberIds.has(accountProfile.id))
+      .map((accountProfile) => ({
+        id: accountProfile.id,
+        name: accountProfile.fullName || accountProfile.email || "Usuário",
+        email: accountProfile.email,
+      }))
+      .sort((a, b) => {
+        const aKey = (a.name || a.email || "").toLowerCase();
+        const bKey = (b.name || b.email || "").toLowerCase();
+        return aKey.localeCompare(bKey, "pt-BR");
+      });
 
     const transferCandidates = masterTeamMembers
       .filter((member) => member.profile?.supabaseId)
@@ -140,7 +158,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Erro ao listar membros do time:", error);
+    console.error("[TeamMembersRoute][GET] Erro ao listar membros do time:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao listar membros do time"], null),
       { status: 500 }
@@ -212,26 +230,26 @@ export async function POST(
       );
     }
 
-    const eligibleMember = await prisma.teamMember.findFirst({
+    const eligibleProfile = await prisma.profile.findFirst({
       where: {
-        profileId: payload.profileId,
-        team: { masterId: team.masterId },
+        id: payload.profileId,
+        OR: [{ id: team.masterId }, { managerId: team.masterId }],
       },
-      include: {
-        profile: {
-          select: { role: true, functions: true, supabaseId: true },
-        },
+      select: {
+        role: true,
+        functions: true,
+        supabaseId: true,
       },
     });
 
-    if (!eligibleMember) {
+    if (!eligibleProfile) {
       return NextResponse.json(
         new Output(false, [], ["Usuário não pertence à conta deste master"], null),
         { status: 400 }
       );
     }
 
-    if (!eligibleMember.profile?.supabaseId) {
+    if (!eligibleProfile.supabaseId) {
       return NextResponse.json(
         new Output(false, [], ["Usuário precisa ter conta ativa no sistema"], null),
         { status: 400 }
@@ -242,8 +260,8 @@ export async function POST(
       data: {
         teamId,
         profileId: payload.profileId,
-        role: eligibleMember.profile.role,
-        functions: eligibleMember.profile.functions ?? [],
+        role: eligibleProfile.role,
+        functions: eligibleProfile.functions ?? [],
       },
     });
 
@@ -252,7 +270,7 @@ export async function POST(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Erro ao adicionar membro:", error);
+    console.error("[TeamMembersRoute][POST] Erro ao adicionar membro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao adicionar membro"], null),
       { status: 500 }
@@ -329,7 +347,7 @@ export async function DELETE(
       { status: 200 }
     );
   } catch (error) {
-    console.error("Erro ao remover membro:", error);
+    console.error("[TeamMembersRoute][DELETE] Erro ao remover membro:", error);
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao remover membro"], null),
       { status: 500 }
