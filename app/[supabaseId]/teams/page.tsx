@@ -59,6 +59,7 @@ export default function TeamsPage() {
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [addMemberQuery, setAddMemberQuery] = useState("");
   const [isAddMemberDropdownOpen, setIsAddMemberDropdownOpen] = useState(false);
+  const [highlightedEligibleProfileIndex, setHighlightedEligibleProfileIndex] = useState(-1);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<"delete" | "transfer" | null>(null);
@@ -66,6 +67,7 @@ export default function TeamsPage() {
   const [confirming, setConfirming] = useState(false);
   const [transferCandidateId, setTransferCandidateId] = useState("");
   const addMemberFieldRef = React.useRef<HTMLDivElement | null>(null);
+  const addMemberOptionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   const params = useParams();
   const supabaseId = params.supabaseId as string;
@@ -99,6 +101,32 @@ export default function TeamsPage() {
       document.removeEventListener("touchstart", handlePointerOutside);
     };
   }, [isAddMemberDropdownOpen]);
+
+  React.useEffect(() => {
+    if (!isAddMemberDropdownOpen) {
+      setHighlightedEligibleProfileIndex(-1);
+      return;
+    }
+
+    if (filteredEligibleProfiles.length === 0) {
+      setHighlightedEligibleProfileIndex(-1);
+      return;
+    }
+
+    setHighlightedEligibleProfileIndex((currentIndex) => {
+      if (currentIndex < 0 || currentIndex >= filteredEligibleProfiles.length) {
+        return 0;
+      }
+      return currentIndex;
+    });
+  }, [isAddMemberDropdownOpen, filteredEligibleProfiles.length]);
+
+  React.useEffect(() => {
+    if (!isAddMemberDropdownOpen || highlightedEligibleProfileIndex < 0) return;
+    addMemberOptionRefs.current[highlightedEligibleProfileIndex]?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [highlightedEligibleProfileIndex, isAddMemberDropdownOpen]);
 
   const handleSetActiveTeam = async (teamId: string) => {
     if (!teamId || teamId === activeTeamId) {
@@ -208,6 +236,7 @@ export default function TeamsPage() {
     setSelectedProfileId("");
     setAddMemberQuery("");
     setIsAddMemberDropdownOpen(false);
+    setHighlightedEligibleProfileIndex(-1);
     loadManageData(teamId);
   };
 
@@ -270,6 +299,7 @@ export default function TeamsPage() {
       setSelectedProfileId("");
       setAddMemberQuery("");
       setIsAddMemberDropdownOpen(false);
+      setHighlightedEligibleProfileIndex(-1);
       await loadManageData(manageTeamId);
       await refreshTeams();
     } catch (error: any) {
@@ -657,11 +687,17 @@ export default function TeamsPage() {
                           placeholder="Selecione um usuário"
                           className="placeholder:opacity-100"
                           value={addMemberQuery ?? ""}
-                          onFocus={() => setIsAddMemberDropdownOpen(true)}
+                          onFocus={() => {
+                            setIsAddMemberDropdownOpen(true);
+                            if (filteredEligibleProfiles.length > 0) {
+                              setHighlightedEligibleProfileIndex(0);
+                            }
+                          }}
                           onChange={(event) => {
                             const nextQuery = event.target.value;
                             setAddMemberQuery(nextQuery);
                             setIsAddMemberDropdownOpen(true);
+                            setHighlightedEligibleProfileIndex(0);
 
                             if (
                               selectedEligibleProfile &&
@@ -672,6 +708,48 @@ export default function TeamsPage() {
                           }}
                           onKeyDown={(event) => {
                             if (event.key === "Escape") {
+                              setIsAddMemberDropdownOpen(false);
+                              return;
+                            }
+
+                            if (!isAddMemberDropdownOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                              event.preventDefault();
+                              setIsAddMemberDropdownOpen(true);
+                              if (filteredEligibleProfiles.length > 0) {
+                                setHighlightedEligibleProfileIndex(0);
+                              }
+                              return;
+                            }
+
+                            if (!isAddMemberDropdownOpen || filteredEligibleProfiles.length === 0) {
+                              return;
+                            }
+
+                            if (event.key === "ArrowDown") {
+                              event.preventDefault();
+                              setHighlightedEligibleProfileIndex((currentIndex) => {
+                                const nextIndex = currentIndex + 1;
+                                return nextIndex >= filteredEligibleProfiles.length ? 0 : nextIndex;
+                              });
+                              return;
+                            }
+
+                            if (event.key === "ArrowUp") {
+                              event.preventDefault();
+                              setHighlightedEligibleProfileIndex((currentIndex) => {
+                                const nextIndex = currentIndex - 1;
+                                return nextIndex < 0 ? filteredEligibleProfiles.length - 1 : nextIndex;
+                              });
+                              return;
+                            }
+
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              if (highlightedEligibleProfileIndex < 0) return;
+                              const highlightedProfile = filteredEligibleProfiles[highlightedEligibleProfileIndex];
+                              if (!highlightedProfile) return;
+                              setSelectedProfileId(highlightedProfile.id);
+                              setAddMemberQuery(`${highlightedProfile.name} (${highlightedProfile.email})`);
                               setIsAddMemberDropdownOpen(false);
                             }
                           }}
@@ -684,16 +762,28 @@ export default function TeamsPage() {
                                 Nenhum usuário encontrado.
                               </div>
                             ) : (
-                              filteredEligibleProfiles.map((profile) => (
+                              filteredEligibleProfiles.map((profile, index) => (
                                 <button
                                   key={profile.id}
                                   type="button"
-                                  className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                                  ref={(element) => {
+                                    addMemberOptionRefs.current[index] = element;
+                                  }}
+                                  className={cn(
+                                    "flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+                                    highlightedEligibleProfileIndex === index
+                                      ? "bg-accent text-accent-foreground"
+                                      : ""
+                                  )}
                                   onMouseDown={(event) => event.preventDefault()}
+                                  onMouseEnter={() => {
+                                    setHighlightedEligibleProfileIndex(index);
+                                  }}
                                   onClick={() => {
                                     setSelectedProfileId(profile.id);
                                     setAddMemberQuery(`${profile.name} (${profile.email})`);
                                     setIsAddMemberDropdownOpen(false);
+                                    setHighlightedEligibleProfileIndex(-1);
                                   }}
                                 >
                                   <Check
@@ -703,7 +793,8 @@ export default function TeamsPage() {
                                     )}
                                   />
                                   <span className="truncate">
-                                    {profile.name} ({profile.email})
+                                    <span className="font-medium">{profile.name}</span>{" "}
+                                    <span className="text-muted-foreground/80">({profile.email})</span>
                                   </span>
                                 </button>
                               ))
