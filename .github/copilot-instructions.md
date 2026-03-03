@@ -5,8 +5,8 @@
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.1.4
-**Last Updated:** 2026-03-01
+**Version:** 2.1.5
+**Last Updated:** 2026-03-02
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
 
@@ -114,6 +114,7 @@ new Output(
 - Search and align with existing patterns before introducing new structures.
 - Use strict TypeScript typing.
 - Use `console.info` for flow logs and `console.error` for errors.
+- In route-level error logs (`app/api/**/route.ts`), identify routes by stable route name + HTTP method (for example `[SubscriptionBySupabaseRoute][GET]`) and avoid logging path templates/raw endpoint URLs.
 - Keep behavioral consistency in legacy paths unless the task explicitly includes refactor.
 
 ### FOR NEW FEATURES

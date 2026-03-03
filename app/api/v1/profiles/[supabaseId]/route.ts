@@ -4,6 +4,7 @@ import { validateUpdateProfileRequest } from "../DTO/requestToUpdateProfile";
 import { Output } from "@/lib/output";
 import { createClient } from '@supabase/supabase-js';
 import { prisma } from '@/app/api/infra/data/prisma';
+import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 
 const profileUseCase = new RegisterNewUserProfile();
 
@@ -135,7 +136,9 @@ export async function DELETE(
         fullName: true,
         role: true,
         isMaster: true,
-        managerId: true
+        managerId: true,
+        asaasSubscriptionId: true,
+        subscriptionId: true,
       }
     });
 
@@ -170,6 +173,94 @@ export async function DELETE(
     }
 
     console.info('✅ [DELETE Profile] Senha validada com sucesso');
+
+    const subscriptionIdsToCancel = new Set<string>();
+    const addSubscriptionId = (subscriptionId?: string | null) => {
+      const normalizedSubscriptionId = subscriptionId?.trim();
+      if (normalizedSubscriptionId) {
+        subscriptionIdsToCancel.add(normalizedSubscriptionId);
+      }
+    };
+
+    addSubscriptionId(profile.asaasSubscriptionId);
+    addSubscriptionId(profile.subscriptionId);
+
+    if (profile.isMaster) {
+      const operatorsForSubscriptionCancel = await prisma.profile.findMany({
+        where: { managerId: profile.id },
+        select: {
+          id: true,
+          email: true,
+          asaasSubscriptionId: true,
+          subscriptionId: true,
+        },
+      });
+
+      for (const operator of operatorsForSubscriptionCancel) {
+        addSubscriptionId(operator.asaasSubscriptionId);
+        addSubscriptionId(operator.subscriptionId);
+      }
+
+      console.info("📋 [DELETE Profile] IDs de assinatura coletados dos operadores", {
+        managerId: profile.id,
+        operatorsCount: operatorsForSubscriptionCancel.length,
+      });
+    }
+
+    const uniqueSubscriptionIds = Array.from(subscriptionIdsToCancel);
+
+    console.info("🧾 [DELETE Profile] Iniciando cancelamento de assinaturas no Asaas", {
+      supabaseId,
+      profileId: profile.id,
+      subscriptionsCount: uniqueSubscriptionIds.length,
+      subscriptionIds: uniqueSubscriptionIds,
+    });
+
+    for (const subscriptionId of uniqueSubscriptionIds) {
+      try {
+        await AsaasSubscriptionService.cancelSubscription(subscriptionId);
+        console.info("✅ [DELETE Profile] Assinatura cancelada no Asaas", {
+          supabaseId,
+          profileId: profile.id,
+          subscriptionId,
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        if (isIdempotentAsaasCancelError(errorMessage)) {
+          console.info("ℹ️ [DELETE Profile] Assinatura já cancelada/inexistente no Asaas (idempotente)", {
+            supabaseId,
+            profileId: profile.id,
+            subscriptionId,
+            errorMessage,
+          });
+          continue;
+        }
+
+        console.error("❌ [DELETE Profile] Falha bloqueante ao cancelar assinatura no Asaas", {
+          supabaseId,
+          profileId: profile.id,
+          subscriptionId,
+          errorMessage,
+        });
+
+        return NextResponse.json(
+          new Output(
+            false,
+            [],
+            ["Não foi possível desativar sua assinatura agora. Tente novamente em alguns instantes."],
+            null
+          ),
+          { status: 502 }
+        );
+      }
+    }
+
+    console.info("✅ [DELETE Profile] Cancelamento de assinaturas finalizado", {
+      supabaseId,
+      profileId: profile.id,
+      subscriptionsProcessed: uniqueSubscriptionIds.length,
+    });
 
     // 3. Iniciar processo de deleção em cascata
     try {
@@ -272,4 +363,26 @@ export async function DELETE(
     const output = new Output(false, [], ["Erro inesperado ao processar solicitação"], null);
     return NextResponse.json(output, { status: 500 });
   }
+}
+
+function isIdempotentAsaasCancelError(errorMessage: string): boolean {
+  const normalized = errorMessage
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  const idempotentPatterns = [
+    "not found",
+    "nao encontrado",
+    "nao encontrada",
+    "already canceled",
+    "already cancelled",
+    "already deleted",
+    "ja cancelada",
+    "ja cancelado",
+    "cancelada anteriormente",
+    "inexistente",
+  ];
+
+  return idempotentPatterns.some((pattern) => normalized.includes(pattern));
 }
