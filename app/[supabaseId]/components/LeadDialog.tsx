@@ -70,6 +70,11 @@ type MentionMember = {
   functions?: UserAssociated["functions"];
 };
 
+type MentionToken = {
+  profileId: string;
+  label: string;
+};
+
 const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
 
 export default function LeadDialog({
@@ -115,6 +120,7 @@ export default function LeadDialog({
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [selectedMentions, setSelectedMentions] = useState<MentionToken[]>([]);
   const activityInputRef = useRef<HTMLTextAreaElement | null>(null);
   const ignoreMentionUpdateRef = useRef(false);
   const params = useParams();
@@ -148,6 +154,7 @@ export default function LeadDialog({
       setMentionQuery("");
       setMentionStart(null);
       setMentionIndex(0);
+      setSelectedMentions([]);
     }
   }, [open]);
 
@@ -155,6 +162,7 @@ export default function LeadDialog({
     setOptimisticActivities([]);
     setReactionOverrides({});
     setReactionPickerOpenId(null);
+    setSelectedMentions([]);
   }, [lead?.id]);
 
   useEffect(() => {
@@ -416,6 +424,18 @@ export default function LeadDialog({
         body: JSON.stringify({
           type: activityType,
           body: normalizedBody,
+          mentions: selectedMentions
+            .filter((mention) => {
+              const mentionPattern = new RegExp(
+                `@${escapeRegex(mention.label)}(?=$|\\s|[.,;:!?])`,
+                "i"
+              );
+              return mentionPattern.test(normalizedBody);
+            })
+            .map((mention) => ({
+              profileId: mention.profileId,
+              label: mention.label,
+            })),
         }),
       });
       const result = await response.json();
@@ -452,6 +472,7 @@ export default function LeadDialog({
       }
       setActivityBody("");
       closeMentionList();
+      setSelectedMentions([]);
       toast.success("Atividade registrada");
       fetchLead();
     } catch (error) {
@@ -712,6 +733,17 @@ export default function LeadDialog({
     const nextValue = `${before}${mentionText} ${after}`;
     ignoreMentionUpdateRef.current = true;
     setActivityBody(nextValue);
+    setSelectedMentions((prev) => {
+      const exists = prev.some((mention) => mention.profileId === member.profileId);
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          profileId: member.profileId,
+          label: member.name,
+        },
+      ];
+    });
     closeMentionList();
     requestAnimationFrame(() => {
       if (!target) return;

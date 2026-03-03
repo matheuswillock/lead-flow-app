@@ -6,6 +6,7 @@ import { z } from "zod";
 import { upsertCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 import { emailService } from "@/lib/services/EmailService";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import { notificationService } from "@/app/api/services/notifications/NotificationService";
 
 const scheduleSchema = z.object({
   date: z.string().datetime(),
@@ -220,12 +221,14 @@ export async function POST(
       },
     });
 
+    let schedulerLabel = "Usuário";
+
     try {
       const schedulerProfile = await prisma.profile.findUnique({
         where: { id: teamAccess.access.profileId },
         select: { fullName: true, email: true },
       });
-      const schedulerLabel = schedulerProfile?.fullName || schedulerProfile?.email || "Usuário";
+      schedulerLabel = schedulerProfile?.fullName || schedulerProfile?.email || "Usuário";
       const actionLabel = existingSchedule ? "Reagendamento feito por" : "Agendamento feito por";
 
       const participants = buildUniqueEmails([
@@ -280,6 +283,41 @@ export async function POST(
       } catch (error) {
         console.warn("Não foi possível registrar atividade de alteração de closer:", error);
       }
+    }
+
+    try {
+      const candidateRecipientProfileIds = Array.from(
+        new Set(
+          [lead.managerId, lead.assignedTo, resolvedCloserId]
+            .filter((profileId): profileId is string => !!profileId)
+            .filter((profileId) => profileId !== teamAccess.access.profileId)
+        )
+      );
+
+      const teamRecipients = await prisma.teamMember.findMany({
+        where: {
+          teamId: teamAccess.access.teamId,
+          profileId: { in: candidateRecipientProfileIds },
+        },
+        select: { profileId: true },
+      });
+      const recipientProfileIds = teamRecipients.map((member) => member.profileId);
+
+      if (recipientProfileIds.length > 0) {
+        await notificationService.createScheduleNotification({
+          teamId: teamAccess.access.teamId,
+          actorProfileId: teamAccess.access.profileId,
+          actorName: schedulerLabel,
+          leadId: lead.id,
+          leadCode: lead.leadCode ?? null,
+          leadName: lead.name,
+          meetingDate,
+          recipientProfileIds,
+          isReschedule: !!existingSchedule,
+        });
+      }
+    } catch (notificationError) {
+      console.error("[LeadScheduleRoute][POST] Erro ao criar notificações de agendamento:", notificationError);
     }
 
     const successMessages = [message];

@@ -122,6 +122,15 @@ enum PendingActionStatus {
   @@map("pending_action_status")
 }
 
+enum NotificationType {
+  ACTIVITY_MENTION
+  TEAM_MEMBER_ADDED
+  TEAM_MEMBER_REMOVED
+  LEAD_SCHEDULE_CREATED
+
+  @@map("notification_type")
+}
+
 // -----------------------------
 // PROFILES (public.profiles)
 // - Primary key is also a FK to auth.users.id (1:1)
@@ -189,6 +198,8 @@ model Profile {
   pendingActions   PendingAction[]   @relation("PendingActionMaster")
   teamsOwned       Team[]            @relation("TeamMaster")
   teamMemberships  TeamMember[]
+  receivedNotifications Notification[] @relation("NotificationRecipient")
+  sentNotifications Notification[]     @relation("NotificationActor")
 
   @@index([role])
   @@index([managerId])
@@ -409,9 +420,33 @@ model Team {
   leads   Lead[]
   pendingOperators PendingOperator[]
   pendingActions   PendingAction[]
+  notifications    Notification[]
 
   @@index([masterId])
   @@map("teams")
+}
+
+model Notification {
+  id                 String           @id @default(uuid()) @db.Uuid
+  recipientProfileId String           @db.Uuid
+  actorProfileId     String?          @db.Uuid
+  teamId             String           @db.Uuid
+  type               NotificationType
+  message            String           @db.Text
+  metadata           Json?
+  isRead             Boolean          @default(false)
+  readAt             DateTime?        @db.Timestamptz(6)
+  createdAt          DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(6)
+
+  recipient Profile @relation("NotificationRecipient", fields: [recipientProfileId], references: [id], onDelete: Cascade)
+  actor     Profile? @relation("NotificationActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([recipientProfileId, teamId, isRead])
+  @@index([recipientProfileId, createdAt])
+  @@index([teamId, createdAt])
+  @@map("notifications")
 }
 
 // -----------------------------

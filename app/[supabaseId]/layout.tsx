@@ -2,6 +2,7 @@ import { cookies } from "next/headers"
 import { UserProvider } from "@/app/context/UserContext"
 import { TeamProvider } from "@/app/context/TeamContext"
 import { LayoutContent } from "./components/LayoutContent"
+import { NotificationsProvider } from "./notifications/features/context/NotificationsContext"
 
 interface ProtectedLayoutProps {
   children: React.ReactNode
@@ -21,9 +22,11 @@ export default async function ProtectedLayout({ children, params }: ProtectedLay
   return (
     <UserProvider supabaseId={supabaseId}>
       <TeamProvider supabaseId={supabaseId}>
-        <LayoutContent supabaseId={supabaseId} defaultOpen={defaultOpen}>
-          {children}
-        </LayoutContent>
+        <NotificationsProvider supabaseId={supabaseId}>
+          <LayoutContent supabaseId={supabaseId} defaultOpen={defaultOpen}>
+            {children}
+          </LayoutContent>
+        </NotificationsProvider>
       </TeamProvider>
     </UserProvider>
   )

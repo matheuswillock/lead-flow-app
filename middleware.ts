@@ -5,7 +5,7 @@ import { updateSession } from "@/lib/supabase/auth-sessions"
 export const runtime = 'nodejs'
 
 // Define protected route prefixes (actual URL paths)
-const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users"]
+const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users", "/notifications"]
 
 // Public routes that don't require authentication
 const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe", "/checkout-return", "/operator-confirmed", "/pix-confirmed", "/set-password", "/forgot-password"]

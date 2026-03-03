@@ -4,7 +4,7 @@ import * as React from "react";
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { RefreshCw, Settings, UserPlus, ShieldAlert, Trash2 } from "lucide-react";
+import { Check, RefreshCw, Settings, ShieldAlert, Trash2, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
 import { TeamCheckoutStep } from "./features/checkout/TeamCheckoutStep";
+import { cn } from "@/lib/utils";
 
 type TeamMember = {
   id: string;
@@ -56,18 +57,76 @@ export default function TeamsPage() {
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState("");
+  const [addMemberQuery, setAddMemberQuery] = useState("");
+  const [isAddMemberDropdownOpen, setIsAddMemberDropdownOpen] = useState(false);
+  const [highlightedEligibleProfileIndex, setHighlightedEligibleProfileIndex] = useState(-1);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<"delete" | "transfer" | null>(null);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [transferCandidateId, setTransferCandidateId] = useState("");
+  const addMemberFieldRef = React.useRef<HTMLDivElement | null>(null);
+  const addMemberOptionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const isOnlyMasterTeam = user?.id
     ? teams.filter((team) => team.masterId === user.id).length <= 1
     : false;
+  const selectedEligibleProfile = eligibleProfiles.find((profile) => profile.id === selectedProfileId) ?? null;
+  const filteredEligibleProfiles = eligibleProfiles.filter((profile) => {
+    const normalizedQuery = addMemberQuery.trim().toLowerCase();
+    if (!normalizedQuery) return true;
+    return (
+      profile.name.toLowerCase().includes(normalizedQuery) ||
+      profile.email.toLowerCase().includes(normalizedQuery)
+    );
+  });
+
+  React.useEffect(() => {
+    if (!isAddMemberDropdownOpen) return;
+
+    const handlePointerOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      if (!addMemberFieldRef.current?.contains(target)) {
+        setIsAddMemberDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerOutside);
+    document.addEventListener("touchstart", handlePointerOutside);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerOutside);
+      document.removeEventListener("touchstart", handlePointerOutside);
+    };
+  }, [isAddMemberDropdownOpen]);
+
+  React.useEffect(() => {
+    if (!isAddMemberDropdownOpen) {
+      setHighlightedEligibleProfileIndex(-1);
+      return;
+    }
+
+    if (filteredEligibleProfiles.length === 0) {
+      setHighlightedEligibleProfileIndex(-1);
+      return;
+    }
+
+    setHighlightedEligibleProfileIndex((currentIndex) => {
+      if (currentIndex < 0 || currentIndex >= filteredEligibleProfiles.length) {
+        return 0;
+      }
+      return currentIndex;
+    });
+  }, [isAddMemberDropdownOpen, filteredEligibleProfiles.length]);
+
+  React.useEffect(() => {
+    if (!isAddMemberDropdownOpen || highlightedEligibleProfileIndex < 0) return;
+    addMemberOptionRefs.current[highlightedEligibleProfileIndex]?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [highlightedEligibleProfileIndex, isAddMemberDropdownOpen]);
 
   const handleSetActiveTeam = async (teamId: string) => {
     if (!teamId || teamId === activeTeamId) {
@@ -175,7 +234,9 @@ export default function TeamsPage() {
     setManageTeamName(teamName);
     setIsManageOpen(true);
     setSelectedProfileId("");
-    setSelectedProfileId("");
+    setAddMemberQuery("");
+    setIsAddMemberDropdownOpen(false);
+    setHighlightedEligibleProfileIndex(-1);
     loadManageData(teamId);
   };
 
@@ -236,6 +297,9 @@ export default function TeamsPage() {
       }
       toast.success("Membro adicionado.");
       setSelectedProfileId("");
+      setAddMemberQuery("");
+      setIsAddMemberDropdownOpen(false);
+      setHighlightedEligibleProfileIndex(-1);
       await loadManageData(manageTeamId);
       await refreshTeams();
     } catch (error: any) {
@@ -541,7 +605,7 @@ export default function TeamsPage() {
           }
         }}
       >
-          <DialogContent className="w-[min(760px,calc(100vw-2rem))] max-h-[calc(100svh-2rem)] flex flex-col overflow-hidden">
+          <DialogContent className="w-[min(760px,calc(100vw-2rem))] max-h-[calc(100svh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Gerenciar time</DialogTitle>
             <DialogDescription>
@@ -551,7 +615,7 @@ export default function TeamsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 pr-4">
+          <div className="pr-4">
             {manageLoading ? (
               <div className="space-y-6">
                 <div className="space-y-2">
@@ -614,18 +678,130 @@ export default function TeamsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Usuário</Label>
-                      <Select value={selectedProfileId} onValueChange={setSelectedProfileId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione um usuario" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {eligibleProfiles.map((profile) => (
-                            <SelectItem key={profile.id} value={profile.id}>
-                              {profile.name} ({profile.email})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div ref={addMemberFieldRef} className="relative">
+                        <Input
+                          role="combobox"
+                          aria-expanded={isAddMemberDropdownOpen}
+                          aria-autocomplete="list"
+                          autoComplete="off"
+                          placeholder="Selecione um usuário"
+                          className="placeholder:opacity-100"
+                          value={addMemberQuery ?? ""}
+                          onFocus={() => {
+                            setIsAddMemberDropdownOpen(true);
+                            if (filteredEligibleProfiles.length > 0) {
+                              setHighlightedEligibleProfileIndex(0);
+                            }
+                          }}
+                          onChange={(event) => {
+                            const nextQuery = event.target.value;
+                            setAddMemberQuery(nextQuery);
+                            setIsAddMemberDropdownOpen(true);
+                            setHighlightedEligibleProfileIndex(0);
+
+                            if (
+                              selectedEligibleProfile &&
+                              nextQuery !== `${selectedEligibleProfile.name} (${selectedEligibleProfile.email})`
+                            ) {
+                              setSelectedProfileId("");
+                            }
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Escape") {
+                              setIsAddMemberDropdownOpen(false);
+                              return;
+                            }
+
+                            if (!isAddMemberDropdownOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                              event.preventDefault();
+                              setIsAddMemberDropdownOpen(true);
+                              if (filteredEligibleProfiles.length > 0) {
+                                setHighlightedEligibleProfileIndex(0);
+                              }
+                              return;
+                            }
+
+                            if (!isAddMemberDropdownOpen || filteredEligibleProfiles.length === 0) {
+                              return;
+                            }
+
+                            if (event.key === "ArrowDown") {
+                              event.preventDefault();
+                              setHighlightedEligibleProfileIndex((currentIndex) => {
+                                const nextIndex = currentIndex + 1;
+                                return nextIndex >= filteredEligibleProfiles.length ? 0 : nextIndex;
+                              });
+                              return;
+                            }
+
+                            if (event.key === "ArrowUp") {
+                              event.preventDefault();
+                              setHighlightedEligibleProfileIndex((currentIndex) => {
+                                const nextIndex = currentIndex - 1;
+                                return nextIndex < 0 ? filteredEligibleProfiles.length - 1 : nextIndex;
+                              });
+                              return;
+                            }
+
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              if (highlightedEligibleProfileIndex < 0) return;
+                              const highlightedProfile = filteredEligibleProfiles[highlightedEligibleProfileIndex];
+                              if (!highlightedProfile) return;
+                              setSelectedProfileId(highlightedProfile.id);
+                              setAddMemberQuery(`${highlightedProfile.name} (${highlightedProfile.email})`);
+                              setIsAddMemberDropdownOpen(false);
+                            }
+                          }}
+                        />
+
+                        {isAddMemberDropdownOpen ? (
+                          <div className="absolute left-0 top-full z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md">
+                            {filteredEligibleProfiles.length === 0 ? (
+                              <div className="px-2 py-2 text-sm text-muted-foreground">
+                                Nenhum usuário encontrado.
+                              </div>
+                            ) : (
+                              filteredEligibleProfiles.map((profile, index) => (
+                                <button
+                                  key={profile.id}
+                                  type="button"
+                                  ref={(element) => {
+                                    addMemberOptionRefs.current[index] = element;
+                                  }}
+                                  className={cn(
+                                    "flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground",
+                                    highlightedEligibleProfileIndex === index
+                                      ? "bg-accent text-accent-foreground"
+                                      : ""
+                                  )}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onMouseEnter={() => {
+                                    setHighlightedEligibleProfileIndex(index);
+                                  }}
+                                  onClick={() => {
+                                    setSelectedProfileId(profile.id);
+                                    setAddMemberQuery(`${profile.name} (${profile.email})`);
+                                    setIsAddMemberDropdownOpen(false);
+                                    setHighlightedEligibleProfileIndex(-1);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selectedProfileId === profile.id ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <span className="truncate">
+                                    <span className="font-medium">{profile.name}</span>{" "}
+                                    <span className="text-muted-foreground/80">({profile.email})</span>
+                                  </span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                     <div className="flex items-center justify-end">
                       <Button
@@ -779,7 +955,7 @@ export default function TeamsPage() {
               ) : null}
               </div>
             )}
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
 
