@@ -6,8 +6,9 @@ import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
-import { UserRole } from "@prisma/client";
+import { NotificationType, UserRole } from "@prisma/client";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { notificationService } from "@/app/api/services/notifications/NotificationService";
 
 async function getTeamMasterId(teamId: string) {
   const team = await prisma.team.findUnique({
@@ -20,6 +21,22 @@ async function getTeamMasterId(teamId: string) {
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+async function getTeamName(teamId: string) {
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: { name: true },
+  });
+  return team?.name || "Time";
+}
+
+async function getProfileLabel(profileId: string) {
+  const profile = await prisma.profile.findUnique({
+    where: { id: profileId },
+    select: { fullName: true, email: true },
+  });
+  return profile?.fullName || profile?.email || "Usuário";
 }
 
 /**
@@ -65,6 +82,11 @@ export async function POST(
       const output = new Output(false, [], ["Apenas o master do time pode adicionar usuários"], null);
       return NextResponse.json(output, { status: 403 });
     }
+
+    const [actorName, teamName] = await Promise.all([
+      getProfileLabel(profileId),
+      getTeamName(teamId),
+    ]);
 
     const body = await request.json();
 
@@ -121,6 +143,19 @@ export async function POST(
         updatedAt: true,
       },
     });
+
+    try {
+      await notificationService.createTeamMembershipNotification({
+        teamId,
+        actorProfileId: profileId,
+        actorName,
+        teamName,
+        recipientProfileId: profile.id,
+        type: NotificationType.TEAM_MEMBER_ADDED,
+      });
+    } catch (notificationError) {
+      console.error("[ManagerUsersRoute][POST] Erro ao criar notificação de membro adicionado:", notificationError);
+    }
 
     try {
       const supabaseAdmin = createSupabaseAdmin();
@@ -411,6 +446,10 @@ export async function PUT(
 
     const body = await request.json();
     const { action } = body;
+    const [actorName, teamName] = await Promise.all([
+      getProfileLabel(profileId),
+      getTeamName(teamId),
+    ]);
 
     if (action === "associate") {
       let validatedData;
@@ -450,6 +489,19 @@ export async function PUT(
         },
       });
 
+      try {
+        await notificationService.createTeamMembershipNotification({
+          teamId,
+          actorProfileId: profileId,
+          actorName,
+          teamName,
+          recipientProfileId: validatedData.profileId,
+          type: NotificationType.TEAM_MEMBER_ADDED,
+        });
+      } catch (notificationError) {
+        console.error("[ManagerUsersRoute][PUT] Erro ao criar notificação de membro adicionado:", notificationError);
+      }
+
       const output = new Output(true, ["Usuário adicionado ao time com sucesso"], [], newMember);
       return NextResponse.json(output, { status: 200 });
     }
@@ -472,6 +524,19 @@ export async function PUT(
       if (validatedData.profileId === masterId) {
         const output = new Output(false, [], ["Não é possível remover o master do time"], null);
         return NextResponse.json(output, { status: 400 });
+      }
+
+      try {
+        await notificationService.createTeamMembershipNotification({
+          teamId,
+          actorProfileId: profileId,
+          actorName,
+          teamName,
+          recipientProfileId: validatedData.profileId,
+          type: NotificationType.TEAM_MEMBER_REMOVED,
+        });
+      } catch (notificationError) {
+        console.error("[ManagerUsersRoute][PUT] Erro ao criar notificação de membro removido:", notificationError);
       }
 
       await prisma.teamMember.delete({
@@ -626,6 +691,11 @@ export async function DELETE(
       return NextResponse.json(output, { status: 403 });
     }
 
+    const [actorName, teamName] = await Promise.all([
+      getProfileLabel(profileId),
+      getTeamName(teamId),
+    ]);
+
     if (!userId) {
       const output = new Output(false, [], ["Parâmetro userId é obrigatório"], null);
       return NextResponse.json(output, { status: 400 });
@@ -648,6 +718,19 @@ export async function DELETE(
     if (!targetMember) {
       const output = new Output(false, [], ["Usuário não encontrado no time"], null);
       return NextResponse.json(output, { status: 404 });
+    }
+
+    try {
+      await notificationService.createTeamMembershipNotification({
+        teamId,
+        actorProfileId: profileId,
+        actorName,
+        teamName,
+        recipientProfileId: userId,
+        type: NotificationType.TEAM_MEMBER_REMOVED,
+      });
+    } catch (notificationError) {
+      console.error("[ManagerUsersRoute][DELETE] Erro ao criar notificação de membro removido:", notificationError);
     }
 
     await prisma.teamMember.delete({

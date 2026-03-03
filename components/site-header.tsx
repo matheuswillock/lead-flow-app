@@ -20,6 +20,7 @@ export function SiteHeader() {
     subscription: "Assinatura",
     "manager-users": "Gerenciar Usuários",
     teams: "Gerenciar Times",
+    notifications: "Notificações",
   }
   const currentTitle = titleMap[routeName] ?? ''
   return (

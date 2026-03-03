@@ -102,6 +102,15 @@ failed failed
 canceled canceled
         }
     
+
+
+        notification_type {
+            ACTIVITY_MENTION ACTIVITY_MENTION
+TEAM_MEMBER_ADDED TEAM_MEMBER_ADDED
+TEAM_MEMBER_REMOVED TEAM_MEMBER_REMOVED
+LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
+        }
+    
   "profiles" {
     String id "🗝️"
     String email 
@@ -251,6 +260,18 @@ canceled canceled
     }
   
 
+  "notifications" {
+    String id "🗝️"
+    NotificationType type 
+    String message 
+    Json metadata "❓"
+    Boolean isRead 
+    DateTime readAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "pending_actions" {
     String id "🗝️"
     PendingActionType actionType 
@@ -289,6 +310,8 @@ canceled canceled
     "profiles" o{--}o "pending_actions" : "pendingActions"
     "profiles" o{--}o "teams" : "teamsOwned"
     "profiles" o{--}o "team_members" : "teamMemberships"
+    "profiles" o{--}o "notifications" : "receivedNotifications"
+    "profiles" o{--}o "notifications" : "sentNotifications"
     "leads" o|--|| "LeadStatus" : "enum:status"
     "leads" o|--|o "HealthPlan" : "enum:currentHealthPlan"
     "leads" o|--|o "MeetingHeald" : "enum:meetingHeald"
@@ -321,6 +344,11 @@ canceled canceled
     "teams" o{--}o "leads" : "leads"
     "teams" o{--}o "pending_operators" : "pendingOperators"
     "teams" o{--}o "pending_actions" : "pendingActions"
+    "teams" o{--}o "notifications" : "notifications"
+    "notifications" o|--|| "NotificationType" : "enum:type"
+    "notifications" o|--|| "profiles" : "recipient"
+    "notifications" o|--|o "profiles" : "actor"
+    "notifications" o|--|| "teams" : "team"
     "pending_actions" o|--|| "PendingActionType" : "enum:actionType"
     "pending_actions" o|--|| "PendingActionStatus" : "enum:status"
     "pending_actions" o|--|| "profiles" : "master"

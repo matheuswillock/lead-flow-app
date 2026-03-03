@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { NotificationType } from "@prisma/client";
+import { notificationService } from "@/app/api/services/notifications/NotificationService";
 
 const addMemberSchema = z.object({
   profileId: z.string().uuid(),
@@ -14,7 +16,7 @@ const removeMemberSchema = z.object({
 async function getRequesterProfile(supabaseId: string) {
   return prisma.profile.findUnique({
     where: { supabaseId },
-    select: { id: true, email: true, isMaster: true },
+    select: { id: true, email: true, fullName: true, isMaster: true },
   });
 }
 
@@ -200,7 +202,7 @@ export async function POST(
 
     const team = await prisma.team.findUnique({
       where: { id: teamId },
-      select: { id: true, masterId: true },
+      select: { id: true, masterId: true, name: true },
     });
 
     if (!team) {
@@ -239,6 +241,8 @@ export async function POST(
         role: true,
         functions: true,
         supabaseId: true,
+        fullName: true,
+        email: true,
       },
     });
 
@@ -264,6 +268,19 @@ export async function POST(
         functions: eligibleProfile.functions ?? [],
       },
     });
+
+    try {
+      await notificationService.createTeamMembershipNotification({
+        teamId,
+        actorProfileId: profile.id,
+        actorName: profile.fullName || profile.email || "Usuário",
+        teamName: team.name,
+        recipientProfileId: payload.profileId,
+        type: NotificationType.TEAM_MEMBER_ADDED,
+      });
+    } catch (notificationError) {
+      console.error("[TeamMembersRoute][POST] Erro ao criar notificação de membro adicionado:", notificationError);
+    }
 
     return NextResponse.json(
       new Output(true, ["Membro adicionado com sucesso"], [], newMember),
@@ -312,7 +329,7 @@ export async function DELETE(
 
     const team = await prisma.team.findUnique({
       where: { id: teamId },
-      select: { id: true, masterId: true },
+      select: { id: true, masterId: true, name: true },
     });
 
     if (!team) {
@@ -331,6 +348,19 @@ export async function DELETE(
         new Output(false, [], ["Não é possível remover o master do time"], null),
         { status: 400 }
       );
+    }
+
+    try {
+      await notificationService.createTeamMembershipNotification({
+        teamId,
+        actorProfileId: profile.id,
+        actorName: profile.fullName || profile.email || "Usuário",
+        teamName: team.name,
+        recipientProfileId: payload.profileId,
+        type: NotificationType.TEAM_MEMBER_REMOVED,
+      });
+    } catch (notificationError) {
+      console.error("[TeamMembersRoute][DELETE] Erro ao criar notificação de membro removido:", notificationError);
     }
 
     await prisma.teamMember.delete({
