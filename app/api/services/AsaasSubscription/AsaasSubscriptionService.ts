@@ -210,8 +210,11 @@ export class AsaasSubscriptionService implements IAsaasSubscriptionService {
         method: 'DELETE',
       });
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Erro ao cancelar assinatura:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
       throw new Error('Erro ao cancelar assinatura');
     }
   }

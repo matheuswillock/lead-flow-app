@@ -6,7 +6,8 @@
       "key": "baseUrl",
       "value": "http://localhost:3000",
       "type": "default",
-      "enabled": true
+      "enabled": true,
+      "description": "Base URL da aplicação"
     },
     {
       "key": "supabaseUserId",
@@ -42,6 +43,83 @@
       "type": "default",
       "enabled": true,
       "description": "ID do novo usuário criado nos testes de profile - será preenchido automaticamente"
+    },
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:3000",
+      "type": "default",
+      "enabled": true,
+      "description": "Alias legado de baseUrl"
+    },
+    {
+      "key": "loginEmail",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Email para automação de login em /api/auth/login"
+    },
+    {
+      "key": "loginPassword",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Senha para automação de login em /api/auth/login"
+    },
+    {
+      "key": "USER_EMAIL",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Alias legado para loginEmail"
+    },
+    {
+      "key": "USER_PASSWORD",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Alias legado para loginPassword"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Access token capturado automaticamente no login"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Alias de accessToken"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Refresh token capturado automaticamente no login"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Alias de refreshToken"
+    },
+    {
+      "key": "supabaseId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Alias de supabaseUserId"
+    },
+    {
+      "key": "SUPABASE_ID",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Alias legado de supabaseId"
     }
   ],
   "_postman_variable_scope": "environment"

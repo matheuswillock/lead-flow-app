@@ -1,278 +1,130 @@
-# Postman Collections - Lead Flow App
+# Postman - Lead Flow API (Unified)
 
-Este diretório contém as coleções do Postman para testar os endpoints da API do Lead Flow App.
+Este diretório agora usa **uma única collection** com pastas e subpastas por contexto.
 
-## Coleções Disponíveis
+## Arquivos
 
-### 1. Lead API Collection
-**Arquivo**: `Lead-API-Collection.json`
-**Descrição**: Endpoints para gerenciamento de leads (CRUD completo)
+- `Lead-Flow-API-Collection.json`: collection única (Dashboard, Leads, Manager Users, Profiles, Permanent Subscription)
+- `Lead-Flow-Environment.json`: variáveis de ambiente
+- `test-dashboard-api.sh`: script opcional de teste via terminal
 
-**Endpoints incluídos**:
-- ✅ Criar Lead
-- ✅ Listar Leads (com paginação)
-- ✅ Buscar Lead por ID
-- ✅ Atualizar Lead
-- ✅ Deletar Lead
-- ✅ Atribuir Lead a Operador
-- ✅ Desatribuir Lead
+## Estrutura da Collection
 
-### 2. Manager User API Collection ⭐ **NOVO**
-**Arquivo**: `Manager-User-API-Collection.json`
-**Descrição**: Endpoints para gerenciamento de usuários (Manager/Operator)
+- `Auth`
+  - `Login - Obter Token`
+- `Dashboard`
+  - `Requests` (subpasta)
+- `Leads`
+  - `Requests` (subpasta)
+- `Manager Users`
+  - `Requests` (subpasta)
+- `Profiles`
+  - `Requests` (subpasta)
+- `Permanent Subscription`
+  - `Requests` (subpasta)
+- `API Coverage - All Routes`
+  - Subpastas por domínio (`v1`, `auth`, `email`, `webhooks`, `demo`)
+  - Subpastas internas por contexto (ex.: `leads`, `profiles`, `subscriptions`, etc.)
+  - Contém todas as rotas detectadas em `app/api/**/route.ts` (auto-gerado)
 
-**Endpoints incluídos**:
-- ✅ Criar Manager
-- ✅ Criar Operator
-- ✅ Listar Todos os Usuários
-- ✅ Listar Apenas Managers
-- ✅ Listar Apenas Operators
-- ✅ Associar Operator ao Manager
-- ✅ Dissociar Operator do Manager
-- ✅ Deletar Operator
-- ✅ Deletar Manager
-- ✅ Testes de Erro (Email duplicado, Acesso não autorizado, Dados inválidos)
+## Autenticação Automatizada
 
-### 3. Profile API Collection ⭐ **NOVO**
-**Arquivo**: `Profile-API-Collection.json`
-**Descrição**: Endpoints para gerenciamento de profiles de usuários (CRUD completo)
+1. Configure no environment:
+   - `baseUrl`
+   - `loginEmail`
+   - `loginPassword`
+2. Execute `Auth > Login - Obter Token`.
+3. O script de teste salva automaticamente:
+   - `accessToken` / `access_token`
+   - `refreshToken` / `refresh_token`
+   - `supabaseUserId` / `supabaseId`
+4. As demais rotas usam `Bearer {{accessToken}}` automaticamente.
 
-**Endpoints incluídos**:
-- ✅ Registrar Novo Profile
-- ✅ Buscar Profile por Supabase ID
-- ✅ Atualizar Profile (Nome, Telefone, Email)
-- ✅ Atualizar Senha
-- ✅ Deletar Profile
-- ✅ Verificação de Profile Deletado
-- ✅ Testes de Erro (Email duplicado, Senha fraca, Profile inexistente, Dados inválidos)
+## Endpoint de Assinatura por supabaseId
 
-### 4. Dashboard API Collection 📊 **NOVO**
-**Arquivo**: `Dashboard-API-Collection.json`
-**Descrição**: Endpoints para métricas e dashboard (buscas por supabaseId)
+A collection já inclui a rota:
 
-**Endpoints incluídos**:
-- ✅ Métricas Gerais (30d, 7d, período customizado)
-- ✅ Métricas Detalhadas por Status
-- ✅ Testes de Validação (sem supabaseId)
-- ✅ Testes de Performance (1 ano)
-- ✅ **Segurança**: Todas as buscas usam supabaseId do usuário autenticado
+- `GET /api/v1/subscriptions/by-supabase/{supabaseId}`
 
-## Environment
+Ela retorna:
 
-**Arquivo**: `Lead-Flow-Environment.json`
-**Descrição**: Variáveis de ambiente para todas as coleções
+- dados locais de assinatura
+- dados completos da assinatura no Asaas (quando existir)
+- status `isActive` da assinatura no Asaas
 
-**Variáveis configuradas**:
-- `baseUrl`: http://localhost:3000
-- `supabaseUserId`: ed4ab5a4-3188-41fa-8389-481784cb1f84
-- `leadId`: (preenchido automaticamente)
-- `operatorId`: (preenchido automaticamente)
-- `managerId`: (preenchido automaticamente)
+## Observações
 
-## � Profile API Collection
+- Variáveis legadas (`BASE_URL`, `SUPABASE_ID`, `USER_EMAIL`, `USER_PASSWORD`) foram mantidas por compatibilidade.
+- O header `x-supabase-user-id` continua disponível nas rotas que exigem esse identificador.
+- A pasta `API Coverage - All Routes` foi adicionada para garantir cobertura completa das rotas da API.
 
-A coleção **Profile-API-Collection.json** contém 14 requests para testar todos os endpoints da API de Profiles:
+## Como Importar e Rodar
 
-### ✅ Testes de Sucesso
-- Register New Profile: Criação de profile com dados válidos
-- Get Profile by ID: Busca profile existente
-- Update Profile Fields: Atualização parcial de campos
-- Change Password: Alteração de senha com validação
-- Delete Profile: Remoção de profile existente
+### Postman
 
-### ❌ Testes de Erro
-- Register with Duplicate Email: Teste de email já existente
-- Register with Weak Password: Teste de senha fraca
-- Register with Invalid Data: Teste de dados malformados
-- Get Non-existent Profile: Busca profile inexistente
-- Update Non-existent Profile: Atualização de profile inexistente
-- Update with Invalid Data: Dados inválidos na atualização
-- Change Password Non-existent: Alteração em profile inexistente
-- Change Password Weak: Teste de senha fraca
-- Delete Non-existent Profile: Remoção de profile inexistente
+1. Abra o Postman e clique em `Import`.
+2. Importe:
+   - `postman/Lead-Flow-API-Collection.json`
+   - `postman/Lead-Flow-Environment.json`
+3. Selecione o environment `Lead Flow App - Development`.
+4. Preencha no environment:
+   - `baseUrl`
+   - `loginEmail`
+   - `loginPassword`
+5. Execute `Auth > Login - Obter Token`.
+6. Execute as pastas de contexto (`Dashboard`, `Leads`, `Manager Users`, `Profiles`, `Permanent Subscription`).
 
-### Variáveis Utilizadas
-   - `leadEmail`: Email para testes de lead
-   - `leadPhone`: Telefone para testes de lead
-   - `managerEmail`: Email do gerente para testes
-   - `operatorEmail`: Email do operador para testes
-   - `managerId`: ID do gerente no Supabase
-   - `profileEmail`: Email para testes de profile ⭐ **NOVO**
-   - `newUserSupabaseId`: ID do Supabase para o novo usuário ⭐ **NOVO**
-- `newUserSupabaseId`: ID do Supabase para o novo usuário
-- Variáveis automáticas salvam: `profileId`, `authToken`
+### Insomnia
 
----
+1. Abra o Insomnia.
+2. Vá em `Application > Preferences > Data > Import Data` (ou `Create > Import`).
+3. Importe o arquivo `postman/Lead-Flow-API-Collection.json`.
+4. Crie/edite um Environment com:
+   - `baseUrl`
+   - `loginEmail`
+   - `loginPassword`
+   - `accessToken` (será preenchido após login)
+   - `supabaseUserId`
+5. Rode a request `Auth > Login - Obter Token`.
+6. Rode as demais requests por contexto.
 
-## 🧪 Como Executar os Testes
+### Bruno
 
-### 1. Importar no Postman
+1. Abra o Bruno.
+2. Crie uma collection local e use `Import Collection` para importar `postman/Lead-Flow-API-Collection.json` (formato Postman).
+3. Crie um Environment (ex.: `dev`) e copie as variaveis de `postman/Lead-Flow-Environment.json`.
+4. Defina:
+   - `baseUrl`
+   - `loginEmail`
+   - `loginPassword`
+5. Execute `Auth > Login - Obter Token`.
+6. Execute as requests das pastas de contexto.
 
-1. Abra o Postman
-2. Clique em "Import"
-3. Selecione os arquivos:
-   - `Lead-Flow-Environment.json` (Environment)
-   - `Lead-API-Collection.json` (Coleção de Leads)
-   - `Manager-User-API-Collection.json` (Coleção de Usuários) ⭐ **NOVO**
-   - `Profile-API-Collection.json` (Coleção de Profiles) ⭐ **NOVO**
+### HTTPie
 
-### 2. Configurar Environment
+HTTPie nao importa collection, entao rode via comando.
 
-1. Selecione o environment **"Lead Flow App - Development"**
-2. Edite as seguintes variáveis:
-   - `baseUrl`: URL da sua aplicação (padrão: http://localhost:3000)
-   - `supabaseUserId`: ID real de um usuário autenticado no Supabase
-   - `operatorId`: ID de um operador válido para testes de atribuição
+1. Login para obter token:
 
-### 3. Obter o supabaseUserId
-
-Para obter um `supabaseUserId` válido:
-
-1. Acesse sua aplicação no navegador
-2. Faça login
-3. Abra o DevTools (F12)
-4. Vá para **Application > Local Storage**
-5. Procure por chaves relacionadas ao Supabase
-6. Ou use o console e execute:
-   ```javascript
-   // Se estiver usando o Supabase client no frontend
-   supabase.auth.getUser().then(({data}) => console.log(data.user.id))
-   ```
-
-### 4. Executar os Testes
-
-#### 🔍 Para API de Leads:
-Execute as requisições na ordem para testar o fluxo completo:
-
-1. **Criar Lead** - Cria um novo lead e salva o ID
-2. **Listar Leads** - Lista todos os leads
-3. **Buscar Lead por ID** - Busca o lead criado
-4. **Atualizar Lead** - Atualiza dados do lead
-5. **Atualizar Status** - Muda o status do lead
-6. **Atribuir Lead** - Atribui lead a um operador
-7. **Listar com Filtros** - Testa filtros de busca
-8. **Excluir Lead** - Remove o lead
-9. **Teste de Erro - 404** - Testa lead inexistente
-10. **Teste de Erro - 401** - Testa sem autenticação
-
-#### 👥 Para API de Profiles:
-Execute na ordem para testar o fluxo completo:
-
-1. **Register New Profile** - Cria um novo profile (salva automaticamente `profileId`)
-2. **Get Profile by ID** - Busca o profile criado
-3. **Update Profile Fields** - Atualiza campos do profile
-4. **Change Password** - Altera a senha do profile
-5. **Delete Profile** - Remove o profile
-
-Para testar cenários de erro, execute os testes de erro de cada endpoint para verificar as mensagens apropriadas e status codes corretos (400, 404, etc.).
-
-#### 📊 Para API de Dashboard:
-Execute na ordem para testar métricas:
-
-1. **Métricas Dashboard - 30 dias** - Métricas gerais padrão
-2. **Métricas Dashboard - 7 dias** - Métricas recentes
-3. **Métricas Dashboard - Período Customizado** - Data específica
-4. **Métricas Detalhadas por Status** - Breakdown por status
-5. **Testes de Performance** - Teste com 1 ano de dados
-6. **Testes de Validação** - Testa erros de supabaseId
-
-### 🖥️ Scripts de Terminal
-
-Também incluídos scripts bash para testes rápidos:
-
-#### `test-lead-api.sh`
 ```bash
-chmod +x test-lead-api.sh
-./test-lead-api.sh
+http POST :3000/api/auth/login email=seu-email password=sua-senha
 ```
 
-#### `test-dashboard-api.sh` 📊 **NOVO**
+2. Salvar token em shell (macOS/Linux, com `jq`):
+
 ```bash
-chmod +x test-dashboard-api.sh
-./test-dashboard-api.sh
+TOKEN=$(http POST :3000/api/auth/login email=seu-email password=sua-senha | jq -r '.result.session.access_token')
+USER_ID=$(http POST :3000/api/auth/login email=seu-email password=sua-senha | jq -r '.result.user.id')
 ```
 
-Os scripts fazem requisições curl e mostram os resultados formatados.
+3. Chamar endpoint com Bearer:
 
-## 📊 Estrutura das Respostas
-
-Todas as rotas seguem o padrão **Output**:
-
-```json
-{
-  "isValid": true,
-  "successMessages": ["Mensagem de sucesso"],
-  "errorMessages": [],
-  "result": { /* dados do resultado */ }
-}
+```bash
+http GET :3000/api/v1/subscriptions/by-supabase/$USER_ID Authorization:"Bearer $TOKEN"
 ```
 
-## 🔍 Casos de Teste Incluídos
+4. Exemplo de rota que usa header de usuario:
 
-### ✅ Testes de Sucesso
-- Criação de lead com dados válidos
-- Listagem com paginação
-- Busca por ID
-- Atualização de dados
-- Mudança de status
-- Atribuição a operador
-- Filtros de busca
-- Exclusão
-
-### ❌ Testes de Erro
-- Lead não encontrado (404)
-- Requisição sem autenticação (401)
-- Dados inválidos (400)
-- Validação de campos obrigatórios
-
-## 🛡️ Headers Obrigatórios
-
-Todas as requisições precisam do header:
+```bash
+http GET ":3000/api/v1/leads?page=1&limit=10" Authorization:"Bearer $TOKEN" x-supabase-user-id:$USER_ID
 ```
-x-supabase-user-id: {seu-supabase-user-id}
-```
-
-## 📝 Status de Lead Válidos
-
-- `new_opportunity`
-- `scheduled`
-- `no_show`
-- `pricingRequest`
-- `offerNegotiation`
-- `pending_documents`
-- `offerSubmission`
-- `contract_analysis`
-- `contract_adjustment`
-- `contract_approved`
-- `cold_lead`
-- `lost_opportunity`
-- `contract_finalized`
-
-## 🔧 Troubleshooting
-
-### Erro 401 - Não Autorizado
-- Verifique se o header `x-supabase-user-id` está presente
-- Confirme se o `supabaseUserId` é válido
-
-### Erro 404 - Lead Não Encontrado
-- Verifique se o `leadId` existe
-- Execute primeiro "Criar Lead" para ter um ID válido
-
-### Erro 400 - Dados Inválidos
-- Verifique a estrutura JSON do body
-- Confirme se os campos obrigatórios estão presentes
-- Valide se o status é um dos valores permitidos
-
-## 🚦 Executando Collection Completa
-
-Para executar todos os testes de uma vez:
-1. Clique nos três pontos (...) na collection
-2. Selecione **"Run collection"**
-3. Configure o environment
-4. Execute
-
-A collection está configurada para:
-- Salvar automaticamente o `leadId` após criação
-- Executar testes de validação em cada requisição
-- Verificar estrutura das respostas
-- Testar cenários de erro
