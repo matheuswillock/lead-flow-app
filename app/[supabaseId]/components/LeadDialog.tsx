@@ -77,6 +77,13 @@ type MentionToken = {
 
 const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
 
+const normalizeLeadPhoneDigits = (phone: string): string => {
+  if (!phone) return "";
+  const numbers = phone.replace(/\D/g, "");
+  if (numbers.length <= 11) return numbers;
+  return numbers.slice(-11);
+};
+
 export default function LeadDialog({
   open,
   setOpen,
@@ -832,10 +839,12 @@ export default function LeadDialog({
   };
 
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
+    const normalizedPhone = normalizeLeadPhoneDigits(data.phone || "");
+
     return {
       name: data.name,
       email: data.email || undefined,
-      phone: data.phone || undefined,
+      phone: normalizedPhone || undefined,
       age: data.age || undefined,
       currentHealthPlan: data.currentHealthPlan || undefined,
       currentValue: parseCurrentValue(data.currentValue),
@@ -857,10 +866,12 @@ export default function LeadDialog({
   };
 
   const transformToUpdateRequest = (data: leadFormData): UpdateLeadRequest => {
+    const normalizedPhone = normalizeLeadPhoneDigits(data.phone || "");
+
     return {
       name: data.name,
       email: data.email || undefined,
-      phone: data.phone || undefined,
+      phone: normalizedPhone || undefined,
       age: data.age || undefined,
       currentHealthPlan: data.currentHealthPlan || undefined,
       currentValue: parseCurrentValue(data.currentValue),
@@ -1129,15 +1140,6 @@ export default function LeadDialog({
         return `R$ ${value.toFixed(2).replace(".", ",")}`;
       };
 
-      const formatPhone = (phone: string): string => {
-        if (!phone) return "";
-        const numbers = phone.replace(/\D/g, "");
-        if (numbers.length === 11) {
-          return numbers.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-        }
-        return phone;
-      };
-
       const formatCNPJ = (cnpj: string): string => {
         if (!cnpj) return "";
         const numbers = cnpj.replace(/\D/g, "");
@@ -1149,7 +1151,7 @@ export default function LeadDialog({
 
       form.reset({
         name: lead.name || "",
-        phone: formatPhone(lead.phone || ""),
+        phone: normalizeLeadPhoneDigits(lead.phone || ""),
         email: lead.email || "",
         cnpj: formatCNPJ(lead.cnpj || ""),
         closerId: lead.closerId || "",
