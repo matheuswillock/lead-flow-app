@@ -1,8 +1,8 @@
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.1.5
-**Last Updated:** 2026-03-02
+**Version:** 2.1.6
+**Last Updated:** 2026-03-04
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
 
@@ -13,7 +13,7 @@ This document defines the implementation governance for AI agents in this reposi
 - **MUST**: mandatory rule.
 - **MUST NOT**: prohibited behavior.
 - **SHOULD**: recommended default unless there is a justified exception.
-- **LEGACY EXCEPTIONS**: allowed temporary deviations, explicitly listed in `.governance/ai-governance.config.json`.
+- **LEGACY EXCEPTIONS**: allowed temporary deviations, explicitly listed in `.governance/ai-governance.config.json` (source of truth for governance checks).
 - **FOR NEW FEATURES**: rules that apply to all net-new feature work.
 
 ## Source of Truth and Distribution
@@ -128,6 +128,7 @@ new Output(
 ## LEGACY EXCEPTIONS
 
 Legacy deviations are allowed only if explicitly listed in `.governance/ai-governance.config.json`.
+Monitoring-only exclusions for `bun run governance:warn-allowlist` **MUST** be configured in `.governance/allowlist-monitoring.config.json` and **MUST NOT** change check behavior.
 
 Current tracked exception categories:
 
@@ -160,6 +161,12 @@ bun run governance:check
 
 ```bash
 bun run governance:warn-allowlist
+```
+
+- Warning monitor exclusions config (non-blocking only):
+
+```bash
+.governance/allowlist-monitoring.config.json
 ```
 
 Validation includes:
