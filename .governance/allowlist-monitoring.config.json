@@ -1,0 +1,8 @@
+{
+  "excludeFromWarnAllowlist": {
+    "nonTypeScriptFileAllowlist": [
+      "eslint.config.mjs",
+      "postcss.config.mjs"
+    ]
+  }
+}

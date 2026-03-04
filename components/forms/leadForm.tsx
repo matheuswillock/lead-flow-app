@@ -59,6 +59,13 @@ const toCurrencyStorageValue = (value: string): string | null => {
     return parsed.toFixed(2);
 };
 
+const normalizeLeadPhoneDigits = (value: string): string => {
+    if (!value) return "";
+    const digits = value.replace(/\D/g, "");
+    if (digits.length <= 11) return digits;
+    return digits.slice(-11);
+};
+
 export interface ILeadFormProps {
     form: UseFormReturn<leadFormData>;
     onSubmit: (data: leadFormData) => void | Promise<void>;
@@ -278,17 +285,16 @@ export function LeadForm({
                         <FormLabel className="block text-sm font-medium mb-1">Telefone*</FormLabel>
                         <FormControl>
                             <Input
-                                value={maskPhone(field.value || '')}
+                                value={maskPhone(normalizeLeadPhoneDigits(field.value || ''))}
                                 onChange={(e) => {
-                                    const masked = maskPhone(e.target.value);
-                                    const unmasked = unmask(masked);
-                                    field.onChange(unmasked);
+                                    const normalizedPhone = normalizeLeadPhoneDigits(e.target.value);
+                                    field.onChange(normalizedPhone);
                                 }}
                                 type="tel"
                                 placeholder="(11) 91234-1234"
                                 required
                                 disabled={isLoading || isUpdating}
-                                maxLength={15}
+                                maxLength={20}
                             />
                         </FormControl>
                     </FormItem>

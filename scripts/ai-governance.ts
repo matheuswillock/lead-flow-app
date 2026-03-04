@@ -35,8 +35,17 @@ interface GovernanceConfig {
   legacyExceptions: LegacyExceptionsConfig;
 }
 
+interface AllowlistMonitoringConfig {
+  excludeFromWarnAllowlist?: Record<string, string[] | undefined>;
+}
+
 const ROOT = process.cwd();
 const CONFIG_PATH = path.join(ROOT, ".governance", "ai-governance.config.json");
+const MONITORING_CONFIG_PATH = path.join(
+  ROOT,
+  ".governance",
+  "allowlist-monitoring.config.json",
+);
 const DEFAULT_MAX_EXAMPLES = 5;
 const NON_TS_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".py"]);
 const IGNORED_DIRECTORIES = new Set([
@@ -89,6 +98,16 @@ async function pathExists(targetPath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function loadAllowlistMonitoringConfig(): Promise<AllowlistMonitoringConfig> {
+  if (!(await pathExists(MONITORING_CONFIG_PATH))) {
+    return {};
+  }
+
+  return JSON.parse(
+    await fs.readFile(MONITORING_CONFIG_PATH, "utf8"),
+  ) as AllowlistMonitoringConfig;
 }
 
 async function isDirectory(targetPath: string): Promise<boolean> {
@@ -500,8 +519,76 @@ function formatLegacyWarning(
   return `[${category}] ${entries.length} legacy item(s). Update these items to follow governance. Examples: ${preview}${suffix}`;
 }
 
-function printAllowlistWarnings(config: GovernanceConfig): void {
-  const entries = getLegacyExceptionEntries(config);
+function getWarnAllowlistExclusions(
+  config: GovernanceConfig,
+  monitoringConfig: AllowlistMonitoringConfig,
+): { exclusionsByCategory: Map<string, Set<string>>; warnings: string[] } {
+  const warnings: string[] = [];
+  const exclusionsByCategory = new Map<string, Set<string>>();
+  const configuredExclusions = monitoringConfig.excludeFromWarnAllowlist ?? {};
+  const knownCategories = new Set(Object.keys(config.legacyExceptions));
+
+  for (const [category, entries] of Object.entries(configuredExclusions)) {
+    if (!Array.isArray(entries)) {
+      warnings.push(
+        `Monitor config category must be an array (excludeFromWarnAllowlist.${category}).`,
+      );
+      continue;
+    }
+
+    if (!knownCategories.has(category)) {
+      warnings.push(
+        `Monitor config references unknown allowlist category: ${category}.`,
+      );
+      continue;
+    }
+
+    const normalizedEntries = normalizePathList(entries);
+    const legacyEntriesForCategory = normalizePathList(
+      config.legacyExceptions[category],
+    );
+
+    for (const entry of normalizedEntries) {
+      if (!legacyEntriesForCategory.has(entry)) {
+        warnings.push(
+          `Monitor config path not found in legacy allowlist category ${category}: ${entry}.`,
+        );
+      }
+    }
+
+    exclusionsByCategory.set(category, normalizedEntries);
+  }
+
+  return { exclusionsByCategory, warnings };
+}
+
+function printAllowlistWarnings(
+  config: GovernanceConfig,
+  monitoringConfig: AllowlistMonitoringConfig,
+): void {
+  const { exclusionsByCategory, warnings: monitorWarnings } =
+    getWarnAllowlistExclusions(config, monitoringConfig);
+  for (const warning of monitorWarnings) {
+    console.warn(`::warning title=Governance Allowlist Monitor::${warning}`);
+  }
+
+  const entries = getLegacyExceptionEntries(config)
+    .map(([category, paths]) => {
+      const exclusions = exclusionsByCategory.get(category);
+      if (!exclusions || exclusions.size === 0) {
+        return [category, paths] as [string, string[]];
+      }
+      const filtered = paths.filter(
+        (entry) => !exclusions.has(entry.replaceAll("\\", "/")),
+      );
+      return [category, filtered] as [string, string[]];
+    })
+    .filter(([, paths]) => paths.length > 0);
+
+  if (entries.length === 0) {
+    return;
+  }
+
   const maxExamples = getMaxExamples(config);
   const categoryCount = entries.length;
   const totalItems = entries.reduce((sum, [, paths]) => sum + paths.length, 0);
@@ -582,7 +669,8 @@ async function main(): Promise<void> {
   }
 
   if (maybeCommand === "warn-allowlist") {
-    printAllowlistWarnings(config);
+    const monitoringConfig = await loadAllowlistMonitoringConfig();
+    printAllowlistWarnings(config, monitoringConfig);
     return;
   }
 
