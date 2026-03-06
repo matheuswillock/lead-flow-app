@@ -1260,6 +1260,105 @@
                   ]
                 }
               }
+            },
+            {
+              "name": "11. Listar Planos de Saúde",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status code é 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test('Response tem estrutura Output', function () {",
+                      "    const response = pm.response.json();",
+                      "    pm.expect(response).to.have.property('isValid');",
+                      "    pm.expect(response).to.have.property('result');",
+                      "    pm.expect(response.isValid).to.eql(true);",
+                      "});",
+                      "",
+                      "pm.test('Lista de planos retornada', function () {",
+                      "    const response = pm.response.json();",
+                      "    pm.expect(response.result).to.have.property('healthPlans');",
+                      "    pm.expect(response.result.healthPlans).to.be.an('array');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/health-plans",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "health-plans"
+                  ]
+                }
+              }
+            },
+            {
+              "name": "12. Criar Plano de Saúde",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status code é 201 ou 403 ou 409', function () {",
+                      "    pm.expect([201, 403, 409]).to.include(pm.response.code);",
+                      "});",
+                      "",
+                      "const response = pm.response.json();",
+                      "pm.test('Response tem estrutura Output', function () {",
+                      "    pm.expect(response).to.have.property('isValid');",
+                      "    pm.expect(response).to.have.property('successMessages');",
+                      "    pm.expect(response).to.have.property('errorMessages');",
+                      "    pm.expect(response).to.have.property('result');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Plano Teste Postman\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/health-plans",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "health-plans"
+                  ]
+                }
+              }
             }
           ]
         }
@@ -3117,6 +3216,67 @@
                       ]
                     },
                     "description": "Auto-generated from app/api/v1/google/disconnect/route.ts",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{}"
+                    }
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "health-plans",
+              "item": [
+                {
+                  "name": "GET /api/v1/health-plans",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/health-plans",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "health-plans"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/health-plans/route.ts"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/v1/health-plans",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/health-plans",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "health-plans"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/health-plans/route.ts",
                     "body": {
                       "mode": "raw",
                       "raw": "{}"

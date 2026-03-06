@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { PrismaClient, LeadStatus, HealthPlan, ActivityType, UserRole } from "@prisma/client";
+import { PrismaClient, LeadStatus, ActivityType, UserRole } from "@prisma/client";
 import * as XLSX from "xlsx";
 
 const prisma = new PrismaClient();
@@ -103,7 +103,7 @@ type ParsedLeadRow = {
   phone: string | null;
   cnpj: string | null;
   age: string | null;
-  currentHealthPlan: HealthPlan | null;
+  currentHealthPlan: string | null;
   currentValue: number | null;
   ticket: number | null;
   referenceHospital: string | null;
@@ -176,24 +176,24 @@ function parseCurrency(value: string) {
   return parsed;
 }
 
-function mapHealthPlan(value: string | null | undefined): HealthPlan | null {
+function mapHealthPlan(value: string | null | undefined): string | null {
   if (!value) return null;
   const normalized = normalizeText(value);
   if (!normalized) return null;
 
-  if (normalized.includes("intermedica") || normalized.includes("gndi")) return HealthPlan.GNDI;
-  if (normalized.includes("bradesco")) return HealthPlan.BRADESCO;
-  if (normalized.includes("amil")) return HealthPlan.AMIL;
-  if (normalized.includes("hapvida")) return HealthPlan.HAPVIDA;
-  if (normalized.includes("medsenior") || normalized.includes("med senior")) return HealthPlan.MEDSENIOR;
-  if (normalized.includes("omint")) return HealthPlan.OMINT;
-  if (normalized.includes("plena")) return HealthPlan.PLENA;
-  if (normalized.includes("porto seguro") || normalized.includes("porto")) return HealthPlan.PORTO_SEGURO;
-  if (normalized.includes("prevent senior")) return HealthPlan.PREVENT_SENIOR;
-  if (normalized.includes("sulamerica") || normalized.includes("sul america")) return HealthPlan.SULAMERICA;
-  if (normalized.includes("unimed")) return HealthPlan.UNIMED;
-  if (normalized.includes("nova adesao")) return HealthPlan.NOVA_ADESAO;
-  if (normalized.includes("outros")) return HealthPlan.OUTROS;
+  if (normalized.includes("intermedica") || normalized.includes("gndi")) return "NotreDame Intermédica (GNDI)";
+  if (normalized.includes("bradesco")) return "Bradesco";
+  if (normalized.includes("amil")) return "Amil";
+  if (normalized.includes("hapvida")) return "Hapvida";
+  if (normalized.includes("medsenior") || normalized.includes("med senior")) return "MedSênior";
+  if (normalized.includes("omint")) return "Omint";
+  if (normalized.includes("plena")) return "Plena";
+  if (normalized.includes("porto seguro") || normalized.includes("porto")) return "Porto Seguro";
+  if (normalized.includes("prevent senior")) return "Prevent Senior";
+  if (normalized.includes("sulamerica") || normalized.includes("sul america")) return "SulAmérica";
+  if (normalized.includes("unimed")) return "Unimed";
+  if (normalized.includes("nova adesao")) return "Nova Adesão";
+  if (normalized.includes("outros")) return "Outros";
 
   return null;
 }

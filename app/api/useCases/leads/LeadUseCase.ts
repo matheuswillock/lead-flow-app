@@ -10,8 +10,10 @@ import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
 import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinalized/LeadFinalizedRepository";
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import { upsertCalendarEvent } from "../../services/googleCalendar/GoogleCalendarService";
+import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
 import { prisma } from "../../infra/data/prisma";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "../../v1/leads/DTO/leadValueLimits";
+import { normalizeHealthPlanName } from "@/lib/healthPlans";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -59,6 +61,44 @@ export class LeadUseCase implements ILeadUseCase {
     return output;
   }
 
+  private async validateAndNormalizeLeadPlans(input: {
+    currentHealthPlan?: string | null;
+    soldPlan?: string | null;
+  }): Promise<{
+    output?: Output;
+    currentHealthPlan: string | null;
+    soldPlan: string | null;
+  }> {
+    const requestedCurrentHealthPlan = input.currentHealthPlan?.trim() || null;
+    const requestedSoldPlan = input.soldPlan?.trim() || null;
+
+    const validation = await healthPlanService.validateAndCanonicalizePlans([
+      requestedCurrentHealthPlan,
+      requestedSoldPlan,
+    ]);
+
+    if (validation.missing.length > 0) {
+      const invalidPlans = Array.from(new Set(validation.missing)).join(", ");
+      return {
+        output: new Output(false, [], [`Plano de saúde inválido: ${invalidPlans}`], null),
+        currentHealthPlan: null,
+        soldPlan: null,
+      };
+    }
+
+    const currentHealthPlan = requestedCurrentHealthPlan
+      ? validation.canonicalByNormalized.get(normalizeHealthPlanName(requestedCurrentHealthPlan)) || null
+      : null;
+    const soldPlan = requestedSoldPlan
+      ? validation.canonicalByNormalized.get(normalizeHealthPlanName(requestedSoldPlan)) || null
+      : null;
+
+    return {
+      currentHealthPlan,
+      soldPlan,
+    };
+  }
+
   private async createLeadInternal(
     supabaseId: string,
     data: CreateLeadRequest,
@@ -100,6 +140,14 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], [`Ticket deve ser menor que ${MAX_DECIMAL_LABEL}`], null);
       }
 
+      const normalizedPlans = await this.validateAndNormalizeLeadPlans({
+        currentHealthPlan: data.currentHealthPlan,
+        soldPlan: data.soldPlan,
+      });
+      if (normalizedPlans.output) {
+        return normalizedPlans.output;
+      }
+
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
         team: { connect: { id: teamId } },
@@ -109,7 +157,7 @@ export class LeadUseCase implements ILeadUseCase {
         phone: data.phone || null,
         cnpj: data.cnpj || null,
         age: data.age || null,
-        currentHealthPlan: data.currentHealthPlan || null,
+        currentHealthPlan: normalizedPlans.currentHealthPlan,
         currentValue: data.currentValue || null,
         referenceHospital: data.referenceHospital || null,
         currentTreatment: data.currentTreatment || null,
@@ -123,7 +171,7 @@ export class LeadUseCase implements ILeadUseCase {
         // Novos campos de venda (sempre null na criação)
         ticket: data.ticket || null,
         contractDueDate: data.contractDueDate ? new Date(data.contractDueDate) : null,
-        soldPlan: data.soldPlan || null,
+        soldPlan: normalizedPlans.soldPlan,
         creator: { connect: { id: profileInfo.id } },
         updater: { connect: { id: profileInfo.id } },
         ...(assignedTo && {
@@ -353,13 +401,23 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const updateData: any = {};
+      const shouldValidateHealthPlans = data.currentHealthPlan !== undefined || data.soldPlan !== undefined;
+      const normalizedPlans = shouldValidateHealthPlans
+        ? await this.validateAndNormalizeLeadPlans({
+            currentHealthPlan: data.currentHealthPlan,
+            soldPlan: data.soldPlan,
+          })
+        : null;
+      if (normalizedPlans?.output) {
+        return normalizedPlans.output;
+      }
       
       if (data.name !== undefined) updateData.name = data.name;
       if (data.email !== undefined) updateData.email = data.email || null;
       if (data.phone !== undefined) updateData.phone = data.phone || null;
       if (data.cnpj !== undefined) updateData.cnpj = data.cnpj || null;
       if (data.age !== undefined) updateData.age = data.age;
-      if (data.currentHealthPlan !== undefined) updateData.currentHealthPlan = data.currentHealthPlan || null;
+      if (data.currentHealthPlan !== undefined) updateData.currentHealthPlan = normalizedPlans?.currentHealthPlan || null;
       if (data.currentValue !== undefined) updateData.currentValue = data.currentValue;
       if (data.referenceHospital !== undefined) updateData.referenceHospital = data.referenceHospital || null;
       if (data.currentTreatment !== undefined) updateData.currentTreatment = data.currentTreatment || null;
@@ -373,7 +431,7 @@ export class LeadUseCase implements ILeadUseCase {
       // Novos campos de venda
       if (data.ticket !== undefined) updateData.ticket = data.ticket;
       if (data.contractDueDate !== undefined) updateData.contractDueDate = data.contractDueDate ? new Date(data.contractDueDate) : null;
-      if (data.soldPlan !== undefined) updateData.soldPlan = data.soldPlan || null;
+      if (data.soldPlan !== undefined) updateData.soldPlan = normalizedPlans?.soldPlan || null;
       if (data.assignedTo !== undefined) {
         if (data.assignedTo) {
           updateData.assignee = { connect: { id: data.assignedTo } };

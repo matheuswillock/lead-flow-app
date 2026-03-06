@@ -1,4 +1,4 @@
-import type { LeadStatus, HealthPlan, MeetingHeald } from '@prisma/client';
+import type { LeadStatus, MeetingHeald } from '@prisma/client';
 
 export type Lead = {
   id: string;
@@ -12,7 +12,7 @@ export type Lead = {
   phone: string | null;
   cnpj: string | null;
   age: string | null;
-  currentHealthPlan: HealthPlan | null;
+  currentHealthPlan: string | null;
   currentValue: number | null;
   referenceHospital: string | null;
   currentTreatment: string | null;
@@ -30,7 +30,7 @@ export type Lead = {
   // Novos campos de venda
   ticket: number | null;
   contractDueDate: string | null;
-  soldPlan: HealthPlan | null;
+  soldPlan: string | null;
   attachmentCount?: number;
   manager?: {
     id: string;

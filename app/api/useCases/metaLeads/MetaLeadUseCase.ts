@@ -1,9 +1,10 @@
 import type { IMetaLeadUseCase, CreateLeadFromMetaDTO } from "./IMetaLeadUseCase";
 import { Output } from "@/lib/output";
 import { metaLeadService, type MetaWebhookPayload } from "../../services/MetaLeadService";
+import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
 import { leadRepository } from "../../infra/data/repositories/lead/LeadRepository";
 import { prisma } from "../../infra/data/prisma";
-import { LeadStatus, ActivityType, HealthPlan } from "@prisma/client";
+import { LeadStatus, ActivityType } from "@prisma/client";
 
 /**
  * MetaLeadUseCase
@@ -191,7 +192,7 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
       }
 
       // Mapear plano de saúde
-      const healthPlan = this.mapHealthPlan(metaData.currentHealthPlan);
+      const healthPlan = await healthPlanService.resolvePlanNameFromText(metaData.currentHealthPlan);
       const leadCode = await this.generateLeadCode(metaData.name || "Lead");
 
       const team = await prisma.team.findFirst({
@@ -295,41 +296,6 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
     } catch {
       return null;
     }
-  }
-
-  /**
-   * Mapeia string de plano de saúde para enum
-   */
-  private mapHealthPlan(plan?: string): HealthPlan | null {
-    if (!plan) return null;
-
-    const planLower = plan.toLowerCase();
-
-    const mapping: Record<string, HealthPlan> = {
-      'amil': HealthPlan.AMIL,
-      'bradesco': HealthPlan.BRADESCO,
-      'hapvida': HealthPlan.HAPVIDA,
-      'medsenior': HealthPlan.MEDSENIOR,
-      'gndi': HealthPlan.GNDI,
-      'notre dame': HealthPlan.GNDI,
-      'omint': HealthPlan.OMINT,
-      'plena': HealthPlan.PLENA,
-      'porto seguro': HealthPlan.PORTO_SEGURO,
-      'porto': HealthPlan.PORTO_SEGURO,
-      'prevent senior': HealthPlan.PREVENT_SENIOR,
-      'prevent': HealthPlan.PREVENT_SENIOR,
-      'sulamerica': HealthPlan.SULAMERICA,
-      'sul america': HealthPlan.SULAMERICA,
-      'unimed': HealthPlan.UNIMED,
-    };
-
-    for (const [key, value] of Object.entries(mapping)) {
-      if (planLower.includes(key)) {
-        return value;
-      }
-    }
-
-    return HealthPlan.OUTROS;
   }
 
   /**
