@@ -101,6 +101,10 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
       window.localStorage.setItem(STORAGE_KEY, teamId);
     }
 
+    if (serverActiveTeamIdRef.current === teamId) {
+      return;
+    }
+
     try {
       await fetch("/api/v1/teams/active", {
         method: "PUT",
@@ -110,6 +114,7 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
         },
         body: JSON.stringify({ teamId })
       });
+      serverActiveTeamIdRef.current = teamId;
     } catch (err) {
       console.error("Error updating active team:", err);
     }

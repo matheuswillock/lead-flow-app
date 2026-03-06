@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { 
   ManagerUser, 
@@ -39,6 +39,9 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
     isOpen: false,
     operatorData: null,
   });
+  const lastUsersLoadKeyRef = useRef<string | null>(null);
+  const usersLoadInFlightKeyRef = useRef<string | null>(null);
+  const usersLoadInFlightPromiseRef = useRef<Promise<void> | null>(null);
 
 
   const resolvedRole = activeRole ?? currentUserRole;
@@ -60,61 +63,89 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
   }), [supabaseId, activeTeamId, currentProfileId]);
 
   // Carregar usuários
-  const loadUsers = useCallback(async () => {
-    try {
-      if (!activeTeamId) {
-        if (isTeamLoading || teams.length > 0) {
-          setState(prev => ({ ...prev, loading: true, error: null }));
+  const loadUsers = useCallback(async (options?: { force?: boolean }) => {
+    const force = options?.force ?? false;
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${resolvedRole}`;
+
+    if (
+      usersLoadInFlightKeyRef.current === loadKey &&
+      usersLoadInFlightPromiseRef.current
+    ) {
+      return usersLoadInFlightPromiseRef.current;
+    }
+
+    if (!force && lastUsersLoadKeyRef.current === loadKey) {
+      return;
+    }
+
+    const requestPromise = (async () => {
+      try {
+        if (!activeTeamId) {
+          if (isTeamLoading || teams.length > 0) {
+            setState(prev => ({ ...prev, loading: true, error: null }));
+            return;
+          }
+          const message = notifyManagerUsersError({
+            operation: "loadUsers",
+            errorMessages: ["Selecione um time para continuar."],
+            context: errorContext,
+          });
+          lastUsersLoadKeyRef.current = loadKey;
+          setState(prev => ({ ...prev, users: [], loading: false, error: message }));
           return;
         }
-        const message = notifyManagerUsersError({
-          operation: "loadUsers",
-          errorMessages: ["Selecione um time para continuar."],
-          context: errorContext,
-        });
-        setState(prev => ({ ...prev, users: [], loading: false, error: message }));
-        return;
-      }
 
-      setState(prev => ({ ...prev, loading: true, error: null }));
-      
-      const response = await managerUsersService.getUsers();
-      
-      if (response.isValid && response.result) {
-        // A API já retorna leadsCount para cada usuário, usar diretamente
-        setState(prev => ({ 
-          ...prev, 
-          users: response.result || [], 
-          stats: response.stats,
-          loading: false 
-        }));
-      } else {
+        setState(prev => ({ ...prev, loading: true, error: null }));
+        
+        const response = await managerUsersService.getUsers();
+        
+        if (response.isValid && response.result) {
+          lastUsersLoadKeyRef.current = loadKey;
+          // A API já retorna leadsCount para cada usuário, usar diretamente
+          setState(prev => ({ 
+            ...prev, 
+            users: response.result || [], 
+            stats: response.stats,
+            loading: false 
+          }));
+        } else {
+          const message = notifyManagerUsersError({
+            operation: "loadUsers",
+            errorMessages: response.errorMessages,
+            context: errorContext,
+          });
+          setState(prev => ({ 
+            ...prev, 
+            users: [],
+            error: message,
+            loading: false 
+          }));
+        }
+      } catch (error) {
+        console.error("Erro ao carregar usuários:", error);
         const message = notifyManagerUsersError({
           operation: "loadUsers",
-          errorMessages: response.errorMessages,
+          error,
           context: errorContext,
         });
         setState(prev => ({ 
           ...prev, 
-          users: [],
           error: message,
           loading: false 
         }));
+      } finally {
+        if (usersLoadInFlightKeyRef.current === loadKey) {
+          usersLoadInFlightKeyRef.current = null;
+          usersLoadInFlightPromiseRef.current = null;
+        }
       }
-    } catch (error) {
-      console.error("Erro ao carregar usuários:", error);
-      const message = notifyManagerUsersError({
-        operation: "loadUsers",
-        error,
-        context: errorContext,
-      });
-      setState(prev => ({ 
-        ...prev, 
-        error: message,
-        loading: false 
-      }));
-    }
-  }, [managerUsersService, activeTeamId, errorContext, isTeamLoading, teams.length]);
+    })();
+
+    usersLoadInFlightKeyRef.current = loadKey;
+    usersLoadInFlightPromiseRef.current = requestPromise;
+
+    return requestPromise;
+  }, [managerUsersService, activeTeamId, errorContext, isTeamLoading, teams.length, supabaseId, resolvedRole]);
 
   // Criar usuário - se tem assinatura permanente, cria direto; senão redireciona para checkout do Asaas
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
@@ -180,7 +211,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
           });
           setState(prev => ({ ...prev, isCreateModalOpen: false }));
           setState(prev => ({ ...prev, loading: false }));
-          await loadUsers(); // Recarregar lista
+          await loadUsers({ force: true }); // Recarregar lista
         } else {
           notifyManagerUsersError({
             operation: "createUser",
@@ -235,7 +266,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
           selectedUser: null,
           loading: false 
         }));
-        await loadUsers(); // Recarregar lista
+        await loadUsers({ force: true }); // Recarregar lista
       } else {
         notifyManagerUsersError({
           operation: "updateUser",
@@ -283,7 +314,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
           selectedUser: null,
           loading: false 
         }));
-        await loadUsers(); // Recarregar lista
+        await loadUsers({ force: true }); // Recarregar lista
       } else {
         notifyManagerUsersError({
           operation: "deleteUser",
@@ -394,12 +425,12 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
 
   const completeOperatorCheckout = useCallback(async () => {
     setOperatorCheckout({ isOpen: false, operatorData: null });
-    await loadUsers();
+    await loadUsers({ force: true });
   }, [loadUsers]);
 
   // Carregar dados no mount
   useEffect(() => {
-    loadUsers();
+    void loadUsers();
     
     // Verificar se retornou do checkout com sucesso
     if (typeof window !== 'undefined') {
@@ -428,21 +459,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
     
     const intervalId = setInterval(() => {
       console.info('🔄 Auto-refresh: Verificando status de operadores pendentes...');
-      loadUsers();
-    }, 10000); // 10 segundos
-    
-    return () => clearInterval(intervalId);
-  }, [state.users, loadUsers]);
-
-  // Auto-refresh a cada 10 segundos se houver operadores pendentes
-  useEffect(() => {
-    const hasPendingOperators = state.users.some(user => user.isPending);
-    
-    if (!hasPendingOperators) return;
-    
-    const intervalId = setInterval(() => {
-      console.info('🔄 Auto-refresh: Verificando status de operadores pendentes...');
-      loadUsers();
+      void loadUsers({ force: true });
     }, 10000); // 10 segundos
     
     return () => clearInterval(intervalId);
@@ -496,7 +513,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
       if (result.isValid) {
         toast.success(`Assinatura permanente ${newValue ? 'ativada' : 'desativada'} com sucesso!`);
         // Recarregar usuários
-        await loadUsers();
+        await loadUsers({ force: true });
       } else {
         notifyManagerUsersError({
           operation: "togglePermanentSubscription",
@@ -522,7 +539,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
     
     // Ações
     loadUsers,
-    refreshData: loadUsers, // Alias para loadUsers
+    refreshData: () => loadUsers({ force: true }), // Alias para loadUsers
     createUser,
     updateUser,
     deleteUser,
