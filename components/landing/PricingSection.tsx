@@ -53,6 +53,7 @@ export function PricingSection() {
       setWhatsapp("")
     } catch (error) {
       toast.error("Erro ao enviar. Tente novamente.")
+      console.error("Error submitting demo request:", error)
     } finally {
       setIsSubmitting(false)
     }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LeadStatus, HealthPlan, MeetingHeald } from "@prisma/client";
+import { LeadStatus, MeetingHeald } from "@prisma/client";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "./leadValueLimits";
 
 export const UpdateLeadRequestSchema = z.object({
@@ -8,7 +8,7 @@ export const UpdateLeadRequestSchema = z.object({
   phone: z.string().min(10, "Telefone deve ter pelo menos 10 dígitos").nullish().transform(val => val || undefined),
   cnpj: z.string().nullish().transform(val => val || undefined),
   age: z.string().nullish().transform(val => val || undefined),
-  currentHealthPlan: z.nativeEnum(HealthPlan).nullish().transform(val => val || undefined),
+  currentHealthPlan: z.string().trim().min(1, "Plano de saúde deve ser válido").nullish().transform(val => val || undefined),
   currentValue: z
     .number()
     .min(0, "Valor deve ser maior ou igual a zero")
@@ -36,7 +36,7 @@ export const UpdateLeadRequestSchema = z.object({
     .nullish()
     .transform(val => val || undefined),
   contractDueDate: z.string().datetime().nullish().transform(val => val || undefined),
-  soldPlan: z.nativeEnum(HealthPlan).nullish().transform(val => val || undefined)
+  soldPlan: z.string().trim().min(1, "Plano vendido deve ser válido").nullish().transform(val => val || undefined)
 });
 
 export type UpdateLeadRequest = z.infer<typeof UpdateLeadRequestSchema>;

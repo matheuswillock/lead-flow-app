@@ -173,22 +173,7 @@ export const leadFormSchema = z.object({
       // Verifica se todas as idades são <= 120
       return ages.every(age => age <= 120);
     }, "Todas as idades devem ser no máximo 120 anos"),
-  currentHealthPlan: z.enum([
-    "NOVA_ADESAO",
-    "AMIL",
-    "ALICE",
-    "BRADESCO",
-    "HAPVIDA",
-    "MEDSENIOR",
-    "GNDI",
-    "OMINT",
-    "PLENA",
-    "PORTO_SEGURO",
-    "PREVENT_SENIOR",
-    "SULAMERICA",
-    "UNIMED",
-    "OUTROS"
-  ], { message: "Selecione um plano de saúde" }),
+  currentHealthPlan: z.string().trim().min(1, "Selecione um plano de saúde"),
   currentValue: z.string().min(1, "O valor atual é obrigatório"),
   referenceHospital: z.string().min(2, "O hospital de referência é obrigatório"),
   ongoingTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
@@ -215,22 +200,7 @@ export const leadFormSchema = z.object({
   // Novos campos para leads finalizados (opcionais, apenas em edição)
   ticket: z.string().min(0).optional(), // Valor vendido
   contractDueDate: z.string().min(0).optional(), // Data de vigência
-  soldPlan: z.enum([
-    "NOVA_ADESAO",
-    "AMIL",
-    "ALICE",
-    "BRADESCO",
-    "HAPVIDA",
-    "MEDSENIOR",
-    "GNDI",
-    "OMINT",
-    "PLENA",
-    "PORTO_SEGURO",
-    "PREVENT_SENIOR",
-    "SULAMERICA",
-    "UNIMED",
-    "OUTROS"
-  ]).optional(), // Plano vendido
+  soldPlan: z.string().trim().min(1, "Selecione o plano vendido").optional(), // Plano vendido
 });
 
 export type leadFormData = z.infer<typeof leadFormSchema>;

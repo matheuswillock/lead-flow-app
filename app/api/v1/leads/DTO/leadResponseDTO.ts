@@ -1,4 +1,4 @@
-import type { LeadStatus, HealthPlan, MeetingHeald } from '@prisma/client';
+import type { LeadStatus, MeetingHeald } from '@prisma/client';
 
 export interface LeadResponseDTO {
   id: string;
@@ -12,7 +12,7 @@ export interface LeadResponseDTO {
   phone: string | null;
   cnpj: string | null;
   age: string | null;
-  currentHealthPlan: HealthPlan | null;
+  currentHealthPlan: string | null;
   currentValue: number | null;
   referenceHospital: string | null;
   currentTreatment: string | null;
@@ -30,7 +30,7 @@ export interface LeadResponseDTO {
   // Novos campos de venda
   ticket: number | null;
   contractDueDate: string | null;
-  soldPlan: HealthPlan | null;
+  soldPlan: string | null;
   attachmentCount?: number;
   manager?: {
     id: string;

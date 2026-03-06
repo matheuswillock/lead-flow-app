@@ -71,6 +71,8 @@ export interface ILeadFormProps {
     onSubmit: (data: leadFormData) => void | Promise<void>;
     isLoading?: boolean;
     isUpdating?: boolean;
+    healthPlanOptions: Array<{ id: string; name: string }>;
+    healthPlanOptionsLoading?: boolean;
     onCancel: () => void;
     className?: string;
     initialData?: leadFormData;
@@ -88,6 +90,8 @@ export function LeadForm({
     onSubmit,
     isLoading,
     isUpdating,
+    healthPlanOptions,
+    healthPlanOptionsLoading,
     onCancel,
     className,
     initialData,
@@ -159,6 +163,15 @@ export function LeadForm({
     };
 
     const watchedValues = form.watch();
+    const healthPlanNames = React.useMemo(() => {
+        const baseNames = healthPlanOptions
+            .map((option) => option.name.trim())
+            .filter(Boolean);
+        const extras = [watchedValues.currentHealthPlan, watchedValues.soldPlan]
+            .map((value) => (typeof value === "string" ? value.trim() : ""))
+            .filter((value) => value && !baseNames.includes(value));
+        return [...baseNames, ...extras];
+    }, [healthPlanOptions, watchedValues.currentHealthPlan, watchedValues.soldPlan]);
     const isFormValid = form.formState.isValid;
     const isSubmitDisabled = !hasChanges || !isFormValid || isLoading || isUpdating;
 
@@ -393,26 +406,17 @@ export function LeadForm({
                                 <Select
                                     value={field.value}
                                     onValueChange={field.onChange}
-                                    disabled={isLoading || isUpdating}
+                                    disabled={isLoading || isUpdating || healthPlanOptionsLoading}
                                 >
                                     <SelectTrigger>
                                         <SelectValue placeholder="Selecione o plano atual ou 'Nova Adesão' se não possui" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="NOVA_ADESAO">Nova Adesão</SelectItem>
-                                        <SelectItem value="AMIL">Amil</SelectItem>
-                                        <SelectItem value="ALICE">Alice</SelectItem>
-                                        <SelectItem value="BRADESCO">Bradesco</SelectItem>
-                                        <SelectItem value="HAPVIDA">Hapvida</SelectItem>
-                                        <SelectItem value="MEDSENIOR">MedSênior</SelectItem>
-                                        <SelectItem value="GNDI">NotreDame Intermédica (GNDI)</SelectItem>
-                                        <SelectItem value="OMINT">Omint</SelectItem>
-                                        <SelectItem value="PLENA">Plena</SelectItem>
-                                        <SelectItem value="PORTO_SEGURO">Porto Seguro</SelectItem>
-                                        <SelectItem value="PREVENT_SENIOR">Prevent Senior</SelectItem>
-                                        <SelectItem value="SULAMERICA">SulAmérica</SelectItem>
-                                        <SelectItem value="UNIMED">Unimed</SelectItem>
-                                        <SelectItem value="OUTROS">Outros</SelectItem>
+                                        {healthPlanNames.map((planName) => (
+                                            <SelectItem key={`current-health-plan-${planName}`} value={planName}>
+                                                {planName}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </FormControl>
@@ -920,26 +924,17 @@ export function LeadForm({
                                         <Select
                                             value={field.value || ""}
                                             onValueChange={field.onChange}
-                                            disabled={isLoading || isUpdating}
+                                            disabled={isLoading || isUpdating || healthPlanOptionsLoading}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Selecione o plano vendido" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="NOVA_ADESAO">Nova Adesão</SelectItem>
-                                                <SelectItem value="AMIL">Amil</SelectItem>
-                                                <SelectItem value="ALICE">Alice</SelectItem>
-                                                <SelectItem value="BRADESCO">Bradesco</SelectItem>
-                                                <SelectItem value="HAPVIDA">Hapvida</SelectItem>
-                                                <SelectItem value="MEDSENIOR">MedSênior</SelectItem>
-                                                <SelectItem value="GNDI">NotreDame Intermédica (GNDI)</SelectItem>
-                                                <SelectItem value="OMINT">Omint</SelectItem>
-                                                <SelectItem value="PLENA">Plena</SelectItem>
-                                                <SelectItem value="PORTO_SEGURO">Porto Seguro</SelectItem>
-                                                <SelectItem value="PREVENT_SENIOR">Prevent Senior</SelectItem>
-                                                <SelectItem value="SULAMERICA">SulAmérica</SelectItem>
-                                                <SelectItem value="UNIMED">Unimed</SelectItem>
-                                                <SelectItem value="OUTROS">Outros</SelectItem>
+                                                {healthPlanNames.map((planName) => (
+                                                    <SelectItem key={`sold-health-plan-${planName}`} value={planName}>
+                                                        {planName}
+                                                    </SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
                                     </FormControl>

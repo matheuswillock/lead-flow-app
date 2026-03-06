@@ -5,7 +5,6 @@ import { DashboardCardsSkeleton } from './components/DashboardSkeleton';
 import {
   Card,
   CardAction,
-  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
@@ -162,65 +161,65 @@ export function SectionCardsWithContext() {
     return `${formatDatePtBr(startDate)} - ${formatDatePtBr(endDate)}`;
   })();
 
-  const renderMeetingsHeldRanking = (
-    items: Array<{ id: string; name: string; email: string; avatarUrl: string | null; count: number }>
-  ) => {
-    if (!items || items.length === 0) {
-      return (
-        <div className="text-xs text-muted-foreground">
-          Nenhuma reunião realizada no período.
-        </div>
-      );
-    }
+  // const renderMeetingsHeldRanking = (
+  //   items: Array<{ id: string; name: string; email: string; avatarUrl: string | null; count: number }>
+  // ) => {
+  //   if (!items || items.length === 0) {
+  //     return (
+  //       <div className="text-xs text-muted-foreground">
+  //         Nenhuma reunião realizada no período.
+  //       </div>
+  //     );
+  //   }
 
-    const maxCount = Math.max(...items.map((item) => item.count), 0);
+  //   const maxCount = Math.max(...items.map((item) => item.count), 0);
 
-    return (
-      <div className="max-h-56 space-y-5 overflow-y-auto pr-2">
-        {items.map((item) => {
-          const label = item.name || item.email || "Usuário";
-          const initials = label
-            .split(" ")
-            .filter(Boolean)
-            .map((part) => part[0])
-            .join("")
-            .toUpperCase()
-            .slice(0, 2);
-          const width = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+  //   return (
+  //     <div className="max-h-56 space-y-5 overflow-y-auto pr-2">
+  //       {items.map((item) => {
+  //         const label = item.name || item.email || "Usuário";
+  //         const initials = label
+  //           .split(" ")
+  //           .filter(Boolean)
+  //           .map((part) => part[0])
+  //           .join("")
+  //           .toUpperCase()
+  //           .slice(0, 2);
+  //         const width = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
 
-          return (
-            <div key={item.id} className="flex items-center gap-4">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex min-w-0 items-center">
-                    <Avatar className="h-12 w-12 shrink-0" aria-label={label}>
-                      <AvatarImage src={item.avatarUrl || undefined} alt={label} />
-                      <AvatarFallback className="text-[11px]">{initials}</AvatarFallback>
-                    </Avatar>
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>{label}</TooltipContent>
-              </Tooltip>
-              <div className="flex-1 h-4 rounded-full bg-muted/40 shadow-inner">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-primary to-orange-500"
-                  style={{ width: `${width}%` }}
-                />
-              </div>
-              <div
-                className={cn(
-                  "min-w-[2.5rem] shrink-0 text-right text-xl font-semibold text-foreground",
-                  isBlurred && "blur-sm select-none"
-                )}
-              >
-                {item.count}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+  //         return (
+  //           <div key={item.id} className="flex items-center gap-4">
+  //             <Tooltip>
+  //               <TooltipTrigger asChild>
+  //                 <div className="flex min-w-0 items-center">
+  //                   <Avatar className="h-12 w-12 shrink-0" aria-label={label}>
+  //                     <AvatarImage src={item.avatarUrl || undefined} alt={label} />
+  //                     <AvatarFallback className="text-[11px]">{initials}</AvatarFallback>
+  //                   </Avatar>
+  //                 </div>
+  //               </TooltipTrigger>
+  //               <TooltipContent>{label}</TooltipContent>
+  //             </Tooltip>
+  //             <div className="flex-1 h-4 rounded-full bg-muted/40 shadow-inner">
+  //               <div
+  //                 className="h-full rounded-full bg-gradient-to-r from-primary to-orange-500"
+  //                 style={{ width: `${width}%` }}
+  //               />
+  //             </div>
+  //             <div
+  //               className={cn(
+  //                 "min-w-[2.5rem] shrink-0 text-right text-xl font-semibold text-foreground",
+  //                 isBlurred && "blur-sm select-none"
+  //               )}
+  //             >
+  //               {item.count}
+  //             </div>
+  //           </div>
+  //         );
+  //       })}
+  //     </div>
+  //   );
+  // };
 
   return (
     <TooltipProvider delayDuration={0}>

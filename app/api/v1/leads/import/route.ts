@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { LeadStatus, HealthPlan } from "@prisma/client";
+import { LeadStatus } from "@prisma/client";
 import * as XLSX from "xlsx";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase";
+import { healthPlanService } from "@/app/api/services/healthPlans/HealthPlanService";
+import { HEALTH_PLAN_ALIAS_HINTS, normalizeHealthPlanName } from "@/lib/healthPlans";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -41,25 +43,29 @@ const parseCurrency = (value: string) => {
   return parsed;
 };
 
-const mapHealthPlan = (value: string | null | undefined): HealthPlan | null => {
+const mapHealthPlan = (
+  value: string | null | undefined,
+  optionNameByNormalized: Map<string, string>
+): string | null => {
   if (!value) return null;
-  const normalized = normalizeText(value);
+  const normalized = normalizeHealthPlanName(value);
   if (!normalized) return null;
 
-  if (normalized.includes("intermedica") || normalized.includes("gndi")) return HealthPlan.GNDI;
-  if (normalized.includes("bradesco")) return HealthPlan.BRADESCO;
-  if (normalized.includes("amil")) return HealthPlan.AMIL;
-  if (normalized.includes("alice")) return HealthPlan.ALICE;
-  if (normalized.includes("hapvida")) return HealthPlan.HAPVIDA;
-  if (normalized.includes("medsenior") || normalized.includes("med senior")) return HealthPlan.MEDSENIOR;
-  if (normalized.includes("omint")) return HealthPlan.OMINT;
-  if (normalized.includes("plena")) return HealthPlan.PLENA;
-  if (normalized.includes("porto seguro") || normalized.includes("porto")) return HealthPlan.PORTO_SEGURO;
-  if (normalized.includes("prevent senior")) return HealthPlan.PREVENT_SENIOR;
-  if (normalized.includes("sulamerica") || normalized.includes("sul america")) return HealthPlan.SULAMERICA;
-  if (normalized.includes("unimed")) return HealthPlan.UNIMED;
-  if (normalized.includes("nova adesao")) return HealthPlan.NOVA_ADESAO;
-  if (normalized.includes("outros")) return HealthPlan.OUTROS;
+  const exact = optionNameByNormalized.get(normalized);
+  if (exact) return exact;
+
+  for (const alias of HEALTH_PLAN_ALIAS_HINTS) {
+    const normalizedKeyword = normalizeHealthPlanName(alias.keyword);
+    if (!normalized.includes(normalizedKeyword)) continue;
+    const canonical = optionNameByNormalized.get(normalizeHealthPlanName(alias.canonicalName));
+    if (canonical) return canonical;
+  }
+
+  for (const [normalizedOptionName, optionName] of optionNameByNormalized.entries()) {
+    if (normalized.includes(normalizedOptionName) || normalizedOptionName.includes(normalized)) {
+      return optionName;
+    }
+  }
 
   return null;
 };
@@ -186,6 +192,10 @@ export async function POST(request: NextRequest) {
 
     const headerMap = buildHeaderMap(rows[headerIndex]);
     const dataRows = rows.slice(headerIndex + 1);
+    const healthPlanOptions = await healthPlanService.listOptions();
+    const healthPlanOptionNameByNormalized = new Map(
+      healthPlanOptions.map((option) => [option.normalizedName, option.name])
+    );
 
     const emails = new Set<string>();
     const phones = new Set<string>();
@@ -260,7 +270,7 @@ export async function POST(request: NextRequest) {
       const planValue =
         getCell(row, headerMap, "Qual o plano no Momento? (drop down)") ||
         getCell(row, headerMap, "Operadora (drop down)");
-      const currentHealthPlan = mapHealthPlan(planValue);
+      const currentHealthPlan = mapHealthPlan(planValue, healthPlanOptionNameByNormalized);
 
       const normalizedEmail = email ? normalizeEmail(email) : "";
       const normalizedPhone = phone ? normalizeDigits(phone) : "";

@@ -46,6 +46,7 @@ import {
   type LeadActivityReactionRealtimeRow,
   type LeadActivityRealtimeRow,
 } from "@/hooks/useLeadActivitiesRealtime";
+import { useHealthPlans } from "@/hooks/useHealthPlans";
 
 interface LeadDialogProps {
   open: boolean;
@@ -149,6 +150,7 @@ export default function LeadDialog({
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
+  const { healthPlans, loading: healthPlansLoading } = useHealthPlans(supabaseId, activeTeamId);
   const pathname = usePathname();
   const sharedLeadCode = searchParams.get("leadCode");
   const sharedActivityId = searchParams.get("activityId");
@@ -1791,6 +1793,8 @@ export default function LeadDialog({
                     form={form}
                     onSubmit={onSubmit}
                     isLoading={isSubmitting}
+                    healthPlanOptions={healthPlans}
+                    healthPlanOptionsLoading={healthPlansLoading}
                     onCancel={() => setOpen(false)}
                     usersToAssign={usersToAssign}
                     leadId={lead?.id}

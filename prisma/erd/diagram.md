@@ -50,25 +50,6 @@ status_change status_change
     
 
 
-        HealthPlan {
-            NOVA_ADESAO Nova Adesão
-AMIL Amil
-ALICE Alice
-BRADESCO Bradesco
-HAPVIDA Hapvida
-MEDSENIOR MedSênior
-GNDI NotreDame Intermédica (GNDI)
-OMINT Omint
-PLENA Plena
-PORTO_SEGURO Porto Seguro
-PREVENT_SENIOR Prevent Senior
-SULAMERICA SulAmérica
-UNIMED Unimed
-OUTROS Outros
-        }
-    
-
-
         subscription_status {
             trial trial
 active active
@@ -155,6 +136,15 @@ LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
     }
   
 
+  "health_plan_options" {
+    String id "🗝️"
+    String name 
+    String normalizedName 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "leads" {
     String id "🗝️"
     String leadCode 
@@ -164,7 +154,7 @@ LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
     String phone "❓"
     String cnpj "❓"
     String age "❓"
-    HealthPlan currentHealthPlan "❓"
+    String currentHealthPlan "❓"
     Decimal currentValue "❓"
     String referenceHospital "❓"
     String currentTreatment "❓"
@@ -176,7 +166,7 @@ LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
     String notes "❓"
     Decimal ticket "❓"
     DateTime contractDueDate "❓"
-    HealthPlan soldPlan "❓"
+    String soldPlan "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -312,12 +302,12 @@ LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
     "profiles" o{--}o "pending_actions" : "pendingActions"
     "profiles" o{--}o "teams" : "teamsOwned"
     "profiles" o{--}o "team_members" : "teamMemberships"
+    "profiles" o{--}o "health_plan_options" : "createdHealthPlanOptions"
     "profiles" o{--}o "notifications" : "receivedNotifications"
     "profiles" o{--}o "notifications" : "sentNotifications"
+    "health_plan_options" o|--|o "profiles" : "creator"
     "leads" o|--|| "LeadStatus" : "enum:status"
-    "leads" o|--|o "HealthPlan" : "enum:currentHealthPlan"
     "leads" o|--|o "MeetingHeald" : "enum:meetingHeald"
-    "leads" o|--|o "HealthPlan" : "enum:soldPlan"
     "leads" o|--|| "profiles" : "manager"
     "leads" o|--|o "teams" : "team"
     "leads" o|--|o "profiles" : "assignee"
