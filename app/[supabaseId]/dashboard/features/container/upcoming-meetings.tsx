@@ -40,6 +40,59 @@ interface UpcomingMeetingsProps {
   supabaseId: string
 }
 
+const SCHEDULES_CACHE_TTL_MS = 60 * 1000
+const schedulesCacheByKey = new Map<string, { data: ScheduleData[]; timestamp: number }>()
+const schedulesInFlightByKey = new Map<string, Promise<ScheduleData[]>>()
+
+async function getSchedulesWithDedupe(supabaseId: string, teamId: string): Promise<ScheduleData[]> {
+  const requestKey = `${supabaseId}:${teamId}`
+  const now = Date.now()
+  const cached = schedulesCacheByKey.get(requestKey)
+
+  if (cached && now - cached.timestamp <= SCHEDULES_CACHE_TTL_MS) {
+    return cached.data
+  }
+
+  const existingRequest = schedulesInFlightByKey.get(requestKey)
+  if (existingRequest) {
+    return await existingRequest
+  }
+
+  const requestPromise = (async (): Promise<ScheduleData[]> => {
+    const response = await fetch('/api/v1/dashboard/schedules', {
+      headers: {
+        'x-supabase-user-id': supabaseId,
+        'x-team-id': teamId,
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+    if (!data.isValid) {
+      const errorMessage = data.errorMessages && data.errorMessages.length > 0
+        ? data.errorMessages[0]
+        : 'Erro ao carregar agendamentos'
+      throw new Error(errorMessage)
+    }
+
+    const result = Array.isArray(data.result) ? data.result : []
+    schedulesCacheByKey.set(requestKey, { data: result, timestamp: Date.now() })
+    return result
+  })()
+
+  schedulesInFlightByKey.set(
+    requestKey,
+    requestPromise.finally(() => {
+      schedulesInFlightByKey.delete(requestKey)
+    }),
+  )
+
+  return await requestPromise
+}
+
 export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
   const { activeTeamId, isLoading: isTeamLoading } = useTeamContext()
   const [schedules, setSchedules] = React.useState<ScheduleData[]>([])
@@ -47,6 +100,7 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
+    let isCancelled = false
     if (!supabaseId) return
 
     // While TeamContext is still resolving activeTeamId, keep this card loading.
@@ -67,40 +121,26 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
       try {
         setIsLoading(true)
         setError(null)
-        
-        const response = await fetch('/api/v1/dashboard/schedules', {
-          headers: {
-            'x-supabase-user-id': supabaseId,
-            'x-team-id': activeTeamId || '',
-          },
-        })
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json()
-
-        // Output usa isValid e result, não success e data
-        if (data.isValid && data.result) {
-          setSchedules(data.result)
-          setError(null)
-        } else {
-          const errorMessage = data.errorMessages && data.errorMessages.length > 0 
-            ? data.errorMessages[0] 
-            : 'Erro ao carregar agendamentos';
-          setError(errorMessage)
-        }
+        const nextSchedules = await getSchedulesWithDedupe(supabaseId, activeTeamId)
+        if (isCancelled) return
+        setSchedules(nextSchedules)
+        setError(null)
       } catch (err) {
+        if (isCancelled) return
         const errorMessage = err instanceof Error ? err.message : 'Erro ao carregar agendamentos';
         console.error('[UpcomingMeetings] Fetch error:', errorMessage);
         setError(errorMessage)
       } finally {
+        if (isCancelled) return
         setIsLoading(false)
       }
     }
 
-    fetchSchedules()
+    void fetchSchedules()
+
+    return () => {
+      isCancelled = true
+    }
   }, [supabaseId, activeTeamId, isTeamLoading])
 
   const getInitials = (name: string) => {

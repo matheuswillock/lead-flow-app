@@ -40,7 +40,7 @@ export const DashboardProvider: React.FC<IDashboardProviderProps> = ({
     if (supabaseId && activeTeamId) {
       dashboardState.fetchMetrics();
     }
-  }, [supabaseId, activeTeamId, dashboardState.fetchMetrics, dashboardState.filters, dashboardState.customDateRange]);
+  }, [supabaseId, activeTeamId, dashboardState.fetchMetrics]);
 
   return (
     <DashboardContext.Provider value={dashboardState}>
