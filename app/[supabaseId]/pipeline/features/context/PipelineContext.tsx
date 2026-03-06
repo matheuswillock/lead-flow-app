@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, ReactNode, useMemo, useState, useEffect, useRef } from "react";
+import { createContext, ReactNode, useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import { Lead, ColumnKey } from "./PipelineTypes";
 import { createBoardService } from "@/app/[supabaseId]/board/features/services/BoardService";
@@ -9,6 +9,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useUserContext } from "@/app/context/UserContext";
 
 interface IPipelineProviderProps {
   children: ReactNode;
@@ -81,14 +82,23 @@ export const PipelineContext = createContext<IPipelineContextState | undefined>(
 
 export const PipelineProvider: React.FC<IPipelineProviderProps> = ({ 
   children, 
-  pipelineService = createBoardService()
+  pipelineService
 }) => {
+  const resolvedPipelineService = useMemo(
+    () => pipelineService ?? createBoardService(),
+    [pipelineService]
+  );
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
+  const { user: contextUser, isLoading: userLoading } = useUserContext();
   const searchParams = useSearchParams();
   const sharedLeadCode = searchParams.get("leadCode");
-  const shareHandledRef = useRef(false);
+  const lastHandledShareKeyRef = useRef<string | null>(null);
+  const selectedRef = useRef<Lead | null>(null);
+  const lastLeadsLoadKeyRef = useRef<string | null>(null);
+  const leadsLoadInFlightKeyRef = useRef<string | null>(null);
+  const leadsLoadInFlightPromiseRef = useRef<Promise<void> | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -100,9 +110,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
-  const [user, setUser] = useState<ProfileResponseDTO | null>(null);
-  const [userLoading, setUserLoading] = useState(true);
-  const userRef = useRef<ProfileResponseDTO | null>(null);
+  const user: ProfileResponseDTO | null = contextUser;
   const accessDeniedShownRef = useRef(false);
 
   // Mapeamento de status para labels legíveis
@@ -114,143 +122,137 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     return labels;
   }, []);
 
-  // Função para carregar dados do usuário
-  const loadUser = async () => {
-    try {
-      setUserLoading(true);
-      
-      if (!supabaseId) {
-        console.error('ID do usuário não encontrado');
-        return;
-      }
-      
-      const response = await fetch(`/api/v1/profiles/${supabaseId}`);
-      
-      if (!response.ok) {
-        throw new Error('Erro ao buscar dados do usuário');
-      }
-      
-      const result = await response.json();
-      
-      if (result.isValid && result.result) {
-        setUser(result.result);
-      } else {
-        console.error('Erro ao carregar usuário:', result.errorMessages);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar usuário:', error);
-    } finally {
-      setUserLoading(false);
-    }
-  };
-
   // Função para carregar leads da API
-  const loadLeads = async () => {
-    try {
-      setIsLoading(true);
-      setErrors({});
-      
-      if (!supabaseId) {
-        setErrors({ api: 'ID do usuário não encontrado' });
-        setIsLoading(false);
-        return;
-      }
+  const loadLeads = useCallback(async (options?: { force?: boolean }) => {
+    const roleToSend = activeRole || "manager";
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}`;
 
-      if (!activeTeamId) {
-        setErrors({ api: "Selecione um time para visualizar os leads." });
-        setIsLoading(false);
-        return;
-      }
+    if (
+      !options?.force &&
+      leadsLoadInFlightKeyRef.current === loadKey &&
+      leadsLoadInFlightPromiseRef.current
+    ) {
+      return leadsLoadInFlightPromiseRef.current;
+    }
 
-      const currentUser = userRef.current;
-      if (!currentUser) {
-        setIsLoading(false);
-        return;
-      }
-      if (activeRole === "operator" && !activeFunctions?.includes("SDR")) {
-        setAllLeads([]);
-        setErrors({ api: "Acesso negado: função SDR necessária para visualizar leads." });
-        if (!accessDeniedShownRef.current) {
-          toast.info("Acesso negado: função SDR necessária para visualizar leads.");
-          accessDeniedShownRef.current = true;
-        }
-        setIsLoading(false);
-        return;
-      }
-      
-      const roleToSend = activeRole || "manager";
-      const result = await pipelineService.fetchLeads(supabaseId, roleToSend, activeTeamId);
+    if (!options?.force && lastLeadsLoadKeyRef.current === loadKey) {
+      return;
+    }
 
-      if (result.isValid && result.result) {
-        console.info('[PipelineContext] Leads fetched from API:', result.result.length, 'leads');
+    const requestPromise = (async () => {
+      try {
+        setIsLoading(true);
+        setErrors({});
         
-        // Armazenar todos os leads em um array flat
-        setAllLeads(result.result);
+        if (!supabaseId) {
+          setErrors({ api: 'ID do usuário não encontrado' });
+          setIsLoading(false);
+          return;
+        }
 
-        // Se há um lead selecionado, atualizar com os novos dados
-        if (selected && selected.id) {
-          const updatedLead = result.result.find((l: Lead) => l.id === selected.id);
-          if (updatedLead) {
-            const hasChanges = 
-              updatedLead.meetingDate !== selected.meetingDate ||
-              updatedLead.meetingNotes !== selected.meetingNotes ||
-              updatedLead.meetingLink !== selected.meetingLink ||
-              updatedLead.status !== selected.status ||
-              updatedLead.name !== selected.name ||
-              updatedLead.email !== selected.email ||
-              updatedLead.phone !== selected.phone;
+        if (!activeTeamId) {
+          setErrors({ api: "Selecione um time para visualizar os leads." });
+          setIsLoading(false);
+          return;
+        }
+        if (activeRole === "operator" && !activeFunctions?.includes("SDR")) {
+          setAllLeads([]);
+          setErrors({ api: "Acesso negado: função SDR necessária para visualizar leads." });
+          if (!accessDeniedShownRef.current) {
+            toast.info("Acesso negado: função SDR necessária para visualizar leads.");
+            accessDeniedShownRef.current = true;
+          }
+          setIsLoading(false);
+          return;
+        }
+        
+        const result = await resolvedPipelineService.fetchLeads(supabaseId, roleToSend, activeTeamId);
 
-            if (hasChanges) {
-              console.info('[PipelineContext] ✅ Updating selected lead with fresh data');
-              
-              // Notificar usuário sobre mudanças específicas
-              if (updatedLead.meetingDate !== selected.meetingDate && updatedLead.meetingDate) {
-                const meetingDateFormatted = new Date(updatedLead.meetingDate).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: 'long',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                });
-                toast.info(`📅 Data de reunião atualizada: ${meetingDateFormatted}`, {
-                  duration: 3000,
-                });
+        if (result.isValid && result.result) {
+          console.info('[PipelineContext] Leads fetched from API:', result.result.length, 'leads');
+          lastLeadsLoadKeyRef.current = loadKey;
+          
+          // Armazenar todos os leads em um array flat
+          setAllLeads(result.result);
+
+          // Se há um lead selecionado, atualizar com os novos dados
+          const currentSelected = selectedRef.current;
+          if (currentSelected && currentSelected.id) {
+            const updatedLead = result.result.find((l: Lead) => l.id === currentSelected.id);
+            if (updatedLead) {
+              const hasChanges = 
+                updatedLead.meetingDate !== currentSelected.meetingDate ||
+                updatedLead.meetingNotes !== currentSelected.meetingNotes ||
+                updatedLead.meetingLink !== currentSelected.meetingLink ||
+                updatedLead.status !== currentSelected.status ||
+                updatedLead.name !== currentSelected.name ||
+                updatedLead.email !== currentSelected.email ||
+                updatedLead.phone !== currentSelected.phone;
+
+              if (hasChanges) {
+                console.info('[PipelineContext] ✅ Updating selected lead with fresh data');
+                
+                // Notificar usuário sobre mudanças específicas
+                if (updatedLead.meetingDate !== currentSelected.meetingDate && updatedLead.meetingDate) {
+                  const meetingDateFormatted = new Date(updatedLead.meetingDate).toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+                  toast.info(`📅 Data de reunião atualizada: ${meetingDateFormatted}`, {
+                    duration: 3000,
+                  });
+                }
+                
+                setSelected(updatedLead);
               }
-              
-              setSelected(updatedLead);
             }
           }
+        } else {
+          console.error('Erro ao carregar leads:', result.errorMessages);
+          setErrors({ api: result.errorMessages?.join(', ') || 'Erro desconhecido' });
         }
-      } else {
-        console.error('Erro ao carregar leads:', result.errorMessages);
-        setErrors({ api: result.errorMessages?.join(', ') || 'Erro desconhecido' });
+      } catch (error) {
+        console.error('Erro ao carregar leads:', error);
+        setErrors({ api: 'Erro ao carregar dados' });
+      } finally {
+        if (leadsLoadInFlightKeyRef.current === loadKey) {
+          leadsLoadInFlightKeyRef.current = null;
+          leadsLoadInFlightPromiseRef.current = null;
+        }
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Erro ao carregar leads:', error);
-      setErrors({ api: 'Erro ao carregar dados' });
-    } finally {
-      setIsLoading(false);
+    })();
+
+    leadsLoadInFlightKeyRef.current = loadKey;
+    leadsLoadInFlightPromiseRef.current = requestPromise;
+
+    return requestPromise;
+  }, [activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId]);
+
+  useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+
+  useEffect(() => {
+    if (!teamLoading) {
+      void loadLeads();
     }
-  };
-
-  // Carregar dados quando o componente montar
-  useEffect(() => {
-    loadUser();
-  }, [supabaseId]);
+  }, [teamLoading, loadLeads]);
 
   useEffect(() => {
-    userRef.current = user;
-  }, [user]);
-
-  useEffect(() => {
-    if (!userLoading && !teamLoading) {
-      loadLeads();
+    if (!sharedLeadCode) {
+      lastHandledShareKeyRef.current = null;
+      return;
     }
-  }, [userLoading, teamLoading, activeTeamId, supabaseId]);
-
-  useEffect(() => {
-    if (!sharedLeadCode || shareHandledRef.current) return;
     if (isLoading) return;
+
+    const sharedActivityId = searchParams.get("activityId");
+    const shareKey = `${sharedLeadCode}:${sharedActivityId ?? ""}`;
+    if (lastHandledShareKeyRef.current === shareKey) return;
+
     const targetLead = allLeads.find((lead) => lead.leadCode === sharedLeadCode);
     if (targetLead) {
       setSelected(targetLead);
@@ -258,8 +260,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     } else {
       toast.info("Lead não encontrado ou sem permissão no seu time.");
     }
-    shareHandledRef.current = true;
-  }, [allLeads, sharedLeadCode, isLoading]);
+    lastHandledShareKeyRef.current = shareKey;
+  }, [allLeads, sharedLeadCode, isLoading, searchParams]);
 
   // Função para finalizar contrato
   const finalizeContract = async (leadId: string, contractData: FinalizeContractData) => {
@@ -279,7 +281,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         throw new Error(errorData.errorMessages?.[0] || 'Erro ao finalizar contrato');
       }
 
-      await loadLeads();
+      await loadLeads({ force: true });
     } catch (error) {
       console.error('Erro ao finalizar contrato:', error);
       throw error;
@@ -372,7 +374,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     clearErrors,
     handleRowClick,
     openNewLeadDialog,
-    refreshLeads: loadLeads,
+    refreshLeads: () => loadLeads({ force: true }),
     patchLead,
     finalizeContract,
     statusLabels

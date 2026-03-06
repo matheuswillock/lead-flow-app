@@ -12,6 +12,9 @@ interface UseDashboardHookProps {
 }
 
 interface UseDashboardHookReturn extends IDashboardState, IDashboardActions {}
+interface FetchMetricsOptions {
+  forceDetailed?: boolean;
+}
 
 export function useDashboardHook({ 
   supabaseId, 
@@ -30,6 +33,8 @@ export function useDashboardHook({
     initialFilters || { period: '30d' }
   );
   const [customDateRange, setCustomDateRange] = useState<IDashboardState['customDateRange']>(null);
+  const detailedMetricsRef = useRef<IDashboardState['detailedMetrics']>(null);
+  const detailedContextKeyRef = useRef<string | null>(null);
   
   // Estado de privacidade
   const [isBlurred, setIsBlurred] = useState<boolean>(false);
@@ -74,8 +79,21 @@ export function useDashboardHook({
     }
   }, [blurStorageKey, isBlurred]);
 
+  useEffect(() => {
+    detailedMetricsRef.current = detailedMetrics;
+  }, [detailedMetrics]);
+
+  useEffect(() => {
+    const currentKey = supabaseId && teamId ? `${supabaseId}:${teamId}` : null;
+    if (detailedContextKeyRef.current && detailedContextKeyRef.current !== currentKey) {
+      detailedContextKeyRef.current = null;
+      detailedMetricsRef.current = null;
+      setDetailedMetrics(null);
+    }
+  }, [supabaseId, teamId]);
+
   // Ação para buscar métricas
-  const fetchMetrics = useCallback(async () => {
+  const fetchMetrics = useCallback(async (options?: FetchMetricsOptions) => {
     try {
       setIsLoading(true);
       setError(null);
@@ -89,14 +107,28 @@ export function useDashboardHook({
           }
         : filters;
 
+      const detailedKey = `${supabaseId}:${teamId}`;
+      const shouldFetchDetailed =
+        options?.forceDetailed === true ||
+        detailedContextKeyRef.current !== detailedKey ||
+        !detailedMetricsRef.current;
+
+      const detailedFallback = detailedMetricsRef.current ?? [];
+
       // Buscar dados em paralelo
       const [metricsData, detailedData] = await Promise.all([
         dashboardService.getMetrics(supabaseId, teamId, finalFilters),
-        dashboardService.getDetailedMetrics(supabaseId, teamId),
+        shouldFetchDetailed
+          ? dashboardService.getDetailedMetrics(supabaseId, teamId)
+          : Promise.resolve(detailedFallback),
       ]);
 
       setMetrics(metricsData);
-      setDetailedMetrics(detailedData);
+      if (shouldFetchDetailed) {
+        setDetailedMetrics(detailedData);
+        detailedMetricsRef.current = detailedData;
+        detailedContextKeyRef.current = detailedKey;
+      }
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido ao carregar métricas';
@@ -167,7 +199,13 @@ export function useDashboardHook({
       dashboardService.clearCache(supabaseId, teamId, finalFilters);
     }
     
-    await fetchMetrics();
+    if ('clearDetailedCache' in dashboardService && typeof dashboardService.clearDetailedCache === 'function') {
+      dashboardService.clearDetailedCache(supabaseId, teamId);
+      detailedContextKeyRef.current = null;
+      detailedMetricsRef.current = null;
+    }
+
+    await fetchMetrics({ forceDetailed: true });
   }, [fetchMetrics, dashboardService, supabaseId, teamId, filters, customDateRange]);
   
   // Ação para toggle de blur

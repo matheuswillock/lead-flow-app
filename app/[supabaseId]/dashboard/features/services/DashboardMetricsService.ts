@@ -10,8 +10,11 @@ export type { DashboardMetricsData, DetailedMetricsData, MetricsFilters };
 
 // Configuração de cache
 const CACHE_KEY_PREFIX = 'dashboard_metrics';
+const DETAILED_CACHE_KEY_PREFIX = `${CACHE_KEY_PREFIX}_detailed`;
 const CACHE_VERSION = '4';
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutos em milissegundos
+const metricsInFlightByCacheKey = new Map<string, Promise<DashboardMetricsData>>();
+const detailedInFlightByCacheKey = new Map<string, Promise<DetailedMetricsData[]>>();
 
 interface CachedData<T> {
   data: T;
@@ -30,6 +33,13 @@ export class DashboardMetricsService implements IDashboardMetricsService {
       ? `_${filters.period || 'default'}_${filters.startDate || ''}_${filters.endDate || ''}`
       : '_default';
     return `${CACHE_KEY_PREFIX}_${supabaseId}_${teamId}${filterKey}`;
+  }
+
+  /**
+   * Gera chave única para cache de métricas detalhadas por time
+   */
+  private getDetailedCacheKey(supabaseId: string, teamId: string): string {
+    return `${DETAILED_CACHE_KEY_PREFIX}_${supabaseId}_${teamId}`;
   }
 
   /**
@@ -130,8 +140,20 @@ export class DashboardMetricsService implements IDashboardMetricsService {
    * Limpa cache específico
    */
   public clearCache(supabaseId: string, teamId: string, filters?: MetricsFilters): void {
+    if (typeof window === 'undefined') return;
     const cacheKey = this.getCacheKey(supabaseId, teamId, filters);
     localStorage.removeItem(cacheKey);
+    metricsInFlightByCacheKey.delete(cacheKey);
+  }
+
+  /**
+   * Limpa cache de métricas detalhadas de um time
+   */
+  public clearDetailedCache(supabaseId: string, teamId: string): void {
+    if (typeof window === 'undefined') return;
+    const cacheKey = this.getDetailedCacheKey(supabaseId, teamId);
+    localStorage.removeItem(cacheKey);
+    detailedInFlightByCacheKey.delete(cacheKey);
   }
 
   /**
@@ -151,6 +173,8 @@ export class DashboardMetricsService implements IDashboardMetricsService {
       }
 
       keysToRemove.forEach(key => localStorage.removeItem(key));
+      metricsInFlightByCacheKey.clear();
+      detailedInFlightByCacheKey.clear();
 
     } catch (error) {
       console.error('Erro ao limpar todos os caches:', error);
@@ -170,47 +194,62 @@ export class DashboardMetricsService implements IDashboardMetricsService {
         return cachedData;
       }
 
-      // Construir query params
-      const params = new URLSearchParams();
-
-      if (filters?.period) {
-        params.append('period', filters.period);
+      const existingRequest = metricsInFlightByCacheKey.get(cacheKey);
+      if (existingRequest) {
+        return await existingRequest;
       }
 
-      if (filters?.startDate) {
-        params.append('startDate', filters.startDate);
-      }
+      const requestPromise = (async (): Promise<DashboardMetricsData> => {
+        // Construir query params
+        const params = new URLSearchParams();
 
-      if (filters?.endDate) {
-        params.append('endDate', filters.endDate);
-      }
+        if (filters?.period) {
+          params.append('period', filters.period);
+        }
 
-      // Fazer requisição para a API
-      const response = await fetch(`/api/v1/dashboard/metrics?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-supabase-user-id': supabaseId,
-          'x-team-id': teamId,
-        },
-        cache: 'no-store',
-      });
+        if (filters?.startDate) {
+          params.append('startDate', filters.startDate);
+        }
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+        if (filters?.endDate) {
+          params.append('endDate', filters.endDate);
+        }
 
-      const data = await response.json();
+        // Fazer requisição para a API
+        const response = await fetch(`/api/v1/dashboard/metrics?${params.toString()}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-supabase-user-id': supabaseId,
+            'x-team-id': teamId,
+          },
+          cache: 'no-store',
+        });
 
-      if (!data.isValid) {
-        throw new Error(data.errorMessages?.join(', ') || 'Erro desconhecido');
-      }
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
-      // Salvar no cache
-      this.saveToCache(cacheKey, data.result, filters);
+        const data = await response.json();
 
-      return data.result;
+        if (!data.isValid) {
+          throw new Error(data.errorMessages?.join(', ') || 'Erro desconhecido');
+        }
 
+        // Salvar no cache
+        this.saveToCache(cacheKey, data.result, filters);
+
+        return data.result;
+      })();
+
+      metricsInFlightByCacheKey.set(
+        cacheKey,
+        requestPromise.finally(() => {
+          metricsInFlightByCacheKey.delete(cacheKey);
+        })
+      );
+
+      return await requestPromise;
     } catch (error) {
       console.error('Erro ao buscar métricas do dashboard:', error);
       throw new Error(
@@ -226,28 +265,51 @@ export class DashboardMetricsService implements IDashboardMetricsService {
    */
   async getDetailedMetrics(supabaseId: string, teamId: string): Promise<DetailedMetricsData[]> {
     try {
-      // Fazer requisição para a API usando URL relativa
-      const response = await fetch(`/api/v1/dashboard/metrics/detailed/${supabaseId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-supabase-user-id': supabaseId,
-          'x-team-id': teamId,
-        },
-        cache: 'no-store',
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      const cacheKey = this.getDetailedCacheKey(supabaseId, teamId);
+      const cachedData = this.getFromCache<DetailedMetricsData[]>(cacheKey);
+      if (cachedData) {
+        return cachedData;
       }
 
-      const data = await response.json();
-
-      if (!data.isValid) {
-        throw new Error(data.errorMessages?.join(', ') || 'Erro desconhecido');
+      const existingRequest = detailedInFlightByCacheKey.get(cacheKey);
+      if (existingRequest) {
+        return await existingRequest;
       }
 
-      return data.result;
+      const requestPromise = (async (): Promise<DetailedMetricsData[]> => {
+        // Fazer requisição para a API usando URL relativa
+        const response = await fetch(`/api/v1/dashboard/metrics/detailed/${supabaseId}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-supabase-user-id': supabaseId,
+            'x-team-id': teamId,
+          },
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!data.isValid) {
+          throw new Error(data.errorMessages?.join(', ') || 'Erro desconhecido');
+        }
+
+        this.saveToCache(cacheKey, data.result);
+        return data.result;
+      })();
+
+      detailedInFlightByCacheKey.set(
+        cacheKey,
+        requestPromise.finally(() => {
+          detailedInFlightByCacheKey.delete(cacheKey);
+        })
+      );
+
+      return await requestPromise;
 
     } catch (error) {
       console.error('Erro ao buscar métricas detalhadas:', error);

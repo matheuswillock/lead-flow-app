@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { LeadStatus } from '@prisma/client';
 import { useTeamContext } from '@/app/context/TeamContext';
@@ -23,45 +23,20 @@ interface UseLeadsOptions {
   role?: string;
 }
 
+const LEAD_SILENT_FRESH_WINDOW_MS = 1500;
+const leadInFlightByKey = new Map<string, Promise<LeadResponseDTO>>();
+const leadFreshCacheByKey = new Map<string, { lead: LeadResponseDTO; fetchedAt: number }>();
+
 export const useLeads = () => {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
-  const { activeTeamId } = useTeamContext();
+  const { activeTeamId, activeRole } = useTeamContext();
 
   const [leads, setLeads] = useState<LeadResponseDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [userRole, setUserRole] = useState<string>('manager'); // Default role
-
-  // Fetch user profile to get role
-  const fetchUserProfile = useCallback(async () => {
-    if (!supabaseId) return;
-    
-    try {
-      const response = await fetch(`/api/v1/profiles/${supabaseId}`, {
-        headers: {
-          'x-supabase-user-id': supabaseId,
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.isValid && data.result?.role) {
-          setUserRole(data.result.role);
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching user profile:', err);
-    }
-  }, [supabaseId, activeTeamId]);
-
-  // Load user profile when hook initializes
-  useEffect(() => {
-    fetchUserProfile();
-  }, [fetchUserProfile]);
-
   const fetchLeads = useCallback(async (newOptions?: UseLeadsOptions) => {
     setLoading(true);
     setError(null);
@@ -71,7 +46,7 @@ export const useLeads = () => {
       const finalOptions = newOptions || {};
 
       // Always include role in the request
-      const roleToUse = finalOptions.role || userRole;
+      const roleToUse = finalOptions.role || activeRole || 'manager';
       searchParams.append('role', roleToUse);
       if (activeTeamId) {
         searchParams.append('teamId', activeTeamId);
@@ -105,7 +80,7 @@ export const useLeads = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabaseId, userRole, activeTeamId]);
+  }, [supabaseId, activeRole, activeTeamId]);
 
   const createLead = useCallback(async (leadData: CreateLeadRequest): Promise<CreateLeadResponseDTO> => {
     setLoading(true);
@@ -355,38 +330,67 @@ export function useLead(id: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchLead = useCallback(async () => {
+  const fetchLead = useCallback(async (options?: { silent?: boolean }) => {
     if (!id) return;
+    const silent = options?.silent ?? false;
+    const requestKey = `${id}:${supabaseId}:${activeTeamId ?? ''}`;
 
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
-      const response = await fetch(`/api/v1/leads/${id}`, {
-        headers: {
-          'x-supabase-user-id': supabaseId,
-          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error('Erro ao buscar lead');
+      const cached = leadFreshCacheByKey.get(requestKey);
+      if (silent && cached && Date.now() - cached.fetchedAt <= LEAD_SILENT_FRESH_WINDOW_MS) {
+        setLead(cached.lead);
+        return;
       }
 
-      const data = await response.json();
-      if (data?.isValid) {
-        setLead(data.result as LeadResponseDTO);
-      } else {
-        const message = Array.isArray(data?.errorMessages) && data.errorMessages.length > 0
-          ? data.errorMessages.join(", ")
-          : "Erro ao buscar lead";
-        setLead(null);
-        setError(message);
+      const existingRequest = leadInFlightByKey.get(requestKey);
+      const requestPromise = existingRequest ?? (async (): Promise<LeadResponseDTO> => {
+        const response = await fetch(`/api/v1/leads/${id}`, {
+          headers: {
+            'x-supabase-user-id': supabaseId,
+            ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Erro ao buscar lead');
+        }
+
+        const data = await response.json();
+        if (!data?.isValid) {
+          const message = Array.isArray(data?.errorMessages) && data.errorMessages.length > 0
+            ? data.errorMessages.join(", ")
+            : "Erro ao buscar lead";
+          throw new Error(message);
+        }
+
+        const nextLead = data.result as LeadResponseDTO;
+        leadFreshCacheByKey.set(requestKey, { lead: nextLead, fetchedAt: Date.now() });
+        return nextLead;
+      })();
+
+      if (!existingRequest) {
+        leadInFlightByKey.set(
+          requestKey,
+          requestPromise.finally(() => {
+            leadInFlightByKey.delete(requestKey);
+          })
+        );
       }
+
+      const nextLead = await requestPromise;
+      setLead(nextLead);
     } catch (err) {
+      setLead(null);
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [id, supabaseId, activeTeamId]);
 

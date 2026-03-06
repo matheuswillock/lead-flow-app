@@ -49,4 +49,7 @@ export interface MetricsFilters {
 export interface IDashboardMetricsService {
   getMetrics(supabaseId: string, teamId: string, filters?: MetricsFilters): Promise<DashboardMetricsData>;
   getDetailedMetrics(supabaseId: string, teamId: string): Promise<DetailedMetricsData[]>;
+  clearCache?(supabaseId: string, teamId: string, filters?: MetricsFilters): void;
+  clearDetailedCache?(supabaseId: string, teamId: string): void;
+  clearAllCache?(): void;
 }

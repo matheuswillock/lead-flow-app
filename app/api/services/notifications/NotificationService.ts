@@ -34,6 +34,18 @@ type ScheduleNotificationInput = {
   isReschedule: boolean;
 };
 
+type ActivityReactionNotificationInput = {
+  teamId: string;
+  actorProfileId: string;
+  actorName: string;
+  recipientProfileId: string;
+  leadId: string;
+  leadCode: string | null;
+  leadName: string;
+  activityId: string;
+  emoji: string;
+};
+
 type ListNotificationsInput = {
   recipientProfileId: string;
   teamId: string;
@@ -144,6 +156,65 @@ class NotificationService {
     });
 
     return { createdCount: result.count };
+  }
+
+  async createActivityReactionNotification(input: ActivityReactionNotificationInput) {
+    if (!input.recipientProfileId || input.recipientProfileId === input.actorProfileId) {
+      return null;
+    }
+
+    const message = `${input.actorName} reagiu ${input.emoji} à sua atividade no lead ${input.leadName}.`;
+    const metadata = {
+      leadId: input.leadId,
+      leadCode: input.leadCode,
+      leadName: input.leadName,
+      activityId: input.activityId,
+      emoji: input.emoji,
+    };
+
+    try {
+      return await prisma.notification.create({
+        data: {
+          recipientProfileId: input.recipientProfileId,
+          actorProfileId: input.actorProfileId,
+          teamId: input.teamId,
+          type: "ACTIVITY_REACTION" as NotificationType,
+          message,
+          metadata,
+        },
+      });
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : "";
+      const isEnumValidationError =
+        messageText.includes("Invalid value for argument `type`")
+        || messageText.includes("Expected NotificationType");
+
+      if (!isEnumValidationError) {
+        throw error;
+      }
+
+      const inserted = await prisma.$queryRaw<Array<{ id: string }>>`
+        INSERT INTO "notifications" (
+          "recipientProfileId",
+          "actorProfileId",
+          "teamId",
+          "type",
+          "message",
+          "metadata"
+        )
+        VALUES (
+          ${input.recipientProfileId}::uuid,
+          ${input.actorProfileId}::uuid,
+          ${input.teamId}::uuid,
+          'ACTIVITY_REACTION'::"notification_type",
+          ${message},
+          ${JSON.stringify(metadata)}::jsonb
+        )
+        RETURNING "id";
+      `;
+
+      return inserted[0] ?? null;
+    }
   }
 
   async listByRecipientAndTeam(input: ListNotificationsInput) {

@@ -1,8 +1,20 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from "react";
 import { Output } from "@/lib/output";
 import type { UserRole, UserFunction } from "@prisma/client";
+import type { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
+
+type UserBootstrapResponse = {
+  profileOutput: Output;
+  subscriptionCheckResult: {
+    userExists?: boolean;
+    hasActiveSubscription?: boolean;
+    userRole?: string | null;
+  } | null;
+};
+
+const userBootstrapInFlight = new Map<string, Promise<UserBootstrapResponse>>();
 
 /**
  * Interface para os dados do usuário
@@ -33,6 +45,7 @@ export interface UserData {
   subscriptionStatus: string | null;
   subscriptionId: string | null;
   activeTeamId: string | null;
+  usersAssociated: UserAssociated[];
   createdAt: string;
   updatedAt: string;
 }
@@ -79,46 +92,89 @@ export const UserProvider: React.FC<UserProviderProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const lastLoadedSupabaseIdRef = useRef<string | null>(null);
 
   /**
    * Busca dados do usuário na API
    */
-  const fetchUser = async (): Promise<void> => {
+  const fetchUser = useCallback(async (options?: { force?: boolean }): Promise<void> => {
+    const force = options?.force ?? false;
+
+    if (!supabaseId) {
+      return;
+    }
+
+    if (!force && lastLoadedSupabaseIdRef.current === supabaseId) {
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/v1/profiles/${supabaseId}`);
-      const output: Output = await response.json();
-      
-      if (output.isValid && output.result) {
-        setUser(output.result);
-        
-        // Usar o SubscriptionCheckService para validar assinatura
-        // Ele já implementa a lógica master/operator
-        console.info('🔍 [UserContext] Verificando assinatura via SubscriptionCheckService');
-        
+      const createBootstrapRequest = async (): Promise<UserBootstrapResponse> => {
+        const response = await fetch(`/api/v1/profiles/${supabaseId}`);
+        const profileOutput: Output = await response.json();
+
+        if (!profileOutput.isValid || !profileOutput.result) {
+          return {
+            profileOutput,
+            subscriptionCheckResult: null,
+          };
+        }
+
         const checkResponse = await fetch('/api/v1/subscriptions/check', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            email: output.result.email,
-            phone: output.result.phone,
-            cpfCnpj: output.result.cpfCnpj,
+            email: profileOutput.result.email,
+            phone: profileOutput.result.phone,
+            cpfCnpj: profileOutput.result.cpfCnpj,
           }),
         });
+
+        const subscriptionCheckResult = await checkResponse.json();
+
+        return {
+          profileOutput,
+          subscriptionCheckResult,
+        };
+      };
+
+      let requestPromise: Promise<UserBootstrapResponse>;
+      if (force) {
+        requestPromise = createBootstrapRequest();
+      } else {
+        const existingPromise = userBootstrapInFlight.get(supabaseId);
+        if (existingPromise) {
+          requestPromise = existingPromise;
+        } else {
+          requestPromise = createBootstrapRequest().finally(() => {
+            userBootstrapInFlight.delete(supabaseId);
+          });
+          userBootstrapInFlight.set(supabaseId, requestPromise);
+        }
+      }
+
+      const { profileOutput, subscriptionCheckResult } = await requestPromise;
+      
+      if (profileOutput.isValid && profileOutput.result) {
+        setUser(profileOutput.result);
+        lastLoadedSupabaseIdRef.current = supabaseId;
         
-        const checkResult = await checkResponse.json();
-        
-        if (checkResult.userExists) {
-          setHasActiveSubscription(checkResult.hasActiveSubscription);
-          setUserRole(checkResult.userRole || null);
+        // Usar o SubscriptionCheckService para validar assinatura
+        // Ele já implementa a lógica master/operator
+        console.info('🔍 [UserContext] Verificando assinatura via SubscriptionCheckService');
+
+        if (subscriptionCheckResult?.userExists) {
+          setHasActiveSubscription(!!subscriptionCheckResult.hasActiveSubscription);
+          setUserRole(subscriptionCheckResult.userRole || null);
           
           console.info('✅ [UserContext] Verificação de assinatura concluída:', {
-            hasActiveSubscription: checkResult.hasActiveSubscription,
-            userRole: checkResult.userRole,
+            hasActiveSubscription: subscriptionCheckResult.hasActiveSubscription,
+            userRole: subscriptionCheckResult.userRole,
           });
         } else {
           setHasActiveSubscription(false);
@@ -126,7 +182,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({
           console.warn('⚠️ [UserContext] Usuário não encontrado no check de assinatura');
         }
       } else {
-        setError(output.errorMessages?.join(", ") || "Failed to fetch user data");
+        setUser(null);
+        setHasActiveSubscription(false);
+        setUserRole(null);
+        setError(profileOutput.errorMessages?.join(", ") || "Failed to fetch user data");
       }
     } catch (err) {
       console.error("Error fetching user:", err);
@@ -134,7 +193,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [supabaseId]);
 
   /**
    * Atualiza dados do usuário
@@ -162,7 +221,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
         // Atualiza o estado local com os novos dados sem perder campos existentes
         setUser((prev) => (prev ? { ...prev, ...output.result } : output.result));
         if (updates.functions !== undefined) {
-          await fetchUser();
+          await fetchUser({ force: true });
         }
       } else {
         setError(output.errorMessages?.join(", ") || "Failed to update user");
@@ -240,7 +299,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
 
       if (output.isValid) {
         // Recarregar dados do usuário para obter o novo profileIconId
-        await fetchUser();
+        await fetchUser({ force: true });
       } else {
         setError(output.errorMessages?.join(", ") || "Failed to upload profile icon");
       }
@@ -276,7 +335,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
 
       if (output.isValid) {
         // Recarregar dados do usuário para remover o profileIconId
-        await fetchUser();
+        await fetchUser({ force: true });
       } else {
         setError(output.errorMessages?.join(", ") || "Failed to delete profile icon");
       }
@@ -296,13 +355,13 @@ export const UserProvider: React.FC<UserProviderProps> = ({
    * Função para recarregar dados do usuário
    */
   const refreshUser = async (): Promise<void> => {
-    await fetchUser();
+    await fetchUser({ force: true });
   };
 
   // Carregar dados do usuário quando o componente monta ou supabaseId muda
   useEffect(() => {
-    fetchUser();
-  }, [supabaseId]);
+    void fetchUser();
+  }, [fetchUser]);
 
   const value: UserContextState = {
     user,
