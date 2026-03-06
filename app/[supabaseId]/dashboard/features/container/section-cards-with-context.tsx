@@ -29,6 +29,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { MetricsFilters } from '../services/IDashboardMetricsService';
 
 function InfoTooltip({ text }: { text: string }) {
   return (
@@ -47,6 +48,58 @@ function InfoTooltip({ text }: { text: string }) {
       </TooltipContent>
     </Tooltip>
   );
+}
+
+function parseDateInput(value: string): Date | null {
+  const ymdMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (ymdMatch) {
+    const year = Number(ymdMatch[1]);
+    const month = Number(ymdMatch[2]) - 1;
+    const day = Number(ymdMatch[3]);
+    const date = new Date(year, month, day);
+    date.setHours(0, 0, 0, 0);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getStartDateFromPeriod(period?: MetricsFilters['period']): Date {
+  const startDate = new Date();
+  startDate.setHours(0, 0, 0, 0);
+
+  switch (period) {
+    case '7d':
+      startDate.setDate(startDate.getDate() - 7);
+      break;
+    case '30d':
+      startDate.setDate(startDate.getDate() - 30);
+      break;
+    case '3m':
+      startDate.setMonth(startDate.getMonth() - 3);
+      break;
+    case '6m':
+      startDate.setMonth(startDate.getMonth() - 6);
+      break;
+    case '1y':
+      startDate.setFullYear(startDate.getFullYear() - 1);
+      break;
+    default:
+      startDate.setDate(startDate.getDate() - 30);
+      break;
+  }
+
+  return startDate;
+}
+
+function formatDatePtBr(date: Date): string {
+  return new Intl.DateTimeFormat('pt-BR').format(date);
 }
 
 export function SectionCardsWithContext() {
@@ -91,6 +144,23 @@ export function SectionCardsWithContext() {
   };
 
   const periodText = getPeriodText();
+  const filterDateRangeText = (() => {
+    let startDate: Date | null = null;
+    let endDate: Date | null = null;
+
+    if (customDateRange?.startDate && customDateRange?.endDate) {
+      startDate = parseDateInput(customDateRange.startDate);
+      endDate = parseDateInput(customDateRange.endDate);
+    }
+
+    if (!startDate || !endDate) {
+      endDate = new Date();
+      endDate.setHours(0, 0, 0, 0);
+      startDate = getStartDateFromPeriod(filters.period);
+    }
+
+    return `${formatDatePtBr(startDate)} - ${formatDatePtBr(endDate)}`;
+  })();
 
   const renderMeetingsHeldRanking = (
     items: Array<{ id: string; name: string; email: string; avatarUrl: string | null; count: number }>
@@ -156,7 +226,10 @@ export function SectionCardsWithContext() {
     <TooltipProvider delayDuration={0}>
       <div className="space-y-6 px-4 lg:px-6">
       {/* Toggle de Blur para Privacidade */}
-      <div className="flex justify-end">
+      <div className="flex w-full flex-wrap items-center justify-between gap-2">
+        <div className="rounded-md border border-border/60 bg-card/30 px-3 py-1 text-xs font-medium text-muted-foreground">
+          {filterDateRangeText}
+        </div>
         <Button variant="outline" size="sm" onClick={toggleBlur} className="gap-2">
           {isBlurred ? (
             <>
