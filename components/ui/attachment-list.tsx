@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, X, FileIcon, Image as ImageIcon, File as FileTextIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,32 +28,92 @@ interface AttachmentListProps {
   className?: string;
 }
 
+const ATTACHMENTS_CACHE_TTL_MS = 60 * 1000;
+const attachmentsCacheByLeadId = new Map<string, { attachments: Attachment[]; timestamp: number }>();
+const attachmentsInFlightByLeadId = new Map<string, Promise<Attachment[]>>();
+
+function writeAttachmentsCache(leadId: string, attachments: Attachment[]) {
+  attachmentsCacheByLeadId.set(leadId, { attachments, timestamp: Date.now() });
+}
+
+async function loadAttachmentsWithDedupe(leadId: string, force = false): Promise<Attachment[]> {
+  if (!force) {
+    const cached = attachmentsCacheByLeadId.get(leadId);
+    if (cached && Date.now() - cached.timestamp <= ATTACHMENTS_CACHE_TTL_MS) {
+      return cached.attachments;
+    }
+  }
+
+  const existingRequest = attachmentsInFlightByLeadId.get(leadId);
+  if (existingRequest) {
+    return await existingRequest;
+  }
+
+  const requestPromise = (async (): Promise<Attachment[]> => {
+    const response = await fetch(`/api/v1/leads/${leadId}/attachments`);
+    const result = await response.json();
+    const nextAttachments = result.isValid && Array.isArray(result.result)
+      ? (result.result as Attachment[])
+      : [];
+    writeAttachmentsCache(leadId, nextAttachments);
+    return nextAttachments;
+  })();
+
+  attachmentsInFlightByLeadId.set(
+    leadId,
+    requestPromise.finally(() => {
+      attachmentsInFlightByLeadId.delete(leadId);
+    }),
+  );
+
+  return await requestPromise;
+}
+
 export function AttachmentList({ leadId, leadName, className }: AttachmentListProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Buscar attachments ao montar o componente
-  useEffect(() => {
-    fetchAttachments();
-  }, [leadId]);
-
-  const fetchAttachments = async () => {
+  const fetchAttachments = useCallback(async (force = false) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/v1/leads/${leadId}/attachments`);
-      const result = await response.json();
-
-      if (result.isValid && result.result) {
-        setAttachments(result.result);
-      }
+      const nextAttachments = await loadAttachmentsWithDedupe(leadId, force);
+      setAttachments(nextAttachments);
     } catch (error) {
       console.error("Erro ao buscar attachments:", error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [leadId]);
+
+  // Buscar attachments ao montar o componente
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchInitialAttachments = async () => {
+      setIsLoading(true);
+      try {
+        const nextAttachments = await loadAttachmentsWithDedupe(leadId);
+        if (!cancelled) {
+          setAttachments(nextAttachments);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Erro ao buscar attachments:", error);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void fetchInitialAttachments();
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
 
   const handleFileSelect = () => {
     fileInputRef.current?.click();
@@ -92,7 +152,8 @@ export function AttachmentList({ leadId, leadName, className }: AttachmentListPr
       }
 
       // Atualizar lista após uploads
-      await fetchAttachments();
+      attachmentsCacheByLeadId.delete(leadId);
+      await fetchAttachments(true);
     } catch (error) {
       console.error("Erro no upload:", error);
     } finally {
@@ -111,12 +172,14 @@ export function AttachmentList({ leadId, leadName, className }: AttachmentListPr
 
       const result = await response.json();
 
-      if (result.isValid) {
-        const deletedAttachment = attachments.find((att) => att.id === attachmentId);
-        setAttachments((prev) => prev.filter((att) => att.id !== attachmentId));
-        
-        const leadInfo = leadName ? ` do lead ${leadName}` : "";
-        toast.success(`Arquivo deletado com sucesso${leadInfo}`, {
+        if (result.isValid) {
+          const deletedAttachment = attachments.find((att) => att.id === attachmentId);
+          const nextAttachments = attachments.filter((att) => att.id !== attachmentId);
+          setAttachments(nextAttachments);
+          writeAttachmentsCache(leadId, nextAttachments);
+          
+          const leadInfo = leadName ? ` do lead ${leadName}` : "";
+          toast.success(`Arquivo deletado com sucesso${leadInfo}`, {
           description: deletedAttachment?.fileName || "Arquivo removido",
         });
       } else {

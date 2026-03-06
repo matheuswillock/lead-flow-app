@@ -82,6 +82,9 @@ type MentionToken = {
 };
 
 const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
+const TEAM_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
+const teamMembersCacheByTeamId = new Map<string, { members: MentionMember[]; timestamp: number }>();
+const teamMembersInFlightByTeamId = new Map<string, Promise<MentionMember[]>>();
 
 const normalizeLeadPhoneDigits = (phone: string): string => {
   if (!phone) return "";
@@ -198,28 +201,57 @@ export default function LeadDialog({
       setTeamMembersLoading(true);
       setTeamMembersError(null);
       try {
-        const response = await fetch(`/api/v1/teams/${activeTeamId}/members`, {
-          headers: {
-            "x-supabase-user-id": supabaseId,
-          },
-        });
-
-        const result = await response.json();
-        if (!response.ok || !result?.isValid) {
-          const message = Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
-            ? result.errorMessages.join(", ")
-            : "Erro ao carregar membros do time";
-          throw new Error(message);
+        const cached = teamMembersCacheByTeamId.get(activeTeamId);
+        if (cached && Date.now() - cached.timestamp <= TEAM_MEMBERS_CACHE_TTL_MS) {
+          if (isMounted) {
+            setTeamMembers(cached.members);
+          }
+          return;
         }
 
-        const members = (result?.result?.members ?? []).map((member: any) => ({
-          profileId: member.profileId,
-          name: member.name || member.email || "Usuário",
-          email: member.email ?? null,
-          profileIconUrl: member.profileIconUrl ?? null,
-          role: member.role,
-          functions: member.functions ?? [],
-        })) as MentionMember[];
+        const existingRequest = teamMembersInFlightByTeamId.get(activeTeamId);
+        const requestPromise = existingRequest ?? (async (): Promise<MentionMember[]> => {
+          const response = await fetch(`/api/v1/teams/${activeTeamId}/members`, {
+            headers: {
+              "x-supabase-user-id": supabaseId,
+            },
+          });
+
+          const result = await response.json();
+          if (!response.ok || !result?.isValid) {
+            const message = Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+              ? result.errorMessages.join(", ")
+              : "Erro ao carregar membros do time";
+            throw new Error(message);
+          }
+
+          const members = (result?.result?.members ?? []).map((member: any) => ({
+            profileId: member.profileId,
+            name: member.name || member.email || "Usuário",
+            email: member.email ?? null,
+            profileIconUrl: member.profileIconUrl ?? null,
+            role: member.role,
+            functions: member.functions ?? [],
+          })) as MentionMember[];
+
+          teamMembersCacheByTeamId.set(activeTeamId, {
+            members,
+            timestamp: Date.now(),
+          });
+
+          return members;
+        })();
+
+        if (!existingRequest) {
+          teamMembersInFlightByTeamId.set(
+            activeTeamId,
+            requestPromise.finally(() => {
+              teamMembersInFlightByTeamId.delete(activeTeamId);
+            })
+          );
+        }
+
+        const members = await requestPromise;
 
         if (isMounted) {
           setTeamMembers(members);

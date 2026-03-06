@@ -143,9 +143,6 @@ export function useLeadActivitiesRealtime({
             }
           )
           .subscribe((status) => {
-            if (status === "SUBSCRIBED") {
-              onSyncRequestedRef.current?.();
-            }
             if (status === "CHANNEL_ERROR") {
               console.error("[LeadActivitiesRealtime][activities] CHANNEL_ERROR");
             }
@@ -213,9 +210,6 @@ export function useLeadActivitiesRealtime({
             }
           )
           .subscribe((status) => {
-            if (status === "SUBSCRIBED") {
-              onSyncRequestedRef.current?.();
-            }
             if (status === "CHANNEL_ERROR") {
               console.error("[LeadActivitiesRealtime][reactions] CHANNEL_ERROR");
             }
