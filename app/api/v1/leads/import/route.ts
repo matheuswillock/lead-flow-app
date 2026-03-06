@@ -7,7 +7,11 @@ import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepos
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
 import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase";
 import { healthPlanService } from "@/app/api/services/healthPlans/HealthPlanService";
-import { HEALTH_PLAN_ALIAS_HINTS, normalizeHealthPlanName } from "@/lib/healthPlans";
+import {
+  containsHealthPlanTerm,
+  HEALTH_PLAN_ALIAS_HINTS,
+  normalizeHealthPlanName,
+} from "@/lib/healthPlans";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -55,14 +59,16 @@ const mapHealthPlan = (
   if (exact) return exact;
 
   for (const alias of HEALTH_PLAN_ALIAS_HINTS) {
-    const normalizedKeyword = normalizeHealthPlanName(alias.keyword);
-    if (!normalized.includes(normalizedKeyword)) continue;
+    if (!containsHealthPlanTerm(value, alias.keyword)) continue;
     const canonical = optionNameByNormalized.get(normalizeHealthPlanName(alias.canonicalName));
     if (canonical) return canonical;
   }
 
   for (const [normalizedOptionName, optionName] of optionNameByNormalized.entries()) {
-    if (normalized.includes(normalizedOptionName) || normalizedOptionName.includes(normalized)) {
+    if (
+      containsHealthPlanTerm(value, optionName) ||
+      normalized.startsWith(normalizedOptionName)
+    ) {
       return optionName;
     }
   }

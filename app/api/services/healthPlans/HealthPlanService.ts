@@ -1,5 +1,9 @@
 import { prisma } from "@/app/api/infra/data/prisma";
-import { HEALTH_PLAN_ALIAS_HINTS, normalizeHealthPlanName } from "@/lib/healthPlans";
+import {
+  containsHealthPlanTerm,
+  HEALTH_PLAN_ALIAS_HINTS,
+  normalizeHealthPlanName,
+} from "@/lib/healthPlans";
 
 const OTHERS_PLAN_NORMALIZED_NAME = normalizeHealthPlanName("Outros");
 
@@ -149,15 +153,17 @@ class HealthPlanService {
     if (exact) return exact;
 
     for (const alias of HEALTH_PLAN_ALIAS_HINTS) {
-      const normalizedKeyword = normalizeHealthPlanName(alias.keyword);
-      if (!normalizedInput.includes(normalizedKeyword)) continue;
+      if (!containsHealthPlanTerm(value, alias.keyword)) continue;
       const normalizedCanonical = normalizeHealthPlanName(alias.canonicalName);
       const canonicalName = optionNameByNormalized.get(normalizedCanonical);
       if (canonicalName) return canonicalName;
     }
 
     for (const option of options) {
-      if (normalizedInput.includes(option.normalizedName) || option.normalizedName.includes(normalizedInput)) {
+      if (
+        containsHealthPlanTerm(value, option.name) ||
+        normalizedInput.startsWith(option.normalizedName)
+      ) {
         return option.name;
       }
     }
