@@ -1,6 +1,8 @@
 import { prisma } from "@/app/api/infra/data/prisma";
 import { HEALTH_PLAN_ALIAS_HINTS, normalizeHealthPlanName } from "@/lib/healthPlans";
 
+const OTHERS_PLAN_NORMALIZED_NAME = normalizeHealthPlanName("Outros");
+
 export type HealthPlanOptionDTO = {
   id: string;
   name: string;
@@ -24,15 +26,22 @@ class HealthPlanService {
   }
 
   async listOptions(): Promise<HealthPlanOptionDTO[]> {
-    return prisma.healthPlanOption.findMany({
+    const options = await prisma.healthPlanOption.findMany({
       select: {
         id: true,
         name: true,
         normalizedName: true,
       },
-      orderBy: {
-        name: "asc",
-      },
+    });
+
+    return options.sort((a, b) => {
+      const aIsOthers = a.normalizedName === OTHERS_PLAN_NORMALIZED_NAME;
+      const bIsOthers = b.normalizedName === OTHERS_PLAN_NORMALIZED_NAME;
+
+      if (aIsOthers && !bIsOthers) return 1;
+      if (!aIsOthers && bIsOthers) return -1;
+
+      return a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" });
     });
   }
 

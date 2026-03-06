@@ -1,20 +1,3 @@
-export const DEFAULT_HEALTH_PLAN_NAMES = [
-  "Nova Adesão",
-  "Amil",
-  "Alice",
-  "Bradesco",
-  "Hapvida",
-  "MedSênior",
-  "NotreDame Intermédica (GNDI)",
-  "Omint",
-  "Plena",
-  "Porto Seguro",
-  "Prevent Senior",
-  "SulAmérica",
-  "Unimed",
-  "Outros",
-] as const;
-
 export function normalizeHealthPlanName(value: string): string {
   return value
     .trim()
