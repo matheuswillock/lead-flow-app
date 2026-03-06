@@ -9,6 +9,7 @@ import { LeadUseCase } from "@/app/api/useCases/leads/LeadUseCase";
 import { healthPlanService } from "@/app/api/services/healthPlans/HealthPlanService";
 import {
   containsHealthPlanTerm,
+  hasConcatenatedHealthPlanPrefix,
   HEALTH_PLAN_ALIAS_HINTS,
   normalizeHealthPlanName,
 } from "@/lib/healthPlans";
@@ -67,7 +68,8 @@ const mapHealthPlan = (
   for (const [normalizedOptionName, optionName] of optionNameByNormalized.entries()) {
     if (
       containsHealthPlanTerm(value, optionName) ||
-      normalized.startsWith(normalizedOptionName)
+      normalized.startsWith(normalizedOptionName) ||
+      hasConcatenatedHealthPlanPrefix(value, optionName)
     ) {
       return optionName;
     }

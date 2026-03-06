@@ -34,6 +34,32 @@ export function containsHealthPlanTerm(inputValue: string, term: string): boolea
   return matcher.test(normalizedInput);
 }
 
+const HEALTH_PLAN_PREFIX_HINTS = [
+  "plano",
+  "convenio",
+  "operadora",
+  "planodesaude",
+  "saude",
+  "seguro",
+] as const;
+
+export function hasConcatenatedHealthPlanPrefix(inputValue: string, term: string): boolean {
+  const normalizedInput = normalizeHealthPlanName(inputValue);
+  const normalizedTerm = normalizeHealthPlanName(term);
+
+  if (!normalizedInput || !normalizedTerm) {
+    return false;
+  }
+
+  const matchIndex = normalizedInput.indexOf(normalizedTerm);
+  if (matchIndex <= 0) {
+    return false;
+  }
+
+  const prefix = normalizedInput.slice(0, matchIndex);
+  return HEALTH_PLAN_PREFIX_HINTS.some((hint) => prefix.endsWith(hint));
+}
+
 export const HEALTH_PLAN_ALIAS_HINTS: Array<{ keyword: string; canonicalName: string }> = [
   { keyword: "gndi", canonicalName: "NotreDame Intermédica (GNDI)" },
   { keyword: "intermedica", canonicalName: "NotreDame Intermédica (GNDI)" },

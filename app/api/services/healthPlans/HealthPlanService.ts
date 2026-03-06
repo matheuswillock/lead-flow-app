@@ -1,6 +1,7 @@
 import { prisma } from "@/app/api/infra/data/prisma";
 import {
   containsHealthPlanTerm,
+  hasConcatenatedHealthPlanPrefix,
   HEALTH_PLAN_ALIAS_HINTS,
   normalizeHealthPlanName,
 } from "@/lib/healthPlans";
@@ -162,7 +163,8 @@ class HealthPlanService {
     for (const option of options) {
       if (
         containsHealthPlanTerm(value, option.name) ||
-        normalizedInput.startsWith(option.normalizedName)
+        normalizedInput.startsWith(option.normalizedName) ||
+        hasConcatenatedHealthPlanPrefix(value, option.name)
       ) {
         return option.name;
       }
