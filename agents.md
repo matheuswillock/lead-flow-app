@@ -1,7 +1,7 @@
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.1.7
+**Version:** 2.1.8
 **Last Updated:** 2026-03-06
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
@@ -111,6 +111,7 @@ new Output(
 - Use strict TypeScript typing.
 - Use `console.info` for flow logs and `console.error` for errors.
 - In route-level error logs (`app/api/**/route.ts`), identify routes by stable route name + HTTP method (for example `[SubscriptionBySupabaseRoute][GET]`) and avoid logging path templates/raw endpoint URLs.
+- When creating a new backend endpoint (`app/api/**/route.ts`), update `postman/Lead-Flow-API-Collection.json` and update `postman/Lead-Flow-Environment.json` whenever the endpoint introduces or depends on new environment variables, tokens, or aliases.
 - Keep behavioral consistency in legacy paths unless the task explicitly includes refactor.
 
 ### FOR NEW FEATURES
@@ -223,6 +224,7 @@ Every PR **MUST** confirm:
 
 - [ ] Seguiu `agents.md`?
 - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
+- [ ] Criou endpoint backend novo? Atualizou `postman/Lead-Flow-API-Collection.json` e, quando aplicavel, `postman/Lead-Flow-Environment.json`?
 - [ ] Rodou `bun run typecheck` e `bun run lint`?
 - [ ] Rodou `bun run governance:check`?
 
