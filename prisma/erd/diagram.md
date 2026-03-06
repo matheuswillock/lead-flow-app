@@ -53,6 +53,7 @@ status_change status_change
         HealthPlan {
             NOVA_ADESAO Nova Adesão
 AMIL Amil
+ALICE Alice
 BRADESCO Bradesco
 HAPVIDA Hapvida
 MEDSENIOR MedSênior

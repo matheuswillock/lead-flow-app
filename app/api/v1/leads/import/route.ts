@@ -49,6 +49,7 @@ const mapHealthPlan = (value: string | null | undefined): HealthPlan | null => {
   if (normalized.includes("intermedica") || normalized.includes("gndi")) return HealthPlan.GNDI;
   if (normalized.includes("bradesco")) return HealthPlan.BRADESCO;
   if (normalized.includes("amil")) return HealthPlan.AMIL;
+  if (normalized.includes("alice")) return HealthPlan.ALICE;
   if (normalized.includes("hapvida")) return HealthPlan.HAPVIDA;
   if (normalized.includes("medsenior") || normalized.includes("med senior")) return HealthPlan.MEDSENIOR;
   if (normalized.includes("omint")) return HealthPlan.OMINT;

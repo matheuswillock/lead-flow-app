@@ -307,6 +307,7 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
 
     const mapping: Record<string, HealthPlan> = {
       'amil': HealthPlan.AMIL,
+      'alice': HealthPlan.ALICE,
       'bradesco': HealthPlan.BRADESCO,
       'hapvida': HealthPlan.HAPVIDA,
       'medsenior': HealthPlan.MEDSENIOR,

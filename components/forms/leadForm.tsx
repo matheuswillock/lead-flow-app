@@ -401,6 +401,7 @@ export function LeadForm({
                                     <SelectContent>
                                         <SelectItem value="NOVA_ADESAO">Nova Adesão</SelectItem>
                                         <SelectItem value="AMIL">Amil</SelectItem>
+                                        <SelectItem value="ALICE">Alice</SelectItem>
                                         <SelectItem value="BRADESCO">Bradesco</SelectItem>
                                         <SelectItem value="HAPVIDA">Hapvida</SelectItem>
                                         <SelectItem value="MEDSENIOR">MedSênior</SelectItem>
@@ -927,6 +928,7 @@ export function LeadForm({
                                             <SelectContent>
                                                 <SelectItem value="NOVA_ADESAO">Nova Adesão</SelectItem>
                                                 <SelectItem value="AMIL">Amil</SelectItem>
+                                                <SelectItem value="ALICE">Alice</SelectItem>
                                                 <SelectItem value="BRADESCO">Bradesco</SelectItem>
                                                 <SelectItem value="HAPVIDA">Hapvida</SelectItem>
                                                 <SelectItem value="MEDSENIOR">MedSênior</SelectItem>

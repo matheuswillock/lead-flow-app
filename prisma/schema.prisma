@@ -73,6 +73,7 @@ enum ActivityType {
 enum HealthPlan {
   NOVA_ADESAO    @map("Nova Ades\u00e3o")
   AMIL           @map("Amil")
+  ALICE          @map("Alice")
   BRADESCO       @map("Bradesco")
   HAPVIDA        @map("Hapvida")
   MEDSENIOR      @map("MedS\u00eanior")

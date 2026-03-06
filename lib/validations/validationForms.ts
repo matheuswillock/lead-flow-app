@@ -176,6 +176,7 @@ export const leadFormSchema = z.object({
   currentHealthPlan: z.enum([
     "NOVA_ADESAO",
     "AMIL",
+    "ALICE",
     "BRADESCO",
     "HAPVIDA",
     "MEDSENIOR",
@@ -217,6 +218,7 @@ export const leadFormSchema = z.object({
   soldPlan: z.enum([
     "NOVA_ADESAO",
     "AMIL",
+    "ALICE",
     "BRADESCO",
     "HAPVIDA",
     "MEDSENIOR",

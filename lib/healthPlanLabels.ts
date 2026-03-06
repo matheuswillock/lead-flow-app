@@ -4,6 +4,7 @@ import { HealthPlan } from "@prisma/client";
 export const HEALTH_PLAN_LABELS: Record<HealthPlan, string> = {
   NOVA_ADESAO: "Nova Adesão",
   AMIL: "Amil",
+  ALICE: "Alice",
   BRADESCO: "Bradesco",
   HAPVIDA: "Hapvida",
   MEDSENIOR: "MedSênior",
@@ -21,6 +22,7 @@ export const HEALTH_PLAN_LABELS: Record<HealthPlan, string> = {
 export const HEALTH_PLAN_OPTIONS = [
   { value: "NOVA_ADESAO", label: "Nova Adesão" },
   { value: "AMIL", label: "Amil" },
+  { value: "ALICE", label: "Alice" },
   { value: "BRADESCO", label: "Bradesco" },
   { value: "HAPVIDA", label: "Hapvida" },
   { value: "MEDSENIOR", label: "MedSênior" },
