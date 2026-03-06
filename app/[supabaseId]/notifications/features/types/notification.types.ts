@@ -1,5 +1,6 @@
 export type NotificationTypeValue =
   | "ACTIVITY_MENTION"
+  | "ACTIVITY_REACTION"
   | "TEAM_MEMBER_ADDED"
   | "TEAM_MEMBER_REMOVED"
   | "LEAD_SCHEDULE_CREATED";
@@ -9,11 +10,16 @@ export type NotificationMetadata = {
   leadCode?: string | null;
   leadName?: string;
   activityId?: string;
+  emoji?: string;
   preview?: string;
   meetingDate?: string;
   isReschedule?: boolean;
   teamId?: string;
   teamName?: string;
+};
+
+export type MarkAllAsReadOptions = {
+  keepalive?: boolean;
 };
 
 export type NotificationActor = {
@@ -54,5 +60,5 @@ export type NotificationsContextState = {
   error: string | null;
   loadNotifications: (params?: { limit?: number; offset?: number }) => Promise<void>;
   refreshUnreadCount: () => Promise<void>;
-  markAllAsRead: () => Promise<void>;
+  markAllAsRead: (options?: MarkAllAsReadOptions) => Promise<void>;
 };

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { Bell, ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,9 +32,16 @@ function getLeadCode(notification: NotificationItem) {
   return typeof metadata.leadCode === "string" ? metadata.leadCode : null;
 }
 
+function getActivityId(notification: NotificationItem) {
+  const metadata = notification.metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  return typeof metadata.activityId === "string" ? metadata.activityId : null;
+}
+
 function hasLeadLink(notification: NotificationItem) {
   return (
     notification.type === "ACTIVITY_MENTION" ||
+    notification.type === "ACTIVITY_REACTION" ||
     notification.type === "LEAD_SCHEDULE_CREATED"
   );
 }
@@ -51,16 +58,43 @@ export function NotificationsContainer() {
     refreshUnreadCount,
     markAllAsRead,
   } = useNotifications();
+  const markedOnExitRef = useRef(false);
+  const canMarkOnExitRef = useRef(false);
+
+  const triggerMarkAllAsReadOnExit = useCallback((keepalive: boolean) => {
+    if (markedOnExitRef.current || !canMarkOnExitRef.current) return;
+    markedOnExitRef.current = true;
+    void markAllAsRead({ keepalive });
+  }, [markAllAsRead]);
 
   useEffect(() => {
     const load = async () => {
       await loadNotifications({ limit: 100, offset: 0 });
-      await markAllAsRead();
       await refreshUnreadCount();
     };
 
     void load();
-  }, [loadNotifications, markAllAsRead, refreshUnreadCount]);
+  }, [loadNotifications, refreshUnreadCount]);
+
+  useEffect(() => {
+    markedOnExitRef.current = false;
+    canMarkOnExitRef.current = false;
+    const activationTimeout = window.setTimeout(() => {
+      canMarkOnExitRef.current = true;
+    }, 0);
+
+    const handlePageHide = () => {
+      triggerMarkAllAsReadOnExit(true);
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      window.clearTimeout(activationTimeout);
+      window.removeEventListener("pagehide", handlePageHide);
+      triggerMarkAllAsReadOnExit(true);
+    };
+  }, [triggerMarkAllAsReadOnExit]);
 
   return (
     <Card className="border-border/60 shadow-sm">
@@ -110,6 +144,7 @@ export function NotificationsContainer() {
 
         {notifications.map((notification) => {
           const leadCode = getLeadCode(notification);
+          const activityId = getActivityId(notification);
           const canOpenLead = hasLeadLink(notification) && !!leadCode;
           const actorName =
             notification.actor?.fullName ||
@@ -133,7 +168,7 @@ export function NotificationsContainer() {
                 </div>
                 {canOpenLead ? (
                   <Link
-                    href={`/${supabaseId}/board?leadCode=${encodeURIComponent(leadCode as string)}`}
+                    href={`/${supabaseId}/board?leadCode=${encodeURIComponent(leadCode as string)}${activityId ? `&activityId=${encodeURIComponent(activityId)}` : ""}`}
                     className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                   >
                     Abrir lead

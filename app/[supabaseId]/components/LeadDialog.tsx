@@ -3,6 +3,7 @@ import { LeadForm } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -23,7 +24,7 @@ import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { ProfileResponseDTO, UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import type { LeadActivityReactionSummary, LeadActivityResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
-import { useParams, usePathname } from "next/navigation";
+import { useParams, usePathname, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { EmojiStyle, Theme } from "emoji-picker-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -40,6 +41,11 @@ import { COLUMNS } from "@/app/[supabaseId]/board/features/context/BoardContext"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { replaceShortcodes } from "@/lib/emojiShortcodes";
+import {
+  useLeadActivitiesRealtime,
+  type LeadActivityReactionRealtimeRow,
+  type LeadActivityRealtimeRow,
+} from "@/hooks/useLeadActivitiesRealtime";
 
 interface LeadDialogProps {
   open: boolean;
@@ -128,12 +134,21 @@ export default function LeadDialog({
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [selectedMentions, setSelectedMentions] = useState<MentionToken[]>([]);
+  const [highlightedActivityId, setHighlightedActivityId] = useState<string | null>(null);
   const activityInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const activityItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const ignoreMentionUpdateRef = useRef(false);
+  const mergedActivitiesRef = useRef<LeadActivityResponseDTO[]>([]);
+  const silentFetchTimerRef = useRef<number | null>(null);
+  const appliedReactionRealtimeEventsRef = useRef<Set<string>>(new Set());
+  const pendingOwnReactionOpsRef = useRef<Set<string>>(new Set());
   const params = useParams();
+  const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
   const pathname = usePathname();
+  const sharedLeadCode = searchParams.get("leadCode");
+  const sharedActivityId = searchParams.get("activityId");
   const currentActivitiesLead = leadDetails?.id === lead?.id ? leadDetails : null;
   const isActivityLoading = leadDetailsLoading || (!!lead && leadDetails?.id !== lead.id);
 
@@ -145,7 +160,7 @@ export default function LeadDialog({
 
   useEffect(() => {
     if (lead?.id && open) {
-      fetchLead();
+      void fetchLead();
     }
   }, [lead?.id, open, fetchLead]);
 
@@ -162,6 +177,8 @@ export default function LeadDialog({
       setMentionStart(null);
       setMentionIndex(0);
       setSelectedMentions([]);
+      setHighlightedActivityId(null);
+      activityItemRefs.current.clear();
     }
   }, [open]);
 
@@ -170,6 +187,7 @@ export default function LeadDialog({
     setReactionOverrides({});
     setReactionPickerOpenId(null);
     setSelectedMentions([]);
+    setHighlightedActivityId(null);
   }, [lead?.id]);
 
   useEffect(() => {
@@ -324,6 +342,164 @@ export default function LeadDialog({
     return new RegExp(`@(?:${pattern})(?=$|\\s|[.,;:!?])`, "gi");
   }, [teamMembers]);
 
+  const scheduleSilentLeadSync = useCallback(() => {
+    if (!lead?.id || !open) return;
+
+    if (silentFetchTimerRef.current !== null) {
+      window.clearTimeout(silentFetchTimerRef.current);
+    }
+
+    silentFetchTimerRef.current = window.setTimeout(() => {
+      void fetchLead({ silent: true }).finally(() => {
+        setReactionOverrides({});
+      });
+    }, 500);
+  }, [lead?.id, open, fetchLead]);
+
+  useEffect(() => {
+    return () => {
+      if (silentFetchTimerRef.current !== null) {
+        window.clearTimeout(silentFetchTimerRef.current);
+        silentFetchTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const resolveActivityAuthor = useCallback((profileId: string | null | undefined) => {
+    if (!profileId) return null;
+
+    const member = teamMembers.find((teamMember) => teamMember.profileId === profileId);
+    if (member) {
+      return {
+        id: member.profileId,
+        fullName: member.name ?? null,
+        email: member.email || "",
+        avatarUrl: member.profileIconUrl ?? null,
+      };
+    }
+
+    if (user?.id === profileId) {
+      return {
+        id: user.id,
+        fullName: user.fullName ?? null,
+        email: user.email,
+        avatarUrl: user.profileIconUrl ?? null,
+      };
+    }
+
+    return null;
+  }, [teamMembers, user]);
+
+  const upsertRealtimeActivity = useCallback((activityRow: LeadActivityRealtimeRow) => {
+    if (!lead?.id || activityRow.leadId !== lead.id) return;
+
+    const normalizedActivity: LeadActivityResponseDTO = {
+      id: activityRow.id,
+      type: activityRow.type,
+      body: activityRow.body,
+      payload: activityRow.payload,
+      createdAt: activityRow.createdAt,
+      reactions: [],
+      author: resolveActivityAuthor(activityRow.createdBy),
+    };
+
+    setOptimisticActivities((prev) => {
+      const withoutMatchedOptimistic = prev.filter((activity) => {
+        if (!activity.id.startsWith("optimistic-")) return true;
+        if (!user?.id || activityRow.createdBy !== user.id) return true;
+        return (activity.body ?? "").trim() !== (normalizedActivity.body ?? "").trim();
+      });
+
+      const existing = withoutMatchedOptimistic.find((activity) => activity.id === normalizedActivity.id);
+      if (existing) {
+        return withoutMatchedOptimistic.map((activity) =>
+          activity.id === normalizedActivity.id ? { ...existing, ...normalizedActivity } : activity
+        );
+      }
+      return [normalizedActivity, ...withoutMatchedOptimistic];
+    });
+  }, [lead?.id, resolveActivityAuthor, user?.id]);
+
+  const applyRealtimeReactionChange = useCallback((
+    reactionRow: LeadActivityReactionRealtimeRow,
+    operation: "insert" | "delete"
+  ) => {
+    if (!reactionRow.activityId || !reactionRow.emojiUnified) return;
+
+    const eventKey = `${operation}:${reactionRow.id}`;
+    if (appliedReactionRealtimeEventsRef.current.has(eventKey)) {
+      return;
+    }
+    appliedReactionRealtimeEventsRef.current.add(eventKey);
+    if (appliedReactionRealtimeEventsRef.current.size > 3000) {
+      const oldest = appliedReactionRealtimeEventsRef.current.values().next().value;
+      if (oldest) {
+        appliedReactionRealtimeEventsRef.current.delete(oldest);
+      }
+    }
+
+    if (user?.id && reactionRow.profileId === user.id) {
+      const ownOpKey = `${reactionRow.activityId}:${reactionRow.emojiUnified}`;
+      if (pendingOwnReactionOpsRef.current.has(ownOpKey)) {
+        pendingOwnReactionOpsRef.current.delete(ownOpKey);
+        return;
+      }
+    }
+
+    setReactionOverrides((previousOverrides) => {
+      const baseline = previousOverrides[reactionRow.activityId]
+        ?? mergedActivitiesRef.current.find((activity) => activity.id === reactionRow.activityId)?.reactions
+        ?? [];
+      const existing = baseline.find((reaction) => reaction.unified === reactionRow.emojiUnified);
+      const reactedByMe = !!user?.id && reactionRow.profileId === user.id;
+
+      let next = baseline;
+
+      if (operation === "insert") {
+        if (!existing) {
+          next = [
+            ...baseline,
+            {
+              emoji: reactionRow.emoji,
+              unified: reactionRow.emojiUnified,
+              count: 1,
+              reactedByMe,
+            },
+          ];
+        } else {
+          next = baseline.map((reaction) =>
+            reaction.unified === reactionRow.emojiUnified
+              ? {
+                  ...reaction,
+                  count: reaction.count + 1,
+                  reactedByMe: reaction.reactedByMe || reactedByMe,
+                }
+              : reaction
+          );
+        }
+      } else if (existing) {
+        if (existing.count <= 1) {
+          next = baseline.filter((reaction) => reaction.unified !== reactionRow.emojiUnified);
+        } else {
+          next = baseline.map((reaction) =>
+            reaction.unified === reactionRow.emojiUnified
+              ? {
+                  ...reaction,
+                  count: Math.max(0, reaction.count - 1),
+                  reactedByMe: reactedByMe ? false : reaction.reactedByMe,
+                }
+              : reaction
+          );
+        }
+      }
+
+      return {
+        ...previousOverrides,
+        [reactionRow.activityId]: next,
+      };
+    });
+  }, [user?.id]);
+
   useEffect(() => {
     if (!mentionOpen) return;
     if (mentionIndex >= mentionMatches.length) {
@@ -413,7 +589,31 @@ export default function LeadDialog({
       toast.error("Informe uma mensagem para registrar a atividade");
       return;
     }
+
+    const optimisticActivityId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const optimisticActivity: LeadActivityResponseDTO = {
+      id: optimisticActivityId,
+      type: activityType,
+      body: trimmed,
+      payload: null,
+      createdAt: new Date().toISOString(),
+      reactions: [],
+      author: user
+        ? {
+            id: user.id,
+            fullName: user.fullName ?? null,
+            email: user.email,
+            avatarUrl: user.profileIconUrl ?? null,
+          }
+        : null,
+    };
+
+    setOptimisticActivities((prev) => [optimisticActivity, ...prev]);
+    setActivityBody("");
+    closeMentionList();
+    setSelectedMentions([]);
     setActivitySubmitting(true);
+
     let normalizedBody = trimmed;
     try {
       normalizedBody = await replaceShortcodes(trimmed);
@@ -467,22 +667,26 @@ export default function LeadDialog({
               }
             : null,
         };
+
         setOptimisticActivities((prev) => {
-          const existing = prev.find((activity) => activity.id === normalizedActivity.id);
+          const withoutOptimistic = prev.filter((activity) => activity.id !== optimisticActivityId);
+          const existing = withoutOptimistic.find((activity) => activity.id === normalizedActivity.id);
           if (existing) {
-            return prev.map((activity) =>
+            return withoutOptimistic.map((activity) =>
               activity.id === normalizedActivity.id ? normalizedActivity : activity
             );
           }
-          return [normalizedActivity, ...prev];
+          return [normalizedActivity, ...withoutOptimistic];
         });
+      } else {
+        setOptimisticActivities((prev) => prev.filter((activity) => activity.id !== optimisticActivityId));
       }
-      setActivityBody("");
-      closeMentionList();
-      setSelectedMentions([]);
+
       toast.success("Atividade registrada");
-      fetchLead();
+      void fetchLead({ silent: true });
     } catch (error) {
+      setOptimisticActivities((prev) => prev.filter((activity) => activity.id !== optimisticActivityId));
+      setActivityBody(trimmed);
       console.error("Erro ao adicionar atividade:", error);
       toast.error(error instanceof Error ? error.message : "Erro ao adicionar atividade");
     } finally {
@@ -580,6 +784,63 @@ export default function LeadDialog({
     });
   }, [optimisticActivities, currentActivitiesLead?.activities]);
 
+  useEffect(() => {
+    mergedActivitiesRef.current = mergedActivities;
+  }, [mergedActivities]);
+
+  const activeActivityIds = useMemo(
+    () => mergedActivities.map((activity) => activity.id),
+    [mergedActivities]
+  );
+
+  useLeadActivitiesRealtime({
+    enabled: open && !!lead?.id,
+    leadId: lead?.id ?? null,
+    activeActivityIds,
+    onActivityInserted: (activity) => {
+      upsertRealtimeActivity(activity);
+    },
+    onReactionInserted: (reaction) => {
+      applyRealtimeReactionChange(reaction, "insert");
+    },
+    onReactionDeleted: (reaction) => {
+      applyRealtimeReactionChange(reaction, "delete");
+    },
+    onSyncRequested: scheduleSilentLeadSync,
+  });
+
+  const shouldScrollToSharedActivity =
+    open &&
+    !!sharedActivityId &&
+    !!lead?.leadCode &&
+    sharedLeadCode === lead.leadCode;
+
+  useEffect(() => {
+    if (!shouldScrollToSharedActivity || !sharedActivityId) return;
+
+    const targetNode = activityItemRefs.current.get(sharedActivityId);
+    if (!targetNode) {
+      scheduleSilentLeadSync();
+      return;
+    }
+
+    targetNode.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedActivityId(sharedActivityId);
+
+    const timeout = window.setTimeout(() => {
+      setHighlightedActivityId((current) =>
+        current === sharedActivityId ? null : current
+      );
+    }, 2200);
+
+    return () => window.clearTimeout(timeout);
+  }, [
+    shouldScrollToSharedActivity,
+    sharedActivityId,
+    mergedActivities.length,
+    scheduleSilentLeadSync,
+  ]);
+
   const getReactionsForActivity = (activityId: string) => {
     const override = reactionOverrides[activityId];
     if (override) return override;
@@ -619,6 +880,12 @@ export default function LeadDialog({
     if (!lead?.id || !supabaseId || !activeTeamId) return;
     if (!canReactToActivity) return;
 
+    const ownOpKey = `${activityId}:${unified}`;
+    pendingOwnReactionOpsRef.current.add(ownOpKey);
+    window.setTimeout(() => {
+      pendingOwnReactionOpsRef.current.delete(ownOpKey);
+    }, 4000);
+
     const previous = getReactionsForActivity(activityId);
     const optimistic = buildOptimisticReactions(previous, emoji, unified);
     setReactionOverrides((prev) => ({ ...prev, [activityId]: optimistic }));
@@ -646,7 +913,9 @@ export default function LeadDialog({
 
       const reactions = result?.result?.reactions as LeadActivityReactionSummary[] | undefined;
       setReactionOverrides((prev) => ({ ...prev, [activityId]: reactions ?? [] }));
+      scheduleSilentLeadSync();
     } catch (error) {
+      pendingOwnReactionOpsRef.current.delete(ownOpKey);
       setReactionOverrides((prev) => ({ ...prev, [activityId]: previous }));
       toast.error(error instanceof Error ? error.message : "Erro ao reagir à atividade");
     }
@@ -1539,7 +1808,19 @@ export default function LeadDialog({
                           return (
                             <div
                               key={activity.id}
-                              className="rounded-lg border border-border/60 bg-background/60 p-3 w-[308px] max-w-full mr-auto"
+                              ref={(node) => {
+                                if (node) {
+                                  activityItemRefs.current.set(activity.id, node);
+                                } else {
+                                  activityItemRefs.current.delete(activity.id);
+                                }
+                              }}
+                              className={cn(
+                                "rounded-lg border border-border/60 bg-background/60 p-3 w-[308px] max-w-full mr-auto transition-colors",
+                                highlightedActivityId === activity.id
+                                  ? "ring-2 ring-primary/50 bg-primary/5"
+                                  : ""
+                              )}
                             >
                               <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 items-center-safe">
                                 <Avatar className="h-6 w-6 rounded-lg border border-border/60">

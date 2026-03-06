@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadActivityAccess } from "@/app/api/v1/utils/teamAccess";
+import { notificationService } from "@/app/api/services/notifications/NotificationService";
 
 const reactionSchema = z.object({
   emoji: z.string().min(1, "Emoji é obrigatório"),
@@ -75,7 +76,14 @@ export async function POST(
       select: {
         id: true,
         leadId: true,
-        lead: { select: { teamId: true } },
+        createdBy: true,
+        lead: {
+          select: {
+            teamId: true,
+            leadCode: true,
+            name: true,
+          },
+        },
       },
     });
 
@@ -85,6 +93,7 @@ export async function POST(
     }
 
     const { emoji, unified } = validation.data;
+    let addedReaction = false;
 
     await prisma.$transaction(async (tx) => {
       const existing = await tx.leadActivityReaction.findUnique({
@@ -99,6 +108,7 @@ export async function POST(
 
       if (existing) {
         await tx.leadActivityReaction.delete({ where: { id: existing.id } });
+        addedReaction = false;
       } else {
         await tx.leadActivityReaction.create({
           data: {
@@ -108,8 +118,40 @@ export async function POST(
             emojiUnified: unified,
           },
         });
+        addedReaction = true;
       }
     });
+
+    if (
+      addedReaction &&
+      activity.createdBy &&
+      activity.createdBy !== teamAccess.access.profileId
+    ) {
+      try {
+        const actor = await prisma.profile.findUnique({
+          where: { id: teamAccess.access.profileId },
+          select: { fullName: true, email: true },
+        });
+
+        const actorName = actor?.fullName || actor?.email || "Usuário";
+        await notificationService.createActivityReactionNotification({
+          teamId: teamAccess.access.teamId,
+          actorProfileId: teamAccess.access.profileId,
+          actorName,
+          recipientProfileId: activity.createdBy,
+          leadId: leadId,
+          leadCode: activity.lead?.leadCode ?? null,
+          leadName: activity.lead?.name ?? "Lead",
+          activityId,
+          emoji,
+        });
+      } catch (notificationError) {
+        console.error(
+          "[LeadActivityReactionsRoute][POST] Erro ao criar notificação de reação:",
+          notificationError
+        );
+      }
+    }
 
     const reactions = await prisma.leadActivityReaction.findMany({
       where: { activityId },
@@ -120,7 +162,7 @@ export async function POST(
     const output = new Output(true, ["Reação atualizada"], [], { reactions: aggregated });
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
-    console.error("Erro ao reagir à atividade:", error);
+    console.error("[LeadActivityReactionsRoute][POST] Erro ao reagir à atividade:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }

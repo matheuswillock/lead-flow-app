@@ -121,7 +121,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
   const searchParams = useSearchParams();
   const sharedLeadCode = searchParams.get("leadCode");
-  const shareHandledRef = useRef(false);
+  const lastHandledShareKeyRef = useRef<string | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -394,8 +394,16 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   }, [userLoading, teamLoading, supabaseId, activeTeamId]);
 
   useEffect(() => {
-    if (!sharedLeadCode || shareHandledRef.current) return;
+    if (!sharedLeadCode) {
+      lastHandledShareKeyRef.current = null;
+      return;
+    }
     if (isLoading) return;
+
+    const sharedActivityId = searchParams.get("activityId");
+    const shareKey = `${sharedLeadCode}:${sharedActivityId ?? ""}`;
+    if (lastHandledShareKeyRef.current === shareKey) return;
+
     const allLeads = Object.values(data).flat();
     const targetLead = allLeads.find((lead) => lead.leadCode === sharedLeadCode);
     if (targetLead) {
@@ -404,8 +412,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     } else {
       toast.info("Lead não encontrado ou sem permissão no seu time.");
     }
-    shareHandledRef.current = true;
-  }, [data, sharedLeadCode, isLoading]);
+    lastHandledShareKeyRef.current = shareKey;
+  }, [data, sharedLeadCode, isLoading, searchParams]);
 
   let dragStarted = false
     const handleCardMouseDown = () => { dragStarted = false }

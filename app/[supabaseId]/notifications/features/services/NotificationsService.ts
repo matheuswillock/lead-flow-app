@@ -1,5 +1,5 @@
 import { Output } from "@/lib/output";
-import type { NotificationsListResponse } from "../types/notification.types";
+import type { MarkAllAsReadOptions, NotificationsListResponse } from "../types/notification.types";
 
 type RequestContext = {
   supabaseId: string;
@@ -64,9 +64,10 @@ export class NotificationsService {
     return Number((output.result as { unreadCount?: number }).unreadCount ?? 0);
   }
 
-  async markAllAsRead(context: RequestContext): Promise<number> {
+  async markAllAsRead(context: RequestContext, options?: MarkAllAsReadOptions): Promise<number> {
     const response = await fetch(this.baseUrl, {
       method: "PATCH",
+      keepalive: options?.keepalive ?? false,
       headers: {
         "Content-Type": "application/json",
         "x-supabase-user-id": context.supabaseId,

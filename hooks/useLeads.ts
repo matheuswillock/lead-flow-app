@@ -355,10 +355,13 @@ export function useLead(id: string) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchLead = useCallback(async () => {
+  const fetchLead = useCallback(async (options?: { silent?: boolean }) => {
     if (!id) return;
+    const silent = options?.silent ?? false;
 
-    setLoading(true);
+    if (!silent) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -386,7 +389,9 @@ export function useLead(id: string) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro desconhecido');
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [id, supabaseId, activeTeamId]);
 

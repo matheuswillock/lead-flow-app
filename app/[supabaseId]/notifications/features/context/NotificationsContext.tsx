@@ -3,7 +3,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { notificationsService } from "../services/NotificationsService";
-import type { NotificationItem, NotificationsContextState } from "../types/notification.types";
+import type {
+  MarkAllAsReadOptions,
+  NotificationItem,
+  NotificationsContextState,
+} from "../types/notification.types";
 
 type NotificationsProviderProps = {
   children: React.ReactNode;
@@ -71,14 +75,14 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
     [supabaseId, activeTeamId]
   );
 
-  const markAllAsRead = useCallback(async () => {
+  const markAllAsRead = useCallback(async (options?: MarkAllAsReadOptions) => {
     if (!supabaseId || !activeTeamId) return;
 
     try {
       await notificationsService.markAllAsRead({
         supabaseId,
         teamId: activeTeamId,
-      });
+      }, options);
 
       setUnreadCount(0);
       setNotifications((prev) =>
