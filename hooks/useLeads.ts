@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { LeadStatus } from '@prisma/client';
 import { useTeamContext } from '@/app/context/TeamContext';
@@ -26,42 +26,13 @@ interface UseLeadsOptions {
 export const useLeads = () => {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
-  const { activeTeamId } = useTeamContext();
+  const { activeTeamId, activeRole } = useTeamContext();
 
   const [leads, setLeads] = useState<LeadResponseDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
-  const [userRole, setUserRole] = useState<string>('manager'); // Default role
-
-  // Fetch user profile to get role
-  const fetchUserProfile = useCallback(async () => {
-    if (!supabaseId) return;
-    
-    try {
-      const response = await fetch(`/api/v1/profiles/${supabaseId}`, {
-        headers: {
-          'x-supabase-user-id': supabaseId,
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.isValid && data.result?.role) {
-          setUserRole(data.result.role);
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching user profile:', err);
-    }
-  }, [supabaseId, activeTeamId]);
-
-  // Load user profile when hook initializes
-  useEffect(() => {
-    fetchUserProfile();
-  }, [fetchUserProfile]);
-
   const fetchLeads = useCallback(async (newOptions?: UseLeadsOptions) => {
     setLoading(true);
     setError(null);
@@ -71,7 +42,7 @@ export const useLeads = () => {
       const finalOptions = newOptions || {};
 
       // Always include role in the request
-      const roleToUse = finalOptions.role || userRole;
+      const roleToUse = finalOptions.role || activeRole || 'manager';
       searchParams.append('role', roleToUse);
       if (activeTeamId) {
         searchParams.append('teamId', activeTeamId);
@@ -105,7 +76,7 @@ export const useLeads = () => {
     } finally {
       setLoading(false);
     }
-  }, [supabaseId, userRole, activeTeamId]);
+  }, [supabaseId, activeRole, activeTeamId]);
 
   const createLead = useCallback(async (leadData: CreateLeadRequest): Promise<CreateLeadResponseDTO> => {
     setLoading(true);

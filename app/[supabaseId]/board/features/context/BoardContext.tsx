@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useMemo, useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
+import { createContext, ReactNode, useMemo, useState, useEffect, useRef, useCallback, Dispatch, SetStateAction } from "react";
 import { toast } from "sonner";
 import { IBoardService } from "../services/IBoardServices";
 import { Lead, ColumnKey } from "./BoardTypes";
@@ -7,6 +7,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { FinalizeContractData } from "../container/FinalizeContractDialog";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useUserContext } from "@/app/context/UserContext";
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -114,14 +115,22 @@ export const BoardContext = createContext<IBoardContextState | undefined>(undefi
 
 export const BoardProvider: React.FC<IBoardProviderProps> = ({ 
   children, 
-  boardService = createBoardService()
+  boardService
 }) => {
+  const resolvedBoardService = useMemo(
+    () => boardService ?? createBoardService(),
+    [boardService]
+  );
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
+  const { user: contextUser, isLoading: userLoading } = useUserContext();
   const searchParams = useSearchParams();
   const sharedLeadCode = searchParams.get("leadCode");
   const lastHandledShareKeyRef = useRef<string | null>(null);
+  const lastLeadsLoadKeyRef = useRef<string | null>(null);
+  const leadsLoadInFlightKeyRef = useRef<string | null>(null);
+  const leadsLoadInFlightPromiseRef = useRef<Promise<void> | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -149,8 +158,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
-  const [user, setUser] = useState<ProfileResponseDTO | null>(null);
-  const [userLoading, setUserLoading] = useState(true);
+  const selectedRef = useRef<Lead | null>(null);
+  const user = contextUser as ProfileResponseDTO | null;
   const userRef = useRef<ProfileResponseDTO | null>(null);
   const accessDeniedShownRef = useRef(false);
   const skipPersistLeadCardDisplayRef = useRef(false);
@@ -159,36 +168,6 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     if (!supabaseId) return null;
     return `leadCardDisplay:${supabaseId}:${activeTeamId || "default"}`;
   }, [supabaseId, activeTeamId]);
-
-  // Função para carregar dados do usuário
-  const loadUser = async () => {
-    try {
-      setUserLoading(true);
-      
-      if (!supabaseId) {
-        console.error('ID do usuário não encontrado');
-        return;
-      }
-      
-      const response = await fetch(`/api/v1/profiles/${supabaseId}`);
-      
-      if (!response.ok) {
-        throw new Error('Erro ao buscar dados do usuário');
-      }
-      
-      const result = await response.json();
-      
-      if (result.isValid && result.result) {
-        setUser(result.result);
-      } else {
-        console.error('Erro ao carregar usuário:', result.errorMessages);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar usuário:', error);
-    } finally {
-      setUserLoading(false);
-    }
-  };
 
   useEffect(() => {
     skipPersistLeadCardDisplayRef.current = true;
@@ -240,158 +219,187 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   }, [leadCardDisplayStorageKey, leadCardDisplay]);
 
   // Função para carregar leads da API
-  const loadLeads = async () => {
-    try {
-      setIsLoading(true);
-      setErrors({}); // Limpa erros anteriores
-      
-      if (!supabaseId) {
-        setErrors({ api: 'ID do usuário não encontrado' });
-        setIsLoading(false);
-        return;
-      }
+  const loadLeads = useCallback(async (options?: { force?: boolean }) => {
+    const roleToSend = activeRole || "manager";
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}`;
 
-      if (!activeTeamId) {
-        setErrors({ api: "Selecione um time para visualizar os leads." });
-        setIsLoading(false);
-        return;
-      }
-
-      const currentUser = userRef.current;
-      if (!currentUser) {
-        setIsLoading(false);
-        return;
-      }
-      if (activeRole === "operator" && !activeFunctions?.includes("SDR")) {
-        setData(() => {
-          const empty: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
-          COLUMNS.forEach(({ key }) => {
-            empty[key] = [];
-          });
-          return empty;
-        });
-        setErrors({ api: "Acesso negado: função SDR necessária para visualizar leads." });
-        if (!accessDeniedShownRef.current) {
-          toast.info("Acesso negado: função SDR necessária para visualizar leads.");
-          accessDeniedShownRef.current = true;
-        }
-        setIsLoading(false);
-        return;
-      }
-      
-      const roleToSend = activeRole || "manager";
-      const result = await boardService.fetchLeads(supabaseId, roleToSend, activeTeamId);
-
-      if (result.isValid && result.result) {
-        console.info('[BoardContext] Leads fetched from API:', result.result.length, 'leads');
-        
-        // Log dos meetingDates para debug
-        const leadsWithMeetingDate = result.result.filter((l: Lead) => l.meetingDate);
-        if (leadsWithMeetingDate.length > 0) {
-          console.info('[BoardContext] Leads with meetingDate:', leadsWithMeetingDate.map((l: Lead) => ({
-            id: l.id,
-            name: l.name,
-            meetingDate: l.meetingDate,
-            status: l.status
-          })));
-        }
-        
-        // Organizar leads por status (coluna)
-        const leadsGroupedByStatus: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
-        
-        // Inicializa todas as colunas com arrays vazios
-        COLUMNS.forEach(({ key }) => {
-          leadsGroupedByStatus[key] = [];
-        });
-        
-        // Distribui os leads nas colunas corretas baseado no status
-        result.result.forEach((lead: Lead) => {
-          if (leadsGroupedByStatus[lead.status]) {
-            leadsGroupedByStatus[lead.status].push(lead);
-          }
-        });
-        
-        setData(leadsGroupedByStatus);
-
-        // Se há um lead selecionado, atualizar com os novos dados
-        if (selected && selected.id) {
-          console.info('[BoardContext] Checking if selected lead needs update...', {
-            selectedId: selected.id,
-            currentMeetingDate: selected.meetingDate
-          });
-
-          const updatedLead = result.result.find((l: Lead) => l.id === selected.id);
-          if (updatedLead) {
-            console.info('[BoardContext] Found updated lead in API response:', {
-              newMeetingDate: updatedLead.meetingDate,
-              newStatus: updatedLead.status
-            });
-
-            const hasChanges = 
-              updatedLead.meetingDate !== selected.meetingDate ||
-              updatedLead.meetingNotes !== selected.meetingNotes ||
-              updatedLead.meetingLink !== selected.meetingLink ||
-              updatedLead.status !== selected.status ||
-              updatedLead.name !== selected.name ||
-              updatedLead.email !== selected.email ||
-              updatedLead.phone !== selected.phone;
-
-            console.info('[BoardContext] Has changes?', hasChanges, {
-              meetingDateChanged: updatedLead.meetingDate !== selected.meetingDate,
-              statusChanged: updatedLead.status !== selected.status
-            });
-
-            if (hasChanges) {
-              console.info('[BoardContext] ✅ Updating selected lead with fresh data');
-              
-              // 🎉 Notificar usuário sobre mudanças específicas
-              if (updatedLead.meetingDate !== selected.meetingDate && updatedLead.meetingDate) {
-                const meetingDateFormatted = new Date(updatedLead.meetingDate).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: 'long',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                });
-                toast.info(`📅 Data de reunião atualizada: ${meetingDateFormatted}`, {
-                  duration: 3000,
-                });
-              }
-              
-              setSelected(updatedLead);
-            } else {
-              console.info('[BoardContext] ℹ️ No changes detected, keeping current selected');
-            }
-          } else {
-            console.info('[BoardContext] ⚠️ Selected lead not found in API response');
-          }
-        }
-      } else {
-        console.error('Erro ao carregar leads:', result.errorMessages);
-        setErrors({ api: result.errorMessages?.join(', ') || 'Erro desconhecido' });
-      }
-    } catch (error) {
-      console.error('Erro ao carregar leads:', error);
-      setErrors({ api: 'Erro ao carregar dados' });
-    } finally {
-      setIsLoading(false);
+    if (
+      !options?.force &&
+      leadsLoadInFlightKeyRef.current === loadKey &&
+      leadsLoadInFlightPromiseRef.current
+    ) {
+      return leadsLoadInFlightPromiseRef.current;
     }
-  };
 
-  // Carregar dados quando o componente montar
-  useEffect(() => {
-    loadUser();
-  }, [supabaseId]);
+    if (!options?.force && lastLeadsLoadKeyRef.current === loadKey) {
+      return;
+    }
+
+    const requestPromise = (async () => {
+      try {
+        setIsLoading(true);
+        setErrors({}); // Limpa erros anteriores
+        
+        if (!supabaseId) {
+          setErrors({ api: 'ID do usuário não encontrado' });
+          lastLeadsLoadKeyRef.current = loadKey;
+          setIsLoading(false);
+          return;
+        }
+
+        if (!activeTeamId) {
+          setErrors({ api: "Selecione um time para visualizar os leads." });
+          lastLeadsLoadKeyRef.current = loadKey;
+          setIsLoading(false);
+          return;
+        }
+
+        const currentUser = userRef.current;
+        if (!currentUser) {
+          setIsLoading(false);
+          return;
+        }
+        if (activeRole === "operator" && !activeFunctions?.includes("SDR")) {
+          setData(() => {
+            const empty: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
+            COLUMNS.forEach(({ key }) => {
+              empty[key] = [];
+            });
+            return empty;
+          });
+          setErrors({ api: "Acesso negado: função SDR necessária para visualizar leads." });
+          if (!accessDeniedShownRef.current) {
+            toast.info("Acesso negado: função SDR necessária para visualizar leads.");
+            accessDeniedShownRef.current = true;
+          }
+          lastLeadsLoadKeyRef.current = loadKey;
+          setIsLoading(false);
+          return;
+        }
+        
+        const result = await resolvedBoardService.fetchLeads(supabaseId, roleToSend, activeTeamId);
+
+        if (result.isValid && result.result) {
+          console.info('[BoardContext] Leads fetched from API:', result.result.length, 'leads');
+          lastLeadsLoadKeyRef.current = loadKey;
+          
+          // Log dos meetingDates para debug
+          const leadsWithMeetingDate = result.result.filter((l: Lead) => l.meetingDate);
+          if (leadsWithMeetingDate.length > 0) {
+            console.info('[BoardContext] Leads with meetingDate:', leadsWithMeetingDate.map((l: Lead) => ({
+              id: l.id,
+              name: l.name,
+              meetingDate: l.meetingDate,
+              status: l.status
+            })));
+          }
+          
+          // Organizar leads por status (coluna)
+          const leadsGroupedByStatus: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
+          
+          // Inicializa todas as colunas com arrays vazios
+          COLUMNS.forEach(({ key }) => {
+            leadsGroupedByStatus[key] = [];
+          });
+          
+          // Distribui os leads nas colunas corretas baseado no status
+          result.result.forEach((lead: Lead) => {
+            if (leadsGroupedByStatus[lead.status]) {
+              leadsGroupedByStatus[lead.status].push(lead);
+            }
+          });
+          
+          setData(leadsGroupedByStatus);
+
+          // Se há um lead selecionado, atualizar com os novos dados
+          const currentSelected = selectedRef.current;
+          if (currentSelected && currentSelected.id) {
+            console.info('[BoardContext] Checking if selected lead needs update...', {
+              selectedId: currentSelected.id,
+              currentMeetingDate: currentSelected.meetingDate
+            });
+
+            const updatedLead = result.result.find((l: Lead) => l.id === currentSelected.id);
+            if (updatedLead) {
+              console.info('[BoardContext] Found updated lead in API response:', {
+                newMeetingDate: updatedLead.meetingDate,
+                newStatus: updatedLead.status
+              });
+
+              const hasChanges = 
+                updatedLead.meetingDate !== currentSelected.meetingDate ||
+                updatedLead.meetingNotes !== currentSelected.meetingNotes ||
+                updatedLead.meetingLink !== currentSelected.meetingLink ||
+                updatedLead.status !== currentSelected.status ||
+                updatedLead.name !== currentSelected.name ||
+                updatedLead.email !== currentSelected.email ||
+                updatedLead.phone !== currentSelected.phone;
+
+              console.info('[BoardContext] Has changes?', hasChanges, {
+                meetingDateChanged: updatedLead.meetingDate !== currentSelected.meetingDate,
+                statusChanged: updatedLead.status !== currentSelected.status
+              });
+
+              if (hasChanges) {
+                console.info('[BoardContext] ✅ Updating selected lead with fresh data');
+                
+                // 🎉 Notificar usuário sobre mudanças específicas
+                if (updatedLead.meetingDate !== currentSelected.meetingDate && updatedLead.meetingDate) {
+                  const meetingDateFormatted = new Date(updatedLead.meetingDate).toLocaleDateString('pt-BR', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  });
+                  toast.info(`📅 Data de reunião atualizada: ${meetingDateFormatted}`, {
+                    duration: 3000,
+                  });
+                }
+                
+                setSelected(updatedLead);
+              } else {
+                console.info('[BoardContext] ℹ️ No changes detected, keeping current selected');
+              }
+            } else {
+              console.info('[BoardContext] ⚠️ Selected lead not found in API response');
+            }
+          }
+        } else {
+          console.error('Erro ao carregar leads:', result.errorMessages);
+          setErrors({ api: result.errorMessages?.join(', ') || 'Erro desconhecido' });
+        }
+      } catch (error) {
+        console.error('Erro ao carregar leads:', error);
+        setErrors({ api: 'Erro ao carregar dados' });
+      } finally {
+        if (leadsLoadInFlightKeyRef.current === loadKey) {
+          leadsLoadInFlightKeyRef.current = null;
+          leadsLoadInFlightPromiseRef.current = null;
+        }
+        setIsLoading(false);
+      }
+    })();
+
+    leadsLoadInFlightKeyRef.current = loadKey;
+    leadsLoadInFlightPromiseRef.current = requestPromise;
+
+    return requestPromise;
+  }, [activeFunctions, activeRole, activeTeamId, resolvedBoardService, supabaseId]);
 
   useEffect(() => {
     userRef.current = user;
   }, [user]);
 
   useEffect(() => {
+    selectedRef.current = selected;
+  }, [selected]);
+
+  useEffect(() => {
     if (userLoading) return;
     if (teamLoading) return;
-    loadLeads();
-  }, [userLoading, teamLoading, supabaseId, activeTeamId]);
+    void loadLeads();
+  }, [userLoading, teamLoading, loadLeads]);
 
   useEffect(() => {
     if (!sharedLeadCode) {
@@ -521,7 +529,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           });
           
           // Recarregar dados para reverter UI
-          await loadLeads();
+          await loadLeads({ force: true });
         }
       };
 
@@ -543,7 +551,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           }
 
           // Atualizar o lead para a coluna de contrato finalizado
-          await loadLeads(); // Recarrega todos os leads para garantir consistência
+          await loadLeads({ force: true }); // Recarrega todos os leads para garantir consistência
         } catch (error) {
           console.error('Erro ao finalizar contrato:', error);
           throw error;
@@ -663,7 +671,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       openNewLeadDialog,
       onDrop,
       onDragStart,
-      refreshLeads: loadLeads,
+      refreshLeads: () => loadLeads({ force: true }),
       patchLead,
       finalizeContract
     };

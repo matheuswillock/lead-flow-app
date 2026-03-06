@@ -5,8 +5,8 @@
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.1.6
-**Last Updated:** 2026-03-04
+**Version:** 2.1.7
+**Last Updated:** 2026-03-06
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
 
@@ -128,6 +128,28 @@ new Output(
 - Prefer service interfaces for testability and clear boundaries.
 - Keep route handlers thin and use descriptive success/error messages.
 - Use existing module naming conventions before creating new naming patterns.
+
+## Request and Interaction Safety (FOR NEW FEATURES)
+
+### useEffect Request Discipline
+
+- Data-fetching effects **MUST** be idempotent and resistant to duplicate execution (including React Strict Mode in development).
+- Effects that call backend endpoints **MUST** implement deduplication with:
+  - stable request key (for example `supabaseId/teamId/role/filter`);
+  - in-flight guard (reuse or ignore while same request is pending);
+  - last-success key guard to avoid refetching unchanged inputs.
+- Effects **MUST NOT** depend on unstable function/object identities that recreate requests on every render.
+- Before creating a new fetch for the same domain data, code **SHOULD** reuse data already available in existing Context providers.
+- When a page requires repeated polling/realtime fallback, the interval **MUST** be explicit, documented in code, and cleared on cleanup.
+
+### Action Button Request Lock
+
+- Any button that triggers backend mutation (`POST`, `PUT`, `PATCH`, `DELETE`) **MUST** lock on first click.
+- The lock **MUST**:
+  - set loading state immediately;
+  - disable the trigger while request is pending;
+  - prevent re-entry/double submit until completion (`finally`).
+- For critical mutations (financial or irreversible actions), implementations **SHOULD** also use idempotency keys or server-side duplicate protection.
 
 ## LEGACY EXCEPTIONS
 

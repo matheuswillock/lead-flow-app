@@ -5,6 +5,8 @@ import { Output } from "@/lib/output";
 import { toast } from "sonner";
 import { useUser } from "@/app/context/UserContext";
 
+const teamsInFlightBySupabaseId = new Map<string, Promise<Output>>();
+
 export interface TeamSummary {
   id: string;
   name: string;
@@ -38,7 +40,7 @@ interface TeamProviderProps {
 }
 
 export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
-  const { user, isLoading: userLoading } = useUser();
+  const { user } = useUser();
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [activeTeamId, setActiveTeamIdState] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,13 +57,28 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch("/api/v1/teams", {
-        headers: {
-          "x-supabase-user-id": supabaseId
-        }
-      });
+      const createTeamsRequest = async (): Promise<Output> => {
+        const response = await fetch("/api/v1/teams", {
+          headers: {
+            "x-supabase-user-id": supabaseId
+          }
+        });
 
-      const output: Output = await response.json();
+        const output: Output = await response.json();
+        return output;
+      };
+
+      const existingRequest = teamsInFlightBySupabaseId.get(supabaseId);
+      const requestPromise = existingRequest
+        ?? createTeamsRequest().finally(() => {
+          teamsInFlightBySupabaseId.delete(supabaseId);
+        });
+
+      if (!existingRequest) {
+        teamsInFlightBySupabaseId.set(supabaseId, requestPromise);
+      }
+
+      const output = await requestPromise;
 
       if (!output.isValid) {
         setError(output.errorMessages?.join(", ") || "Failed to load teams");
@@ -108,9 +125,9 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
   }, [activeTeamId, persistActiveTeam]);
 
   useEffect(() => {
-    if (!supabaseId || userLoading) return;
-    refreshTeams();
-  }, [supabaseId, userLoading, refreshTeams]);
+    if (!supabaseId) return;
+    void refreshTeams();
+  }, [supabaseId, refreshTeams]);
 
   useEffect(() => {
     if (initializedRef.current) return;
