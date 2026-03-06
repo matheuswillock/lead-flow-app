@@ -374,28 +374,37 @@ export default function LeadDialog({
     return new RegExp(`@(?:${pattern})(?=$|\\s|[.,;:!?])`, "gi");
   }, [teamMembers]);
 
+  const clearSilentLeadSyncTimer = useCallback(() => {
+    if (silentFetchTimerRef.current !== null) {
+      window.clearTimeout(silentFetchTimerRef.current);
+      silentFetchTimerRef.current = null;
+    }
+  }, []);
+
   const scheduleSilentLeadSync = useCallback(() => {
     if (!lead?.id || !open) return;
 
-    if (silentFetchTimerRef.current !== null) {
-      window.clearTimeout(silentFetchTimerRef.current);
-    }
+    clearSilentLeadSyncTimer();
 
     silentFetchTimerRef.current = window.setTimeout(() => {
+      silentFetchTimerRef.current = null;
       void fetchLead({ silent: true }).finally(() => {
         setReactionOverrides({});
       });
     }, 500);
-  }, [lead?.id, open, fetchLead]);
+  }, [lead?.id, open, fetchLead, clearSilentLeadSyncTimer]);
 
   useEffect(() => {
     return () => {
-      if (silentFetchTimerRef.current !== null) {
-        window.clearTimeout(silentFetchTimerRef.current);
-        silentFetchTimerRef.current = null;
-      }
+      clearSilentLeadSyncTimer();
     };
-  }, []);
+  }, [clearSilentLeadSyncTimer]);
+
+  useEffect(() => {
+    return () => {
+      clearSilentLeadSyncTimer();
+    };
+  }, [lead?.id, open, clearSilentLeadSyncTimer]);
 
   const resolveActivityAuthor = useCallback((profileId: string | null | undefined) => {
     if (!profileId) return null;
@@ -623,6 +632,7 @@ export default function LeadDialog({
     }
 
     const optimisticActivityId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const selectedMentionsSnapshot = selectedMentions;
     const optimisticActivity: LeadActivityResponseDTO = {
       id: optimisticActivityId,
       type: activityType,
@@ -653,6 +663,19 @@ export default function LeadDialog({
       console.warn("Falha ao converter shortcodes de emoji:", error);
     }
     try {
+      const mentionsPayload = selectedMentionsSnapshot
+        .filter((mention) => {
+          const mentionPattern = new RegExp(
+            `@${escapeRegex(mention.label)}(?=$|\\s|[.,;:!?])`,
+            "i"
+          );
+          return mentionPattern.test(normalizedBody);
+        })
+        .map((mention) => ({
+          profileId: mention.profileId,
+          label: mention.label,
+        }));
+
       const response = await fetch(`/api/v1/leads/${lead.id}/activities`, {
         method: "POST",
         headers: {
@@ -663,18 +686,7 @@ export default function LeadDialog({
         body: JSON.stringify({
           type: activityType,
           body: normalizedBody,
-          mentions: selectedMentions
-            .filter((mention) => {
-              const mentionPattern = new RegExp(
-                `@${escapeRegex(mention.label)}(?=$|\\s|[.,;:!?])`,
-                "i"
-              );
-              return mentionPattern.test(normalizedBody);
-            })
-            .map((mention) => ({
-              profileId: mention.profileId,
-              label: mention.label,
-            })),
+          mentions: mentionsPayload,
         }),
       });
       const result = await response.json();
@@ -719,6 +731,7 @@ export default function LeadDialog({
     } catch (error) {
       setOptimisticActivities((prev) => prev.filter((activity) => activity.id !== optimisticActivityId));
       setActivityBody(trimmed);
+      setSelectedMentions(selectedMentionsSnapshot);
       console.error("Erro ao adicionar atividade:", error);
       toast.error(error instanceof Error ? error.message : "Erro ao adicionar atividade");
     } finally {
