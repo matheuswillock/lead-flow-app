@@ -5,7 +5,7 @@
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.1.7
+**Version:** 2.2.1
 **Last Updated:** 2026-03-06
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
@@ -55,16 +55,29 @@ Target flow:
 
 ### Frontend (FOR NEW FEATURES)
 
-Preferred flow:
+Target flow:
 
-`Page -> Context (Types -> Hook -> Provider) -> Service -> Container`
+`page -> context -> service`
+`page -> container`
+`container -> context`
+`service -> backend`
 
-- New tenant features under `app/[supabaseId]/[feature]` **SHOULD** use:
+- Every new frontend page under `app/**` **MUST** use page-local feature architecture with:
+  - `page.tsx`
+  - `loading.tsx`
   - `features/context`
   - `features/services`
   - `features/container`
-- Simpler pages can remain direct only if complexity does not justify full context layering.
-- Any direct-page deviation **SHOULD** be justified in PR description.
+- `page.tsx` **MUST** be thin and compositional (assemble layout, wire provider/container, route params, start feature flow).
+- `page.tsx` **MUST NOT** contain dense business logic, direct HTTP calls, large data transforms, or excessive local state.
+- `features/container` **MUST** contain page-specific visual composition components (headers, cards, dialogs, loaders, error states).
+- Visual components in `features/container` **MUST NOT** call backend APIs directly or own dense business rules.
+- `features/context` **MUST** centralize page state, hooks, local types/contracts, and feature orchestration.
+- `features/context` **MUST** call `features/services` for remote communication and expose state/actions to containers.
+- `features/services` **MUST** isolate HTTP/API integration and technical response handling for the feature.
+- `features/services` **MUST** use interface + concrete implementation.
+- Page-specific logic **MUST** stay inside the local `features/` folder for that route.
+- When code stops being page-specific and becomes reusable, it **SHOULD** be moved to an appropriate shared layer.
 
 ## Output Contract Policy
 
@@ -115,6 +128,8 @@ new Output(
 - Use strict TypeScript typing.
 - Use `console.info` for flow logs and `console.error` for errors.
 - In route-level error logs (`app/api/**/route.ts`), identify routes by stable route name + HTTP method (for example `[SubscriptionBySupabaseRoute][GET]`) and avoid logging path templates/raw endpoint URLs.
+- Services (`frontend` and `backend`) **MUST** follow interface + concrete implementation.
+- When creating a new backend endpoint (`app/api/**/route.ts`), update `postman/Lead-Flow-API-Collection.json` and update `postman/Lead-Flow-Environment.json` whenever the endpoint introduces or depends on new environment variables, tokens, or aliases.
 - Keep behavioral consistency in legacy paths unless the task explicitly includes refactor.
 
 ### FOR NEW FEATURES
@@ -125,7 +140,6 @@ new Output(
 
 ### SHOULD
 
-- Prefer service interfaces for testability and clear boundaries.
 - Keep route handlers thin and use descriptive success/error messages.
 - Use existing module naming conventions before creating new naming patterns.
 
@@ -201,7 +215,7 @@ Validation includes:
 2. Adapter file sync with `agents.md`.
 3. Direct Prisma usage in `app/api/v1/**/route.ts` (blocked except explicit allowlist).
 4. Output contract presence in new UseCases (blocked except explicit allowlist).
-5. Frontend feature structure checks for new tenant features.
+5. Frontend page architecture checks for `app/**` pages (blocked except explicit allowlist).
 6. Non-TypeScript files in repository (blocked unless explicit legacy allowlist).
 
 CI **MUST** fail when governance checks fail.
@@ -217,7 +231,7 @@ bun run scaffold:feature -- --name <feature-name>
 The scaffold creates:
 
 - Backend: Route + UseCase + Service
-- Frontend: Page + Context (Types/Hook/Provider) + Service + Container
+- Frontend: Page + Loading + Context (Types/Hook/Provider) + Service + Container
 
 Agents **SHOULD** start from scaffold and then adapt business logic.
 
@@ -227,6 +241,7 @@ Every PR **MUST** confirm:
 
 - [ ] Seguiu `agents.md`?
 - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
+- [ ] Criou endpoint backend novo? Atualizou `postman/Lead-Flow-API-Collection.json` e, quando aplicavel, `postman/Lead-Flow-Environment.json`?
 - [ ] Rodou `bun run typecheck` e `bun run lint`?
 - [ ] Rodou `bun run governance:check`?
 

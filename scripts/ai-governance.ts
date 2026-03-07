@@ -409,50 +409,50 @@ async function validateFrontendFeatureStructure(
   issues: string[],
   warnings: string[],
 ): Promise<void> {
-  const featureRoot = path.join(ROOT, "app", "[supabaseId]");
+  const appRoot = path.join(ROOT, "app");
   const allowlist = normalizePathList(
     config.legacyExceptions.frontendFeatureStructureAllowlist,
   );
 
-  if (!(await pathExists(featureRoot))) {
+  if (!(await pathExists(appRoot))) {
     return;
   }
 
-  const entries = await fs.readdir(featureRoot, { withFileTypes: true });
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
+  const pageFiles = await collectFilesRecursively(
+    appRoot,
+    (filename) => filename === "page.tsx",
+  );
+
+  for (const pageFile of pageFiles) {
+    const pageDirectory = path.dirname(pageFile);
+    const relativePagePath = normalizeRelativePath(pageDirectory);
+    if (allowlist.has(relativePagePath)) {
       continue;
     }
 
-    const featureDirectory = path.join(featureRoot, entry.name);
-    const pagePath = path.join(featureDirectory, "page.tsx");
-    if (!(await pathExists(pagePath))) {
-      continue;
-    }
-
-    const relativeFeaturePath = normalizeRelativePath(featureDirectory);
-    if (allowlist.has(relativeFeaturePath)) {
-      continue;
-    }
-
-    const requiredPaths = [
-      path.join(featureDirectory, "features", "context"),
-      path.join(featureDirectory, "features", "services"),
-      path.join(featureDirectory, "features", "container"),
+    const requiredDirectories = [
+      path.join(pageDirectory, "features", "context"),
+      path.join(pageDirectory, "features", "services"),
+      path.join(pageDirectory, "features", "container"),
     ];
+    const requiredFiles = [path.join(pageDirectory, "loading.tsx")];
 
     const missing: string[] = [];
-    for (const requiredPath of requiredPaths) {
-      if (!(await isDirectory(requiredPath))) {
-        missing.push(normalizeRelativePath(requiredPath));
+    for (const requiredDirectory of requiredDirectories) {
+      if (!(await isDirectory(requiredDirectory))) {
+        missing.push(normalizeRelativePath(requiredDirectory));
+      }
+    }
+
+    for (const requiredFile of requiredFiles) {
+      if (!(await pathExists(requiredFile))) {
+        missing.push(normalizeRelativePath(requiredFile));
       }
     }
 
     if (missing.length > 0) {
       issues.push(
-        `Feature structure violation in ${relativeFeaturePath}. Missing: ${missing.join(
-          ", ",
-        )}`,
+        `Frontend page architecture violation in ${relativePagePath}. Missing: ${missing.join(", ")}`,
       );
     }
   }
@@ -462,6 +462,14 @@ async function validateFrontendFeatureStructure(
     if (!(await pathExists(absolutePath))) {
       warnings.push(
         `Legacy frontend allowlist path not found: ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    const allowlistedPagePath = path.join(absolutePath, "page.tsx");
+    if (!(await pathExists(allowlistedPagePath))) {
+      warnings.push(
+        `Legacy frontend allowlist path has no page.tsx: ${allowlistedPath}`,
       );
     }
   }

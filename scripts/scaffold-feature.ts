@@ -172,6 +172,10 @@ export default function ${featurePascal}Page() {
   );
 }
 `,
+    [`app/[supabaseId]/${featureKebab}/loading.tsx`]: `export default function Loading() {
+  return <div>Loading...</div>;
+}
+`,
     [`app/[supabaseId]/${featureKebab}/features/context/${featurePascal}Types.ts`]: `export interface I${featurePascal}State {
   isLoading: boolean;
   error: string | null;

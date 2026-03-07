@@ -75,9 +75,26 @@
       "app/api/useCases/subscriptions/CheckSubscriptionUseCase.ts"
     ],
     "frontendFeatureStructureAllowlist": [
+      "app",
+      "app/(auth)/sign-in",
+      "app/(auth)/sign-up",
+      "app/auth/callback",
+      "app/checkout-return",
+      "app/cookies",
+      "app/forgot-password",
+      "app/operator-confirmed",
+      "app/pix-confirmed",
+      "app/privacy-policy",
+      "app/set-password",
+      "app/subscribe",
+      "app/terms",
       "app/[supabaseId]/account",
       "app/[supabaseId]/calendar",
+      "app/[supabaseId]/dashboard",
+      "app/[supabaseId]/manager-users",
+      "app/[supabaseId]/notifications",
       "app/[supabaseId]/pipeline",
+      "app/[supabaseId]/subscription",
       "app/[supabaseId]/teams"
     ],
     "nonTypeScriptFileAllowlist": [
