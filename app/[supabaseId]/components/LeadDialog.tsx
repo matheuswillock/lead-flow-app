@@ -1498,7 +1498,7 @@ export default function LeadDialog({
         meetingNotes: lead.meetingNotes || "",
         meetingLink: lead.meetingLink || "",
         meetingHeald: lead.meetingHeald === "yes" ? "yes" : "no",
-        extraGuests: scheduleGuests.join(", "),
+        extraGuests: "",
         responsible: lead.assignedTo || "",
         ticket: lead.ticket ? formatCurrency(lead.ticket) : "",
         contractDueDate: lead.contractDueDate || "",
@@ -1523,13 +1523,19 @@ export default function LeadDialog({
         meetingLink: "",
         meetingHeald: "no",
         extraGuests: "",
-        responsible: sdrsByTeam[0]?.id || "",
+        responsible: "",
         ticket: "",
         contractDueDate: "",
         soldPlan: undefined,
       });
     }
-  }, [lead, open, form, sdrsByTeam, scheduleGuests]);
+  }, [lead, open, form]);
+
+  useEffect(() => {
+    if (!open || !lead) return;
+    if (form.getFieldState("extraGuests").isDirty) return;
+    form.setValue("extraGuests", scheduleGuests.join(", "), { shouldDirty: false });
+  }, [open, lead, scheduleGuests, form]);
 
   useEffect(() => {
     const controller = new AbortController();

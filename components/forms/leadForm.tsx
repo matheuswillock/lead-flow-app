@@ -129,6 +129,10 @@ export function LeadForm({
         () => sdrsToAssign ?? [],
         [sdrsToAssign]
     );
+    const responsibleUsers = React.useMemo(
+        () => (sdrs.length > 0 ? sdrs : usersToAssign ?? []),
+        [sdrs, usersToAssign]
+    );
 
     const parseEmails = (value: string | undefined) => {
         if (!value) return [];
@@ -235,10 +239,10 @@ export function LeadForm({
 
     // Auto-select responsible when there's only one user available
     useEffect(() => {
-        if (sdrs?.length === 1 && !form.getValues('responsible')) {
-            form.setValue('responsible', sdrs[0].id);
+        if (responsibleUsers?.length === 1 && !form.getValues('responsible')) {
+            form.setValue('responsible', responsibleUsers[0].id);
         }
-    }, [sdrs, form]);
+    }, [responsibleUsers, form]);
 
     useEffect(() => {
         const raw = form.getValues("currentValue");
@@ -1022,17 +1026,21 @@ export function LeadForm({
                     control={form.control}
                     name="responsible"
                     render={({ field }) => {
-                        const selectedValue = field.value || (sdrs?.[0]?.id ?? "");
-                        const selectedUser = sdrs?.find(user => user.id === selectedValue);
-                        const isOnlyOneUser = sdrs?.length === 1;
-                        const sdrIsLoading = !!sdrsLoading;
-                        const sdrHasError = !!sdrsError;
-                        const sdrIsEmpty = !sdrIsLoading && !sdrHasError && sdrs.length === 0;
+                        const selectedValue = field.value || (responsibleUsers?.[0]?.id ?? "");
+                        const selectedUser = responsibleUsers?.find(user => user.id === selectedValue);
+                        const isOnlyOneUser = responsibleUsers?.length === 1;
+                        const hasResponsibleOptions = responsibleUsers.length > 0;
+                        const isLoadingWithoutOptions = !!sdrsLoading && !hasResponsibleOptions;
+                        const hasErrorWithoutFallback = !!sdrsError && !hasResponsibleOptions;
+                        const hasNoMembersAvailable =
+                            !isLoadingWithoutOptions &&
+                            !hasErrorWithoutFallback &&
+                            !hasResponsibleOptions;
                         useEffect(() => {
-                            if (!field.value && sdrs?.length > 0) {
-                                field.onChange(sdrs[0].id);
+                            if (!field.value && responsibleUsers?.length > 0) {
+                                field.onChange(responsibleUsers[0].id);
                             }
-                        }, [sdrs, field.value, field.onChange]);
+                        }, [responsibleUsers, field.value, field.onChange]);
 
                         return (
                             <FormItem className="flex flex-col">
@@ -1046,20 +1054,19 @@ export function LeadForm({
                                         disabled={
                                             isLoading ||
                                             isUpdating ||
-                                            sdrIsLoading ||
-                                            sdrHasError ||
-                                            sdrIsEmpty
+                                            isLoadingWithoutOptions ||
+                                            !hasResponsibleOptions
                                         }
                                     >
                                         <SelectTrigger className="h-9">
                                             <SelectValue
                                                 placeholder={
-                                                    sdrIsLoading
-                                                        ? "Carregando SDRs..."
-                                                        : sdrHasError
-                                                            ? "Erro ao carregar SDRs"
-                                                            : sdrIsEmpty
-                                                        ? "Nenhum SDR disponível"
+                                                    isLoadingWithoutOptions
+                                                        ? "Carregando responsáveis..."
+                                                        : hasErrorWithoutFallback
+                                                            ? "Erro ao carregar responsáveis"
+                                                            : hasNoMembersAvailable
+                                                        ? "Nenhum membro disponível"
                                                         : "Selecione um responsável"
                                                 }
                                             >
@@ -1079,7 +1086,7 @@ export function LeadForm({
                                             </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {sdrs?.map(user => (
+                                            {responsibleUsers?.map(user => (
                                                 <SelectItem key={user.id} value={user.id}>
                                                     <div className="flex items-center gap-2">
                                                         <Avatar className="h-6 w-6">
@@ -1097,7 +1104,7 @@ export function LeadForm({
                                         </SelectContent>
                                     </Select>
                                 </FormControl>
-                                {sdrsError && (
+                                {sdrsError && !hasResponsibleOptions && (
                                     <p className="mt-1 text-xs text-destructive">{sdrsError}</p>
                                 )}
                             </FormItem>
