@@ -5,8 +5,16 @@ import type { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDT
 
 type TeamFunction = "SDR" | "CLOSER";
 
+type TeamMembersCacheEntry = {
+  members: UserAssociated[];
+  timestamp: number;
+};
+
+const MEMBERS_CACHE_TTL_MS = 60 * 1000;
+const EMPTY_MEMBERS_CACHE_TTL_MS = 10 * 1000;
+
 const membersInFlightByKey = new Map<string, Promise<UserAssociated[]>>();
-const membersCacheByKey = new Map<string, UserAssociated[]>();
+const membersCacheByKey = new Map<string, TeamMembersCacheEntry>();
 
 const mapMemberToUserAssociated = (member: any): UserAssociated => ({
   id: member.profileId,
@@ -25,33 +33,42 @@ function useTeamMembersByFunction(
   const [members, setMembers] = useState<UserAssociated[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const lastSuccessKeyRef = useRef<string | null>(null);
   const latestRequestKeyRef = useRef<string | null>(null);
+  const lastAppliedKeyRef = useRef<string | null>(null);
 
   const loadMembers = useCallback(
     async (options?: { force?: boolean }) => {
       if (!supabaseId || !teamId) {
         setMembers([]);
         setError(null);
-        lastSuccessKeyRef.current = null;
         latestRequestKeyRef.current = null;
+        lastAppliedKeyRef.current = null;
         return;
       }
 
       const requestKey = `${supabaseId}:${teamId}:${functionName}`;
       latestRequestKeyRef.current = requestKey;
 
-      if (!options?.force && lastSuccessKeyRef.current === requestKey) {
-        return;
-      }
-
       if (!options?.force) {
-        const cachedMembers = membersCacheByKey.get(requestKey);
-        if (cachedMembers) {
-          setMembers(cachedMembers);
+        const cachedEntry = membersCacheByKey.get(requestKey);
+        if (cachedEntry) {
+          const cacheAgeMs = Date.now() - cachedEntry.timestamp;
+          const ttlMs =
+            cachedEntry.members.length === 0
+              ? EMPTY_MEMBERS_CACHE_TTL_MS
+              : MEMBERS_CACHE_TTL_MS;
+
+          if (cacheAgeMs <= ttlMs) {
+            setMembers(cachedEntry.members);
+            setError(null);
+            lastAppliedKeyRef.current = requestKey;
+            return;
+          }
+        }
+
+        if (lastAppliedKeyRef.current !== requestKey) {
+          setMembers([]);
           setError(null);
-          lastSuccessKeyRef.current = requestKey;
-          return;
         }
       }
 
@@ -63,8 +80,10 @@ function useTeamMembersByFunction(
             `/api/v1/teams/${teamId}/members?function=${functionName}`,
             {
               method: "GET",
+              cache: "no-store",
               headers: {
                 "x-supabase-user-id": supabaseId,
+                "x-team-id": teamId,
               },
             }
           );
@@ -79,7 +98,10 @@ function useTeamMembersByFunction(
           const loadedMembers = ((result?.result?.members ?? []) as any[]).map(
             mapMemberToUserAssociated
           );
-          membersCacheByKey.set(requestKey, loadedMembers);
+          membersCacheByKey.set(requestKey, {
+            members: loadedMembers,
+            timestamp: Date.now(),
+          });
           return loadedMembers;
         })();
 
@@ -100,13 +122,13 @@ function useTeamMembersByFunction(
           return;
         }
         setMembers(loadedMembers);
-        lastSuccessKeyRef.current = requestKey;
+        setError(null);
+        lastAppliedKeyRef.current = requestKey;
       } catch (loadError) {
         if (latestRequestKeyRef.current !== requestKey) {
           return;
         }
         setError(loadError instanceof Error ? loadError.message : "Erro ao carregar membros do time");
-        setMembers([]);
       } finally {
         if (latestRequestKeyRef.current === requestKey) {
           setLoading(false);
@@ -120,11 +142,13 @@ function useTeamMembersByFunction(
     void loadMembers();
   }, [loadMembers]);
 
+  const refreshMembers = useCallback(() => loadMembers({ force: true }), [loadMembers]);
+
   return {
     members,
     loading,
     error,
-    refreshMembers: () => loadMembers({ force: true }),
+    refreshMembers,
   };
 }
 

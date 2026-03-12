@@ -26,6 +26,20 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ teamId: string }> }
 ) {
+  const logContext: {
+    teamId: string | null;
+    requesterProfileId: string | null;
+    requestedFunction: z.infer<typeof listMembersFunctionSchema> | null;
+    totalMembers: number;
+    filteredMembers: number;
+  } = {
+    teamId: null,
+    requesterProfileId: null,
+    requestedFunction: null,
+    totalMembers: 0,
+    filteredMembers: 0,
+  };
+
   try {
     const supabaseId = request.headers.get("x-supabase-user-id");
     if (!supabaseId) {
@@ -36,6 +50,7 @@ export async function GET(
     }
 
     const { teamId } = await params;
+    logContext.teamId = teamId;
     if (!teamId) {
       return NextResponse.json(new Output(false, [], ["Team ID é obrigatório"], null), { status: 400 });
     }
@@ -52,11 +67,13 @@ export async function GET(
       }
       requestedFunction = parsedFunction.data;
     }
+    logContext.requestedFunction = requestedFunction;
 
     const profile = await getRequesterProfile(supabaseId);
     if (!profile) {
       return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), { status: 404 });
     }
+    logContext.requesterProfileId = profile.id;
 
     const team = await prisma.team.findUnique({
       where: { id: teamId },
@@ -113,6 +130,10 @@ export async function GET(
     const filteredMembers = requestedFunction
       ? formattedMembers.filter((member) => member.functions?.includes(requestedFunction))
       : formattedMembers;
+    logContext.totalMembers = formattedMembers.length;
+    logContext.filteredMembers = filteredMembers.length;
+
+    console.info("[TeamMembersRoute][GET] Membros do time carregados", logContext);
 
     let eligibleProfiles: Array<{ id: string; name: string; email: string | null }> = [];
     let transferCandidates: Array<{ id: string; name: string; email: string | null }> = [];
@@ -184,7 +205,10 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
-    console.error("[TeamMembersRoute][GET] Erro ao listar membros do time:", error);
+    console.error("[TeamMembersRoute][GET] Erro ao listar membros do time", {
+      ...logContext,
+      error,
+    });
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao listar membros do time"], null),
       { status: 500 }

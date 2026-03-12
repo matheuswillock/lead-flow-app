@@ -83,6 +83,10 @@ export interface ILeadFormProps {
     usersToAssign: UserAssociated[];
     closersToAssign?: UserAssociated[];
     sdrsToAssign?: UserAssociated[];
+    closersLoading?: boolean;
+    closersError?: string | null;
+    sdrsLoading?: boolean;
+    sdrsError?: string | null;
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     showMeetingLink?: boolean;
 }
@@ -104,6 +108,10 @@ export function LeadForm({
     usersToAssign,
     closersToAssign,
     sdrsToAssign,
+    closersLoading,
+    closersError,
+    sdrsLoading,
+    sdrsError,
     leadId,
     showMeetingLink
 }: ILeadFormProps) {
@@ -602,6 +610,9 @@ export function LeadForm({
                     render={({ field }) => {
                         const selectedCloser = closers.find((user) => user.id === field.value);
                         const isOnlyOneCloser = closers.length === 1;
+                        const closerIsLoading = !!closersLoading;
+                        const closerHasError = !!closersError;
+                        const closerIsEmpty = !closerIsLoading && !closerHasError && closers.length === 0;
 
                         useEffect(() => {
                             if (!field.value && closers.length === 1) {
@@ -618,12 +629,22 @@ export function LeadForm({
                                     <Select
                                         value={field.value || ""}
                                         onValueChange={field.onChange}
-                                        disabled={isLoading || isUpdating || closers.length === 0}
+                                        disabled={
+                                            isLoading ||
+                                            isUpdating ||
+                                            closerIsLoading ||
+                                            closerHasError ||
+                                            closerIsEmpty
+                                        }
                                     >
                                         <SelectTrigger className="h-9">
                                             <SelectValue
                                                 placeholder={
-                                                    closers.length === 0
+                                                    closerIsLoading
+                                                        ? "Carregando closers..."
+                                                        : closerHasError
+                                                            ? "Erro ao carregar closers"
+                                                            : closerIsEmpty
                                                         ? "Nenhum closer disponível"
                                                         : "Selecione um closer"
                                                 }
@@ -670,6 +691,9 @@ export function LeadForm({
                                         </SelectContent>
                                     </Select>
                                 </FormControl>
+                                {closersError && (
+                                    <p className="mt-1 text-xs text-destructive">{closersError}</p>
+                                )}
                             </FormItem>
                         );
                     }}
@@ -1001,6 +1025,9 @@ export function LeadForm({
                         const selectedValue = field.value || (sdrs?.[0]?.id ?? "");
                         const selectedUser = sdrs?.find(user => user.id === selectedValue);
                         const isOnlyOneUser = sdrs?.length === 1;
+                        const sdrIsLoading = !!sdrsLoading;
+                        const sdrHasError = !!sdrsError;
+                        const sdrIsEmpty = !sdrIsLoading && !sdrHasError && sdrs.length === 0;
                         useEffect(() => {
                             if (!field.value && sdrs?.length > 0) {
                                 field.onChange(sdrs[0].id);
@@ -1016,12 +1043,22 @@ export function LeadForm({
                                     <Select
                                         value={selectedValue}
                                         onValueChange={field.onChange}
-                                        disabled={isLoading || isUpdating || sdrs.length === 0}
+                                        disabled={
+                                            isLoading ||
+                                            isUpdating ||
+                                            sdrIsLoading ||
+                                            sdrHasError ||
+                                            sdrIsEmpty
+                                        }
                                     >
                                         <SelectTrigger className="h-9">
                                             <SelectValue
                                                 placeholder={
-                                                    sdrs.length === 0
+                                                    sdrIsLoading
+                                                        ? "Carregando SDRs..."
+                                                        : sdrHasError
+                                                            ? "Erro ao carregar SDRs"
+                                                            : sdrIsEmpty
                                                         ? "Nenhum SDR disponível"
                                                         : "Selecione um responsável"
                                                 }
@@ -1060,6 +1097,9 @@ export function LeadForm({
                                         </SelectContent>
                                     </Select>
                                 </FormControl>
+                                {sdrsError && (
+                                    <p className="mt-1 text-xs text-destructive">{sdrsError}</p>
+                                )}
                             </FormItem>
                         );
                     }}

@@ -152,8 +152,18 @@ export default function LeadDialog({
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
   const { healthPlans, loading: healthPlansLoading } = useHealthPlans(supabaseId, activeTeamId);
-  const { members: closersByTeam } = useTeamClosers(supabaseId, activeTeamId);
-  const { members: sdrsByTeam } = useTeamSdrs(supabaseId, activeTeamId);
+  const {
+    members: closersByTeam,
+    loading: closersLoading,
+    error: closersError,
+    refreshMembers: refreshClosers,
+  } = useTeamClosers(supabaseId, activeTeamId);
+  const {
+    members: sdrsByTeam,
+    loading: sdrsLoading,
+    error: sdrsError,
+    refreshMembers: refreshSdrs,
+  } = useTeamSdrs(supabaseId, activeTeamId);
   const pathname = usePathname();
   const sharedLeadCode = searchParams.get("leadCode");
   const sharedActivityId = searchParams.get("activityId");
@@ -171,6 +181,12 @@ export default function LeadDialog({
       void fetchLead();
     }
   }, [lead?.id, open, fetchLead]);
+
+  useEffect(() => {
+    if (!open || !activeTeamId || !supabaseId) return;
+    void refreshClosers();
+    void refreshSdrs();
+  }, [open, activeTeamId, supabaseId, refreshClosers, refreshSdrs]);
 
   useEffect(() => {
     if (!open) {
@@ -1799,6 +1815,10 @@ export default function LeadDialog({
                     usersToAssign={usersToAssign}
                     closersToAssign={closersByTeam}
                     sdrsToAssign={sdrsByTeam}
+                    closersLoading={closersLoading}
+                    closersError={closersError}
+                    sdrsLoading={sdrsLoading}
+                    sdrsError={sdrsError}
                     leadId={lead?.id}
                     showMeetingHeald={canShowMeetingHeald}
                     meetingHealdReadOnly={false}
