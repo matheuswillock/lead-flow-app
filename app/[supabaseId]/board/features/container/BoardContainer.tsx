@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import BoardHeader from "./BoardHeader";
 import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
@@ -12,6 +12,7 @@ import { Lead } from "../context/BoardTypes";
 import { toast } from "sonner";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
 
 export function BoardContainer() {
   const { finalizeContract, refreshLeads, open, setOpen, selected: lead, user, userLoading, patchLead } = useBoardContext();
@@ -22,11 +23,7 @@ export function BoardContainer() {
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
-
-  const closers = useMemo(() => {
-    const users = user?.usersAssociated || [];
-    return users.filter((u) => u.functions?.includes("CLOSER"));
-  }, [user]);
+  const { members: closers } = useTeamClosers(supabaseId, activeTeamId);
 
   const handleFinalizeContract = (lead: Lead) => {
     setSelectedLead(lead);
@@ -140,7 +137,7 @@ export function BoardContainer() {
             lead={selectedLead}
             onScheduleSuccess={handleScheduleSuccess}
             closers={closers}
-            teamMembers={user?.usersAssociated ?? []}
+            teamMembers={[]}
             mode={scheduleDialogMode}
           />
         </>

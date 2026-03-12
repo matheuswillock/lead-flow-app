@@ -5455,6 +5455,76 @@
                   "response": []
                 },
                 {
+                  "name": "GET /api/v1/teams/{{teamId}}/members?function=CLOSER",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/members?function=CLOSER",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "members"
+                      ],
+                      "query": [
+                        {
+                          "key": "function",
+                          "value": "CLOSER",
+                          "description": "Filtra membros do time com função CLOSER"
+                        }
+                      ]
+                    },
+                    "description": "Exemplo de filtro por função CLOSER em app/api/v1/teams/[teamId]/members/route.ts"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "GET /api/v1/teams/{{teamId}}/members?function=SDR",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/members?function=SDR",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "members"
+                      ],
+                      "query": [
+                        {
+                          "key": "function",
+                          "value": "SDR",
+                          "description": "Filtra membros do time com função SDR"
+                        }
+                      ]
+                    },
+                    "description": "Exemplo de filtro por função SDR em app/api/v1/teams/[teamId]/members/route.ts"
+                  },
+                  "response": []
+                },
+                {
                   "name": "POST /api/v1/teams/{{teamId}}/members",
                   "request": {
                     "method": "POST",

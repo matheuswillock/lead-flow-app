@@ -81,6 +81,12 @@ export interface ILeadFormProps {
     meetingHealdSaving?: boolean;
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
     usersToAssign: UserAssociated[];
+    closersToAssign?: UserAssociated[];
+    sdrsToAssign?: UserAssociated[];
+    closersLoading?: boolean;
+    closersError?: string | null;
+    sdrsLoading?: boolean;
+    sdrsError?: string | null;
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     showMeetingLink?: boolean;
 }
@@ -100,6 +106,12 @@ export function LeadForm({
     meetingHealdSaving,
     onMeetingHealdChange,
     usersToAssign,
+    closersToAssign,
+    sdrsToAssign,
+    closersLoading,
+    closersError,
+    sdrsLoading,
+    sdrsError,
     leadId,
     showMeetingLink
 }: ILeadFormProps) {
@@ -110,8 +122,16 @@ export function LeadForm({
     const [ticketError, setTicketError] = useState<string | null>(null);
     const [extraGuestsDraft, setExtraGuestsDraft] = useState("");
     const closers = React.useMemo(
-        () => usersToAssign?.filter((user) => user.functions?.includes("CLOSER")) ?? [],
-        [usersToAssign]
+        () => closersToAssign ?? [],
+        [closersToAssign]
+    );
+    const sdrs = React.useMemo(
+        () => sdrsToAssign ?? [],
+        [sdrsToAssign]
+    );
+    const responsibleUsers = React.useMemo(
+        () => (sdrs.length > 0 ? sdrs : usersToAssign ?? []),
+        [sdrs, usersToAssign]
     );
 
     const parseEmails = (value: string | undefined) => {
@@ -219,10 +239,10 @@ export function LeadForm({
 
     // Auto-select responsible when there's only one user available
     useEffect(() => {
-        if (usersToAssign?.length === 1 && !form.getValues('responsible')) {
-            form.setValue('responsible', usersToAssign[0].id);
+        if (responsibleUsers?.length === 1 && !form.getValues('responsible')) {
+            form.setValue('responsible', responsibleUsers[0].id);
         }
-    }, [usersToAssign, form]);
+    }, [responsibleUsers, form]);
 
     useEffect(() => {
         const raw = form.getValues("currentValue");
@@ -594,6 +614,9 @@ export function LeadForm({
                     render={({ field }) => {
                         const selectedCloser = closers.find((user) => user.id === field.value);
                         const isOnlyOneCloser = closers.length === 1;
+                        const closerIsLoading = !!closersLoading;
+                        const closerHasError = !!closersError;
+                        const closerIsEmpty = !closerIsLoading && !closerHasError && closers.length === 0;
 
                         useEffect(() => {
                             if (!field.value && closers.length === 1) {
@@ -610,12 +633,22 @@ export function LeadForm({
                                     <Select
                                         value={field.value || ""}
                                         onValueChange={field.onChange}
-                                        disabled={isLoading || isUpdating || closers.length === 0}
+                                        disabled={
+                                            isLoading ||
+                                            isUpdating ||
+                                            closerIsLoading ||
+                                            closerHasError ||
+                                            closerIsEmpty
+                                        }
                                     >
                                         <SelectTrigger className="h-9">
                                             <SelectValue
                                                 placeholder={
-                                                    closers.length === 0
+                                                    closerIsLoading
+                                                        ? "Carregando closers..."
+                                                        : closerHasError
+                                                            ? "Erro ao carregar closers"
+                                                            : closerIsEmpty
                                                         ? "Nenhum closer disponível"
                                                         : "Selecione um closer"
                                                 }
@@ -662,6 +695,9 @@ export function LeadForm({
                                         </SelectContent>
                                     </Select>
                                 </FormControl>
+                                {closersError && (
+                                    <p className="mt-1 text-xs text-destructive">{closersError}</p>
+                                )}
                             </FormItem>
                         );
                     }}
@@ -990,14 +1026,21 @@ export function LeadForm({
                     control={form.control}
                     name="responsible"
                     render={({ field }) => {
-                        const selectedValue = field.value || (usersToAssign?.[0]?.id ?? "");
-                        const selectedUser = usersToAssign?.find(user => user.id === selectedValue);
-                        const isOnlyOneUser = usersToAssign?.length === 1;
+                        const selectedValue = field.value || (responsibleUsers?.[0]?.id ?? "");
+                        const selectedUser = responsibleUsers?.find(user => user.id === selectedValue);
+                        const isOnlyOneUser = responsibleUsers?.length === 1;
+                        const hasResponsibleOptions = responsibleUsers.length > 0;
+                        const isLoadingWithoutOptions = !!sdrsLoading && !hasResponsibleOptions;
+                        const hasErrorWithoutFallback = !!sdrsError && !hasResponsibleOptions;
+                        const hasNoMembersAvailable =
+                            !isLoadingWithoutOptions &&
+                            !hasErrorWithoutFallback &&
+                            !hasResponsibleOptions;
                         useEffect(() => {
-                            if (!field.value && usersToAssign?.length > 0) {
-                                field.onChange(usersToAssign[0].id);
+                            if (!field.value && responsibleUsers?.length > 0) {
+                                field.onChange(responsibleUsers[0].id);
                             }
-                        }, [usersToAssign, field.value, field.onChange]);
+                        }, [responsibleUsers, field.value, field.onChange]);
 
                         return (
                             <FormItem className="flex flex-col">
@@ -1008,10 +1051,25 @@ export function LeadForm({
                                     <Select
                                         value={selectedValue}
                                         onValueChange={field.onChange}
-                                        disabled={isLoading || isUpdating}
+                                        disabled={
+                                            isLoading ||
+                                            isUpdating ||
+                                            isLoadingWithoutOptions ||
+                                            !hasResponsibleOptions
+                                        }
                                     >
                                         <SelectTrigger className="h-9">
-                                            <SelectValue placeholder="Selecione um responsável">
+                                            <SelectValue
+                                                placeholder={
+                                                    isLoadingWithoutOptions
+                                                        ? "Carregando responsáveis..."
+                                                        : hasErrorWithoutFallback
+                                                            ? "Erro ao carregar responsáveis"
+                                                            : hasNoMembersAvailable
+                                                        ? "Nenhum membro disponível"
+                                                        : "Selecione um responsável"
+                                                }
+                                            >
                                                 {selectedUser && (
                                                     <div className="flex items-center gap-2">
                                                         <Avatar className="h-5 w-5">
@@ -1028,7 +1086,7 @@ export function LeadForm({
                                             </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {usersToAssign?.map(user => (
+                                            {responsibleUsers?.map(user => (
                                                 <SelectItem key={user.id} value={user.id}>
                                                     <div className="flex items-center gap-2">
                                                         <Avatar className="h-6 w-6">
@@ -1046,6 +1104,9 @@ export function LeadForm({
                                         </SelectContent>
                                     </Select>
                                 </FormControl>
+                                {sdrsError && !hasResponsibleOptions && (
+                                    <p className="mt-1 text-xs text-destructive">{sdrsError}</p>
+                                )}
                             </FormItem>
                         );
                     }}

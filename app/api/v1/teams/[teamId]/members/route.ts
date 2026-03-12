@@ -13,6 +13,8 @@ const removeMemberSchema = z.object({
   profileId: z.string().uuid(),
 });
 
+const listMembersFunctionSchema = z.enum(["SDR", "CLOSER"]);
+
 async function getRequesterProfile(supabaseId: string) {
   return prisma.profile.findUnique({
     where: { supabaseId },
@@ -24,6 +26,20 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ teamId: string }> }
 ) {
+  const logContext: {
+    teamId: string | null;
+    requesterProfileId: string | null;
+    requestedFunction: z.infer<typeof listMembersFunctionSchema> | null;
+    totalMembers: number;
+    filteredMembers: number;
+  } = {
+    teamId: null,
+    requesterProfileId: null,
+    requestedFunction: null,
+    totalMembers: 0,
+    filteredMembers: 0,
+  };
+
   try {
     const supabaseId = request.headers.get("x-supabase-user-id");
     if (!supabaseId) {
@@ -34,14 +50,30 @@ export async function GET(
     }
 
     const { teamId } = await params;
+    logContext.teamId = teamId;
     if (!teamId) {
       return NextResponse.json(new Output(false, [], ["Team ID é obrigatório"], null), { status: 400 });
     }
+
+    const requestedFunctionParam = new URL(request.url).searchParams.get("function");
+    let requestedFunction: z.infer<typeof listMembersFunctionSchema> | null = null;
+    if (requestedFunctionParam) {
+      const parsedFunction = listMembersFunctionSchema.safeParse(requestedFunctionParam.toUpperCase());
+      if (!parsedFunction.success) {
+        return NextResponse.json(
+          new Output(false, [], ["Parâmetro function inválido. Use SDR ou CLOSER."], null),
+          { status: 400 }
+        );
+      }
+      requestedFunction = parsedFunction.data;
+    }
+    logContext.requestedFunction = requestedFunction;
 
     const profile = await getRequesterProfile(supabaseId);
     if (!profile) {
       return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), { status: 404 });
     }
+    logContext.requesterProfileId = profile.id;
 
     const team = await prisma.team.findUnique({
       where: { id: teamId },
@@ -84,61 +116,6 @@ export async function GET(
       orderBy: { createdAt: "asc" },
     });
 
-    const masterTeamMembers = await prisma.teamMember.findMany({
-      where: {
-        team: { masterId: team.masterId },
-      },
-      distinct: ["profileId"],
-      include: {
-        profile: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            supabaseId: true,
-          },
-        },
-      },
-      orderBy: { createdAt: "asc" },
-    });
-
-    const masterAccountProfiles = await prisma.profile.findMany({
-      where: {
-        OR: [{ id: team.masterId }, { managerId: team.masterId }],
-        supabaseId: { not: null },
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        supabaseId: true,
-      },
-    });
-
-    const currentMemberIds = new Set(members.map((member) => member.profileId));
-    const eligibleProfiles = masterAccountProfiles
-      .filter((accountProfile) => accountProfile.supabaseId)
-      .filter((accountProfile) => !currentMemberIds.has(accountProfile.id))
-      .map((accountProfile) => ({
-        id: accountProfile.id,
-        name: accountProfile.fullName || accountProfile.email || "Usuário",
-        email: accountProfile.email,
-      }))
-      .sort((a, b) => {
-        const aKey = (a.name || a.email || "").toLowerCase();
-        const bKey = (b.name || b.email || "").toLowerCase();
-        return aKey.localeCompare(bKey, "pt-BR");
-      });
-
-    const transferCandidates = masterTeamMembers
-      .filter((member) => member.profile?.supabaseId)
-      .filter((member) => member.profileId !== team.masterId)
-      .map((member) => ({
-        id: member.profile.id,
-        name: member.profile.fullName || member.profile.email || "Usuário",
-        email: member.profile.email,
-      }));
-
     const formattedMembers = members.map((member) => ({
       id: member.id,
       profileId: member.profileId,
@@ -150,17 +127,88 @@ export async function GET(
       isMaster: member.profileId === team.masterId,
     }));
 
+    const filteredMembers = requestedFunction
+      ? formattedMembers.filter((member) => member.functions?.includes(requestedFunction))
+      : formattedMembers;
+    logContext.totalMembers = formattedMembers.length;
+    logContext.filteredMembers = filteredMembers.length;
+
+    console.info("[TeamMembersRoute][GET] Membros do time carregados", logContext);
+
+    let eligibleProfiles: Array<{ id: string; name: string; email: string | null }> = [];
+    let transferCandidates: Array<{ id: string; name: string; email: string | null }> = [];
+
+    if (!requestedFunction) {
+      const masterTeamMembers = await prisma.teamMember.findMany({
+        where: {
+          team: { masterId: team.masterId },
+        },
+        distinct: ["profileId"],
+        include: {
+          profile: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              supabaseId: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const masterAccountProfiles = await prisma.profile.findMany({
+        where: {
+          OR: [{ id: team.masterId }, { managerId: team.masterId }],
+          supabaseId: { not: null },
+        },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          supabaseId: true,
+        },
+      });
+
+      const currentMemberIds = new Set(members.map((member) => member.profileId));
+      eligibleProfiles = masterAccountProfiles
+        .filter((accountProfile) => accountProfile.supabaseId)
+        .filter((accountProfile) => !currentMemberIds.has(accountProfile.id))
+        .map((accountProfile) => ({
+          id: accountProfile.id,
+          name: accountProfile.fullName || accountProfile.email || "Usuário",
+          email: accountProfile.email,
+        }))
+        .sort((a, b) => {
+          const aKey = (a.name || a.email || "").toLowerCase();
+          const bKey = (b.name || b.email || "").toLowerCase();
+          return aKey.localeCompare(bKey, "pt-BR");
+        });
+
+      transferCandidates = masterTeamMembers
+        .filter((member) => member.profile?.supabaseId)
+        .filter((member) => member.profileId !== team.masterId)
+        .map((member) => ({
+          id: member.profile.id,
+          name: member.profile.fullName || member.profile.email || "Usuário",
+          email: member.profile.email,
+        }));
+    }
+
     return NextResponse.json(
       new Output(true, [], [], {
         team: { id: team.id, name: team.name, masterId: team.masterId },
-        members: formattedMembers,
+        members: filteredMembers,
         eligibleProfiles,
         transferCandidates,
       }),
       { status: 200 }
     );
   } catch (error) {
-    console.error("[TeamMembersRoute][GET] Erro ao listar membros do time:", error);
+    console.error("[TeamMembersRoute][GET] Erro ao listar membros do time", {
+      ...logContext,
+      error,
+    });
     return NextResponse.json(
       new Output(false, [], ["Erro interno ao listar membros do time"], null),
       { status: 500 }

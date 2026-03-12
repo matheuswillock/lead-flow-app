@@ -15,6 +15,9 @@ import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
+import { useParams } from "next/navigation";
+import { useTeamContext } from "@/app/context/TeamContext";
+import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 
 const LEAD_CARD_OPTIONS: { key: LeadCardField; label: string }[] = [
   { key: "name", label: "Nome" },
@@ -40,7 +43,6 @@ export default function BoardHeader() {
     setCloserFilter,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
-    taskOwners,
     statusLabels,
     user,
     userLoading,
@@ -51,6 +53,11 @@ export default function BoardHeader() {
     leadCardDisplay,
     setLeadCardDisplay,
   } = useBoardContext();
+  const params = useParams();
+  const supabaseId = params.supabaseId as string | undefined;
+  const { activeTeamId } = useTeamContext();
+  const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
+  const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
@@ -67,22 +74,19 @@ export default function BoardHeader() {
 
   const responsibleOptions = useMemo(
     () =>
-      taskOwners.map((owner) => ({
-        value: owner.id,
-        label: owner.name,
+      sdrMembers.map((sdr) => ({
+        value: sdr.id,
+        label: sdr.name || sdr.email,
       })),
-    [taskOwners]
+    [sdrMembers]
   );
 
   const closerOptions = useMemo(() => {
-    const users = user?.usersAssociated || [];
-    return users
-      .filter((u) => u.functions?.includes("CLOSER"))
-      .map((closer) => ({
-        value: closer.id,
-        label: closer.name || closer.email,
-      }));
-  }, [user]);
+    return closerMembers.map((closer) => ({
+      value: closer.id,
+      label: closer.name || closer.email,
+    }));
+  }, [closerMembers]);
 
   const handleDateChange = (range: DateRange | undefined) => {
     setDateRange(range);
