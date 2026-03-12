@@ -8,6 +8,7 @@ import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO
 import { FinalizeContractData } from "../container/FinalizeContractDialog";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
+import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -125,6 +126,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const supabaseId = params.supabaseId as string;
   const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
   const { user: contextUser, isLoading: userLoading } = useUserContext();
+  const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
   const searchParams = useSearchParams();
   const sharedLeadCode = searchParams.get("leadCode");
   const lastHandledShareKeyRef = useRef<string | null>(null);
@@ -621,19 +623,14 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   }, [data, query, assignedUsers, closerFilter, onlyMeetingsHeld, periodStart, periodEnd, statusFilter]);
 
   const responsaveis = useMemo(() => {
-    // Usar todos os usuários associados ao invés de apenas aqueles com leads atribuídos
-    if (!user?.usersAssociated || user.usersAssociated.length === 0) {
-      return [];
-    }
-    
-    return user.usersAssociated
-      .map((u) => ({
-        id: u.id,
-        name: u.name || u.email,
-        avatarUrl: u.avatarImageUrl || null
+    return sdrMembers
+      .map((sdr) => ({
+        id: sdr.id,
+        name: sdr.name || sdr.email,
+        avatarUrl: sdr.avatarImageUrl || null
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [user]);
+  }, [sdrMembers]);
 
     const value: IBoardContextState = {
       isLoading,

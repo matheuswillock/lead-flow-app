@@ -67,6 +67,7 @@ import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
+import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 
 export default function PipelineTable() {
   const params = useParams();
@@ -80,11 +81,12 @@ export default function PipelineTable() {
     setSelected,
     refreshLeads,
     patchLead,
-    user,
     errors,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
   } = usePipelineContext();
+  const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
+  const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
@@ -132,30 +134,15 @@ export default function PipelineTable() {
 
   // Preparar opções de responsáveis para o filtro
   const responsibleOptions = React.useMemo(() => {
-    const uniqueResponsibles = new Map<string, { id: string; name: string }>();
-    
-    filtered.forEach((lead) => {
-      if (lead.assignee) {
-        const name = lead.assignee.fullName || lead.assignee.email;
-        if (!uniqueResponsibles.has(lead.assignee.id)) {
-          uniqueResponsibles.set(lead.assignee.id, {
-            id: lead.assignee.id,
-            name: name,
-          });
-        }
-      }
-    });
-
-    return Array.from(uniqueResponsibles.values()).map(({ id, name }) => ({
-      label: name,
-      value: id,
+    return sdrMembers.map((sdr) => ({
+      label: sdr.name || sdr.email,
+      value: sdr.id,
     }));
-  }, [filtered]);
+  }, [sdrMembers]);
 
   const closers = React.useMemo(() => {
-    const users = user?.usersAssociated || [];
-    return users.filter((u) => u.functions?.includes("CLOSER"));
-  }, [user]);
+    return closerMembers;
+  }, [closerMembers]);
 
   const closerOptions = React.useMemo(() => {
     return closers.map((closer) => ({
@@ -580,7 +567,7 @@ export default function PipelineTable() {
           lead={selectedLead}
           onScheduleSuccess={handleScheduleSuccess}
           closers={closers}
-          teamMembers={user?.usersAssociated ?? []}
+          teamMembers={[]}
           mode={scheduleDialogMode}
         />
       )}
@@ -593,7 +580,7 @@ export default function PipelineTable() {
           statusLabels={statusLabels}
           onStatusChanged={refreshLeads}
           closers={closers}
-          teamMembers={user?.usersAssociated ?? []}
+          teamMembers={[]}
           onSchedulePatched={applyScheduledPatch}
         />
       )}

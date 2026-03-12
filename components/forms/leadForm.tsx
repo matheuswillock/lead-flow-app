@@ -81,6 +81,8 @@ export interface ILeadFormProps {
     meetingHealdSaving?: boolean;
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
     usersToAssign: UserAssociated[];
+    closersToAssign?: UserAssociated[];
+    sdrsToAssign?: UserAssociated[];
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     showMeetingLink?: boolean;
 }
@@ -100,6 +102,8 @@ export function LeadForm({
     meetingHealdSaving,
     onMeetingHealdChange,
     usersToAssign,
+    closersToAssign,
+    sdrsToAssign,
     leadId,
     showMeetingLink
 }: ILeadFormProps) {
@@ -110,8 +114,12 @@ export function LeadForm({
     const [ticketError, setTicketError] = useState<string | null>(null);
     const [extraGuestsDraft, setExtraGuestsDraft] = useState("");
     const closers = React.useMemo(
-        () => usersToAssign?.filter((user) => user.functions?.includes("CLOSER")) ?? [],
-        [usersToAssign]
+        () => closersToAssign ?? [],
+        [closersToAssign]
+    );
+    const sdrs = React.useMemo(
+        () => sdrsToAssign ?? [],
+        [sdrsToAssign]
     );
 
     const parseEmails = (value: string | undefined) => {
@@ -219,10 +227,10 @@ export function LeadForm({
 
     // Auto-select responsible when there's only one user available
     useEffect(() => {
-        if (usersToAssign?.length === 1 && !form.getValues('responsible')) {
-            form.setValue('responsible', usersToAssign[0].id);
+        if (sdrs?.length === 1 && !form.getValues('responsible')) {
+            form.setValue('responsible', sdrs[0].id);
         }
-    }, [usersToAssign, form]);
+    }, [sdrs, form]);
 
     useEffect(() => {
         const raw = form.getValues("currentValue");
@@ -990,14 +998,14 @@ export function LeadForm({
                     control={form.control}
                     name="responsible"
                     render={({ field }) => {
-                        const selectedValue = field.value || (usersToAssign?.[0]?.id ?? "");
-                        const selectedUser = usersToAssign?.find(user => user.id === selectedValue);
-                        const isOnlyOneUser = usersToAssign?.length === 1;
+                        const selectedValue = field.value || (sdrs?.[0]?.id ?? "");
+                        const selectedUser = sdrs?.find(user => user.id === selectedValue);
+                        const isOnlyOneUser = sdrs?.length === 1;
                         useEffect(() => {
-                            if (!field.value && usersToAssign?.length > 0) {
-                                field.onChange(usersToAssign[0].id);
+                            if (!field.value && sdrs?.length > 0) {
+                                field.onChange(sdrs[0].id);
                             }
-                        }, [usersToAssign, field.value, field.onChange]);
+                        }, [sdrs, field.value, field.onChange]);
 
                         return (
                             <FormItem className="flex flex-col">
@@ -1008,10 +1016,16 @@ export function LeadForm({
                                     <Select
                                         value={selectedValue}
                                         onValueChange={field.onChange}
-                                        disabled={isLoading || isUpdating}
+                                        disabled={isLoading || isUpdating || sdrs.length === 0}
                                     >
                                         <SelectTrigger className="h-9">
-                                            <SelectValue placeholder="Selecione um responsável">
+                                            <SelectValue
+                                                placeholder={
+                                                    sdrs.length === 0
+                                                        ? "Nenhum SDR disponível"
+                                                        : "Selecione um responsável"
+                                                }
+                                            >
                                                 {selectedUser && (
                                                     <div className="flex items-center gap-2">
                                                         <Avatar className="h-5 w-5">
@@ -1028,7 +1042,7 @@ export function LeadForm({
                                             </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {usersToAssign?.map(user => (
+                                            {sdrs?.map(user => (
                                                 <SelectItem key={user.id} value={user.id}>
                                                     <div className="flex items-center gap-2">
                                                         <Avatar className="h-6 w-6">

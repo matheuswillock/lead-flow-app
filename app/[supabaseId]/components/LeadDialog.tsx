@@ -47,6 +47,7 @@ import {
   type LeadActivityRealtimeRow,
 } from "@/hooks/useLeadActivitiesRealtime";
 import { useHealthPlans } from "@/hooks/useHealthPlans";
+import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 
 interface LeadDialogProps {
   open: boolean;
@@ -151,6 +152,8 @@ export default function LeadDialog({
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
   const { healthPlans, loading: healthPlansLoading } = useHealthPlans(supabaseId, activeTeamId);
+  const { members: closersByTeam } = useTeamClosers(supabaseId, activeTeamId);
+  const { members: sdrsByTeam } = useTeamSdrs(supabaseId, activeTeamId);
   const pathname = usePathname();
   const sharedLeadCode = searchParams.get("leadCode");
   const sharedActivityId = searchParams.get("activityId");
@@ -336,18 +339,15 @@ export default function LeadDialog({
   }, [teamMembers, user?.id]);
 
   const usersToAssign = useMemo<UserAssociated[]>(() => {
-    if (teamMembers.length > 0) {
-      return teamMembers.map((member) => ({
-        id: member.profileId,
-        name: member.name,
-        avatarImageUrl: member.profileIconUrl || "",
-        email: member.email || "",
-        role: member.role ?? "operator",
-        functions: member.functions ?? [],
-      }));
-    }
-    return user?.usersAssociated || [];
-  }, [teamMembers, user?.usersAssociated]);
+    return teamMembers.map((member) => ({
+      id: member.profileId,
+      name: member.name,
+      avatarImageUrl: member.profileIconUrl || "",
+      email: member.email || "",
+      role: member.role ?? "operator",
+      functions: member.functions ?? [],
+    }));
+  }, [teamMembers]);
 
   const mentionMatches = useMemo(() => {
     const query = mentionQuery.trim().toLowerCase();
@@ -1507,13 +1507,13 @@ export default function LeadDialog({
         meetingLink: "",
         meetingHeald: "no",
         extraGuests: "",
-        responsible: user?.usersAssociated?.[0]?.id || "",
+        responsible: sdrsByTeam[0]?.id || "",
         ticket: "",
         contractDueDate: "",
         soldPlan: undefined,
       });
     }
-  }, [lead, open, form, user, scheduleGuests]);
+  }, [lead, open, form, sdrsByTeam, scheduleGuests]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1797,6 +1797,8 @@ export default function LeadDialog({
                     healthPlanOptionsLoading={healthPlansLoading}
                     onCancel={() => setOpen(false)}
                     usersToAssign={usersToAssign}
+                    closersToAssign={closersByTeam}
+                    sdrsToAssign={sdrsByTeam}
                     leadId={lead?.id}
                     showMeetingHeald={canShowMeetingHeald}
                     meetingHealdReadOnly={false}
