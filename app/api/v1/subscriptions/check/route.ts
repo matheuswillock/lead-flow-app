@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SubscriptionRepository } from '@/app/api/infra/data/repositories/subscription/SubscriptionRepository';
 import { SubscriptionCheckService } from '@/app/api/services/SubscriptionCheck/SubscriptionCheckService';
 import { CheckSubscriptionUseCase } from '@/app/api/useCases/subscriptions/CheckSubscriptionUseCase';
+import { Output } from '@/lib/output';
 
 /**
  * POST /api/v1/subscriptions/check
@@ -9,41 +10,39 @@ import { CheckSubscriptionUseCase } from '@/app/api/useCases/subscriptions/Check
  * Body: { email, cpfCnpj, phone }
  */
 export async function POST(request: NextRequest) {
+  const routeName = '[SubscriptionCheckRoute][POST]';
+
   try {
     const body = await request.json();
 
-    console.info('🎯 [Controller] POST /api/v1/subscriptions/check');
+    console.info(`${routeName} Request received`);
 
-    // Dependency Injection
     const subscriptionRepository = new SubscriptionRepository();
     const subscriptionCheckService = new SubscriptionCheckService(subscriptionRepository);
     const checkSubscriptionUseCase = new CheckSubscriptionUseCase(subscriptionCheckService);
 
-    // Executar use case
-    const result = await checkSubscriptionUseCase.execute(body);
+    const output = await checkSubscriptionUseCase.execute(body);
+    const result = output.result as
+      | { hasActiveSubscription?: boolean; userExists?: boolean }
+      | null;
+    const statusCode = output.isValid ? 200 : 400;
 
-    return NextResponse.json(result);
-  } catch (error: any) {
-    console.error('❌ [Controller] Erro:', error.message);
+    console.info(`${routeName} Completed`, {
+      isValid: output.isValid,
+      hasActiveSubscription: result?.hasActiveSubscription ?? false,
+      userExists: result?.userExists ?? false,
+      errorMessages: output.errorMessages,
+    });
 
-    // Erro de validação
-    if (error.message.includes('campo de identificação')) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: error.message,
-        },
-        { status: 400 }
-      );
-    }
+    return NextResponse.json(output, { status: statusCode });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Erro ao verificar assinatura';
 
-    // Erro interno
+    console.error(`${routeName} Unexpected error`, error);
+
     return NextResponse.json(
-      {
-        success: false,
-        message: 'Erro ao verificar assinatura',
-        error: error.message,
-      },
+      new Output(false, [], [message], null),
       { status: 500 }
     );
   }

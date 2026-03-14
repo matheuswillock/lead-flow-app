@@ -135,7 +135,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({
           }),
         });
 
-        const subscriptionCheckResult = await checkResponse.json();
+        const subscriptionCheckOutput: Output = await checkResponse.json();
+        const subscriptionCheckResult = subscriptionCheckOutput.isValid
+          ? (subscriptionCheckOutput.result as UserBootstrapResponse["subscriptionCheckResult"])
+          : null;
 
         return {
           profileOutput,

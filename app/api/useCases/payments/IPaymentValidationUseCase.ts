@@ -1,3 +1,4 @@
+import type { Output } from "@/lib/output";
 import type { AsaasPayment, AsaasSubscription } from '../../services/PaymentValidation/AsaasWebhookTypes';
 // app/api/useCases/payments/IPaymentValidationUseCase.ts
 
@@ -11,6 +12,6 @@ export interface ProcessWebhookDTO {
 }
 
 export interface IPaymentValidationUseCase {
-  validatePayment(dto: ValidatePaymentDTO): Promise<any>;
-  processWebhook(dto: ProcessWebhookDTO): Promise<any>;
+  validatePayment(dto: ValidatePaymentDTO): Promise<Output>;
+  processWebhook(dto: ProcessWebhookDTO): Promise<Output>;
 }

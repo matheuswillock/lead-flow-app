@@ -1,4 +1,4 @@
-import { CheckSubscriptionResult } from '../../services/SubscriptionCheck/ISubscriptionCheckService';
+import type { Output } from "@/lib/output";
 
 export interface CheckSubscriptionDTO {
   email?: string;
@@ -10,7 +10,7 @@ export interface ICheckSubscriptionUseCase {
   /**
    * Executa a verificação de assinatura ativa
    * @param data Dados para verificação (email, cpfCnpj, phone)
-   * @returns Resultado da verificação
+   * @returns Output padronizado contendo o resultado da verificação
    */
-  execute(data: CheckSubscriptionDTO): Promise<CheckSubscriptionResult>;
+  execute(data: CheckSubscriptionDTO): Promise<Output>;
 }

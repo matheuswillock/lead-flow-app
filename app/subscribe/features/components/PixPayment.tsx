@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Copy, QrCode, RefreshCw, Timer } from 'lucide-react';
+import type { Output } from '@/lib/output';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -13,6 +14,14 @@ interface PixPaymentProps {
   paymentId: string; // ID do pagamento para regenerar
   onPaymentConfirmed?: () => void;
   onQrCodeExpired?: () => void;
+}
+
+interface PaymentValidationResult {
+  success: boolean;
+  isPaid: boolean;
+  paymentStatus?: string;
+  profileUpdated?: boolean;
+  message?: string;
 }
 
 export function PixPayment({
@@ -124,7 +133,14 @@ export function PixPayment({
         throw new Error('Erro ao verificar pagamento');
       }
 
-      const data = await response.json();
+      const output: Output = await response.json();
+      const data = output.isValid
+        ? (output.result as PaymentValidationResult | null)
+        : null;
+
+      if (!output.isValid || !data) {
+        throw new Error(output.errorMessages?.join(', ') || 'Erro ao verificar pagamento');
+      }
       
       if (data.isPaid) {
         toast.success('Pagamento confirmado!', {
