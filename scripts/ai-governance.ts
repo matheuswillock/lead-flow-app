@@ -57,6 +57,53 @@ const IGNORED_DIRECTORIES = new Set([
   "test-results",
 ]);
 
+interface FrontendPatternRequirement {
+  directorySegments: string[];
+  label: string;
+  matcher: RegExp;
+}
+
+const FRONTEND_REQUIRED_DIRECTORIES = [
+  ["features", "context"],
+  ["features", "services"],
+  ["features", "container"],
+];
+
+const FRONTEND_REQUIRED_FILES = ["loading.tsx"];
+
+const FRONTEND_PATTERN_REQUIREMENTS: FrontendPatternRequirement[] = [
+  {
+    directorySegments: ["features", "context"],
+    label: "features/context/*Types.ts",
+    matcher: /^[A-Za-z0-9._-]+Types\.ts$/,
+  },
+  {
+    directorySegments: ["features", "context"],
+    label: "features/context/*Hook.ts",
+    matcher: /^[A-Za-z0-9._-]+Hook\.ts$/,
+  },
+  {
+    directorySegments: ["features", "context"],
+    label: "features/context/*Context.tsx",
+    matcher: /^[A-Za-z0-9._-]+Context\.tsx$/,
+  },
+  {
+    directorySegments: ["features", "services"],
+    label: "features/services/I*Service.ts",
+    matcher: /^I[A-Za-z0-9._-]+Service(?:s)?\.ts$/,
+  },
+  {
+    directorySegments: ["features", "services"],
+    label: "features/services/*Service.ts",
+    matcher: /^(?!I[A-Z])[A-Za-z0-9._-]+Service\.ts$/,
+  },
+  {
+    directorySegments: ["features", "container"],
+    label: "features/container/*Container.tsx",
+    matcher: /^[A-Za-z0-9._-]+Container\.tsx$/,
+  },
+];
+
 function normalizeRelativePath(absolutePath: string): string {
   return path.relative(ROOT, absolutePath).split(path.sep).join("/");
 }
@@ -117,6 +164,18 @@ async function isDirectory(targetPath: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function directoryHasMatchingFile(
+  directoryPath: string,
+  matcher: RegExp,
+): Promise<boolean> {
+  if (!(await isDirectory(directoryPath))) {
+    return false;
+  }
+
+  const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+  return entries.some((entry) => entry.isFile() && matcher.test(entry.name));
 }
 
 async function collectFilesRecursively(
@@ -430,23 +489,40 @@ async function validateFrontendFeatureStructure(
       continue;
     }
 
-    const requiredDirectories = [
-      path.join(pageDirectory, "features", "context"),
-      path.join(pageDirectory, "features", "services"),
-      path.join(pageDirectory, "features", "container"),
-    ];
-    const requiredFiles = [path.join(pageDirectory, "loading.tsx")];
-
     const missing: string[] = [];
-    for (const requiredDirectory of requiredDirectories) {
-      if (!(await isDirectory(requiredDirectory))) {
+    const availableDirectories = new Set<string>();
+    for (const directorySegments of FRONTEND_REQUIRED_DIRECTORIES) {
+      const requiredDirectory = path.join(pageDirectory, ...directorySegments);
+      const directoryExists = await isDirectory(requiredDirectory);
+      if (!directoryExists) {
         missing.push(normalizeRelativePath(requiredDirectory));
+        continue;
+      }
+
+      availableDirectories.add(directorySegments.join("/"));
+    }
+
+    for (const requiredFileName of FRONTEND_REQUIRED_FILES) {
+      const requiredFile = path.join(pageDirectory, requiredFileName);
+      if (!(await pathExists(requiredFile))) {
+        missing.push(normalizeRelativePath(requiredFile));
       }
     }
 
-    for (const requiredFile of requiredFiles) {
-      if (!(await pathExists(requiredFile))) {
-        missing.push(normalizeRelativePath(requiredFile));
+    for (const requirement of FRONTEND_PATTERN_REQUIREMENTS) {
+      const directoryKey = requirement.directorySegments.join("/");
+      if (!availableDirectories.has(directoryKey)) {
+        continue;
+      }
+
+      const requiredDirectory = path.join(
+        pageDirectory,
+        ...requirement.directorySegments,
+      );
+      if (
+        !(await directoryHasMatchingFile(requiredDirectory, requirement.matcher))
+      ) {
+        missing.push(path.posix.join(relativePagePath, requirement.label));
       }
     }
 

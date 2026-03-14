@@ -21,6 +21,8 @@ This document defines the implementation governance for AI agents in this reposi
 - Agents **MUST** treat `agents.md` as the canonical instruction file.
 - Adapter files (`.github/copilot-instructions.md`, `.cursor/rules/lead-flow-agents.mdc`, `CLAUDE.md`, `AGENTS.md`) **MUST** be generated from this file.
 - Team members and agents **MUST NOT** manually edit generated adapter files.
+- Whenever any AI governance/instruction file is changed, the equivalent rule update **MUST** be propagated to every generated adapter in the same change by running `bun run governance:sync`.
+- An AI-governance rule change is **NOT** complete until the canonical file and every generated adapter reflect the same rule set.
 - `AGENTS.md` is treated as a logical alias for `agents.md` in governance checks to prevent cross-platform case-collision issues.
 - `.github/agents.md` is intentionally not generated to avoid confusion with the canonical file name.
 - Regenerate adapters with:
@@ -48,6 +50,43 @@ Target flow:
 - Services (`app/api/services/**`) **SHOULD** hold complex domain logic.
 - Data access **SHOULD** live in UseCases/Services.
 - Routes **MUST NOT** call Prisma directly for new code.
+- New product API code **MUST** follow the canonical `app/api` layout:
+
+```text
+app/api/
+  v1/                               # versioned product endpoints
+    [domain]/
+      route.ts                      # collection/root HTTP entrypoint
+      [param]/
+        route.ts                    # parameterized HTTP entrypoint
+      DTO/                          # optional route-local transport contracts
+  useCases/
+    [domain]/
+      I[Feature]UseCase.ts          # use case contract
+      [Feature]UseCase.ts           # orchestration + Output creation
+  services/
+    [Feature]/
+      I[Feature]Service.ts          # optional service contract
+      [Feature]Service.ts           # domain/integration implementation
+  infra/
+    data/
+      prisma.ts                     # shared Prisma client boundary
+      repositories/                 # optional repository/data-access helpers
+  auth/                             # auth/infrastructure endpoints
+  email/                            # email/integration endpoints
+  webhooks/                         # webhook receivers
+  demo/                             # demo/non-product endpoints
+```
+
+- `app/api/v1/**/route.ts` **MUST** be the default location for new product APIs.
+- `app/api/v1/**/DTO/` **SHOULD** contain request/response contracts only when the route needs route-local transport mapping.
+- `app/api/useCases/[domain]/I*UseCase.ts` **MUST** define the use case contract for that domain.
+- `app/api/useCases/[domain]/*UseCase.ts` **MUST** implement orchestration, business validation, and Output creation.
+- `app/api/services/[Feature]/I*Service.ts` **SHOULD** define the service contract when a service is introduced.
+- `app/api/services/[Feature]/*Service.ts` **SHOULD** implement domain logic, third-party integration logic, or reusable technical orchestration behind a use case.
+- `app/api/infra/data/prisma.ts` **MUST** remain the shared Prisma client boundary.
+- `app/api/infra/data/repositories/**` **SHOULD** hold repository helpers when data access becomes reusable or complex.
+- `app/api/auth/**`, `app/api/email/**`, `app/api/webhooks/**`, and `app/api/demo/**` are special integration/infrastructure areas and **MUST NOT** become the default placement for new product endpoints.
 
 ### Frontend (FOR NEW FEATURES)
 
@@ -64,14 +103,51 @@ Target flow:
   - `features/context`
   - `features/services`
   - `features/container`
+- Every new frontend page under `app/**` **MUST** follow the canonical `features/` layout:
+
+```text
+app/[route]/
+  page.tsx                          # thin page entrypoint
+  loading.tsx                       # route loading UI
+  features/
+    context/
+      [Feature]Types.ts             # state/actions/contracts
+      [Feature]Hook.ts              # feature orchestration/state logic
+      [Feature]Context.tsx          # provider + consumer hook
+    services/
+      I[Feature]Service.ts          # service contract
+      [Feature]Service.ts           # API/integration implementation
+    container/
+      [Feature]Container.tsx        # main page composition entry
+    components/                     # optional presentational subcomponents
+    types/                          # optional shared feature-local types
+    validation/                     # optional schemas/parsers/validators
+    hooks/                          # optional extra feature-local hooks
+    utils/                          # optional pure feature-local helpers
+```
+
 - `page.tsx` **MUST** be thin and compositional (assemble layout, wire provider/container, route params, start feature flow).
 - `page.tsx` **MUST NOT** contain dense business logic, direct HTTP calls, large data transforms, or excessive local state.
+- `features/context` **MUST** contain `*Types.ts`, `*Hook.ts`, and `*Context.tsx`.
+- `*Types.ts` **MUST** define the context state, actions, and local contracts exposed by the feature context.
+- `*Hook.ts` **MUST** contain the primary feature orchestration/state logic consumed by the context/provider.
+- `*Context.tsx` **MUST** expose the provider and the public consumer hook for the feature state.
+- `features/services` **MUST** contain `I*Service.ts` and `*Service.ts`.
+- `I*Service.ts` **MUST** define the frontend service contract.
+- `*Service.ts` **MUST** implement backend communication, response mapping, and technical error handling.
 - `features/container` **MUST** contain page-specific visual composition components (headers, cards, dialogs, loaders, error states).
+- `features/container` **MUST** contain `*Container.tsx` as the main page composition entry for the feature.
 - Visual components in `features/container` **MUST NOT** call backend APIs directly or own dense business rules.
 - `features/context` **MUST** centralize page state, hooks, local types/contracts, and feature orchestration.
 - `features/context` **MUST** call `features/services` for remote communication and expose state/actions to containers.
 - `features/services` **MUST** isolate HTTP/API integration and technical response handling for the feature.
 - `features/services` **MUST** use interface + concrete implementation.
+- `features/components` **SHOULD** contain presentational subcomponents that support containers and **MUST NOT** own remote orchestration.
+- `features/types` **SHOULD** contain feature-local shared types that do not belong exclusively inside `context` or `services`.
+- `features/validation` **SHOULD** contain schemas, parsers, and validation helpers for forms or payload composition.
+- `features/hooks` **SHOULD** contain extra reusable feature-local hooks beyond the primary `*Hook.ts`.
+- `features/utils` **SHOULD** contain pure helpers local to the feature.
+- Optional `features/*` folders **MUST NOT** be created empty and **MUST NOT** replace the required `context/services/container` baseline.
 - Page-specific logic **MUST** stay inside the local `features/` folder for that route.
 - When code stops being page-specific and becomes reusable, it **SHOULD** be moved to an appropriate shared layer.
 
@@ -234,6 +310,7 @@ The scaffold creates:
 
 - Backend: Route + UseCase + Service
 - Frontend: Page + Loading + Context (Types/Hook/Provider) + Service + Container
+- Optional frontend additions after scaffold: `components/`, `types/`, `validation/`, `hooks/`, `utils/` only when the feature actually needs them.
 
 Agents **SHOULD** start from scaffold and then adapt business logic.
 

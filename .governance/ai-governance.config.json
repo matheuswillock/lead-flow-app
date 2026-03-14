@@ -5,7 +5,9 @@
       "MUST",
       "SHOULD",
       "LEGACY EXCEPTIONS",
-      "FOR NEW FEATURES"
+      "FOR NEW FEATURES",
+      "canonical `app/api` layout",
+      "canonical `features/` layout"
     ]
   },
   "warnings": {
