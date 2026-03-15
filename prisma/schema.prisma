@@ -31,6 +31,7 @@ datasource db {
 
 enum UserRole {
   manager
+  backoffice
   operator
 }
 
@@ -112,6 +113,7 @@ enum NotificationType {
   TEAM_MEMBER_ADDED
   TEAM_MEMBER_REMOVED
   LEAD_SCHEDULE_CREATED
+  LEAD_PROPOSAL_PENDING
 
   @@map("notification_type")
 }

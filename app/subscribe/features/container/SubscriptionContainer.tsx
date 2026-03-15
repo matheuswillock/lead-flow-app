@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Check, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import type { Output } from '@/lib/output';
 import { SubscriptionFormMultiStep } from '../components/SubscriptionFormMultiStep';
 import type { SubscriptionState } from '../types/SubscriptionTypes';
 import { SubscriptionSuccess } from '../components/SubscriptionSuccess';
@@ -11,7 +12,7 @@ import { SubscriptionError } from '../components/SubscriptionError';
 import { ActiveSubscriptionMessage } from '../components/ActiveSubscriptionMessage';
 import { createSupabaseBrowser } from '@/lib/supabase/browser';
 
-interface CheckSubscriptionResponse {
+interface CheckSubscriptionResult {
   success: boolean;
   hasActiveSubscription: boolean;
   userExists: boolean;
@@ -71,9 +72,12 @@ export function SubscriptionContainer() {
           body: JSON.stringify({ email: user.email }),
         });
 
-        const result: CheckSubscriptionResponse = await response.json();
+        const output: Output = await response.json();
+        const result = output.isValid
+          ? (output.result as CheckSubscriptionResult | null)
+          : null;
 
-        if (result.success && result.hasActiveSubscription) {
+        if (output.isValid && result?.hasActiveSubscription) {
           console.warn('⚠️ [SubscriptionContainer] Assinatura ativa encontrada para usuário logado');
           setHasActiveSubscription(true);
           setActiveSubscriptionData({

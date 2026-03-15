@@ -45,9 +45,9 @@ export function DeleteUserDialog({
             Esta ação não pode ser desfeita. O usuário será permanentemente removido do sistema e
             perderá acesso a todas as funcionalidades.
           </p>
-          {user.role === "manager" && (
+          {(user.role === "manager" || user.role === "backoffice") && (
             <p className="text-sm text-orange-600 dark:text-orange-400">
-              ⚠️ Atenção: Este usuário é um Manager e pode ter operators associados.
+              ⚠️ Atenção: Este usuário possui papel de gestão e pode ter operators associados.
             </p>
           )}
         </div>

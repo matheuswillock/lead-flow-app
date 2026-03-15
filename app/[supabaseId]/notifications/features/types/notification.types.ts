@@ -3,7 +3,8 @@ export type NotificationTypeValue =
   | "ACTIVITY_REACTION"
   | "TEAM_MEMBER_ADDED"
   | "TEAM_MEMBER_REMOVED"
-  | "LEAD_SCHEDULE_CREATED";
+  | "LEAD_SCHEDULE_CREATED"
+  | "LEAD_PROPOSAL_PENDING";
 
 export type NotificationMetadata = {
   leadId?: string;
@@ -16,6 +17,13 @@ export type NotificationMetadata = {
   isReschedule?: boolean;
   teamId?: string;
   teamName?: string;
+  leadEmail?: string | null;
+  leadPhone?: string | null;
+  sdrName?: string | null;
+  closerName?: string | null;
+  notes?: string | null;
+  previousStatus?: string;
+  nextStatus?: string;
 };
 
 export type MarkAllAsReadOptions = {

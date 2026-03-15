@@ -3,7 +3,7 @@ import type { RequestToRegisterUserProfile, RequestToRegisterUserProfileOAuth } 
 
 export interface ProfileInfo {
   id: string;
-  role: 'manager' | 'operator';
+  role: 'manager' | 'backoffice' | 'operator';
   managerId: string | null;
   isMaster: boolean;
   fullName: string | null;

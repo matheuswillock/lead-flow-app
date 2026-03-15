@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,17 @@ const LEAD_CARD_OPTIONS: { key: LeadCardField; label: string }[] = [
   { key: "id", label: "Id" },
 ];
 
-export default function BoardHeader() {
+interface BoardHeaderProps {
+  title?: string;
+  viewModeToggle?: ReactNode;
+  hideFiltersBar?: boolean;
+}
+
+export default function BoardHeader({
+  title = "Kanban de Leads",
+  viewModeToggle,
+  hideFiltersBar = false,
+}: BoardHeaderProps) {
   const {
     query,
     setQuery,
@@ -125,7 +135,7 @@ export default function BoardHeader() {
         <div className="flex items-center gap-4">
           <ScrollText className="size-6" />
           <div>
-            <h1 className="text-2xl font-semibold">Kanban de Leads</h1>
+            <h1 className="text-2xl font-semibold">{title}</h1>
             {userLoading ? (
               <p className="text-sm text-muted-foreground">Carregando...</p>
             ) : user ? (
@@ -137,6 +147,7 @@ export default function BoardHeader() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {viewModeToggle}
           <Button onClick={openNewLeadDialog} size="default" className="cursor-pointer">
             <Plus className="mr-2 size-4" />
             Adicionar novo lead
@@ -204,47 +215,49 @@ export default function BoardHeader() {
         </div>
       </div>
 
-      <LeadsFiltersLayout>
-        <Input
-          placeholder="Filtrar por nome..."
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          className="h-8 w-[150px] lg:w-[250px]"
-        />
-        <LeadsStatusFilter
-          statusOptions={statusOptions}
-          selectedStatuses={statusFilter}
-          onChangeStatuses={(values) => setStatusFilter(values as typeof statusFilter)}
-          meetingHeld={onlyMeetingsHeld}
-          onToggleMeetingHeld={setOnlyMeetingsHeld}
-        />
-        {responsibleOptions.length > 0 && (
-          <LeadsMultiFilter
-            title="Responsável"
-            options={responsibleOptions}
-            selectedValues={assignedUsers}
-            onChange={setAssignedUsers}
+      {!hideFiltersBar && (
+        <LeadsFiltersLayout>
+          <Input
+            placeholder="Filtrar por nome..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="h-8 w-[150px] lg:w-[250px]"
           />
-        )}
-        {closerOptions.length > 0 && (
-          <LeadsMultiFilter
-            title="Closer"
-            options={closerOptions}
-            selectedValues={closerFilter}
-            onChange={setCloserFilter}
+          <LeadsStatusFilter
+            statusOptions={statusOptions}
+            selectedStatuses={statusFilter}
+            onChangeStatuses={(values) => setStatusFilter(values as typeof statusFilter)}
+            meetingHeld={onlyMeetingsHeld}
+            onToggleMeetingHeld={setOnlyMeetingsHeld}
           />
-        )}
-        <LeadsDateFilter
-          title="Data de Criação"
-          value={dateRange}
-          onChange={handleDateChange}
-        />
-        {isFiltered && (
-          <Button variant="ghost" className="h-8 px-2 lg:px-3" onClick={clearFilters}>
-            Limpar
-          </Button>
-        )}
-      </LeadsFiltersLayout>
+          {responsibleOptions.length > 0 && (
+            <LeadsMultiFilter
+              title="Responsável"
+              options={responsibleOptions}
+              selectedValues={assignedUsers}
+              onChange={setAssignedUsers}
+            />
+          )}
+          {closerOptions.length > 0 && (
+            <LeadsMultiFilter
+              title="Closer"
+              options={closerOptions}
+              selectedValues={closerFilter}
+              onChange={setCloserFilter}
+            />
+          )}
+          <LeadsDateFilter
+            title="Data de Criação"
+            value={dateRange}
+            onChange={handleDateChange}
+          />
+          {isFiltered && (
+            <Button variant="ghost" className="h-8 px-2 lg:px-3" onClick={clearFilters}>
+              Limpar
+            </Button>
+          )}
+        </LeadsFiltersLayout>
+      )}
     </div>
   );
 }

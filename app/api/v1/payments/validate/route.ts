@@ -4,16 +4,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PaymentRepository } from '@/app/api/infra/data/repositories/payment/PaymentRepository';
 import { PaymentValidationService } from '@/app/api/services/PaymentValidation/PaymentValidationService';
 import { PaymentValidationUseCase } from '@/app/api/useCases/payments/PaymentValidationUseCase';
+import { Output } from '@/lib/output';
 
 export async function POST(request: NextRequest) {
+  const routeName = '[PaymentValidationRoute][POST]';
+
   try {
     const body = await request.json();
 
-    console.info('[POST /api/v1/payments/validate] Requisição recebida:', {
-      paymentId: body.paymentId,
+    console.info(`${routeName} Request received`, {
+      hasPaymentId: !!body.paymentId,
     });
 
-    // Dependency Injection
     const paymentRepository = new PaymentRepository();
     const paymentValidationService = new PaymentValidationService(
       paymentRepository
@@ -22,23 +24,30 @@ export async function POST(request: NextRequest) {
       paymentValidationService
     );
 
-    // Execute use case
-    const result = await paymentValidationUseCase.validatePayment({
+    const output = await paymentValidationUseCase.validatePayment({
       paymentId: body.paymentId,
     });
 
-    console.info('[POST /api/v1/payments/validate] Resultado:', result);
+    const result = (output.result as { isPaid?: boolean; paymentStatus?: string } | null);
+    const statusCode = output.isValid ? 200 : 400;
 
-    return NextResponse.json(result, { status: 200 });
-  } catch (error: any) {
-    console.error('[POST /api/v1/payments/validate] Erro:', error);
+    console.info(`${routeName} Completed`, {
+      isValid: output.isValid,
+      isPaid: result?.isPaid ?? false,
+      paymentStatus: result?.paymentStatus ?? null,
+      errorMessages: output.errorMessages,
+    });
+
+    return NextResponse.json(output, { status: statusCode });
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Erro ao validar pagamento';
+
+    console.error(`${routeName} Unexpected error`, error);
+
     return NextResponse.json(
-      {
-        success: false,
-        isPaid: false,
-        message: error.message || 'Erro ao validar pagamento',
-      },
-      { status: 400 }
+      new Output(false, [], [message], null),
+      { status: 500 }
     );
   }
 }

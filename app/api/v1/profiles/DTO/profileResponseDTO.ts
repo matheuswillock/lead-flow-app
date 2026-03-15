@@ -1,5 +1,6 @@
 import type { UserRole, UserFunction } from "@prisma/client";
 import { Output } from "@/lib/output";
+import { isManagerLikeRole } from "@/lib/roles";
 
 export interface UserAssociated {
   id: string; 
@@ -57,7 +58,7 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
   usersAssociated.push(currentUser);
   
   // Se for manager, incluir TAMBÉM todos os operadores (evitando duplicatas)
-  if (profile.role === 'manager' && profile.operators && profile.operators.length > 0) {
+  if (isManagerLikeRole(profile.role) && profile.operators && profile.operators.length > 0) {
     const operators = profile.operators
       .filter((operator: any) => operator.id !== profile.id) // Evitar duplicar o próprio usuário
       .map((operator: any) => ({

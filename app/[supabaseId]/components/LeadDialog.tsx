@@ -24,7 +24,7 @@ import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { ProfileResponseDTO, UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import type { LeadActivityReactionSummary, LeadActivityResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
-import { useParams, usePathname, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { EmojiStyle, Theme } from "emoji-picker-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -48,6 +48,7 @@ import {
 } from "@/hooks/useLeadActivitiesRealtime";
 import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import { isManagerLikeRole } from "@/lib/roles";
 
 interface LeadDialogProps {
   open: boolean;
@@ -164,7 +165,6 @@ export default function LeadDialog({
     error: sdrsError,
     refreshMembers: refreshSdrs,
   } = useTeamSdrs(supabaseId, activeTeamId);
-  const pathname = usePathname();
   const sharedLeadCode = searchParams.get("leadCode");
   const sharedActivityId = searchParams.get("activityId");
   const currentActivitiesLead = leadDetails?.id === lead?.id ? leadDetails : null;
@@ -304,12 +304,10 @@ export default function LeadDialog({
 
   const shareUrl = useMemo(() => {
     if (!lead || !origin || !lead.leadCode) return "";
-    const isPipeline = pathname.includes("/pipeline");
-    const basePath = isPipeline ? "/pipeline" : "/board";
-    const url = new URL(basePath, origin);
+    const url = new URL("/crm", origin);
     url.searchParams.set("leadCode", lead.leadCode);
     return url.toString();
-  }, [lead, origin, pathname]);
+  }, [lead, origin]);
 
   const shareMessage = useMemo(() => {
     if (!lead) return shareUrl;
@@ -344,7 +342,7 @@ export default function LeadDialog({
   const canShowMeetingHeald = shouldShowMeetingHeald && canEditMeetingHeald;
   const showMeetingLink = !!lead && lead.status !== "new_opportunity";
   const canReactToActivity =
-    !!user && (user.role === "manager" || activeFunctions.includes("SDR") || activeFunctions.includes("CLOSER"));
+    !!user && (isManagerLikeRole(user.role) || activeFunctions.includes("SDR") || activeFunctions.includes("CLOSER"));
   const statusLabel = lead
     ? COLUMNS.find((column) => column.key === lead.status)?.title || lead.status
     : "Status";

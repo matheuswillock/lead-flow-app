@@ -45,6 +45,7 @@ import {
 import { useTeamContext } from "@/app/context/TeamContext";
 import { ManagerUsersService } from "../services/ManagerUsersService";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
+import { isManagerLikeRole } from "@/lib/roles";
 
 interface UserFormDialogProps {
   open: boolean;
@@ -232,8 +233,8 @@ export function UserFormDialog({
 
   // Verificar se é o próprio usuário editando seu papel
   const isOwnProfile = isEditing && user?.id === currentProfileId;
-  const isManager = user?.role === "manager";
-  const canEditRole = !isOwnProfile || !isManager;
+  const isManagerLike = isManagerLikeRole(user?.role);
+  const canEditRole = !isOwnProfile || !isManagerLike;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -304,6 +305,7 @@ export function UserFormDialog({
                     <div className="space-y-2">
                       {([
                         { label: "Manager", value: "manager" as const },
+                        { label: "Backoffice", value: "backoffice" as const },
                         { label: "Operator", value: "operator" as const },
                       ]).map((item) => {
                         const isChecked = field.value === item.value;
@@ -317,6 +319,8 @@ export function UserFormDialog({
                               <p className="text-xs text-muted-foreground">
                                 {item.value === "manager"
                                   ? "Gerencia usuários e configurações do time."
+                                  : item.value === "backoffice"
+                                  ? "Acesso de gestão equivalente ao Manager (sem privilégios de master)."
                                   : "Acesso operacional aos leads e atividades do time."}
                               </p>
                             </div>
@@ -332,7 +336,7 @@ export function UserFormDialog({
                   </FormControl>
                   <FormDescription>
                     {!canEditRole 
-                      ? "Managers não podem alterar seu próprio papel."
+                      ? "Usuários de gestão não podem alterar o próprio papel."
                       : "Define as permissões do usuário na aplicação."
                     }
                   </FormDescription>

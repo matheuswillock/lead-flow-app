@@ -27,7 +27,7 @@ type TeamMember = {
   profileId: string;
   name: string;
   email: string;
-  role: "manager" | "operator";
+  role: "manager" | "backoffice" | "operator";
   functions: ("SDR" | "CLOSER")[];
   profileIconUrl: string | null;
   isMaster: boolean;
@@ -516,7 +516,9 @@ export default function TeamsPage() {
                           ) : null}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span>Papel: {team.role === "manager" ? "Manager" : "Operator"}</span>
+                          <span>
+                            Papel: {team.role === "manager" ? "Manager" : team.role === "backoffice" ? "Backoffice" : "Operator"}
+                          </span>
                           {team.functions?.length ? (
                             <span>Funcoes: {team.functions.join(", ")}</span>
                           ) : (
@@ -841,7 +843,7 @@ export default function TeamsPage() {
                               <TableCell className="text-xs text-muted-foreground">{member.email}</TableCell>
                               <TableCell className="text-sm">
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <span>{member.role === "manager" ? "Manager" : "Operator"}</span>
+                                  <span>{member.role === "manager" ? "Manager" : member.role === "backoffice" ? "Backoffice" : "Operator"}</span>
                                   {member.isMaster ? <Badge variant="secondary">Master</Badge> : null}
                                 </div>
                               </TableCell>

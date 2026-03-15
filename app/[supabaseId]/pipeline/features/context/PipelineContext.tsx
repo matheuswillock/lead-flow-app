@@ -11,10 +11,12 @@ import { FinalizeContractData } from "@/app/[supabaseId]/board/features/containe
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
 
 interface IPipelineProviderProps {
   children: ReactNode;
   pipelineService?: IBoardService;
+  externalFilters?: CrmFiltersState;
 }
 
 interface TaskOwner {
@@ -83,7 +85,8 @@ export const PipelineContext = createContext<IPipelineContextState | undefined>(
 
 export const PipelineProvider: React.FC<IPipelineProviderProps> = ({ 
   children, 
-  pipelineService
+  pipelineService,
+  externalFilters,
 }) => {
   const resolvedPipelineService = useMemo(
     () => pipelineService ?? createBoardService(),
@@ -311,7 +314,21 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
 
   // Filtrar leads
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const activeQuery = externalFilters !== undefined ? externalFilters.query : query;
+    const activeStatuses = externalFilters?.statusFilter ?? [];
+    const activeAssignedUsers =
+      externalFilters !== undefined
+        ? externalFilters.assignedUsers
+        : assignedUser !== "todos"
+        ? [assignedUser]
+        : [];
+    const activeClosers = externalFilters?.closerFilter ?? [];
+    const activeStart = externalFilters !== undefined ? externalFilters.periodStart : periodStart;
+    const activeEnd = externalFilters !== undefined ? externalFilters.periodEnd : periodEnd;
+    const activeMeetingsHeld =
+      externalFilters !== undefined ? externalFilters.onlyMeetingsHeld : onlyMeetingsHeld;
+
+    const q = activeQuery.trim().toLowerCase();
     
     return allLeads.filter((lead) => {
       // Filtro por query (nome ou data)
@@ -320,20 +337,29 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         lead.leadCode.toLowerCase().includes(q) ||
         formatDate(lead.createdAt).includes(q);
       
-      // Filtro por responsável
-      const matchesResponsible = assignedUser === "todos" || lead.assignedTo === assignedUser;
+      // Filtro por status
+      const matchesStatus =
+        activeStatuses.length === 0 || activeStatuses.includes(lead.status as string);
       
+      // Filtro por responsável (suporta múltiplos)
+      const matchesResponsible =
+        activeAssignedUsers.length === 0 || activeAssignedUsers.includes(lead.assignedTo as string);
+
+      // Filtro por closer
+      const matchesCloser =
+        activeClosers.length === 0 || activeClosers.includes((lead.closerId ?? "") as string);
+
       // Filtro por período
       const d = lead.createdAt;
-      const afterStart = !periodStart || d >= periodStart;
-      const beforeEnd = !periodEnd || d <= periodEnd;
+      const afterStart = !activeStart || d >= activeStart;
+      const beforeEnd = !activeEnd || d <= activeEnd;
       const matchesPeriod = afterStart && beforeEnd;
 
-      const matchesMeetingsHeld = !onlyMeetingsHeld || lead.meetingHeald === "yes";
+      const matchesMeetingsHeld = !activeMeetingsHeld || lead.meetingHeald === "yes";
 
-      return matchesQuery && matchesResponsible && matchesMeetingsHeld && matchesPeriod;
+      return matchesQuery && matchesStatus && matchesResponsible && matchesCloser && matchesMeetingsHeld && matchesPeriod;
     });
-  }, [allLeads, query, assignedUser, onlyMeetingsHeld, periodStart, periodEnd]);
+  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, periodStart, periodEnd]);
 
   // Extrair lista de responsáveis únicos
   const taskOwners = useMemo(() => {

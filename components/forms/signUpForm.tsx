@@ -49,7 +49,7 @@ export function SignupForm({
       provider: "google",
       options: {
         scopes: GOOGLE_CALENDAR_SCOPES,
-        redirectTo: `${window.location.origin}/auth/callback?next=/board`,
+        redirectTo: `${window.location.origin}/auth/callback?next=/crm`,
         queryParams: {
           access_type: "offline",
           prompt: "consent",

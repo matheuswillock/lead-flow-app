@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { PaymentRepository } from '@/app/api/infra/data/repositories/payment/PaymentRepository';
+import type { PaymentValidationResult } from '@/app/api/services/PaymentValidation/IPaymentValidationService';
 import { PaymentValidationService } from '@/app/api/services/PaymentValidation/PaymentValidationService';
 import { PaymentValidationUseCase } from '@/app/api/useCases/payments/PaymentValidationUseCase';
 import { getFullUrl } from '@/lib/utils/app-url';
@@ -100,12 +101,20 @@ export async function POST(request: NextRequest) {
     );
 
     // Process webhook
-    const result = await paymentValidationUseCase.processWebhook({
+    const paymentValidationOutput = await paymentValidationUseCase.processWebhook({
       event: body.event,
       payment: hasPayment ? body.payment : body.subscription,
     });
 
-    console.info('[Webhook Asaas] Resultado:', result);
+    const result =
+      (paymentValidationOutput.result as PaymentValidationResult | null) ?? null;
+    const isPaid = result?.isPaid === true;
+
+    console.info('[AsaasWebhookRoute][POST] Payment validation output:', {
+      isValid: paymentValidationOutput.isValid,
+      errorMessages: paymentValidationOutput.errorMessages,
+      result,
+    });
 
     // VERIFICAR SE É PAGAMENTO DE OPERADOR (PAYMENT_CONFIRMED ou outros eventos)
     // Detectar através do externalReference que contém "pending-operator-{id}"
@@ -116,16 +125,16 @@ export async function POST(request: NextRequest) {
       const paymentStatus = body.payment.status;
       const checkoutSessionId = body.payment.checkoutSession;
       
-      console.info('💳 [Webhook Asaas] Detalhes do pagamento:', {
-        event: body.event,
-        paymentId,
-        status: paymentStatus,
-        checkoutSessionId: checkoutSessionId || 'não definido',
-        externalReference: externalReference || 'não definido',
-        externalRefFromPayment: body.payment.externalReference || 'null',
-        externalRefFromSubscription: body.subscription?.externalReference || 'null',
-        isPaid: result.isPaid
-      });
+        console.info('💳 [Webhook Asaas] Detalhes do pagamento:', {
+          event: body.event,
+          paymentId,
+          status: paymentStatus,
+          checkoutSessionId: checkoutSessionId || 'não definido',
+          externalReference: externalReference || 'não definido',
+          externalRefFromPayment: body.payment.externalReference || 'null',
+          externalRefFromSubscription: body.subscription?.externalReference || 'null',
+          isPaid
+        });
       
       // Verificar se é pagamento de operador através do checkoutSessionId
       // Buscar diretamente no banco porque o Asaas não retorna externalReference no webhook
@@ -152,7 +161,7 @@ export async function POST(request: NextRequest) {
             checkoutSessionId,
             pendingOperatorFound: isOperatorPayment,
             pendingActionFound: isPendingActionPayment,
-            willProcess: isOperatorPayment && (result.isPaid || paymentStatus === 'CONFIRMED')
+            willProcess: isOperatorPayment && (isPaid || paymentStatus === 'CONFIRMED')
           });
         } catch (error) {
           console.error('❌ [Webhook Asaas] Erro ao verificar pendingOperator:', error);
@@ -161,7 +170,7 @@ export async function POST(request: NextRequest) {
         console.info('🔍 [Webhook Asaas] Sem checkoutSessionId - não é pagamento de operador');
       }
       
-      if (isOperatorPayment && (result.isPaid || paymentStatus === 'CONFIRMED')) {
+      if (isOperatorPayment && (isPaid || paymentStatus === 'CONFIRMED')) {
         try {
           console.info('🔄 [Webhook Asaas] Detectado pagamento de OPERADOR (checkout)');
           console.info('📋 [Webhook Asaas] CheckoutSessionId:', checkoutSessionId);
@@ -194,7 +203,7 @@ export async function POST(request: NextRequest) {
         console.info('ℹ️ [Webhook Asaas] Não é pagamento de operador (externalReference diferente)');
       }
 
-      if (isPendingActionPayment && (result.isPaid || paymentStatus === 'CONFIRMED')) {
+      if (isPendingActionPayment && (isPaid || paymentStatus === 'CONFIRMED')) {
         try {
           console.info('🔄 [Webhook Asaas] Detectado pagamento de AÇÃO PENDENTE (checkout)');
           const { pendingActionUseCase } = await import('@/app/api/useCases/pendingActions/PendingActionUseCase');
@@ -211,7 +220,7 @@ export async function POST(request: NextRequest) {
       }
 
       const isPendingActionRef = !!externalReference && externalReference.startsWith('pending-action-');
-      if (!isPendingActionPayment && isPendingActionRef && (result.isPaid || paymentStatus === 'CONFIRMED')) {
+      if (!isPendingActionPayment && isPendingActionRef && (isPaid || paymentStatus === 'CONFIRMED')) {
         try {
           console.info('🔄 [Webhook Asaas] Detectado pagamento de AÇÃO PENDENTE (payment)');
           const { pendingActionUseCase } = await import('@/app/api/useCases/pendingActions/PendingActionUseCase');
@@ -228,7 +237,7 @@ export async function POST(request: NextRequest) {
       }
 
       const isPendingOperatorRef = !!externalReference && externalReference.startsWith('pending-operator-');
-      if (!isOperatorPayment && isPendingOperatorRef && result.isPaid) {
+      if (!isOperatorPayment && isPendingOperatorRef && isPaid) {
         try {
           console.info('?? [Webhook Asaas] Detectado pagamento de OPERADOR via externalReference');
           const { subscriptionUpgradeUseCase } = await import('@/app/api/useCases/subscriptions/SubscriptionUpgradeUseCase');
@@ -254,7 +263,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ATIVAR ASSINATURA APÓS PAGAMENTO CONFIRMADO (SIGN-UP FLOW)
-    if (result.isPaid && body?.payment?.subscription) {
+    if (isPaid && body?.payment?.subscription) {
       try {
         const { checkoutAsaasUseCase } = await import('@/app/api/useCases/subscriptions/CheckoutAsaasUseCase');
         const activationResult = await checkoutAsaasUseCase.processCheckoutPaid(body.payment.id);
@@ -345,7 +354,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Se o pagamento foi confirmado, notificar o frontend via endpoint público
-    if (result.isPaid && body?.payment?.subscription) {
+    if (isPaid && body?.payment?.subscription) {
       const subscriptionId = body.payment.subscription;
       console.info('💾 [Webhook Asaas] Notificando frontend para subscriptionId:', subscriptionId);
       
@@ -373,11 +382,11 @@ export async function POST(request: NextRequest) {
 
     // Retornar 200 para o Asaas saber que processamos com sucesso
     return NextResponse.json(
-      { success: true, message: 'Webhook processado', isPaid: result.isPaid },
+      { success: true, message: 'Webhook processado', isPaid },
       { status: 200 }
     );
   } catch (error: any) {
-    console.error('[Webhook Asaas] Erro:', error);
+    console.error('[AsaasWebhookRoute][POST] Unexpected error:', error);
     
     // Mesmo em caso de erro, retornar 200 para não pausar a fila do Asaas
     // Log do erro deve ser suficiente para investigação

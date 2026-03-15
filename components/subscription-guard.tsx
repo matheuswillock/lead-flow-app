@@ -5,12 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { isManagerLikeRole } from "@/lib/roles"
 
 interface SubscriptionGuardProps {
   children: React.ReactNode
   hasActiveSubscription: boolean
   isLoading?: boolean
-  userRole?: string // 'manager' ou 'operator'
+  userRole?: string // 'manager' | 'backoffice' | 'operator'
 }
 
 export function SubscriptionGuard({ children, hasActiveSubscription, isLoading, userRole }: SubscriptionGuardProps) {
@@ -28,7 +29,7 @@ export function SubscriptionGuard({ children, hasActiveSubscription, isLoading, 
 
   // Mensagens específicas por tipo de usuário
   const isOperator = userRole === 'operator'
-  const isManager = userRole === 'manager'
+  const isManager = isManagerLikeRole(userRole)
   
   const title = isOperator || isManager
     ? "Sem Acesso à Plataforma"

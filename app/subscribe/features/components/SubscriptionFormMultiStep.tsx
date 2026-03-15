@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Loader2, CreditCard, Smartphone, Barcode, QrCode, Copy, Download, CheckCircle, Clock } from 'lucide-react';
 import { ExternalLink } from '@/components/animate-ui/icons/external-link';
+import type { Output } from '@/lib/output';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -37,6 +38,16 @@ interface SubscriptionFormMultiStepProps {
     boleto?: { bankSlipUrl: string; identificationField: string; barCode: string; dueDate: string }
   ) => void;
   onError: (error: string) => void;
+}
+
+interface CheckSubscriptionResult {
+  success: boolean;
+  hasActiveSubscription: boolean;
+  userExists: boolean;
+  userId?: string;
+  userRole?: string;
+  matchSource?: 'email' | 'phone' | 'document';
+  matchedIdentifier?: string;
 }
 
 export function SubscriptionFormMultiStep({
@@ -81,7 +92,7 @@ export function SubscriptionFormMultiStep({
   }, [currentStep, subscriptionData]);
 
   // Legacy webhook-redirect to sign-up removed. Pix/Boleto confirmation will be handled
-  // in the SubscriptionSuccess step via PixPayment callback, redirecting to the board.
+  // in the SubscriptionSuccess step via PixPayment callback, redirecting to CRM.
 
   const form = useForm<SubscriptionFormSchema>({
     resolver: zodResolver(subscriptionSchema),
@@ -213,9 +224,12 @@ export function SubscriptionFormMultiStep({
           }),
         });
 
-        const result = await response.json();
+        const output: Output = await response.json();
+        const result = output.isValid
+          ? (output.result as CheckSubscriptionResult | null)
+          : null;
 
-        if (result.success && result.hasActiveSubscription) {
+        if (output.isValid && result?.hasActiveSubscription) {
           const label = result.matchSource === 'email'
             ? 'e-mail'
             : result.matchSource === 'phone'
@@ -453,10 +467,10 @@ export function SubscriptionFormMultiStep({
       try {
         const supabase = createSupabaseBrowser();
         const { data: { user } } = await (supabase?.auth.getUser() || { data: { user: null } });
-        // sinalizar para o board exibir um toast de boas-vindas
+        // sinalizar para o CRM exibir um toast de boas-vindas
         try { sessionStorage.setItem('subscriptionJustActivated', '1'); } catch (_) { /* ignore */ }
         if (user?.id) {
-          router.push(`/${user.id}/board`);
+          router.push(`/${user.id}/crm`);
           return;
         }
       } catch (_) { /* ignore */ }

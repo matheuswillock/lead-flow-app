@@ -3,7 +3,7 @@ export interface CheckSubscriptionResult {
   hasActiveSubscription: boolean;
   userExists: boolean;
   userId?: string | null;
-  userRole?: string; // 'manager' ou 'operator'
+  userRole?: string; // 'manager' | 'backoffice' | 'operator'
   isPermanent?: boolean; // Indica se é assinatura permanente (bypass Asaas)
   // Where/how we found the user match
   matchSource?: 'email' | 'phone' | 'document';

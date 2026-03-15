@@ -13,6 +13,7 @@ export function SiteHeader() {
   
   const titleMap: Record<string, string> = {
     dashboard: "Dashboard",
+    crm: "CRM",
     board: "Board",
     pipeline: "Pipeline",
     calendar: "Calendario",

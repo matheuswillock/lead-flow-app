@@ -13,6 +13,7 @@ import {
 import { ManagerUsersService } from "../services/ManagerUsersService";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
+import { isManagerLikeRole } from "@/lib/roles";
 
 interface UseManagerUsersProps {
   supabaseId: string;
@@ -46,10 +47,10 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
 
   const resolvedRole = activeRole ?? currentUserRole;
   const permissions = useMemo<UserPermissions>(() => ({
-    canCreateUser: resolvedRole === "manager",
-    canEditUser: resolvedRole === "manager",
-    canDeleteUser: resolvedRole === "manager",
-    canManageOperators: resolvedRole === "manager",
+    canCreateUser: isManagerLikeRole(resolvedRole),
+    canEditUser: isManagerLikeRole(resolvedRole),
+    canDeleteUser: isManagerLikeRole(resolvedRole),
+    canManageOperators: isManagerLikeRole(resolvedRole),
   }), [resolvedRole]);
 
   // Criar instância do serviço com o supabaseId

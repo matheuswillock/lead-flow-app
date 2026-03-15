@@ -44,7 +44,7 @@ function AuthCallbackContent() {
       const providerToken = session.provider_token;
       const refreshToken = session.provider_refresh_token;
       const supabaseId = session.user.id;
-      const next = searchParams.get("next") || "/board";
+      const next = searchParams.get("next") || "/crm";
 
       const googleIdentity = session.user.identities?.find(
         (identity) => identity.provider === "google"

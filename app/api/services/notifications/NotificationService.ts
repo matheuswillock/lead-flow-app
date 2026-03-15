@@ -46,6 +46,23 @@ type ActivityReactionNotificationInput = {
   emoji: string;
 };
 
+type LeadProposalPendingNotificationInput = {
+  teamId: string;
+  actorProfileId: string;
+  actorName: string;
+  recipientProfileIds: string[];
+  leadId: string;
+  leadCode: string | null;
+  leadName: string;
+  leadEmail?: string | null;
+  leadPhone?: string | null;
+  sdrName?: string | null;
+  closerName?: string | null;
+  notes?: string | null;
+  previousStatus: string;
+  nextStatus: string;
+};
+
 type ListNotificationsInput = {
   recipientProfileId: string;
   teamId: string;
@@ -215,6 +232,43 @@ class NotificationService {
 
       return inserted[0] ?? null;
     }
+  }
+
+  async createLeadProposalPendingNotification(input: LeadProposalPendingNotificationInput) {
+    const uniqueRecipients = Array.from(
+      new Set(input.recipientProfileIds.filter((profileId) => !!profileId))
+    );
+
+    if (uniqueRecipients.length === 0) {
+      return { createdCount: 0 };
+    }
+
+    const message = `${input.actorName} moveu o lead ${input.leadName} para proposta pendente.`;
+
+    const result = await prisma.notification.createMany({
+      data: uniqueRecipients.map((recipientProfileId) => ({
+        recipientProfileId,
+        actorProfileId: input.actorProfileId,
+        teamId: input.teamId,
+        type: NotificationType.LEAD_PROPOSAL_PENDING,
+        message,
+        metadata: {
+          leadId: input.leadId,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          leadEmail: input.leadEmail,
+          leadPhone: input.leadPhone,
+          sdrName: input.sdrName,
+          closerName: input.closerName,
+          notes: input.notes,
+          previousStatus: input.previousStatus,
+          nextStatus: input.nextStatus,
+        },
+      })),
+      skipDuplicates: false,
+    });
+
+    return { createdCount: result.count };
   }
 
   async listByRecipientAndTeam(input: ListNotificationsInput) {

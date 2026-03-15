@@ -5,6 +5,7 @@ import {
   ManagerUserApiResponse,
   ManagerUserTeamsApiResponse
 } from "../types";
+import { isManagerLikeRole } from "@/lib/roles";
 
 class ManagerUsersService {
   private baseUrl: string;
@@ -107,8 +108,8 @@ class ManagerUsersService {
 
   // Verificar se usuário pode editar outro usuário
   canEditUser(currentUserId: string, targetUserId: string, targetUserRole: string): boolean {
-    // Manager não pode alterar seu próprio papel
-    if (currentUserId === targetUserId && targetUserRole === "manager") {
+    // Usuário de gestão não pode alterar seu próprio papel
+    if (currentUserId === targetUserId && isManagerLikeRole(targetUserRole)) {
       return false;
     }
     return true;

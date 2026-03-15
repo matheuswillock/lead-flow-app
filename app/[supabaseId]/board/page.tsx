@@ -1,46 +1,36 @@
-"use client"
+import { redirect } from "next/navigation";
 
-import { BoardProvider } from "./features/context/BoardContext";
-import { BoardContainer } from "./features/container/BoardContainer";
-import { SubscriptionGuard } from "@/components/subscription-guard";
-import { useUserContext } from "@/app/context/UserContext";
-import { useEffect } from "react";
-import { toast } from "sonner";
-import { useSearchParams } from "next/navigation";
+type SearchParams = Record<string, string | string[] | undefined>;
 
-export default function BoardPage() {
-  const { hasActiveSubscription, isLoading, userRole } = useUserContext();
-  const searchParams = useSearchParams();
-  useEffect(() => {
-    try {
-      const flag = sessionStorage.getItem('subscriptionJustActivated');
-      if (flag) {
-        sessionStorage.removeItem('subscriptionJustActivated');
-        toast.success('Assinatura ativada 🎉', {
-          description: 'Bem-vindo(a)! Sua assinatura está ativa. Vamos começar?',
-          duration: 5000,
-        });
-      }
-      // Alternativa: bem-vindo via parâmetro após login (fallback quando não havia sessão)
-      const welcome = searchParams.get('welcome');
-      if (welcome === 'subscribe') {
-        toast.success('Assinatura ativada 🎉', {
-          description: 'Bem-vindo(a)! Sua assinatura está ativa. Vamos começar?',
-          duration: 5000,
-        });
-        // evitar repetir em navegações subsequentes
-        const url = new URL(window.location.href);
-        url.searchParams.delete('welcome');
-        window.history.replaceState({}, '', url.toString());
-      }
-    } catch (_) {}
-  }, [searchParams]);
-  
-  return (
-    <BoardProvider>
-      <SubscriptionGuard hasActiveSubscription={hasActiveSubscription} isLoading={isLoading} userRole={userRole ?? undefined}>
-        <BoardContainer />
-      </SubscriptionGuard>
-    </BoardProvider>
-  );
+type BoardPageProps = {
+  params: Promise<{ supabaseId: string }>;
+  searchParams?: Promise<SearchParams>;
+};
+
+function appendSearchParams(
+  targetParams: URLSearchParams,
+  sourceParams?: SearchParams
+) {
+  if (!sourceParams) return;
+
+  Object.entries(sourceParams).forEach(([key, value]) => {
+    if (value === undefined) return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => targetParams.append(key, item));
+      return;
+    }
+    targetParams.append(key, value);
+  });
+}
+
+export default async function BoardPage({ params, searchParams }: BoardPageProps) {
+  const { supabaseId } = await params;
+  const resolvedSearchParams = await searchParams;
+
+  const nextSearchParams = new URLSearchParams();
+  appendSearchParams(nextSearchParams, resolvedSearchParams);
+  nextSearchParams.set("view", "kanban");
+
+  const query = nextSearchParams.toString();
+  redirect(`/${supabaseId}/crm${query ? `?${query}` : ""}`);
 }

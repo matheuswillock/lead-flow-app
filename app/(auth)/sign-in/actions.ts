@@ -47,7 +47,7 @@ export async function signin(formData: FormData) {
     }
     
     // Redirect padrão
-    redirect(`/${data.user.id}/board`);
+    redirect(`/${data.user.id}/crm`);
   }
-  redirect("/board");
+  redirect("/crm");
 }

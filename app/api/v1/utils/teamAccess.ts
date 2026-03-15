@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { UserFunction, UserRole } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
+import { isManagerLikeRole } from "@/lib/roles";
 
 export type TeamAccess = {
   supabaseId: string;
@@ -79,7 +80,7 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
 }
 
 export function hasLeadAccess(teamMember: { role: UserRole; functions: UserFunction[] }) {
-  if (teamMember.role === "manager") {
+  if (isManagerLikeRole(teamMember.role)) {
     return true;
   }
 
@@ -87,7 +88,7 @@ export function hasLeadAccess(teamMember: { role: UserRole; functions: UserFunct
 }
 
 export function hasLeadActivityAccess(teamMember: { role: UserRole; functions: UserFunction[] }) {
-  if (teamMember.role === "manager") {
+  if (isManagerLikeRole(teamMember.role)) {
     return true;
   }
 

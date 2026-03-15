@@ -22,6 +22,7 @@ import { createColumns } from "./ManagerUsersColumns";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
+import { isManagerLikeRole } from "@/lib/roles";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;
@@ -133,7 +134,7 @@ export function ManagerUsersContainer({
   const pendingCount = users.filter(user => user.isPending).length;
 
   // Verificar se é manager
-  if (resolvedRole !== "manager") {
+  if (!isManagerLikeRole(resolvedRole)) {
     return (
       <div className="container mx-auto py-8 px-6">
         <Card>
@@ -143,7 +144,7 @@ export function ManagerUsersContainer({
               <div>
                 <h3 className="text-lg font-semibold">Acesso Restrito</h3>
                 <p className="text-muted-foreground">
-                  Apenas usuários com papel de Manager podem acessar esta página.
+                  Apenas usuários com papel de gestão (Manager ou Backoffice) podem acessar esta página.
                 </p>
               </div>
             </div>
@@ -224,7 +225,7 @@ export function ManagerUsersContainer({
               <div className="text-2xl font-bold">{stats?.totalUsers ?? 0}</div>
             )}
             <p className="text-xs text-muted-foreground">
-              Managers e Operators
+              Gestores e Operators
             </p>
           </CardContent>
         </Card>

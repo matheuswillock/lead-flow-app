@@ -4,11 +4,26 @@ import type { Attachment } from "resend";
 
 export interface EmailOptions {
   to: string[];
+  cc?: string[];
   subject: string;
   html?: string;
   text?: string;
   from?: string;
   attachments?: Attachment[];
+}
+
+export interface LeadProposalPendingUrgentEmailData {
+  to: string[];
+  cc?: string[];
+  attachments?: Attachment[];
+  leadCode: string;
+  leadName: string;
+  leadEmail?: string | null;
+  leadPhone?: string | null;
+  sdrName?: string | null;
+  closerName?: string | null;
+  notes?: string | null;
+  actorName: string;
 }
 
 export interface WelcomeEmailData {
@@ -169,6 +184,28 @@ export class EmailService {
     return lines.join("\r\n");
   }
 
+  private injectHtmlAfterBodyOpen(html: string, snippet: string) {
+    const bodyOpenTagRegex = /<body[^>]*>/i;
+    if (bodyOpenTagRegex.test(html)) {
+      return html.replace(bodyOpenTagRegex, (match) => `${match}${snippet}`);
+    }
+
+    return `${snippet}${html}`;
+  }
+
+  private buildTestBannerSnippet(originalRecipients: string[]) {
+    return `
+      <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin: 0 16px 20px;">
+        <p style="margin: 0; color: #92400e; font-weight: 600;">
+          MODO TESTE
+        </p>
+        <p style="margin: 4px 0 0 0; color: #92400e; font-size: 14px;">
+          Este e-mail seria enviado para: <strong>${originalRecipients.join(', ')}</strong>
+        </p>
+      </div>
+    `;
+  }
+
   // Método genérico para enviar emails
   async sendEmail(options: EmailOptions) {
     try {
@@ -188,25 +225,29 @@ export class EmailService {
         subject: isTestMode 
           ? `[TESTE - Para: ${options.to.join(', ')}] ${options.subject}`
           : options.subject,
+        headers: {
+          Importance: "high",
+          Priority: "urgent",
+          "X-Priority": "1",
+          "X-MSMail-Priority": "High",
+        },
       };
 
+      if (!isTestMode && options.cc?.length) {
+        emailData.cc = options.cc;
+      }
+
       if (options.html) {
-        // Adicionar banner de teste no topo do e-mail
+        let htmlContent = options.html;
+
         if (isTestMode) {
-          const testBanner = `
-            <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-bottom: 20px;">
-              <p style="margin: 0; color: #92400e; font-weight: 600;">
-                🧪 MODO TESTE
-              </p>
-              <p style="margin: 4px 0 0 0; color: #92400e; font-size: 14px;">
-                Este e-mail seria enviado para: <strong>${options.to.join(', ')}</strong>
-              </p>
-            </div>
-          `;
-          emailData.html = testBanner + options.html;
-        } else {
-          emailData.html = options.html;
+          htmlContent = this.injectHtmlAfterBodyOpen(
+            htmlContent,
+            this.buildTestBannerSnippet(options.to)
+          );
         }
+
+        emailData.html = htmlContent;
       }
       if (options.text) {
         emailData.text = options.text;
@@ -476,6 +517,54 @@ export class EmailService {
       to: [data.managerEmail],
       subject: `Novo Lead: ${data.leadName}`,
       html,
+    });
+  }
+
+  async sendLeadProposalPendingUrgentEmail(data: LeadProposalPendingUrgentEmailData) {
+    const leadName = data.leadName || "Lead sem nome";
+    const leadEmail = data.leadEmail || "Nao informado";
+    const leadPhone = data.leadPhone || "Nao informado";
+    const sdrName = data.sdrName || "Nao informado";
+    const closerName = data.closerName || "Nao informado";
+    const notes = (data.notes || "Sem observacoes adicionais").trim();
+    const leadUrl = getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`);
+    const proposalPendingTitle = `Voce tem uma proposta pendente no Corretor Studio - ID: ${data.leadCode}`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #ff6900; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
+          <h1 style="margin: 0; font-size: 22px;">${proposalPendingTitle}</h1>
+          <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">
+            ${data.actorName} moveu um lead para o status de proposta pendente.
+          </p>
+        </div>
+
+        <div style="border: 1px solid #fed7aa; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
+          <p style="margin: 0 0 14px;"><strong>Lead:</strong> ${leadName}</p>
+          <p style="margin: 0 0 8px;"><strong>E-mail:</strong> ${leadEmail}</p>
+          <p style="margin: 0 0 14px;"><strong>Telefone:</strong> ${leadPhone}</p>
+
+          <p style="margin: 0 0 8px;"><strong>SDR:</strong> ${sdrName}</p>
+          <p style="margin: 0 0 14px;"><strong>Closer:</strong> ${closerName}</p>
+
+          <div style="margin: 0 0 14px;">
+            <a href="${leadUrl}" style="display: inline-block; background: #ff6900; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Acessar lead no CRM</a>
+          </div>
+
+          <div style="background: #fff7ed; border-left: 4px solid #ff6900; padding: 12px; border-radius: 6px;">
+            <p style="margin: 0 0 4px;"><strong>Observacoes</strong></p>
+            <p style="margin: 0; white-space: pre-wrap;">${notes}</p>
+          </div>
+        </div>
+      </div>
+    `;
+
+    return this.sendEmail({
+      to: data.to,
+      cc: data.cc,
+      subject: proposalPendingTitle,
+      html,
+      attachments: data.attachments,
     });
   }
 

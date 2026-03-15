@@ -5,7 +5,9 @@
       "MUST",
       "SHOULD",
       "LEGACY EXCEPTIONS",
-      "FOR NEW FEATURES"
+      "FOR NEW FEATURES",
+      "canonical `app/api` layout",
+      "canonical `features/` layout"
     ]
   },
   "warnings": {
@@ -70,10 +72,7 @@
       "app/api/v1/teams/[teamId]/transfer/route.ts",
       "app/api/v1/users/delete/route.ts"
     ],
-    "useCaseWithoutOutputAllowlist": [
-      "app/api/useCases/payments/PaymentValidationUseCase.ts",
-      "app/api/useCases/subscriptions/CheckSubscriptionUseCase.ts"
-    ],
+    "useCaseWithoutOutputAllowlist": [],
     "frontendFeatureStructureAllowlist": [
       "app",
       "app/(auth)/sign-in",
