@@ -2,7 +2,7 @@
 
 import Link from "next/link"  
 import Image from "next/image"
-import { LayoutDashboard, KanbanSquare, ChartBarBig, Users, CalendarDays, Users2 } from "lucide-react"
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Users2 } from "lucide-react"
 
 import {
   Sidebar,
@@ -20,17 +20,17 @@ import { NavUser } from "./nav-user"
 import { useUserContext } from "@/app/context/UserContext"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { TeamSwitcher } from "@/components/team-switcher"
+import { isManagerLikeRole } from "@/lib/roles"
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const { user } = useUserContext();
   const { teams, activeTeamId, setActiveTeamId, isTeamMaster } = useTeamContext();
   const isMaster = user?.isMaster === true;
-  const isManager = user?.role === "manager";
+  const isManager = isManagerLikeRole(user?.role);
 
   const items = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
-    { title: "Board", url: `/${supabaseId}/board`, icon: KanbanSquare },
-    { title: "Pipeline", url: `/${supabaseId}/pipeline`, icon: ChartBarBig },
+    { title: "CRM", url: `/${supabaseId}/crm`, icon: KanbanSquare },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays },
     { 
       title: "Gerenciar Usuários", 

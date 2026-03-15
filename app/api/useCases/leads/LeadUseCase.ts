@@ -14,6 +14,12 @@ import { healthPlanService } from "../../services/healthPlans/HealthPlanService"
 import { prisma } from "../../infra/data/prisma";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "../../v1/leads/DTO/leadValueLimits";
 import { normalizeHealthPlanName } from "@/lib/healthPlans";
+import { getEmailService } from "@/lib/services/EmailService";
+import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { isManagerLikeRole } from "@/lib/roles";
+import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
+import { createSupabaseAdmin } from "@/lib/supabase/server";
+import type { Attachment } from "resend";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -278,7 +284,7 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      const managerId = profileInfo.role === 'manager' ? profileInfo.id : profileInfo.managerId;
+      const managerId = isManagerLikeRole(profileInfo.role) ? profileInfo.id : profileInfo.managerId;
       
       if (!managerId) {
         return new Output(false, [], ["Manager não identificado"], null);
@@ -347,7 +353,7 @@ export class LeadUseCase implements ILeadUseCase {
       let leads: any[] = [];
       const teamRole = membership.role;
 
-      if (teamRole === 'manager') {
+      if (isManagerLikeRole(teamRole)) {
         const result = await this.leadRepository.findAllByTeamId(teamId, {
           status: options.status,
           assignedTo: options.assignedTo,
@@ -371,7 +377,7 @@ export class LeadUseCase implements ILeadUseCase {
 
         leads = result.leads;
       } else {
-        return new Output(false, [], ["Role inválido. Use 'manager' ou 'operator'"], null);
+        return new Output(false, [], ["Role inválido. Use 'manager', 'backoffice' ou 'operator'"], null);
       }
 
       return new Output(true, [], [], leads.map(lead => this.transformToDTO(lead)));
@@ -394,7 +400,8 @@ export class LeadUseCase implements ILeadUseCase {
       const shouldTrackAssignment = data.assignedTo !== undefined;
       const shouldTrackCloser = data.closerId !== undefined;
       const shouldTrackMeetingHeald = data.meetingHeald !== undefined;
-      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald;
+      const shouldTrackStatus = data.status !== undefined;
+      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald || shouldTrackStatus;
       const existingLead = shouldTrackChanges ? await this.leadRepository.findById(id) : null;
       if (shouldTrackChanges && !existingLead) {
         return new Output(false, [], ["Lead não encontrado"], null);
@@ -522,6 +529,16 @@ export class LeadUseCase implements ILeadUseCase {
         } catch (error) {
           console.warn("Não foi possível registrar atividade de reunião realizada:", error);
         }
+      }
+
+      if (shouldTrackStatus && existingLead && existingLead.status !== lead.status) {
+        await this.handleOfferSubmissionAlert({
+          lead,
+          previousStatus: existingLead.status,
+          nextStatus: lead.status,
+          actorProfileId: profileInfo.id,
+          actorName: actorLabel,
+        });
       }
 
       return new Output(true, ["Lead atualizado com sucesso"], [], this.transformToDTO(lead));
@@ -721,6 +738,14 @@ export class LeadUseCase implements ILeadUseCase {
             console.warn("Não foi possível registrar atividade de no-show:", error);
           }
         }
+
+        await this.handleOfferSubmissionAlert({
+          lead,
+          previousStatus: existingLead.status,
+          nextStatus: status,
+          actorProfileId: profileInfo.id,
+          actorName: actorLabel,
+        });
       }
 
       return new Output(true, ["Status do lead atualizado com sucesso"], [], this.transformToDTO(lead));
@@ -788,7 +813,7 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      const managerId = profileInfo.role === 'manager' ? profileInfo.id : profileInfo.managerId;
+      const managerId = isManagerLikeRole(profileInfo.role) ? profileInfo.id : profileInfo.managerId;
       
       if (!managerId) {
         return new Output(false, [], ["Manager não identificado"], null);
@@ -812,7 +837,7 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       // Verificar se o usuário atual é um manager
-      if (profileInfo.role !== 'manager') {
+      if (!isManagerLikeRole(profileInfo.role)) {
         return new Output(false, [], ["Apenas managers podem transferir leads"], null);
       }
 
@@ -953,5 +978,239 @@ export class LeadUseCase implements ILeadUseCase {
     });
 
     return Array.from(map.values());
+  }
+
+  private normalizeEmail(value?: string | null): string | null {
+    const normalized = value?.trim().toLowerCase() || "";
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private resolveProposalAlertEmails(
+    toCandidates: Array<string | null | undefined>,
+    ccCandidates: Array<string | null | undefined>,
+    leadEmail?: string | null
+  ) {
+    const blockedLeadEmail = this.normalizeEmail(leadEmail);
+    const seen = new Set<string>();
+
+    const normalizeAndCollect = (emails: Array<string | null | undefined>) => {
+      const result: string[] = [];
+      for (const candidate of emails) {
+        const normalized = this.normalizeEmail(candidate);
+        if (!normalized) continue;
+        if (blockedLeadEmail && normalized === blockedLeadEmail) continue;
+        if (seen.has(normalized)) continue;
+
+        seen.add(normalized);
+        result.push(normalized);
+      }
+      return result;
+    };
+
+    const to = normalizeAndCollect(toCandidates);
+    const cc = normalizeAndCollect(ccCandidates);
+
+    return { to, cc };
+  }
+
+  private async handleOfferSubmissionAlert(input: {
+    lead: any;
+    previousStatus: LeadStatus;
+    nextStatus: LeadStatus;
+    actorProfileId: string;
+    actorName: string;
+  }) {
+    if (
+      input.nextStatus !== LeadStatus.offerSubmission
+      || input.previousStatus === LeadStatus.offerSubmission
+    ) {
+      return;
+    }
+
+    const teamId = input.lead.teamId as string | null;
+    if (!teamId) {
+      return;
+    }
+
+    try {
+      const [team, backofficeMembers, closerProfile] = await Promise.all([
+        prisma.team.findUnique({
+          where: { id: teamId },
+          select: { masterId: true },
+        }),
+        prisma.teamMember.findMany({
+          where: {
+            teamId,
+            role: "backoffice",
+          },
+          select: {
+            profileId: true,
+            profile: {
+              select: {
+                email: true,
+                fullName: true,
+              },
+            },
+          },
+        }),
+        input.lead.closerId
+          ? prisma.profile.findUnique({
+              where: { id: input.lead.closerId as string },
+              select: { id: true, email: true, fullName: true },
+            })
+          : Promise.resolve(null),
+      ]);
+
+      if (!team?.masterId) {
+        return;
+      }
+
+      const masterProfile = await prisma.profile.findUnique({
+        where: { id: team.masterId },
+        select: { id: true, email: true, fullName: true },
+      });
+
+      const emailRecipients = this.resolveProposalAlertEmails(
+        [
+          ...backofficeMembers.map((member) => member.profile.email),
+          closerProfile?.email,
+        ],
+        [masterProfile?.email],
+        input.lead.email
+      );
+
+      const sdrName = input.lead.assignee?.fullName || input.lead.assignee?.email || "Nao informado";
+      const closerName = input.lead.closer?.fullName || input.lead.closer?.email || "Nao informado";
+      const leadAttachments = await this.buildLeadProposalAttachments(input.lead.id);
+
+      if (emailRecipients.to.length > 0 || emailRecipients.cc.length > 0) {
+        try {
+          const emailService = getEmailService();
+          await emailService.sendLeadProposalPendingUrgentEmail({
+            to: emailRecipients.to,
+            cc: emailRecipients.cc,
+            attachments: leadAttachments,
+            leadCode: input.lead.leadCode,
+            leadName: input.lead.name,
+            leadEmail: input.lead.email,
+            leadPhone: input.lead.phone,
+            sdrName,
+            closerName,
+            notes: input.lead.notes,
+            actorName: input.actorName,
+          });
+        } catch (emailError) {
+          console.error("Erro ao enviar e-mail de proposta pendente:", emailError);
+        }
+      }
+
+      const notificationRecipients = Array.from(
+        new Set(
+          [
+            ...backofficeMembers.map((member) => member.profileId),
+            closerProfile?.id,
+            masterProfile?.id,
+          ].filter((profileId): profileId is string => Boolean(profileId))
+        )
+      );
+
+      if (notificationRecipients.length > 0) {
+        try {
+          await notificationService.createLeadProposalPendingNotification({
+            teamId,
+            actorProfileId: input.actorProfileId,
+            actorName: input.actorName,
+            recipientProfileIds: notificationRecipients,
+            leadId: input.lead.id,
+            leadCode: input.lead.leadCode,
+            leadName: input.lead.name,
+            leadEmail: input.lead.email,
+            leadPhone: input.lead.phone,
+            sdrName,
+            closerName,
+            notes: input.lead.notes,
+            previousStatus: input.previousStatus,
+            nextStatus: input.nextStatus,
+          });
+        } catch (notificationError) {
+          console.error("Erro ao criar notificação interna de proposta pendente:", notificationError);
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao processar alerta de proposta pendente:", error);
+    }
+  }
+
+  private async buildLeadProposalAttachments(leadId: string): Promise<Attachment[]> {
+    const leadAttachments = await prisma.leadAttachment.findMany({
+      where: { leadId },
+      select: {
+        id: true,
+        fileName: true,
+        fileType: true,
+        storagePath: true,
+        fileUrl: true,
+      },
+      orderBy: { uploadedAt: "asc" },
+    });
+
+    if (leadAttachments.length === 0) {
+      return [];
+    }
+
+    const supabaseAdmin = createSupabaseAdmin();
+    const attachments: Attachment[] = [];
+
+    for (const leadAttachment of leadAttachments) {
+      try {
+        let buffer: Buffer | null = null;
+
+        const storagePath = leadAttachment.storagePath?.trim();
+        if (supabaseAdmin && storagePath) {
+          const { data, error } = await supabaseAdmin.storage
+            .from(STORAGE_BUCKETS.LEAD_ATTACHMENTS)
+            .download(storagePath);
+
+          if (error) {
+            console.error("Erro ao baixar anexo do storage para e-mail:", {
+              leadId,
+              attachmentId: leadAttachment.id,
+              storagePath,
+              error,
+            });
+          } else if (data) {
+            buffer = Buffer.from(await data.arrayBuffer());
+          }
+        }
+
+        if (!buffer && leadAttachment.fileUrl) {
+          const response = await fetch(leadAttachment.fileUrl);
+          if (!response.ok) {
+            throw new Error(`Falha ao baixar arquivo via URL pública: ${response.status}`);
+          }
+
+          const arrayBuffer = await response.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+        }
+
+        if (!buffer) {
+          continue;
+        }
+
+        attachments.push({
+          filename: leadAttachment.fileName || `documento-${leadAttachment.id}`,
+          content: buffer,
+          ...(leadAttachment.fileType ? { contentType: leadAttachment.fileType } : {}),
+        });
+      } catch (error) {
+        console.error("Erro ao preparar anexo de lead para e-mail:", {
+          leadId,
+          attachmentId: leadAttachment.id,
+          error,
+        });
+      }
+    }
+
+    return attachments;
   }
 }

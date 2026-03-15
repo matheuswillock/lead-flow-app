@@ -8,7 +8,7 @@ export interface ManagerUser {
   name: string;
   fullName?: string; // Alias para name
   email: string;
-  role: "manager" | "operator";
+  role: "manager" | "backoffice" | "operator";
   functions?: UserFunction[];
   profileIconUrl?: string;
   managerId?: string; // Para operators
@@ -71,7 +71,7 @@ export interface ManagerUserTeamSummary {
 export const CreateManagerUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(100, "Nome muito longo"),
   email: z.string().email("Email inválido"),
-  role: z.enum(["manager", "operator"], { 
+  role: z.enum(["manager", "backoffice", "operator"], {
     message: "Selecione um papel válido"
   }),
   functions: z.array(z.enum(["SDR", "CLOSER"]))
@@ -82,7 +82,7 @@ export const CreateManagerUserSchema = z.object({
 export const UpdateManagerUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(100, "Nome muito longo").optional(),
   email: z.string().email("Email inválido").optional(),
-  role: z.enum(["manager", "operator"], { 
+  role: z.enum(["manager", "backoffice", "operator"], {
     message: "Selecione um papel válido"
   }).optional(),
   functions: z.array(z.enum(["SDR", "CLOSER"]))
@@ -148,7 +148,7 @@ export interface UserPermissions {
 // Filtros e ordenação
 export interface TableFilters {
   search: string;
-  role: "all" | "manager" | "operator";
+  role: "all" | "manager" | "backoffice" | "operator";
   sortBy: "name" | "email" | "role" | "createdAt";
   sortOrder: "asc" | "desc";
 }

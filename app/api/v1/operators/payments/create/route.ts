@@ -4,6 +4,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasApi, asaasFetch, asaasHeaders } from "@/lib/asaas";
 import { asaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
+import { isManagerLikeRole } from "@/lib/roles";
 
 const OPERATOR_PRICE = 19.9;
 
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
       where: { supabaseId: managerId },
     });
 
-    if (!manager || manager.role !== "manager") {
+    if (!manager || !isManagerLikeRole(manager.role)) {
       return NextResponse.json(
         new Output(false, [], ["Manager nao encontrado"], null),
         { status: 404 }

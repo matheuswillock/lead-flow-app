@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 
 export type LeadActivityRealtimeRow = {
@@ -39,15 +39,35 @@ export function useLeadActivitiesRealtime({
   onReactionDeleted,
   onSyncRequested,
 }: UseLeadActivitiesRealtimeParams) {
-  const activeActivityIdsRef = useRef<Set<string>>(new Set(activeActivityIds));
+  const normalizedActiveActivityIds = useMemo(
+    () => Array.from(new Set(activeActivityIds.filter((id): id is string => Boolean(id)))).sort(),
+    [activeActivityIds]
+  );
+
+  const reactionsRealtimeFilter = useMemo(() => {
+    if (normalizedActiveActivityIds.length === 0) {
+      return null;
+    }
+
+    return `activityId=in.(${normalizedActiveActivityIds.join(",")})`;
+  }, [normalizedActiveActivityIds]);
+
+  const reactionsRealtimeKey = useMemo(
+    () => normalizedActiveActivityIds.join(","),
+    [normalizedActiveActivityIds]
+  );
+
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const activeActivityIdsRef = useRef<Set<string>>(new Set(normalizedActiveActivityIds));
   const onActivityInsertedRef = useRef(onActivityInserted);
   const onReactionInsertedRef = useRef(onReactionInserted);
   const onReactionDeletedRef = useRef(onReactionDeleted);
   const onSyncRequestedRef = useRef(onSyncRequested);
 
   useEffect(() => {
-    activeActivityIdsRef.current = new Set(activeActivityIds);
-  }, [activeActivityIds]);
+    activeActivityIdsRef.current = new Set(normalizedActiveActivityIds);
+  }, [normalizedActiveActivityIds]);
 
   useEffect(() => {
     onActivityInsertedRef.current = onActivityInserted;
@@ -75,8 +95,46 @@ export function useLeadActivitiesRealtime({
     let activitiesChannel: ReturnType<typeof supabase.channel> | null = null;
     let reactionsChannel: ReturnType<typeof supabase.channel> | null = null;
 
+    const clearReconnectTimer = () => {
+      if (reconnectTimerRef.current !== null) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+
+    const teardownChannels = () => {
+      if (activitiesChannel) {
+        void supabase.removeChannel(activitiesChannel);
+        activitiesChannel = null;
+      }
+      if (reactionsChannel) {
+        void supabase.removeChannel(reactionsChannel);
+        reactionsChannel = null;
+      }
+    };
+
+    const scheduleReconnect = (reason: "CHANNEL_ERROR" | "TIMED_OUT" | "MISSING_TOKEN") => {
+      if (cancelled || reconnectTimerRef.current !== null) return;
+
+      reconnectAttemptRef.current += 1;
+      const delayMs = Math.min(1000 * 2 ** (reconnectAttemptRef.current - 1), 10000);
+      console.info(
+        `[LeadActivitiesRealtime] Reagendando conexao (${reason}) em ${delayMs}ms (tentativa ${reconnectAttemptRef.current})`
+      );
+
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
+        if (!cancelled) {
+          void setupRealtime();
+        }
+      }, delayMs);
+    };
+
     const setupRealtime = async () => {
       try {
+        clearReconnectTimer();
+        teardownChannels();
+
         let accessToken: string | null = null;
 
         try {
@@ -105,7 +163,9 @@ export function useLeadActivitiesRealtime({
         if (accessToken) {
           await supabase.realtime.setAuth(accessToken);
         } else {
-          console.error("[LeadActivitiesRealtime] Token ausente; subscription pode ficar sem RLS.");
+          console.info("[LeadActivitiesRealtime] Token ausente; aguardando para tentar reconnect.");
+          scheduleReconnect("MISSING_TOKEN");
+          return;
         }
 
         if (cancelled) return;
@@ -119,6 +179,7 @@ export function useLeadActivitiesRealtime({
               event: "INSERT",
               schema: "public",
               table: "lead_activities",
+              filter: `leadId=eq.${leadId}`,
             },
             (payload) => {
               const row = payload.new as Partial<LeadActivityRealtimeRow>;
@@ -143,13 +204,24 @@ export function useLeadActivitiesRealtime({
             }
           )
           .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              reconnectAttemptRef.current = 0;
+            }
             if (status === "CHANNEL_ERROR") {
-              console.error("[LeadActivitiesRealtime][activities] CHANNEL_ERROR");
+              console.info("[LeadActivitiesRealtime][activities] CHANNEL_ERROR");
+              onSyncRequestedRef.current?.();
+              scheduleReconnect("CHANNEL_ERROR");
             }
             if (status === "TIMED_OUT") {
-              console.error("[LeadActivitiesRealtime][activities] TIMED_OUT");
+              console.info("[LeadActivitiesRealtime][activities] TIMED_OUT");
+              onSyncRequestedRef.current?.();
+              scheduleReconnect("TIMED_OUT");
             }
           });
+
+        if (!reactionsRealtimeFilter) {
+          return;
+        }
 
         reactionsChannel = supabase
           .channel(`lead-activity-reactions-${channelSuffix}`)
@@ -159,6 +231,7 @@ export function useLeadActivitiesRealtime({
               event: "INSERT",
               schema: "public",
               table: "lead_activity_reactions",
+              filter: reactionsRealtimeFilter,
             },
             (payload) => {
               const row = payload.new as Partial<LeadActivityReactionRealtimeRow>;
@@ -187,6 +260,7 @@ export function useLeadActivitiesRealtime({
               event: "DELETE",
               schema: "public",
               table: "lead_activity_reactions",
+              filter: reactionsRealtimeFilter,
             },
             (payload) => {
               const row = payload.old as Partial<LeadActivityReactionRealtimeRow>;
@@ -210,15 +284,23 @@ export function useLeadActivitiesRealtime({
             }
           )
           .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              reconnectAttemptRef.current = 0;
+            }
             if (status === "CHANNEL_ERROR") {
-              console.error("[LeadActivitiesRealtime][reactions] CHANNEL_ERROR");
+              console.info("[LeadActivitiesRealtime][reactions] CHANNEL_ERROR");
+              onSyncRequestedRef.current?.();
+              scheduleReconnect("CHANNEL_ERROR");
             }
             if (status === "TIMED_OUT") {
-              console.error("[LeadActivitiesRealtime][reactions] TIMED_OUT");
+              console.info("[LeadActivitiesRealtime][reactions] TIMED_OUT");
+              onSyncRequestedRef.current?.();
+              scheduleReconnect("TIMED_OUT");
             }
           });
       } catch (error) {
         console.error("[LeadActivitiesRealtime] Falha ao inicializar realtime:", error);
+        scheduleReconnect("CHANNEL_ERROR");
       }
     };
 
@@ -226,12 +308,8 @@ export function useLeadActivitiesRealtime({
 
     return () => {
       cancelled = true;
-      if (activitiesChannel) {
-        void supabase.removeChannel(activitiesChannel);
-      }
-      if (reactionsChannel) {
-        void supabase.removeChannel(reactionsChannel);
-      }
+      clearReconnectTimer();
+      teardownChannels();
     };
-  }, [enabled, leadId]);
+  }, [enabled, leadId, reactionsRealtimeKey, reactionsRealtimeFilter]);
 }

@@ -9,10 +9,12 @@ import { FinalizeContractData } from "../container/FinalizeContractDialog";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
 
 interface IBoardProviderProps {
   children: ReactNode;
   boardService?: IBoardService;
+  externalFilters?: CrmFiltersState;
 }
 
 export type LeadCardField = "name" | "entryDate" | "meetingInfo" | "notes" | "id";
@@ -116,7 +118,8 @@ export const BoardContext = createContext<IBoardContextState | undefined>(undefi
 
 export const BoardProvider: React.FC<IBoardProviderProps> = ({ 
   children, 
-  boardService
+  boardService,
+  externalFilters,
 }) => {
   const resolvedBoardService = useMemo(
     () => boardService ?? createBoardService(),
@@ -158,6 +161,21 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [statusFilter, setStatusFilter] = useState<ColumnKey[]>([]);
   const [closerFilter, setCloserFilter] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Sync external CRM filters into board filter state whenever they change.
+  // Using useEffect (not lazy initializer) is safe because data loads asynchronously;
+  // filters are applied before any leads appear in the UI.
+  useEffect(() => {
+    if (!externalFilters) return;
+    setQuery(externalFilters.query);
+    setStatusFilter(externalFilters.statusFilter as ColumnKey[]);
+    setAssignedUsers(externalFilters.assignedUsers);
+    setCloserFilter(externalFilters.closerFilter);
+    setPeriodStart(externalFilters.periodStart);
+    setPeriodEnd(externalFilters.periodEnd);
+    setOnlyMeetingsHeld(externalFilters.onlyMeetingsHeld);
+  }, [externalFilters]);
+
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
   const selectedRef = useRef<Lead | null>(null);

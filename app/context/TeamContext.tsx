@@ -12,7 +12,7 @@ export interface TeamSummary {
   name: string;
   masterId: string;
   isDefault: boolean;
-  role: "manager" | "operator";
+  role: "manager" | "backoffice" | "operator";
   functions: ("SDR" | "CLOSER")[];
   membershipCreatedAt: string;
 }
@@ -21,7 +21,7 @@ interface TeamContextState {
   teams: TeamSummary[];
   activeTeamId: string | null;
   activeTeam: TeamSummary | null;
-  activeRole: "manager" | "operator" | null;
+  activeRole: "manager" | "backoffice" | "operator" | null;
   activeFunctions: ("SDR" | "CLOSER")[];
   isTeamMaster: boolean;
   isLoading: boolean;

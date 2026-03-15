@@ -58,7 +58,7 @@ interface UserContextState {
   isLoading: boolean;
   error: string | null;
   hasActiveSubscription: boolean;
-  userRole: string | null; // 'master', 'manager', 'operator'
+  userRole: string | null; // 'master', 'manager', 'backoffice', 'operator'
   refreshUser: () => Promise<void>;
   updateUser: (updates: Partial<UserData>) => Promise<Output>;
   updatePassword: (newPassword: string) => Promise<Output>;

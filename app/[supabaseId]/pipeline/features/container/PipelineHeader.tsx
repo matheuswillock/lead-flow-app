@@ -1,3 +1,4 @@
+import { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -6,7 +7,15 @@ import { Filter, Table2, User, Plus } from "lucide-react";
 import usePipelineContext from "../context/PipelineHook";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
 
-export default function PipelineHeader() {
+interface PipelineHeaderProps {
+  title?: string;
+  viewModeToggle?: ReactNode;
+}
+
+export default function PipelineHeader({
+  title = "Pipeline de Leads",
+  viewModeToggle,
+}: PipelineHeaderProps) {
     const { 
         query, 
         setQuery, 
@@ -33,7 +42,7 @@ export default function PipelineHeader() {
     return (
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <Table2 className="size-5" />
-        <h1 className="text-xl font-semibold">Pipeline de Leads</h1>
+        <h1 className="text-xl font-semibold">{title}</h1>
         
         {/* Informações do usuário e status */}
         {userLoading ? (
@@ -113,6 +122,7 @@ export default function PipelineHeader() {
             <Plus className="mr-2 size-4" />
             Adicionar novo lead
           </Button>
+          {viewModeToggle}
           <LeadImportButton onImportComplete={refreshLeads} />
         </div>
       </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
+import { isManagerLikeRole } from "@/lib/roles";
 
 async function getTeamMasterId(teamId: string) {
   const team = await prisma.team.findUnique({
@@ -45,7 +46,7 @@ export async function GET(
     }
 
     const { teamId, teamMember } = teamAccess.access;
-    if (teamMember.role !== "manager") {
+    if (!isManagerLikeRole(teamMember.role)) {
       const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
       return NextResponse.json(output, { status: 403 });
     }

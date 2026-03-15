@@ -121,7 +121,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
 
             return {
                 id: profile.id,
-                role: profile.role as 'manager' | 'operator',
+                role: profile.role as 'manager' | 'backoffice' | 'operator',
                 managerId: profile.managerId,
                 isMaster: profile.isMaster,
                 fullName: profile.fullName,
@@ -148,7 +148,7 @@ export class RegisterNewUserProfile implements IProfileUseCase {
 
             return {
                 id: profile.id,
-                role: profile.role as 'manager' | 'operator',
+                role: profile.role as 'manager' | 'backoffice' | 'operator',
                 managerId: profile.managerId,
                 isMaster: profile.isMaster,
                 fullName: profile.fullName,

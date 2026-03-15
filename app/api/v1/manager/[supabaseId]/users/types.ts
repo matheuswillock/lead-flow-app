@@ -6,8 +6,8 @@ import { UserRole, UserFunction } from "@prisma/client";
 export const CreateUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   email: z.string().email("Email inválido"),
-  role: z.enum(["manager", "operator"], { 
-    message: "Role deve ser 'manager' ou 'operator'"
+  role: z.enum(["manager", "backoffice", "operator"], {
+    message: "Role deve ser 'manager', 'backoffice' ou 'operator'"
   }),
   functions: z.array(z.enum(["SDR", "CLOSER"]))
     .max(2, "Selecione no máximo 2 funções")
@@ -20,8 +20,8 @@ export const UpdateUserSchema = z.object({
   id: z.string().uuid("ID do usuário deve ser um UUID válido"),
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").optional(),
   email: z.string().email("Email inválido").optional(),
-  role: z.enum(["manager", "operator"], { 
-    message: "Role deve ser 'manager' ou 'operator'"
+  role: z.enum(["manager", "backoffice", "operator"], {
+    message: "Role deve ser 'manager', 'backoffice' ou 'operator'"
   }).optional(),
   functions: z.array(z.enum(["SDR", "CLOSER"]))
     .max(2, "Selecione no máximo 2 funções")
@@ -32,7 +32,7 @@ export const UpdateUserSchema = z.object({
 export const AssociateOperatorSchema = z.object({
   action: z.literal("associate"),
   profileId: z.string().uuid("ID do usuário deve ser um UUID válido"),
-  role: z.enum(["manager", "operator"]).optional(),
+  role: z.enum(["manager", "backoffice", "operator"]).optional(),
   functions: z.array(z.enum(["SDR", "CLOSER"])).optional()
 });
 
@@ -55,7 +55,7 @@ export interface UserResponseDTO {
 }
 
 export interface ManagerResponseDTO extends UserResponseDTO {
-  role: "manager";
+  role: "manager" | "backoffice";
   operators?: OperatorResponseDTO[];
 }
 

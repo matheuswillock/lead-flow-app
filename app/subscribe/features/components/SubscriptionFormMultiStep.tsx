@@ -92,7 +92,7 @@ export function SubscriptionFormMultiStep({
   }, [currentStep, subscriptionData]);
 
   // Legacy webhook-redirect to sign-up removed. Pix/Boleto confirmation will be handled
-  // in the SubscriptionSuccess step via PixPayment callback, redirecting to the board.
+  // in the SubscriptionSuccess step via PixPayment callback, redirecting to CRM.
 
   const form = useForm<SubscriptionFormSchema>({
     resolver: zodResolver(subscriptionSchema),
@@ -467,10 +467,10 @@ export function SubscriptionFormMultiStep({
       try {
         const supabase = createSupabaseBrowser();
         const { data: { user } } = await (supabase?.auth.getUser() || { data: { user: null } });
-        // sinalizar para o board exibir um toast de boas-vindas
+        // sinalizar para o CRM exibir um toast de boas-vindas
         try { sessionStorage.setItem('subscriptionJustActivated', '1'); } catch (_) { /* ignore */ }
         if (user?.id) {
-          router.push(`/${user.id}/board`);
+          router.push(`/${user.id}/crm`);
           return;
         }
       } catch (_) { /* ignore */ }

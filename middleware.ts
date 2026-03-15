@@ -1,11 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/auth-sessions"
+import { isManagerLikeRole } from "@/lib/roles"
 
 // Configure runtime
 export const runtime = 'nodejs'
 
 // Define protected route prefixes (actual URL paths)
-const protectedPrefixes = ["/dashboard", "/account", "/board", "/pipeline", "/manager-users", "/notifications"]
+const protectedPrefixes = ["/dashboard", "/account", "/crm", "/board", "/pipeline", "/manager-users", "/notifications"]
 
 // Public routes that don't require authentication
 const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe", "/checkout-return", "/operator-confirmed", "/pix-confirmed", "/set-password", "/forgot-password"]
@@ -52,10 +53,10 @@ export async function middleware(request: NextRequest) {
     return pathname.startsWith(route)
   })
 
-  // If the user is logged in and is trying to access auth pages, redirect to board with supabaseId
+  // If the user is logged in and is trying to access auth pages, redirect to CRM with supabaseId
   const authPages = ["/login", "/sign-in", "/sign-up"]
   if (user && authPages.includes(pathname)) {
-    const url = new URL(`/${user.id}/board`, request.url)
+    const url = new URL(`/${user.id}/crm`, request.url)
     url.search = request.nextUrl.search
     return NextResponse.redirect(url)
   }
@@ -129,7 +130,7 @@ export async function middleware(request: NextRequest) {
       }
       
       // Se não for manager, redirecionar para dashboard
-      if (profile.role !== 'manager') {
+      if (!isManagerLikeRole(profile.role)) {
         console.info(`[middleware] User ${user.id} is ${profile.role}, not a manager, redirecting to dashboard`)
         return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
       }

@@ -8,7 +8,7 @@ export interface RequestToRegisterUserProfile {
   cpfCnpj?: string;
   subscriptionStatus?: 'trial' | 'active' | 'past_due' | 'suspended' | 'canceled';
   subscriptionPlan?: 'free_trial' | 'manager_base' | 'with_operators';
-  role?: 'manager' | 'operator';
+  role?: 'manager' | 'backoffice' | 'operator';
   operatorCount?: number;
   subscriptionStartDate?: Date;
   trialEndDate?: Date;
@@ -31,7 +31,7 @@ export interface RequestToRegisterUserProfileOAuth {
   cpfCnpj?: string;
   subscriptionStatus?: 'trial' | 'active' | 'past_due' | 'suspended' | 'canceled';
   subscriptionPlan?: 'free_trial' | 'manager_base' | 'with_operators';
-  role?: 'manager' | 'operator';
+  role?: 'manager' | 'backoffice' | 'operator';
   operatorCount?: number;
   subscriptionStartDate?: Date;
   trialEndDate?: Date;

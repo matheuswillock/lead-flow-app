@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import { Bell, ExternalLink, RefreshCw } from "lucide-react";
+import { Bell, CircleAlert, ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,8 +42,13 @@ function hasLeadLink(notification: NotificationItem) {
   return (
     notification.type === "ACTIVITY_MENTION" ||
     notification.type === "ACTIVITY_REACTION" ||
-    notification.type === "LEAD_SCHEDULE_CREATED"
+    notification.type === "LEAD_SCHEDULE_CREATED" ||
+    notification.type === "LEAD_PROPOSAL_PENDING"
   );
+}
+
+function isProposalPendingNotification(notification: NotificationItem) {
+  return notification.type === "LEAD_PROPOSAL_PENDING";
 }
 
 export function NotificationsContainer() {
@@ -146,6 +151,7 @@ export function NotificationsContainer() {
           const leadCode = getLeadCode(notification);
           const activityId = getActivityId(notification);
           const canOpenLead = hasLeadLink(notification) && !!leadCode;
+          const isProposalPending = isProposalPendingNotification(notification);
           const actorName =
             notification.actor?.fullName ||
             notification.actor?.email ||
@@ -156,11 +162,18 @@ export function NotificationsContainer() {
               key={notification.id}
               className={cn(
                 "rounded-lg border border-border/60 bg-card/60 p-4 transition",
+                isProposalPending && "border-amber-300/70 bg-amber-50/70 dark:border-amber-500/50 dark:bg-amber-500/10",
                 notification.isRead ? "opacity-60" : "opacity-100"
               )}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
+                  {isProposalPending ? (
+                    <div className="mb-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                      <CircleAlert className="h-3.5 w-3.5" />
+                      Urgente
+                    </div>
+                  ) : null}
                   <p className="text-sm font-medium">{notification.message}</p>
                   <p className="text-xs text-muted-foreground">
                     {actorName} • {formatCreatedAt(notification.createdAt)}
@@ -168,7 +181,7 @@ export function NotificationsContainer() {
                 </div>
                 {canOpenLead ? (
                   <Link
-                    href={`/${supabaseId}/board?leadCode=${encodeURIComponent(leadCode as string)}${activityId ? `&activityId=${encodeURIComponent(activityId)}` : ""}`}
+                    href={`/${supabaseId}/crm?leadCode=${encodeURIComponent(leadCode as string)}${activityId ? `&activityId=${encodeURIComponent(activityId)}` : ""}`}
                     className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                   >
                     Abrir lead

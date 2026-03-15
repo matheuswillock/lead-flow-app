@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import { isManagerLikeRole } from "@/lib/roles";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (teamAccess.access.teamMember.role === 'manager') {
+    if (isManagerLikeRole(teamAccess.access.teamMember.role)) {
       // Manager: buscar agendamentos do time
       whereClause = {
         lead: {

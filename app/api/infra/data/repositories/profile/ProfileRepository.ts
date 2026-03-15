@@ -2,6 +2,7 @@ import prisma, { withPrismaRetry } from "@/app/api/infra/data/prisma";
 import type { UserRole, Profile, Prisma } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js"
 import type { IProfileRepository } from "./IProfileRepository";
+import { isManagerLikeRole } from "@/lib/roles";
 
 // Função para criar cliente Supabase de forma segura
 function createSupabaseClient() {
@@ -125,7 +126,7 @@ class PrismaProfileRepository implements IProfileRepository {
                 }
 
                 // Se o usuário é um manager não-master, buscar todos os usuários do master
-                if (found.role === 'manager' && !found.isMaster && found.managerId) {
+                if (isManagerLikeRole(found.role) && !found.isMaster && found.managerId) {
                     // Buscar todos os usuários associados ao master (incluindo o próprio master)
                     const allTeamMembers = await prisma.profile.findMany({
                         where: {

@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma";
+import { isManagerLikeRole } from "@/lib/roles";
 import type { 
   IMetricsRepository, 
   LeadMetricsData, 
@@ -59,7 +60,7 @@ export class MetricsRepository implements IMetricsRepository {
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (teamMember.role === 'manager') {
+    if (isManagerLikeRole(teamMember.role)) {
       // Manager: buscar leads do time
       whereClause = {
         teamId,
@@ -114,7 +115,7 @@ export class MetricsRepository implements IMetricsRepository {
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (teamMember.role === 'manager') {
+    if (isManagerLikeRole(teamMember.role)) {
       // Manager: buscar leads do time
       whereClause = {
         teamId,
@@ -166,7 +167,7 @@ export class MetricsRepository implements IMetricsRepository {
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (teamMember.role === 'manager') {
+    if (isManagerLikeRole(teamMember.role)) {
       // Manager: buscar leads do time
       whereClause = {
         teamId,
@@ -222,7 +223,7 @@ export class MetricsRepository implements IMetricsRepository {
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (teamMember.role === 'manager') {
+    if (isManagerLikeRole(teamMember.role)) {
       // Manager: buscar agendamentos do time
       whereClause = {
         lead: {
@@ -278,7 +279,7 @@ export class MetricsRepository implements IMetricsRepository {
     // Construir where clause baseado na role
     let whereClause: any;
 
-    if (teamMember.role === 'manager') {
+    if (isManagerLikeRole(teamMember.role)) {
       // Manager: buscar vendas do time
       whereClause = {
         lead: {
@@ -334,7 +335,7 @@ export class MetricsRepository implements IMetricsRepository {
 
     let whereClause: any;
 
-    if (teamMember.role === 'manager') {
+    if (isManagerLikeRole(teamMember.role)) {
       whereClause = {
         teamId,
         meetingHeald: 'yes',

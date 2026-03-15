@@ -3,6 +3,7 @@ erDiagram
 
         UserRole {
             manager manager
+backoffice backoffice
 operator operator
         }
     
@@ -92,6 +93,7 @@ ACTIVITY_REACTION ACTIVITY_REACTION
 TEAM_MEMBER_ADDED TEAM_MEMBER_ADDED
 TEAM_MEMBER_REMOVED TEAM_MEMBER_REMOVED
 LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
+LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
         }
     
   "profiles" {

@@ -69,7 +69,11 @@ import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/Le
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 
-export default function PipelineTable() {
+interface PipelineTableProps {
+  useExternalFilters?: boolean;
+}
+
+export default function PipelineTable({ useExternalFilters = false }: PipelineTableProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
@@ -353,98 +357,100 @@ export default function PipelineTable() {
 
   return (
     <div className="space-y-4">
-      <LeadsFiltersLayout
-        actions={
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="h-8">
-                Colunas <ChevronDown className="ml-2 h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {table
-                .getAllColumns()
-                .filter((column) => column.getCanHide())
-                .map((column) => {
-                  const label =
-                    (column.columnDef.meta as { label?: string } | undefined)?.label ??
-                    column.id;
-                  return (
-                    <DropdownMenuCheckboxItem
-                      key={column.id}
-                      className="capitalize"
-                      checked={column.getIsVisible()}
-                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                    >
-                      {label}
-                    </DropdownMenuCheckboxItem>
-                  );
-                })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        }
-      >
-        <Input
-          placeholder="Filtrar por nome..."
-          value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
-          onChange={(event) =>
-            table.getColumn("name")?.setFilterValue(event.target.value)
+      {!useExternalFilters && (
+        <LeadsFiltersLayout
+          actions={
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="h-8">
+                  Colunas <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {table
+                  .getAllColumns()
+                  .filter((column) => column.getCanHide())
+                  .map((column) => {
+                    const label =
+                      (column.columnDef.meta as { label?: string } | undefined)?.label ??
+                      column.id;
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={column.id}
+                        className="capitalize"
+                        checked={column.getIsVisible()}
+                        onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                      >
+                        {label}
+                      </DropdownMenuCheckboxItem>
+                    );
+                  })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           }
-          className="h-8 w-[150px] lg:w-[250px]"
-        />
-        {statusColumn && (
-          <LeadsStatusFilter
-            statusOptions={statusOptions}
-            selectedStatuses={selectedStatuses}
-            onChangeStatuses={(values) =>
-              statusColumn.setFilterValue(values.length ? values : undefined)
+        >
+          <Input
+            placeholder="Filtrar por nome..."
+            value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
+            onChange={(event) =>
+              table.getColumn("name")?.setFilterValue(event.target.value)
             }
-            meetingHeld={onlyMeetingsHeld}
-            onToggleMeetingHeld={setOnlyMeetingsHeld}
+            className="h-8 w-[150px] lg:w-[250px]"
           />
-        )}
-        {assignedToColumn && responsibleOptions.length > 0 && (
-          <LeadsMultiFilter
-            title="Responsável"
-            options={responsibleOptions}
-            selectedValues={selectedResponsibles}
-            onChange={(values) =>
-              assignedToColumn.setFilterValue(values.length ? values : undefined)
-            }
-          />
-        )}
-        {closerColumn && closerOptions.length > 0 && (
-          <LeadsMultiFilter
-            title="Closer"
-            options={closerOptions}
-            selectedValues={selectedClosers}
-            onChange={(values) =>
-              closerColumn.setFilterValue(values.length ? values : undefined)
-            }
-          />
-        )}
-        {createdAtColumn && (
-          <LeadsDateFilter
-            title="Data de Criação"
-            value={dateRange}
-            onChange={handleDateChange}
-          />
-        )}
-        {isFiltered && (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              table.resetColumnFilters();
-              setOnlyMeetingsHeld(false);
-              setDateRange(undefined);
-            }}
-            className="h-8 px-2 lg:px-3"
-          >
-            Limpar
-            <X className="ml-2 h-4 w-4" />
-          </Button>
-        )}
-      </LeadsFiltersLayout>
+          {statusColumn && (
+            <LeadsStatusFilter
+              statusOptions={statusOptions}
+              selectedStatuses={selectedStatuses}
+              onChangeStatuses={(values) =>
+                statusColumn.setFilterValue(values.length ? values : undefined)
+              }
+              meetingHeld={onlyMeetingsHeld}
+              onToggleMeetingHeld={setOnlyMeetingsHeld}
+            />
+          )}
+          {assignedToColumn && responsibleOptions.length > 0 && (
+            <LeadsMultiFilter
+              title="Responsável"
+              options={responsibleOptions}
+              selectedValues={selectedResponsibles}
+              onChange={(values) =>
+                assignedToColumn.setFilterValue(values.length ? values : undefined)
+              }
+            />
+          )}
+          {closerColumn && closerOptions.length > 0 && (
+            <LeadsMultiFilter
+              title="Closer"
+              options={closerOptions}
+              selectedValues={selectedClosers}
+              onChange={(values) =>
+                closerColumn.setFilterValue(values.length ? values : undefined)
+              }
+            />
+          )}
+          {createdAtColumn && (
+            <LeadsDateFilter
+              title="Data de Criação"
+              value={dateRange}
+              onChange={handleDateChange}
+            />
+          )}
+          {isFiltered && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                table.resetColumnFilters();
+                setOnlyMeetingsHeld(false);
+                setDateRange(undefined);
+              }}
+              className="h-8 px-2 lg:px-3"
+            >
+              Limpar
+              <X className="ml-2 h-4 w-4" />
+            </Button>
+          )}
+        </LeadsFiltersLayout>
+      )}
       <div className="rounded-md border">
         <DndContext
           sensors={sensors}

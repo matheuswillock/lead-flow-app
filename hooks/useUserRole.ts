@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/app/context/AuthContext";
+import { isManagerLikeRole } from "@/lib/roles";
 
 // Cache simples para evitar múltiplas requisições
 const roleCache: { [key: string]: string } = {};
@@ -60,7 +61,7 @@ export function useUserRole() {
   return { 
     role, 
     loading, 
-    isManager: role === "manager",
+    isManager: isManagerLikeRole(role),
     isOperator: role === "operator" 
   };
 }

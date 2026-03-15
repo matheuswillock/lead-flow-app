@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react";
+import React, { ReactNode, useState } from "react";
 import BoardHeader from "./BoardHeader";
 import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
@@ -14,7 +14,17 @@ import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
 
-export function BoardContainer() {
+interface BoardContainerProps {
+  title?: string;
+  viewModeToggle?: ReactNode;
+  filtersBar?: ReactNode;
+}
+
+export function BoardContainer({
+  title,
+  viewModeToggle,
+  filtersBar,
+}: BoardContainerProps = {}) {
   const { finalizeContract, refreshLeads, open, setOpen, selected: lead, user, userLoading, patchLead } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
@@ -96,7 +106,12 @@ export function BoardContainer() {
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 p-4">
 
-      <BoardHeader />
+      <BoardHeader
+        title={title}
+        viewModeToggle={viewModeToggle}
+        hideFiltersBar={!!filtersBar}
+      />
+      {filtersBar}
 
       <BoardColumns 
         onFinalizeContract={handleFinalizeContract}

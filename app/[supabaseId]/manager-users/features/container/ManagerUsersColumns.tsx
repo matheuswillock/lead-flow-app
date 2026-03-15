@@ -146,10 +146,17 @@ export function createColumns({
       },
       cell: ({ row }) => {
         const role = row.getValue("role") as string;
+        const roleLabel = role === "manager"
+          ? "MANAGER"
+          : role === "backoffice"
+          ? "BACKOFFICE"
+          : "OPERATOR";
+
+        const roleVariant = role === "operator" ? "secondary" : "default";
         return (
           <div className="flex justify-center">
-            <Badge variant={role === "manager" ? "default" : "secondary"}>
-              {role === "manager" ? "MANAGER" : "OPERATOR"}
+            <Badge variant={roleVariant}>
+              {roleLabel}
             </Badge>
           </div>
         );

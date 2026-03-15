@@ -9,6 +9,7 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { NotificationType, UserRole } from "@prisma/client";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { isManagerLikeRole } from "@/lib/roles";
 
 async function getTeamMasterId(teamId: string) {
   const team = await prisma.team.findUnique({
@@ -67,7 +68,7 @@ export async function POST(
     }
 
     const { teamId, profileId, teamMember } = teamAccess.access;
-    if (teamMember.role !== "manager") {
+    if (!isManagerLikeRole(teamMember.role)) {
       const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
       return NextResponse.json(output, { status: 403 });
     }
@@ -271,7 +272,7 @@ export async function GET(
     }
 
     const { teamId, profileId, teamMember } = teamAccess.access;
-    if (teamMember.role !== "manager") {
+    if (!isManagerLikeRole(teamMember.role)) {
       const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
       return NextResponse.json(output, { status: 403 });
     }
@@ -333,7 +334,7 @@ export async function GET(
       },
     });
 
-    const totalManagers = teamMembers.filter((member) => member.role === "manager").length;
+    const totalManagers = teamMembers.filter((member) => isManagerLikeRole(member.role)).length;
     const totalOperators = teamMembers.filter((member) => member.role === "operator").length;
 
     const activeUsers = teamMembers
@@ -431,7 +432,7 @@ export async function PUT(
     }
 
     const { teamId, profileId, teamMember } = teamAccess.access;
-    if (teamMember.role !== "manager") {
+    if (!isManagerLikeRole(teamMember.role)) {
       const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
       return NextResponse.json(output, { status: 403 });
     }
@@ -675,7 +676,7 @@ export async function DELETE(
     }
 
     const { teamId, profileId, teamMember } = teamAccess.access;
-    if (teamMember.role !== "manager") {
+    if (!isManagerLikeRole(teamMember.role)) {
       const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
       return NextResponse.json(output, { status: 403 });
     }
