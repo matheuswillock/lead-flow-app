@@ -5876,6 +5876,67 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Support",
+      "item": [
+        {
+          "name": "Criar Pedido de Suporte",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "subject",
+                  "value": "Erro ao salvar lead",
+                  "type": "text"
+                },
+                {
+                  "key": "message",
+                  "value": "Ao clicar em salvar lead, recebo erro 500. Segue print em anexo.",
+                  "type": "text"
+                },
+                {
+                  "key": "requesterName",
+                  "value": "Usuario Teste",
+                  "type": "text"
+                },
+                {
+                  "key": "requesterEmail",
+                  "value": "{{loginEmail}}",
+                  "type": "text"
+                },
+                {
+                  "key": "requesterSupabaseId",
+                  "value": "{{supabaseUserId}}",
+                  "type": "text"
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": "",
+                  "description": "Opcional: selecione uma imagem local para anexar"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/support",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "support"
+              ]
+            },
+            "description": "Envia um pedido de suporte com assunto, mensagem e anexos de imagem opcionais. O backend envia via Resend para SUPPORT_EMAIL."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

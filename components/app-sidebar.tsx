@@ -2,7 +2,7 @@
 
 import Link from "next/link"  
 import Image from "next/image"
-import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Users2 } from "lucide-react"
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Users2, LifeBuoy } from "lucide-react"
 
 import {
   Sidebar,
@@ -21,6 +21,7 @@ import { useUserContext } from "@/app/context/UserContext"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { isManagerLikeRole } from "@/lib/roles"
+import { SupportRequestDialog } from "@/components/support-request-dialog"
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const { user } = useUserContext();
@@ -104,6 +105,18 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
             </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SupportRequestDialog
+                  trigger={
+                    <SidebarMenuButton>
+                      <LifeBuoy />
+                      <span>Suporte</span>
+                    </SidebarMenuButton>
+                  }
+                />
+              </SidebarMenuItem>
+            </SidebarMenu>
             <NavUser supabaseId={supabaseId} />
         </SidebarFooter>
     </Sidebar>
