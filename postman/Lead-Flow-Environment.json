@@ -120,6 +120,13 @@
       "type": "default",
       "enabled": true,
       "description": "Alias legado de supabaseId"
+    },
+    {
+      "key": "SUPPORT_EMAIL",
+      "value": "matheuswillock@gmail.com",
+      "type": "default",
+      "enabled": true,
+      "description": "Email de destino para os pedidos de suporte (variavel do backend)"
     }
   ],
   "_postman_variable_scope": "environment"
