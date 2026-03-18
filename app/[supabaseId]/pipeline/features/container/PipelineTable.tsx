@@ -69,6 +69,8 @@ interface PipelineTableProps {
 
 export default function PipelineTable({ useExternalFilters = false }: PipelineTableProps) {
   const draggedColumnIdRef = React.useRef<string | null>(null);
+  const [draggingColumnId, setDraggingColumnId] = React.useState<string | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = React.useState<string | null>(null);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
@@ -280,6 +282,8 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
 
   const handleHeaderDragStart = React.useCallback((event: React.DragEvent<HTMLElement>, columnId: string) => {
     draggedColumnIdRef.current = columnId;
+    setDraggingColumnId(columnId);
+    setDragOverColumnId(null);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", columnId);
   }, []);
@@ -288,6 +292,8 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     (targetColumnId: string) => {
       const sourceColumnId = draggedColumnIdRef.current;
       draggedColumnIdRef.current = null;
+      setDragOverColumnId(null);
+      setDraggingColumnId(null);
 
       if (!sourceColumnId || sourceColumnId === targetColumnId) return;
       if (sourceColumnId === "drag" || sourceColumnId === "actions") return;
@@ -468,7 +474,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
                     return (
                       <TableHead
                         key={header.id}
-                        className={`text-center align-middle ${canReorder ? "cursor-move" : ""}`}
+                        className={`text-center align-middle ${canReorder ? "cursor-move select-none" : ""} ${draggingColumnId === header.column.id ? "opacity-60" : ""} ${dragOverColumnId === header.column.id ? "bg-muted/50 ring-1 ring-primary/40" : ""}`}
                         draggable={canReorder}
                         onDragStart={
                           canReorder
@@ -480,6 +486,27 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
                             ? (event) => {
                                 event.preventDefault();
                                 event.dataTransfer.dropEffect = "move";
+                                if (draggedColumnIdRef.current && draggedColumnIdRef.current !== header.column.id) {
+                                  setDragOverColumnId(header.column.id);
+                                }
+                              }
+                            : undefined
+                        }
+                        onDragLeave={
+                          canReorder
+                            ? () => {
+                                setDragOverColumnId((prev) =>
+                                  prev === header.column.id ? null : prev
+                                );
+                              }
+                            : undefined
+                        }
+                        onDragEnd={
+                          canReorder
+                            ? () => {
+                                draggedColumnIdRef.current = null;
+                                setDragOverColumnId(null);
+                                setDraggingColumnId(null);
                               }
                             : undefined
                         }
