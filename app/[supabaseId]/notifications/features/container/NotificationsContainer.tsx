@@ -60,7 +60,6 @@ export function NotificationsContainer() {
     isLoadingList,
     error,
     loadNotifications,
-    refreshUnreadCount,
     markAllAsRead,
   } = useNotifications();
   const markedOnExitRef = useRef(false);
@@ -75,11 +74,10 @@ export function NotificationsContainer() {
   useEffect(() => {
     const load = async () => {
       await loadNotifications({ limit: 100, offset: 0 });
-      await refreshUnreadCount();
     };
 
     void load();
-  }, [loadNotifications, refreshUnreadCount]);
+  }, [loadNotifications]);
 
   useEffect(() => {
     markedOnExitRef.current = false;
@@ -119,7 +117,6 @@ export function NotificationsContainer() {
           size="sm"
           onClick={() => {
             void loadNotifications({ limit: 100, offset: 0 });
-            void refreshUnreadCount();
           }}
         >
           <RefreshCw className="mr-2 h-4 w-4" />

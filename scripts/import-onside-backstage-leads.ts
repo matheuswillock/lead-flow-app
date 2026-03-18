@@ -507,25 +507,22 @@ function parseSheetRows(inputPath: string): { parsedRows: ParsedLeadRow[]; skipp
 
 async function loadExistingLeadMaps(parsedRows: ParsedLeadRow[]) {
   const emailSet = new Set<string>();
-  const phoneSet = new Set<string>();
   const cnpjSet = new Set<string>();
 
   parsedRows.forEach((row) => {
     if (row.email) emailSet.add(row.email);
-    if (row.phone) phoneSet.add(row.phone);
     if (row.cnpj) cnpjSet.add(row.cnpj);
   });
 
   const existingLeads =
-    emailSet.size || phoneSet.size || cnpjSet.size
+    emailSet.size || cnpjSet.size
       ? await prisma.lead.findMany({
           where: {
             teamId: TARGET_TEAM_ID,
             OR: [
               emailSet.size ? { email: { in: Array.from(emailSet) } } : undefined,
-              phoneSet.size ? { phone: { in: Array.from(phoneSet) } } : undefined,
               cnpjSet.size ? { cnpj: { in: Array.from(cnpjSet) } } : undefined,
-            ].filter(Boolean) as Array<{ email?: { in: string[] }; phone?: { in: string[] }; cnpj?: { in: string[] } }>,
+            ].filter(Boolean) as Array<{ email?: { in: string[] }; cnpj?: { in: string[] } }>,
           },
           select: {
             id: true,
@@ -538,19 +535,16 @@ async function loadExistingLeadMaps(parsedRows: ParsedLeadRow[]) {
       : [];
 
   const byEmail = new Map<string, ExistingLeadKey>();
-  const byPhone = new Map<string, ExistingLeadKey>();
   const byCnpj = new Map<string, ExistingLeadKey>();
 
   existingLeads.forEach((lead) => {
     const normalizedEmail = lead.email ? normalizeEmail(lead.email) : null;
-    const normalizedPhone = lead.phone ? normalizeDigits(lead.phone) : null;
     const normalizedCnpj = lead.cnpj ? normalizeDigits(lead.cnpj) : null;
     if (normalizedEmail) byEmail.set(normalizedEmail, lead);
-    if (normalizedPhone) byPhone.set(normalizedPhone, lead);
     if (normalizedCnpj) byCnpj.set(normalizedCnpj, lead);
   });
 
-  return { byEmail, byPhone, byCnpj };
+  return { byEmail, byCnpj };
 }
 
 async function run() {
@@ -619,18 +613,16 @@ async function run() {
 
     for (const row of parsedRows) {
       let email = row.email;
-      let phone = row.phone;
+      const phone = row.phone;
       let cnpj = row.cnpj;
 
       const emailConflict = email ? existingMaps.byEmail.get(email) ?? null : null;
-      const phoneConflict = phone ? existingMaps.byPhone.get(phone) ?? null : null;
       const cnpjConflict = cnpj ? existingMaps.byCnpj.get(cnpj) ?? null : null;
 
       const canReuseEmail = emailConflict && isLostStatus(emailConflict.status) && isLostStatus(row.status);
-      const canReusePhone = phoneConflict && isLostStatus(phoneConflict.status) && isLostStatus(row.status);
       const canReuseCnpj = cnpjConflict && isLostStatus(cnpjConflict.status) && isLostStatus(row.status);
 
-      if ((emailConflict && !canReuseEmail) || (phoneConflict && !canReusePhone) || (cnpjConflict && !canReuseCnpj)) {
+      if ((emailConflict && !canReuseEmail) || (cnpjConflict && !canReuseCnpj)) {
         counters.skippedDuplicate += 1;
         appendLog(logPath, `SKIP duplicate row=${row.rowNumber} name="${row.name}"`);
         continue;
@@ -638,10 +630,6 @@ async function run() {
 
       if (emailConflict && canReuseEmail) {
         email = null;
-        counters.sanitized += 1;
-      }
-      if (phoneConflict && canReusePhone) {
-        phone = null;
         counters.sanitized += 1;
       }
       if (cnpjConflict && canReuseCnpj) {
@@ -659,15 +647,6 @@ async function run() {
           counters.created += 1;
           if (email) {
             existingMaps.byEmail.set(email, {
-              id: `dry-run-row-${row.rowNumber}`,
-              email,
-              phone,
-              cnpj,
-              status: row.status,
-            });
-          }
-          if (phone) {
-            existingMaps.byPhone.set(phone, {
               id: `dry-run-row-${row.rowNumber}`,
               email,
               phone,
@@ -755,7 +734,6 @@ async function run() {
 
         counters.created += 1;
         if (email) existingMaps.byEmail.set(email, { id: createdLead.id, email, phone, cnpj, status: row.status });
-        if (phone) existingMaps.byPhone.set(phone, { id: createdLead.id, email, phone, cnpj, status: row.status });
         if (cnpj) existingMaps.byCnpj.set(cnpj, { id: createdLead.id, email, phone, cnpj, status: row.status });
 
         appendLog(

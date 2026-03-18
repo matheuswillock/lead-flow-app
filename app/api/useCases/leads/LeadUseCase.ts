@@ -201,12 +201,19 @@ export class LeadUseCase implements ILeadUseCase {
       
       // Detectar erros específicos do Prisma
       if (error instanceof Error) {
-        // Erro de unique constraint (telefone duplicado)
+        // Erro de unique constraint (campos unicos do lead)
         if (error.message.includes('Unique constraint') || error.message.includes('unique constraint')) {
-          if (data.phone) {
-            return new Output(false, [], [`Já existe um lead com o telefone ${data.phone}`], null);
+          const normalizedError = error.message.toLowerCase();
+
+          if (normalizedError.includes("teamid_email") || normalizedError.includes("email")) {
+            return new Output(false, [], ["Ja existe um lead com este e-mail"], null);
           }
-          return new Output(false, [], ["Já existe um lead com estes dados"], null);
+
+          if (normalizedError.includes("teamid_cnpj") || normalizedError.includes("cnpj")) {
+            return new Output(false, [], ["Ja existe um lead com este CNPJ"], null);
+          }
+
+          return new Output(false, [], ["Ja existe um lead com estes dados unicos"], null);
         }
         
         // Erro de validação

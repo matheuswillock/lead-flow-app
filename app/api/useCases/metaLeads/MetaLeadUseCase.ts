@@ -164,11 +164,10 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
     const { metaData, managerId, assignedTo } = dto;
 
     try {
-      // Verificar se já existe lead com este email ou telefone
+      // Verificar se ja existe lead com este email
       const existingLead = await this.checkDuplicateLead(
         managerId,
-        metaData.email,
-        metaData.phone
+        metaData.email
       );
 
       if (existingLead) {
@@ -264,12 +263,11 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
   }
 
   /**
-   * Verifica se já existe lead com email ou telefone
+   * Verifica se ja existe lead com email
    */
   private async checkDuplicateLead(
     managerId: string,
-    email?: string,
-    phone?: string
+    email?: string
   ): Promise<any | null> {
     try {
       if (email) {
@@ -280,16 +278,6 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
           }
         });
         if (byEmail) return byEmail;
-      }
-
-      if (phone) {
-        const byPhone = await prisma.lead.findFirst({
-          where: {
-            managerId,
-            phone
-          }
-        });
-        if (byPhone) return byPhone;
       }
 
       return null;
