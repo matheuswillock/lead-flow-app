@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, ReactNode, useMemo, useState, useEffect, useRef, useCallback } from "react";
+import type { VisibilityState } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { Lead, ColumnKey } from "./PipelineTypes";
 import { createBoardService } from "@/app/[supabaseId]/board/features/services/BoardService";
@@ -24,6 +25,37 @@ interface TaskOwner {
   name: string;
   avatarUrl?: string | null;
 }
+
+export type PipelineTableColumnKey =
+  | "name"
+  | "leadCode"
+  | "email"
+  | "phone"
+  | "currentHealthPlan"
+  | "currentValue"
+  | "status"
+  | "ticket"
+  | "assignedTo"
+  | "closerId"
+  | "meetingDate"
+  | "createdAt";
+
+export type PipelineTableColumnVisibility = Record<PipelineTableColumnKey, boolean>;
+
+export const DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY: PipelineTableColumnVisibility = {
+  name: true,
+  leadCode: true,
+  email: true,
+  phone: true,
+  currentHealthPlan: true,
+  currentValue: true,
+  status: true,
+  ticket: true,
+  assignedTo: true,
+  closerId: true,
+  meetingDate: true,
+  createdAt: true,
+};
 
 interface IPipelineContextState {
   isLoading: boolean;
@@ -54,6 +86,8 @@ interface IPipelineContextState {
   patchLead: (leadId: string, patch: Partial<Lead>) => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
   statusLabels: Record<ColumnKey, string>;
+  tableColumnVisibility: VisibilityState;
+  setTableColumnVisibility: React.Dispatch<React.SetStateAction<VisibilityState>>;
 }
 
 const COLUMNS: { key: ColumnKey; title: string }[] = [
@@ -115,8 +149,74 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
+  const [tableColumnVisibility, setTableColumnVisibility] = useState<VisibilityState>(
+    DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY
+  );
   const user: ProfileResponseDTO | null = contextUser;
   const accessDeniedShownRef = useRef(false);
+  const skipPersistColumnVisibilityRef = useRef(false);
+
+  const pipelineColumnsStorageKey = useMemo(() => {
+    if (!supabaseId) return null;
+    return `pipelineTableColumns:${supabaseId}:${activeTeamId || "default"}`;
+  }, [supabaseId, activeTeamId]);
+
+  useEffect(() => {
+    skipPersistColumnVisibilityRef.current = true;
+    if (!pipelineColumnsStorageKey || typeof window === "undefined") {
+      setTableColumnVisibility(DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY);
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(pipelineColumnsStorageKey);
+      if (!raw) {
+        setTableColumnVisibility(DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      if (!parsed || typeof parsed !== "object") {
+        setTableColumnVisibility(DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY);
+        return;
+      }
+
+      const nextVisibility: PipelineTableColumnVisibility = {
+        ...DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY,
+      };
+
+      (Object.keys(DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY) as PipelineTableColumnKey[]).forEach((key) => {
+        const value = parsed[key];
+        if (typeof value === "boolean") {
+          nextVisibility[key] = value;
+        }
+      });
+
+      setTableColumnVisibility(nextVisibility);
+    } catch (error) {
+      console.error("Erro ao carregar configuracoes da tabela pipeline:", error);
+      setTableColumnVisibility(DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY);
+    }
+  }, [pipelineColumnsStorageKey]);
+
+  useEffect(() => {
+    if (!pipelineColumnsStorageKey || typeof window === "undefined") {
+      return;
+    }
+    if (skipPersistColumnVisibilityRef.current) {
+      skipPersistColumnVisibilityRef.current = false;
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        pipelineColumnsStorageKey,
+        JSON.stringify(tableColumnVisibility)
+      );
+    } catch (error) {
+      console.error("Erro ao salvar configuracoes da tabela pipeline:", error);
+    }
+  }, [pipelineColumnsStorageKey, tableColumnVisibility]);
 
   // Mapeamento de status para labels legíveis
   const statusLabels: Record<ColumnKey, string> = useMemo(() => {
@@ -400,7 +500,9 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     refreshLeads: () => loadLeads({ force: true }),
     patchLead,
     finalizeContract,
-    statusLabels
+    statusLabels,
+    tableColumnVisibility,
+    setTableColumnVisibility,
   };
   
   return (

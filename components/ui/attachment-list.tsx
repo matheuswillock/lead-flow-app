@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Input } from "./input";
 
 export interface Attachment {
   id: string;
@@ -232,7 +233,7 @@ export function AttachmentList({ leadId, leadName, className }: AttachmentListPr
             </>
           )}
         </Button>
-        <input
+        <Input
           ref={fileInputRef}
           type="file"
           multiple

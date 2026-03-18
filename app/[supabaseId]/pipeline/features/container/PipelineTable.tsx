@@ -41,12 +41,6 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import usePipelineContext from "../context/PipelineHook";
 import { Lead } from "../context/PipelineTypes";
@@ -62,7 +56,7 @@ import { createColumns } from "./PipelineColumns";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { DateRange } from "react-day-picker";
-import { ChevronDown, X } from "lucide-react";
+import { X } from "lucide-react";
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
@@ -88,13 +82,14 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     errors,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
+    tableColumnVisibility,
+    setTableColumnVisibility,
   } = usePipelineContext();
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [data, setData] = React.useState<Lead[]>(filtered);
   
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
@@ -264,11 +259,11 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     state: {
       sorting,
       columnFilters,
-      columnVisibility,
+      columnVisibility: tableColumnVisibility,
     },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
+    onColumnVisibilityChange: setTableColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -358,37 +353,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   return (
     <div className="space-y-4">
       {!useExternalFilters && (
-        <LeadsFiltersLayout
-          actions={
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="h-8">
-                  Colunas <ChevronDown className="ml-2 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {table
-                  .getAllColumns()
-                  .filter((column) => column.getCanHide())
-                  .map((column) => {
-                    const label =
-                      (column.columnDef.meta as { label?: string } | undefined)?.label ??
-                      column.id;
-                    return (
-                      <DropdownMenuCheckboxItem
-                        key={column.id}
-                        className="capitalize"
-                        checked={column.getIsVisible()}
-                        onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                      >
-                        {label}
-                      </DropdownMenuCheckboxItem>
-                    );
-                  })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          }
-        >
+        <LeadsFiltersLayout>
           <Input
             placeholder="Filtrar por nome..."
             value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
@@ -503,6 +468,8 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
           <div className="flex items-center space-x-2">
             <p className="text-sm font-medium">Linhas por página</p>
             <select
+              aria-label="Linhas por página"
+              title="Linhas por página"
               value={table.getState().pagination.pageSize}
               onChange={(e) => {
                 table.setPageSize(Number(e.target.value));
