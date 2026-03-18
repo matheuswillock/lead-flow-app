@@ -41,12 +41,6 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import usePipelineContext from "../context/PipelineHook";
 import { Lead } from "../context/PipelineTypes";
@@ -62,7 +56,7 @@ import { createColumns } from "./PipelineColumns";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { DateRange } from "react-day-picker";
-import { ChevronDown, X } from "lucide-react";
+import { X } from "lucide-react";
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout";
 import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsStatusFilter";
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
@@ -74,6 +68,9 @@ interface PipelineTableProps {
 }
 
 export default function PipelineTable({ useExternalFilters = false }: PipelineTableProps) {
+  const draggedColumnIdRef = React.useRef<string | null>(null);
+  const [draggingColumnId, setDraggingColumnId] = React.useState<string | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = React.useState<string | null>(null);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
@@ -88,13 +85,16 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     errors,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
+    tableColumnVisibility,
+    setTableColumnVisibility,
+    tableColumnOrder,
+    setTableColumnOrder,
   } = usePipelineContext();
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [data, setData] = React.useState<Lead[]>(filtered);
   
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
@@ -264,11 +264,13 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     state: {
       sorting,
       columnFilters,
-      columnVisibility,
+      columnVisibility: tableColumnVisibility,
+      columnOrder: tableColumnOrder,
     },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: setColumnVisibility,
+    onColumnVisibilityChange: setTableColumnVisibility,
+    onColumnOrderChange: setTableColumnOrder,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -277,6 +279,40 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     getFacetedUniqueValues: getFacetedUniqueValues(),
     getRowId: (row) => row.id,
   });
+
+  const handleHeaderDragStart = React.useCallback((event: React.DragEvent<HTMLElement>, columnId: string) => {
+    draggedColumnIdRef.current = columnId;
+    setDraggingColumnId(columnId);
+    setDragOverColumnId(null);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", columnId);
+  }, []);
+
+  const handleHeaderDrop = React.useCallback(
+    (targetColumnId: string) => {
+      const sourceColumnId = draggedColumnIdRef.current;
+      draggedColumnIdRef.current = null;
+      setDragOverColumnId(null);
+      setDraggingColumnId(null);
+
+      if (!sourceColumnId || sourceColumnId === targetColumnId) return;
+      if (sourceColumnId === "drag" || sourceColumnId === "actions") return;
+      if (targetColumnId === "drag" || targetColumnId === "actions") return;
+
+      setTableColumnOrder((prev) => {
+        const currentOrder = prev.length ? [...prev] : [...table.getAllLeafColumns().map((column) => column.id)];
+        const sourceIndex = currentOrder.indexOf(sourceColumnId);
+        const targetIndex = currentOrder.indexOf(targetColumnId);
+
+        if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
+
+        currentOrder.splice(sourceIndex, 1);
+        currentOrder.splice(targetIndex, 0, sourceColumnId);
+        return currentOrder;
+      });
+    },
+    [setTableColumnOrder, table]
+  );
 
   const statusColumn = table.getColumn("status");
   const assignedToColumn = table.getColumn("assignedTo");
@@ -358,37 +394,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   return (
     <div className="space-y-4">
       {!useExternalFilters && (
-        <LeadsFiltersLayout
-          actions={
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="h-8">
-                  Colunas <ChevronDown className="ml-2 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {table
-                  .getAllColumns()
-                  .filter((column) => column.getCanHide())
-                  .map((column) => {
-                    const label =
-                      (column.columnDef.meta as { label?: string } | undefined)?.label ??
-                      column.id;
-                    return (
-                      <DropdownMenuCheckboxItem
-                        key={column.id}
-                        className="capitalize"
-                        checked={column.getIsVisible()}
-                        onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                      >
-                        {label}
-                      </DropdownMenuCheckboxItem>
-                    );
-                  })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          }
-        >
+        <LeadsFiltersLayout>
           <Input
             placeholder="Filtrar por nome..."
             value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
@@ -463,8 +469,56 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
+                    const canReorder = !header.isPlaceholder && header.column.id !== "drag" && header.column.id !== "actions";
+
                     return (
-                      <TableHead key={header.id} className="text-center align-middle">
+                      <TableHead
+                        key={header.id}
+                        className={`text-center align-middle ${canReorder ? "cursor-move select-none" : ""} ${draggingColumnId === header.column.id ? "opacity-60" : ""} ${dragOverColumnId === header.column.id ? "bg-muted/50 ring-1 ring-primary/40" : ""}`}
+                        draggable={canReorder}
+                        onDragStart={
+                          canReorder
+                            ? (event) => handleHeaderDragStart(event, header.column.id)
+                            : undefined
+                        }
+                        onDragOver={
+                          canReorder
+                            ? (event) => {
+                                event.preventDefault();
+                                event.dataTransfer.dropEffect = "move";
+                                if (draggedColumnIdRef.current && draggedColumnIdRef.current !== header.column.id) {
+                                  setDragOverColumnId(header.column.id);
+                                }
+                              }
+                            : undefined
+                        }
+                        onDragLeave={
+                          canReorder
+                            ? () => {
+                                setDragOverColumnId((prev) =>
+                                  prev === header.column.id ? null : prev
+                                );
+                              }
+                            : undefined
+                        }
+                        onDragEnd={
+                          canReorder
+                            ? () => {
+                                draggedColumnIdRef.current = null;
+                                setDragOverColumnId(null);
+                                setDraggingColumnId(null);
+                              }
+                            : undefined
+                        }
+                        onDrop={
+                          canReorder
+                            ? (event) => {
+                                event.preventDefault();
+                                handleHeaderDrop(header.column.id);
+                              }
+                            : undefined
+                        }
+                      >
                         {header.isPlaceholder
                           ? null
                           : flexRender(
@@ -503,6 +557,8 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
           <div className="flex items-center space-x-2">
             <p className="text-sm font-medium">Linhas por página</p>
             <select
+              aria-label="Linhas por página"
+              title="Linhas por página"
               value={table.getState().pagination.pageSize}
               onChange={(e) => {
                 table.setPageSize(Number(e.target.value));

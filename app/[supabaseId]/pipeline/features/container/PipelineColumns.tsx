@@ -22,7 +22,7 @@ import { maskPhone } from "@/lib/masks";
 import { getHealthPlanLabel } from "@/lib/healthPlanLabels";
 
 const headerButtonClass = "h-8 px-2 hover:bg-accent w-full justify-center";
-const formatCurrency = (value: Lead["currentValue"]) => {
+const formatCurrency = (value: number | null | undefined) => {
   if (value === null || value === undefined) return "-";
   const numeric = Number(value);
   if (Number.isNaN(numeric)) return "-";
@@ -289,6 +289,28 @@ export const createColumns = ({
     },
     filterFn: (row, id, value) => {
       return value.includes(row.getValue(id))
+    },
+  },
+  {
+    accessorKey: "ticket",
+    meta: { label: "Ticket" },
+    header: ({ column }) => {
+      return (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className={headerButtonClass}
+        >
+          Ticket
+          <span className="ml-2">
+            {column.getIsSorted() === "asc" ? "↑" : column.getIsSorted() === "desc" ? "↓" : "↕"}
+          </span>
+        </Button>
+      )
+    },
+    cell: ({ row }) => {
+      const ticket = row.getValue("ticket") as Lead["ticket"]
+      return <div className="text-sm">{formatCurrency(ticket)}</div>
     },
   },
   {
