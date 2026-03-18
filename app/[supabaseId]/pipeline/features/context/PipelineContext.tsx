@@ -44,7 +44,7 @@ export type PipelineTableColumnVisibility = Record<PipelineTableColumnKey, boole
 
 export const DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY: PipelineTableColumnVisibility = {
   name: true,
-  leadCode: true,
+  leadCode: false,
   email: true,
   phone: true,
   currentHealthPlan: true,
@@ -56,6 +56,23 @@ export const DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY: PipelineTableColumnVisibi
   meetingDate: true,
   createdAt: true,
 };
+
+export const DEFAULT_PIPELINE_TABLE_COLUMN_ORDER: string[] = [
+  "drag",
+  "name",
+  "leadCode",
+  "email",
+  "phone",
+  "currentHealthPlan",
+  "currentValue",
+  "status",
+  "ticket",
+  "assignedTo",
+  "closerId",
+  "meetingDate",
+  "createdAt",
+  "actions",
+];
 
 interface IPipelineContextState {
   isLoading: boolean;
@@ -88,6 +105,8 @@ interface IPipelineContextState {
   statusLabels: Record<ColumnKey, string>;
   tableColumnVisibility: VisibilityState;
   setTableColumnVisibility: React.Dispatch<React.SetStateAction<VisibilityState>>;
+  tableColumnOrder: string[];
+  setTableColumnOrder: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
 const COLUMNS: { key: ColumnKey; title: string }[] = [
@@ -152,13 +171,22 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [tableColumnVisibility, setTableColumnVisibility] = useState<VisibilityState>(
     DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY
   );
+  const [tableColumnOrder, setTableColumnOrder] = useState<string[]>(
+    DEFAULT_PIPELINE_TABLE_COLUMN_ORDER
+  );
   const user: ProfileResponseDTO | null = contextUser;
   const accessDeniedShownRef = useRef(false);
   const skipPersistColumnVisibilityRef = useRef(false);
+  const skipPersistColumnOrderRef = useRef(false);
 
   const pipelineColumnsStorageKey = useMemo(() => {
     if (!supabaseId) return null;
-    return `pipelineTableColumns:${supabaseId}:${activeTeamId || "default"}`;
+    return `pipelineTableColumns:v2:${supabaseId}:${activeTeamId || "default"}`;
+  }, [supabaseId, activeTeamId]);
+
+  const pipelineColumnOrderStorageKey = useMemo(() => {
+    if (!supabaseId) return null;
+    return `pipelineTableColumnOrder:v2:${supabaseId}:${activeTeamId || "default"}`;
   }, [supabaseId, activeTeamId]);
 
   useEffect(() => {
@@ -217,6 +245,58 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       console.error("Erro ao salvar configuracoes da tabela pipeline:", error);
     }
   }, [pipelineColumnsStorageKey, tableColumnVisibility]);
+
+  useEffect(() => {
+    skipPersistColumnOrderRef.current = true;
+    if (!pipelineColumnOrderStorageKey || typeof window === "undefined") {
+      setTableColumnOrder(DEFAULT_PIPELINE_TABLE_COLUMN_ORDER);
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(pipelineColumnOrderStorageKey);
+      if (!raw) {
+        setTableColumnOrder(DEFAULT_PIPELINE_TABLE_COLUMN_ORDER);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        setTableColumnOrder(DEFAULT_PIPELINE_TABLE_COLUMN_ORDER);
+        return;
+      }
+
+      const savedOrder = parsed.filter((value): value is string => typeof value === "string");
+      const allowed = new Set(DEFAULT_PIPELINE_TABLE_COLUMN_ORDER);
+      const validSaved = savedOrder.filter((id) => allowed.has(id));
+      const missing = DEFAULT_PIPELINE_TABLE_COLUMN_ORDER.filter((id) => !validSaved.includes(id));
+      const normalizedOrder = [...validSaved, ...missing];
+
+      setTableColumnOrder(normalizedOrder);
+    } catch (error) {
+      console.error("Erro ao carregar ordem das colunas da tabela pipeline:", error);
+      setTableColumnOrder(DEFAULT_PIPELINE_TABLE_COLUMN_ORDER);
+    }
+  }, [pipelineColumnOrderStorageKey]);
+
+  useEffect(() => {
+    if (!pipelineColumnOrderStorageKey || typeof window === "undefined") {
+      return;
+    }
+    if (skipPersistColumnOrderRef.current) {
+      skipPersistColumnOrderRef.current = false;
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        pipelineColumnOrderStorageKey,
+        JSON.stringify(tableColumnOrder)
+      );
+    } catch (error) {
+      console.error("Erro ao salvar ordem das colunas da tabela pipeline:", error);
+    }
+  }, [pipelineColumnOrderStorageKey, tableColumnOrder]);
 
   // Mapeamento de status para labels legíveis
   const statusLabels: Record<ColumnKey, string> = useMemo(() => {
@@ -503,6 +583,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     statusLabels,
     tableColumnVisibility,
     setTableColumnVisibility,
+    tableColumnOrder,
+    setTableColumnOrder,
   };
   
   return (

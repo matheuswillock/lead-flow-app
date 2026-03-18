@@ -68,6 +68,7 @@ interface PipelineTableProps {
 }
 
 export default function PipelineTable({ useExternalFilters = false }: PipelineTableProps) {
+  const draggedColumnIdRef = React.useRef<string | null>(null);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
@@ -84,6 +85,8 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     setOnlyMeetingsHeld,
     tableColumnVisibility,
     setTableColumnVisibility,
+    tableColumnOrder,
+    setTableColumnOrder,
   } = usePipelineContext();
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
@@ -260,10 +263,12 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
       sorting,
       columnFilters,
       columnVisibility: tableColumnVisibility,
+      columnOrder: tableColumnOrder,
     },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setTableColumnVisibility,
+    onColumnOrderChange: setTableColumnOrder,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -272,6 +277,36 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     getFacetedUniqueValues: getFacetedUniqueValues(),
     getRowId: (row) => row.id,
   });
+
+  const handleHeaderDragStart = React.useCallback((event: React.DragEvent<HTMLElement>, columnId: string) => {
+    draggedColumnIdRef.current = columnId;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", columnId);
+  }, []);
+
+  const handleHeaderDrop = React.useCallback(
+    (targetColumnId: string) => {
+      const sourceColumnId = draggedColumnIdRef.current;
+      draggedColumnIdRef.current = null;
+
+      if (!sourceColumnId || sourceColumnId === targetColumnId) return;
+      if (sourceColumnId === "drag" || sourceColumnId === "actions") return;
+      if (targetColumnId === "drag" || targetColumnId === "actions") return;
+
+      setTableColumnOrder((prev) => {
+        const currentOrder = prev.length ? [...prev] : [...table.getAllLeafColumns().map((column) => column.id)];
+        const sourceIndex = currentOrder.indexOf(sourceColumnId);
+        const targetIndex = currentOrder.indexOf(targetColumnId);
+
+        if (sourceIndex === -1 || targetIndex === -1) return currentOrder;
+
+        currentOrder.splice(sourceIndex, 1);
+        currentOrder.splice(targetIndex, 0, sourceColumnId);
+        return currentOrder;
+      });
+    },
+    [setTableColumnOrder, table]
+  );
 
   const statusColumn = table.getColumn("status");
   const assignedToColumn = table.getColumn("assignedTo");
@@ -428,8 +463,35 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => {
+                    const canReorder = !header.isPlaceholder && header.column.id !== "drag" && header.column.id !== "actions";
+
                     return (
-                      <TableHead key={header.id} className="text-center align-middle">
+                      <TableHead
+                        key={header.id}
+                        className={`text-center align-middle ${canReorder ? "cursor-move" : ""}`}
+                        draggable={canReorder}
+                        onDragStart={
+                          canReorder
+                            ? (event) => handleHeaderDragStart(event, header.column.id)
+                            : undefined
+                        }
+                        onDragOver={
+                          canReorder
+                            ? (event) => {
+                                event.preventDefault();
+                                event.dataTransfer.dropEffect = "move";
+                              }
+                            : undefined
+                        }
+                        onDrop={
+                          canReorder
+                            ? (event) => {
+                                event.preventDefault();
+                                handleHeaderDrop(header.column.id);
+                              }
+                            : undefined
+                        }
+                      >
                         {header.isPlaceholder
                           ? null
                           : flexRender(

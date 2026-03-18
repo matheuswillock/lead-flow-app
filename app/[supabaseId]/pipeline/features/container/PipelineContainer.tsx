@@ -10,7 +10,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import usePipelineContext from "../context/PipelineHook";
-import { DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY } from "../context/PipelineContext";
+import {
+  DEFAULT_PIPELINE_TABLE_COLUMN_ORDER,
+  DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY,
+} from "../context/PipelineContext";
 import LeadImportButton from "@/app/[supabaseId]/components/LeadImportButton";
 
 const PIPELINE_TABLE_COLUMN_OPTIONS = [
@@ -55,6 +58,7 @@ export function PipelineContainer({
     patchLead,
     tableColumnVisibility,
     setTableColumnVisibility,
+    setTableColumnOrder,
   } = usePipelineContext();
   
   // Calcular total de leads
@@ -140,14 +144,17 @@ export function PipelineContainer({
                 })}
               </div>
               <p className="text-xs text-muted-foreground">
-                Isso afeta apenas a tabela do pipeline.
+                Isso afeta apenas a tabela do pipeline. Para alterar a ordem, arraste os headers direto na tabela.
               </p>
               <div className="flex justify-end">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setTableColumnVisibility(DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY)}
+                  onClick={() => {
+                    setTableColumnVisibility(DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY);
+                    setTableColumnOrder(DEFAULT_PIPELINE_TABLE_COLUMN_ORDER);
+                  }}
                 >
                   Restaurar padrão
                 </Button>
