@@ -1,5 +1,24 @@
 import { z } from "zod";
 
+const isValidCnpj = (value: string): boolean => {
+  const cnpj = value.replace(/\D/g, "");
+  if (cnpj.length !== 14) return false;
+  if (/^(\d)\1+$/.test(cnpj)) return false;
+
+  const calculateDigit = (base: string, weights: number[]) => {
+    const sum = base
+      .split("")
+      .reduce((acc, digit, index) => acc + Number.parseInt(digit, 10) * weights[index], 0);
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+
+  const firstDigit = calculateDigit(cnpj.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  const secondDigit = calculateDigit(cnpj.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+
+  return firstDigit === Number.parseInt(cnpj[12], 10) && secondDigit === Number.parseInt(cnpj[13], 10);
+};
+
 export const loginFormSchema = z.object({
   email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
   password: z.string().min(6, "Senha inválida"),
@@ -162,7 +181,13 @@ export const leadFormSchema = z.object({
   name: z.string().min(2, "Nome inválido"),
   phone: z.string().min(8, "Telefone inválido").max(20, "Telefone inválido"),
   email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
-  cnpj: z.string().min(0).optional(),
+  cnpj: z
+    .string()
+    .optional()
+    .refine((value) => {
+      if (!value || value.trim() === "") return true;
+      return isValidCnpj(value);
+    }, "CNPJ inválido"),
   closerId: z.string().min(0).optional(),
   age: z.string()
     .min(1, "Informe as idades")
@@ -174,7 +199,7 @@ export const leadFormSchema = z.object({
       return ages.every(age => age <= 120);
     }, "Todas as idades devem ser no máximo 120 anos"),
   currentHealthPlan: z.string().trim().min(1, "Selecione um plano de saúde"),
-  currentValue: z.string().min(1, "O valor atual é obrigatório"),
+  currentValue: z.string().optional(),
   referenceHospital: z.string().min(2, "O hospital de referência é obrigatório"),
   ongoingTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
   additionalNotes: z.string().min(0).optional(),

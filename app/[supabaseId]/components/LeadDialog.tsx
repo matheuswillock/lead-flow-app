@@ -1132,7 +1132,7 @@ export default function LeadDialog({
     handleAddActivity();
   };
 
-  const parseCurrentValue = (value: string): number | undefined => {
+  const parseCurrentValue = (value?: string): number | undefined => {
     if (!value || value.trim() === "") return undefined;
 
     let cleanValue = value.replace(/[^\d.,]/g, "");
@@ -1323,8 +1323,6 @@ export default function LeadDialog({
       } else {
         const loadingToast = toast.loading(`Criando lead "${data.name}"...`);
 
-        setOpen(false);
-
         try {
           const createData = transformToCreateRequest(data);
           const result = await createLead(createData);
@@ -1334,13 +1332,13 @@ export default function LeadDialog({
               id: loadingToast,
               duration: 4000,
             });
+            setOpen(false);
             await refreshLeads();
           } else {
             toast.error(result.message || "Erro ao criar lead", {
               id: loadingToast,
               duration: 5000,
             });
-            setOpen(true);
           }
         } catch (createError) {
           const errorMessage = createError instanceof Error ? createError.message : "Erro ao criar lead";
@@ -1350,7 +1348,7 @@ export default function LeadDialog({
             .toLowerCase();
 
           if (errorMessage.includes("Unique constraint") || normalizedMessage.includes("ja existe")) {
-            toast.error(`Aviso: ja existe um lead com este telefone: ${data.phone}`, {
+            toast.error("Aviso: ja existe um lead com dados unicos em conflito (e-mail ou CNPJ)", {
               id: loadingToast,
               duration: 6000,
             });
@@ -1365,8 +1363,6 @@ export default function LeadDialog({
               duration: 5000,
             });
           }
-
-          setOpen(true);
         }
       }
     } catch (error) {

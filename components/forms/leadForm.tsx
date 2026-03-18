@@ -5,7 +5,7 @@ import { leadFormData } from "@/lib/validations/validationForms";
 import { useEffect, useState } from "react";
 import React from "react";
 import { UseFormReturn } from "react-hook-form";
-import { Form, FormControl, FormField, FormItem, FormLabel } from "../ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
@@ -373,6 +373,7 @@ export function LeadForm({
                                 maxLength={18}
                             />
                         </FormControl>
+                        <FormMessage />
                     </FormItem>
                 )}
             />
@@ -452,7 +453,7 @@ export function LeadForm({
                     // Garantir que o valor sempre seja exibido formatado
                     return (
                         <FormItem>
-                            <FormLabel className="block text-sm font-medium mb-1">Valor Atual*</FormLabel>
+                            <FormLabel className="block text-sm font-medium mb-1">Valor Atual</FormLabel>
                             <FormControl>
                                 <Input
                                     value={currentValueDisplay}
@@ -474,7 +475,6 @@ export function LeadForm({
                                     }}
                                     type="text"
                                     placeholder="R$ 10,00"
-                                    required
                                     disabled={isLoading || isUpdating}
                                 />
                             </FormControl>

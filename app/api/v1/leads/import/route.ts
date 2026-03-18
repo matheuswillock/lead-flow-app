@@ -206,33 +206,28 @@ export async function POST(request: NextRequest) {
     );
 
     const emails = new Set<string>();
-    const phones = new Set<string>();
     const cnpjs = new Set<string>();
 
     dataRows.forEach((row) => {
       const email = normalizeEmail(getCell(row, headerMap, "Email (email)"));
-      const phone = normalizeDigits(getCell(row, headerMap, "Telefone (phone)"));
       const cnpj = normalizeDigits(getCell(row, headerMap, "CNPJ (short text)"));
       if (email) emails.add(email);
-      if (phone) phones.add(phone);
       if (cnpj) cnpjs.add(cnpj);
     });
 
     const existingLeads =
-      emails.size || phones.size || cnpjs.size
+      emails.size || cnpjs.size
         ? await prisma.lead.findMany({
             where: {
               teamId,
               OR: [
                 emails.size ? { email: { in: Array.from(emails) } } : undefined,
-                phones.size ? { phone: { in: Array.from(phones) } } : undefined,
                 cnpjs.size ? { cnpj: { in: Array.from(cnpjs) } } : undefined,
               ].filter(Boolean) as any,
             },
             select: {
               id: true,
               email: true,
-              phone: true,
               cnpj: true,
               status: true,
             },
@@ -240,12 +235,10 @@ export async function POST(request: NextRequest) {
         : [];
 
     const existingByEmail = new Map<string, typeof existingLeads[number]>();
-    const existingByPhone = new Map<string, typeof existingLeads[number]>();
     const existingByCnpj = new Map<string, typeof existingLeads[number]>();
 
     existingLeads.forEach((lead) => {
       if (lead.email) existingByEmail.set(normalizeEmail(lead.email), lead);
-      if (lead.phone) existingByPhone.set(normalizeDigits(lead.phone), lead);
       if (lead.cnpj) existingByCnpj.set(normalizeDigits(lead.cnpj), lead);
     });
 
@@ -262,7 +255,7 @@ export async function POST(request: NextRequest) {
       }
 
       let email = getCell(row, headerMap, "Email (email)");
-      let phone = getCell(row, headerMap, "Telefone (phone)");
+      const phone = getCell(row, headerMap, "Telefone (phone)");
       let cnpj = getCell(row, headerMap, "CNPJ (short text)");
       const age = getCell(row, headerMap, "Idades (short text)");
       const currentValue = parseCurrency(getCell(row, headerMap, "Valor Atual (currency)"));
@@ -281,28 +274,21 @@ export async function POST(request: NextRequest) {
       const currentHealthPlan = mapHealthPlan(planValue, healthPlanOptionNameByNormalized);
 
       const normalizedEmail = email ? normalizeEmail(email) : "";
-      const normalizedPhone = phone ? normalizeDigits(phone) : "";
       const normalizedCnpj = cnpj ? normalizeDigits(cnpj) : "";
 
       const emailConflict = normalizedEmail ? existingByEmail.get(normalizedEmail) : null;
-      const phoneConflict = normalizedPhone ? existingByPhone.get(normalizedPhone) : null;
       const cnpjConflict = normalizedCnpj ? existingByCnpj.get(normalizedCnpj) : null;
 
       const canReuseEmail = emailConflict && isLostStatus(emailConflict.status) && isLostStatus(status);
-      const canReusePhone = phoneConflict && isLostStatus(phoneConflict.status) && isLostStatus(status);
       const canReuseCnpj = cnpjConflict && isLostStatus(cnpjConflict.status) && isLostStatus(status);
 
-      if ((emailConflict && !canReuseEmail) || (phoneConflict && !canReusePhone) || (cnpjConflict && !canReuseCnpj)) {
+      if ((emailConflict && !canReuseEmail) || (cnpjConflict && !canReuseCnpj)) {
         skipped += 1;
         continue;
       }
 
       if (emailConflict && canReuseEmail) {
         email = "";
-        sanitized += 1;
-      }
-      if (phoneConflict && canReusePhone) {
-        phone = "";
         sanitized += 1;
       }
       if (cnpjConflict && canReuseCnpj) {

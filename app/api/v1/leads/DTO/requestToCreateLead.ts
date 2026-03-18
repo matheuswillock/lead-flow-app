@@ -2,11 +2,37 @@ import { z } from "zod";
 import { LeadStatus, MeetingHeald } from "@prisma/client";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "./leadValueLimits";
 
+const isValidCnpj = (value: string): boolean => {
+  const cnpj = value.replace(/\D/g, "");
+  if (cnpj.length !== 14) return false;
+  if (/^(\d)\1+$/.test(cnpj)) return false;
+
+  const calculateDigit = (base: string, weights: number[]) => {
+    const sum = base
+      .split("")
+      .reduce((acc, digit, index) => acc + Number.parseInt(digit, 10) * weights[index], 0);
+    const remainder = sum % 11;
+    return remainder < 2 ? 0 : 11 - remainder;
+  };
+
+  const firstDigit = calculateDigit(cnpj.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  const secondDigit = calculateDigit(cnpj.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+
+  return firstDigit === Number.parseInt(cnpj[12], 10) && secondDigit === Number.parseInt(cnpj[13], 10);
+};
+
 export const CreateLeadRequestSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),
   email: z.string().email("Email deve ser válido").nullish().transform(val => val || undefined),
   phone: z.string().min(10, "Telefone deve ter pelo menos 10 dígitos").nullish().transform(val => val || undefined),
-  cnpj: z.string().nullish().transform(val => val || undefined),
+  cnpj: z
+    .string()
+    .nullish()
+    .refine((value) => {
+      if (!value || value.trim() === "") return true;
+      return isValidCnpj(value);
+    }, "CNPJ deve ser válido")
+    .transform((val) => val || undefined),
   age: z.string().nullish().transform(val => val || undefined),
   currentHealthPlan: z.string().trim().min(1, "Plano de saúde deve ser válido").nullish().transform(val => val || undefined),
   currentValue: z
@@ -14,7 +40,7 @@ export const CreateLeadRequestSchema = z.object({
     .min(0, "Valor deve ser maior ou igual a zero")
     .max(MAX_DECIMAL_VALUE, `Valor deve ser menor que ${MAX_DECIMAL_LABEL}`)
     .nullish()
-    .transform(val => val || undefined),
+    .transform((val) => val ?? undefined),
   referenceHospital: z.string().nullish().transform(val => val || undefined),
   currentTreatment: z.string().nullish().transform(val => val || undefined),
   meetingDate: z.string().datetime().nullish().transform(val => val || undefined),
@@ -35,7 +61,7 @@ export const CreateLeadRequestSchema = z.object({
     .min(0)
     .max(MAX_DECIMAL_VALUE, `Ticket deve ser menor que ${MAX_DECIMAL_LABEL}`)
     .nullish()
-    .transform(val => val || undefined),
+    .transform((val) => val ?? undefined),
   contractDueDate: z.string().datetime().nullish().transform(val => val || undefined),
   soldPlan: z.string().trim().min(1, "Plano vendido deve ser válido").nullish().transform(val => val || undefined)
 });

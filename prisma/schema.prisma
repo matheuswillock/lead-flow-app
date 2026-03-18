@@ -264,7 +264,6 @@ model Lead {
 
   // Unique per tenant
   @@unique([teamId, email])
-  @@unique([teamId, phone])
   @@unique([teamId, cnpj])
   @@index([teamId])
   @@index([assignedTo])
