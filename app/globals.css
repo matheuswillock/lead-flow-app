@@ -3,7 +3,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* Import Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
 
 /* Map Tailwind design tokens to project CSS variables */
 @theme inline {
@@ -116,7 +116,7 @@ body {
   margin: 0; 
   background: var(--background); 
   color: var(--foreground); 
-  font-family: 'Inter', sans-serif; 
+  font-family: 'Poppins', sans-serif; 
 }
 
 html {
@@ -124,6 +124,20 @@ html {
 }
 
 h1, h2, h3, h4, h5, h6 {
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Keep LP typography unchanged while platform defaults to Poppins */
+.landing-page {
+  font-family: 'Inter', sans-serif;
+}
+
+.landing-page h1,
+.landing-page h2,
+.landing-page h3,
+.landing-page h4,
+.landing-page h5,
+.landing-page h6 {
   font-family: 'Poppins', sans-serif;
 }
 

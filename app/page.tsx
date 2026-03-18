@@ -40,7 +40,7 @@ export default function Home() {
   }, [router]);
 
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="landing-page min-h-screen bg-background text-foreground">
       <LandingHeader />
 
       <section className="relative overflow-hidden min-h-[calc(100dvh-4rem)]">
