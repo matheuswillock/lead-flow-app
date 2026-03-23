@@ -260,7 +260,11 @@ export class EmailService {
       return { success: true, data: result };
     } catch (error: any) {
       console.error("Erro ao enviar email:", error);
-      return { success: false, error: error.message };
+      return {
+        success: false,
+        error: error?.message || "Erro ao enviar email",
+        errorObject: error,
+      };
     }
   }
 

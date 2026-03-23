@@ -3707,7 +3707,22 @@
                       "raw": "{}"
                     }
                   },
-                  "response": []
+                  "response": [
+                    {
+                      "name": "201 Created (inviteDispatch)",
+                      "status": "Created",
+                      "code": 201,
+                      "_postman_previewlanguage": "json",
+                      "header": [
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n  \"isValid\": true,\n  \"successMessages\": [\n    \"Agendamento criado com sucesso\",\n    \"Aviso: Google Calendar falhou (Falha ao criar evento no Google Calendar). Convite enviado via e-mail (Resend).\"\n  ],\n  \"errorMessages\": [],\n  \"result\": {\n    \"id\": \"d468b95f-8d23-4edf-8d4b-813106f5e1f1\",\n    \"leadId\": \"0b76fdb2-8649-41b6-8f28-3f5c7d949e7f\",\n    \"date\": \"2026-03-23T13:00:00.000Z\",\n    \"meetingTitle\": \"Estudo Plano de Saúde: Cliente Exemplo\",\n    \"meetingLink\": \"https://meet.google.com/abc-defg-hij\",\n    \"inviteDispatchStatus\": \"sent_resend\",\n    \"inviteDispatchFallbackUsed\": true,\n    \"inviteDispatchLastAttemptAt\": \"2026-03-23T12:55:01.121Z\",\n    \"inviteDispatchLastError\": null,\n    \"inviteDispatch\": {\n      \"status\": \"sent_resend\",\n      \"provider\": \"resend\",\n      \"fallbackUsed\": true,\n      \"attemptedAt\": \"2026-03-23T12:55:01.121Z\",\n      \"error\": null\n    }\n  }\n}"
+                    }
+                  ]
                 },
                 {
                   "name": "POST /api/v1/leads/{{id}}/schedule/cancel",
@@ -3773,7 +3788,22 @@
                       "raw": "{}"
                     }
                   },
-                  "response": []
+                  "response": [
+                    {
+                      "name": "200 OK (inviteDispatch)",
+                      "status": "OK",
+                      "code": 200,
+                      "_postman_previewlanguage": "json",
+                      "header": [
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n  \"isValid\": true,\n  \"successMessages\": [\n    \"Convites reenviados para todos os participantes\",\n    \"Aviso: Falha ao reenviar convite no Google Calendar. Convite reenviado via e-mail (Resend).\"\n  ],\n  \"errorMessages\": [],\n  \"result\": {\n    \"inviteDispatch\": {\n      \"status\": \"sent_resend\",\n      \"provider\": \"resend\",\n      \"fallbackUsed\": true,\n      \"attemptedAt\": \"2026-03-23T13:05:10.087Z\",\n      \"error\": null\n    }\n  }\n}"
+                    }
+                  ]
                 },
                 {
                   "name": "PUT /api/v1/leads/{{id}}/status",

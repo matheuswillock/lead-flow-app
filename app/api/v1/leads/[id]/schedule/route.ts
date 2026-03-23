@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { InviteDispatchStatus, type Prisma } from "@prisma/client";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
-import { z } from "zod";
 import { upsertCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 import { emailService } from "@/lib/services/EmailService";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
@@ -16,6 +17,34 @@ const scheduleSchema = z.object({
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
   extraGuests: z.array(z.string().email("Email inválido")).optional(),
 });
+
+type InviteDispatchProvider = "google" | "resend";
+
+type CalendarEventResult = {
+  eventId: string;
+  calendarId: string;
+  htmlLink?: string | null;
+  meetLink?: string | null;
+};
+
+type InviteDispatchPublicResult = {
+  status: InviteDispatchStatus;
+  provider: InviteDispatchProvider;
+  fallbackUsed: boolean;
+  attemptedAt: string;
+  error: string | null;
+};
+
+type DispatchErrorLogContext = {
+  leadId: string;
+  scheduleId: string | null;
+  target: "schedule";
+  provider: InviteDispatchProvider;
+  fallbackUsed: boolean;
+  attemptedAt: Date;
+  dispatchStatus: InviteDispatchStatus;
+  errorMessage: string;
+};
 
 const formatMeetingDate = (date: Date) =>
   date.toLocaleString("pt-BR", {
@@ -41,6 +70,122 @@ const buildUniqueEmails = (emails: Array<string | null | undefined>) => {
   return unique;
 };
 
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
+
+const extractEmailErrorCause = (result: unknown): unknown => {
+  if (!result || typeof result !== "object") return null;
+  if (!("errorObject" in result)) return null;
+  return (result as { errorObject?: unknown }).errorObject ?? null;
+};
+
+const logDispatchProviderError = (context: DispatchErrorLogContext, error: unknown) => {
+  console.error(
+    "[LeadScheduleRoute][POST] Falha no disparo de convite",
+    {
+      ...context,
+      attemptedAt: context.attemptedAt.toISOString(),
+    },
+    error
+  );
+};
+
+const logDispatchProviderSkipped = (
+  context: Omit<DispatchErrorLogContext, "provider" | "errorMessage"> & { reason: string }
+) => {
+  console.warn("[LeadScheduleRoute][POST] Disparo via provider não executado", {
+    ...context,
+    attemptedAt: context.attemptedAt.toISOString(),
+  });
+};
+
+const extractResendMessageId = (data: unknown): string | null => {
+  if (!data || typeof data !== "object") return null;
+  const maybeId = (data as { id?: unknown }).id;
+  return typeof maybeId === "string" ? maybeId : null;
+};
+
+const buildInviteDispatchBody = ({
+  provider,
+  status,
+  fallbackUsed,
+  error,
+}: {
+  provider: InviteDispatchProvider;
+  status: InviteDispatchStatus;
+  fallbackUsed: boolean;
+  error: string | null;
+}) => {
+  if (status === "sent_google") {
+    return "Convite de agendamento enviado via Google Calendar.";
+  }
+  if (status === "sent_resend" && fallbackUsed) {
+    return "Convite enviado por e-mail (Resend) após falha no Google Calendar.";
+  }
+  if (status === "sent_resend") {
+    return "Convite enviado por e-mail (Resend).";
+  }
+  if (provider === "google") {
+    return error
+      ? `Falha ao disparar convite via Google Calendar. Motivo: ${error}`
+      : "Falha ao disparar convite via Google Calendar.";
+  }
+  if (fallbackUsed) {
+    return error
+      ? `Falha ao enviar convite por e-mail (Resend) após falha no Google Calendar. Motivo: ${error}`
+      : "Falha ao enviar convite por e-mail (Resend) após falha no Google Calendar.";
+  }
+  return error
+    ? `Falha ao enviar convite por e-mail (Resend). Motivo: ${error}`
+    : "Falha ao enviar convite por e-mail (Resend).";
+};
+
+const registerInviteDispatchActivity = async ({
+  leadId,
+  createdBy,
+  provider,
+  status,
+  fallbackUsed,
+  attemptedAt,
+  recipients,
+  error,
+  metadata,
+}: {
+  leadId: string;
+  createdBy: string;
+  provider: InviteDispatchProvider;
+  status: InviteDispatchStatus;
+  fallbackUsed: boolean;
+  attemptedAt: Date;
+  recipients: string[];
+  error: string | null;
+  metadata: Prisma.InputJsonValue | null;
+}) => {
+  try {
+    await prisma.leadActivity.create({
+      data: {
+        leadId,
+        type: "note",
+        body: buildInviteDispatchBody({ provider, status, fallbackUsed, error }),
+        payload: {
+          kind: "schedule",
+          action: "invite_dispatch",
+          provider,
+          status,
+          fallbackUsed,
+          attemptedAt: attemptedAt.toISOString(),
+          recipients,
+          error,
+          metadata,
+        },
+        createdBy,
+      },
+    });
+  } catch (activityError) {
+    console.warn("[LeadScheduleRoute][POST] Não foi possível registrar atividade de disparo de convite:", activityError);
+  }
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -60,9 +205,9 @@ export async function POST(
 
     if (!validation.success) {
       const output = new Output(
-        false, 
-        [], 
-        validation.error.issues.map(e => `${e.path.join('.')}: ${e.message}`),
+        false,
+        [],
+        validation.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`),
         null
       );
       return NextResponse.json(output, { status: 400 });
@@ -95,7 +240,6 @@ export async function POST(
     const previousCloserId = lead.closerId ?? null;
     const shouldLogCloserChange = !!closerId && closerId !== previousCloserId;
 
-    // Verificar se já existe um agendamento para este lead
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
 
     const resolvedCloserId = closerId || lead.closerId;
@@ -116,10 +260,23 @@ export async function POST(
     const closerEmail = closerProfile.email;
     const sdrEmail = lead.assignee?.email || null;
     const resolvedMeetingTitle = meetingTitle || `Estudo Plano de Saúde: ${lead.name}`;
+    const attendeeEmails = buildUniqueEmails([
+      lead.email,
+      closerEmail,
+      sdrEmail,
+      ...(extraGuests ?? []),
+    ]);
 
     const canUseGoogleCalendar = !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
-    let calendarResult: { eventId: string; calendarId: string; meetLink?: string | null } | null = null;
-    let calendarWarning: string | null = null;
+    let calendarResult: CalendarEventResult | null = null;
+    let googleDispatchError: string | null = null;
+
+    let inviteDispatchStatus: InviteDispatchStatus = "failed";
+    let inviteDispatchProvider: InviteDispatchProvider = "resend";
+    let inviteDispatchFallbackUsed = false;
+    let inviteDispatchLastError: string | null = null;
+    let inviteDispatchLastPayload: Prisma.InputJsonValue | null = null;
+    const inviteDispatchLastAttemptAt = new Date();
 
     if (canUseGoogleCalendar) {
       try {
@@ -135,35 +292,187 @@ export async function POST(
           extraGuests,
           existingEventId: existingSchedule?.googleEventId ?? null,
         });
+
+        inviteDispatchStatus = "sent_google";
+        inviteDispatchProvider = "google";
+        inviteDispatchLastError = null;
+        inviteDispatchLastPayload = {
+          provider: "google",
+          eventId: calendarResult.eventId,
+          calendarId: calendarResult.calendarId,
+          htmlLink: calendarResult.htmlLink ?? null,
+          meetLink: calendarResult.meetLink ?? null,
+        };
+
+        await registerInviteDispatchActivity({
+          leadId,
+          createdBy: teamAccess.access.profileId,
+          provider: "google",
+          status: "sent_google",
+          fallbackUsed: false,
+          attemptedAt: inviteDispatchLastAttemptAt,
+          recipients: attendeeEmails,
+          error: null,
+          metadata: inviteDispatchLastPayload,
+        });
       } catch (calendarError) {
-        console.warn("Erro ao criar evento no Google Calendar:", calendarError);
-        calendarWarning = calendarError instanceof Error
-          ? calendarError.message
-          : "Falha ao criar evento no Google Calendar";
+        googleDispatchError = getErrorMessage(calendarError, "Falha ao criar evento no Google Calendar");
+        logDispatchProviderError(
+          {
+            leadId,
+            scheduleId: existingSchedule?.id ?? null,
+            target: "schedule",
+            provider: "google",
+            fallbackUsed: false,
+            attemptedAt: inviteDispatchLastAttemptAt,
+            dispatchStatus: "failed",
+            errorMessage: googleDispatchError,
+          },
+          calendarError
+        );
+        await registerInviteDispatchActivity({
+          leadId,
+          createdBy: teamAccess.access.profileId,
+          provider: "google",
+          status: "failed",
+          fallbackUsed: false,
+          attemptedAt: inviteDispatchLastAttemptAt,
+          recipients: attendeeEmails,
+          error: googleDispatchError,
+          metadata: {
+            provider: "google",
+            error: googleDispatchError,
+          },
+        });
       }
     } else {
-      calendarWarning = "Conta Google não conectada. Evento não foi criado no Google Calendar.";
+      googleDispatchError = "Conta Google não conectada. Evento não foi criado no Google Calendar.";
+      logDispatchProviderSkipped({
+        leadId,
+        scheduleId: existingSchedule?.id ?? null,
+        target: "schedule",
+        fallbackUsed: false,
+        attemptedAt: inviteDispatchLastAttemptAt,
+        dispatchStatus: "failed",
+        reason: "google_not_connected",
+      });
+      await registerInviteDispatchActivity({
+        leadId,
+        createdBy: teamAccess.access.profileId,
+        provider: "google",
+        status: "failed",
+        fallbackUsed: false,
+        attemptedAt: inviteDispatchLastAttemptAt,
+        recipients: attendeeEmails,
+        error: googleDispatchError,
+        metadata: {
+          provider: "google",
+          reason: "google_not_connected",
+        },
+      });
     }
 
     const resolvedMeetingLink = meetingLink || calendarResult?.meetLink || null;
+
+    if (inviteDispatchStatus !== "sent_google") {
+      const organizerName = closerProfile.fullName || closerProfile.email;
+      const fallbackEventUid = existingSchedule?.id ?? `lead-${leadId}-${meetingDate.getTime()}`;
+      const emailResult = await emailService.sendMeetingInviteEmail({
+        to: attendeeEmails,
+        leadName: lead.name,
+        meetingTitle: resolvedMeetingTitle,
+        meetingDate,
+        meetingLink: resolvedMeetingLink,
+        organizerName,
+        organizerEmail: closerEmail,
+        eventUid: fallbackEventUid,
+      });
+
+      if (emailResult.success) {
+        const resendMessageId = extractResendMessageId(emailResult.data);
+        inviteDispatchStatus = "sent_resend";
+        inviteDispatchProvider = "resend";
+        inviteDispatchFallbackUsed = canUseGoogleCalendar;
+        inviteDispatchLastError = null;
+        inviteDispatchLastPayload = {
+          provider: "resend",
+          resendMessageId,
+          recipientCount: attendeeEmails.length,
+          googleError: googleDispatchError,
+        };
+
+        await registerInviteDispatchActivity({
+          leadId,
+          createdBy: teamAccess.access.profileId,
+          provider: "resend",
+          status: "sent_resend",
+          fallbackUsed: canUseGoogleCalendar,
+          attemptedAt: inviteDispatchLastAttemptAt,
+          recipients: attendeeEmails,
+          error: null,
+          metadata: inviteDispatchLastPayload,
+        });
+      } else {
+        const resendError = emailResult.error || "Convite por e-mail não pôde ser enviado.";
+        const resendCause = extractEmailErrorCause(emailResult) ?? new Error(resendError);
+        logDispatchProviderError(
+          {
+            leadId,
+            scheduleId: existingSchedule?.id ?? null,
+            target: "schedule",
+            provider: "resend",
+            fallbackUsed: canUseGoogleCalendar,
+            attemptedAt: inviteDispatchLastAttemptAt,
+            dispatchStatus: "failed",
+            errorMessage: resendError,
+          },
+          resendCause
+        );
+        inviteDispatchStatus = "failed";
+        inviteDispatchProvider = "resend";
+        inviteDispatchFallbackUsed = canUseGoogleCalendar;
+        inviteDispatchLastError = resendError;
+        inviteDispatchLastPayload = {
+          provider: "resend",
+          recipientCount: attendeeEmails.length,
+          googleError: googleDispatchError,
+          resendError,
+        };
+
+        await registerInviteDispatchActivity({
+          leadId,
+          createdBy: teamAccess.access.profileId,
+          provider: "resend",
+          status: "failed",
+          fallbackUsed: canUseGoogleCalendar,
+          attemptedAt: inviteDispatchLastAttemptAt,
+          recipients: attendeeEmails,
+          error: resendError,
+          metadata: inviteDispatchLastPayload,
+        });
+      }
+    }
 
     let schedule;
     let message: string;
 
     if (existingSchedule) {
-      // Atualizar o agendamento existente
       schedule = await leadScheduleRepository.update(existingSchedule.id, {
         date: meetingDate,
         meetingTitle: resolvedMeetingTitle,
         notes,
         meetingLink: resolvedMeetingLink || undefined,
         extraGuests: extraGuests ?? existingSchedule.extraGuests ?? [],
-        googleEventId: calendarResult?.eventId,
-        googleCalendarId: calendarResult?.calendarId,
+        googleEventId: calendarResult?.eventId ?? existingSchedule.googleEventId ?? undefined,
+        googleCalendarId: calendarResult?.calendarId ?? existingSchedule.googleCalendarId ?? undefined,
+        inviteDispatchStatus,
+        inviteDispatchFallbackUsed,
+        inviteDispatchLastAttemptAt,
+        inviteDispatchLastError,
+        inviteDispatchLastPayload,
       });
       message = "Agendamento atualizado com sucesso";
     } else {
-      // Criar novo agendamento
       schedule = await leadScheduleRepository.create({
         leadId,
         date: meetingDate,
@@ -171,45 +480,17 @@ export async function POST(
         notes,
         meetingLink: resolvedMeetingLink || undefined,
         extraGuests,
-        googleEventId: calendarResult?.eventId,
-        googleCalendarId: calendarResult?.calendarId,
+        googleEventId: calendarResult?.eventId ?? undefined,
+        googleCalendarId: calendarResult?.calendarId ?? undefined,
+        inviteDispatchStatus,
+        inviteDispatchFallbackUsed,
+        inviteDispatchLastAttemptAt,
+        inviteDispatchLastError,
+        inviteDispatchLastPayload,
       });
       message = "Agendamento criado com sucesso";
     }
 
-    if (!canUseGoogleCalendar) {
-      const attendeeEmails = [
-        lead.email,
-        closerEmail,
-        sdrEmail,
-        ...(extraGuests ?? []),
-      ]
-        .filter(Boolean)
-        .map((email) => (email as string).trim().toLowerCase())
-        .filter((email, index, list) => list.indexOf(email) === index);
-
-      if (attendeeEmails.length > 0) {
-        const organizerName = closerProfile.fullName || closerProfile.email;
-        const emailResult = await emailService.sendMeetingInviteEmail({
-          to: attendeeEmails,
-          leadName: lead.name,
-          meetingTitle: resolvedMeetingTitle,
-          meetingDate,
-          meetingLink: resolvedMeetingLink,
-          organizerName,
-          organizerEmail: closerEmail,
-          eventUid: schedule.id,
-        });
-        if (!emailResult.success) {
-          console.warn("Erro ao enviar convites por e-mail:", emailResult.error);
-          if (!calendarWarning) {
-            calendarWarning = "Convite por e-mail não pôde ser enviado.";
-          }
-        }
-      }
-    }
-
-    // Atualizar o campo meetingDate do lead
     await prisma.lead.update({
       where: { id: leadId },
       data: {
@@ -260,8 +541,8 @@ export async function POST(
           createdBy: teamAccess.access.profileId,
         },
       });
-    } catch (error) {
-      console.warn("Não foi possível registrar atividade de agendamento:", error);
+    } catch (activityError) {
+      console.warn("[LeadScheduleRoute][POST] Não foi possível registrar atividade de agendamento:", activityError);
     }
 
     if (shouldLogCloserChange) {
@@ -280,8 +561,8 @@ export async function POST(
             createdBy: teamAccess.access.profileId,
           },
         });
-      } catch (error) {
-        console.warn("Não foi possível registrar atividade de alteração de closer:", error);
+      } catch (activityError) {
+        console.warn("[LeadScheduleRoute][POST] Não foi possível registrar atividade de alteração de closer:", activityError);
       }
     }
 
@@ -321,14 +602,36 @@ export async function POST(
     }
 
     const successMessages = [message];
-    if (calendarWarning) {
-      successMessages.push(`Aviso: ${calendarWarning}`);
-    }
-    const output = new Output(true, successMessages, [], schedule);
-    return NextResponse.json(output, { status: existingSchedule ? 200 : 201 });
 
+    if (inviteDispatchStatus === "sent_resend" && googleDispatchError) {
+      successMessages.push(`Aviso: Google Calendar falhou (${googleDispatchError}). Convite enviado via e-mail (Resend).`);
+    }
+
+    if (inviteDispatchStatus === "failed") {
+      const reason = inviteDispatchLastError || googleDispatchError || "Falha no envio do convite";
+      successMessages.push(`Aviso: agendamento salvo, mas houve falha no envio do convite (${reason}).`);
+    }
+
+    const inviteDispatch: InviteDispatchPublicResult = {
+      status: inviteDispatchStatus,
+      provider: inviteDispatchProvider,
+      fallbackUsed: inviteDispatchFallbackUsed,
+      attemptedAt: inviteDispatchLastAttemptAt.toISOString(),
+      error: inviteDispatchLastError,
+    };
+
+    const output = new Output(
+      true,
+      successMessages,
+      [],
+      {
+        ...schedule,
+        inviteDispatch,
+      }
+    );
+    return NextResponse.json(output, { status: existingSchedule ? 200 : 201 });
   } catch (error) {
-    console.error("Erro ao criar agendamento:", error);
+    console.error("[LeadScheduleRoute][POST] Erro ao criar agendamento:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }
@@ -365,14 +668,12 @@ export async function GET(
       return NextResponse.json(output, { status: 404 });
     }
 
-    // Buscar agendamentos do lead
     const schedules = await leadScheduleRepository.findByLeadId(leadId);
 
     const output = new Output(true, [], [], schedules);
     return NextResponse.json(output, { status: 200 });
-
   } catch (error) {
-    console.error("Erro ao buscar agendamentos:", error);
+    console.error("[LeadScheduleRoute][GET] Erro ao buscar agendamentos:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }

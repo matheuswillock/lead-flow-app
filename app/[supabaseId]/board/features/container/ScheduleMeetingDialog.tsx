@@ -40,6 +40,14 @@ export type ScheduleMeetingSuccessPayload = {
   extraGuests: string[];
 };
 
+type ScheduleInviteDispatch = {
+  status: "sent_google" | "sent_resend" | "failed";
+  provider: "google" | "resend";
+  fallbackUsed: boolean;
+  attemptedAt: string;
+  error: string | null;
+};
+
 interface ScheduleMeetingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -341,6 +349,16 @@ export function ScheduleMeetingDialog({
         ? result.successMessages.find((message: string) => message.toLowerCase().startsWith("aviso"))
         : undefined;
 
+      const scheduleResult = (result?.result || {}) as {
+        date?: string;
+        meetingTitle?: string | null;
+        notes?: string | null;
+        meetingLink?: string | null;
+        extraGuests?: string[];
+        inviteDispatch?: ScheduleInviteDispatch;
+      };
+      const inviteDispatch = scheduleResult.inviteDispatch;
+
       // 2. Atualizar status do lead para scheduled
       const statusResponse = await fetch(`/api/v1/leads/${lead.id}/status`, {
         method: "PUT",
@@ -370,17 +388,16 @@ export function ScheduleMeetingDialog({
         duration: 4000,
       });
 
-      if (warningMessage) {
+      if (inviteDispatch?.status === "failed") {
+        const errorText = inviteDispatch.error
+          ? `Agendamento salvo, mas o convite não foi enviado: ${inviteDispatch.error}`
+          : "Agendamento salvo, mas o convite não foi enviado.";
+        toast.error(errorText, { duration: 6000 });
+      } else if (inviteDispatch?.status === "sent_resend" && inviteDispatch.fallbackUsed) {
+        toast.info("Google falhou e o convite foi enviado via e-mail (Resend).", { duration: 5000 });
+      } else if (warningMessage) {
         toast.info(warningMessage, { duration: 5000 });
       }
-
-      const scheduleResult = (result?.result || {}) as {
-        date?: string;
-        meetingTitle?: string | null;
-        notes?: string | null;
-        meetingLink?: string | null;
-        extraGuests?: string[];
-      };
       const resolvedMeetingLink =
         typeof scheduleResult.meetingLink === "string"
           ? scheduleResult.meetingLink
