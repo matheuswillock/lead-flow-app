@@ -14,6 +14,7 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
   async create(data: CreateLeadScheduleDTO): Promise<LeadsSchedule> {
     return await prisma.leadsSchedule.create({
       data: {
+        id: data.id,
         leadId: data.leadId,
         date: data.date,
         meetingTitle: data.meetingTitle,

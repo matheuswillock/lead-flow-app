@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { InviteDispatchStatus, type Prisma } from "@prisma/client";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
@@ -241,6 +242,7 @@ export async function POST(
     const shouldLogCloserChange = !!closerId && closerId !== previousCloserId;
 
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
+    const scheduleId = existingSchedule?.id ?? randomUUID();
 
     const resolvedCloserId = closerId || lead.closerId;
     if (!resolvedCloserId) {
@@ -320,7 +322,7 @@ export async function POST(
         logDispatchProviderError(
           {
             leadId,
-            scheduleId: existingSchedule?.id ?? null,
+            scheduleId,
             target: "schedule",
             provider: "google",
             fallbackUsed: false,
@@ -349,7 +351,7 @@ export async function POST(
       googleDispatchError = "Conta Google não conectada. Evento não foi criado no Google Calendar.";
       logDispatchProviderSkipped({
         leadId,
-        scheduleId: existingSchedule?.id ?? null,
+        scheduleId,
         target: "schedule",
         fallbackUsed: false,
         attemptedAt: inviteDispatchLastAttemptAt,
@@ -376,7 +378,7 @@ export async function POST(
 
     if (inviteDispatchStatus !== "sent_google") {
       const organizerName = closerProfile.fullName || closerProfile.email;
-      const fallbackEventUid = existingSchedule?.id ?? `lead-${leadId}-${meetingDate.getTime()}`;
+      const fallbackEventUid = scheduleId;
       const emailResult = await emailService.sendMeetingInviteEmail({
         to: attendeeEmails,
         leadName: lead.name,
@@ -418,7 +420,7 @@ export async function POST(
         logDispatchProviderError(
           {
             leadId,
-            scheduleId: existingSchedule?.id ?? null,
+            scheduleId,
             target: "schedule",
             provider: "resend",
             fallbackUsed: canUseGoogleCalendar,
@@ -474,6 +476,7 @@ export async function POST(
       message = "Agendamento atualizado com sucesso";
     } else {
       schedule = await leadScheduleRepository.create({
+        id: scheduleId,
         leadId,
         date: meetingDate,
         meetingTitle: resolvedMeetingTitle,

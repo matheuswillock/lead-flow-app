@@ -1,6 +1,7 @@
 import { InviteDispatchStatus, LeadsSchedule, Prisma } from "@prisma/client";
 
 export interface CreateLeadScheduleDTO {
+  id?: string;
   leadId: string;
   date: Date;
   meetingTitle?: string;
