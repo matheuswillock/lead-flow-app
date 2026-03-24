@@ -51,6 +51,14 @@ status_change status_change
     
 
 
+        InviteDispatchStatus {
+            sent_google sent_google
+sent_resend sent_resend
+failed failed
+        }
+    
+
+
         subscription_status {
             trial trial
 active active
@@ -200,6 +208,11 @@ LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
     String extraGuests 
     String googleEventId "❓"
     String googleCalendarId "❓"
+    InviteDispatchStatus inviteDispatchStatus "❓"
+    Boolean inviteDispatchFallbackUsed 
+    DateTime inviteDispatchLastAttemptAt "❓"
+    String inviteDispatchLastError "❓"
+    Json inviteDispatchLastPayload "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -326,6 +339,7 @@ LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
     "lead_activities" o{--}o "lead_activity_reactions" : "reactions"
     "lead_activity_reactions" o|--|| "lead_activities" : "activity"
     "lead_activity_reactions" o|--|| "profiles" : "profile"
+    "leads_schedule" o|--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
     "leads_schedule" o|--|| "leads" : "lead"
     "lead_finalized" o|--|| "leads" : "lead"
     "lead_attachments" o|--|| "leads" : "lead"

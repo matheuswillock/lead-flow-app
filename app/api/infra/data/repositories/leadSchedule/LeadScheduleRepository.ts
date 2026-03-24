@@ -4,7 +4,7 @@ import type {
   CreateLeadScheduleDTO,
   UpdateLeadScheduleDTO
 } from "./ILeadScheduleRepository";
-import { LeadsSchedule } from "@prisma/client";
+import { LeadsSchedule, Prisma } from "@prisma/client";
 
 export class LeadScheduleRepository implements ILeadScheduleRepository {
   
@@ -14,6 +14,7 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
   async create(data: CreateLeadScheduleDTO): Promise<LeadsSchedule> {
     return await prisma.leadsSchedule.create({
       data: {
+        id: data.id,
         leadId: data.leadId,
         date: data.date,
         meetingTitle: data.meetingTitle,
@@ -22,6 +23,14 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
         extraGuests: data.extraGuests ?? [],
         googleEventId: data.googleEventId ?? undefined,
         googleCalendarId: data.googleCalendarId ?? undefined,
+        inviteDispatchStatus: data.inviteDispatchStatus ?? undefined,
+        inviteDispatchFallbackUsed: data.inviteDispatchFallbackUsed ?? undefined,
+        inviteDispatchLastAttemptAt: data.inviteDispatchLastAttemptAt ?? undefined,
+        inviteDispatchLastError: data.inviteDispatchLastError ?? undefined,
+        inviteDispatchLastPayload:
+          data.inviteDispatchLastPayload === null
+            ? Prisma.JsonNull
+            : (data.inviteDispatchLastPayload ?? undefined),
       },
     });
   }
@@ -58,9 +67,17 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
    * Atualiza um agendamento existente
    */
   async update(id: string, data: UpdateLeadScheduleDTO): Promise<LeadsSchedule> {
+    const parsedData = {
+      ...data,
+      inviteDispatchLastPayload:
+        data.inviteDispatchLastPayload === null
+          ? Prisma.JsonNull
+          : (data.inviteDispatchLastPayload ?? undefined),
+    };
+
     return await prisma.leadsSchedule.update({
       where: { id },
-      data,
+      data: parsedData,
     });
   }
 

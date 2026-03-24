@@ -84,6 +84,14 @@ type MentionToken = {
   label: string;
 };
 
+type InviteDispatchResult = {
+  status: "sent_google" | "sent_resend" | "failed";
+  provider: "google" | "resend";
+  fallbackUsed: boolean;
+  attemptedAt: string;
+  error: string | null;
+};
+
 const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
 const TEAM_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const teamMembersCacheByTeamId = new Map<string, { members: MentionMember[]; timestamp: number }>();
@@ -1286,7 +1294,7 @@ export default function LeadDialog({
           const meetingDateValue = data.meetingDate || lead.meetingDate;
           if (meetingDateValue && (guestsChanged || data.meetingDate || data.meetingLink || data.meetingNotes)) {
             try {
-              await fetch(`/api/v1/leads/${lead.id}/schedule`, {
+              const scheduleResponse = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
@@ -1302,9 +1310,42 @@ export default function LeadDialog({
                   extraGuests: normalizedGuests,
                 }),
               });
+              const scheduleResult = await scheduleResponse.json().catch(() => null);
+              if (!scheduleResponse.ok || !scheduleResult?.isValid) {
+                throw new Error(
+                  Array.isArray(scheduleResult?.errorMessages) && scheduleResult.errorMessages.length > 0
+                    ? scheduleResult.errorMessages.join(", ")
+                    : "Erro ao atualizar agendamento"
+                );
+              }
+              const warningMessage =
+                Array.isArray(scheduleResult?.successMessages) && scheduleResult.successMessages.length > 0
+                  ? scheduleResult.successMessages.find((message: string) =>
+                      message.toLowerCase().startsWith("aviso")
+                    )
+                  : undefined;
+              const inviteDispatch = (scheduleResult?.result as { inviteDispatch?: InviteDispatchResult } | null)
+                ?.inviteDispatch;
+              if (inviteDispatch?.status === "failed") {
+                console.error("[LeadDialog][onSubmit] Falha no disparo do convite", {
+                  leadId: lead.id,
+                  dispatchStatus: inviteDispatch.status,
+                  provider: inviteDispatch.provider,
+                  fallbackUsed: inviteDispatch.fallbackUsed,
+                  attemptedAt: inviteDispatch.attemptedAt,
+                  errorMessage: inviteDispatch.error || "Erro desconhecido no disparo do convite",
+                });
+                toast.error("Agendamento salvo, mas o convite não foi enviado.", { duration: 6000 });
+              } else if (inviteDispatch?.status === "sent_resend" && inviteDispatch.fallbackUsed) {
+                toast.info("Google falhou e o convite foi enviado via e-mail (Resend).", { duration: 5000 });
+              } else if (warningMessage) {
+                toast.info(warningMessage, { duration: 5000 });
+              }
               setScheduleGuests(normalizedGuests);
             } catch (error) {
               console.error("Erro ao atualizar convidados extras:", error);
+              const message = error instanceof Error ? error.message : "Erro ao atualizar convidados extras.";
+              toast.error(message, { duration: 5000 });
             }
           }
 

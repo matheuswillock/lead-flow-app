@@ -1,6 +1,7 @@
-import { LeadsSchedule } from "@prisma/client";
+import { InviteDispatchStatus, LeadsSchedule, Prisma } from "@prisma/client";
 
 export interface CreateLeadScheduleDTO {
+  id?: string;
   leadId: string;
   date: Date;
   meetingTitle?: string;
@@ -9,6 +10,11 @@ export interface CreateLeadScheduleDTO {
   extraGuests?: string[];
   googleEventId?: string | null;
   googleCalendarId?: string | null;
+  inviteDispatchStatus?: InviteDispatchStatus | null;
+  inviteDispatchFallbackUsed?: boolean;
+  inviteDispatchLastAttemptAt?: Date | null;
+  inviteDispatchLastError?: string | null;
+  inviteDispatchLastPayload?: Prisma.InputJsonValue | null;
 }
 
 export interface UpdateLeadScheduleDTO {
@@ -19,6 +25,11 @@ export interface UpdateLeadScheduleDTO {
   extraGuests?: string[];
   googleEventId?: string | null;
   googleCalendarId?: string | null;
+  inviteDispatchStatus?: InviteDispatchStatus | null;
+  inviteDispatchFallbackUsed?: boolean;
+  inviteDispatchLastAttemptAt?: Date | null;
+  inviteDispatchLastError?: string | null;
+  inviteDispatchLastPayload?: Prisma.InputJsonValue | null;
 }
 
 export interface ILeadScheduleRepository {

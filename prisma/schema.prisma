@@ -69,6 +69,12 @@ enum ActivityType {
   status_change
 }
 
+enum InviteDispatchStatus {
+  sent_google
+  sent_resend
+  failed
+}
+
 // AgeRange foi alterado para String - formato livre: "36, 32, 13"
 
 enum SubscriptionStatus {
@@ -323,6 +329,11 @@ model LeadsSchedule {
   extraGuests      String[] @default([])
   googleEventId    String?  @db.Text
   googleCalendarId String?  @db.Text
+  inviteDispatchStatus        InviteDispatchStatus?
+  inviteDispatchFallbackUsed  Boolean              @default(false)
+  inviteDispatchLastAttemptAt DateTime?            @db.Timestamptz(6)
+  inviteDispatchLastError     String?              @db.Text
+  inviteDispatchLastPayload   Json?
   createdAt        DateTime @default(now()) @db.Timestamptz(6)
   updatedAt        DateTime @updatedAt @db.Timestamptz(6)
 
