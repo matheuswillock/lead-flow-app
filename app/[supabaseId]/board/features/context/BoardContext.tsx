@@ -34,6 +34,11 @@ interface TaskOwner {
   avatarUrl?: string | null;
 }
 
+type PendingScheduledDrop = {
+  leadId: string;
+  from: ColumnKey;
+};
+
 interface IBoardContextState {
   isLoading: boolean;
   query: string;
@@ -72,6 +77,9 @@ interface IBoardContextState {
   onDragStart: (e: React.DragEvent, leadId: string, from: ColumnKey) => void;
   refreshLeads: () => Promise<void>;
   patchLead: (leadId: string, patch: Partial<Lead>) => void;
+  pendingScheduledDrop: PendingScheduledDrop | null;
+  clearPendingScheduledDrop: () => void;
+  applyScheduledTransition: (from: ColumnKey, payload: Partial<Lead> & Pick<Lead, "id" | "status">) => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
@@ -161,6 +169,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [statusFilter, setStatusFilter] = useState<ColumnKey[]>([]);
   const [closerFilter, setCloserFilter] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [pendingScheduledDrop, setPendingScheduledDrop] = useState<PendingScheduledDrop | null>(null);
 
   // Sync external CRM filters into board filter state whenever they change.
   // Using useEffect (not lazy initializer) is safe because data loads asynchronously;
@@ -472,30 +481,49 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         e.dataTransfer.effectAllowed = "move";
       };
     
+      const moveLeadBetweenColumns = (
+        leadId: string,
+        from: ColumnKey,
+        to: ColumnKey,
+        patch?: Partial<Lead>
+      ) => {
+        setData((prev) => {
+          const fromArr = [...(prev[from] || [])];
+          const toArr = [...(prev[to] || [])];
+          const idx = fromArr.findIndex((l) => l.id === leadId);
+          if (idx === -1) return prev;
+
+          const [moved] = fromArr.splice(idx, 1);
+          const updatedLead = { ...moved, ...patch, status: to } as Lead;
+          const existingIdx = toArr.findIndex((l) => l.id === leadId);
+          if (existingIdx !== -1) {
+            toArr.splice(existingIdx, 1);
+          }
+          toArr.unshift(updatedLead);
+
+          return { ...prev, [from]: fromArr, [to]: toArr };
+        });
+
+        setSelected((prev) => {
+          if (prev?.id !== leadId) return prev;
+          return { ...prev, ...patch, status: to } as Lead;
+        });
+      };
+
       const onDrop = (e: React.DragEvent, to: ColumnKey) => {
         e.preventDefault();
         const raw = e.dataTransfer.getData("text/plain");
         if (!raw) return;
         const { leadId, from } = JSON.parse(raw) as { leadId: string; from: ColumnKey };
         if (from === to) return;
-    
-        setData((prev) => {
-          const fromArr = [...prev[from]];
-          const toArr = [...prev[to]];
-          const idx = fromArr.findIndex((l) => l.id === leadId);
-          if (idx === -1) return prev;
-          const [moved] = fromArr.splice(idx, 1);
-          
-          // Atualiza o status do lead
-          moved.status = to;
-          
-          toArr.unshift(moved); // adiciona no topo do destino
-          
-          // TODO: Fazer chamada para API para atualizar o status no backend
-          updateLeadStatusInAPI(leadId, to);
-          
-          return { ...prev, [from]: fromArr, [to]: toArr };
-        });
+
+        if (to === "scheduled") {
+          setPendingScheduledDrop({ leadId, from });
+          return;
+        }
+
+        moveLeadBetweenColumns(leadId, from, to);
+        void updateLeadStatusInAPI(leadId, to);
       };
 
       // Função para atualizar status na API
@@ -583,7 +611,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setErrors({});
   };
 
-  const patchLead = (leadId: string, patch: Partial<Lead>) => {
+      const patchLead = (leadId: string, patch: Partial<Lead>) => {
     setData((prev) => {
       const next: Record<ColumnKey, Lead[]> = { ...prev } as Record<ColumnKey, Lead[]>;
       COLUMNS.forEach(({ key }) => {
@@ -593,6 +621,18 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       return next;
     });
     setSelected((prev) => (prev?.id === leadId ? ({ ...prev, ...patch } as Lead) : prev));
+  };
+
+  const clearPendingScheduledDrop = () => {
+    setPendingScheduledDrop(null);
+  };
+
+  const applyScheduledTransition = (
+    from: ColumnKey,
+    payload: Partial<Lead> & Pick<Lead, "id" | "status">
+  ) => {
+    moveLeadBetweenColumns(payload.id, from, "scheduled", payload);
+    setPendingScheduledDrop(null);
   };
 
   // Mapeamento de status para labels legíveis
@@ -688,6 +728,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       onDragStart,
       refreshLeads: () => loadLeads({ force: true }),
       patchLead,
+      pendingScheduledDrop,
+      clearPendingScheduledDrop,
+      applyScheduledTransition,
       finalizeContract
     };
   

@@ -336,6 +336,7 @@ export function ScheduleMeetingDialog({
           meetingLink: meetingLink || undefined,
           closerId: closerId || undefined,
           extraGuests: guests.length ? guests : undefined,
+          transitionStatusToScheduled: true,
         }),
       });
 
@@ -351,6 +352,7 @@ export function ScheduleMeetingDialog({
 
       const scheduleResult = (result?.result || {}) as {
         date?: string;
+        status?: Lead["status"];
         meetingTitle?: string | null;
         notes?: string | null;
         meetingLink?: string | null;
@@ -358,23 +360,6 @@ export function ScheduleMeetingDialog({
         inviteDispatch?: ScheduleInviteDispatch;
       };
       const inviteDispatch = scheduleResult.inviteDispatch;
-
-      // 2. Atualizar status do lead para scheduled
-      const statusResponse = await fetch(`/api/v1/leads/${lead.id}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId || "",
-        },
-        body: JSON.stringify({
-          status: "scheduled",
-        }),
-      });
-
-      if (!statusResponse.ok) {
-        console.warn("Erro ao atualizar status do lead");
-      }
 
       // ✅ Sucesso - Fechar dialog e atualizar UI
       toast.success(`Reunião agendada para ${scheduledMeetingDate.toLocaleDateString("pt-BR", {
@@ -404,7 +389,7 @@ export function ScheduleMeetingDialog({
           : meetingLink || null;
       const schedulePayload: ScheduleMeetingSuccessPayload = {
         leadId: lead.id,
-        status: "scheduled",
+        status: scheduleResult.status ?? "scheduled",
         meetingDate:
           typeof scheduleResult.date === "string"
             ? scheduleResult.date
@@ -431,12 +416,12 @@ export function ScheduleMeetingDialog({
       setMeetingLink("");
       setExtraGuests([]);
       setExtraGuestsDraft("");
-      
+
+      // 2. Atualizar estado local/board antes de fechar o dialog
+      await onScheduleSuccess(schedulePayload);
+
       // Fechar dialog
       onOpenChange(false);
-      
-      // 3. Atualizar board (recarregar leads)
-      await onScheduleSuccess(schedulePayload);
       
     } catch (error) {
       console.error("Erro ao agendar reunião:", error);
