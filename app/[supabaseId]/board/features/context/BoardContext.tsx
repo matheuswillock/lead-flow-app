@@ -486,28 +486,35 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         from: ColumnKey,
         to: ColumnKey,
         patch?: Partial<Lead>
-      ) => {
+      ): boolean => {
+        let moved = false;
+
         setData((prev) => {
           const fromArr = [...(prev[from] || [])];
           const toArr = [...(prev[to] || [])];
           const idx = fromArr.findIndex((l) => l.id === leadId);
           if (idx === -1) return prev;
 
-          const [moved] = fromArr.splice(idx, 1);
-          const updatedLead = { ...moved, ...patch, status: to } as Lead;
+          const [movedLead] = fromArr.splice(idx, 1);
+          const updatedLead = { ...movedLead, ...patch, status: to } as Lead;
           const existingIdx = toArr.findIndex((l) => l.id === leadId);
           if (existingIdx !== -1) {
             toArr.splice(existingIdx, 1);
           }
           toArr.unshift(updatedLead);
 
+          moved = true;
           return { ...prev, [from]: fromArr, [to]: toArr };
         });
 
-        setSelected((prev) => {
-          if (prev?.id !== leadId) return prev;
-          return { ...prev, ...patch, status: to } as Lead;
-        });
+        if (moved) {
+          setSelected((prev) => {
+            if (prev?.id !== leadId) return prev;
+            return { ...prev, ...patch, status: to } as Lead;
+          });
+        }
+
+        return moved;
       };
 
       const onDrop = (e: React.DragEvent, to: ColumnKey) => {
@@ -522,8 +529,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           return;
         }
 
-        moveLeadBetweenColumns(leadId, from, to);
-        void updateLeadStatusInAPI(leadId, to);
+        const didMove = moveLeadBetweenColumns(leadId, from, to);
+        if (didMove) {
+          void updateLeadStatusInAPI(leadId, to);
+        }
       };
 
       // Função para atualizar status na API
