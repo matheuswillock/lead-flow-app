@@ -21,6 +21,10 @@ import { Button } from "@/components/ui/button";
 import { Calendar, CheckCircle, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
+import {
+  ScheduleMeetingDialog,
+  type ScheduleMeetingSuccessPayload,
+} from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { ProfileResponseDTO, UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import type { LeadActivityReactionSummary, LeadActivityResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
@@ -138,6 +142,7 @@ export default function LeadDialog({
   const [reactionPickerOpenId, setReactionPickerOpenId] = useState<string | null>(null);
   const [commentEmojiOpen, setCommentEmojiOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [statusSelection, setStatusSelection] = useState<string>("");
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [teamMembers, setTeamMembers] = useState<MentionMember[]>([]);
@@ -1474,6 +1479,11 @@ export default function LeadDialog({
       setStatusDialogOpen(false);
       return;
     }
+    if (nextStatus === "scheduled") {
+      setStatusDialogOpen(false);
+      setShowScheduleDialog(true);
+      return;
+    }
     setStatusUpdating(true);
     try {
       const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
@@ -1498,6 +1508,24 @@ export default function LeadDialog({
     } finally {
       setStatusUpdating(false);
     }
+  };
+
+  const handleScheduleStatusSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
+    if (!lead) return;
+
+    if (payload) {
+      patchLead?.(lead.id, {
+        status: payload.status,
+        meetingDate: payload.meetingDate,
+        meetingTitle: payload.meetingTitle,
+        meetingNotes: payload.meetingNotes,
+        meetingLink: payload.meetingLink,
+        closerId: payload.closerId,
+      });
+    }
+
+    await refreshLeads();
+    void fetchLead({ silent: true });
   };
 
   useEffect(() => {
@@ -2298,6 +2326,18 @@ export default function LeadDialog({
           }}
           leadName={lead.name}
           onFinalize={handleFinalizeSubmit}
+        />
+      )}
+
+      {lead && (
+        <ScheduleMeetingDialog
+          open={showScheduleDialog}
+          onOpenChange={setShowScheduleDialog}
+          lead={lead}
+          onScheduleSuccess={handleScheduleStatusSuccess}
+          closers={closersByTeam}
+          teamMembers={usersToAssign}
+          mode={lead.status === "no_show" ? "reschedule" : "create"}
         />
       )}
 

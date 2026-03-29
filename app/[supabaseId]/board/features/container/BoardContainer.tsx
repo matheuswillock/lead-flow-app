@@ -1,6 +1,6 @@
 "use client"
 
-import React, { ReactNode, useState } from "react";
+import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import BoardHeader from "./BoardHeader";
 import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
@@ -25,15 +25,33 @@ export function BoardContainer({
   viewModeToggle,
   filtersBar,
 }: BoardContainerProps = {}) {
-  const { finalizeContract, refreshLeads, open, setOpen, selected: lead, user, userLoading, patchLead } = useBoardContext();
+  const {
+    finalizeContract,
+    refreshLeads,
+    open,
+    setOpen,
+    selected: lead,
+    user,
+    userLoading,
+    patchLead,
+    pendingScheduledDrop,
+    clearPendingScheduledDrop,
+    applyScheduledTransition,
+    data,
+  } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const scheduleSucceededRef = useRef(false);
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
   const { members: closers } = useTeamClosers(supabaseId, activeTeamId);
+  const pendingDropLead = useMemo(() => {
+    if (!pendingScheduledDrop) return null;
+    return data[pendingScheduledDrop.from]?.find((item) => item.id === pendingScheduledDrop.leadId) ?? null;
+  }, [data, pendingScheduledDrop]);
 
   const handleFinalizeContract = (lead: Lead) => {
     setSelectedLead(lead);
@@ -41,10 +59,19 @@ export function BoardContainer({
   };
 
   const handleScheduleMeeting = (lead: Lead) => {
+    scheduleSucceededRef.current = false;
     setSelectedLead(lead);
     setScheduleDialogMode(lead.status === "no_show" ? "reschedule" : "create");
     setShowScheduleDialog(true);
   };
+
+  useEffect(() => {
+    if (!pendingScheduledDrop || !pendingDropLead) return;
+    scheduleSucceededRef.current = false;
+    setSelectedLead(pendingDropLead);
+    setScheduleDialogMode(pendingScheduledDrop.from === "no_show" ? "reschedule" : "create");
+    setShowScheduleDialog(true);
+  }, [pendingDropLead, pendingScheduledDrop]);
 
   const handleNoShow = async (lead: Lead) => {
     if (!supabaseId) {
@@ -89,8 +116,11 @@ export function BoardContainer({
   };
 
   const handleScheduleSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
-    if (payload) {
-      patchLead?.(payload.leadId, {
+    scheduleSucceededRef.current = true;
+
+    if (payload && selectedLead) {
+      applyScheduledTransition(selectedLead.status, {
+        id: payload.leadId,
         status: payload.status,
         meetingDate: payload.meetingDate,
         meetingTitle: payload.meetingTitle,
@@ -146,7 +176,11 @@ export function BoardContainer({
             onOpenChange={(open) => {
               setShowScheduleDialog(open);
               if (!open) {
+                if (!scheduleSucceededRef.current) {
+                  clearPendingScheduledDrop();
+                }
                 setScheduleDialogMode("create");
+                setSelectedLead(null);
               }
             }}
             lead={selectedLead}

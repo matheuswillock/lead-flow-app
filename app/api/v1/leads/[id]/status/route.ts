@@ -55,7 +55,7 @@ export async function PUT(
     return NextResponse.json(output, { status: responseStatus });
 
   } catch (error) {
-    console.error("Erro ao atualizar status do lead:", error);
+    console.error("[LeadStatusRoute][PUT] Erro ao atualizar status do lead:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }

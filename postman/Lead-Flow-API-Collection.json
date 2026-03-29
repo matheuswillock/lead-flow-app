@@ -3704,7 +3704,7 @@
                     "description": "Auto-generated from app/api/v1/leads/[id]/schedule/route.ts",
                     "body": {
                       "mode": "raw",
-                      "raw": "{}"
+                      "raw": "{\n  \"date\": \"2026-03-23T13:00:00.000Z\",\n  \"meetingTitle\": \"Estudo Plano de Saúde: Cliente Exemplo\",\n  \"notes\": \"Reunião inicial do lead\",\n  \"meetingLink\": \"https://meet.google.com/abc-defg-hij\",\n  \"closerId\": \"11111111-2222-3333-4444-555555555555\",\n  \"extraGuests\": [\n    \"convidado@example.com\"\n  ],\n  \"transitionStatusToScheduled\": true\n}"
                     }
                   },
                   "response": [
@@ -3720,7 +3720,7 @@
                         }
                       ],
                       "cookie": [],
-                      "body": "{\n  \"isValid\": true,\n  \"successMessages\": [\n    \"Agendamento criado com sucesso\",\n    \"Aviso: Google Calendar falhou (Falha ao criar evento no Google Calendar). Convite enviado via e-mail (Resend).\"\n  ],\n  \"errorMessages\": [],\n  \"result\": {\n    \"id\": \"d468b95f-8d23-4edf-8d4b-813106f5e1f1\",\n    \"leadId\": \"0b76fdb2-8649-41b6-8f28-3f5c7d949e7f\",\n    \"date\": \"2026-03-23T13:00:00.000Z\",\n    \"meetingTitle\": \"Estudo Plano de Saúde: Cliente Exemplo\",\n    \"meetingLink\": \"https://meet.google.com/abc-defg-hij\",\n    \"inviteDispatchStatus\": \"sent_resend\",\n    \"inviteDispatchFallbackUsed\": true,\n    \"inviteDispatchLastAttemptAt\": \"2026-03-23T12:55:01.121Z\",\n    \"inviteDispatchLastError\": null,\n    \"inviteDispatch\": {\n      \"status\": \"sent_resend\",\n      \"provider\": \"resend\",\n      \"fallbackUsed\": true,\n      \"attemptedAt\": \"2026-03-23T12:55:01.121Z\",\n      \"error\": null\n    }\n  }\n}"
+                      "body": "{\n  \"isValid\": true,\n  \"successMessages\": [\n    \"Agendamento criado com sucesso\",\n    \"Aviso: Google Calendar falhou (Falha ao criar evento no Google Calendar). Convite enviado via e-mail (Resend).\"\n  ],\n  \"errorMessages\": [],\n  \"result\": {\n    \"id\": \"d468b95f-8d23-4edf-8d4b-813106f5e1f1\",\n    \"leadId\": \"0b76fdb2-8649-41b6-8f28-3f5c7d949e7f\",\n    \"date\": \"2026-03-23T13:00:00.000Z\",\n    \"meetingTitle\": \"Estudo Plano de Saúde: Cliente Exemplo\",\n    \"meetingLink\": \"https://meet.google.com/abc-defg-hij\",\n    \"inviteDispatchStatus\": \"sent_resend\",\n    \"inviteDispatchFallbackUsed\": true,\n    \"inviteDispatchLastAttemptAt\": \"2026-03-23T12:55:01.121Z\",\n    \"inviteDispatchLastError\": null,\n    \"status\": \"scheduled\",\n    \"inviteDispatch\": {\n      \"status\": \"sent_resend\",\n      \"provider\": \"resend\",\n      \"fallbackUsed\": true,\n      \"attemptedAt\": \"2026-03-23T12:55:01.121Z\",\n      \"error\": null\n    }\n  }\n}"
                     }
                   ]
                 },
@@ -3832,10 +3832,25 @@
                     "description": "Auto-generated from app/api/v1/leads/[id]/status/route.ts",
                     "body": {
                       "mode": "raw",
-                      "raw": "{}"
+                      "raw": "{\n  \"status\": \"scheduled\"\n}"
                     }
                   },
-                  "response": []
+                  "response": [
+                    {
+                      "name": "400 Bad Request (scheduled requires valid schedule)",
+                      "status": "Bad Request",
+                      "code": 400,
+                      "_postman_previewlanguage": "json",
+                      "header": [
+                        {
+                          "key": "Content-Type",
+                          "value": "application/json"
+                        }
+                      ],
+                      "cookie": [],
+                      "body": "{\n  \"isValid\": false,\n  \"successMessages\": [],\n  \"errorMessages\": [\n    \"Lead precisa de um agendamento válido antes de mudar para Agendado. Use o fluxo de agendamento.\"\n  ],\n  \"result\": null\n}"
+                    }
+                  ]
                 },
                 {
                   "name": "PUT /api/v1/leads/{{id}}/transfer",

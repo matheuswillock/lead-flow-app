@@ -14,7 +14,15 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Input } from "./input"
 
 interface DateTimePickerProps {
   date?: Date
@@ -39,6 +47,7 @@ export function DateTimePicker({
   availableTimes,
   showTime = true,
 }: DateTimePickerProps) {
+  const timeSelectWidthClass = "w-full sm:w-[7.5rem]"
   const initialDate = date && isValid(date) ? date : undefined
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(initialDate)
   const [time, setTime] = React.useState<string>(
@@ -167,15 +176,32 @@ export function DateTimePicker({
                   onValueChange={handleTimeChange}
                   disabled={disabled || availableTimes.length === 0}
                 >
-                  <SelectTrigger className="h-9">
+                  <SelectTrigger
+                    className={cn(
+                      "h-9 transition-colors hover:bg-accent/40 hover:text-accent-foreground",
+                      timeSelectWidthClass
+                    )}
+                  >
                     <SelectValue placeholder="Selecione um horário" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {availableTimes.map((slot) => (
-                      <SelectItem key={slot} value={slot}>
-                        {slot}
-                      </SelectItem>
-                    ))}
+                  <SelectContent
+                    className={cn(
+                      timeSelectWidthClass,
+                      "dialog-scrollbar max-h-72 min-w-[var(--radix-select-trigger-width)] overscroll-contain"
+                    )}
+                    sideOffset={4}
+                  >
+                    <SelectGroup>
+                      {availableTimes.map((slot) => (
+                        <SelectItem
+                          key={slot}
+                          value={slot}
+                          className="cursor-pointer hover:bg-accent hover:text-accent-foreground data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground"
+                        >
+                          {slot}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
                 {availableTimes.length === 0 && selectedDate && (
@@ -185,7 +211,7 @@ export function DateTimePicker({
                 )}
               </>
             ) : (
-              <input
+              <Input
                 id="time-picker"
                 type="time"
                 value={time}

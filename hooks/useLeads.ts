@@ -241,19 +241,19 @@ export const useLeads = () => {
         body: JSON.stringify({ status }),
       });
 
-      if (!response.ok) {
-        throw new Error('Erro ao atualizar status do lead');
+      const apiResult = await response.json().catch(() => null);
+      if (!response.ok || !apiResult?.isValid) {
+        const message = Array.isArray(apiResult?.errorMessages) && apiResult.errorMessages.length > 0
+          ? apiResult.errorMessages.join(', ')
+          : 'Erro ao atualizar status do lead';
+        throw new Error(message);
       }
-
-      const apiResult = await response.json();
       
       // Transform API response to DTO format expected by frontend
       const result: UpdateLeadResponseDTO = {
-        success: apiResult.isValid,
+        success: true,
         lead: apiResult.result,
-        message: apiResult.isValid 
-          ? apiResult.successMessages.join(', ') || 'Status do lead atualizado com sucesso'
-          : apiResult.errorMessages.join(', ') || 'Erro ao atualizar status do lead'
+        message: apiResult.successMessages.join(', ') || 'Status do lead atualizado com sucesso'
       };
       
       return result;

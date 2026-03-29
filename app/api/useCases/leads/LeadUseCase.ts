@@ -2,14 +2,13 @@ import { ILeadUseCase } from "./ILeadUseCase";
 import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
 import { IProfileUseCase } from "../profiles/IProfileUseCase";
 import { Output } from "@/lib/output";
-import { LeadStatus, ActivityType } from "@prisma/client";
+import { LeadStatus, ActivityType, InviteDispatchStatus } from "@prisma/client";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
 import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinalized/LeadFinalizedRepository";
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
-import { upsertCalendarEvent } from "../../services/googleCalendar/GoogleCalendarService";
 import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
 import { prisma } from "../../infra/data/prisma";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "../../v1/leads/DTO/leadValueLimits";
@@ -38,6 +37,7 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
 };
 
 const getStatusLabel = (status: LeadStatus) => LEAD_STATUS_LABELS[status] ?? status;
+const SCHEDULED_INVITE_SUCCESS_STATUSES: InviteDispatchStatus[] = ["sent_google", "sent_resend"];
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -603,6 +603,28 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
+      if (status === LeadStatus.scheduled) {
+        const latestSchedule = await leadScheduleRepository.findLatestByLeadId(id);
+        const resolvedMeetingLink = latestSchedule?.meetingLink?.trim() || existingLead.meetingLink?.trim() || "";
+        const inviteDispatchSuccessful = latestSchedule?.inviteDispatchStatus
+          ? SCHEDULED_INVITE_SUCCESS_STATUSES.includes(latestSchedule.inviteDispatchStatus)
+          : false;
+
+        if (
+          !existingLead.meetingDate ||
+          !existingLead.closerId ||
+          !resolvedMeetingLink ||
+          !inviteDispatchSuccessful
+        ) {
+          return new Output(
+            false,
+            [],
+            ["Lead precisa de um agendamento válido antes de mudar para Agendado. Use o fluxo de agendamento."],
+            null
+          );
+        }
+      }
+
       // Atualizar o status do lead
       const lead = await this.leadRepository.updateStatus(id, status);
 
@@ -622,87 +644,6 @@ export class LeadUseCase implements ILeadUseCase {
           amount: Number(existingLead.currentValue || 0),
           notes: `Venda finalizada. Valor: R$ ${existingLead.currentValue || 0}`,
         });
-      }
-
-      // Se o status for scheduled, criar ou atualizar registro na tabela LeadsSchedule
-      if (status === LeadStatus.scheduled) {
-        const meetingDate = existingLead.meetingDate || new Date();
-        const fallbackMeetingTitle = existingLead.meetingTitle || `Estudo Plano de Saúde: ${existingLead.name}`;
-        
-        // Verificar se já existe um agendamento para este lead
-        const existingSchedule = await leadScheduleRepository.findLatestByLeadId(id);
-        const shouldCreateCalendarEvent = !existingSchedule?.googleEventId;
-        let calendarEventResult: { eventId: string; calendarId: string; meetLink?: string | null } | null = null;
-
-        if (shouldCreateCalendarEvent) {
-          const leadWithManager = await prisma.lead.findUnique({
-            where: { id },
-            include: {
-              manager: true,
-              closer: true,
-              assignee: true,
-            },
-          });
-
-          const closerProfile = leadWithManager?.closer;
-          if (closerProfile && closerProfile.googleCalendarConnected && closerProfile.googleRefreshToken) {
-            try {
-              calendarEventResult = await upsertCalendarEvent({
-                organizer: closerProfile,
-                lead: leadWithManager,
-                closerEmail: closerProfile.email || null,
-                sdrEmail: leadWithManager.assignee?.email || null,
-                meetingDate,
-                meetingTitle: existingLead.meetingTitle || undefined,
-                notes: existingLead.meetingNotes || undefined,
-                meetingLink: existingLead.meetingLink || undefined,
-                existingEventId: existingSchedule?.googleEventId ?? null,
-              });
-            } catch (error) {
-              console.error("Erro ao criar evento no Google Calendar:", error);
-            }
-          }
-        }
-
-        if (existingSchedule) {
-          // Atualizar agendamento existente
-          await leadScheduleRepository.update(existingSchedule.id, {
-            date: meetingDate,
-            meetingTitle: fallbackMeetingTitle,
-            notes: `Lead agendado`,
-            meetingLink: calendarEventResult?.meetLink ?? existingSchedule.meetingLink ?? undefined,
-            googleEventId: calendarEventResult?.eventId ?? existingSchedule.googleEventId ?? undefined,
-            googleCalendarId: calendarEventResult?.calendarId ?? existingSchedule.googleCalendarId ?? undefined,
-          });
-        } else {
-          // Criar novo agendamento
-          await leadScheduleRepository.create({
-            leadId: id,
-            date: meetingDate,
-            meetingTitle: fallbackMeetingTitle,
-            notes: `Lead agendado`,
-            meetingLink: calendarEventResult?.meetLink ?? existingLead.meetingLink ?? undefined,
-            googleEventId: calendarEventResult?.eventId ?? undefined,
-            googleCalendarId: calendarEventResult?.calendarId ?? undefined,
-          });
-        }
-
-        // Se não tinha meetingDate, atualizar o lead com a data atual
-        if (!existingLead.meetingDate) {
-          await this.leadRepository.update(id, {
-            meetingDate,
-            meetingTitle: fallbackMeetingTitle,
-            meetingLink: calendarEventResult?.meetLink ?? undefined,
-          });
-        } else if (!existingLead.meetingTitle) {
-          await this.leadRepository.update(id, {
-            meetingTitle: fallbackMeetingTitle,
-          });
-        } else if (calendarEventResult?.meetLink && !existingLead.meetingLink) {
-          await this.leadRepository.update(id, {
-            meetingLink: calendarEventResult.meetLink,
-          });
-        }
       }
 
       if (existingLead.status !== status) {
