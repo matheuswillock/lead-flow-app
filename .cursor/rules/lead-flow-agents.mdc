@@ -25,6 +25,11 @@ This document defines the implementation governance for AI agents in this reposi
 - **LEGACY EXCEPTIONS**: allowed temporary deviations, explicitly listed in `.governance/ai-governance.config.json` (source of truth for governance checks).
 - **FOR NEW FEATURES**: rules that apply to all net-new feature work.
 
+## Project Context Reference
+
+- Agents **MUST** read `.github/instructions/project-context.instructions.md` at the start of every session or task to obtain full project context: tech stack, design system, database schema, architecture patterns, integrations, and conventions.
+- This file is the authoritative reference for implementation details not covered by governance rules.
+
 ## Source of Truth and Distribution
 
 - Agents **MUST** treat `agents.md` as the canonical instruction file.
