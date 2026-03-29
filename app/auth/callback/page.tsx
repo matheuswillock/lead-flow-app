@@ -37,20 +37,6 @@ function GoogleIcon() {
   );
 }
 
-function ConnectingDots() {
-  return (
-    <div className="flex items-center gap-1.5" aria-hidden="true">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="size-1.5 rounded-full bg-primary animate-bounce"
-          style={{ animationDelay: `${i * 0.18}s`, animationDuration: "0.9s" }}
-        />
-      ))}
-    </div>
-  );
-}
-
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
