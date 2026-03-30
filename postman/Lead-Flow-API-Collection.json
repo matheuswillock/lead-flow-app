@@ -2553,7 +2553,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"hasPermanentSubscription\": true\n}"
+                  "raw": "{\n  \"hasPermanentSubscription\": true,\n  \"startDate\": \"2026-04-01\",\n  \"endDate\": \"2027-04-01\"\n}"
                 },
                 "url": {
                   "raw": "{{BASE_URL}}/api/v1/profiles/f295d256-0868-4bbe-9b9c-fb6cec64ffa0/permanent-subscription",
@@ -2588,6 +2588,7 @@
                 },
                 "url": {
                   "raw": "{{BASE_URL}}/api/v1/profiles/{{SUPABASE_ID}}/permanent-subscription",
+
                   "host": [
                     "{{BASE_URL}}"
                   ],
@@ -4806,10 +4807,10 @@
                         "permanent-subscription"
                       ]
                     },
-                    "description": "Auto-generated from app/api/v1/profiles/[supabaseId]/permanent-subscription/route.ts",
+                    "description": "Ativa ou desativa assinatura permanente/vitalícia. Ao ativar, cria assinatura R$0,00 no Asaas com o período determinado. Requer autenticação de usuário master.\n\nBody (ativar):\n{\n  \"hasPermanentSubscription\": true,\n  \"startDate\": \"2026-04-01\",\n  \"endDate\": \"2027-04-01\"\n}\n\nBody (desativar):\n{\n  \"hasPermanentSubscription\": false\n}",
                     "body": {
                       "mode": "raw",
-                      "raw": "{}"
+                      "raw": "{\n  \"hasPermanentSubscription\": true,\n  \"startDate\": \"2026-04-01\",\n  \"endDate\": \"2027-04-01\"\n}"
                     }
                   },
                   "response": []
@@ -4837,10 +4838,10 @@
                         "permanent-subscription"
                       ]
                     },
-                    "description": "Auto-generated from app/api/v1/profiles/permanent-subscription/route.ts",
+                    "description": "Ativa ou desativa assinatura permanente/vitalícia via endpoint admin (sem auth). Ao ativar, cria assinatura R$0,00 no Asaas com o período determinado.\n\nBody (ativar):\n{\n  \"profileId\": \"uuid-do-profile\",\n  \"enable\": true,\n  \"startDate\": \"2026-04-01\",\n  \"endDate\": \"2027-04-01\"\n}\n\nBody (desativar):\n{\n  \"profileId\": \"uuid-do-profile\",\n  \"enable\": false\n}",
                     "body": {
                       "mode": "raw",
-                      "raw": "{}"
+                      "raw": "{\n  \"profileId\": \"{{profileId}}\",\n  \"enable\": true,\n  \"startDate\": \"2026-04-01\",\n  \"endDate\": \"2027-04-01\"\n}"
                     }
                   },
                   "response": []

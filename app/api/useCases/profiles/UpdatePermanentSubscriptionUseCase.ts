@@ -1,106 +1,54 @@
 import { Output } from "@/lib/output";
-import { prisma } from "@/app/api/infra/data/prisma";
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository";
+import { togglePermanentSubscriptionUseCase } from "./TogglePermanentSubscriptionUseCase";
+import type { FreeSubscriptionOptions } from "./TogglePermanentSubscriptionUseCase";
 
 /**
- * UseCase para atualizar flag de assinatura permanente
- * Apenas usuários master podem executar esta operação
+ * UseCase para atualizar flag de assinatura permanente (com guarda de autenticação master).
+ * Delega a lógica de criação/cancelamento Asaas ao TogglePermanentSubscriptionUseCase.
  */
 export class UpdatePermanentSubscriptionUseCase {
   constructor(private profileRepository: IProfileRepository) {}
 
-  /**
-   * Atualiza a flag hasPermanentSubscription de um perfil
-   * @param targetSupabaseId - SupabaseID do perfil a ser atualizado
-   * @param hasPermanentSubscription - Novo valor da flag
-   * @param requestingUserId - ID do usuário que está fazendo a requisição
-   */
   async updatePermanentSubscription(
     targetSupabaseId: string,
     hasPermanentSubscription: boolean,
-    requestingUserId: string
+    requestingUserId: string,
+    options?: FreeSubscriptionOptions
   ): Promise<Output> {
     try {
-      // 1. Validações de entrada
       if (!targetSupabaseId) {
-        return new Output(
-          false,
-          [],
-          ['SupabaseID do perfil é obrigatório'],
-          null
-        );
+        return new Output(false, [], ['SupabaseID do perfil é obrigatório'], null);
       }
 
       if (typeof hasPermanentSubscription !== 'boolean') {
-        return new Output(
-          false,
-          [],
-          ['O campo hasPermanentSubscription deve ser um boolean'],
-          null
-        );
+        return new Output(false, [], ['O campo hasPermanentSubscription deve ser um boolean'], null);
       }
 
-      // 2. Buscar perfil do usuário que está fazendo a requisição
       const requestingUser = await this.profileRepository.findById(requestingUserId);
 
       if (!requestingUser) {
-        return new Output(
-          false,
-          [],
-          ['Usuário requisitante não encontrado'],
-          null
-        );
+        return new Output(false, [], ['Usuário requisitante não encontrado'], null);
       }
 
-      // 3. Verificar se o usuário requisitante é master
       if (!requestingUser.isMaster) {
-        return new Output(
-          false,
-          [],
-          ['Apenas usuários master podem alterar assinatura permanente'],
-          null
-        );
+        return new Output(false, [], ['Apenas usuários master podem alterar assinatura permanente'], null);
       }
 
-      // 4. Buscar perfil alvo por supabaseId
       const targetProfile = await this.profileRepository.findBySupabaseId(targetSupabaseId);
 
       if (!targetProfile) {
-        return new Output(
-          false,
-          [],
-          ['Perfil alvo não encontrado'],
-          null
-        );
+        return new Output(false, [], ['Perfil alvo não encontrado'], null);
       }
 
-      // 5. Atualizar flag hasPermanentSubscription usando o ID interno
-      const updatedProfile = await prisma.profile.update({
-        where: { id: targetProfile.id },
-        data: { hasPermanentSubscription }
-      });
-
-      return new Output(
-        true,
-        ['Assinatura permanente atualizada com sucesso'],
-        [],
-        {
-          id: updatedProfile.id,
-          email: updatedProfile.email,
-          fullName: updatedProfile.fullName,
-          hasPermanentSubscription: updatedProfile.hasPermanentSubscription
-        }
+      return await togglePermanentSubscriptionUseCase.togglePermanentSubscription(
+        targetProfile.id,
+        hasPermanentSubscription,
+        options
       );
-
     } catch (error) {
       console.error('❌ [UpdatePermanentSubscriptionUseCase] Erro:', error);
-      
-      return new Output(
-        false,
-        [],
-        ['Erro ao atualizar assinatura permanente'],
-        null
-      );
+      return new Output(false, [], ['Erro ao atualizar assinatura permanente'], null);
     }
   }
 }
