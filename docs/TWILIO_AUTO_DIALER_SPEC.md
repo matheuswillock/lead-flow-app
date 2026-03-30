@@ -1,6 +1,6 @@
 # Especificação — Módulo Discador Automático (Twilio)
 
-**Versão:** 1.0.0
+**Versão:** 1.1.0
 **Data:** 2026-03-30
 **Status:** Planejamento
 **Produto:** Lead Flow — Corretor Studio
@@ -501,7 +501,194 @@ Adicionar `/dialer` à lista de rotas protegidas em `middleware.ts`:
 
 ---
 
-## 12. Referências
+---
+
+## 12. Plano Ilimitado — Viabilidade e Abordagem
+
+### 12.1 Por que "ilimitado real" não existe no Twilio
+
+O Twilio **não oferece plano de voz flat-rate** para o Brasil. Todo uso é cobrado por minuto (pay-as-you-go). Portanto, oferecer "ilimitado" ao cliente significa que **nós absorvemos o risco** de uso excessivo.
+
+> Custo de referência Twilio para ligações ao Brasil (número local BR → celular BR):
+> ~$0,028/min com número local brasileiro.
+> Se usar número US para ligar ao Brasil: ~$0,14/min (muito mais caro — sempre usar número BR local).
+
+### 12.2 Estratégias para Plano "Ilimitado"
+
+#### Opção 1 — Alto Volume com Teto de Segurança (RECOMENDADA)
+
+Vendemos como "ilimitado" mas aplicamos um teto de proteção contra abuso:
+
+| Plano | Preço | Minutos incluídos | Excedente |
+|-------|-------|-------------------|-----------|
+| Discador Básico | R$ 49,90/time/mês | 300 min | R$ 0,35/min adicional |
+| Discador Pro | R$ 89,90/time/mês | 800 min | R$ 0,30/min adicional |
+| **Discador Ilimitado** | **R$ 199,90/time/mês** | **até 2.000 min** | R$ 0,25/min adicional |
+
+- Para o plano "Ilimitado": custo Twilio médio ≈ R$ 150 (2.000 min × R$ 0,15) → margem de ~25%
+- Usuário médio de call center: 200–500 min/mês → margem muito maior para a maioria
+- O teto (2.000 min) bloqueia abusos e é transparente no contrato
+
+#### Opção 2 — Créditos Pré-pagos (Pay-as-you-go para o cliente)
+
+- Manager compra pacotes de crédito via Asaas (cobrança avulsa, não recorrente)
+- Créditos se convertem em minutos: R$ 29,90 = 100 min
+- Sem mensalidade de discador; desconto por volume nos pacotes maiores
+- Risco para nós: zero (cliente pré-paga antes de usar)
+
+#### Opção 3 — Repasse Direto com Markup Fixo
+
+- Consultamos a API de usage do Twilio ao final de cada ciclo
+- Cobramos o cliente pelo exato uso + markup de 100%: custo Twilio × 2
+- Cobrança via Asaas on-demand (não recorrente) no fechamento do mês
+- Vantagem: totalmente justo por uso; desvantagem: cobrança variável assusta alguns clientes
+
+### 12.3 Recomendação Final para Ilimitado
+
+**Posicionar o Plano Ilimitado como "até 2.000 min/mês"** (limite técnico transparente), com excedente automático cobrado pelo Asaas via cobrança avulsa. Isso:
+- Permite marketing de "ilimitado" para o perfil típico de uso
+- Protege contra custo excessivo com teto declarado
+- Mantém cobrança recorrente previsível para o negócio
+
+---
+
+## 13. Isolamento por Cliente — Twilio Subcontas
+
+### 13.1 Problema
+
+Em um SaaS multi-tenant, misturar todos os clientes em uma única conta Twilio cria:
+- Sem isolamento de dados (logs de chamadas misturados)
+- Risco: um cliente com problema (spam, fraude) pode comprometer a conta principal
+- Impossível suspender individualmente um cliente sem afetar os outros
+- Difícil rastrear custo exato por cliente para billing preciso
+
+### 13.2 Solução: Twilio Subcontas (Subaccounts)
+
+O Twilio permite criar **subcontas filhas** a partir de uma conta mestre via API. Cada subconta é independente mas os custos sobem para a conta mestre (nós pagamos uma única fatura ao Twilio e repassamos aos clientes via Asaas).
+
+```
+Nossa Conta Mestre Twilio (Lead Flow)
+│  ← Uma única fatura Twilio por mês
+│
+├── Subconta: Time "Alfa" (Manager João)
+│   ├── Account SID: ACaaa...
+│   ├── Auth Token: próprio
+│   ├── Número BR: +55 11 9XXXX-XXXX
+│   ├── Chamadas, gravações e logs isolados
+│   └── Suspendível individualmente
+│
+├── Subconta: Time "Beta" (Manager Maria)
+│   ├── Account SID: ACbbb...
+│   ├── Auth Token: próprio
+│   ├── Número BR: +55 21 9XXXX-XXXX
+│   └── Dados completamente separados
+│
+└── Subconta: Time "Gama" (Manager Carlos)
+    └── ...
+```
+
+**Limite padrão**: até 1.000 subcontas por conta mestre (expandível via suporte Twilio).
+
+### 13.3 Como Criar e Gerenciar Subcontas
+
+```typescript
+// TwilioSubaccountService.ts (novo service)
+
+// Criar subconta quando manager ativa o módulo discador
+const subaccount = await twilioClient.api.accounts.create({
+  friendlyName: `LeadFlow - Time ${teamId}`,
+});
+// Retorna: subaccount.sid, subaccount.authToken
+
+// Comprar número BR para a subconta
+const twilioSubClient = twilio(subaccount.sid, subaccount.authToken);
+const number = await twilioSubClient.incomingPhoneNumbers.create({
+  phoneNumber: selectedBrazilNumber,
+});
+
+// Suspender subconta (cliente inadimplente)
+await twilioClient.api.accounts(subaccountSid).update({ status: 'suspended' });
+
+// Reativar subconta (cliente pagou)
+await twilioClient.api.accounts(subaccountSid).update({ status: 'active' });
+```
+
+### 13.4 Rastreamento de Custo por Cliente (Usage API)
+
+Ao final de cada ciclo (ou em tempo real), consultamos o custo exato de cada subconta:
+
+```typescript
+// Consultar uso de voz no mês atual para uma subconta
+const usageRecords = await twilioSubClient.usage.records.thisMonth.list({
+  category: 'calls',
+});
+
+const totalCost = usageRecords.reduce((sum, r) => sum + parseFloat(r.price), 0);
+const totalMinutes = usageRecords.reduce((sum, r) => sum + parseFloat(r.usage), 0);
+// Usar totalMinutes para debitar do DialerUsage.minutesUsed no banco
+```
+
+### 13.5 Fluxo de Dinheiro (Como o Repasse Funciona)
+
+```
+Cliente (Manager) paga Lead Flow (via Asaas)
+        ↓ mensalidade do plano discador + excedentes
+Lead Flow recebe no banco (conta PJ da empresa)
+        ↓ paga a fatura Twilio consolidada
+Twilio debita da conta mestre Lead Flow
+        ↓ (os custos das subcontas filhas somam na fatura mestre)
+Subcontas de cada time são debitadas internamente no Twilio
+```
+
+**Não há repasse direto cliente → Twilio.** O Lead Flow é o intermediário:
+- **Recebe** do cliente via Asaas (PIX/cartão)
+- **Paga** ao Twilio com cartão corporativo cadastrado na conta mestre
+- **Margem** = receita Asaas − custo Twilio
+
+### 13.6 Schema de Banco — Dados da Subconta por Time
+
+Adicionar ao modelo `Team` (além do que já foi proposto):
+
+```prisma
+// Novos campos em Team
+twilioSubaccountSid      String? @db.Text   // Account SID da subconta
+twilioSubaccountToken    String? @db.Text   // Auth Token da subconta (criptografado)
+dialerEnabled            Boolean @default(false)
+dialerPlan               String? @db.Text   // "dialer_basic" | "dialer_pro" | "dialer_unlimited"
+twilioNumberSid          String? @db.Text   // SID do número Twilio
+twilioPhoneNumber        String? @db.Text   // "+55 11 9XXXX-XXXX"
+```
+
+> **Segurança**: `twilioSubaccountToken` deve ser armazenado **criptografado** (AES-256 ou KMS). Nunca expor via API pública.
+
+### 13.7 Ciclo de Vida da Subconta
+
+```
+Manager ativa módulo discador (paga via Asaas)
+        ↓
+CreateDialerSubaccountUseCase:
+  1. POST Twilio API → criar subconta
+  2. Comprar número BR disponível na subconta
+  3. Configurar TwiML App na subconta (webhook URLs)
+  4. Salvar SID + token criptografado no Team
+  5. Criar DialerUsage para o ciclo atual
+        ↓
+[Uso mensal]
+  - Cada chamada usa o Auth Token da subconta específica
+  - DialerUsage.minutesUsed atualizado em tempo real via webhook de status
+        ↓
+Manager cancela / inadimplência:
+  1. Suspender subconta via Twilio API
+  2. Team.dialerEnabled = false
+        ↓
+Manager reativa:
+  1. Reativar subconta via Twilio API
+  2. Team.dialerEnabled = true
+```
+
+---
+
+## 14. Referências
 
 - [Twilio Programmable Voice Quickstart (Node.js)](https://www.twilio.com/docs/voice/quickstart/server)
 - [Twilio Pricing — Brazil](https://www.twilio.com/en-us/voice/pricing/br)
