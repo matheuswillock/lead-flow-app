@@ -207,7 +207,8 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
                 submittedAt: originContext.submittedAt ?? new Date().toISOString(),
               },
             }
-          : undefined
+          : undefined,
+        { autoScheduleMeeting: false }
       );
 
       if (!leadOutput.isValid) {

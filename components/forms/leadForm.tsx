@@ -87,6 +87,10 @@ export interface ILeadFormProps {
     closersError?: string | null;
     sdrsLoading?: boolean;
     sdrsError?: string | null;
+    availableTimes?: string[];
+    availabilityLoading?: boolean;
+    availabilityError?: string | null;
+    hasLoadedAvailability?: boolean;
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     showMeetingLink?: boolean;
 }
@@ -112,6 +116,10 @@ export function LeadForm({
     closersError,
     sdrsLoading,
     sdrsError,
+    availableTimes,
+    availabilityLoading = false,
+    availabilityError,
+    hasLoadedAvailability = false,
     leadId,
     showMeetingLink
 }: ILeadFormProps) {
@@ -194,6 +202,11 @@ export function LeadForm({
     }, [healthPlanOptions, watchedValues.currentHealthPlan, watchedValues.soldPlan]);
     const isFormValid = form.formState.isValid;
     const isSubmitDisabled = !hasChanges || !isFormValid || isLoading || isUpdating;
+    const watchedMeetingDate = form.watch("meetingDate");
+    const watchedCloserId = form.watch("closerId");
+    const meetingDateObject = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
+    const hasValidMeetingDate =
+        meetingDateObject instanceof Date && !Number.isNaN(meetingDateObject.getTime());
 
     useEffect(() => {
         if (!initialData) {
@@ -602,6 +615,7 @@ export function LeadForm({
                                     label="Data e Horário da Reunião"
                                     disabled={isLoading || isUpdating}
                                     disablePastDates={true}
+                                    availableTimes={availableTimes}
                                 />
                             </FormControl>
                         </FormItem>
@@ -703,6 +717,33 @@ export function LeadForm({
                     }}
                 />
 
+            </div>
+            <div className="sm:col-span-2">
+                {!hasValidMeetingDate && (
+                    <p className="text-xs text-muted-foreground">
+                        Selecione uma data para carregar horários disponíveis.
+                    </p>
+                )}
+                {hasValidMeetingDate && !watchedCloserId && (
+                    <p className="text-xs text-muted-foreground">
+                        Selecione um closer para carregar horários disponíveis.
+                    </p>
+                )}
+                {availabilityLoading && (
+                    <p className="text-xs text-muted-foreground">Carregando horários disponíveis...</p>
+                )}
+                {availabilityError && (
+                    <p className="text-xs text-destructive">{availabilityError}</p>
+                )}
+                {hasLoadedAvailability &&
+                    Array.isArray(availableTimes) &&
+                    availableTimes.length === 0 &&
+                    !availabilityLoading &&
+                    !availabilityError && (
+                        <p className="text-xs text-muted-foreground">
+                            Nenhum horário disponível para este dia.
+                        </p>
+                    )}
             </div>
 
             <FormField

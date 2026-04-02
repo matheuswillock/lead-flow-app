@@ -113,6 +113,24 @@ const normalizeLeadPhoneDigits = (phone: string): string => {
   return numbers.slice(-11);
 };
 
+const SCHEDULE_TIMEZONE = "America/Sao_Paulo";
+
+const isValidScheduleDate = (value?: Date): value is Date =>
+  value instanceof Date && !Number.isNaN(value.getTime());
+
+const toScheduleDateKey = (date: Date) => {
+  if (!isValidScheduleDate(date)) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: SCHEDULE_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+};
+
+const formatScheduleTime = (date: Date) =>
+  date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
 export default function LeadDialog({
   open,
   setOpen,
@@ -137,6 +155,10 @@ export default function LeadDialog({
   const [newParticipants, setNewParticipants] = useState<string[]>([]);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [hasLoadedAvailability, setHasLoadedAvailability] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [origin, setOrigin] = useState("");
   const [activityType, setActivityType] = useState<"note" | "call" | "whatsapp" | "email">("note");
@@ -166,6 +188,8 @@ export default function LeadDialog({
   const silentFetchTimerRef = useRef<number | null>(null);
   const appliedReactionRealtimeEventsRef = useRef<Set<string>>(new Set());
   const pendingOwnReactionOpsRef = useRef<Set<string>>(new Set());
+  const availabilityInFlightKeyRef = useRef<string | null>(null);
+  const availabilityLastSuccessKeyRef = useRef<string | null>(null);
   const params = useParams();
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
@@ -436,6 +460,29 @@ export default function LeadDialog({
       functions: member.functions ?? [],
     }));
   }, [teamMembers]);
+  const watchedMeetingDate = form.watch("meetingDate");
+  const watchedCloserId = form.watch("closerId");
+  const fallbackClosers = useMemo(
+    () =>
+      closersByTeam.filter(
+        (member) =>
+          member.functions?.includes("CLOSER") || !member.functions || member.functions.length === 0
+      ),
+    [closersByTeam]
+  );
+  const closersFromMembers = useMemo(
+    () => usersToAssign.filter((member) => member.functions?.includes("CLOSER")),
+    [usersToAssign]
+  );
+  const availableScheduleClosers = useMemo(
+    () =>
+      teamMembers.length > 0
+        ? closersFromMembers
+        : closersFromMembers.length > 0
+          ? closersFromMembers
+          : fallbackClosers,
+    [teamMembers.length, closersFromMembers, fallbackClosers]
+  );
 
   const mentionMatches = useMemo(() => {
     const query = mentionQuery.trim().toLowerCase();
@@ -1656,6 +1703,133 @@ export default function LeadDialog({
   }, [lead, open, form]);
 
   useEffect(() => {
+    if (!open || !supabaseId || !activeTeamId) {
+      setAvailableTimes([]);
+      setAvailabilityLoading(false);
+      setAvailabilityError(null);
+      setHasLoadedAvailability(false);
+      availabilityInFlightKeyRef.current = null;
+      availabilityLastSuccessKeyRef.current = null;
+      return;
+    }
+
+    const normalizedCloserId = (watchedCloserId || "").trim();
+    const parsedMeetingDate = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
+
+    if (!normalizedCloserId || !isValidScheduleDate(parsedMeetingDate)) {
+      setAvailableTimes([]);
+      setAvailabilityLoading(false);
+      setAvailabilityError(null);
+      setHasLoadedAvailability(false);
+      availabilityInFlightKeyRef.current = null;
+      availabilityLastSuccessKeyRef.current = null;
+      return;
+    }
+
+    const dateKey = toScheduleDateKey(parsedMeetingDate);
+    if (!dateKey) {
+      setAvailableTimes([]);
+      setAvailabilityLoading(false);
+      setAvailabilityError("Data da reunião inválida. Selecione novamente.");
+      setHasLoadedAvailability(true);
+      availabilityInFlightKeyRef.current = null;
+      return;
+    }
+
+    const requestKey = `${supabaseId}:${activeTeamId}:${normalizedCloserId}:${dateKey}`;
+    setHasLoadedAvailability(true);
+
+    if (
+      availabilityLastSuccessKeyRef.current === requestKey ||
+      availabilityInFlightKeyRef.current === requestKey
+    ) {
+      return;
+    }
+
+    let isMounted = true;
+    availabilityInFlightKeyRef.current = requestKey;
+    setAvailabilityLoading(true);
+    setAvailabilityError(null);
+
+    const fetchAvailability = async () => {
+      try {
+        const response = await fetch("/api/v1/calendar/availability", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId,
+          },
+          body: JSON.stringify({
+            closerId: normalizedCloserId,
+            date: dateKey,
+          }),
+        });
+
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.isValid) {
+          throw new Error(
+            Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+              ? result.errorMessages.join(", ")
+              : "Erro ao buscar disponibilidade."
+          );
+        }
+
+        if (!isMounted || availabilityInFlightKeyRef.current !== requestKey) {
+          return;
+        }
+
+        const times = Array.isArray(result?.result?.availableTimes)
+          ? (result.result.availableTimes as string[])
+          : [];
+        setAvailableTimes(times);
+        setAvailabilityError(null);
+        availabilityLastSuccessKeyRef.current = requestKey;
+      } catch (error) {
+        if (!isMounted || availabilityInFlightKeyRef.current !== requestKey) {
+          return;
+        }
+
+        setAvailableTimes([]);
+        setAvailabilityError(
+          error instanceof Error ? error.message : "Erro ao buscar disponibilidade."
+        );
+      } finally {
+        if (isMounted && availabilityInFlightKeyRef.current === requestKey) {
+          availabilityInFlightKeyRef.current = null;
+          setAvailabilityLoading(false);
+        }
+      }
+    };
+
+    fetchAvailability();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open, supabaseId, activeTeamId, watchedMeetingDate, watchedCloserId]);
+
+  useEffect(() => {
+    if (!open || availableTimes.length === 0) return;
+    const parsedMeetingDate = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
+    if (!isValidScheduleDate(parsedMeetingDate)) return;
+
+    const currentTime = formatScheduleTime(parsedMeetingDate);
+    if (availableTimes.includes(currentTime)) return;
+
+    const [hours, minutes] = availableTimes[0].split(":").map(Number);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return;
+
+    const nextDate = new Date(parsedMeetingDate);
+    nextDate.setHours(hours, minutes, 0, 0);
+    if (!isValidScheduleDate(nextDate)) return;
+
+    form.setValue("meetingDate", nextDate.toISOString(), {
+      shouldDirty: form.getFieldState("meetingDate").isDirty,
+    });
+  }, [open, watchedMeetingDate, availableTimes, form]);
+
+  useEffect(() => {
     if (!open || !lead) return;
     if (form.getFieldState("extraGuests").isDirty) return;
     form.setValue("extraGuests", scheduleGuests.join(", "), { shouldDirty: false });
@@ -1952,12 +2126,16 @@ export default function LeadDialog({
                     healthPlanOptionsLoading={healthPlansLoading}
                     onCancel={() => setOpen(false)}
                     usersToAssign={usersToAssign}
-                    closersToAssign={closersByTeam}
+                    closersToAssign={availableScheduleClosers}
                     sdrsToAssign={sdrsByTeam}
-                    closersLoading={closersLoading}
+                    closersLoading={teamMembersLoading || closersLoading}
                     closersError={closersError}
                     sdrsLoading={sdrsLoading}
                     sdrsError={sdrsError}
+                    availableTimes={availableTimes}
+                    availabilityLoading={availabilityLoading}
+                    availabilityError={availabilityError}
+                    hasLoadedAvailability={hasLoadedAvailability}
                     leadId={lead?.id}
                     showMeetingHeald={canShowMeetingHeald}
                     meetingHealdReadOnly={false}

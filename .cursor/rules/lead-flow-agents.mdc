@@ -10,8 +10,8 @@ alwaysApply: true
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.2.2
-**Last Updated:** 2026-03-09
+**Version:** 2.2.3
+**Last Updated:** 2026-04-02
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
 
@@ -213,6 +213,7 @@ new Output(
 - Create implementation summary docs (`*_IMPLEMENTATION_SUMMARY.md`, `*_FIX_SUMMARY.md`, similar generated summaries).
 - Use npm or yarn (project standard is Bun).
 - Hardcode URLs when `NEXT_PUBLIC_APP_URL` or `getFullUrl()` should be used.
+- Use browser-native dialogs in web UI (`window.alert`, `window.confirm`, `window.prompt`, or global `alert/confirm/prompt`). Use shadcn `AlertDialog`/`Dialog` for confirmation flows and `sonner` for user feedback.
 
 ### MUST
 
@@ -309,6 +310,7 @@ Validation includes:
 4. Output contract presence in new UseCases (blocked except explicit allowlist).
 5. Frontend page architecture checks for `app/**` pages (blocked except explicit allowlist).
 6. Non-TypeScript files in repository (blocked unless explicit legacy allowlist).
+7. Browser-native dialog usage in frontend source (`window.alert/confirm/prompt` or global `alert/confirm/prompt`) (blocked).
 
 CI **MUST** fail when governance checks fail.
 

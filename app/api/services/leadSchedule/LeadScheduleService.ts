@@ -202,6 +202,16 @@ export class LeadScheduleService implements ILeadScheduleService {
       leadAssigneeEmail,
       ...(extraGuests ?? []),
     ]);
+    let schedulerLabel = "Usuário";
+    try {
+      const schedulerProfile = await prisma.profile.findUnique({
+        where: { id: createdByProfileId },
+        select: { fullName: true, email: true },
+      });
+      schedulerLabel = schedulerProfile?.fullName || schedulerProfile?.email || "Usuário";
+    } catch (schedulerError) {
+      console.warn(`${LOG_PREFIX} Não foi possível resolver o scheduler para logs e notificação:`, schedulerError);
+    }
 
     const canUseGoogleCalendar = !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
     let calendarResult: CalendarEventResult | null = null;
@@ -368,6 +378,28 @@ export class LeadScheduleService implements ILeadScheduleService {
       }
     }
 
+    if (inviteDispatchStatus !== "failed") {
+      try {
+        await emailService.sendCloserScheduleNotificationEmail({
+          to: closerEmail,
+          closerName: closerProfile.fullName || closerProfile.email,
+          leadName,
+          meetingTitle: resolvedMeetingTitle,
+          meetingDate,
+          meetingLink: resolvedMeetingLink,
+          scheduledByName: schedulerLabel,
+          isReschedule: !!existingSchedule,
+          attendees: attendeeEmails,
+          notes: meetingNotes ?? null,
+        });
+      } catch (closerNotificationError) {
+        console.warn(
+          `${LOG_PREFIX} Falha ao enviar notificação ao closer (não-bloqueante):`,
+          closerNotificationError
+        );
+      }
+    }
+
     if (inviteDispatchStatus === "failed") {
       const reason = inviteDispatchLastError || googleDispatchError || "Falha no envio do convite";
       return new Output(
@@ -461,13 +493,7 @@ export class LeadScheduleService implements ILeadScheduleService {
     });
 
     // --- Activity log for schedule creation ---
-    let schedulerLabel = "Usuário";
     try {
-      const schedulerProfile = await prisma.profile.findUnique({
-        where: { id: createdByProfileId },
-        select: { fullName: true, email: true },
-      });
-      schedulerLabel = schedulerProfile?.fullName || schedulerProfile?.email || "Usuário";
       const actionLabel = existingSchedule ? "Reagendamento feito por" : "Agendamento feito por";
 
       const participants = buildUniqueEmails([

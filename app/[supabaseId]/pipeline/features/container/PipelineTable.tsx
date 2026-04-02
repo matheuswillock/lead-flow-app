@@ -62,6 +62,16 @@ import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/L
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface PipelineTableProps {
   useExternalFilters?: boolean;
@@ -101,6 +111,9 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [showChangeStatusDialog, setShowChangeStatusDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
+  const [isDeletingLead, setIsDeletingLead] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
   // Atualizar data quando filtered mudar
@@ -170,12 +183,23 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   };
 
   const handleDeleteLead = async (lead: Lead) => {
-    if (!confirm(`Tem certeza que deseja deletar o lead "${lead.name}"?`)) {
-      return;
-    }
+    setLeadToDelete(lead);
+    setDeleteDialogOpen(true);
+  };
 
+  const handleDeleteDialogOpenChange = (open: boolean) => {
+    if (isDeletingLead) return;
+    setDeleteDialogOpen(open);
+    if (!open) {
+      setLeadToDelete(null);
+    }
+  };
+
+  const confirmDeleteLead = async () => {
+    if (!leadToDelete || isDeletingLead) return;
+    setIsDeletingLead(true);
     try {
-      const response = await fetch(`/api/v1/leads/${lead.id}`, {
+      const response = await fetch(`/api/v1/leads/${leadToDelete.id}`, {
         method: 'DELETE',
         headers: {
           ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
@@ -188,10 +212,14 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
       }
 
       toast.success('Lead deletado com sucesso!');
+      setDeleteDialogOpen(false);
+      setLeadToDelete(null);
       await refreshLeads();
     } catch (error) {
       toast.error('Erro ao deletar lead');
       console.error('Erro ao deletar lead:', error);
+    } finally {
+      setIsDeletingLead(false);
     }
   };
 
@@ -646,6 +674,34 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
           onSchedulePatched={applyScheduledPatch}
         />
       )}
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={handleDeleteDialogOpenChange}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">
+              Confirmar exclusão
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja deletar o lead{" "}
+              <strong className="text-foreground">"{leadToDelete?.name ?? "selecionado"}"</strong>?
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingLead}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeletingLead || !leadToDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmDeleteLead();
+              }}
+            >
+              {isDeletingLead ? "Deletando..." : "Deletar lead"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

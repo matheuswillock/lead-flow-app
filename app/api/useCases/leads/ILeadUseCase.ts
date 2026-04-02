@@ -9,12 +9,17 @@ export interface LeadCreationActivityContext {
   payload?: Prisma.InputJsonValue | null;
 }
 
+export interface LeadCreateOptions {
+  autoScheduleMeeting?: boolean;
+}
+
 export interface ILeadUseCase {
   createLead(
     supabaseId: string,
     data: CreateLeadRequest,
     teamId?: string,
-    creationActivityContext?: LeadCreationActivityContext
+    creationActivityContext?: LeadCreationActivityContext,
+    options?: LeadCreateOptions
   ): Promise<Output>;
   createLeadFromImport(supabaseId: string, data: CreateLeadRequest): Promise<Output>;
   getLeadById(supabaseId: string, id: string): Promise<Output>;
