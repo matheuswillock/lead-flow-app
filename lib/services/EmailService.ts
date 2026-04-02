@@ -87,13 +87,14 @@ export interface CloserScheduleNotificationEmailData {
   to: string;
   closerName: string;
   leadName: string;
+  leadCode?: string | null;
   meetingTitle: string;
   meetingDate: Date;
   meetingLink: string;
-  scheduledByName: string;
   isReschedule: boolean;
   attendees: string[];
   notes?: string | null;
+  attachments?: Attachment[];
 }
 
 export class EmailService {
@@ -1015,7 +1016,15 @@ export class EmailService {
     });
     const subjectPrefix = data.isReschedule ? "Reunião reagendada" : "Reunião agendada";
     const subject = `${subjectPrefix}: ${data.meetingTitle}`;
-    const actionText = data.isReschedule ? "reagendou" : "agendou";
+    const scheduleIntroText = data.isReschedule
+      ? `Olá <strong>${data.closerName}</strong>, você tem um novo reagendamento com o lead <strong>${data.leadName}</strong>.`
+      : `Olá <strong>${data.closerName}</strong>, você tem um novo agendamento com o lead <strong>${data.leadName}</strong>.`;
+    const leadCrmUrl = data.leadCode
+      ? getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`)
+      : null;
+    const leadCrmMarkup = leadCrmUrl
+      ? `<p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead no Corretor Studio:</strong> <a href="${leadCrmUrl}" style="color: #ff6900; text-decoration: none;">Abrir lead no CRM</a></p>`
+      : "";
     const linkMarkup = `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`;
     const attendeesMarkup =
       data.attendees.length > 0
@@ -1046,12 +1055,14 @@ export class EmailService {
                   <td style="padding: 40px 32px;">
                     <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600;">${data.meetingTitle}</h2>
                     <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
-                      Olá <strong>${data.closerName}</strong>, <strong>${data.scheduledByName}</strong> ${actionText} uma reunião para o lead <strong>${data.leadName}</strong>.
+                      ${scheduleIntroText}
                     </p>
                     <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
+                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px; font-weight: 600;">Infos do agendamento</p>
                       <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
                       <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
                       <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead:</strong> ${data.leadName}</p>
+                      ${leadCrmMarkup}
                       <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> ${linkMarkup}</p>
                       <div style="margin: 0; color: #7c2d12; font-size: 14px;">
                         <strong>Participantes:</strong>
@@ -1089,6 +1100,7 @@ export class EmailService {
       to: [data.to],
       subject,
       html,
+      attachments: data.attachments,
     });
   }
 }

@@ -6,7 +6,10 @@ import { upsertCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCal
 import { emailService } from "@/lib/services/EmailService";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { Output } from "@/lib/output";
+import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
+import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { ILeadScheduleService, CreateScheduleParams } from "./ILeadScheduleService";
+import type { Attachment } from "resend";
 
 type InviteDispatchProvider = "google" | "resend";
 
@@ -208,6 +211,7 @@ export class LeadScheduleService implements ILeadScheduleService {
         where: { id: createdByProfileId },
         select: { fullName: true, email: true },
       });
+
       schedulerLabel = schedulerProfile?.fullName || schedulerProfile?.email || "Usuário";
     } catch (schedulerError) {
       console.warn(`${LOG_PREFIX} Não foi possível resolver o scheduler para logs e notificação:`, schedulerError);
@@ -380,6 +384,8 @@ export class LeadScheduleService implements ILeadScheduleService {
 
     if (inviteDispatchStatus !== "failed") {
       try {
+        const scheduleAttachments = await this.buildLeadScheduleAttachments(leadId);
+
         await emailService.sendCloserScheduleNotificationEmail({
           to: closerEmail,
           closerName: closerProfile.fullName || closerProfile.email,
@@ -387,10 +393,11 @@ export class LeadScheduleService implements ILeadScheduleService {
           meetingTitle: resolvedMeetingTitle,
           meetingDate,
           meetingLink: resolvedMeetingLink,
-          scheduledByName: schedulerLabel,
+          leadCode,
           isReschedule: !!existingSchedule,
           attendees: attendeeEmails,
           notes: meetingNotes ?? null,
+          attachments: scheduleAttachments,
         });
       } catch (closerNotificationError) {
         console.warn(
@@ -610,6 +617,87 @@ export class LeadScheduleService implements ILeadScheduleService {
         inviteDispatch,
       }
     );
+  }
+
+  private async buildLeadScheduleAttachments(leadId: string): Promise<Attachment[]> {
+    try {
+      const leadAttachments = await prisma.leadAttachment.findMany({
+        where: { leadId },
+        select: {
+          id: true,
+          fileName: true,
+          fileType: true,
+          storagePath: true,
+          fileUrl: true,
+        },
+        orderBy: { uploadedAt: "asc" },
+      });
+
+      if (leadAttachments.length === 0) {
+        return [];
+      }
+
+      const supabaseAdmin = createSupabaseAdmin();
+      const attachments: Attachment[] = [];
+
+      for (const leadAttachment of leadAttachments) {
+        try {
+          let buffer: Buffer | null = null;
+
+          const storagePath = leadAttachment.storagePath?.trim();
+          if (supabaseAdmin && storagePath) {
+            const { data, error } = await supabaseAdmin.storage
+              .from(STORAGE_BUCKETS.LEAD_ATTACHMENTS)
+              .download(storagePath);
+
+            if (error) {
+              console.error(`${LOG_PREFIX} Erro ao baixar anexo do storage para e-mail de agendamento:`, {
+                leadId,
+                attachmentId: leadAttachment.id,
+                storagePath,
+                error,
+              });
+            } else if (data) {
+              buffer = Buffer.from(await data.arrayBuffer());
+            }
+          }
+
+          if (!buffer && leadAttachment.fileUrl) {
+            const response = await fetch(leadAttachment.fileUrl);
+            if (!response.ok) {
+              throw new Error(`Falha ao baixar arquivo via URL pública: ${response.status}`);
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            buffer = Buffer.from(arrayBuffer);
+          }
+
+          if (!buffer) {
+            continue;
+          }
+
+          attachments.push({
+            filename: leadAttachment.fileName || `documento-${leadAttachment.id}`,
+            content: buffer,
+            ...(leadAttachment.fileType ? { contentType: leadAttachment.fileType } : {}),
+          });
+        } catch (error) {
+          console.error(`${LOG_PREFIX} Erro ao preparar anexo de lead para e-mail de agendamento:`, {
+            leadId,
+            attachmentId: leadAttachment.id,
+            error,
+          });
+        }
+      }
+
+      return attachments;
+    } catch (error) {
+      console.error(`${LOG_PREFIX} Erro ao listar anexos do lead para e-mail de agendamento:`, {
+        leadId,
+        error,
+      });
+      return [];
+    }
   }
 }
 
