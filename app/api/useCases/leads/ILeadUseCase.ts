@@ -1,12 +1,26 @@
-import { LeadStatus } from "@prisma/client";
+import { LeadStatus, Prisma } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
 
+export interface LeadCreationActivityContext {
+  body?: string;
+  payload?: Prisma.InputJsonValue | null;
+}
+
+export interface LeadCreateOptions {
+  autoScheduleMeeting?: boolean;
+}
+
 export interface ILeadUseCase {
-  createLead(supabaseId: string, data: CreateLeadRequest): Promise<Output>;
-  createLead(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output>;
+  createLead(
+    supabaseId: string,
+    data: CreateLeadRequest,
+    teamId?: string,
+    creationActivityContext?: LeadCreationActivityContext,
+    options?: LeadCreateOptions
+  ): Promise<Output>;
   createLeadFromImport(supabaseId: string, data: CreateLeadRequest): Promise<Output>;
   getLeadById(supabaseId: string, id: string): Promise<Output>;
   getLeadsByManager(

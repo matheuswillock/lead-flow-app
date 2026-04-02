@@ -83,6 +83,20 @@ export interface MeetingInviteEmailData {
   eventUid?: string | null;
 }
 
+export interface CloserScheduleNotificationEmailData {
+  to: string;
+  closerName: string;
+  leadName: string;
+  leadCode?: string | null;
+  meetingTitle: string;
+  meetingDate: Date;
+  meetingLink: string;
+  isReschedule: boolean;
+  attendees: string[];
+  notes?: string | null;
+  attachments?: Attachment[];
+}
+
 export class EmailService {
   private resend?: ReturnType<typeof assertResend>;
 
@@ -987,6 +1001,106 @@ export class EmailService {
           contentType: "text/calendar; charset=utf-8; method=REQUEST",
         },
       ],
+    });
+  }
+
+  async sendCloserScheduleNotificationEmail(data: CloserScheduleNotificationEmailData) {
+    const formattedDate = data.meetingDate.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+    const formattedTime = data.meetingDate.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const subjectPrefix = data.isReschedule ? "Reunião reagendada" : "Reunião agendada";
+    const subject = `${subjectPrefix}: ${data.meetingTitle}`;
+    const scheduleIntroText = data.isReschedule
+      ? `Olá <strong>${data.closerName}</strong>, você tem um novo reagendamento com o lead <strong>${data.leadName}</strong>.`
+      : `Olá <strong>${data.closerName}</strong>, você tem um novo agendamento com o lead <strong>${data.leadName}</strong>.`;
+    const leadCrmUrl = data.leadCode
+      ? getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`)
+      : null;
+    const leadCrmMarkup = leadCrmUrl
+      ? `<p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead no Corretor Studio:</strong> <a href="${leadCrmUrl}" style="color: #ff6900; text-decoration: none;">Abrir lead no CRM</a></p>`
+      : "";
+    const linkMarkup = `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`;
+    const attendeesMarkup =
+      data.attendees.length > 0
+        ? `<ul style="margin: 8px 0 0 20px; padding: 0; color: #7c2d12; font-size: 14px;">${data.attendees
+            .map((attendee) => `<li style="margin-bottom: 4px;">${attendee}</li>`)
+            .join("")}</ul>`
+        : `<p style="margin: 8px 0 0 0; color: #7c2d12; font-size: 14px;">Nenhum participante informado.</p>`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                <tr>
+                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
+                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Confirmação de agendamento</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 40px 32px;">
+                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600;">${data.meetingTitle}</h2>
+                    <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
+                      ${scheduleIntroText}
+                    </p>
+                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
+                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px; font-weight: 600;">Infos do agendamento</p>
+                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
+                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
+                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead:</strong> ${data.leadName}</p>
+                      ${leadCrmMarkup}
+                      <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> ${linkMarkup}</p>
+                      <div style="margin: 0; color: #7c2d12; font-size: 14px;">
+                        <strong>Participantes:</strong>
+                        ${attendeesMarkup}
+                      </div>
+                    </div>
+                    ${
+                      data.notes
+                        ? `
+                    <div style="background-color: #fafafa; border: 1px solid #e5e5e5; padding: 16px; border-radius: 12px; margin-top: 16px;">
+                      <p style="margin: 0 0 8px 0; color: #171717; font-size: 14px; font-weight: 600;">Notas</p>
+                      <p style="margin: 0; color: #525252; font-size: 14px; white-space: pre-wrap;">${data.notes}</p>
+                    </div>
+                    `
+                        : ""
+                    }
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background-color: #fafafa; padding: 20px 32px; border-top: 1px solid #e5e5e5;">
+                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
+                      Este é um e-mail automático do Corretor Studio
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    return this.sendEmail({
+      to: [data.to],
+      subject,
+      html,
+      attachments: data.attachments,
     });
   }
 }

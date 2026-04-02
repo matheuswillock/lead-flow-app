@@ -1,4 +1,5 @@
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { LeadForm } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
@@ -96,6 +97,11 @@ type InviteDispatchResult = {
   error: string | null;
 };
 
+type LeadOriginBadge = {
+  label: string;
+  variant: "default" | "secondary" | "outline";
+};
+
 const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
 const TEAM_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const teamMembersCacheByTeamId = new Map<string, { members: MentionMember[]; timestamp: number }>();
@@ -107,6 +113,24 @@ const normalizeLeadPhoneDigits = (phone: string): string => {
   if (numbers.length <= 11) return numbers;
   return numbers.slice(-11);
 };
+
+const SCHEDULE_TIMEZONE = "America/Sao_Paulo";
+
+const isValidScheduleDate = (value?: Date): value is Date =>
+  value instanceof Date && !Number.isNaN(value.getTime());
+
+const toScheduleDateKey = (date: Date) => {
+  if (!isValidScheduleDate(date)) return null;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: SCHEDULE_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+};
+
+const formatScheduleTime = (date: Date) =>
+  date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
 export default function LeadDialog({
   open,
@@ -131,7 +155,13 @@ export default function LeadDialog({
   const [newParticipantDraft, setNewParticipantDraft] = useState("");
   const [newParticipants, setNewParticipants] = useState<string[]>([]);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
+  const [rescheduleConfirmOpen, setRescheduleConfirmOpen] = useState(false);
+  const [pendingSubmitData, setPendingSubmitData] = useState<leadFormData | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
+  const [hasLoadedAvailability, setHasLoadedAvailability] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [origin, setOrigin] = useState("");
   const [activityType, setActivityType] = useState<"note" | "call" | "whatsapp" | "email">("note");
@@ -161,6 +191,8 @@ export default function LeadDialog({
   const silentFetchTimerRef = useRef<number | null>(null);
   const appliedReactionRealtimeEventsRef = useRef<Set<string>>(new Set());
   const pendingOwnReactionOpsRef = useRef<Set<string>>(new Set());
+  const availabilityInFlightKeyRef = useRef<string | null>(null);
+  const availabilityLastSuccessKeyRef = useRef<string | null>(null);
   const params = useParams();
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
@@ -359,6 +391,62 @@ export default function LeadDialog({
   const statusLabel = lead
     ? COLUMNS.find((column) => column.key === lead.status)?.title || lead.status
     : "Status";
+  const leadOriginBadge = useMemo<LeadOriginBadge | null>(() => {
+    const activities = currentActivitiesLead?.activities ?? [];
+    if (activities.length === 0) {
+      return null;
+    }
+
+    let oldestLeadCreationActivity: LeadActivityResponseDTO | null = null;
+    for (const activity of activities) {
+      if (!activity?.payload || typeof activity.payload !== "object") continue;
+      const payload = activity.payload as { kind?: string };
+      if (payload.kind !== "lead_creation") continue;
+
+      if (!oldestLeadCreationActivity) {
+        oldestLeadCreationActivity = activity;
+        continue;
+      }
+
+      const currentCreatedAt = new Date(activity.createdAt).getTime();
+      const oldestCreatedAt = new Date(oldestLeadCreationActivity.createdAt).getTime();
+      if (currentCreatedAt < oldestCreatedAt) {
+        oldestLeadCreationActivity = activity;
+      }
+    }
+
+    if (oldestLeadCreationActivity?.payload && typeof oldestLeadCreationActivity.payload === "object") {
+      const payload = oldestLeadCreationActivity.payload as {
+        channel?: string;
+        provider?: string;
+      };
+      const channel = typeof payload.channel === "string" ? payload.channel.toLowerCase() : "";
+      const provider = typeof payload.provider === "string" ? payload.provider.toLowerCase() : "";
+
+      if (channel === "public_lead_form") {
+        return { label: "Formulário Público", variant: "secondary" };
+      }
+
+      if (channel === "webhook" && provider === "meta") {
+        return { label: "Webhook Meta", variant: "secondary" };
+      }
+
+      if (channel === "webhook") {
+        return { label: "Webhook", variant: "outline" };
+      }
+    }
+
+    const hasLegacyMetaOrigin = activities.some((activity) => {
+      if (!activity?.body) return false;
+      return activity.body.toLowerCase().includes("meta lead ads");
+    });
+
+    if (hasLegacyMetaOrigin) {
+      return { label: "Webhook Meta", variant: "secondary" };
+    }
+
+    return null;
+  }, [currentActivitiesLead?.activities]);
 
   const mentionableMembers = useMemo(() => {
     const currentUserId = user?.id;
@@ -375,6 +463,29 @@ export default function LeadDialog({
       functions: member.functions ?? [],
     }));
   }, [teamMembers]);
+  const watchedMeetingDate = form.watch("meetingDate");
+  const watchedCloserId = form.watch("closerId");
+  const fallbackClosers = useMemo(
+    () =>
+      closersByTeam.filter(
+        (member) =>
+          member.functions?.includes("CLOSER") || !member.functions || member.functions.length === 0
+      ),
+    [closersByTeam]
+  );
+  const closersFromMembers = useMemo(
+    () => usersToAssign.filter((member) => member.functions?.includes("CLOSER")),
+    [usersToAssign]
+  );
+  const availableScheduleClosers = useMemo(
+    () =>
+      teamMembers.length > 0
+        ? closersFromMembers
+        : closersFromMembers.length > 0
+          ? closersFromMembers
+          : fallbackClosers,
+    [teamMembers.length, closersFromMembers, fallbackClosers]
+  );
 
   const mentionMatches = useMemo(() => {
     const query = mentionQuery.trim().toLowerCase();
@@ -1279,92 +1390,34 @@ export default function LeadDialog({
 
     try {
       if (lead) {
-        const loadingToast = toast.loading("Atualizando lead...");
+        const meetingDateChanged = (data.meetingDate ?? "") !== (lead.meetingDate ?? "");
+        const closerChanged = (data.closerId ?? "") !== (lead.closerId ?? "");
+        const triggerChanged = meetingDateChanged || closerChanged;
+        const meetingDateValue = data.meetingDate || lead.meetingDate;
+        const canSchedule = !!(meetingDateValue && data.closerId);
 
-        const updateData = transformToUpdateRequest(data);
-        const result = await updateLead(lead.id, updateData);
-
-        if (result.success) {
-          const extraGuests = parseExtraGuests(data.extraGuests);
-          const normalizedGuests = Array.from(
-            new Set(extraGuests.map((email) => email.toLowerCase()))
-          );
-          const currentGuests = Array.from(
-            new Set(scheduleGuests.map((email) => email.toLowerCase()))
-          );
-          const guestsChanged =
-            normalizedGuests.length !== currentGuests.length ||
-            normalizedGuests.some((email) => !currentGuests.includes(email));
-
-          const meetingDateValue = data.meetingDate || lead.meetingDate;
-          if (meetingDateValue && (guestsChanged || data.meetingDate || data.meetingLink || data.meetingNotes)) {
-            try {
-              const scheduleResponse = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-supabase-user-id": supabaseId || "",
-                  "x-team-id": activeTeamId || "",
-                },
-                body: JSON.stringify({
-                  date: meetingDateValue,
-                  meetingTitle: data.meetingTitle || undefined,
-                  notes: data.meetingNotes || undefined,
-                  meetingLink: data.meetingLink || undefined,
-                  closerId: data.closerId || undefined,
-                  extraGuests: normalizedGuests,
-                }),
-              });
-              const scheduleResult = await scheduleResponse.json().catch(() => null);
-              if (!scheduleResponse.ok || !scheduleResult?.isValid) {
-                throw new Error(
-                  Array.isArray(scheduleResult?.errorMessages) && scheduleResult.errorMessages.length > 0
-                    ? scheduleResult.errorMessages.join(", ")
-                    : "Erro ao atualizar agendamento"
-                );
-              }
-              const warningMessage =
-                Array.isArray(scheduleResult?.successMessages) && scheduleResult.successMessages.length > 0
-                  ? scheduleResult.successMessages.find((message: string) =>
-                      message.toLowerCase().startsWith("aviso")
-                    )
-                  : undefined;
-              const inviteDispatch = (scheduleResult?.result as { inviteDispatch?: InviteDispatchResult } | null)
-                ?.inviteDispatch;
-              if (inviteDispatch?.status === "failed") {
-                console.error("[LeadDialog][onSubmit] Falha no disparo do convite", {
-                  leadId: lead.id,
-                  dispatchStatus: inviteDispatch.status,
-                  provider: inviteDispatch.provider,
-                  fallbackUsed: inviteDispatch.fallbackUsed,
-                  attemptedAt: inviteDispatch.attemptedAt,
-                  errorMessage: inviteDispatch.error || "Erro desconhecido no disparo do convite",
-                });
-                toast.error("Agendamento salvo, mas o convite não foi enviado.", { duration: 6000 });
-              } else if (inviteDispatch?.status === "sent_resend" && inviteDispatch.fallbackUsed) {
-                toast.info("Google falhou e o convite foi enviado via e-mail (Resend).", { duration: 5000 });
-              } else if (warningMessage) {
-                toast.info(warningMessage, { duration: 5000 });
-              }
-              setScheduleGuests(normalizedGuests);
-            } catch (error) {
-              console.error("Erro ao atualizar convidados extras:", error);
-              const message = error instanceof Error ? error.message : "Erro ao atualizar convidados extras.";
-              toast.error(message, { duration: 5000 });
-            }
-          }
-
-          toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
-            id: loadingToast,
-            duration: 3000,
-          });
-          setOpen(false);
-          await refreshLeads();
+        if (triggerChanged && canSchedule) {
+          setPendingSubmitData(data);
+          setRescheduleConfirmOpen(true);
         } else {
-          toast.error(result.message || "Erro ao atualizar lead", {
-            id: loadingToast,
-            duration: 5000,
-          });
+          const loadingToast = toast.loading("Atualizando lead...");
+
+          const updateData = transformToUpdateRequest(data);
+          const result = await updateLead(lead.id, updateData);
+
+          if (result.success) {
+            toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
+              id: loadingToast,
+              duration: 3000,
+            });
+            setOpen(false);
+            await refreshLeads();
+          } else {
+            toast.error(result.message || "Erro ao atualizar lead", {
+              id: loadingToast,
+              duration: 5000,
+            });
+          }
         }
       } else {
         const loadingToast = toast.loading(`Criando lead "${data.name}"...`);
@@ -1424,6 +1477,95 @@ export default function LeadDialog({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSaveWithReschedule = async () => {
+    if (!pendingSubmitData || !lead) return;
+    const data = pendingSubmitData;
+    setRescheduleConfirmOpen(false);
+    setPendingSubmitData(null);
+
+    const loadingToast = toast.loading("Atualizando lead...");
+    const updateData = transformToUpdateRequest(data);
+    const result = await updateLead(lead.id, updateData);
+
+    if (!result.success) {
+      toast.error(result.message || "Erro ao atualizar lead", { id: loadingToast, duration: 5000 });
+      return;
+    }
+
+    toast.success(`Lead "${data.name}" atualizado com sucesso!`, { id: loadingToast, duration: 3000 });
+
+    const extraGuests = parseExtraGuests(data.extraGuests);
+    const normalizedGuests = Array.from(
+      new Set(extraGuests.map((email) => email.toLowerCase()))
+    );
+    const meetingDateValue = data.meetingDate || lead.meetingDate;
+
+    try {
+      const scheduleResponse = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId || "",
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify({
+          date: meetingDateValue,
+          meetingTitle: data.meetingTitle || undefined,
+          notes: data.meetingNotes || undefined,
+          meetingLink: data.meetingLink || undefined,
+          closerId: data.closerId || undefined,
+          extraGuests: normalizedGuests,
+        }),
+      });
+      const scheduleResult = await scheduleResponse.json().catch(() => null);
+      if (!scheduleResponse.ok || !scheduleResult?.isValid) {
+        throw new Error(
+          Array.isArray(scheduleResult?.errorMessages) && scheduleResult.errorMessages.length > 0
+            ? scheduleResult.errorMessages.join(", ")
+            : "Erro ao atualizar agendamento"
+        );
+      }
+      const warningMessage =
+        Array.isArray(scheduleResult?.successMessages) && scheduleResult.successMessages.length > 0
+          ? scheduleResult.successMessages.find((message: string) =>
+              message.toLowerCase().startsWith("aviso")
+            )
+          : undefined;
+      const inviteDispatch = (scheduleResult?.result as { inviteDispatch?: InviteDispatchResult } | null)
+        ?.inviteDispatch;
+      if (inviteDispatch?.status === "failed") {
+        console.error("[LeadDialog][handleSaveWithReschedule] Falha no disparo do convite", {
+          leadId: lead.id,
+          dispatchStatus: inviteDispatch.status,
+          provider: inviteDispatch.provider,
+          fallbackUsed: inviteDispatch.fallbackUsed,
+          attemptedAt: inviteDispatch.attemptedAt,
+          errorMessage: inviteDispatch.error || "Erro desconhecido no disparo do convite",
+        });
+        toast.error("Agendamento salvo, mas o convite não foi enviado.", { duration: 6000 });
+      } else if (inviteDispatch?.status === "sent_resend" && inviteDispatch.fallbackUsed) {
+        toast.info("Google falhou e o convite foi enviado via e-mail (Resend).", { duration: 5000 });
+      } else if (warningMessage) {
+        toast.info(warningMessage, { duration: 5000 });
+      }
+      setScheduleGuests(normalizedGuests);
+    } catch (error) {
+      console.error("[LeadDialog][handleSaveWithReschedule] Erro ao reagendar convite:", error);
+      const message = error instanceof Error ? error.message : "Erro ao reagendar convite.";
+      toast.error(message, { duration: 5000 });
+    }
+
+    setOpen(false);
+    await refreshLeads();
+  };
+
+  const handleCancelReschedule = () => {
+    setRescheduleConfirmOpen(false);
+    setPendingSubmitData(null);
+    form.setValue("meetingDate", lead?.meetingDate ?? "");
+    form.setValue("closerId", lead?.closerId ?? "");
   };
 
   const handleFinalizeSubmit = async (data: FinalizeContractData) => {
@@ -1593,6 +1735,133 @@ export default function LeadDialog({
       });
     }
   }, [lead, open, form]);
+
+  useEffect(() => {
+    if (!open || !supabaseId || !activeTeamId) {
+      setAvailableTimes([]);
+      setAvailabilityLoading(false);
+      setAvailabilityError(null);
+      setHasLoadedAvailability(false);
+      availabilityInFlightKeyRef.current = null;
+      availabilityLastSuccessKeyRef.current = null;
+      return;
+    }
+
+    const normalizedCloserId = (watchedCloserId || "").trim();
+    const parsedMeetingDate = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
+
+    if (!normalizedCloserId || !isValidScheduleDate(parsedMeetingDate)) {
+      setAvailableTimes([]);
+      setAvailabilityLoading(false);
+      setAvailabilityError(null);
+      setHasLoadedAvailability(false);
+      availabilityInFlightKeyRef.current = null;
+      availabilityLastSuccessKeyRef.current = null;
+      return;
+    }
+
+    const dateKey = toScheduleDateKey(parsedMeetingDate);
+    if (!dateKey) {
+      setAvailableTimes([]);
+      setAvailabilityLoading(false);
+      setAvailabilityError("Data da reunião inválida. Selecione novamente.");
+      setHasLoadedAvailability(true);
+      availabilityInFlightKeyRef.current = null;
+      return;
+    }
+
+    const requestKey = `${supabaseId}:${activeTeamId}:${normalizedCloserId}:${dateKey}`;
+    setHasLoadedAvailability(true);
+
+    if (
+      availabilityLastSuccessKeyRef.current === requestKey ||
+      availabilityInFlightKeyRef.current === requestKey
+    ) {
+      return;
+    }
+
+    let isMounted = true;
+    availabilityInFlightKeyRef.current = requestKey;
+    setAvailabilityLoading(true);
+    setAvailabilityError(null);
+
+    const fetchAvailability = async () => {
+      try {
+        const response = await fetch("/api/v1/calendar/availability", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId,
+          },
+          body: JSON.stringify({
+            closerId: normalizedCloserId,
+            date: dateKey,
+          }),
+        });
+
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.isValid) {
+          throw new Error(
+            Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+              ? result.errorMessages.join(", ")
+              : "Erro ao buscar disponibilidade."
+          );
+        }
+
+        if (!isMounted || availabilityInFlightKeyRef.current !== requestKey) {
+          return;
+        }
+
+        const times = Array.isArray(result?.result?.availableTimes)
+          ? (result.result.availableTimes as string[])
+          : [];
+        setAvailableTimes(times);
+        setAvailabilityError(null);
+        availabilityLastSuccessKeyRef.current = requestKey;
+      } catch (error) {
+        if (!isMounted || availabilityInFlightKeyRef.current !== requestKey) {
+          return;
+        }
+
+        setAvailableTimes([]);
+        setAvailabilityError(
+          error instanceof Error ? error.message : "Erro ao buscar disponibilidade."
+        );
+      } finally {
+        if (isMounted && availabilityInFlightKeyRef.current === requestKey) {
+          availabilityInFlightKeyRef.current = null;
+          setAvailabilityLoading(false);
+        }
+      }
+    };
+
+    fetchAvailability();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open, supabaseId, activeTeamId, watchedMeetingDate, watchedCloserId]);
+
+  useEffect(() => {
+    if (!open || availableTimes.length === 0) return;
+    const parsedMeetingDate = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
+    if (!isValidScheduleDate(parsedMeetingDate)) return;
+
+    const currentTime = formatScheduleTime(parsedMeetingDate);
+    if (availableTimes.includes(currentTime)) return;
+
+    const [hours, minutes] = availableTimes[0].split(":").map(Number);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return;
+
+    const nextDate = new Date(parsedMeetingDate);
+    nextDate.setHours(hours, minutes, 0, 0);
+    if (!isValidScheduleDate(nextDate)) return;
+
+    form.setValue("meetingDate", nextDate.toISOString(), {
+      shouldDirty: form.getFieldState("meetingDate").isDirty,
+    });
+  }, [open, watchedMeetingDate, availableTimes, form]);
 
   useEffect(() => {
     if (!open || !lead) return;
@@ -1797,17 +2066,26 @@ export default function LeadDialog({
                         : "Preencha os dados para criar um novo lead."
                       }
                     </DialogDescription>
-                    {lead?.leadCode && (
+                    {(lead?.leadCode || leadOriginBadge) && (
                       <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>ID: {lead.leadCode}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyLeadCode(lead.leadCode)}
-                          className="rounded-md p-1 transition-colors hover:bg-accent/60"
-                          aria-label="Copiar ID do lead"
-                        >
-                          <CopyIcon size={16} />
-                        </button>
+                        {lead?.leadCode && (
+                          <div className="flex items-center gap-2">
+                            <span>ID: {lead.leadCode}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLeadCode(lead.leadCode)}
+                              className="rounded-md p-1 transition-colors hover:bg-accent/60"
+                              aria-label="Copiar ID do lead"
+                            >
+                              <CopyIcon size={16} />
+                            </button>
+                          </div>
+                        )}
+                        {leadOriginBadge && (
+                          <Badge variant={leadOriginBadge.variant}>
+                            {leadOriginBadge.label}
+                          </Badge>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1882,12 +2160,16 @@ export default function LeadDialog({
                     healthPlanOptionsLoading={healthPlansLoading}
                     onCancel={() => setOpen(false)}
                     usersToAssign={usersToAssign}
-                    closersToAssign={closersByTeam}
+                    closersToAssign={availableScheduleClosers}
                     sdrsToAssign={sdrsByTeam}
-                    closersLoading={closersLoading}
+                    closersLoading={teamMembersLoading || closersLoading}
                     closersError={closersError}
                     sdrsLoading={sdrsLoading}
                     sdrsError={sdrsError}
+                    availableTimes={availableTimes}
+                    availabilityLoading={availabilityLoading}
+                    availabilityError={availabilityError}
+                    hasLoadedAvailability={hasLoadedAvailability}
                     leadId={lead?.id}
                     showMeetingHeald={canShowMeetingHeald}
                     meetingHealdReadOnly={false}
@@ -2405,6 +2687,21 @@ export default function LeadDialog({
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={rescheduleConfirmOpen} onOpenChange={(open) => { if (!open) handleCancelReschedule(); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reagendar convite?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A data/hora ou o closer foram alterados. Deseja salvar e reagendar o convite para os participantes?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelReschedule}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveWithReschedule}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

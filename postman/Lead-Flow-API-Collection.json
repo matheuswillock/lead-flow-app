@@ -5982,6 +5982,107 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Integrations (Public)",
+      "item": [
+        {
+          "name": "Submit Public Lead Form",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supabaseId\": \"{{supabaseId}}\",\n  \"teamId\": \"{{teamId}}\",\n  \"name\": \"Lead Teste\",\n  \"email\": \"lead@teste.com\",\n  \"phone\": \"11999999999\",\n  \"age\": \"30\",\n  \"currentHealthPlan\": \"Amil\",\n  \"referenceHospital\": \"Hospital São Paulo\",\n  \"currentTreatment\": \"Nenhum\",\n  \"closerId\": \"\",\n  \"meetingDate\": \"\",\n  \"meetingTitle\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/lead-form",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "lead-form"]
+            },
+            "description": "Cria um lead público (sem autenticação). Pode incluir dados de agendamento opcionais (closerId, meetingDate, meetingTitle)."
+          },
+          "response": []
+        },
+        {
+          "name": "Load Public Form Bootstrap (Public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/bootstrap?supabaseId={{supabaseId}}&teamId={{teamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "bootstrap"],
+              "query": [
+                { "key": "supabaseId", "value": "{{supabaseId}}" },
+                { "key": "teamId", "value": "{{teamId}}" }
+              ]
+            },
+            "description": "Carrega os dados iniciais do formulário público em uma única resposta (planos de saúde + closers do time)."
+          },
+          "response": []
+        },
+        {
+          "name": "List Health Plans (Public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/health-plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "health-plans"]
+            },
+            "description": "Lista planos de saúde disponíveis (endpoint público, sem autenticação)."
+          },
+          "response": []
+        },
+        {
+          "name": "List Team Closers (Public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/team-closers?supabaseId={{supabaseId}}&teamId={{teamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "team-closers"],
+              "query": [
+                { "key": "supabaseId", "value": "{{supabaseId}}" },
+                { "key": "teamId", "value": "{{teamId}}" }
+              ]
+            },
+            "description": "Lista closers do time (endpoint público). Retorna apenas id, nome e avatar."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Closer Availability (Public)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"supabaseId\": \"{{supabaseId}}\",\n  \"teamId\": \"{{teamId}}\",\n  \"closerId\": \"\",\n  \"date\": \"2026-04-15\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/availability",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "availability"]
+            },
+            "description": "Verifica disponibilidade de horários de um closer para uma data (endpoint público). Retorna slots de 30min disponíveis."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

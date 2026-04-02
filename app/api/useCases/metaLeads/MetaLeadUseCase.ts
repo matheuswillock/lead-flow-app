@@ -228,6 +228,18 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
           create: {
             type: ActivityType.note,
             body: `Lead importado automaticamente do Meta Lead Ads\n\nFormulário ID: ${metaData.formId || 'N/A'}\nAnúncio ID: ${metaData.adId || 'N/A'}\nCidade: ${metaData.city || 'N/A'}\n\nDados brutos: ${JSON.stringify(metaData.rawData, null, 2)}`,
+            payload: {
+              kind: "lead_creation",
+              channel: "webhook",
+              provider: "meta",
+              source: "meta_lead_ads",
+              leadgenId: metaData.leadgenId,
+              formId: metaData.formId ?? null,
+              adId: metaData.adId ?? null,
+              createdTime: metaData.createdTime ?? null,
+              city: metaData.city ?? null,
+              importedAt: new Date().toISOString(),
+            },
             author: { connect: { id: managerId } }
           }
         }

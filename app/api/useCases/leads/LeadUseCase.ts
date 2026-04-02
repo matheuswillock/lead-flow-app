@@ -1,8 +1,9 @@
 import { ILeadUseCase } from "./ILeadUseCase";
+import type { LeadCreateOptions, LeadCreationActivityContext } from "./ILeadUseCase";
 import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
 import { IProfileUseCase } from "../profiles/IProfileUseCase";
 import { Output } from "@/lib/output";
-import { LeadStatus, ActivityType, InviteDispatchStatus } from "@prisma/client";
+import { LeadStatus, ActivityType, InviteDispatchStatus, Prisma } from "@prisma/client";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
@@ -10,6 +11,7 @@ import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
 import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinalized/LeadFinalizedRepository";
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
+import { leadScheduleService } from "../../services/leadSchedule/LeadScheduleService";
 import { prisma } from "../../infra/data/prisma";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "../../v1/leads/DTO/leadValueLimits";
 import { normalizeHealthPlanName } from "@/lib/healthPlans";
@@ -45,8 +47,91 @@ export class LeadUseCase implements ILeadUseCase {
     private profileUseCase: IProfileUseCase,
   ) {}
 
-  async createLead(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
-    return this.createLeadInternal(supabaseId, data, false, teamId);
+  async createLead(
+    supabaseId: string,
+    data: CreateLeadRequest,
+    teamId?: string,
+    creationActivityContext?: LeadCreationActivityContext,
+    options?: LeadCreateOptions
+  ): Promise<Output> {
+    const leadOutput = await this.createLeadInternal(supabaseId, data, false, teamId, creationActivityContext);
+    const shouldAutoScheduleMeeting = options?.autoScheduleMeeting !== false;
+
+    if (!shouldAutoScheduleMeeting) {
+      return leadOutput;
+    }
+
+    const createdLead = leadOutput.result as { id?: string; leadCode?: string | null } | null;
+    if (!leadOutput.isValid || !createdLead?.id) {
+      return leadOutput;
+    }
+
+    const hasMeetingData = !!(data.closerId && data.meetingDate);
+    if (!hasMeetingData || !teamId) {
+      return leadOutput;
+    }
+
+    try {
+      const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
+      if (!profileInfo) {
+        return leadOutput;
+      }
+
+      const managerId = profileInfo.isMaster ? profileInfo.id : profileInfo.managerId;
+      const assigneeEmail = data.assignedTo
+        ? (await prisma.profile.findUnique({
+            where: { id: data.assignedTo },
+            select: { email: true },
+          }))?.email ?? null
+        : null;
+
+      const resolvedMeetingTitle = data.meetingTitle?.trim() || `Estudo Plano de Saúde: ${data.name}`;
+
+      const scheduleOutput = await leadScheduleService.createSchedule({
+        leadId: createdLead.id,
+        leadName: data.name,
+        leadEmail: data.email || null,
+        leadStatus: data.status || LeadStatus.new_opportunity,
+        leadManagerId: managerId || profileInfo.id,
+        leadAssignedTo: data.assignedTo || null,
+        leadAssigneeEmail: assigneeEmail,
+        leadCurrentCloserId: null,
+        leadCode: createdLead.leadCode || null,
+        closerId: data.closerId!,
+        teamId,
+        meetingDate: data.meetingDate!,
+        meetingTitle: resolvedMeetingTitle,
+        meetingNotes: data.meetingNotes,
+        meetingLink: data.meetingLink,
+        extraGuests: undefined,
+        createdByProfileId: profileInfo.id,
+        transitionStatusToScheduled: true,
+      });
+
+      if (!scheduleOutput.isValid) {
+        return new Output(
+          true,
+          ["Lead criado com sucesso, mas houve um problema ao agendar a reunião."],
+          scheduleOutput.errorMessages,
+          leadOutput.result
+        );
+      }
+
+      return new Output(
+        true,
+        ["Lead criado e reunião agendada com sucesso!"],
+        [],
+        { ...leadOutput.result, schedule: scheduleOutput.result }
+      );
+    } catch (scheduleError) {
+      console.error("[LeadUseCase] Erro ao agendar reunião após criar lead:", scheduleError);
+      return new Output(
+        true,
+        ["Lead criado com sucesso, mas houve um problema ao agendar a reunião."],
+        [],
+        leadOutput.result
+      );
+    }
   }
 
   async createLeadFromImport(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
@@ -109,7 +194,8 @@ export class LeadUseCase implements ILeadUseCase {
     supabaseId: string,
     data: CreateLeadRequest,
     skipAutoAssign: boolean,
-    teamId?: string
+    teamId?: string,
+    creationActivityContext?: LeadCreationActivityContext
   ): Promise<Output> {
     try {
       // Buscar informações do perfil através do ProfileUseCase
@@ -189,7 +275,11 @@ export class LeadUseCase implements ILeadUseCase {
         activities: {
           create: {
             type: ActivityType.note,
-            body: "Lead criado no sistema",
+            body: creationActivityContext?.body || "Lead criado no sistema",
+            payload:
+              creationActivityContext?.payload === null
+                ? Prisma.JsonNull
+                : (creationActivityContext?.payload ?? undefined),
             author: { connect: { id: profileInfo.id } }
           }
         }

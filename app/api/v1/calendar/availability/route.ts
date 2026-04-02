@@ -158,6 +158,7 @@ export async function POST(request: NextRequest) {
           return !busyIntervals.some((interval) => {
             const startDate = new Date(interval.start);
             const endDate = new Date(interval.end);
+            if (endDate <= now) return false;
             if (endDate <= dayStart || startDate >= dayEnd) return false;
 
             const startClamp = startDate < dayStart ? dayStart : startDate;

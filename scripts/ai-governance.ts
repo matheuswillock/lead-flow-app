@@ -104,6 +104,16 @@ const FRONTEND_PATTERN_REQUIREMENTS: FrontendPatternRequirement[] = [
   },
 ];
 
+const FRONTEND_BROWSER_DIALOG_SCAN_DIRECTORIES = [
+  "app",
+  "components",
+  "hooks",
+  "lib",
+];
+const FRONTEND_SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
+const WINDOW_BROWSER_DIALOG_REGEX = /\bwindow\s*\.\s*(alert|confirm|prompt)\s*\(/;
+const GLOBAL_BROWSER_DIALOG_REGEX = /(^|[^.\w$])(alert|confirm|prompt)\s*\(/;
+
 function normalizeRelativePath(absolutePath: string): string {
   return path.relative(ROOT, absolutePath).split(path.sep).join("/");
 }
@@ -243,6 +253,27 @@ async function collectRepoNonTypeScriptFiles(): Promise<string[]> {
   }
 
   return matches.sort((a, b) => a.localeCompare(b));
+}
+
+async function collectFrontendSourceFiles(): Promise<string[]> {
+  const found = new Set<string>();
+
+  for (const rootDirectory of FRONTEND_BROWSER_DIALOG_SCAN_DIRECTORIES) {
+    const absoluteRoot = path.join(ROOT, rootDirectory);
+    const files = await collectFilesRecursively(
+      absoluteRoot,
+      (_filename, absolutePath) => {
+        const extension = path.extname(absolutePath).toLowerCase();
+        return FRONTEND_SOURCE_EXTENSIONS.has(extension);
+      },
+    );
+
+    for (const file of files) {
+      found.add(file);
+    }
+  }
+
+  return Array.from(found).sort((a, b) => a.localeCompare(b));
 }
 
 function renderAdapterContent(
@@ -591,6 +622,49 @@ async function validateNonTypeScriptFiles(
   }
 }
 
+async function validateBrowserNativeDialogs(issues: string[]): Promise<void> {
+  const sourceFiles = await collectFrontendSourceFiles();
+
+  for (const sourceFile of sourceFiles) {
+    const relative = normalizeRelativePath(sourceFile);
+    const content = await fs.readFile(sourceFile, "utf8");
+    const lines = content.split(/\r?\n/);
+
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index];
+      const trimmed = line.trim();
+
+      // Ignore comment-only lines to reduce false positives.
+      if (
+        trimmed.startsWith("//") ||
+        trimmed.startsWith("*") ||
+        trimmed.startsWith("/*")
+      ) {
+        continue;
+      }
+
+      const windowMatch = line.match(WINDOW_BROWSER_DIALOG_REGEX);
+      if (windowMatch) {
+        issues.push(
+          `Uso proibido de diálogo nativo do browser: ${relative}:${
+            index + 1
+          } (${windowMatch[1]}). Use shadcn AlertDialog/Dialog e sonner.`,
+        );
+        continue;
+      }
+
+      const globalMatch = line.match(GLOBAL_BROWSER_DIALOG_REGEX);
+      if (globalMatch) {
+        issues.push(
+          `Uso proibido de diálogo nativo do browser: ${relative}:${
+            index + 1
+          } (${globalMatch[2]}). Use shadcn AlertDialog/Dialog e sonner.`,
+        );
+      }
+    }
+  }
+}
+
 function formatLegacyWarning(
   category: string,
   entries: string[],
@@ -706,6 +780,7 @@ async function checkGovernance(
   await validateUseCaseOutputContract(config, issues, warnings);
   await validateFrontendFeatureStructure(config, issues, warnings);
   await validateNonTypeScriptFiles(config, issues, warnings);
+  await validateBrowserNativeDialogs(issues);
 
   if (warnings.length > 0) {
     console.warn("\n[governance:check] WARNINGS");

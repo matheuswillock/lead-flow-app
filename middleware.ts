@@ -6,13 +6,13 @@ import { isManagerLikeRole } from "@/lib/roles"
 export const runtime = 'nodejs'
 
 // Define protected route prefixes (actual URL paths)
-const protectedPrefixes = ["/dashboard", "/account", "/crm", "/board", "/pipeline", "/manager-users", "/notifications"]
+const protectedPrefixes = ["/dashboard", "/account", "/crm", "/board", "/pipeline", "/manager-users", "/notifications", "/integrations"]
 
 // Public routes that don't require authentication
 const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe", "/checkout-return", "/operator-confirmed", "/pix-confirmed", "/set-password", "/forgot-password"]
 
 // Routes that require manager role
-const managerOnlyRoutes = ["/manager-users"]
+const managerOnlyRoutes = ["/manager-users", "/integrations"]
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
