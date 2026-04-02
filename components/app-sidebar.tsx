@@ -2,7 +2,7 @@
 
 import Link from "next/link"  
 import Image from "next/image"
-import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Users2, LifeBuoy } from "lucide-react"
+import { LayoutDashboard, KanbanSquare, Users, CalendarDays, Users2, LifeBuoy, Plug } from "lucide-react"
 
 import {
   Sidebar,
@@ -44,6 +44,12 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       url: `/${supabaseId}/teams`,
       icon: Users2,
       masterOnly: true
+    },
+    {
+      title: "Integrações",
+      url: `/${supabaseId}/integrations`,
+      icon: Plug,
+      managerOnly: true
     },
   ];
 

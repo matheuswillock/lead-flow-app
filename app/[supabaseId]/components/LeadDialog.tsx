@@ -96,6 +96,11 @@ type InviteDispatchResult = {
   error: string | null;
 };
 
+type LeadOriginBadge = {
+  label: string;
+  variant: "default" | "secondary" | "outline";
+};
+
 const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
 const TEAM_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const teamMembersCacheByTeamId = new Map<string, { members: MentionMember[]; timestamp: number }>();
@@ -359,6 +364,62 @@ export default function LeadDialog({
   const statusLabel = lead
     ? COLUMNS.find((column) => column.key === lead.status)?.title || lead.status
     : "Status";
+  const leadOriginBadge = useMemo<LeadOriginBadge | null>(() => {
+    const activities = currentActivitiesLead?.activities ?? [];
+    if (activities.length === 0) {
+      return null;
+    }
+
+    let oldestLeadCreationActivity: LeadActivityResponseDTO | null = null;
+    for (const activity of activities) {
+      if (!activity?.payload || typeof activity.payload !== "object") continue;
+      const payload = activity.payload as { kind?: string };
+      if (payload.kind !== "lead_creation") continue;
+
+      if (!oldestLeadCreationActivity) {
+        oldestLeadCreationActivity = activity;
+        continue;
+      }
+
+      const currentCreatedAt = new Date(activity.createdAt).getTime();
+      const oldestCreatedAt = new Date(oldestLeadCreationActivity.createdAt).getTime();
+      if (currentCreatedAt < oldestCreatedAt) {
+        oldestLeadCreationActivity = activity;
+      }
+    }
+
+    if (oldestLeadCreationActivity?.payload && typeof oldestLeadCreationActivity.payload === "object") {
+      const payload = oldestLeadCreationActivity.payload as {
+        channel?: string;
+        provider?: string;
+      };
+      const channel = typeof payload.channel === "string" ? payload.channel.toLowerCase() : "";
+      const provider = typeof payload.provider === "string" ? payload.provider.toLowerCase() : "";
+
+      if (channel === "public_lead_form") {
+        return { label: "Formulário Público", variant: "secondary" };
+      }
+
+      if (channel === "webhook" && provider === "meta") {
+        return { label: "Webhook Meta", variant: "secondary" };
+      }
+
+      if (channel === "webhook") {
+        return { label: "Webhook", variant: "outline" };
+      }
+    }
+
+    const hasLegacyMetaOrigin = activities.some((activity) => {
+      if (!activity?.body) return false;
+      return activity.body.toLowerCase().includes("meta lead ads");
+    });
+
+    if (hasLegacyMetaOrigin) {
+      return { label: "Webhook Meta", variant: "secondary" };
+    }
+
+    return null;
+  }, [currentActivitiesLead?.activities]);
 
   const mentionableMembers = useMemo(() => {
     const currentUserId = user?.id;
@@ -1797,17 +1858,26 @@ export default function LeadDialog({
                         : "Preencha os dados para criar um novo lead."
                       }
                     </DialogDescription>
-                    {lead?.leadCode && (
+                    {(lead?.leadCode || leadOriginBadge) && (
                       <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>ID: {lead.leadCode}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyLeadCode(lead.leadCode)}
-                          className="rounded-md p-1 transition-colors hover:bg-accent/60"
-                          aria-label="Copiar ID do lead"
-                        >
-                          <CopyIcon size={16} />
-                        </button>
+                        {lead?.leadCode && (
+                          <div className="flex items-center gap-2">
+                            <span>ID: {lead.leadCode}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyLeadCode(lead.leadCode)}
+                              className="rounded-md p-1 transition-colors hover:bg-accent/60"
+                              aria-label="Copiar ID do lead"
+                            >
+                              <CopyIcon size={16} />
+                            </button>
+                          </div>
+                        )}
+                        {leadOriginBadge && (
+                          <Badge variant={leadOriginBadge.variant}>
+                            {leadOriginBadge.label}
+                          </Badge>
+                        )}
                       </div>
                     )}
                   </div>

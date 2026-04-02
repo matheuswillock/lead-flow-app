@@ -1,8 +1,9 @@
 import { ILeadUseCase } from "./ILeadUseCase";
+import type { LeadCreationActivityContext } from "./ILeadUseCase";
 import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
 import { IProfileUseCase } from "../profiles/IProfileUseCase";
 import { Output } from "@/lib/output";
-import { LeadStatus, ActivityType, InviteDispatchStatus } from "@prisma/client";
+import { LeadStatus, ActivityType, InviteDispatchStatus, Prisma } from "@prisma/client";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
@@ -45,8 +46,13 @@ export class LeadUseCase implements ILeadUseCase {
     private profileUseCase: IProfileUseCase,
   ) {}
 
-  async createLead(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
-    return this.createLeadInternal(supabaseId, data, false, teamId);
+  async createLead(
+    supabaseId: string,
+    data: CreateLeadRequest,
+    teamId?: string,
+    creationActivityContext?: LeadCreationActivityContext
+  ): Promise<Output> {
+    return this.createLeadInternal(supabaseId, data, false, teamId, creationActivityContext);
   }
 
   async createLeadFromImport(supabaseId: string, data: CreateLeadRequest, teamId?: string): Promise<Output> {
@@ -109,7 +115,8 @@ export class LeadUseCase implements ILeadUseCase {
     supabaseId: string,
     data: CreateLeadRequest,
     skipAutoAssign: boolean,
-    teamId?: string
+    teamId?: string,
+    creationActivityContext?: LeadCreationActivityContext
   ): Promise<Output> {
     try {
       // Buscar informações do perfil através do ProfileUseCase
@@ -189,7 +196,11 @@ export class LeadUseCase implements ILeadUseCase {
         activities: {
           create: {
             type: ActivityType.note,
-            body: "Lead criado no sistema",
+            body: creationActivityContext?.body || "Lead criado no sistema",
+            payload:
+              creationActivityContext?.payload === null
+                ? Prisma.JsonNull
+                : (creationActivityContext?.payload ?? undefined),
             author: { connect: { id: profileInfo.id } }
           }
         }
