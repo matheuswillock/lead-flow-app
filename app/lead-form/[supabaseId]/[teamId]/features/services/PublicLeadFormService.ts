@@ -41,32 +41,42 @@ class PublicLeadFormService implements IPublicLeadFormService {
     };
   }
 
-  async getBootstrapData(supabaseId: string, teamId: string): Promise<PublicLeadFormBootstrapData> {
-    const params = new URLSearchParams({ supabaseId, teamId });
+  async getBootstrapData(teamId: string, supabaseId?: string): Promise<PublicLeadFormBootstrapData> {
+    const params = new URLSearchParams({ teamId });
+    if (supabaseId) {
+      params.set("supabaseId", supabaseId);
+    }
+
     const response = await fetch(`/api/v1/integrations/bootstrap?${params}`);
     const result = await response.json();
 
     if (!response.ok || !result?.isValid) {
-      console.error("[PublicLeadFormService] Erro ao buscar bootstrap inicial:", result?.errorMessages);
-      return { healthPlans: [], closers: [] };
+      const message =
+        Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
+          ? result.errorMessages.join(", ")
+          : "Erro ao carregar dados iniciais do formulário.";
+      throw new Error(message);
     }
 
     return {
       healthPlans: result.result?.healthPlans ?? [],
       closers: result.result?.closers ?? [],
+      sdrs: result.result?.sdrs ?? [],
+      guestCandidates: result.result?.guestCandidates ?? [],
     };
   }
 
   async getAvailability(
-    supabaseId: string,
     teamId: string,
     closerId: string,
-    date: string
+    date: string,
+    supabaseId?: string
   ): Promise<AvailabilityResult> {
+    const payload = supabaseId ? { supabaseId, teamId, closerId, date } : { teamId, closerId, date };
     const response = await fetch("/api/v1/integrations/availability", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ supabaseId, teamId, closerId, date }),
+      body: JSON.stringify(payload),
     });
     const result = await response.json();
 

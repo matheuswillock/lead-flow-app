@@ -14,13 +14,13 @@ class IntegrationsService implements IIntegrationsService {
     return "";
   }
 
-  buildLeadFormUrl({ appUrl, supabaseId, teamId }: BuildLeadFormUrlParams): string {
-    if (!appUrl || !supabaseId || !teamId) {
+  buildLeadFormUrl({ appUrl, teamId }: BuildLeadFormUrlParams): string {
+    if (!appUrl || !teamId) {
       return "";
     }
 
     const normalizedAppUrl = appUrl.endsWith("/") ? appUrl.slice(0, -1) : appUrl;
-    return `${normalizedAppUrl}/lead-form/${supabaseId}/${teamId}`;
+    return `${normalizedAppUrl}/lead-form/${teamId}`;
   }
 
   async copyToClipboard(value: string): Promise<boolean> {

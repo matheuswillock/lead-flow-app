@@ -1,12 +1,23 @@
-import type { HealthPlanOption, CloserOption } from "../services/IPublicLeadFormService";
+import type {
+  HealthPlanOption,
+  CloserOption,
+  SdrOption,
+  GuestCandidateOption,
+} from "../services/IPublicLeadFormService";
+
+export type BootstrapStatus = "loading" | "ready" | "error";
 
 export interface PublicLeadFormState {
-  supabaseId: string;
   teamId: string;
+  legacySupabaseId?: string;
+  bootstrapStatus: BootstrapStatus;
+  bootstrapError: string | null;
   healthPlans: HealthPlanOption[];
   healthPlansLoading: boolean;
   closers: CloserOption[];
   closersLoading: boolean;
+  sdrs: SdrOption[];
+  guestCandidates: GuestCandidateOption[];
   availableTimes: string[];
   availabilityLoading: boolean;
   isSubmitting: boolean;
@@ -26,10 +37,13 @@ export interface PublicLeadFormActions {
     referenceHospital: string;
     currentTreatment: string;
     notes?: string;
+    assignedTo: string;
     closerId?: string;
     meetingDate?: string;
     meetingTitle?: string;
     meetingNotes?: string;
+    extraGuests?: string[];
   }) => Promise<{ isValid: boolean; successMessages: string[]; errorMessages: string[] }>;
+  retryBootstrap: () => void;
   resetForm: () => void;
 }

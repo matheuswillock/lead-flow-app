@@ -6,8 +6,8 @@ import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLea
 const routePrefix = "[IntegrationBootstrapRoute][GET]";
 
 const QuerySchema = z.object({
-  supabaseId: z.string().uuid("supabaseId deve ser um UUID válido"),
   teamId: z.string().uuid("teamId deve ser um UUID válido"),
+  supabaseId: z.string().uuid("supabaseId deve ser um UUID válido").nullish(),
 });
 
 const resolveFailureStatus = (messages: string[]) => {
@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
     const validation = QuerySchema.safeParse({
-      supabaseId: url.searchParams.get("supabaseId"),
       teamId: url.searchParams.get("teamId"),
+      supabaseId: url.searchParams.get("supabaseId"),
     });
 
     if (!validation.success) {
@@ -37,8 +37,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(new Output(false, [], errors, null), { status: 400 });
     }
 
-    const { supabaseId, teamId } = validation.data;
-    const output = await publicLeadFormUseCase.getPublicFormBootstrap(supabaseId, teamId);
+    const { teamId, supabaseId } = validation.data;
+    const output = await publicLeadFormUseCase.getPublicFormBootstrap(teamId, supabaseId ?? undefined);
 
     if (!output.isValid) {
       return NextResponse.json(output, { status: resolveFailureStatus(output.errorMessages) });
@@ -48,14 +48,18 @@ export async function GET(request: NextRequest) {
       | {
           healthPlans?: unknown[];
           closers?: unknown[];
+          sdrs?: unknown[];
+          guestCandidates?: unknown[];
         }
       | null;
 
     console.info(`${routePrefix} Bootstrap carregado com sucesso`, {
-      supabaseId,
       teamId,
+      supabaseId: supabaseId ?? null,
       healthPlansCount: result?.healthPlans?.length ?? 0,
       closersCount: result?.closers?.length ?? 0,
+      sdrsCount: result?.sdrs?.length ?? 0,
+      guestCandidatesCount: result?.guestCandidates?.length ?? 0,
     });
 
     return NextResponse.json(output, { status: 200 });

@@ -1,6 +1,5 @@
 export interface BuildLeadFormUrlParams {
   appUrl: string;
-  supabaseId: string;
   teamId: string;
 }
 
