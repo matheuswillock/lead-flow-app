@@ -22,12 +22,14 @@ import { useTeamContext } from "@/app/context/TeamContext"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { isManagerLikeRole } from "@/lib/roles"
 import { SupportRequestDialog } from "@/components/support-request-dialog"
+import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess"
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
   const { user } = useUserContext();
-  const { teams, activeTeamId, setActiveTeamId, isTeamMaster } = useTeamContext();
+  const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster } = useTeamContext();
   const isMaster = user?.isMaster === true;
   const isManager = isManagerLikeRole(user?.role);
+  const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
 
   const items = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
@@ -49,7 +51,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       title: "Integrações",
       url: `/${supabaseId}/integrations`,
       icon: Plug,
-      managerOnly: true
+      managerOnly: true,
+      requiresIntegrationsAccess: true
     },
   ];
 
@@ -92,6 +95,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                             return null;
                           }
                           if (item.masterOnly && !isTeamMaster) {
+                            return null;
+                          }
+                          if (item.requiresIntegrationsAccess && !canAccessIntegrations) {
                             return null;
                           }
 

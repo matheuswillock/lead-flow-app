@@ -224,13 +224,6 @@ export function PublicLeadForm() {
           <span className="text-lg font-semibold">Corretor Studio</span>
         </div>
 
-        <div className="text-center">
-          <h1 className="text-2xl font-semibold">Cadastro de Lead</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Preencha os dados abaixo para registrar um novo lead
-          </p>
-        </div>
-
         {/* Form */}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">

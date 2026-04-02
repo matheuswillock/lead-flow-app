@@ -1,4 +1,5 @@
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { LeadForm } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
@@ -154,6 +155,8 @@ export default function LeadDialog({
   const [newParticipantDraft, setNewParticipantDraft] = useState("");
   const [newParticipants, setNewParticipants] = useState<string[]>([]);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
+  const [rescheduleConfirmOpen, setRescheduleConfirmOpen] = useState(false);
+  const [pendingSubmitData, setPendingSubmitData] = useState<leadFormData | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -1387,92 +1390,34 @@ export default function LeadDialog({
 
     try {
       if (lead) {
-        const loadingToast = toast.loading("Atualizando lead...");
+        const meetingDateChanged = (data.meetingDate ?? "") !== (lead.meetingDate ?? "");
+        const closerChanged = (data.closerId ?? "") !== (lead.closerId ?? "");
+        const triggerChanged = meetingDateChanged || closerChanged;
+        const meetingDateValue = data.meetingDate || lead.meetingDate;
+        const canSchedule = !!(meetingDateValue && data.closerId);
 
-        const updateData = transformToUpdateRequest(data);
-        const result = await updateLead(lead.id, updateData);
-
-        if (result.success) {
-          const extraGuests = parseExtraGuests(data.extraGuests);
-          const normalizedGuests = Array.from(
-            new Set(extraGuests.map((email) => email.toLowerCase()))
-          );
-          const currentGuests = Array.from(
-            new Set(scheduleGuests.map((email) => email.toLowerCase()))
-          );
-          const guestsChanged =
-            normalizedGuests.length !== currentGuests.length ||
-            normalizedGuests.some((email) => !currentGuests.includes(email));
-
-          const meetingDateValue = data.meetingDate || lead.meetingDate;
-          if (meetingDateValue && (guestsChanged || data.meetingDate || data.meetingLink || data.meetingNotes)) {
-            try {
-              const scheduleResponse = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-supabase-user-id": supabaseId || "",
-                  "x-team-id": activeTeamId || "",
-                },
-                body: JSON.stringify({
-                  date: meetingDateValue,
-                  meetingTitle: data.meetingTitle || undefined,
-                  notes: data.meetingNotes || undefined,
-                  meetingLink: data.meetingLink || undefined,
-                  closerId: data.closerId || undefined,
-                  extraGuests: normalizedGuests,
-                }),
-              });
-              const scheduleResult = await scheduleResponse.json().catch(() => null);
-              if (!scheduleResponse.ok || !scheduleResult?.isValid) {
-                throw new Error(
-                  Array.isArray(scheduleResult?.errorMessages) && scheduleResult.errorMessages.length > 0
-                    ? scheduleResult.errorMessages.join(", ")
-                    : "Erro ao atualizar agendamento"
-                );
-              }
-              const warningMessage =
-                Array.isArray(scheduleResult?.successMessages) && scheduleResult.successMessages.length > 0
-                  ? scheduleResult.successMessages.find((message: string) =>
-                      message.toLowerCase().startsWith("aviso")
-                    )
-                  : undefined;
-              const inviteDispatch = (scheduleResult?.result as { inviteDispatch?: InviteDispatchResult } | null)
-                ?.inviteDispatch;
-              if (inviteDispatch?.status === "failed") {
-                console.error("[LeadDialog][onSubmit] Falha no disparo do convite", {
-                  leadId: lead.id,
-                  dispatchStatus: inviteDispatch.status,
-                  provider: inviteDispatch.provider,
-                  fallbackUsed: inviteDispatch.fallbackUsed,
-                  attemptedAt: inviteDispatch.attemptedAt,
-                  errorMessage: inviteDispatch.error || "Erro desconhecido no disparo do convite",
-                });
-                toast.error("Agendamento salvo, mas o convite não foi enviado.", { duration: 6000 });
-              } else if (inviteDispatch?.status === "sent_resend" && inviteDispatch.fallbackUsed) {
-                toast.info("Google falhou e o convite foi enviado via e-mail (Resend).", { duration: 5000 });
-              } else if (warningMessage) {
-                toast.info(warningMessage, { duration: 5000 });
-              }
-              setScheduleGuests(normalizedGuests);
-            } catch (error) {
-              console.error("Erro ao atualizar convidados extras:", error);
-              const message = error instanceof Error ? error.message : "Erro ao atualizar convidados extras.";
-              toast.error(message, { duration: 5000 });
-            }
-          }
-
-          toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
-            id: loadingToast,
-            duration: 3000,
-          });
-          setOpen(false);
-          await refreshLeads();
+        if (triggerChanged && canSchedule) {
+          setPendingSubmitData(data);
+          setRescheduleConfirmOpen(true);
         } else {
-          toast.error(result.message || "Erro ao atualizar lead", {
-            id: loadingToast,
-            duration: 5000,
-          });
+          const loadingToast = toast.loading("Atualizando lead...");
+
+          const updateData = transformToUpdateRequest(data);
+          const result = await updateLead(lead.id, updateData);
+
+          if (result.success) {
+            toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
+              id: loadingToast,
+              duration: 3000,
+            });
+            setOpen(false);
+            await refreshLeads();
+          } else {
+            toast.error(result.message || "Erro ao atualizar lead", {
+              id: loadingToast,
+              duration: 5000,
+            });
+          }
         }
       } else {
         const loadingToast = toast.loading(`Criando lead "${data.name}"...`);
@@ -1532,6 +1477,95 @@ export default function LeadDialog({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSaveWithReschedule = async () => {
+    if (!pendingSubmitData || !lead) return;
+    const data = pendingSubmitData;
+    setRescheduleConfirmOpen(false);
+    setPendingSubmitData(null);
+
+    const loadingToast = toast.loading("Atualizando lead...");
+    const updateData = transformToUpdateRequest(data);
+    const result = await updateLead(lead.id, updateData);
+
+    if (!result.success) {
+      toast.error(result.message || "Erro ao atualizar lead", { id: loadingToast, duration: 5000 });
+      return;
+    }
+
+    toast.success(`Lead "${data.name}" atualizado com sucesso!`, { id: loadingToast, duration: 3000 });
+
+    const extraGuests = parseExtraGuests(data.extraGuests);
+    const normalizedGuests = Array.from(
+      new Set(extraGuests.map((email) => email.toLowerCase()))
+    );
+    const meetingDateValue = data.meetingDate || lead.meetingDate;
+
+    try {
+      const scheduleResponse = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId || "",
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify({
+          date: meetingDateValue,
+          meetingTitle: data.meetingTitle || undefined,
+          notes: data.meetingNotes || undefined,
+          meetingLink: data.meetingLink || undefined,
+          closerId: data.closerId || undefined,
+          extraGuests: normalizedGuests,
+        }),
+      });
+      const scheduleResult = await scheduleResponse.json().catch(() => null);
+      if (!scheduleResponse.ok || !scheduleResult?.isValid) {
+        throw new Error(
+          Array.isArray(scheduleResult?.errorMessages) && scheduleResult.errorMessages.length > 0
+            ? scheduleResult.errorMessages.join(", ")
+            : "Erro ao atualizar agendamento"
+        );
+      }
+      const warningMessage =
+        Array.isArray(scheduleResult?.successMessages) && scheduleResult.successMessages.length > 0
+          ? scheduleResult.successMessages.find((message: string) =>
+              message.toLowerCase().startsWith("aviso")
+            )
+          : undefined;
+      const inviteDispatch = (scheduleResult?.result as { inviteDispatch?: InviteDispatchResult } | null)
+        ?.inviteDispatch;
+      if (inviteDispatch?.status === "failed") {
+        console.error("[LeadDialog][handleSaveWithReschedule] Falha no disparo do convite", {
+          leadId: lead.id,
+          dispatchStatus: inviteDispatch.status,
+          provider: inviteDispatch.provider,
+          fallbackUsed: inviteDispatch.fallbackUsed,
+          attemptedAt: inviteDispatch.attemptedAt,
+          errorMessage: inviteDispatch.error || "Erro desconhecido no disparo do convite",
+        });
+        toast.error("Agendamento salvo, mas o convite não foi enviado.", { duration: 6000 });
+      } else if (inviteDispatch?.status === "sent_resend" && inviteDispatch.fallbackUsed) {
+        toast.info("Google falhou e o convite foi enviado via e-mail (Resend).", { duration: 5000 });
+      } else if (warningMessage) {
+        toast.info(warningMessage, { duration: 5000 });
+      }
+      setScheduleGuests(normalizedGuests);
+    } catch (error) {
+      console.error("[LeadDialog][handleSaveWithReschedule] Erro ao reagendar convite:", error);
+      const message = error instanceof Error ? error.message : "Erro ao reagendar convite.";
+      toast.error(message, { duration: 5000 });
+    }
+
+    setOpen(false);
+    await refreshLeads();
+  };
+
+  const handleCancelReschedule = () => {
+    setRescheduleConfirmOpen(false);
+    setPendingSubmitData(null);
+    form.setValue("meetingDate", lead?.meetingDate ?? "");
+    form.setValue("closerId", lead?.closerId ?? "");
   };
 
   const handleFinalizeSubmit = async (data: FinalizeContractData) => {
@@ -2653,6 +2687,21 @@ export default function LeadDialog({
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={rescheduleConfirmOpen} onOpenChange={(open) => { if (!open) handleCancelReschedule(); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reagendar convite?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A data/hora ou o closer foram alterados. Deseja salvar e reagendar o convite para os participantes?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelReschedule}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveWithReschedule}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
