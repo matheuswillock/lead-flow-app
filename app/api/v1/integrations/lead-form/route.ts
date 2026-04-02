@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
       { field: "notes", value: validation.data.notes },
       { field: "meetingTitle", value: validation.data.meetingTitle },
       { field: "meetingNotes", value: validation.data.meetingNotes },
+      { field: "assignedTo", value: validation.data.assignedTo },
     ];
 
     for (const candidate of sqlInspectionCandidates) {

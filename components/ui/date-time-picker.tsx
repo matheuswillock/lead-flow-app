@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "./input"
+import { Spinner } from "./spinner"
 
 interface DateTimePickerProps {
   date?: Date
@@ -34,6 +35,8 @@ interface DateTimePickerProps {
   required?: boolean
   availableTimes?: string[]
   showTime?: boolean
+  timeLoading?: boolean
+  timeLoadingText?: string
 }
 
 export function DateTimePicker({
@@ -46,6 +49,8 @@ export function DateTimePicker({
   required = false,
   availableTimes,
   showTime = true,
+  timeLoading = false,
+  timeLoadingText = "Carregando...",
 }: DateTimePickerProps) {
   const timeSelectWidthClass = "w-full sm:w-[7.5rem]"
   const initialDate = date && isValid(date) ? date : undefined
@@ -171,39 +176,47 @@ export function DateTimePicker({
           <div className="flex flex-col gap-2">
             {availableTimes ? (
               <>
-                <Select
-                  value={time}
-                  onValueChange={handleTimeChange}
-                  disabled={disabled || availableTimes.length === 0}
-                >
-                  <SelectTrigger
-                    className={cn(
-                      "h-9 transition-colors hover:bg-accent/40 hover:text-accent-foreground",
-                      timeSelectWidthClass
-                    )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={time}
+                    onValueChange={handleTimeChange}
+                    disabled={disabled || availableTimes.length === 0}
                   >
-                    <SelectValue placeholder="Selecione um horário" />
-                  </SelectTrigger>
-                  <SelectContent
-                    className={cn(
-                      timeSelectWidthClass,
-                      "dialog-scrollbar max-h-72 min-w-[var(--radix-select-trigger-width)] overscroll-contain"
-                    )}
-                    sideOffset={4}
-                  >
-                    <SelectGroup>
-                      {availableTimes.map((slot) => (
-                        <SelectItem
-                          key={slot}
-                          value={slot}
-                          className="cursor-pointer hover:bg-accent hover:text-accent-foreground data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground"
-                        >
-                          {slot}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                    <SelectTrigger
+                      className={cn(
+                        "h-9 transition-colors hover:bg-accent/40 hover:text-accent-foreground",
+                        timeSelectWidthClass
+                      )}
+                    >
+                      <SelectValue placeholder="Selecione um horário" />
+                    </SelectTrigger>
+                    <SelectContent
+                      className={cn(
+                        timeSelectWidthClass,
+                        "dialog-scrollbar max-h-72 min-w-[var(--radix-select-trigger-width)] overscroll-contain"
+                      )}
+                      sideOffset={4}
+                    >
+                      <SelectGroup>
+                        {availableTimes.map((slot) => (
+                          <SelectItem
+                            key={slot}
+                            value={slot}
+                            className="cursor-pointer hover:bg-accent hover:text-accent-foreground data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground"
+                          >
+                            {slot}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  {timeLoading && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Spinner className="size-3" />
+                      <span>{timeLoadingText}</span>
+                    </div>
+                  )}
+                </div>
                 {availableTimes.length === 0 && selectedDate && (
                   <p className="text-xs text-muted-foreground">
                     Nenhum horário disponível para este dia.

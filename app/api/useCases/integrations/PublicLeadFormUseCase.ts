@@ -46,110 +46,188 @@ const profileUseCase = new RegisterNewUserProfile();
 const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
 
 type PublicIntegrationAccess = {
+  supabaseId: string;
   profileId: string;
   managerId: string;
   teamId: string;
 };
 
+type TeamMemberSnapshot = {
+  profileId: string;
+  functions: UserFunction[];
+  profile: {
+    id: string;
+    fullName: string | null;
+    email: string | null;
+    profileIconUrl: string | null;
+  };
+};
+
 export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
-  private async validateCloserForTeam(teamId: string, closerId: string): Promise<Output | null> {
-    const closerMember = await prisma.teamMember.findUnique({
+  private async validateMemberFunctionForTeam(
+    teamId: string,
+    profileId: string,
+    requiredFunction: UserFunction,
+    invalidMessage: string
+  ): Promise<Output | null> {
+    const member = await prisma.teamMember.findUnique({
       where: {
-        teamId_profileId: { teamId, profileId: closerId },
+        teamId_profileId: { teamId, profileId },
       },
       select: { functions: true },
     });
 
-    if (!closerMember || !closerMember.functions.includes(UserFunction.CLOSER)) {
-      return new Output(false, [], ["Closer inválido para o time informado."], null);
+    if (!member || !member.functions.includes(requiredFunction)) {
+      return new Output(false, [], [invalidMessage], null);
     }
 
     return null;
   }
 
-  private async resolvePublicIntegrationAccess(
-    supabaseId: string,
-    teamId: string
-  ): Promise<{ access?: PublicIntegrationAccess; output?: Output }> {
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { id: true, isMaster: true, managerId: true },
-    });
-
-    if (!profile) {
-      return { output: new Output(false, [], ["Usuário não encontrado"], null) };
-    }
-
-    const managerId = profile.isMaster ? profile.id : profile.managerId;
-    if (!managerId) {
-      return { output: new Output(false, [], ["Master não identificado"], null) };
-    }
-
-    const team = await prisma.team.findFirst({
-      where: {
-        id: teamId,
-        OR: [
-          { masterId: profile.id },
-          {
-            members: {
-              some: {
-                profileId: profile.id,
-              },
-            },
-          },
-        ],
-      },
-      select: { id: true },
-    });
-
-    if (!team) {
-      return {
-        output: new Output(false, [], ["Time não encontrado ou usuário não pertence ao time"], null),
-      };
-    }
-
-    return {
-      access: {
-        profileId: profile.id,
-        managerId,
-        teamId: team.id,
-      },
-    };
+  private async validateCloserForTeam(teamId: string, closerId: string): Promise<Output | null> {
+    return this.validateMemberFunctionForTeam(
+      teamId,
+      closerId,
+      UserFunction.CLOSER,
+      "Closer inválido para o time informado."
+    );
   }
 
-  private async listTeamCloserOptions(teamId: string) {
-    const closerMembers = await prisma.teamMember.findMany({
-      where: {
-        teamId,
-        functions: { has: UserFunction.CLOSER },
-      },
+  private async validateSdrForTeam(teamId: string, sdrId: string): Promise<Output | null> {
+    return this.validateMemberFunctionForTeam(
+      teamId,
+      sdrId,
+      UserFunction.SDR,
+      "SDR inválido para o time informado."
+    );
+  }
+
+  private async resolvePublicIntegrationAccess(
+    teamId: string,
+    legacySupabaseId?: string
+  ): Promise<{ access?: PublicIntegrationAccess; output?: Output }> {
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
       select: {
-        profile: {
+        id: true,
+        masterId: true,
+        master: {
           select: {
             id: true,
-            fullName: true,
-            profileIconUrl: true,
+            supabaseId: true,
           },
         },
       },
     });
 
-    return closerMembers.map((member) => ({
+    if (!team) {
+      return {
+        output: new Output(false, [], ["Time não encontrado"], null),
+      };
+    }
+
+    let actorProfileId = team.master.id;
+    let actorSupabaseId = team.master.supabaseId;
+
+    if (legacySupabaseId) {
+      const legacyProfile = await prisma.profile.findUnique({
+        where: { supabaseId: legacySupabaseId },
+        select: { id: true },
+      });
+
+      if (!legacyProfile) {
+        return { output: new Output(false, [], ["Usuário não encontrado"], null) };
+      }
+
+      const hasAccess =
+        legacyProfile.id === team.masterId ||
+        (await prisma.teamMember.findUnique({
+          where: {
+            teamId_profileId: {
+              teamId: team.id,
+              profileId: legacyProfile.id,
+            },
+          },
+          select: { id: true },
+        })) !== null;
+
+      if (!hasAccess) {
+        return {
+          output: new Output(false, [], ["Time não encontrado ou usuário não pertence ao time"], null),
+        };
+      }
+
+      actorProfileId = legacyProfile.id;
+      actorSupabaseId = legacySupabaseId;
+    }
+
+    if (!actorSupabaseId) {
+      return { output: new Output(false, [], ["Master não identificado"], null) };
+    }
+
+    return {
+      access: {
+        supabaseId: actorSupabaseId,
+        profileId: actorProfileId,
+        managerId: team.masterId,
+        teamId: team.id,
+      },
+    };
+  }
+
+  private async listTeamMembersSnapshot(teamId: string): Promise<TeamMemberSnapshot[]> {
+    return prisma.teamMember.findMany({
+      where: {
+        teamId,
+      },
+      select: {
+        profileId: true,
+        functions: true,
+        profile: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+      },
+    });
+  }
+
+  private mapMembersToAssignableOptions(members: TeamMemberSnapshot[]) {
+    return members.map((member) => ({
       id: member.profile.id,
-      name: member.profile.fullName || "Closer",
+      name: member.profile.fullName || member.profile.email || "Membro do time",
       avatarImageUrl: member.profile.profileIconUrl || "",
     }));
   }
 
+  private mapMembersToGuestCandidates(members: TeamMemberSnapshot[]) {
+    return members
+      .filter((member) => !!member.profile.email)
+      .map((member) => ({
+        id: member.profile.id,
+        name: member.profile.fullName || member.profile.email || "Membro do time",
+        email: member.profile.email as string,
+        avatarImageUrl: member.profile.profileIconUrl || "",
+      }));
+  }
+
   async createPublicLead(data: PublicLeadFormRequest, originContext?: PublicLeadFormOriginContext): Promise<Output> {
     try {
-      const { supabaseId, teamId } = data;
+      const { teamId, supabaseId } = data;
 
-      const accessResult = await this.resolvePublicIntegrationAccess(supabaseId, teamId);
+      const accessResult = await this.resolvePublicIntegrationAccess(teamId, supabaseId);
       if (accessResult.output) {
         return accessResult.output;
       }
       const access = accessResult.access as PublicIntegrationAccess;
+
+      const sdrValidationOutput = await this.validateSdrForTeam(access.teamId, data.assignedTo);
+      if (sdrValidationOutput) {
+        return sdrValidationOutput;
+      }
 
       if (data.closerId) {
         const closerValidationOutput = await this.validateCloserForTeam(access.teamId, data.closerId);
@@ -170,12 +248,12 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         referenceHospital: data.referenceHospital,
         currentTreatment: data.currentTreatment,
         notes: data.notes,
+        assignedTo: data.assignedTo,
         closerId: data.closerId,
         meetingDate: data.meetingDate,
         meetingTitle: data.meetingTitle,
         meetingNotes: data.meetingNotes,
         meetingLink: undefined,
-        assignedTo: undefined,
         ticket: undefined,
         contractDueDate: undefined,
         soldPlan: undefined,
@@ -183,7 +261,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       };
 
       const leadOutput = await leadUseCase.createLead(
-        supabaseId,
+        access.supabaseId,
         createLeadData,
         access.teamId,
         originContext
@@ -219,14 +297,19 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
 
       if (hasMeetingData && createdLead?.id) {
         try {
+          const sdrProfile = await prisma.profile.findUnique({
+            where: { id: data.assignedTo },
+            select: { email: true },
+          });
+
           const scheduleOutput = await leadScheduleService.createSchedule({
             leadId: createdLead.id,
             leadName: data.name,
             leadEmail: data.email || null,
             leadStatus: LeadStatus.scheduled,
             leadManagerId: access.managerId,
-            leadAssignedTo: null,
-            leadAssigneeEmail: null,
+            leadAssignedTo: data.assignedTo,
+            leadAssigneeEmail: sdrProfile?.email || null,
             leadCurrentCloserId: null,
             leadCode: createdLead.leadCode || null,
             closerId: data.closerId!,
@@ -234,6 +317,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
             meetingDate: data.meetingDate!,
             meetingTitle: data.meetingTitle!,
             meetingNotes: data.meetingNotes,
+            extraGuests: data.extraGuests,
             createdByProfileId: access.profileId,
             transitionStatusToScheduled: false,
           });
@@ -285,40 +369,50 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
     }
   }
 
-  async getPublicFormBootstrap(supabaseId: string, teamId: string): Promise<Output> {
+  async getPublicFormBootstrap(teamId: string, legacySupabaseId?: string): Promise<Output> {
     try {
-      const accessResult = await this.resolvePublicIntegrationAccess(supabaseId, teamId);
+      const accessResult = await this.resolvePublicIntegrationAccess(teamId, legacySupabaseId);
       if (accessResult.output) {
         return accessResult.output;
       }
 
       const access = accessResult.access as PublicIntegrationAccess;
-      const [healthPlanOptions, closers] = await Promise.all([
+      const [healthPlanOptions, teamMembers] = await Promise.all([
         healthPlanService.listOptions(),
-        this.listTeamCloserOptions(access.teamId),
+        this.listTeamMembersSnapshot(access.teamId),
       ]);
 
       const healthPlans = healthPlanOptions.map((option) => ({
         id: option.id,
         name: option.name,
       }));
+      const closers = this.mapMembersToAssignableOptions(
+        teamMembers.filter((member) => member.functions.includes(UserFunction.CLOSER))
+      );
+      const sdrs = this.mapMembersToAssignableOptions(
+        teamMembers.filter((member) => member.functions.includes(UserFunction.SDR))
+      );
+      const guestCandidates = this.mapMembersToGuestCandidates(teamMembers);
 
-      return new Output(true, [], [], { healthPlans, closers });
+      return new Output(true, [], [], { healthPlans, closers, sdrs, guestCandidates });
     } catch (error) {
       console.error("[PublicLeadFormUseCase] Erro ao carregar bootstrap do formulário público:", error);
       return new Output(false, [], ["Erro ao carregar dados iniciais do formulário"], null);
     }
   }
 
-  async getTeamClosers(supabaseId: string, teamId: string): Promise<Output> {
+  async getTeamClosers(teamId: string, legacySupabaseId?: string): Promise<Output> {
     try {
-      const accessResult = await this.resolvePublicIntegrationAccess(supabaseId, teamId);
+      const accessResult = await this.resolvePublicIntegrationAccess(teamId, legacySupabaseId);
       if (accessResult.output) {
         return accessResult.output;
       }
 
       const access = accessResult.access as PublicIntegrationAccess;
-      const closers = await this.listTeamCloserOptions(access.teamId);
+      const teamMembers = await this.listTeamMembersSnapshot(access.teamId);
+      const closers = this.mapMembersToAssignableOptions(
+        teamMembers.filter((member) => member.functions.includes(UserFunction.CLOSER))
+      );
 
       return new Output(true, [], [], { closers });
     } catch (error) {
@@ -328,13 +422,13 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
   }
 
   async getCloserAvailability(
-    supabaseId: string,
     teamId: string,
     closerId: string,
-    date: string
+    date: string,
+    legacySupabaseId?: string
   ): Promise<Output> {
     try {
-      const accessResult = await this.resolvePublicIntegrationAccess(supabaseId, teamId);
+      const accessResult = await this.resolvePublicIntegrationAccess(teamId, legacySupabaseId);
       if (accessResult.output) {
         return accessResult.output;
       }

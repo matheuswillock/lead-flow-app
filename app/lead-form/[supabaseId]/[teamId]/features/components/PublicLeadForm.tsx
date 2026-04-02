@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
+import Image from "next/image";
 
 import {
   publicLeadFormSchema,
@@ -25,9 +26,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Spinner } from "@/components/ui/spinner";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
-import { CheckCircle2 } from "lucide-react";
-import Image from "next/image";
 
 const parseCurrencyValue = (value: string): number | null => {
   const digits = value.replace(/\D/g, "");
@@ -62,6 +63,21 @@ const normalizeLeadPhoneDigits = (value: string): string => {
   return digits.slice(-11);
 };
 
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+const parseExtraGuests = (value: string | undefined): string[] => {
+  if (!value) return [];
+  return Array.from(
+    new Set(
+      value
+        .split(/[,;\s]+/)
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean)
+        .filter((email) => isValidEmail(email))
+    )
+  );
+};
+
 const fieldLabelClassName = "block text-sm font-medium mb-1";
 const fieldInputClassName = "h-9";
 const fieldSelectTriggerClassName = "h-9";
@@ -69,12 +85,17 @@ const fieldTextareaClassName = "min-h-[84px] resize-y";
 
 export function PublicLeadForm() {
   const {
+    bootstrapStatus,
+    bootstrapError,
     healthPlans,
     healthPlansLoading,
     closers,
+    sdrs,
+    guestCandidates,
     isSubmitting,
     isSubmitted,
     submitLead,
+    retryBootstrap,
     resetForm,
   } = usePublicLeadFormContext();
 
@@ -82,7 +103,6 @@ export function PublicLeadForm() {
   const [currentValueError, setCurrentValueError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Scheduling state
   const [closerId, setCloserId] = useState("");
   const [meetingDate, setMeetingDate] = useState<Date | undefined>();
   const [meetingTitle, setMeetingTitle] = useState("");
@@ -102,10 +122,31 @@ export function PublicLeadForm() {
       referenceHospital: "",
       ongoingTreatment: "",
       additionalNotes: "",
+      responsible: "",
+      extraGuests: "",
     },
   });
 
   const watchedName = form.watch("name");
+  const watchedResponsible = form.watch("responsible");
+  const watchedExtraGuests = form.watch("extraGuests") || "";
+  const extraGuestsError =
+    typeof form.formState.errors.extraGuests?.message === "string"
+      ? form.formState.errors.extraGuests.message
+      : null;
+
+  useEffect(() => {
+    if (!watchedResponsible && sdrs.length === 1) {
+      form.setValue("responsible", sdrs[0].id, { shouldValidate: true });
+    }
+  }, [watchedResponsible, sdrs, form]);
+
+  const handleExtraGuestsChange = useCallback(
+    (value: string) => {
+      form.setValue("extraGuests", value, { shouldDirty: true, shouldValidate: true });
+    },
+    [form]
+  );
 
   const handleCurrencyChange = useCallback(
     (value: string) => {
@@ -134,6 +175,7 @@ export function PublicLeadForm() {
 
       try {
         const hasMeeting = !!(closerId && meetingDate && meetingTitle.trim());
+        const guests = parseExtraGuests(data.extraGuests);
 
         const result = await submitLead({
           name: data.name,
@@ -146,16 +188,31 @@ export function PublicLeadForm() {
           referenceHospital: data.referenceHospital,
           currentTreatment: data.ongoingTreatment,
           notes: data.additionalNotes || undefined,
+          assignedTo: data.responsible,
           closerId: hasMeeting ? closerId : undefined,
-          meetingDate: hasMeeting ? meetingDate!.toISOString() : undefined,
+          meetingDate: hasMeeting ? meetingDate.toISOString() : undefined,
           meetingTitle: hasMeeting ? meetingTitle.trim() : undefined,
           meetingNotes: hasMeeting && meetingNotes ? meetingNotes : undefined,
+          extraGuests: hasMeeting && guests.length > 0 ? guests : undefined,
         });
 
         if (result.isValid) {
           const message = result.successMessages[0] || "Lead cadastrado com sucesso!";
           toast.success(message);
-          form.reset();
+          form.reset({
+            name: "",
+            phone: "",
+            email: "",
+            cnpj: "",
+            age: "",
+            currentHealthPlan: "",
+            currentValue: "",
+            referenceHospital: "",
+            ongoingTreatment: "",
+            additionalNotes: "",
+            responsible: "",
+            extraGuests: "",
+          });
           setCurrentValueDisplay("");
           setCurrentValueError(null);
           setCloserId("");
@@ -175,6 +232,33 @@ export function PublicLeadForm() {
     },
     [submitting, isSubmitting, closerId, meetingDate, meetingTitle, meetingNotes, submitLead, form]
   );
+
+  if (bootstrapStatus === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="flex flex-col items-center gap-4">
+          <Spinner className="size-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Carregando formulário...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (bootstrapStatus === "error") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md rounded-lg border p-6 text-center">
+          <h2 className="text-lg font-semibold">Não foi possível carregar o formulário</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {bootstrapError || "Tente novamente em instantes."}
+          </p>
+          <Button className="mt-4" onClick={retryBootstrap}>
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isSubmitted) {
     return (
@@ -207,11 +291,11 @@ export function PublicLeadForm() {
   }
 
   const isLoading = submitting || isSubmitting;
+  const isFormValid = form.formState.isValid;
 
   return (
     <div className="flex min-h-screen items-start justify-center bg-background p-4 pt-8">
       <div className="w-full max-w-2xl space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-center gap-2">
           <Image
             src="/corretor-studio-icon.svg"
@@ -224,191 +308,180 @@ export function PublicLeadForm() {
           <span className="text-lg font-semibold">Corretor Studio</span>
         </div>
 
-        {/* Form */}
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-6 rounded-lg border p-4">
-              {/* Lead Data Section */}
               <div className="space-y-4">
                 <h3 className="text-sm font-medium">Dados do Lead</h3>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                {/* Name */}
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className={fieldLabelClassName}>Nome *</FormLabel>
-                      <FormControl>
-                        <Input className={fieldInputClassName} placeholder="Nome completo" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Email */}
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className={fieldLabelClassName}>Email *</FormLabel>
-                      <FormControl>
-                        <Input className={fieldInputClassName} type="email" placeholder="email@exemplo.com" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Phone */}
-                <FormField
-                  control={form.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className={fieldLabelClassName}>Telefone *</FormLabel>
-                      <FormControl>
-                        <Input
-                          className={fieldInputClassName}
-                          placeholder="(00) 00000-0000"
-                          value={maskPhone(normalizeLeadPhoneDigits(field.value || ""))}
-                          onChange={(e) => {
-                            const normalizedPhone = normalizeLeadPhoneDigits(e.target.value);
-                            field.onChange(normalizedPhone);
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Age */}
-                <FormField
-                  control={form.control}
-                  name="age"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className={fieldLabelClassName}>Idades</FormLabel>
-                      <FormControl>
-                        <Input
-                          className={fieldInputClassName}
-                          placeholder="Ex: 30, 28, 5"
-                          value={field.value || ""}
-                          onChange={(e) => {
-                            const raw = e.target.value;
-                            const digitsOnly = raw.replace(/[^0-9,\s]/g, "");
-                            const endsWithSeparator = /[,\s]$/.test(digitsOnly);
-                            const parts = digitsOnly.split(/[,\s]+/).filter(Boolean);
-                            const normalized = parts
-                              .map((part) => part.replace(/\D/g, ""))
-                              .filter(Boolean);
-                            let formatted = normalized.join(", ");
-                            if (endsWithSeparator && normalized.length > 0) {
-                              formatted += ", ";
-                            }
-                            field.onChange(formatted);
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* CNPJ */}
-                <FormField
-                  control={form.control}
-                  name="cnpj"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className={fieldLabelClassName}>CNPJ</FormLabel>
-                      <FormControl>
-                        <Input
-                          className={fieldInputClassName}
-                          placeholder="00.000.000/0000-00"
-                          value={maskCNPJ(field.value || "")}
-                          onChange={(e) => {
-                            const masked = maskCNPJ(e.target.value);
-                            const unmasked = unmask(masked);
-                            field.onChange(unmasked);
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Current Health Plan */}
-                <FormField
-                  control={form.control}
-                  name="currentHealthPlan"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className={fieldLabelClassName}>Plano de Saúde Atual *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className={fieldLabelClassName}>Nome *</FormLabel>
                         <FormControl>
-                          <SelectTrigger className={fieldSelectTriggerClassName}>
-                            <SelectValue placeholder={healthPlansLoading ? "Carregando..." : "Selecione"} />
-                          </SelectTrigger>
+                          <Input className={fieldInputClassName} placeholder="Nome completo" {...field} />
                         </FormControl>
-                        <SelectContent>
-                          {healthPlans.map((plan) => (
-                            <SelectItem key={plan.id} value={plan.name}>
-                              {plan.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                {/* Current Value */}
-                <FormField
-                  control={form.control}
-                  name="currentValue"
-                  render={() => (
-                    <FormItem>
-                      <FormLabel className={fieldLabelClassName}>Valor Atual</FormLabel>
-                      <FormControl>
-                        <Input
-                          className={fieldInputClassName}
-                          placeholder="R$ 0,00"
-                          value={currentValueDisplay}
-                          onChange={(e) => handleCurrencyChange(e.target.value)}
-                        />
-                      </FormControl>
-                      {currentValueError && (
-                        <p className="text-xs text-destructive">{currentValueError}</p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className={fieldLabelClassName}>Email *</FormLabel>
+                        <FormControl>
+                          <Input className={fieldInputClassName} type="email" placeholder="email@exemplo.com" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                {/* Reference Hospital */}
-                <FormField
-                  control={form.control}
-                  name="referenceHospital"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className={fieldLabelClassName}>Hospital de Referência *</FormLabel>
-                      <FormControl>
-                        <Input className={fieldInputClassName} placeholder="Hospital de referência" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className={fieldLabelClassName}>Telefone *</FormLabel>
+                        <FormControl>
+                          <Input
+                            className={fieldInputClassName}
+                            placeholder="(00) 00000-0000"
+                            value={maskPhone(normalizeLeadPhoneDigits(field.value || ""))}
+                            onChange={(e) => {
+                              const normalizedPhone = normalizeLeadPhoneDigits(e.target.value);
+                              field.onChange(normalizedPhone);
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="age"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className={fieldLabelClassName}>Idades</FormLabel>
+                        <FormControl>
+                          <Input
+                            className={fieldInputClassName}
+                            placeholder="Ex: 30, 28, 5"
+                            value={field.value || ""}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const digitsOnly = raw.replace(/[^0-9,\s]/g, "");
+                              const endsWithSeparator = /[,\s]$/.test(digitsOnly);
+                              const parts = digitsOnly.split(/[,\s]+/).filter(Boolean);
+                              const normalized = parts
+                                .map((part) => part.replace(/\D/g, ""))
+                                .filter(Boolean);
+                              let formatted = normalized.join(", ");
+                              if (endsWithSeparator && normalized.length > 0) {
+                                formatted += ", ";
+                              }
+                              field.onChange(formatted);
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="cnpj"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className={fieldLabelClassName}>CNPJ</FormLabel>
+                        <FormControl>
+                          <Input
+                            className={fieldInputClassName}
+                            placeholder="00.000.000/0000-00"
+                            value={maskCNPJ(field.value || "")}
+                            onChange={(e) => {
+                              const masked = maskCNPJ(e.target.value);
+                              const unmasked = unmask(masked);
+                              field.onChange(unmasked);
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="currentHealthPlan"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className={fieldLabelClassName}>Plano de Saúde Atual *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className={fieldSelectTriggerClassName}>
+                              <SelectValue placeholder={healthPlansLoading ? "Carregando..." : "Selecione"} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {healthPlans.map((plan) => (
+                              <SelectItem key={plan.id} value={plan.name}>
+                                {plan.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="currentValue"
+                    render={() => (
+                      <FormItem>
+                        <FormLabel className={fieldLabelClassName}>Valor Atual</FormLabel>
+                        <FormControl>
+                          <Input
+                            className={fieldInputClassName}
+                            placeholder="R$ 0,00"
+                            value={currentValueDisplay}
+                            onChange={(e) => handleCurrencyChange(e.target.value)}
+                          />
+                        </FormControl>
+                        {currentValueError && (
+                          <p className="text-xs text-destructive">{currentValueError}</p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="referenceHospital"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className={fieldLabelClassName}>Hospital de Referência *</FormLabel>
+                        <FormControl>
+                          <Input className={fieldInputClassName} placeholder="Hospital de referência" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
 
-                {/* Ongoing Treatment - full width */}
                 <FormField
                   control={form.control}
                   name="ongoingTreatment"
@@ -427,7 +500,6 @@ export function PublicLeadForm() {
                   )}
                 />
 
-                {/* Additional Notes */}
                 <FormField
                   control={form.control}
                   name="additionalNotes"
@@ -448,7 +520,6 @@ export function PublicLeadForm() {
                 />
               </div>
 
-              {/* Scheduling Section */}
               {closers.length > 0 && (
                 <>
                   <Separator />
@@ -464,17 +535,94 @@ export function PublicLeadForm() {
                       onMeetingTitleChange={setMeetingTitle}
                       meetingNotes={meetingNotes}
                       onMeetingNotesChange={setMeetingNotes}
+                      extraGuests={watchedExtraGuests}
+                      extraGuestsError={extraGuestsError}
+                      onExtraGuestsChange={handleExtraGuestsChange}
+                      guestCandidates={guestCandidates}
+                      disabled={isLoading}
                     />
                   </div>
                 </>
               )}
+
+              <Separator />
+              <FormField
+                control={form.control}
+                name="responsible"
+                render={({ field }) => {
+                  const selectedSdr = sdrs.find((sdr) => sdr.id === field.value);
+                  const isOnlyOneSdr = sdrs.length === 1;
+                  const hasSdrOptions = sdrs.length > 0;
+
+                  return (
+                    <FormItem>
+                      <FormLabel className={fieldLabelClassName}>
+                        Responsável - SDR *{isOnlyOneSdr ? " (único disponível)" : ""}
+                      </FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={isLoading || !hasSdrOptions}
+                      >
+                        <FormControl>
+                          <SelectTrigger className={fieldSelectTriggerClassName}>
+                            <SelectValue
+                              placeholder={hasSdrOptions ? "Selecione um SDR" : "Nenhum SDR disponível"}
+                            >
+                              {selectedSdr && (
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="h-5 w-5">
+                                    <AvatarImage src={selectedSdr.avatarImageUrl || undefined} />
+                                    <AvatarFallback className="text-xs">
+                                      {selectedSdr.name
+                                        .split(" ")
+                                        .map((name) => name[0])
+                                        .join("")
+                                        .toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span className="truncate">{selectedSdr.name}</span>
+                                </div>
+                              )}
+                            </SelectValue>
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {sdrs.map((sdr) => (
+                            <SelectItem key={sdr.id} value={sdr.id}>
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-6 w-6">
+                                  <AvatarImage src={sdr.avatarImageUrl || undefined} />
+                                  <AvatarFallback className="text-xs">
+                                    {sdr.name
+                                      .split(" ")
+                                      .map((name) => name[0])
+                                      .join("")
+                                      .toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span>{sdr.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!hasSdrOptions && (
+                        <p className="text-xs text-destructive">
+                          Nenhum SDR disponível para este time.
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
+              />
             </div>
 
-            {/* Submit */}
             <Button
               type="submit"
               className="w-full"
-              disabled={isLoading}
+              disabled={isLoading || sdrs.length === 0 || !isFormValid}
             >
               {isLoading ? (
                 <>

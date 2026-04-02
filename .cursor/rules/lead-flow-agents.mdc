@@ -256,6 +256,7 @@ new Output(
   - set loading state immediately;
   - disable the trigger while request is pending;
   - prevent re-entry/double submit until completion (`finally`).
+- In forms with required fields, the submit action **MUST** remain disabled until all required inputs pass validation (`formState.isValid` or equivalent).
 - For critical mutations (financial or irreversible actions), implementations **SHOULD** also use idempotency keys or server-side duplicate protection.
 
 ## LEGACY EXCEPTIONS

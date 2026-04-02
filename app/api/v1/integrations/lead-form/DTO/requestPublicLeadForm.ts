@@ -22,7 +22,7 @@ const isValidCnpj = (value: string): boolean => {
 
 export const PublicLeadFormRequestSchema = z
   .object({
-    supabaseId: z.string().uuid("supabaseId deve ser um UUID válido"),
+    supabaseId: z.string().uuid("supabaseId deve ser um UUID válido").nullish().transform((val) => val || undefined),
     teamId: z.string().uuid("teamId deve ser um UUID válido"),
 
     // Lead fields
@@ -58,12 +58,23 @@ export const PublicLeadFormRequestSchema = z
     referenceHospital: z.string().min(2, "O hospital de referência é obrigatório"),
     currentTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
     notes: z.string().nullish().transform((val) => val || undefined),
+    assignedTo: z.string().uuid("ID do SDR deve ser um UUID válido"),
 
     // Scheduling fields (optional)
     closerId: z.string().uuid("ID do closer deve ser um UUID válido").nullish().transform((val) => val || undefined),
     meetingDate: z.string().datetime().nullish().transform((val) => val || undefined),
     meetingTitle: z.string().nullish().transform((val) => val || undefined),
     meetingNotes: z.string().nullish().transform((val) => val || undefined),
+    extraGuests: z
+      .array(z.string().email("Convidados extras devem conter emails válidos"))
+      .nullish()
+      .transform((guests) => {
+        if (!guests || guests.length === 0) return undefined;
+        const normalized = guests
+          .map((guest) => guest.trim().toLowerCase())
+          .filter(Boolean);
+        return normalized.length > 0 ? Array.from(new Set(normalized)) : undefined;
+      }),
 
     // Tracking/origin fields (optional)
     source: z.string().nullish().transform((val) => val || undefined),

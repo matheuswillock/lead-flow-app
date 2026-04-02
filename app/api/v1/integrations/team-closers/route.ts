@@ -8,14 +8,14 @@ export async function GET(request: NextRequest) {
     const supabaseId = url.searchParams.get("supabaseId");
     const teamId = url.searchParams.get("teamId");
 
-    if (!supabaseId || !teamId) {
+    if (!teamId) {
       return NextResponse.json(
-        new Output(false, [], ["supabaseId e teamId são obrigatórios"], null),
+        new Output(false, [], ["teamId é obrigatório"], null),
         { status: 400 }
       );
     }
 
-    const output = await publicLeadFormUseCase.getTeamClosers(supabaseId, teamId);
+    const output = await publicLeadFormUseCase.getTeamClosers(teamId, supabaseId ?? undefined);
     if (!output.isValid) {
       const normalizedErrors = output.errorMessages.join(" ").toLowerCase();
       const status =

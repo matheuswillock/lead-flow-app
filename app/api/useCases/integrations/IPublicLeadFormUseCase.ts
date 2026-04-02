@@ -17,7 +17,7 @@ export interface PublicLeadFormOriginContext {
 
 export interface IPublicLeadFormUseCase {
   createPublicLead(data: PublicLeadFormRequest, originContext?: PublicLeadFormOriginContext): Promise<Output>;
-  getPublicFormBootstrap(supabaseId: string, teamId: string): Promise<Output>;
-  getTeamClosers(supabaseId: string, teamId: string): Promise<Output>;
-  getCloserAvailability(supabaseId: string, teamId: string, closerId: string, date: string): Promise<Output>;
+  getPublicFormBootstrap(teamId: string, legacySupabaseId?: string): Promise<Output>;
+  getTeamClosers(teamId: string, legacySupabaseId?: string): Promise<Output>;
+  getCloserAvailability(teamId: string, closerId: string, date: string, legacySupabaseId?: string): Promise<Output>;
 }

@@ -4,8 +4,8 @@ import { Output } from "@/lib/output";
 import { publicLeadFormUseCase } from "@/app/api/useCases/integrations/PublicLeadFormUseCase";
 
 const schema = z.object({
-  supabaseId: z.string().uuid(),
   teamId: z.string().uuid(),
+  supabaseId: z.string().uuid().nullish(),
   closerId: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
@@ -25,9 +25,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
-    const { supabaseId, teamId, closerId, date } = validation.data;
+    const { teamId, supabaseId, closerId, date } = validation.data;
 
-    const output = await publicLeadFormUseCase.getCloserAvailability(supabaseId, teamId, closerId, date);
+    const output = await publicLeadFormUseCase.getCloserAvailability(
+      teamId,
+      closerId,
+      date,
+      supabaseId ?? undefined
+    );
     if (!output.isValid) {
       const normalizedErrors = output.errorMessages.join(" ").toLowerCase();
       const status =

@@ -9,9 +9,22 @@ export interface CloserOption {
   avatarImageUrl: string;
 }
 
+export interface SdrOption {
+  id: string;
+  name: string;
+  avatarImageUrl: string;
+}
+
+export interface GuestCandidateOption {
+  id: string;
+  name: string;
+  email: string;
+  avatarImageUrl: string;
+}
+
 export interface SubmitPublicLeadPayload {
-  supabaseId: string;
   teamId: string;
+  supabaseId?: string;
   name: string;
   email: string;
   phone: string;
@@ -22,10 +35,12 @@ export interface SubmitPublicLeadPayload {
   referenceHospital: string;
   currentTreatment: string;
   notes?: string;
+  assignedTo: string;
   closerId?: string;
   meetingDate?: string;
   meetingTitle?: string;
   meetingNotes?: string;
+  extraGuests?: string[];
   source?: string;
   utmSource?: string;
   utmMedium?: string;
@@ -50,10 +65,12 @@ export interface AvailabilityResult {
 export interface PublicLeadFormBootstrapData {
   healthPlans: HealthPlanOption[];
   closers: CloserOption[];
+  sdrs: SdrOption[];
+  guestCandidates: GuestCandidateOption[];
 }
 
 export interface IPublicLeadFormService {
-  getBootstrapData(supabaseId: string, teamId: string): Promise<PublicLeadFormBootstrapData>;
-  getAvailability(supabaseId: string, teamId: string, closerId: string, date: string): Promise<AvailabilityResult>;
+  getBootstrapData(teamId: string, supabaseId?: string): Promise<PublicLeadFormBootstrapData>;
+  getAvailability(teamId: string, closerId: string, date: string, supabaseId?: string): Promise<AvailabilityResult>;
   submitLead(payload: SubmitPublicLeadPayload): Promise<SubmitPublicLeadResult>;
 }

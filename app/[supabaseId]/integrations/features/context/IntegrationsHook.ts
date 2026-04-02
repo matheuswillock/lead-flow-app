@@ -15,10 +15,9 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     if (!activeTeamId) return "";
     return integrationsService.buildLeadFormUrl({
       appUrl,
-      supabaseId,
       teamId: activeTeamId,
     });
-  }, [appUrl, supabaseId, activeTeamId]);
+  }, [appUrl, activeTeamId]);
 
   const copyLeadFormUrl = useCallback(() => {
     const executeCopy = async () => {

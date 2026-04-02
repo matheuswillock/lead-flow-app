@@ -9,13 +9,13 @@ type PublicLeadFormContextValue = PublicLeadFormState & PublicLeadFormActions;
 const PublicLeadFormContext = createContext<PublicLeadFormContextValue | null>(null);
 
 interface PublicLeadFormProviderProps {
-  supabaseId: string;
   teamId: string;
+  legacySupabaseId?: string;
   children: React.ReactNode;
 }
 
-export function PublicLeadFormProvider({ supabaseId, teamId, children }: PublicLeadFormProviderProps) {
-  const value = usePublicLeadForm(supabaseId, teamId);
+export function PublicLeadFormProvider({ teamId, legacySupabaseId, children }: PublicLeadFormProviderProps) {
+  const value = usePublicLeadForm(teamId, legacySupabaseId);
 
   return (
     <PublicLeadFormContext.Provider value={value}>

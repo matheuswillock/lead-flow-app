@@ -13,6 +13,8 @@ export const publicLeadFormSchema = leadFormSchema
     referenceHospital: true,
     ongoingTreatment: true,
     additionalNotes: true,
+    extraGuests: true,
+    responsible: true,
   })
   .extend({
     closerId: z.string().uuid().optional().or(z.literal("")),

@@ -2,49 +2,77 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { publicLeadFormService } from "../services/PublicLeadFormService";
-import type { HealthPlanOption, CloserOption } from "../services/IPublicLeadFormService";
-import type { PublicLeadFormState, PublicLeadFormActions } from "./PublicLeadFormTypes";
+import type {
+  HealthPlanOption,
+  CloserOption,
+  SdrOption,
+  GuestCandidateOption,
+} from "../services/IPublicLeadFormService";
+import type { PublicLeadFormState, PublicLeadFormActions, BootstrapStatus } from "./PublicLeadFormTypes";
 
-export function usePublicLeadForm(supabaseId: string, teamId: string): PublicLeadFormState & PublicLeadFormActions {
+export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): PublicLeadFormState & PublicLeadFormActions {
   const [healthPlans, setHealthPlans] = useState<HealthPlanOption[]>([]);
   const [healthPlansLoading, setHealthPlansLoading] = useState(true);
   const [closers, setClosers] = useState<CloserOption[]>([]);
   const [closersLoading, setClosersLoading] = useState(true);
+  const [sdrs, setSdrs] = useState<SdrOption[]>([]);
+  const [guestCandidates, setGuestCandidates] = useState<GuestCandidateOption[]>([]);
+  const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("loading");
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [bootstrapRetryCount, setBootstrapRetryCount] = useState(0);
 
   const bootstrapInFlightKeyRef = useRef<string | null>(null);
-  const bootstrapLastSuccessKeyRef = useRef<string | null>(null);
   const availabilityInFlightKeyRef = useRef<string | null>(null);
   const lastAvailabilitySuccessKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!supabaseId || !teamId) return;
-    const requestKey = `${supabaseId}:${teamId}`;
-    if (bootstrapLastSuccessKeyRef.current === requestKey) return;
+    if (!teamId) {
+      setBootstrapStatus("error");
+      setBootstrapError("Time inválido para carregar o formulário.");
+      setHealthPlansLoading(false);
+      setClosersLoading(false);
+      return;
+    }
+
+    const requestKey = `${teamId}:${legacySupabaseId ?? "legacy-none"}`;
     if (bootstrapInFlightKeyRef.current === requestKey) return;
 
     bootstrapInFlightKeyRef.current = requestKey;
 
     const load = async () => {
+      setBootstrapStatus("loading");
+      setBootstrapError(null);
       setHealthPlansLoading(true);
       setClosersLoading(true);
+
       try {
-        const bootstrapData = await publicLeadFormService.getBootstrapData(supabaseId, teamId);
+        const bootstrapData = await publicLeadFormService.getBootstrapData(teamId, legacySupabaseId);
         if (bootstrapInFlightKeyRef.current !== requestKey) {
           return;
         }
 
         setHealthPlans(bootstrapData.healthPlans);
         setClosers(bootstrapData.closers);
-        bootstrapLastSuccessKeyRef.current = requestKey;
+        setSdrs(bootstrapData.sdrs);
+        setGuestCandidates(bootstrapData.guestCandidates);
+        setBootstrapStatus("ready");
       } catch (error) {
         if (bootstrapInFlightKeyRef.current !== requestKey) {
           return;
         }
         console.error("[usePublicLeadForm] Erro ao carregar bootstrap inicial:", error);
+        setHealthPlans([]);
+        setClosers([]);
+        setSdrs([]);
+        setGuestCandidates([]);
+        setBootstrapStatus("error");
+        setBootstrapError(
+          error instanceof Error ? error.message : "Erro ao carregar dados iniciais do formulário."
+        );
       } finally {
         if (bootstrapInFlightKeyRef.current === requestKey) {
           bootstrapInFlightKeyRef.current = null;
@@ -54,8 +82,8 @@ export function usePublicLeadForm(supabaseId: string, teamId: string): PublicLea
       }
     };
 
-    load();
-  }, [supabaseId, teamId]);
+    void load();
+  }, [teamId, legacySupabaseId, bootstrapRetryCount]);
 
   const fetchAvailability = useCallback(
     async (closerId: string, date: string) => {
@@ -67,7 +95,7 @@ export function usePublicLeadForm(supabaseId: string, teamId: string): PublicLea
         return;
       }
 
-      const requestKey = `${supabaseId}:${teamId}:${closerId}:${date}`;
+      const requestKey = `${teamId}:${closerId}:${date}`;
       if (lastAvailabilitySuccessKeyRef.current === requestKey) {
         return;
       }
@@ -79,7 +107,7 @@ export function usePublicLeadForm(supabaseId: string, teamId: string): PublicLea
       setAvailabilityLoading(true);
 
       try {
-        const result = await publicLeadFormService.getAvailability(supabaseId, teamId, closerId, date);
+        const result = await publicLeadFormService.getAvailability(teamId, closerId, date, legacySupabaseId);
         if (availabilityInFlightKeyRef.current !== requestKey) {
           return;
         }
@@ -98,7 +126,7 @@ export function usePublicLeadForm(supabaseId: string, teamId: string): PublicLea
         }
       }
     },
-    [supabaseId, teamId]
+    [teamId, legacySupabaseId]
   );
 
   const submitLead = useCallback(
@@ -106,8 +134,8 @@ export function usePublicLeadForm(supabaseId: string, teamId: string): PublicLea
       setIsSubmitting(true);
       try {
         const result = await publicLeadFormService.submitLead({
-          supabaseId,
           teamId,
+          supabaseId: legacySupabaseId,
           ...data,
         });
         if (result.isValid) {
@@ -118,8 +146,12 @@ export function usePublicLeadForm(supabaseId: string, teamId: string): PublicLea
         setIsSubmitting(false);
       }
     },
-    [supabaseId, teamId]
+    [teamId, legacySupabaseId]
   );
+
+  const retryBootstrap = useCallback(() => {
+    setBootstrapRetryCount((previous) => previous + 1);
+  }, []);
 
   const resetForm = useCallback(() => {
     setIsSubmitted(false);
@@ -127,18 +159,23 @@ export function usePublicLeadForm(supabaseId: string, teamId: string): PublicLea
   }, []);
 
   return {
-    supabaseId,
     teamId,
+    legacySupabaseId,
+    bootstrapStatus,
+    bootstrapError,
     healthPlans,
     healthPlansLoading,
     closers,
     closersLoading,
+    sdrs,
+    guestCandidates,
     availableTimes,
     availabilityLoading,
     isSubmitting,
     isSubmitted,
     fetchAvailability,
     submitLead,
+    retryBootstrap,
     resetForm,
   };
 }
