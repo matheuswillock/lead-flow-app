@@ -5,6 +5,7 @@ import { Output } from "@/lib/output";
 import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { resendCalendarInvite } from "@/app/api/services/googleCalendar/GoogleCalendarService";
+import { buildUniqueEmails, resolveParticipantDispatchGroups } from "@/app/api/services/leadSchedule/participantDispatch";
 import { emailService } from "@/lib/services/EmailService";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 
@@ -153,20 +154,6 @@ const extractResendMessageId = (data: unknown): string | null => {
   return typeof maybeId === "string" ? maybeId : null;
 };
 
-const buildUniqueEmails = (emails: Array<string | null | undefined>) => {
-  const unique: string[] = [];
-  const seen = new Set<string>();
-  for (const email of emails) {
-    if (!email) continue;
-    const normalized = email.trim().toLowerCase();
-    if (!normalized) continue;
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    unique.push(normalized);
-  }
-  return unique;
-};
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -226,18 +213,39 @@ export async function POST(
       return NextResponse.json(output, { status: 400 });
     }
 
-    const attendeeEmails = buildUniqueEmails([
-      lead.email,
-      closerProfile.email,
-      lead.assignee?.email,
-      ...(schedule.extraGuests ?? []),
-    ]);
+    const closerEmail = closerProfile.email.trim().toLowerCase();
+    const participantDispatch = await resolveParticipantDispatchGroups({
+      teamId: teamAccess.access.teamId,
+      emails: [
+        lead.email,
+        closerEmail,
+        lead.assignee?.email,
+        ...(schedule.extraGuests ?? []),
+      ],
+    });
+    const attendeeEmails = participantDispatch.all;
 
     const canUseGoogleCalendar = !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
+    const googleRecipients = canUseGoogleCalendar
+      ? buildUniqueEmails([closerEmail, ...participantDispatch.googleEligible])
+      : [];
+    const googleRecipientSet = new Set(googleRecipients);
+    const resendRecipients = canUseGoogleCalendar
+      ? attendeeEmails.filter((item) => !googleRecipientSet.has(item))
+      : attendeeEmails;
+    const participantDispatchMetadata = {
+      googleEligible: participantDispatch.googleEligible,
+      resendRequired: participantDispatch.resendRequired,
+      internalConnected: participantDispatch.internalConnected,
+      internalDisconnected: participantDispatch.internalDisconnected,
+      externalOrUnknown: participantDispatch.externalOrUnknown,
+      googleRecipients,
+      resendRecipients,
+    };
     const inviteDispatchLastAttemptAt = new Date();
     let inviteDispatchStatus: InviteDispatchStatus = "failed";
     let inviteDispatchProvider: InviteDispatchProvider = "resend";
-    let inviteDispatchFallbackUsed = false;
+    const inviteDispatchFallbackUsed = false;
     let inviteDispatchLastError: string | null = null;
     let inviteDispatchLastPayload: Prisma.InputJsonValue | null = null;
 
@@ -246,51 +254,18 @@ export async function POST(
 
     if (target === "all") {
       let googleDispatchError: string | null = null;
-      const canAttemptGoogle = canUseGoogleCalendar && !!schedule.googleEventId;
-
-      if (canAttemptGoogle) {
-        try {
-          await resendCalendarInvite({
-            organizer: closerProfile,
-            eventId: schedule.googleEventId as string,
-            calendarId: schedule.googleCalendarId ?? "primary",
-            attendeeEmails,
-          });
-
-          inviteDispatchStatus = "sent_google";
-          inviteDispatchProvider = "google";
-          inviteDispatchLastPayload = {
-            provider: "google",
-            eventId: schedule.googleEventId,
-            calendarId: schedule.googleCalendarId ?? "primary",
-          };
-          await registerInviteDispatchActivity({
+      if (canUseGoogleCalendar) {
+        if (!schedule.googleEventId) {
+          googleDispatchError = "Evento Google não encontrado para reenvio.";
+          logDispatchProviderSkipped({
             leadId,
-            createdBy: teamAccess.access.profileId,
-            provider: "google",
-            status: "sent_google",
+            scheduleId: schedule.id,
+            target: "all",
             fallbackUsed: false,
             attemptedAt: inviteDispatchLastAttemptAt,
-            recipients: attendeeEmails,
-            error: null,
-            metadata: inviteDispatchLastPayload,
+            dispatchStatus: "failed",
+            reason: "google_event_not_found",
           });
-          successMessages.push("Convites reenviados para todos os participantes");
-        } catch (googleError) {
-          googleDispatchError = getErrorMessage(googleError, "Falha ao reenviar convite no Google Calendar");
-          logDispatchProviderError(
-            {
-              leadId,
-              scheduleId: schedule.id,
-              target: "all",
-              provider: "google",
-              fallbackUsed: false,
-              attemptedAt: inviteDispatchLastAttemptAt,
-              dispatchStatus: "failed",
-              errorMessage: googleDispatchError,
-            },
-            googleError
-          );
           await registerInviteDispatchActivity({
             leadId,
             createdBy: teamAccess.access.profileId,
@@ -298,15 +273,95 @@ export async function POST(
             status: "failed",
             fallbackUsed: false,
             attemptedAt: inviteDispatchLastAttemptAt,
-            recipients: attendeeEmails,
+            recipients: googleRecipients,
             error: googleDispatchError,
             metadata: {
               provider: "google",
-              error: googleDispatchError,
+              reason: "google_event_not_found",
+              ...participantDispatchMetadata,
             },
           });
+          inviteDispatchStatus = "failed";
+          inviteDispatchProvider = "google";
+          inviteDispatchLastError = googleDispatchError;
+          inviteDispatchLastPayload = {
+            provider: "google",
+            reason: "google_event_not_found",
+            ...participantDispatchMetadata,
+          };
+          errorMessages.push(`Falha ao reenviar convite via Google Calendar: ${googleDispatchError}`);
+        } else {
+          try {
+            await resendCalendarInvite({
+              organizer: closerProfile,
+              eventId: schedule.googleEventId,
+              calendarId: schedule.googleCalendarId ?? "primary",
+              attendeeEmails: googleRecipients,
+            });
+
+            inviteDispatchStatus = "sent_google";
+            inviteDispatchProvider = "google";
+            inviteDispatchLastError = null;
+            inviteDispatchLastPayload = {
+              provider: "google",
+              eventId: schedule.googleEventId,
+              calendarId: schedule.googleCalendarId ?? "primary",
+              ...participantDispatchMetadata,
+            };
+            await registerInviteDispatchActivity({
+              leadId,
+              createdBy: teamAccess.access.profileId,
+              provider: "google",
+              status: "sent_google",
+              fallbackUsed: false,
+              attemptedAt: inviteDispatchLastAttemptAt,
+              recipients: googleRecipients,
+              error: null,
+              metadata: inviteDispatchLastPayload,
+            });
+          } catch (googleError) {
+            googleDispatchError = getErrorMessage(googleError, "Falha ao reenviar convite no Google Calendar");
+            const googleCause = googleError instanceof Error ? googleError : new Error(googleDispatchError);
+            logDispatchProviderError(
+              {
+                leadId,
+                scheduleId: schedule.id,
+                target: "all",
+                provider: "google",
+                fallbackUsed: false,
+                attemptedAt: inviteDispatchLastAttemptAt,
+                dispatchStatus: "failed",
+                errorMessage: googleDispatchError,
+              },
+              googleCause
+            );
+            await registerInviteDispatchActivity({
+              leadId,
+              createdBy: teamAccess.access.profileId,
+              provider: "google",
+              status: "failed",
+              fallbackUsed: false,
+              attemptedAt: inviteDispatchLastAttemptAt,
+              recipients: googleRecipients,
+              error: googleDispatchError,
+              metadata: {
+                provider: "google",
+                error: googleDispatchError,
+                ...participantDispatchMetadata,
+              },
+            });
+            inviteDispatchStatus = "failed";
+            inviteDispatchProvider = "google";
+            inviteDispatchLastError = googleDispatchError;
+            inviteDispatchLastPayload = {
+              provider: "google",
+              error: googleDispatchError,
+              ...participantDispatchMetadata,
+            };
+            errorMessages.push(`Falha ao reenviar convite via Google Calendar: ${googleDispatchError}`);
+          }
         }
-      } else if (!canUseGoogleCalendar) {
+      } else {
         googleDispatchError = "Conta Google não conectada para reenvio via Google Calendar.";
         logDispatchProviderSkipped({
           leadId,
@@ -329,39 +384,15 @@ export async function POST(
           metadata: {
             provider: "google",
             reason: "google_not_connected",
-          },
-        });
-      } else {
-        googleDispatchError = "Evento Google não encontrado para reenvio.";
-        logDispatchProviderSkipped({
-          leadId,
-          scheduleId: schedule.id,
-          target: "all",
-          fallbackUsed: false,
-          attemptedAt: inviteDispatchLastAttemptAt,
-          dispatchStatus: "failed",
-          reason: "google_event_not_found",
-        });
-        await registerInviteDispatchActivity({
-          leadId,
-          createdBy: teamAccess.access.profileId,
-          provider: "google",
-          status: "failed",
-          fallbackUsed: false,
-          attemptedAt: inviteDispatchLastAttemptAt,
-          recipients: attendeeEmails,
-          error: googleDispatchError,
-          metadata: {
-            provider: "google",
-            reason: "google_event_not_found",
+            ...participantDispatchMetadata,
           },
         });
       }
 
-      if (inviteDispatchStatus !== "sent_google") {
+      if ((!canUseGoogleCalendar || inviteDispatchStatus !== "failed") && resendRecipients.length > 0) {
         const organizerName = closerProfile.fullName || closerProfile.email;
         const emailResult = await emailService.sendMeetingInviteEmail({
-          to: attendeeEmails,
+          to: resendRecipients,
           leadName: lead.name,
           meetingTitle: schedule.meetingTitle || undefined,
           meetingDate: schedule.date,
@@ -371,17 +402,22 @@ export async function POST(
           eventUid: schedule.id,
         });
 
-        inviteDispatchFallbackUsed = canAttemptGoogle;
         if (emailResult.success) {
           const resendMessageId = extractResendMessageId(emailResult.data);
-          inviteDispatchStatus = "sent_resend";
-          inviteDispatchProvider = "resend";
+          if (!canUseGoogleCalendar) {
+            inviteDispatchStatus = "sent_resend";
+            inviteDispatchProvider = "resend";
+          }
           inviteDispatchLastError = null;
           inviteDispatchLastPayload = {
-            provider: "resend",
-            resendMessageId,
-            recipientCount: attendeeEmails.length,
-            googleError: googleDispatchError,
+            ...(inviteDispatchLastPayload && typeof inviteDispatchLastPayload === "object"
+              ? inviteDispatchLastPayload
+              : {}),
+            resend: {
+              resendMessageId,
+              recipientCount: resendRecipients.length,
+            },
+            ...participantDispatchMetadata,
           };
 
           await registerInviteDispatchActivity({
@@ -389,17 +425,12 @@ export async function POST(
             createdBy: teamAccess.access.profileId,
             provider: "resend",
             status: "sent_resend",
-            fallbackUsed: inviteDispatchFallbackUsed,
+            fallbackUsed: false,
             attemptedAt: inviteDispatchLastAttemptAt,
-            recipients: attendeeEmails,
+            recipients: resendRecipients,
             error: null,
             metadata: inviteDispatchLastPayload,
           });
-
-          successMessages.push("Convites reenviados para todos os participantes");
-          if (googleDispatchError) {
-            successMessages.push(`Aviso: ${googleDispatchError} Convite reenviado via e-mail (Resend).`);
-          }
         } else {
           const resendError = emailResult.error || "Erro ao reenviar convite por e-mail";
           const resendCause = extractEmailErrorCause(emailResult) ?? new Error(resendError);
@@ -409,7 +440,7 @@ export async function POST(
               scheduleId: schedule.id,
               target: "all",
               provider: "resend",
-              fallbackUsed: inviteDispatchFallbackUsed,
+              fallbackUsed: false,
               attemptedAt: inviteDispatchLastAttemptAt,
               dispatchStatus: "failed",
               errorMessage: resendError,
@@ -421,9 +452,9 @@ export async function POST(
           inviteDispatchLastError = resendError;
           inviteDispatchLastPayload = {
             provider: "resend",
-            recipientCount: attendeeEmails.length,
-            googleError: googleDispatchError,
+            recipientCount: resendRecipients.length,
             resendError,
+            ...participantDispatchMetadata,
           };
 
           await registerInviteDispatchActivity({
@@ -431,16 +462,21 @@ export async function POST(
             createdBy: teamAccess.access.profileId,
             provider: "resend",
             status: "failed",
-            fallbackUsed: inviteDispatchFallbackUsed,
+            fallbackUsed: false,
             attemptedAt: inviteDispatchLastAttemptAt,
-            recipients: attendeeEmails,
+            recipients: resendRecipients,
             error: resendError,
             metadata: inviteDispatchLastPayload,
           });
-          errorMessages.push(
-            googleDispatchError
-              ? `Falha no Google Calendar (${googleDispatchError}) e no reenvio por e-mail (${resendError}).`
-              : `Falha ao reenviar convite: ${resendError}`
+          errorMessages.push(`Falha ao reenviar convite por e-mail para participantes sem Google: ${resendError}`);
+        }
+      }
+
+      if (inviteDispatchStatus !== "failed") {
+        successMessages.push("Convites reenviados para todos os participantes elegíveis");
+        if (canUseGoogleCalendar && resendRecipients.length > 0) {
+          successMessages.push(
+            "Aviso: Participantes sem Google conectado receberam convite via e-mail (Resend)."
           );
         }
       }

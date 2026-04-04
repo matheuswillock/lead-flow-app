@@ -37,6 +37,7 @@ interface DateTimePickerProps {
   showTime?: boolean
   timeLoading?: boolean
   timeLoadingText?: string
+  invalid?: boolean
 }
 
 export function DateTimePicker({
@@ -51,6 +52,7 @@ export function DateTimePicker({
   showTime = true,
   timeLoading = false,
   timeLoadingText = "Carregando...",
+  invalid = false,
 }: DateTimePickerProps) {
   const timeSelectWidthClass = "w-full sm:w-[7.5rem]"
   const initialDate = date && isValid(date) ? date : undefined
@@ -138,9 +140,11 @@ export function DateTimePicker({
                 variant="outline"
                 className={cn(
                   "h-9 w-full sm:w-[180px] justify-start text-left font-normal",
-                  !selectedDate && "text-muted-foreground"
+                  !selectedDate && "text-muted-foreground",
+                  invalid && "border-destructive focus-visible:ring-destructive"
                 )}
                 disabled={disabled}
+                aria-invalid={invalid || undefined}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
                 {selectedDate && isValid(selectedDate) ? (
@@ -185,8 +189,10 @@ export function DateTimePicker({
                     <SelectTrigger
                       className={cn(
                         "h-9 transition-colors hover:bg-accent/40 hover:text-accent-foreground",
-                        timeSelectWidthClass
+                        timeSelectWidthClass,
+                        invalid && "border-destructive focus-visible:ring-destructive"
                       )}
+                      aria-invalid={invalid || undefined}
                     >
                       <SelectValue placeholder="Selecione um horário" />
                     </SelectTrigger>
@@ -235,9 +241,11 @@ export function DateTimePicker({
                   "file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground",
                   "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                   "disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-                  "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                  "[&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none",
+                  invalid && "border-destructive focus-visible:ring-destructive"
                 )}
                 required={required}
+                aria-invalid={invalid || undefined}
               />
             )}
           </div>

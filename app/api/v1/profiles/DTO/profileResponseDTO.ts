@@ -9,6 +9,7 @@ export interface UserAssociated {
   email: string;
   role: UserRole;
   functions?: UserFunction[];
+  googleCalendarConnected?: boolean;
 }
 
 export interface ProfileResponseDTO {
@@ -52,7 +53,8 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     avatarImageUrl: profile.profileIconUrl || '',
     email: profile.email,
     role: profile.role,
-    functions: profile.functions ?? []
+    functions: profile.functions ?? [],
+    googleCalendarConnected: profile.googleCalendarConnected ?? false,
   };
   
   usersAssociated.push(currentUser);
@@ -67,7 +69,8 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
         avatarImageUrl: operator.profileIconUrl || '',
         email: operator.email,
         role: operator.role,
-        functions: operator.functions ?? []
+        functions: operator.functions ?? [],
+        googleCalendarConnected: operator.googleCalendarConnected ?? false,
       }));
     
     usersAssociated.push(...operators);

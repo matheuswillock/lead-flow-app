@@ -1,6 +1,6 @@
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { LeadForm } from "@/components/forms/leadForm";
+import { LeadForm, type LeadScheduleField } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
 import {
@@ -82,6 +82,7 @@ type MentionMember = {
   profileIconUrl?: string | null;
   role?: UserAssociated["role"];
   functions?: UserAssociated["functions"];
+  googleCalendarConnected?: boolean;
 };
 
 type MentionToken = {
@@ -106,6 +107,8 @@ const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62
 const TEAM_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const teamMembersCacheByTeamId = new Map<string, { members: MentionMember[]; timestamp: number }>();
 const teamMembersInFlightByTeamId = new Map<string, Promise<MentionMember[]>>();
+const SCHEDULE_CHANGE_ERROR_MESSAGE = "Agendamento alterado. Confirme o reagendamento para continuar.";
+const SCHEDULE_FIELD_ORDER: LeadScheduleField[] = ["meetingDate", "closerId", "meetingNotes", "extraGuests"];
 
 const normalizeLeadPhoneDigits = (phone: string): string => {
   if (!phone) return "";
@@ -157,6 +160,8 @@ export default function LeadDialog({
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
   const [rescheduleConfirmOpen, setRescheduleConfirmOpen] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<leadFormData | null>(null);
+  const [pendingChangedScheduleFields, setPendingChangedScheduleFields] = useState<LeadScheduleField[]>([]);
+  const [highlightedScheduleFields, setHighlightedScheduleFields] = useState<LeadScheduleField[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
@@ -248,8 +253,13 @@ export default function LeadDialog({
       setSelectedMentions([]);
       setHighlightedActivityId(null);
       activityItemRefs.current.clear();
+      setRescheduleConfirmOpen(false);
+      setPendingSubmitData(null);
+      setPendingChangedScheduleFields([]);
+      setHighlightedScheduleFields([]);
+      form.clearErrors(SCHEDULE_FIELD_ORDER);
     }
-  }, [open]);
+  }, [open, form]);
 
   useEffect(() => {
     setOptimisticActivities([]);
@@ -298,6 +308,7 @@ export default function LeadDialog({
             profileIconUrl: member.profileIconUrl ?? null,
             role: member.role,
             functions: member.functions ?? [],
+            googleCalendarConnected: member.googleCalendarConnected ?? false,
           })) as MentionMember[];
 
           teamMembersCacheByTeamId.set(activeTeamId, {
@@ -461,6 +472,7 @@ export default function LeadDialog({
       email: member.email || "",
       role: member.role ?? "operator",
       functions: member.functions ?? [],
+      googleCalendarConnected: member.googleCalendarConnected ?? false,
     }));
   }, [teamMembers]);
   const watchedMeetingDate = form.watch("meetingDate");
@@ -1292,6 +1304,71 @@ export default function LeadDialog({
     }
   };
 
+  const parseExtraGuests = (value: string | undefined): string[] => {
+    if (!value) return [];
+    return value
+      .split(/[,;\s]+/)
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean)
+      .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  };
+
+  const normalizeScheduleText = (value?: string | null) => (value || "").trim();
+
+  const normalizeScheduleId = (value?: string | null) => (value || "").trim();
+
+  const normalizeGuestList = (values: string[]) =>
+    Array.from(new Set(values.map((email) => email.trim().toLowerCase()).filter(Boolean))).sort();
+
+  const areGuestsEqual = (left: string[], right: string[]) =>
+    left.length === right.length && left.every((value, index) => value === right[index]);
+
+  const clearScheduleFieldErrors = () => {
+    form.clearErrors(SCHEDULE_FIELD_ORDER);
+  };
+
+  const applyScheduleFieldErrors = (fields: LeadScheduleField[]) => {
+    clearScheduleFieldErrors();
+    fields.forEach((field) => {
+      form.setError(field, {
+        type: "manual",
+        message: SCHEDULE_CHANGE_ERROR_MESSAGE,
+      });
+    });
+  };
+
+  const getChangedScheduleFields = (data: leadFormData): LeadScheduleField[] => {
+    if (!lead) return [];
+
+    const changedFields: LeadScheduleField[] = [];
+
+    const normalizedMeetingDate = parseMeetingDate(data.meetingDate || "") ?? null;
+    const normalizedLeadMeetingDate = parseMeetingDate(lead.meetingDate || "") ?? null;
+    if (normalizedMeetingDate !== normalizedLeadMeetingDate) {
+      changedFields.push("meetingDate");
+    }
+
+    const normalizedCloserId = normalizeScheduleId(data.closerId);
+    const normalizedLeadCloserId = normalizeScheduleId(lead.closerId);
+    if (normalizedCloserId !== normalizedLeadCloserId) {
+      changedFields.push("closerId");
+    }
+
+    const normalizedMeetingNotes = normalizeScheduleText(data.meetingNotes);
+    const normalizedLeadMeetingNotes = normalizeScheduleText(lead.meetingNotes);
+    if (normalizedMeetingNotes !== normalizedLeadMeetingNotes) {
+      changedFields.push("meetingNotes");
+    }
+
+    const normalizedFormGuests = normalizeGuestList(parseExtraGuests(data.extraGuests));
+    const normalizedExistingGuests = normalizeGuestList(scheduleGuests);
+    if (!areGuestsEqual(normalizedFormGuests, normalizedExistingGuests)) {
+      changedFields.push("extraGuests");
+    }
+
+    return changedFields;
+  };
+
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
     const normalizedPhone = normalizeLeadPhoneDigits(data.phone || "");
 
@@ -1390,16 +1467,18 @@ export default function LeadDialog({
 
     try {
       if (lead) {
-        const meetingDateChanged = (data.meetingDate ?? "") !== (lead.meetingDate ?? "");
-        const closerChanged = (data.closerId ?? "") !== (lead.closerId ?? "");
-        const triggerChanged = meetingDateChanged || closerChanged;
-        const meetingDateValue = data.meetingDate || lead.meetingDate;
-        const canSchedule = !!(meetingDateValue && data.closerId);
+        const changedScheduleFields = getChangedScheduleFields(data);
 
-        if (triggerChanged && canSchedule) {
+        if (changedScheduleFields.length > 0) {
           setPendingSubmitData(data);
+          setPendingChangedScheduleFields(changedScheduleFields);
           setRescheduleConfirmOpen(true);
+          return;
         } else {
+          setPendingSubmitData(null);
+          setPendingChangedScheduleFields([]);
+          setHighlightedScheduleFields([]);
+          clearScheduleFieldErrors();
           const loadingToast = toast.loading("Atualizando lead...");
 
           const updateData = transformToUpdateRequest(data);
@@ -1484,6 +1563,9 @@ export default function LeadDialog({
     const data = pendingSubmitData;
     setRescheduleConfirmOpen(false);
     setPendingSubmitData(null);
+    setPendingChangedScheduleFields([]);
+    setHighlightedScheduleFields([]);
+    clearScheduleFieldErrors();
 
     const loadingToast = toast.loading("Atualizando lead...");
     const updateData = transformToUpdateRequest(data);
@@ -1500,7 +1582,18 @@ export default function LeadDialog({
     const normalizedGuests = Array.from(
       new Set(extraGuests.map((email) => email.toLowerCase()))
     );
-    const meetingDateValue = data.meetingDate || lead.meetingDate;
+    const meetingDateValue =
+      parseMeetingDate(data.meetingDate || "") ??
+      parseMeetingDate(lead.meetingDate || "") ??
+      undefined;
+    const closerIdValue = normalizeScheduleId(data.closerId || lead.closerId || "") || undefined;
+
+    if (!meetingDateValue || !closerIdValue) {
+      toast.info("Lead salvo, mas o reagendamento não foi executado por falta de data/hora ou closer.");
+      setOpen(false);
+      await refreshLeads();
+      return;
+    }
 
     try {
       const scheduleResponse = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
@@ -1515,7 +1608,7 @@ export default function LeadDialog({
           meetingTitle: data.meetingTitle || undefined,
           notes: data.meetingNotes || undefined,
           meetingLink: data.meetingLink || undefined,
-          closerId: data.closerId || undefined,
+          closerId: closerIdValue,
           extraGuests: normalizedGuests,
         }),
       });
@@ -1562,10 +1655,19 @@ export default function LeadDialog({
   };
 
   const handleCancelReschedule = () => {
+    const fieldsToHighlight = pendingChangedScheduleFields.length > 0
+      ? pendingChangedScheduleFields
+      : getChangedScheduleFields(form.getValues());
+
     setRescheduleConfirmOpen(false);
     setPendingSubmitData(null);
-    form.setValue("meetingDate", lead?.meetingDate ?? "");
-    form.setValue("closerId", lead?.closerId ?? "");
+    setPendingChangedScheduleFields([]);
+    setHighlightedScheduleFields(fieldsToHighlight);
+    if (fieldsToHighlight.length > 0) {
+      applyScheduleFieldErrors(fieldsToHighlight);
+    } else {
+      clearScheduleFieldErrors();
+    }
   };
 
   const handleFinalizeSubmit = async (data: FinalizeContractData) => {
@@ -2004,15 +2106,6 @@ export default function LeadDialog({
     }
   };
 
-  const parseExtraGuests = (value: string | undefined): string[] => {
-    if (!value) return [];
-    return value
-      .split(/[,;\s]+/)
-      .map((item) => item.trim().toLowerCase())
-      .filter(Boolean)
-      .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
-  };
-
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
   const addNewParticipants = (values: string[]) => {
@@ -2176,6 +2269,9 @@ export default function LeadDialog({
                     meetingHealdSaving={meetingHealdSaving}
                     onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
                     showMeetingLink={showMeetingLink}
+                    isEditMode={!!lead}
+                    scheduleChangeWarning={highlightedScheduleFields.length > 0}
+                    changedScheduleFields={highlightedScheduleFields}
                   />
                 )}
               </div>
@@ -2688,7 +2784,7 @@ export default function LeadDialog({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={rescheduleConfirmOpen} onOpenChange={(open) => { if (!open) handleCancelReschedule(); }}>
+      <AlertDialog open={rescheduleConfirmOpen} onOpenChange={setRescheduleConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Reagendar convite?</AlertDialogTitle>
