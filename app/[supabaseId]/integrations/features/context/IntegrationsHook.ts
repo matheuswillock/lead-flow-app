@@ -31,7 +31,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
   const [studioWebhookConfig, setStudioWebhookConfig] = useState<IntegrationsState["studioWebhookConfig"]>(null);
   const [studioWebhookLoading, setStudioWebhookLoading] = useState(false);
   const [studioWebhookSaving, setStudioWebhookSaving] = useState(false);
-  const [studioWebhookTokenMode, setStudioWebhookTokenMode] = useState<"manual" | "auto">("auto");
+  const [studioWebhookTokenMode, setStudioWebhookTokenMode] = useState<"manual" | "auto" | "none">("auto");
   const [studioWebhookManualToken, setStudioWebhookManualToken] = useState("");
   const [studioWebhookExpiryMode, setStudioWebhookExpiryMode] = useState<"hours_24" | "months_6" | "indeterminate">("months_6");
   const [studioWebhookGeneratedUrl, setStudioWebhookGeneratedUrl] = useState("");
@@ -58,6 +58,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         const config = await integrationsService.getStudioWebhookConfig(supabaseId, activeTeamId);
         setStudioWebhookConfig(config);
         setStudioWebhookExpiryMode(config.expiryMode);
+        setStudioWebhookTokenMode(config.tokenMode);
       } catch (error) {
         console.error("[useIntegrations] Erro ao carregar configuração do webhook:", error);
         toast.error(error instanceof Error ? error.message : "Não foi possível carregar o webhook");
@@ -123,6 +124,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         setStudioWebhookGeneratedUrl(result.webhookUrl);
         setStudioWebhookConfig({
           configured: result.configured,
+          tokenMode: result.tokenMode,
           tokenPreview: result.tokenPreview,
           expiryMode: result.expiryMode,
           expiresAt: result.expiresAt,

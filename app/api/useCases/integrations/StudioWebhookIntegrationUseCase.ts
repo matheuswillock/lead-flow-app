@@ -12,6 +12,7 @@ import {
   IStudioWebhookIntegrationUseCase,
   type GetStudioWebhookConfigUseCaseInput,
   type ProcessStudioWebhookLeadInput,
+  type StudioWebhookTokenMode,
   type UpsertStudioWebhookConfigUseCaseInput,
 } from "./IStudioWebhookIntegrationUseCase";
 import {
@@ -21,6 +22,8 @@ import { studioWebhookIntegrationService } from "@/app/api/services/StudioWebhoo
 
 const UNAUTHORIZED_ERROR = "Webhook token não autorizado";
 const TOKEN_EXPIRED_ERROR = "Webhook token expirado";
+const NO_TOKEN_SENTINEL = "__studio_webhook_no_token__";
+const NO_TOKEN_PREVIEW = "Sem token";
 
 const normalizeOptionalString = (value?: string): string | undefined => {
   if (!value) return undefined;
@@ -33,14 +36,36 @@ const normalizeAppUrl = (value: string): string => {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 };
 
-const buildTemplateWebhookUrl = (appUrl: string, teamId: string): string => {
+const isNoTokenPreview = (tokenPreview: string | null | undefined): boolean => {
+  return tokenPreview === NO_TOKEN_PREVIEW;
+};
+
+const inferTokenModeFromConfig = (tokenPreview: string | null | undefined): StudioWebhookTokenMode => {
+  if (isNoTokenPreview(tokenPreview)) {
+    return "none";
+  }
+
+  return "auto";
+};
+
+const buildTemplateWebhookUrl = (appUrl: string, teamId: string, tokenMode: StudioWebhookTokenMode = "auto"): string => {
   const normalized = normalizeAppUrl(appUrl);
+
+  if (tokenMode === "none") {
+    return `${normalized}/api/webhooks/studio/${teamId}`;
+  }
+
   return `${normalized}/api/webhooks/studio/${teamId}/[token]`;
 };
 
-const buildWebhookUrlWithToken = (appUrl: string, teamId: string, token: string): string => {
+const buildWebhookUrl = (appUrl: string, teamId: string, tokenMode: StudioWebhookTokenMode, token?: string): string => {
   const normalized = normalizeAppUrl(appUrl);
-  return `${normalized}/api/webhooks/studio/${teamId}/${token}`;
+
+  if (tokenMode === "none") {
+    return `${normalized}/api/webhooks/studio/${teamId}`;
+  }
+
+  return `${normalized}/api/webhooks/studio/${teamId}/${token ?? "[token]"}`;
 };
 
 export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegrationUseCase {
@@ -58,25 +83,28 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         return new Output(true, [], [], {
           configured: false,
           teamId: input.teamId,
+          tokenMode: "auto",
           tokenPreview: null,
           expiryMode: "indeterminate",
           expiresAt: null,
           isExpired: false,
           lastUsedAt: null,
-          webhookUrlTemplate: buildTemplateWebhookUrl(input.appUrl, input.teamId),
+          webhookUrlTemplate: buildTemplateWebhookUrl(input.appUrl, input.teamId, "auto"),
         });
       }
 
       const isExpired = isStudioWebhookTokenExpired(webhookConfig.expiresAt);
+      const tokenMode = inferTokenModeFromConfig(webhookConfig.tokenPreview);
       return new Output(true, [], [], {
         configured: true,
         teamId: input.teamId,
+        tokenMode,
         tokenPreview: webhookConfig.tokenPreview,
         expiryMode: webhookConfig.expiryMode,
         expiresAt: webhookConfig.expiresAt?.toISOString() ?? null,
         isExpired,
         lastUsedAt: webhookConfig.lastUsedAt?.toISOString() ?? null,
-        webhookUrlTemplate: buildTemplateWebhookUrl(input.appUrl, input.teamId),
+        webhookUrlTemplate: buildTemplateWebhookUrl(input.appUrl, input.teamId, tokenMode),
       });
     } catch (error) {
       console.error("[StudioWebhookIntegrationUseCase] Erro ao consultar configuração:", error);
@@ -94,14 +122,16 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
       const token =
         input.tokenMode === "manual"
           ? normalizeOptionalString(input.manualToken)
-          : generateStudioWebhookToken();
+          : input.tokenMode === "auto"
+            ? generateStudioWebhookToken()
+            : NO_TOKEN_SENTINEL;
 
       if (!token) {
         return new Output(false, [], ["Token manual é obrigatório"], null);
       }
 
       const tokenHash = hashStudioWebhookToken(token);
-      const tokenPreview = buildStudioWebhookTokenPreview(token);
+      const tokenPreview = input.tokenMode === "none" ? NO_TOKEN_PREVIEW : buildStudioWebhookTokenPreview(token);
       const expiresAt = computeStudioWebhookTokenExpiry(input.expiryMode);
 
       const config = await this.service.upsertWebhookConfig({
@@ -116,13 +146,14 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
       return new Output(true, ["Configuração do webhook salva com sucesso"], [], {
         configured: true,
         teamId: config.teamId,
-        token,
+        tokenMode: input.tokenMode,
+        token: input.tokenMode === "none" ? "" : token,
         tokenPreview: config.tokenPreview,
         expiryMode: config.expiryMode,
         expiresAt: config.expiresAt?.toISOString() ?? null,
         isExpired: false,
-        webhookUrl: buildWebhookUrlWithToken(input.appUrl, config.teamId, token),
-        webhookUrlTemplate: buildTemplateWebhookUrl(input.appUrl, config.teamId),
+        webhookUrl: buildWebhookUrl(input.appUrl, config.teamId, input.tokenMode, token),
+        webhookUrlTemplate: buildTemplateWebhookUrl(input.appUrl, config.teamId, input.tokenMode),
         lastUsedAt: config.lastUsedAt?.toISOString() ?? null,
       });
     } catch (error) {
@@ -147,9 +178,22 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         return new Output(false, [], [TOKEN_EXPIRED_ERROR], null);
       }
 
-      const isValidToken = safeStudioWebhookTokenEquals(input.token, config.tokenHash);
-      if (!isValidToken) {
-        return new Output(false, [], [UNAUTHORIZED_ERROR], null);
+      const isNoTokenMode = isNoTokenPreview(config.tokenPreview);
+      if (isNoTokenMode) {
+        const unexpectedToken = normalizeOptionalString(input.token);
+        if (unexpectedToken) {
+          return new Output(false, [], [UNAUTHORIZED_ERROR], null);
+        }
+      } else {
+        const normalizedToken = normalizeOptionalString(input.token);
+        if (!normalizedToken) {
+          return new Output(false, [], [UNAUTHORIZED_ERROR], null);
+        }
+
+        const isValidToken = safeStudioWebhookTokenEquals(normalizedToken, config.tokenHash);
+        if (!isValidToken) {
+          return new Output(false, [], [UNAUTHORIZED_ERROR], null);
+        }
       }
 
       const leadResult = await this.service.createLeadFromWebhook({

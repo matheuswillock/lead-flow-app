@@ -1,6 +1,6 @@
 import { Output } from "@/lib/output";
 
-export type StudioWebhookTokenMode = "manual" | "auto";
+export type StudioWebhookTokenMode = "manual" | "auto" | "none";
 export type StudioWebhookTokenExpiryModeValue = "hours_24" | "months_6" | "indeterminate";
 
 export type StudioWebhookLeadPayload = {
@@ -33,7 +33,7 @@ export type GetStudioWebhookConfigUseCaseInput = {
 
 export type ProcessStudioWebhookLeadInput = {
   teamId: string;
-  token: string;
+  token?: string;
   payload: StudioWebhookLeadPayload;
 };
 
