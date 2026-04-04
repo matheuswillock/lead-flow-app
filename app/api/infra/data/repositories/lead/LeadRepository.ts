@@ -628,6 +628,7 @@ export class LeadRepository implements ILeadRepository {
     teamId: string,
     options?: {
       status?: LeadStatus;
+      assignedTo?: string;
       search?: string;
       startDate?: Date;
       endDate?: Date;
@@ -635,32 +636,55 @@ export class LeadRepository implements ILeadRepository {
   ): Promise<{ leads: Lead[] }> {
     const {
       status,
+      assignedTo,
       search,
       startDate,
       endDate,
     } = options || {};
 
-    const where: Prisma.LeadWhereInput = {
-      teamId,
-      OR: [
-        { assignedTo: operatorId },
-        { createdBy: operatorId },
-      ],
-      ...(status && { status }),
-      ...(search && {
+    const filters: Prisma.LeadWhereInput[] = [];
+
+    if (status) {
+      filters.push({ status });
+    }
+
+    if (assignedTo) {
+      filters.push({ assignedTo });
+    }
+
+    if (search) {
+      filters.push({
         OR: [
-          { leadCode: { contains: search, mode: 'insensitive' } },
-          { name: { contains: search, mode: 'insensitive' } },
-          { email: { contains: search, mode: 'insensitive' } },
-          { phone: { contains: search, mode: 'insensitive' } },
+          { leadCode: { contains: search, mode: "insensitive" } },
+          { name: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+          { phone: { contains: search, mode: "insensitive" } },
         ],
-      }),
-      ...(startDate && endDate && {
+      });
+    }
+
+    if (startDate && endDate) {
+      filters.push({
         createdAt: {
           gte: startDate,
           lte: endDate,
         },
-      }),
+      });
+    }
+
+    const visibilityFilter: Prisma.LeadWhereInput = {
+      OR: [
+        {
+          AND: [{ assignedTo: null }, { closerId: null }],
+        },
+        { assignedTo: operatorId },
+        { closerId: operatorId },
+      ],
+    };
+
+    const where: Prisma.LeadWhereInput = {
+      teamId,
+      AND: [visibilityFilter, ...filters],
     };
 
     const leads = await prisma.lead.findMany({
@@ -674,6 +698,14 @@ export class LeadRepository implements ILeadRepository {
           },
         },
         assignee: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            profileIconUrl: true,
+          },
+        },
+        closer: {
           select: {
             id: true,
             fullName: true,

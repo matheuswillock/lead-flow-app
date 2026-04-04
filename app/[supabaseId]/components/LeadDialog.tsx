@@ -430,9 +430,11 @@ export default function LeadDialog({
       const payload = oldestLeadCreationActivity.payload as {
         channel?: string;
         provider?: string;
+        source?: string;
       };
       const channel = typeof payload.channel === "string" ? payload.channel.toLowerCase() : "";
       const provider = typeof payload.provider === "string" ? payload.provider.toLowerCase() : "";
+      const source = typeof payload.source === "string" ? payload.source.trim() : "";
 
       if (channel === "public_lead_form") {
         return { label: "Formulário Público", variant: "secondary" };
@@ -440,6 +442,10 @@ export default function LeadDialog({
 
       if (channel === "webhook" && provider === "meta") {
         return { label: "Webhook Meta", variant: "secondary" };
+      }
+
+      if (channel === "webhook" && provider === "studio") {
+        return { label: source || "studio_webhook", variant: "outline" };
       }
 
       if (channel === "webhook") {

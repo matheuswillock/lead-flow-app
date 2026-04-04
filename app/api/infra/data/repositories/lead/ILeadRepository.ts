@@ -50,6 +50,7 @@ export interface ILeadRepository {
     teamId: string,
     options?: {
       status?: LeadStatus;
+      assignedTo?: string;
       search?: string;
       startDate?: Date;
       endDate?: Date;
