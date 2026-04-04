@@ -90,6 +90,8 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     currentBootstrapKeyRef.current = requestKey;
 
     if (lastSuccessfulBootstrapKeyRef.current === requestKey) {
+      setIntegrationsBootstrapLoading(false);
+      setStudioWebhookLoading(false);
       return;
     }
 
@@ -101,6 +103,8 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     if (cachedBootstrap) {
       applyBootstrapResult(cachedBootstrap);
       lastSuccessfulBootstrapKeyRef.current = requestKey;
+      setIntegrationsBootstrapLoading(false);
+      setStudioWebhookLoading(false);
       return;
     }
 
