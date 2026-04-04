@@ -6,7 +6,9 @@ export async function POST() {
     new Output(
       false,
       [],
-      ["Use /api/webhooks/studio/{teamId}/{token} para enviar eventos deste webhook."],
+      [
+        "Use /api/webhooks/studio/{teamId}/{token} (com token) ou /api/webhooks/studio/{teamId} (sem token) para enviar eventos deste webhook.",
+      ],
       null
     ),
     { status: 404 }

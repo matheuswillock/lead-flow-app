@@ -4,6 +4,7 @@ export interface IntegrationsState {
   activeTeamId: string | null;
   studioWebhookConfig: {
     configured: boolean;
+    tokenMode: "manual" | "auto" | "none";
     tokenPreview: string | null;
     expiryMode: "hours_24" | "months_6" | "indeterminate";
     expiresAt: string | null;
@@ -11,7 +12,7 @@ export interface IntegrationsState {
     lastUsedAt: string | null;
     webhookUrlTemplate: string;
   } | null;
-  studioWebhookTokenMode: "manual" | "auto";
+  studioWebhookTokenMode: "manual" | "auto" | "none";
   studioWebhookManualToken: string;
   studioWebhookExpiryMode: "hours_24" | "months_6" | "indeterminate";
   studioWebhookGeneratedUrl: string;
@@ -23,7 +24,7 @@ export interface IntegrationsState {
 export interface IntegrationsActions {
   copyLeadFormUrl: () => void;
   loadStudioWebhookConfig: () => void;
-  setStudioWebhookTokenMode: (mode: "manual" | "auto") => void;
+  setStudioWebhookTokenMode: (mode: "manual" | "auto" | "none") => void;
   setStudioWebhookManualToken: (token: string) => void;
   setStudioWebhookExpiryMode: (mode: "hours_24" | "months_6" | "indeterminate") => void;
   saveStudioWebhookConfig: () => void;

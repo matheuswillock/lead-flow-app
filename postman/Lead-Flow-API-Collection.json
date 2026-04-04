@@ -5952,6 +5952,37 @@
                     "description": "Webhook público genérico de criação de leads por time com token na URL."
                   },
                   "response": []
+                },
+                {
+                  "name": "POST /api/webhooks/studio/:teamId (No Token)",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\n  \"name\": \"Maria Silva\",\n  \"email\": \"maria@example.com\",\n  \"phone\": \"+5511999999999\",\n  \"cnpj\": \"12.345.678/0001-95\",\n  \"ages\": \"36, 32, 13\",\n  \"current_health_plan\": \"Unimed\",\n  \"current_value\": 850.5,\n  \"reference_hospital\": \"Hospital Albert Einstein\",\n  \"current_treatment\": \"Cardiology follow-up\",\n  \"source\": \"n8n\",\n  \"metadata\": {\n    \"ad_id\": \"{{adId}}\",\n    \"page_id\": \"{{pageId}}\",\n    \"lead_id\": \"{{externalLeadId}}\",\n    \"created_time\": \"{{createdTime}}\",\n    \"form_name\": \"{{formName}}\"\n  }\n}"
+                    },
+                    "url": {
+                      "raw": "{{baseUrl}}/api/webhooks/studio/{{teamId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "webhooks",
+                        "studio",
+                        "{{teamId}}"
+                      ]
+                    },
+                    "description": "Webhook público genérico de criação de leads por time sem token na URL."
+                  },
+                  "response": []
                 }
               ]
             }
@@ -6149,7 +6180,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["api", "v1", "integrations", "studio-webhook"]
             },
-            "description": "Cria/atualiza token do webhook genérico por time (manual ou automático, com expiração)."
+            "description": "Cria/atualiza configuração do webhook genérico por time (token manual, automático ou sem token, com expiração)."
           },
           "response": []
         },

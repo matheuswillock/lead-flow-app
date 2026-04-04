@@ -11,6 +11,7 @@ export interface BuildStudioWebhookUrlParams {
 
 export type StudioWebhookConfigResponse = {
   configured: boolean;
+  tokenMode: "manual" | "auto" | "none";
   tokenPreview: string | null;
   expiryMode: "hours_24" | "months_6" | "indeterminate";
   expiresAt: string | null;
@@ -21,7 +22,7 @@ export type StudioWebhookConfigResponse = {
 
 export type SaveStudioWebhookConfigPayload = {
   teamId: string;
-  tokenMode: "manual" | "auto";
+  tokenMode: "manual" | "auto" | "none";
   manualToken?: string;
   expiryMode: "hours_24" | "months_6" | "indeterminate";
 };

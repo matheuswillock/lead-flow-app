@@ -23,21 +23,12 @@ const isValidCnpj = (value: string): boolean => {
 export const StudioWebhookLeadRequestSchema = z
   .object({
     name: z.string().trim().min(1, "name is required"),
-    email: z
-      .string()
-      .trim()
-      .email("email must be a valid email")
-      .optional()
-      .or(z.literal(""))
-      .transform((value) => value || undefined),
+    email: z.string().trim().email("email must be a valid email"),
     phone: z
       .string()
       .trim()
       .min(8, "phone is invalid")
-      .max(30, "phone is invalid")
-      .optional()
-      .or(z.literal(""))
-      .transform((value) => value || undefined),
+      .max(30, "phone is invalid"),
     cnpj: z
       .string()
       .trim()
@@ -57,10 +48,6 @@ export const StudioWebhookLeadRequestSchema = z
     source: z.string().trim().optional().or(z.literal("")).transform((value) => value || undefined),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })
-  .strict()
-  .refine((data) => !!data.email || !!data.phone, {
-    message: "Either email or phone is required",
-    path: ["email"],
-  });
+  .strict();
 
 export type StudioWebhookLeadRequest = z.infer<typeof StudioWebhookLeadRequestSchema>;

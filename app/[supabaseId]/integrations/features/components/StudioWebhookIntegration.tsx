@@ -1,13 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CircleAlert, Copy, Save, Webhook } from "lucide-react";
+import { CircleAlert, Copy, Info, Save, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Accordion,
   AccordionContent,
@@ -22,9 +23,10 @@ const expiryModeLabel: Record<"hours_24" | "months_6" | "indeterminate", string>
   indeterminate: "Indeterminado",
 };
 
-const tokenModeLabel: Record<"manual" | "auto", string> = {
+const tokenModeLabel: Record<"manual" | "auto" | "none", string> = {
   manual: "Token manual",
   auto: "Token automático",
+  none: "Sem token",
 };
 
 type WebhookStatusBadgeConfig = {
@@ -52,19 +54,19 @@ const renderStudioJsonSnippet = (json: string): ReactNode[] =>
 
       if (startIndex > lastIndex) {
         tokens.push(
-          <span key={`plain-${lineIndex}-${lastIndex}`} className="text-[#d4d4d4]">
+          <span key={`plain-${lineIndex}-${lastIndex}`} className="text-[#f8f8f2]">
             {line.slice(lastIndex, startIndex)}
           </span>
         );
       }
 
-      let tokenClassName = "text-[#d4d4d4]";
+      let tokenClassName = "text-[#f8f8f2]";
       if (token.startsWith('"')) {
-        tokenClassName = token.trimEnd().endsWith(":") ? "text-[#9cdcfe]" : "text-[#ce9178]";
+        tokenClassName = token.trimEnd().endsWith(":") ? "text-[#8be9fd]" : "text-[#f1fa8c]";
       } else if (token === "true" || token === "false" || token === "null") {
-        tokenClassName = "text-[#569cd6]";
+        tokenClassName = "text-[#ff79c6]";
       } else {
-        tokenClassName = "text-[#b5cea8]";
+        tokenClassName = "text-[#bd93f9]";
       }
 
       tokens.push(
@@ -78,7 +80,7 @@ const renderStudioJsonSnippet = (json: string): ReactNode[] =>
 
     if (lastIndex < line.length) {
       tokens.push(
-        <span key={`tail-${lineIndex}-${lastIndex}`} className="text-[#d4d4d4]">
+          <span key={`tail-${lineIndex}-${lastIndex}`} className="text-[#f8f8f2]">
           {line.slice(lastIndex)}
         </span>
       );
@@ -136,7 +138,8 @@ export function StudioWebhookIntegration() {
   } = useIntegrationsContext();
 
   const urlToDisplay = studioWebhookGeneratedUrl || studioWebhookConfig?.webhookUrlTemplate || "";
-  const hasConcreteTokenUrl = !!studioWebhookGeneratedUrl;
+  const hasTokenPlaceholder = urlToDisplay.includes("[token]");
+  const hasConcreteTokenUrl = Boolean(urlToDisplay) && !hasTokenPlaceholder;
   const hasExistingConfig = studioWebhookConfig?.configured === true;
   const renderedContractJson = renderStudioJsonSnippet(studioWebhookContractJson);
   const isManualTokenFilled = studioWebhookTokenMode !== "manual" || studioWebhookManualToken.trim().length > 0;
@@ -218,7 +221,7 @@ export function StudioWebhookIntegration() {
               </p>
             ) : !hasConcreteTokenUrl ? (
               <p className="text-xs text-muted-foreground">
-                A URL acima é um template. Salve ou regenere o token para obter a URL final com token.
+                A URL acima é um template. Salve a configuração para gerar a URL final conforme o modo selecionado.
               </p>
             ) : null}
           </div>
@@ -228,10 +231,28 @@ export function StudioWebhookIntegration() {
               <div className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Modo do token</Label>
+                    <div className="flex items-center gap-2">
+                      <Label>Modo do token</Label>
+                      <TooltipProvider delayDuration={100}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground transition-colors hover:text-foreground">
+                              <Info className="size-4" />
+                              <span className="sr-only">O que é modo do token</span>
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              Escolha entre gerar um token automaticamente pelo sistema ou definir manualmente um token
+                              próprio para o webhook. Recomendamos manter token ativo para proteger o endpoint.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                     <RadioGroup
                       value={studioWebhookTokenMode}
-                      onValueChange={(value: "manual" | "auto") => setStudioWebhookTokenMode(value)}
+                      onValueChange={(value: "manual" | "auto" | "none") => setStudioWebhookTokenMode(value)}
                       className="grid gap-2"
                       disabled={studioWebhookSaving}
                     >
@@ -257,11 +278,40 @@ export function StudioWebhookIntegration() {
                         />
                         <span>{tokenModeLabel.manual}</span>
                       </label>
+                      <label
+                        htmlFor="studio-webhook-token-none"
+                        className="flex cursor-pointer items-center gap-2 rounded-md border p-3"
+                      >
+                        <RadioGroupItem
+                          id="studio-webhook-token-none"
+                          value="none"
+                          disabled={studioWebhookSaving}
+                        />
+                        <span>{tokenModeLabel.none}</span>
+                      </label>
                     </RadioGroup>
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Expiração do token</Label>
+                    <div className="flex items-center gap-2">
+                      <Label>Expiração do token</Label>
+                      <TooltipProvider delayDuration={100}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button type="button" className="text-muted-foreground transition-colors hover:text-foreground">
+                              <Info className="size-4" />
+                              <span className="sr-only">O que é expiração do token</span>
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              Define por quanto tempo o token do webhook será válido: 24 horas, 6 meses ou sem
+                              expiração.
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                     <RadioGroup
                       value={studioWebhookExpiryMode}
                       onValueChange={(value: "hours_24" | "months_6" | "indeterminate") =>
@@ -324,7 +374,7 @@ export function StudioWebhookIntegration() {
                   <Save className="h-4 w-4 mr-2" />
                   {studioWebhookSaving
                     ? "Salvando..."
-                    : hasExistingConfig
+                    : hasExistingConfig && studioWebhookTokenMode !== "none"
                       ? "Salvar / Regenerar Token"
                       : "Salvar Configuração do Webhook"}
                 </Button>
@@ -333,21 +383,24 @@ export function StudioWebhookIntegration() {
 
             <div className="mt-4 space-y-3 border-t pt-4">
               <h4 className="text-sm font-semibold">Contrato JSON do webhook</h4>
-              <p className="text-sm text-muted-foreground">Use este modelo em inglês para enviar eventos ao webhook.</p>
-              <div className="overflow-x-auto rounded-md border border-[#2f2f2f] bg-[#1e1e1e] p-3">
-                <pre className="font-mono text-xs">{renderedContractJson}</pre>
+              <p className="text-sm text-muted-foreground">Use este para enviar eventos ao webhook do seu corretor studio.</p>
+              <div className="group relative overflow-x-auto rounded-md border border-[#44475a] bg-[#282a36] p-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="pointer-events-none absolute right-3 top-3 z-10 h-8 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+                  onClick={copyStudioWebhookContract}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar modelo
+                </Button>
+                <pre className="pr-24 font-mono text-xs">{renderedContractJson}</pre>
               </div>
-              <Button variant="outline" onClick={copyStudioWebhookContract}>
-                <Copy className="h-4 w-4 mr-2" />
-                Copiar modelo
-              </Button>
               <Alert>
                 <CircleAlert className="h-4 w-4" />
-                <AlertTitle>Importante: campos do webhook</AlertTitle>
                 <AlertDescription className="flex flex-col gap-1">
                   <p>
-                    Obrigatórios: <strong>name</strong> e pelo menos um entre <strong>email</strong> ou{" "}
-                    <strong>phone</strong>.
+                    Obrigatórios: <strong>name</strong>, <strong>email</strong> e <strong>phone</strong>.
                   </p>
                   <p>
                     Opcionais: <strong>cnpj</strong>, <strong>ages</strong>, <strong>current_health_plan</strong>,{" "}

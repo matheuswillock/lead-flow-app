@@ -10,7 +10,7 @@ const ExpiryModeSchema = z.enum(["hours_24", "months_6", "indeterminate"]);
 const StudioWebhookConfigBodySchema = z
   .object({
     teamId: z.string().uuid().optional(),
-    tokenMode: z.enum(["manual", "auto"]),
+    tokenMode: z.enum(["manual", "auto", "none"]),
     manualToken: z
       .string()
       .min(8, "Token manual deve ter ao menos 8 caracteres")
