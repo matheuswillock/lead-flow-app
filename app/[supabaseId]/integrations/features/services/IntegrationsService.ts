@@ -1,10 +1,10 @@
 import type {
   BuildLeadFormUrlParams,
   BuildStudioWebhookUrlParams,
+  IntegrationsBootstrapResponse,
   IIntegrationsService,
   SaveStudioWebhookConfigPayload,
   SaveStudioWebhookConfigResponse,
-  StudioWebhookConfigResponse,
 } from "./IIntegrationsService";
 
 class IntegrationsService implements IIntegrationsService {
@@ -63,7 +63,7 @@ class IntegrationsService implements IIntegrationsService {
     return fallback;
   }
 
-  async getStudioWebhookConfig(supabaseId: string, teamId: string): Promise<StudioWebhookConfigResponse> {
+  async getStudioWebhookConfig(supabaseId: string, teamId: string): Promise<IntegrationsBootstrapResponse> {
     const response = await fetch(`/api/v1/integrations/studio-webhook?teamId=${encodeURIComponent(teamId)}`, {
       method: "GET",
       headers: {
@@ -77,7 +77,7 @@ class IntegrationsService implements IIntegrationsService {
       throw new Error(this.extractErrorMessage(output, "Não foi possível carregar configuração do webhook"));
     }
 
-    return output.result as StudioWebhookConfigResponse;
+    return output.result as IntegrationsBootstrapResponse;
   }
 
   async saveStudioWebhookConfig(

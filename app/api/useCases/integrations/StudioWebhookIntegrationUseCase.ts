@@ -58,6 +58,11 @@ const buildTemplateWebhookUrl = (appUrl: string, teamId: string, tokenMode: Stud
   return `${normalized}/api/webhooks/studio/${teamId}/[token]`;
 };
 
+const buildLeadFormUrl = (appUrl: string, teamId: string): string => {
+  const normalized = normalizeAppUrl(appUrl);
+  return `${normalized}/lead-form/${teamId}`;
+};
+
 const buildWebhookUrl = (appUrl: string, teamId: string, tokenMode: StudioWebhookTokenMode, token?: string): string => {
   const normalized = normalizeAppUrl(appUrl);
 
@@ -83,6 +88,7 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         return new Output(true, [], [], {
           configured: false,
           teamId: input.teamId,
+          leadFormUrl: buildLeadFormUrl(input.appUrl, input.teamId),
           tokenMode: "auto",
           tokenPreview: null,
           expiryMode: "indeterminate",
@@ -98,6 +104,7 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
       return new Output(true, [], [], {
         configured: true,
         teamId: input.teamId,
+        leadFormUrl: buildLeadFormUrl(input.appUrl, input.teamId),
         tokenMode,
         tokenPreview: webhookConfig.tokenPreview,
         expiryMode: webhookConfig.expiryMode,
