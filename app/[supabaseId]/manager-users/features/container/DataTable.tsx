@@ -45,6 +45,18 @@ interface DataTableProps<TData, TValue> {
   loading?: boolean;
 }
 
+function parseDateInput(value: string, endOfDay: boolean) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+
+  const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+  if (endOfDay) {
+    date.setHours(23, 59, 59, 999);
+  }
+
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 export function DataTable<TData, TValue>({
   columns,
   data,
@@ -54,6 +66,8 @@ export function DataTable<TData, TValue>({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
+  const [createdFrom, setCreatedFrom] = React.useState("");
+  const [createdTo, setCreatedTo] = React.useState("");
 
   const table = useReactTable({
     data,
@@ -74,6 +88,26 @@ export function DataTable<TData, TValue>({
     },
   });
 
+  React.useEffect(() => {
+    const createdAtColumn = table.getColumn("createdAt");
+    if (!createdAtColumn) return;
+
+    if (!createdFrom && !createdTo) {
+      createdAtColumn.setFilterValue(undefined);
+      return;
+    }
+
+    const startDate = createdFrom ? parseDateInput(createdFrom, false) : undefined;
+    const endDate = createdTo ? parseDateInput(createdTo, true) : undefined;
+
+    if (!startDate && !endDate) {
+      createdAtColumn.setFilterValue(undefined);
+      return;
+    }
+
+    createdAtColumn.setFilterValue([startDate, endDate]);
+  }, [createdFrom, createdTo, table]);
+
   return (
     <div className="w-full">
       <div className="flex items-center justify-between py-4">
@@ -90,20 +124,50 @@ export function DataTable<TData, TValue>({
             />
           </div>
           <Select
-            value={(table.getColumn("role")?.getFilterValue() as string) ?? "all"}
+            value={(table.getColumn("role")?.getFilterValue() as string) || "all"}
             onValueChange={(value) => 
               table.getColumn("role")?.setFilterValue(value === "all" ? "" : value)
             }
           >
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filtrar por papel" />
+              <SelectValue placeholder="Filtrar por nível" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos os papéis</SelectItem>
+              <SelectItem value="all">Todos os níveis</SelectItem>
               <SelectItem value="manager">Manager</SelectItem>
+              <SelectItem value="backoffice">Backoffice</SelectItem>
               <SelectItem value="operator">Operator</SelectItem>
             </SelectContent>
           </Select>
+          <div className="flex items-center gap-2">
+            <Input
+              type="date"
+              value={createdFrom}
+              onChange={(event) => setCreatedFrom(event.target.value)}
+              className="h-9 w-[150px]"
+              aria-label="Filtro criado em de"
+            />
+            <span className="text-xs text-muted-foreground">até</span>
+            <Input
+              type="date"
+              value={createdTo}
+              onChange={(event) => setCreatedTo(event.target.value)}
+              className="h-9 w-[150px]"
+              aria-label="Filtro criado em até"
+            />
+            {(createdFrom || createdTo) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setCreatedFrom("");
+                  setCreatedTo("");
+                }}
+              >
+                Limpar
+              </Button>
+            )}
+          </div>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

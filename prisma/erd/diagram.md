@@ -104,6 +104,14 @@ LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
 LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
         }
     
+
+
+        studio_webhook_token_expiry_mode {
+            hours_24 hours_24
+months_6 months_6
+indeterminate indeterminate
+        }
+    
   "profiles" {
     String id "🗝️"
     String email 
@@ -150,6 +158,49 @@ LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
     String id "🗝️"
     String name 
     String normalizedName 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_users" {
+    String id "🗝️"
+    String email 
+    Boolean fullAccess 
+    Boolean isActive 
+    String mailboxStatus 
+    String mailboxAddress "❓"
+    DateTime mailboxProvisionedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_clients" {
+    String id "🗝️"
+    String fullName 
+    String email "❓"
+    String phone "❓"
+    String cpfCnpj "❓"
+    String notes "❓"
+    String asaasCustomerId "❓"
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_payments" {
+    String id "🗝️"
+    String asaasPaymentId "❓"
+    String billingType 
+    String status 
+    Decimal amount 
+    DateTime dueDate "❓"
+    String description "❓"
+    String invoiceUrl "❓"
+    String pixQrCode "❓"
+    String pixPayload "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -267,6 +318,18 @@ LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
     }
   
 
+  "team_studio_webhook_configs" {
+    String id "🗝️"
+    String tokenHash 
+    String tokenPreview 
+    StudioWebhookTokenExpiryMode expiryMode 
+    DateTime expiresAt "❓"
+    DateTime lastUsedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "notifications" {
     String id "🗝️"
     NotificationType type 
@@ -318,9 +381,20 @@ LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
     "profiles" o{--}o "teams" : "teamsOwned"
     "profiles" o{--}o "team_members" : "teamMemberships"
     "profiles" o{--}o "health_plan_options" : "createdHealthPlanOptions"
+    "profiles" o{--}o "backoffice_users" : "backofficeUser"
+    "profiles" o{--}o "backoffice_users" : "createdBackofficeUsers"
+    "profiles" o{--}o "backoffice_clients" : "createdBackofficeClients"
+    "profiles" o{--}o "backoffice_payments" : "createdBackofficePayments"
     "profiles" o{--}o "notifications" : "receivedNotifications"
     "profiles" o{--}o "notifications" : "sentNotifications"
+    "profiles" o{--}o "team_studio_webhook_configs" : "updatedStudioWebhookConfigs"
     "health_plan_options" o|--|o "profiles" : "creator"
+    "backoffice_users" o|--|| "profiles" : "profile"
+    "backoffice_users" o|--|o "profiles" : "creator"
+    "backoffice_clients" o|--|o "profiles" : "creator"
+    "backoffice_clients" o{--}o "backoffice_payments" : "payments"
+    "backoffice_payments" o|--|| "backoffice_clients" : "client"
+    "backoffice_payments" o|--|o "profiles" : "creator"
     "leads" o|--|| "LeadStatus" : "enum:status"
     "leads" o|--|o "MeetingHeald" : "enum:meetingHeald"
     "leads" o|--|| "profiles" : "manager"
@@ -353,6 +427,10 @@ LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
     "teams" o{--}o "pending_operators" : "pendingOperators"
     "teams" o{--}o "pending_actions" : "pendingActions"
     "teams" o{--}o "notifications" : "notifications"
+    "teams" o{--}o "team_studio_webhook_configs" : "studioWebhookConfig"
+    "team_studio_webhook_configs" o|--|| "StudioWebhookTokenExpiryMode" : "enum:expiryMode"
+    "team_studio_webhook_configs" o|--|| "teams" : "team"
+    "team_studio_webhook_configs" o|--|| "profiles" : "updatedBy"
     "notifications" o|--|| "NotificationType" : "enum:type"
     "notifications" o|--|| "profiles" : "recipient"
     "notifications" o|--|o "profiles" : "actor"

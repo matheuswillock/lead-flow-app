@@ -297,6 +297,7 @@ export async function upsertCalendarEvent({
   notes: _notes,
   meetingLink,
   extraGuests,
+  attendeeEmails,
   existingEventId,
 }: {
   organizer: Profile;
@@ -308,6 +309,7 @@ export async function upsertCalendarEvent({
   notes?: string | null;
   meetingLink?: string | null;
   extraGuests?: string[];
+  attendeeEmails?: string[];
   existingEventId?: string | null;
 }): Promise<CalendarEventResult> {
   const accessToken = await getValidAccessToken(organizer);
@@ -315,16 +317,18 @@ export async function upsertCalendarEvent({
   const calendarId = "primary";
   const requestId = `lead${lead.id.replace(/-/g, "")}`;
   const endTime = getEventEnd(meetingDate);
-  const attendeeEmails = [
-    lead.email,
-    closerEmail,
-    sdrEmail,
-    ...(extraGuests ?? []),
-  ]
+  const normalizedAttendeeEmails = (attendeeEmails && attendeeEmails.length > 0
+    ? attendeeEmails
+    : [
+        lead.email,
+        closerEmail,
+        sdrEmail,
+        ...(extraGuests ?? []),
+      ])
     .filter(Boolean)
     .map((email) => (email as string).trim().toLowerCase())
     .filter((email, index, list) => list.indexOf(email) === index);
-  const attendees = attendeeEmails.map((email) => ({ email }));
+  const attendees = normalizedAttendeeEmails.map((email) => ({ email }));
 
   const summary = meetingTitle || `Estudo Plano de Saúde: ${lead.name}`;
   const description = "Reunião agendada pelo Corretor Studio.";

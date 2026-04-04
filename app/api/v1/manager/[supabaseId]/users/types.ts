@@ -48,6 +48,7 @@ export interface UserResponseDTO {
   email: string;
   role: UserRole;
   functions?: UserFunction[];
+  profileIconId?: string | null;
   profileIconUrl?: string;
   managerId?: string; // For operators
   createdAt: Date;

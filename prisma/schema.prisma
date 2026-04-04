@@ -124,6 +124,14 @@ enum NotificationType {
   @@map("notification_type")
 }
 
+enum StudioWebhookTokenExpiryMode {
+  hours_24
+  months_6
+  indeterminate
+
+  @@map("studio_webhook_token_expiry_mode")
+}
+
 // -----------------------------
 // PROFILES (public.profiles)
 // - Primary key is also a FK to auth.users.id (1:1)
@@ -198,6 +206,7 @@ model Profile {
   createdBackofficePayments BackofficePayment[] @relation("BackofficePaymentCreator")
   receivedNotifications    Notification[]     @relation("NotificationRecipient")
   sentNotifications        Notification[]     @relation("NotificationActor")
+  updatedStudioWebhookConfigs TeamStudioWebhookConfig[] @relation("StudioWebhookConfigUpdater")
 
   @@index([role])
   @@index([managerId])
@@ -510,9 +519,30 @@ model Team {
   pendingOperators PendingOperator[]
   pendingActions   PendingAction[]
   notifications    Notification[]
+  studioWebhookConfig TeamStudioWebhookConfig?
 
   @@index([masterId])
   @@map("teams")
+}
+
+model TeamStudioWebhookConfig {
+  id                 String                       @id @default(uuid()) @db.Uuid
+  teamId             String                       @unique @db.Uuid
+  tokenHash          String                       @db.Text
+  tokenPreview       String                       @db.Text
+  expiryMode         StudioWebhookTokenExpiryMode @default(indeterminate)
+  expiresAt          DateTime?                    @db.Timestamptz(6)
+  lastUsedAt         DateTime?                    @db.Timestamptz(6)
+  updatedByProfileId String                       @db.Uuid
+  createdAt          DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                     @updatedAt @db.Timestamptz(6)
+
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  updatedBy Profile @relation("StudioWebhookConfigUpdater", fields: [updatedByProfileId], references: [id], onDelete: Restrict)
+
+  @@index([updatedByProfileId])
+  @@index([expiresAt])
+  @@map("team_studio_webhook_configs")
 }
 
 model Notification {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { X } from "lucide-react";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 
 export type ScheduleMeetingSuccessPayload = {
   leadId: string;
@@ -98,11 +99,24 @@ export function ScheduleMeetingDialog({
         : fallbackClosers;
   const isValidDate = (value?: Date): value is Date =>
     value instanceof Date && !Number.isNaN(value.getTime());
+  const selectedCloser = useMemo(
+    () => availableClosers.find((closer) => closer.id === closerId),
+    [availableClosers, closerId]
+  );
+  const requiresManualMeetingLink = !!selectedCloser && !selectedCloser.googleCalendarConnected;
+  const meetingLinkValidation = useMemo(
+    () =>
+      validateMeetingLinkValue(meetingLink, {
+        required: requiresManualMeetingLink,
+      }),
+    [meetingLink, requiresManualMeetingLink]
+  );
   const canSubmit =
     isValidDate(meetingDate) &&
     meetingTitle.trim().length > 0 &&
     !!closerId &&
-    availableTimes.length > 0;
+    availableTimes.length > 0 &&
+    meetingLinkValidation.isValid;
   const hasAvailabilityInputs = isValidDate(meetingDate) && !!closerId && !!supabaseId;
 
   useEffect(() => {
@@ -137,6 +151,7 @@ export function ScheduleMeetingDialog({
           email: member.email || "",
           role: member.role,
           functions: member.functions ?? [],
+          googleCalendarConnected: member.googleCalendarConnected ?? false,
         }));
 
         if (isMounted) {
@@ -313,9 +328,18 @@ export function ScheduleMeetingDialog({
       toast.error("Selecione um closer para a reuniao");
       return;
     }
+    if (requiresManualMeetingLink && !meetingLink.trim()) {
+      toast.error("Este closer não tem Google conectado. Informe um link manual da reunião.");
+      return;
+    }
+    if (!meetingLinkValidation.isValid) {
+      toast.error(meetingLinkValidation.error);
+      return;
+    }
 
     const guests = extraGuests;
     const normalizedNotes = notes || `Reunião agendada com ${lead.name}`;
+    const normalizedMeetingLink = meetingLinkValidation.normalized || "";
 
     setIsSubmitting(true);
     const loadingToast = toast.loading("Agendando reunião...");
@@ -333,7 +357,7 @@ export function ScheduleMeetingDialog({
           date: scheduledMeetingDate.toISOString(),
           meetingTitle: meetingTitle.trim(),
           notes: normalizedNotes,
-          meetingLink: meetingLink || undefined,
+          meetingLink: normalizedMeetingLink || undefined,
           closerId: closerId || undefined,
           extraGuests: guests.length ? guests : undefined,
           transitionStatusToScheduled: true,
@@ -499,7 +523,9 @@ export function ScheduleMeetingDialog({
 
             {/* Link da reunião */}
             <div className="grid gap-2">
-              <Label htmlFor="meetingLink">Link da reunião (opcional)</Label>
+              <Label htmlFor="meetingLink">
+                Link da reunião {requiresManualMeetingLink ? "(obrigatório para este closer)" : "(opcional)"}
+              </Label>
               <Input
                 id="meetingLink"
                 type="url"
@@ -507,6 +533,14 @@ export function ScheduleMeetingDialog({
                 value={meetingLink}
                 onChange={(e) => setMeetingLink(e.target.value)}
               />
+              {requiresManualMeetingLink && (
+                <p className="text-xs text-amber-600">
+                  O closer selecionado não tem Google conectado. Informe manualmente o link da reunião para continuar.
+                </p>
+              )}
+              {meetingLink.trim() && !meetingLinkValidation.isValid && (
+                <p className="text-xs text-destructive">{meetingLinkValidation.error}</p>
+              )}
             </div>
 
             {/* Convidados extras */}
@@ -610,6 +644,11 @@ export function ScheduleMeetingDialog({
               {!teamMembersLoading && !availableClosers.length && (
                 <p className="text-xs text-muted-foreground">
                   Nenhum closer disponível para este time.
+                </p>
+              )}
+              {selectedCloser && !selectedCloser.googleCalendarConnected && (
+                <p className="text-xs text-amber-600">
+                  Este closer está sem Google conectado. O link da reunião deve ser informado manualmente.
                 </p>
               )}
             </div>

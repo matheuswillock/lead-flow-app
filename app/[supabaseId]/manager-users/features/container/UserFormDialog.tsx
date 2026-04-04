@@ -231,7 +231,7 @@ export function UserFormDialog({
     onOpenChange(false);
   };
 
-  // Verificar se é o próprio usuário editando seu papel
+  // Verificar se é o próprio usuário editando seu nível de acesso
   const isOwnProfile = isEditing && user?.id === currentProfileId;
   const isManagerLike = isManagerLikeRole(user?.role);
   const canEditRole = !isOwnProfile || !isManagerLike;
@@ -300,7 +300,7 @@ export function UserFormDialog({
               name="role"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Papel</FormLabel>
+                  <FormLabel>Nível de acesso</FormLabel>
                   <FormControl>
                     <div className="space-y-2">
                       {([
@@ -334,10 +334,10 @@ export function UserFormDialog({
                       })}
                     </div>
                   </FormControl>
-                  <FormDescription>
-                    {!canEditRole 
-                      ? "Usuários de gestão não podem alterar o próprio papel."
-                      : "Define as permissões do usuário na aplicação."
+                    <FormDescription>
+                      {!canEditRole 
+                      ? "Usuários de gestão não podem alterar o próprio nível de acesso."
+                      : "Define o nível de acesso do usuário na aplicação."
                     }
                   </FormDescription>
                   <FormMessage />

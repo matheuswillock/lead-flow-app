@@ -461,12 +461,9 @@ export class LeadUseCase implements ILeadUseCase {
 
         leads = result.leads;
       } else if (teamRole === 'operator') {
-        if (!membership.functions?.includes("SDR")) {
-          return new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
-        }
-
         const result = await this.leadRepository.findAllByOperatorIdInTeam(profileInfo.id, teamId, {
           status: options.status,
+          assignedTo: options.assignedTo,
           search: options.search,
           startDate: options.startDate,
           endDate: options.endDate,

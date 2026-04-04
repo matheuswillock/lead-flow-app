@@ -7,4 +7,5 @@ export type { IAsaasOperatorService } from './AsaasOperator/IAsaasOperatorServic
 export type { IProfileIconService } from './profile/IProfileIconService';
 export type { IDashboardInfosService } from './DashboardInfos/IDashboardInfosService';
 export type { ISubscriptionCheckService } from './SubscriptionCheck/ISubscriptionCheckService';
+export type { IStudioWebhookIntegrationService } from './StudioWebhookIntegration/IStudioWebhookIntegrationService';
 

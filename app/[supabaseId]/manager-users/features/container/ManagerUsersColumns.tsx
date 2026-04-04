@@ -1,7 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal, Pencil, Trash2, Mail } from "lucide-react";
+import { ArrowUpDown, CircleCheck, CircleX, MoreHorizontal, Pencil, Trash2, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -46,6 +46,11 @@ export function createColumns({
       cell: ({ row }) => {
         const user = row.original;
         const userName = user.name || "Usuário";
+        const avatarById =
+          user.profileIconId && process.env.NEXT_PUBLIC_SUPABASE_URL
+            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/profile-icons/${user.profileIconId}`
+            : undefined;
+        const avatarSrc = user.profileIconUrl || avatarById;
         const initials = userName
           .split(" ")
           .map(n => n[0])
@@ -56,7 +61,7 @@ export function createColumns({
         return (
           <div className="flex justify-center">
             <Avatar className="h-8 w-8">
-              <AvatarImage src={user.profileIconUrl} alt={userName} />
+              <AvatarImage src={avatarSrc || undefined} alt={userName} />
               <AvatarFallback className="text-xs">{initials}</AvatarFallback>
             </Avatar>
           </div>
@@ -129,7 +134,7 @@ export function createColumns({
     },
     {
       accessorKey: "role",
-      meta: { label: "Papel" },
+      meta: { label: "Nível de acesso" },
       header: ({ column }) => {
         return (
           <div className="flex justify-center">
@@ -138,7 +143,7 @@ export function createColumns({
               onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
               className="h-auto p-0 font-semibold"
             >
-              Papel
+              Nível de acesso
               <ArrowUpDown className="ml-2 h-4 w-4" />
             </Button>
           </div>
@@ -158,6 +163,37 @@ export function createColumns({
             <Badge variant={roleVariant}>
               {roleLabel}
             </Badge>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "googleCalendarConnected",
+      meta: { label: "Google conectado" },
+      header: ({ column }) => {
+        return (
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+              className="h-auto p-0 font-semibold"
+            >
+              Google conectado
+              <ArrowUpDown className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
+      cell: ({ row }) => {
+        const isConnected = Boolean(row.getValue("googleCalendarConnected"));
+        return (
+          <div className="flex justify-center">
+            {isConnected ? (
+              <CircleCheck className="h-4 w-4 text-emerald-500" aria-hidden />
+            ) : (
+              <CircleX className="h-4 w-4 text-red-500" aria-hidden />
+            )}
+            <span className="sr-only">{isConnected ? "Sim" : "Não"}</span>
           </div>
         );
       },
@@ -338,6 +374,18 @@ export function createColumns({
             {date.toLocaleDateString("pt-BR")}
           </div>
         );
+      },
+      filterFn: (row, id, value) => {
+        if (!Array.isArray(value)) return true;
+
+        const [startDate, endDate] = value as [Date | undefined, Date | undefined];
+        const rowDate = new Date(row.getValue(id) as string);
+
+        if (Number.isNaN(rowDate.getTime())) return false;
+        if (startDate && rowDate < startDate) return false;
+        if (endDate && rowDate > endDate) return false;
+
+        return true;
       },
     },
     {

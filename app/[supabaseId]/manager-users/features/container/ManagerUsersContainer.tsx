@@ -144,7 +144,7 @@ export function ManagerUsersContainer({
               <div>
                 <h3 className="text-lg font-semibold">Acesso Restrito</h3>
                 <p className="text-muted-foreground">
-                  Apenas usuários com papel de gestão (Manager ou Backoffice) podem acessar esta página.
+                  Apenas usuários com nível de gestão (Manager ou Backoffice) podem acessar esta página.
                 </p>
               </div>
             </div>

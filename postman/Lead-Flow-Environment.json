@@ -115,6 +115,55 @@
       "description": "Alias de supabaseUserId"
     },
     {
+      "key": "teamId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID do time ativo para endpoints de integrações e webhook studio"
+    },
+    {
+      "key": "studioWebhookToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Token do webhook studio (retornado no endpoint de configuração)"
+    },
+    {
+      "key": "adId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ad_id opcional no metadata do webhook studio"
+    },
+    {
+      "key": "pageId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "page_id opcional no metadata do webhook studio"
+    },
+    {
+      "key": "externalLeadId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "lead_id opcional no metadata do webhook studio"
+    },
+    {
+      "key": "createdTime",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "created_time opcional no metadata do webhook studio"
+    },
+    {
+      "key": "formName",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "form_name opcional no metadata do webhook studio"
+    },
+    {
       "key": "SUPABASE_ID",
       "value": "",
       "type": "default",

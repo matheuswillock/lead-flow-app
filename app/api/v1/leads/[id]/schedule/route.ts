@@ -5,12 +5,13 @@ import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSc
 import { leadScheduleService } from "@/app/api/services/leadSchedule/LeadScheduleService";
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 
 const scheduleSchema = z.object({
   date: z.string().datetime(),
   meetingTitle: z.string().optional(),
   notes: z.string().optional(),
-  meetingLink: z.string().url("Link da reunião inválido").optional(),
+  meetingLink: z.string().optional(),
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
   extraGuests: z.array(z.string().email("Email inválido")).optional(),
   transitionStatusToScheduled: z.boolean().optional(),
@@ -57,6 +58,14 @@ export async function POST(
       extraGuests,
       transitionStatusToScheduled,
     } = validation.data;
+    const meetingLinkValidation = validateMeetingLinkValue(meetingLink, {
+      required: false,
+    });
+
+    if (!meetingLinkValidation.isValid) {
+      const output = new Output(false, [], [meetingLinkValidation.error], null);
+      return NextResponse.json(output, { status: 400 });
+    }
 
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
@@ -94,7 +103,7 @@ export async function POST(
       meetingDate: date,
       meetingTitle: meetingTitle || "",
       meetingNotes: notes,
-      meetingLink,
+      meetingLink: meetingLinkValidation.normalized,
       extraGuests,
       createdByProfileId: teamAccess.access.profileId,
       transitionStatusToScheduled,

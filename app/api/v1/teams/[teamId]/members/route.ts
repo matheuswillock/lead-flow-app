@@ -110,6 +110,7 @@ export async function GET(
             email: true,
             profileIconUrl: true,
             supabaseId: true,
+            googleCalendarConnected: true,
           },
         },
       },
@@ -123,6 +124,7 @@ export async function GET(
       email: member.profile.email,
       role: member.role,
       functions: member.functions,
+      googleCalendarConnected: member.profile.googleCalendarConnected ?? false,
       profileIconUrl: member.profile.profileIconUrl,
       isMaster: member.profileId === team.masterId,
     }));

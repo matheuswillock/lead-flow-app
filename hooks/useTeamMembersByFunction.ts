@@ -23,6 +23,7 @@ const mapMemberToUserAssociated = (member: any): UserAssociated => ({
   email: member.email || "",
   role: member.role,
   functions: member.functions ?? [],
+  googleCalendarConnected: member.googleCalendarConnected ?? false,
 });
 
 function useTeamMembersByFunction(

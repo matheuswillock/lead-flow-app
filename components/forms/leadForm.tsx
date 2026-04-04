@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Badge } from "../ui/badge";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { Checkbox } from "../ui/checkbox";
+import { Alert, AlertDescription } from "../ui/alert";
 import {
     DropdownMenu,
     DropdownMenuCheckboxItem,
@@ -66,6 +67,8 @@ const normalizeLeadPhoneDigits = (value: string): string => {
     return digits.slice(-11);
 };
 
+export type LeadScheduleField = "meetingDate" | "closerId" | "meetingNotes" | "extraGuests";
+
 export interface ILeadFormProps {
     form: UseFormReturn<leadFormData>;
     onSubmit: (data: leadFormData) => void | Promise<void>;
@@ -93,6 +96,9 @@ export interface ILeadFormProps {
     hasLoadedAvailability?: boolean;
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     showMeetingLink?: boolean;
+    isEditMode?: boolean;
+    scheduleChangeWarning?: boolean;
+    changedScheduleFields?: LeadScheduleField[];
 }
 
 export function LeadForm({
@@ -121,7 +127,10 @@ export function LeadForm({
     availabilityError,
     hasLoadedAvailability = false,
     leadId,
-    showMeetingLink
+    showMeetingLink,
+    isEditMode = false,
+    scheduleChangeWarning = false,
+    changedScheduleFields = []
 }: ILeadFormProps) {
     const [hasChanges, setHasChanges] = useState(false);
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
@@ -200,10 +209,31 @@ export function LeadForm({
             .filter((value) => value && !baseNames.includes(value));
         return [...baseNames, ...extras];
     }, [healthPlanOptions, watchedValues.currentHealthPlan, watchedValues.soldPlan]);
-    const isFormValid = form.formState.isValid;
-    const isSubmitDisabled = !hasChanges || !isFormValid || isLoading || isUpdating;
+    const changedScheduleFieldSet = React.useMemo(
+        () => new Set<LeadScheduleField>(changedScheduleFields),
+        [changedScheduleFields]
+    );
+    const hasBlockingErrors = React.useMemo(() => {
+        const entries = Object.entries(form.formState.errors);
+        if (entries.length === 0) return false;
+
+        return entries.some(([key, error]) => {
+            if (!scheduleChangeWarning) return true;
+            const isChangedScheduleField = changedScheduleFieldSet.has(key as LeadScheduleField);
+            const errorType = (error as { type?: string } | undefined)?.type;
+            if (isChangedScheduleField && errorType === "manual") {
+                return false;
+            }
+            return true;
+        });
+    }, [form.formState.errors, scheduleChangeWarning, changedScheduleFieldSet]);
+    const isSubmitDisabled = !hasChanges || hasBlockingErrors || isLoading || isUpdating;
     const watchedMeetingDate = form.watch("meetingDate");
     const watchedCloserId = form.watch("closerId");
+    const isMeetingDateChanged = scheduleChangeWarning && changedScheduleFieldSet.has("meetingDate");
+    const isCloserChanged = scheduleChangeWarning && changedScheduleFieldSet.has("closerId");
+    const isMeetingNotesChanged = scheduleChangeWarning && changedScheduleFieldSet.has("meetingNotes");
+    const isExtraGuestsChanged = scheduleChangeWarning && changedScheduleFieldSet.has("extraGuests");
     const meetingDateObject = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
     const hasValidMeetingDate =
         meetingDateObject instanceof Date && !Number.isNaN(meetingDateObject.getTime());
@@ -597,6 +627,13 @@ export function LeadForm({
                         />
                     )}
                 </div>
+                {scheduleChangeWarning && changedScheduleFields.length > 0 && (
+                    <Alert variant="destructive" className="mt-3">
+                        <AlertDescription>
+                            Agendamento alterado. Revise os campos em vermelho e confirme o reagendamento ao salvar.
+                        </AlertDescription>
+                    </Alert>
+                )}
             </div>
 
             {/* Data, Horário e Responsável em uma linha no desktop */}
@@ -616,6 +653,7 @@ export function LeadForm({
                                     disabled={isLoading || isUpdating}
                                     disablePastDates={true}
                                     availableTimes={availableTimes}
+                                    invalid={isMeetingDateChanged}
                                 />
                             </FormControl>
                         </FormItem>
@@ -633,10 +671,11 @@ export function LeadForm({
                         const closerIsEmpty = !closerIsLoading && !closerHasError && closers.length === 0;
 
                         useEffect(() => {
+                            if (isEditMode) return;
                             if (!field.value && closers.length === 1) {
                                 field.onChange(closers[0].id);
                             }
-                        }, [closers, field.value, field.onChange]);
+                        }, [closers, field.value, field.onChange, isEditMode]);
 
                         return (
                             <FormItem className="flex flex-col sm:flex-1">
@@ -655,7 +694,13 @@ export function LeadForm({
                                             closerIsEmpty
                                         }
                                     >
-                                        <SelectTrigger className="h-9">
+                                        <SelectTrigger
+                                            className={cn(
+                                                "h-9",
+                                                isCloserChanged && "border-destructive focus:ring-destructive"
+                                            )}
+                                            aria-invalid={isCloserChanged || undefined}
+                                        >
                                             <SelectValue
                                                 placeholder={
                                                     closerIsLoading
@@ -758,8 +803,12 @@ export function LeadForm({
                             <Textarea
                                 {...field}
                                 placeholder="Adicione observacoes sobre a reuniao"
-                                className="min-h-[84px] resize-y"
+                                className={cn(
+                                    "min-h-[84px] resize-y",
+                                    isMeetingNotesChanged && "border-destructive focus-visible:ring-destructive"
+                                )}
                                 disabled={isLoading || isUpdating}
+                                aria-invalid={isMeetingNotesChanged || undefined}
                             />
                         </FormControl>
                     </FormItem>
@@ -822,7 +871,12 @@ export function LeadForm({
                             </FormLabel>
                             <FormControl>
                                 <div className="grid gap-2">
-                                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2">
+                                    <div
+                                        className={cn(
+                                            "flex flex-wrap items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2",
+                                            isExtraGuestsChanged && "border-destructive"
+                                        )}
+                                    >
                                         {selectedEmails.map((email) => (
                                             <Badge key={email} variant="secondary" className="gap-1 pr-1">
                                                 <span>{email}</span>
@@ -839,7 +893,7 @@ export function LeadForm({
                                                 </button>
                                             </Badge>
                                         ))}
-                                        <input
+                                        <Input
                                             type="text"
                                             value={extraGuestsDraft}
                                             onChange={(e) =>
@@ -859,6 +913,7 @@ export function LeadForm({
                                             placeholder="ex: convidado1@email.com, convidado2@email.com"
                                             className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                                             disabled={isLoading || isUpdating}
+                                            aria-invalid={isExtraGuestsChanged || undefined}
                                         />
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

@@ -90,7 +90,7 @@ export interface CloserScheduleNotificationEmailData {
   leadCode?: string | null;
   meetingTitle: string;
   meetingDate: Date;
-  meetingLink: string;
+  meetingLink?: string | null;
   isReschedule: boolean;
   attendees: string[];
   notes?: string | null;
@@ -1025,7 +1025,9 @@ export class EmailService {
     const leadCrmMarkup = leadCrmUrl
       ? `<p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead no Corretor Studio:</strong> <a href="${leadCrmUrl}" style="color: #ff6900; text-decoration: none;">Abrir lead no CRM</a></p>`
       : "";
-    const linkMarkup = `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`;
+    const linkMarkup = data.meetingLink
+      ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
+      : "Link não informado";
     const attendeesMarkup =
       data.attendees.length > 0
         ? `<ul style="margin: 8px 0 0 20px; padding: 0; color: #7c2d12; font-size: 14px;">${data.attendees
