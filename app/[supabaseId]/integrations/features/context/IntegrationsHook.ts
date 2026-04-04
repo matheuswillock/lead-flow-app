@@ -66,6 +66,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
       expiresAt: bootstrap.expiresAt,
       isExpired: bootstrap.isExpired,
       lastUsedAt: bootstrap.lastUsedAt,
+      webhookUrl: bootstrap.webhookUrl,
       webhookUrlTemplate: bootstrap.webhookUrlTemplate,
     });
     setStudioWebhookTokenMode(bootstrap.tokenMode);
@@ -202,6 +203,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
           expiresAt: result.expiresAt,
           isExpired: result.isExpired,
           lastUsedAt: result.lastUsedAt,
+          webhookUrl: result.webhookUrl,
           webhookUrlTemplate: result.webhookUrlTemplate,
         };
         setStudioWebhookConfig(updatedWebhookConfig);
@@ -218,6 +220,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
           expiresAt: updatedWebhookConfig.expiresAt,
           isExpired: updatedWebhookConfig.isExpired,
           lastUsedAt: updatedWebhookConfig.lastUsedAt,
+          webhookUrl: updatedWebhookConfig.webhookUrl,
           webhookUrlTemplate: updatedWebhookConfig.webhookUrlTemplate,
         });
         lastSuccessfulBootstrapKeyRef.current = bootstrapKey;
@@ -245,7 +248,8 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
 
   const copyStudioWebhookUrl = useCallback(() => {
     const executeCopy = async () => {
-      const webhookUrlToCopy = studioWebhookGeneratedUrl || studioWebhookConfig?.webhookUrlTemplate || "";
+      const webhookUrlToCopy =
+        studioWebhookGeneratedUrl || studioWebhookConfig?.webhookUrl || studioWebhookConfig?.webhookUrlTemplate || "";
 
       if (!webhookUrlToCopy) {
         toast.error("Configure o webhook para obter a URL");
@@ -270,7 +274,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
       console.error("[useIntegrations] Erro inesperado ao copiar URL do webhook:", error);
       toast.error("Não foi possível copiar a URL do webhook");
     });
-  }, [studioWebhookGeneratedUrl, studioWebhookConfig?.webhookUrlTemplate]);
+  }, [studioWebhookGeneratedUrl, studioWebhookConfig?.webhookUrl, studioWebhookConfig?.webhookUrlTemplate]);
 
   const copyStudioWebhookContract = useCallback(() => {
     const executeCopy = async () => {

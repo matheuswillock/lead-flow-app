@@ -9,12 +9,103 @@ export type StudioWebhookSqlInspectionResult = {
   rule?: string;
 };
 
+const STUDIO_WEBHOOK_TOKEN_CIPHER_VERSION = "v1";
+const STUDIO_WEBHOOK_TOKEN_DEV_SECRET = "lead-flow-studio-webhook-dev-secret";
+
+const resolveStudioWebhookTokenSecret = (): string | null => {
+  const configuredSecret = process.env.STUDIO_WEBHOOK_TOKEN_SECRET?.trim();
+  if (configuredSecret) {
+    return configuredSecret;
+  }
+
+  const serviceRoleSecret = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (serviceRoleSecret) {
+    return serviceRoleSecret;
+  }
+
+  const databaseSecret = process.env.DATABASE_URL?.trim();
+  if (databaseSecret) {
+    return databaseSecret;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    return STUDIO_WEBHOOK_TOKEN_DEV_SECRET;
+  }
+
+  return null;
+};
+
+const resolveStudioWebhookTokenCipherKey = (): Buffer | null => {
+  const secret = resolveStudioWebhookTokenSecret();
+  if (!secret) {
+    return null;
+  }
+
+  return crypto.createHash("sha256").update(secret).digest();
+};
+
 export const generateStudioWebhookToken = (): string => {
   return crypto.randomBytes(32).toString("hex");
 };
 
 export const hashStudioWebhookToken = (token: string): string => {
   return crypto.createHash("sha256").update(token).digest("hex");
+};
+
+export const encryptStudioWebhookToken = (token: string): string | null => {
+  if (!token) {
+    return null;
+  }
+
+  const key = resolveStudioWebhookTokenCipherKey();
+  if (!key) {
+    return null;
+  }
+
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encryptedBuffer = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return [
+    STUDIO_WEBHOOK_TOKEN_CIPHER_VERSION,
+    iv.toString("base64url"),
+    authTag.toString("base64url"),
+    encryptedBuffer.toString("base64url"),
+  ].join(".");
+};
+
+export const decryptStudioWebhookToken = (tokenCipher: string | null | undefined): string | null => {
+  if (!tokenCipher) {
+    return null;
+  }
+
+  const key = resolveStudioWebhookTokenCipherKey();
+  if (!key) {
+    return null;
+  }
+
+  const [version, ivPart, authTagPart, encryptedPart] = tokenCipher.split(".");
+  if (
+    version !== STUDIO_WEBHOOK_TOKEN_CIPHER_VERSION ||
+    !ivPart ||
+    !authTagPart ||
+    !encryptedPart
+  ) {
+    return null;
+  }
+
+  try {
+    const iv = Buffer.from(ivPart, "base64url");
+    const authTag = Buffer.from(authTagPart, "base64url");
+    const encryptedBuffer = Buffer.from(encryptedPart, "base64url");
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(authTag);
+    const decryptedBuffer = Buffer.concat([decipher.update(encryptedBuffer), decipher.final()]);
+    return decryptedBuffer.toString("utf8");
+  } catch {
+    return null;
+  }
 };
 
 export const safeStudioWebhookTokenEquals = (providedToken: string, expectedTokenHash: string): boolean => {

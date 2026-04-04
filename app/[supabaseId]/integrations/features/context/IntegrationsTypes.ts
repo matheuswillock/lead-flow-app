@@ -10,6 +10,7 @@ export interface IntegrationsState {
     expiresAt: string | null;
     isExpired: boolean;
     lastUsedAt: string | null;
+    webhookUrl: string;
     webhookUrlTemplate: string;
   } | null;
   studioWebhookTokenMode: "manual" | "auto" | "none";

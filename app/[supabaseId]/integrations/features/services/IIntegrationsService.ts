@@ -17,6 +17,7 @@ export type StudioWebhookConfigData = {
   expiresAt: string | null;
   isExpired: boolean;
   lastUsedAt: string | null;
+  webhookUrl: string;
   webhookUrlTemplate: string;
 };
 

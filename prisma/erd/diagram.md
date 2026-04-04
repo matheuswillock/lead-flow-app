@@ -321,6 +321,7 @@ indeterminate indeterminate
   "team_studio_webhook_configs" {
     String id "🗝️"
     String tokenHash 
+    String tokenCipher "❓"
     String tokenPreview 
     StudioWebhookTokenExpiryMode expiryMode 
     DateTime expiresAt "❓"

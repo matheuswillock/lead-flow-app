@@ -13,6 +13,7 @@ export type StudioWebhookConfigSnapshot = {
   id: string;
   teamId: string;
   tokenHash: string;
+  tokenCipher: string | null;
   tokenPreview: string;
   expiryMode: StudioWebhookTokenExpiryMode;
   expiresAt: Date | null;
@@ -25,6 +26,7 @@ export type StudioWebhookConfigSnapshot = {
 export type UpsertStudioWebhookConfigInput = {
   teamId: string;
   tokenHash: string;
+  tokenCipher: string | null;
   tokenPreview: string;
   expiryMode: StudioWebhookTokenExpiryMode;
   expiresAt: Date | null;
