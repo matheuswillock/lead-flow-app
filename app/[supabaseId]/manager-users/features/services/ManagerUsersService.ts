@@ -108,7 +108,7 @@ class ManagerUsersService {
 
   // Verificar se usuário pode editar outro usuário
   canEditUser(currentUserId: string, targetUserId: string, targetUserRole: string): boolean {
-    // Usuário de gestão não pode alterar seu próprio papel
+    // Usuário de gestão não pode alterar seu próprio nível de acesso
     if (currentUserId === targetUserId && isManagerLikeRole(targetUserRole)) {
       return false;
     }

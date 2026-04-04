@@ -47,7 +47,7 @@ export function DeleteUserDialog({
           </p>
           {(user.role === "manager" || user.role === "backoffice") && (
             <p className="text-sm text-orange-600 dark:text-orange-400">
-              ⚠️ Atenção: Este usuário possui papel de gestão e pode ter operators associados.
+              ⚠️ Atenção: Este usuário possui nível de gestão e pode ter operators associados.
             </p>
           )}
         </div>

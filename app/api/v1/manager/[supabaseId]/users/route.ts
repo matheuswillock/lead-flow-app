@@ -126,6 +126,7 @@ export async function POST(
         id: true,
         fullName: true,
         email: true,
+        profileIconId: true,
         profileIconUrl: true,
       },
     });
@@ -228,6 +229,7 @@ export async function POST(
       email: profile.email,
       role: teamMemberRecord.role.toLowerCase(),
       functions: teamMemberRecord.functions,
+      profileIconId: profile.profileIconId,
       profileIconUrl: profile.profileIconUrl,
       managerId: masterId,
       createdAt: teamMemberRecord.createdAt,
@@ -314,8 +316,10 @@ export async function GET(
             id: true,
             fullName: true,
             email: true,
+            profileIconId: true,
             profileIconUrl: true,
             hasPermanentSubscription: true,
+            googleCalendarConnected: true,
             _count: {
               select: {
                 leadsAsAssignee: {
@@ -345,6 +349,7 @@ export async function GET(
         email: member.profile.email,
         role: member.role.toLowerCase(),
         functions: member.functions,
+        profileIconId: member.profile.profileIconId,
         profileIconUrl: member.profile.profileIconUrl,
         managerId: masterId,
         leadsCount: member.profile._count?.leadsAsAssignee ?? 0,
@@ -352,6 +357,7 @@ export async function GET(
         createdAt: member.createdAt,
         updatedAt: member.updatedAt,
         hasPermanentSubscription: member.profile.hasPermanentSubscription,
+        googleCalendarConnected: member.profile.googleCalendarConnected ?? false,
       }));
 
     let pendingAsUsers: any[] = [];
@@ -369,6 +375,7 @@ export async function GET(
         name: pending.name,
         email: pending.email,
         role: String(pending.role).toLowerCase(),
+        profileIconId: null,
         profileIconUrl: null,
         managerId: masterId,
         leadsCount: 0,
@@ -376,6 +383,7 @@ export async function GET(
         createdAt: pending.createdAt,
         updatedAt: pending.updatedAt,
         isPending: true,
+        googleCalendarConnected: false,
         pendingPayment: {
           id: pending.id,
           paymentId: pending.paymentId,
@@ -615,6 +623,7 @@ export async function PUT(
           select: {
             fullName: true,
             email: true,
+            profileIconId: true,
             profileIconUrl: true,
           },
         },
@@ -627,6 +636,7 @@ export async function PUT(
       email: updatedMember?.profile.email,
       role: updatedMember?.role ? updatedMember.role.toLowerCase() : validatedData.role,
       functions: updatedMember?.functions ?? validatedData.functions,
+      profileIconId: updatedMember?.profile.profileIconId,
       profileIconUrl: updatedMember?.profile.profileIconUrl,
       managerId: masterId,
     });

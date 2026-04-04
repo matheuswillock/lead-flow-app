@@ -9,7 +9,9 @@ export interface ManagerUser {
   fullName?: string; // Alias para name
   email: string;
   role: "manager" | "backoffice" | "operator";
+  googleCalendarConnected?: boolean;
   functions?: UserFunction[];
+  profileIconId?: string | null;
   profileIconUrl?: string;
   managerId?: string; // Para operators
   leadsCount?: number; // Contador de leads
@@ -72,7 +74,7 @@ export const CreateManagerUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(100, "Nome muito longo"),
   email: z.string().email("Email inválido"),
   role: z.enum(["manager", "backoffice", "operator"], {
-    message: "Selecione um papel válido"
+    message: "Selecione um nível de acesso válido"
   }),
   functions: z.array(z.enum(["SDR", "CLOSER"]))
     .max(2, "Selecione no máximo 2 funções")
@@ -83,7 +85,7 @@ export const UpdateManagerUserSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").max(100, "Nome muito longo").optional(),
   email: z.string().email("Email inválido").optional(),
   role: z.enum(["manager", "backoffice", "operator"], {
-    message: "Selecione um papel válido"
+    message: "Selecione um nível de acesso válido"
   }).optional(),
   functions: z.array(z.enum(["SDR", "CLOSER"]))
     .max(2, "Selecione no máximo 2 funções")

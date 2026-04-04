@@ -8,6 +8,7 @@ import { notificationService } from "@/app/api/services/notifications/Notificati
 import { Output } from "@/lib/output";
 import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
+import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import type { ILeadScheduleService, CreateScheduleParams } from "./ILeadScheduleService";
 import { buildUniqueEmails, resolveParticipantDispatchGroups } from "./participantDispatch";
 import type { Attachment } from "resend";
@@ -213,15 +214,29 @@ export class LeadScheduleService implements ILeadScheduleService {
       googleRecipients,
       resendRecipients,
     };
+    const manualLinkRequired = !canUseGoogleCalendar;
+    const validatedMeetingLink = validateMeetingLinkValue(meetingLink, {
+      required: manualLinkRequired,
+    });
 
-    if (!canUseGoogleCalendar && !meetingLink?.trim()) {
+    if (!validatedMeetingLink.isValid) {
+      if (manualLinkRequired && !meetingLink?.trim()) {
+        return new Output(
+          false,
+          [],
+          ["Closer sem Google conectado. Informe um link manual da reunião para continuar."],
+          null
+        );
+      }
+
       return new Output(
         false,
         [],
-        ["Closer sem Google conectado. Informe um link manual da reunião para continuar."],
+        [validatedMeetingLink.error],
         null
       );
     }
+    const normalizedMeetingLink = validatedMeetingLink.normalized;
 
     let schedulerLabel = "Usuário";
     try {
@@ -265,7 +280,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           meetingDate,
           meetingTitle: resolvedMeetingTitle,
           notes: meetingNotes,
-          meetingLink,
+          meetingLink: normalizedMeetingLink,
           extraGuests,
           attendeeEmails: googleRecipients,
           existingEventId: existingSchedule?.googleEventId ?? null,
@@ -351,7 +366,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       });
     }
 
-    const resolvedMeetingLink = meetingLink?.trim() || calendarResult?.meetLink || null;
+    const resolvedMeetingLink = normalizedMeetingLink?.trim() || calendarResult?.meetLink || null;
 
     if (!resolvedMeetingLink?.trim()) {
       return new Output(

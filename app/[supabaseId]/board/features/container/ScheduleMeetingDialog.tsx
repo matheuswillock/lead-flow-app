@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { X } from "lucide-react";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 
 export type ScheduleMeetingSuccessPayload = {
   leadId: string;
@@ -98,27 +99,24 @@ export function ScheduleMeetingDialog({
         : fallbackClosers;
   const isValidDate = (value?: Date): value is Date =>
     value instanceof Date && !Number.isNaN(value.getTime());
-  const isValidUrl = (value: string) => {
-    if (!value.trim()) return false;
-    try {
-      const parsed = new URL(value.trim());
-      return parsed.protocol === "http:" || parsed.protocol === "https:";
-    } catch {
-      return false;
-    }
-  };
   const selectedCloser = useMemo(
     () => availableClosers.find((closer) => closer.id === closerId),
     [availableClosers, closerId]
   );
   const requiresManualMeetingLink = !!selectedCloser && !selectedCloser.googleCalendarConnected;
-  const hasValidMeetingLink = isValidUrl(meetingLink);
+  const meetingLinkValidation = useMemo(
+    () =>
+      validateMeetingLinkValue(meetingLink, {
+        required: requiresManualMeetingLink,
+      }),
+    [meetingLink, requiresManualMeetingLink]
+  );
   const canSubmit =
     isValidDate(meetingDate) &&
     meetingTitle.trim().length > 0 &&
     !!closerId &&
     availableTimes.length > 0 &&
-    (!requiresManualMeetingLink || hasValidMeetingLink);
+    meetingLinkValidation.isValid;
   const hasAvailabilityInputs = isValidDate(meetingDate) && !!closerId && !!supabaseId;
 
   useEffect(() => {
@@ -334,14 +332,14 @@ export function ScheduleMeetingDialog({
       toast.error("Este closer não tem Google conectado. Informe um link manual da reunião.");
       return;
     }
-    if (meetingLink.trim() && !hasValidMeetingLink) {
-      toast.error("Informe um link da reunião válido (http/https).");
+    if (!meetingLinkValidation.isValid) {
+      toast.error(meetingLinkValidation.error);
       return;
     }
 
     const guests = extraGuests;
     const normalizedNotes = notes || `Reunião agendada com ${lead.name}`;
-    const normalizedMeetingLink = meetingLink.trim();
+    const normalizedMeetingLink = meetingLinkValidation.normalized || "";
 
     setIsSubmitting(true);
     const loadingToast = toast.loading("Agendando reunião...");
@@ -540,8 +538,8 @@ export function ScheduleMeetingDialog({
                   O closer selecionado não tem Google conectado. Informe manualmente o link da reunião para continuar.
                 </p>
               )}
-              {meetingLink.trim() && !hasValidMeetingLink && (
-                <p className="text-xs text-destructive">Informe uma URL válida com http/https.</p>
+              {meetingLink.trim() && !meetingLinkValidation.isValid && (
+                <p className="text-xs text-destructive">{meetingLinkValidation.error}</p>
               )}
             </div>
 
