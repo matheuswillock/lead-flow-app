@@ -1,46 +1,73 @@
-"use client"
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { LandingHeader } from "@/components/landing/landingHeader";
-import { FeaturesSection } from "@/components/landing/FeaturesSection";
-import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
-import { PricingSection } from "@/components/landing/PricingSection";
-import { div as MotionDiv, h1 as MotionH1, p as MotionP } from "framer-motion/client";
-import { ArrowRight } from "lucide-react";
+import type { Metadata } from "next"
+import Link from "next/link"
+import { ArrowRight } from "lucide-react"
+import { LandingHeader } from "@/components/landing/landingHeader"
+import { FeaturesSection } from "@/components/landing/FeaturesSection"
+import { HowItWorksSection } from "@/components/landing/HowItWorksSection"
+import { PricingSection } from "@/components/landing/PricingSection"
+import { HomeClientRuntime } from "@/components/landing/HomeClientRuntime"
 import { HeartIcon } from "@/components/ui/heart"
-import Link from "next/link";
-// import Link from "next/link";
+import { createPublicPageMetadata } from "@/lib/metadata/policies"
+import { getAbsoluteUrl } from "@/lib/metadata/share"
 
-export default function Home() {
-  const router = useRouter();
-  const [showCookieConsent, setShowCookieConsent] = useState(false);
+const homeTitle = "Corretor Studio | Gestão de Leads para Corretores de Saúde"
+const homeDescription =
+  "CRM para corretores de saúde com pipeline Kanban, gestão de equipe, agenda de reuniões e métricas para aumentar conversão."
 
-  useEffect(() => {
-    const consent = localStorage.getItem("cookieConsent");
-    setShowCookieConsent(!consent);
-  }, []);
+export const metadata: Metadata = createPublicPageMetadata({
+  title: homeTitle,
+  description: homeDescription,
+  canonicalPath: "/",
+})
 
-  useEffect(() => {
-    // Verificar se há token de recovery/invite no hash da URL
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash;
-      if (hash) {
-        const hashParams = new URLSearchParams(hash.substring(1));
-        const type = hashParams.get('type');
-        const accessToken = hashParams.get('access_token');
+export default function HomePage() {
+  const websiteUrl = getAbsoluteUrl("/")
+  const logoUrl = getAbsoluteUrl("/corretor-studio-icon.svg")
 
-        // Se é recovery ou invite, redirecionar para /set-password
-        if ((type === 'recovery' || type === 'invite') && accessToken) {
-          console.info('🔐 Token detectado, redirecionando para /set-password');
-          router.push(`/set-password${hash}`);
-        }
-      }
-    }
-  }, [router]);
+  const websiteSchema = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "Corretor Studio",
+    url: websiteUrl,
+    inLanguage: "pt-BR",
+    description: homeDescription,
+  }
+
+  const organizationSchema = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "Corretor Studio",
+    url: websiteUrl,
+    logo: logoUrl,
+  }
+
+  const softwareApplicationSchema = {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Corretor Studio",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    inLanguage: "pt-BR",
+    url: websiteUrl,
+    description:
+      "Plataforma de gestão de leads para corretores de saúde com CRM, pipeline comercial, times e agendamento de reuniões.",
+  }
 
   return (
     <main className="landing-page min-h-screen bg-background text-foreground">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationSchema) }}
+      />
+
       <LandingHeader />
 
       <section className="relative overflow-hidden min-h-[calc(100dvh-4rem)]">
@@ -55,10 +82,7 @@ export default function Home() {
 
         <div className="relative z-10 mt-8 mx-auto max-w-8xl px-6 sm:px-8 lg:px-10 py-14 md:py-20 min-h-[calc(100dvh-4rem)] flex items-center justify-center">
           <div className="flex flex-col items-center text-center">
-            <MotionDiv
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
+            <div
               className="mx-auto inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1 text-xs sm:text-sm text-muted-foreground shadow-sm backdrop-blur"
               style={{ background: "color-mix(in oklab, var(--card) 60%, transparent)" }}
             >
@@ -66,41 +90,32 @@ export default function Home() {
                 className="inline-block h-2 w-2 rounded-full"
                 style={{ background: "var(--primary)" }}
               />
-              Sistema completo para corretores de saúde
-            </MotionDiv>
+              CRM completo para corretores de saúde
+            </div>
 
-            <MotionH1
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.05 }}
-              className="mt-5 mx-auto max-w-[26ch] sm:max-w-[30ch] md:max-w-none text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight text-foreground text-center"
-            >
+            <h1 className="mt-5 mx-auto max-w-[26ch] sm:max-w-[30ch] md:max-w-none text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight text-foreground text-center">
               <span className="md:block">Corretores comuns mandam</span>
               <span className="md:block">
-                cotações.{" "}
-                <span className="text-primary">Os de Alta</span>
+                cotações. <span className="text-primary">Os de Alta</span>
               </span>
               <span className="md:block">
                 <span className="text-primary">Performance</span> usam Corretor
               </span>
               <span className="md:block">Studio.</span>
-            </MotionH1>
+            </h1>
 
-            <MotionP
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-              className="mt-12 mx-auto max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground leading-6"
-            >
-              Tudo que você precisa para ter mais eficiência no seu dia a dia vendendo planos de saúde.
-            </MotionP>
+            <p className="mt-8 mx-auto max-w-3xl text-base sm:text-lg md:text-xl text-muted-foreground leading-7">
+              O Corretor Studio é um sistema de gestão de leads para corretores de saúde com
+              pipeline Kanban, controle de reuniões, gestão de equipe e indicadores para aumentar
+              conversão em vendas.
+            </p>
 
-            <MotionDiv
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.15 }}
-              className="mt-8 flex justify-center"
-            >
+            <p className="mt-4 mx-auto max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground leading-6">
+              Tudo que você precisa para ter mais eficiência no seu dia a dia vendendo planos de
+              saúde.
+            </p>
+
+            <div className="mt-8 flex justify-center">
               <Link
                 href="#demo"
                 className="cursor-pointer group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
@@ -114,21 +129,23 @@ export default function Home() {
                 Agendar demonstração
                 <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />
               </Link>
-            </MotionDiv>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <FeaturesSection />
+      <div data-nosnippet>
+        <FeaturesSection />
+      </div>
 
-      {/* How It Works Section */}
-      <HowItWorksSection />
+      <div data-nosnippet>
+        <HowItWorksSection />
+      </div>
 
-      {/* Pricing Section */}
-      <PricingSection />
+      <div data-nosnippet>
+        <PricingSection />
+      </div>
 
-      {/* Simple Footer */}
       <footer className="relative border-t" style={{ borderColor: "var(--border)" }}>
         <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
@@ -152,52 +169,7 @@ export default function Home() {
         </div>
       </footer>
 
-      {showCookieConsent && (
-        <div
-          className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-2xl border p-4 shadow-2xl backdrop-blur-xl"
-          style={{
-            borderColor: "rgba(255, 255, 255, 0.12)",
-            background:
-              "linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04))",
-            boxShadow:
-              "0 8px 32px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.06)",
-          }}
-        >
-          <p className="text-sm text-muted-foreground">
-            Usamos cookies para melhorar sua experiência e analisar o uso da plataforma.
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => {
-                localStorage.setItem("cookieConsent", "accepted");
-                setShowCookieConsent(false);
-              }}
-              className="cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold"
-              style={{
-                background: "var(--primary)",
-                color: "var(--primary-foreground)",
-              }}
-            >
-              Aceitar
-            </button>
-            <button
-              onClick={() => {
-                localStorage.setItem("cookieConsent", "declined");
-                setShowCookieConsent(false);
-              }}
-              className="cursor-pointer inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold text-muted-foreground"
-              style={{
-                borderColor: "rgba(255, 255, 255, 0.16)",
-              }}
-            >
-              Recusar
-            </button>
-            <Link className="text-sm underline underline-offset-4" href="/cookies">
-              Saiba mais
-            </Link>
-          </div>
-        </div>
-      )}
+      <HomeClientRuntime />
     </main>
   )
 }
