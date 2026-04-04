@@ -40,6 +40,12 @@ export async function POST(
   { params }: { params: Promise<{ teamId: string; token: string }> }
 ) {
   try {
+    console.info(`${routePrefix} Recebendo webhook...`);
+    console.info(`${routePrefix} Validando parâmetros...`, { params: await params });
+    console.info(`${routePrefix} Validando payload...`);
+    console.info(`${routePrefix} Verificando possíveis injeções de SQL no payload...`);
+
+
     const resolvedParams = await params;
     const paramsValidation = ParamsSchema.safeParse(resolvedParams);
     if (!paramsValidation.success) {
@@ -55,6 +61,8 @@ export async function POST(
     }
 
     const rawBody = await request.json().catch(() => null);
+    console.info(`${routePrefix} Payload recebido:`, rawBody);
+
     if (!rawBody || typeof rawBody !== "object") {
       return NextResponse.json(
         new Output(false, [], ["Invalid JSON payload"], null),
