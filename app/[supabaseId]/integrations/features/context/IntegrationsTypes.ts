@@ -10,12 +10,14 @@ export interface IntegrationsState {
     expiresAt: string | null;
     isExpired: boolean;
     lastUsedAt: string | null;
+    webhookUrl: string;
     webhookUrlTemplate: string;
   } | null;
   studioWebhookTokenMode: "manual" | "auto" | "none";
   studioWebhookManualToken: string;
   studioWebhookExpiryMode: "hours_24" | "months_6" | "indeterminate";
   studioWebhookGeneratedUrl: string;
+  integrationsBootstrapLoading: boolean;
   studioWebhookLoading: boolean;
   studioWebhookSaving: boolean;
   studioWebhookContractJson: string;
@@ -23,7 +25,7 @@ export interface IntegrationsState {
 
 export interface IntegrationsActions {
   copyLeadFormUrl: () => void;
-  loadStudioWebhookConfig: () => void;
+  loadStudioWebhookConfig: () => Promise<void>;
   setStudioWebhookTokenMode: (mode: "manual" | "auto" | "none") => void;
   setStudioWebhookManualToken: (token: string) => void;
   setStudioWebhookExpiryMode: (mode: "hours_24" | "months_6" | "indeterminate") => void;

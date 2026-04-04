@@ -33,6 +33,7 @@ export class StudioWebhookIntegrationService implements IStudioWebhookIntegratio
         id: true,
         teamId: true,
         tokenHash: true,
+        tokenCipher: true,
         tokenPreview: true,
         expiryMode: true,
         expiresAt: true,
@@ -50,6 +51,7 @@ export class StudioWebhookIntegrationService implements IStudioWebhookIntegratio
       create: {
         teamId: input.teamId,
         tokenHash: input.tokenHash,
+        tokenCipher: input.tokenCipher,
         tokenPreview: input.tokenPreview,
         expiryMode: input.expiryMode,
         expiresAt: input.expiresAt,
@@ -57,6 +59,7 @@ export class StudioWebhookIntegrationService implements IStudioWebhookIntegratio
       },
       update: {
         tokenHash: input.tokenHash,
+        tokenCipher: input.tokenCipher,
         tokenPreview: input.tokenPreview,
         expiryMode: input.expiryMode,
         expiresAt: input.expiresAt,
@@ -66,6 +69,7 @@ export class StudioWebhookIntegrationService implements IStudioWebhookIntegratio
         id: true,
         teamId: true,
         tokenHash: true,
+        tokenCipher: true,
         tokenPreview: true,
         expiryMode: true,
         expiresAt: true,

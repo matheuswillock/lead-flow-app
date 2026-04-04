@@ -9,7 +9,7 @@ export interface BuildStudioWebhookUrlParams {
   token: string;
 }
 
-export type StudioWebhookConfigResponse = {
+export type StudioWebhookConfigData = {
   configured: boolean;
   tokenMode: "manual" | "auto" | "none";
   tokenPreview: string | null;
@@ -17,7 +17,12 @@ export type StudioWebhookConfigResponse = {
   expiresAt: string | null;
   isExpired: boolean;
   lastUsedAt: string | null;
+  webhookUrl: string;
   webhookUrlTemplate: string;
+};
+
+export type IntegrationsBootstrapResponse = StudioWebhookConfigData & {
+  leadFormUrl: string;
 };
 
 export type SaveStudioWebhookConfigPayload = {
@@ -27,7 +32,7 @@ export type SaveStudioWebhookConfigPayload = {
   expiryMode: "hours_24" | "months_6" | "indeterminate";
 };
 
-export type SaveStudioWebhookConfigResponse = StudioWebhookConfigResponse & {
+export type SaveStudioWebhookConfigResponse = StudioWebhookConfigData & {
   token: string;
   webhookUrl: string;
 };
@@ -37,7 +42,7 @@ export interface IIntegrationsService {
   buildLeadFormUrl(params: BuildLeadFormUrlParams): string;
   buildStudioWebhookUrl(params: BuildStudioWebhookUrlParams): string;
   copyToClipboard(value: string): Promise<boolean>;
-  getStudioWebhookConfig(supabaseId: string, teamId: string): Promise<StudioWebhookConfigResponse>;
+  getStudioWebhookConfig(supabaseId: string, teamId: string): Promise<IntegrationsBootstrapResponse>;
   saveStudioWebhookConfig(
     supabaseId: string,
     payload: SaveStudioWebhookConfigPayload

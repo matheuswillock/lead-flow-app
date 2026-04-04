@@ -3,6 +3,8 @@ import { Output } from "@/lib/output";
 import {
   buildStudioWebhookTokenPreview,
   computeStudioWebhookTokenExpiry,
+  decryptStudioWebhookToken,
+  encryptStudioWebhookToken,
   generateStudioWebhookToken,
   hashStudioWebhookToken,
   isStudioWebhookTokenExpired,
@@ -58,6 +60,11 @@ const buildTemplateWebhookUrl = (appUrl: string, teamId: string, tokenMode: Stud
   return `${normalized}/api/webhooks/studio/${teamId}/[token]`;
 };
 
+const buildLeadFormUrl = (appUrl: string, teamId: string): string => {
+  const normalized = normalizeAppUrl(appUrl);
+  return `${normalized}/lead-form/${teamId}`;
+};
+
 const buildWebhookUrl = (appUrl: string, teamId: string, tokenMode: StudioWebhookTokenMode, token?: string): string => {
   const normalized = normalizeAppUrl(appUrl);
 
@@ -83,27 +90,39 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
         return new Output(true, [], [], {
           configured: false,
           teamId: input.teamId,
+          leadFormUrl: buildLeadFormUrl(input.appUrl, input.teamId),
           tokenMode: "auto",
           tokenPreview: null,
           expiryMode: "indeterminate",
           expiresAt: null,
           isExpired: false,
           lastUsedAt: null,
+          webhookUrl: buildTemplateWebhookUrl(input.appUrl, input.teamId, "auto"),
           webhookUrlTemplate: buildTemplateWebhookUrl(input.appUrl, input.teamId, "auto"),
         });
       }
 
       const isExpired = isStudioWebhookTokenExpired(webhookConfig.expiresAt);
       const tokenMode = inferTokenModeFromConfig(webhookConfig.tokenPreview);
+      const decryptedToken = decryptStudioWebhookToken(webhookConfig.tokenCipher);
+      const webhookUrl =
+        tokenMode === "none"
+          ? buildWebhookUrl(input.appUrl, input.teamId, tokenMode)
+          : decryptedToken
+            ? buildWebhookUrl(input.appUrl, input.teamId, tokenMode, decryptedToken)
+            : buildTemplateWebhookUrl(input.appUrl, input.teamId, tokenMode);
+
       return new Output(true, [], [], {
         configured: true,
         teamId: input.teamId,
+        leadFormUrl: buildLeadFormUrl(input.appUrl, input.teamId),
         tokenMode,
         tokenPreview: webhookConfig.tokenPreview,
         expiryMode: webhookConfig.expiryMode,
         expiresAt: webhookConfig.expiresAt?.toISOString() ?? null,
         isExpired,
         lastUsedAt: webhookConfig.lastUsedAt?.toISOString() ?? null,
+        webhookUrl,
         webhookUrlTemplate: buildTemplateWebhookUrl(input.appUrl, input.teamId, tokenMode),
       });
     } catch (error) {
@@ -131,12 +150,18 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
       }
 
       const tokenHash = hashStudioWebhookToken(token);
+      const tokenCipher = input.tokenMode === "none" ? null : encryptStudioWebhookToken(token);
       const tokenPreview = input.tokenMode === "none" ? NO_TOKEN_PREVIEW : buildStudioWebhookTokenPreview(token);
       const expiresAt = computeStudioWebhookTokenExpiry(input.expiryMode);
+
+      if (input.tokenMode !== "none" && !tokenCipher) {
+        return new Output(false, [], ["Não foi possível proteger o token do webhook"], null);
+      }
 
       const config = await this.service.upsertWebhookConfig({
         teamId: input.teamId,
         tokenHash,
+        tokenCipher,
         tokenPreview,
         expiryMode: input.expiryMode,
         expiresAt,

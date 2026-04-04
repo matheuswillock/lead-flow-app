@@ -137,7 +137,8 @@ export function StudioWebhookIntegration() {
     copyStudioWebhookContract,
   } = useIntegrationsContext();
 
-  const urlToDisplay = studioWebhookGeneratedUrl || studioWebhookConfig?.webhookUrlTemplate || "";
+  const urlToDisplay =
+    studioWebhookGeneratedUrl || studioWebhookConfig?.webhookUrl || studioWebhookConfig?.webhookUrlTemplate || "";
   const hasTokenPlaceholder = urlToDisplay.includes("[token]");
   const hasConcreteTokenUrl = Boolean(urlToDisplay) && !hasTokenPlaceholder;
   const hasExistingConfig = studioWebhookConfig?.configured === true;

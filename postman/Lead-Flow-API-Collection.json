@@ -6149,7 +6149,7 @@
                 { "key": "teamId", "value": "{{teamId}}" }
               ]
             },
-            "description": "Retorna configuração atual do webhook genérico do time ativo."
+            "description": "Retorna bootstrap da página de integrações do time ativo (leadFormUrl + configuração atual do webhook genérico)."
           },
           "response": []
         },

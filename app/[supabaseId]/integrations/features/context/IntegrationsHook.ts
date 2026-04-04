@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { integrationsService } from "../services/IntegrationsService";
 import type { IntegrationsState, IntegrationsActions } from "./IntegrationsTypes";
+import type { IntegrationsBootstrapResponse } from "../services/IIntegrationsService";
 
 const STUDIO_WEBHOOK_CONTRACT_JSON = `{
   "name": "Maria Silva",
@@ -26,55 +27,131 @@ const STUDIO_WEBHOOK_CONTRACT_JSON = `{
   }
 }`;
 
+const integrationsBootstrapInFlightByKey = new Map<string, Promise<IntegrationsBootstrapResponse>>();
+const integrationsBootstrapCacheByKey = new Map<string, IntegrationsBootstrapResponse>();
+
+const buildBootstrapKey = (supabaseId: string, teamId: string): string => `${supabaseId}:${teamId}`;
+
 export function useIntegrations(supabaseId: string): IntegrationsState & IntegrationsActions {
   const { activeTeamId } = useTeamContext();
+  const [leadFormUrl, setLeadFormUrl] = useState("");
   const [studioWebhookConfig, setStudioWebhookConfig] = useState<IntegrationsState["studioWebhookConfig"]>(null);
+  const [integrationsBootstrapLoading, setIntegrationsBootstrapLoading] = useState(false);
   const [studioWebhookLoading, setStudioWebhookLoading] = useState(false);
   const [studioWebhookSaving, setStudioWebhookSaving] = useState(false);
   const [studioWebhookTokenMode, setStudioWebhookTokenMode] = useState<"manual" | "auto" | "none">("auto");
   const [studioWebhookManualToken, setStudioWebhookManualToken] = useState("");
   const [studioWebhookExpiryMode, setStudioWebhookExpiryMode] = useState<"hours_24" | "months_6" | "indeterminate">("months_6");
   const [studioWebhookGeneratedUrl, setStudioWebhookGeneratedUrl] = useState("");
+  const inFlightBootstrapKeyRef = useRef<string | null>(null);
+  const lastSuccessfulBootstrapKeyRef = useRef<string | null>(null);
+  const currentBootstrapKeyRef = useRef<string | null>(null);
 
-  const appUrl = useMemo(() => integrationsService.resolveAppUrl(), []);
+  const resetBootstrapState = useCallback(() => {
+    setLeadFormUrl("");
+    setStudioWebhookConfig(null);
+    setStudioWebhookTokenMode("auto");
+    setStudioWebhookExpiryMode("months_6");
+    setStudioWebhookManualToken("");
+    setStudioWebhookGeneratedUrl("");
+  }, []);
 
-  const leadFormUrl = useMemo(() => {
-    if (!activeTeamId) return "";
-    return integrationsService.buildLeadFormUrl({
-      appUrl,
-      teamId: activeTeamId,
+  const applyBootstrapResult = useCallback((bootstrap: IntegrationsBootstrapResponse) => {
+    setLeadFormUrl(bootstrap.leadFormUrl);
+    setStudioWebhookConfig({
+      configured: bootstrap.configured,
+      tokenMode: bootstrap.tokenMode,
+      tokenPreview: bootstrap.tokenPreview,
+      expiryMode: bootstrap.expiryMode,
+      expiresAt: bootstrap.expiresAt,
+      isExpired: bootstrap.isExpired,
+      lastUsedAt: bootstrap.lastUsedAt,
+      webhookUrl: bootstrap.webhookUrl,
+      webhookUrlTemplate: bootstrap.webhookUrlTemplate,
     });
-  }, [appUrl, activeTeamId]);
+    setStudioWebhookTokenMode(bootstrap.tokenMode);
+    setStudioWebhookExpiryMode(bootstrap.expiryMode);
+    setStudioWebhookManualToken("");
+    setStudioWebhookGeneratedUrl("");
+  }, []);
 
-  const loadStudioWebhookConfig = useCallback(() => {
-    const executeLoad = async () => {
-      if (!activeTeamId) {
-        setStudioWebhookConfig(null);
+  const loadStudioWebhookConfig = useCallback(async () => {
+    if (!activeTeamId) {
+      currentBootstrapKeyRef.current = null;
+      inFlightBootstrapKeyRef.current = null;
+      lastSuccessfulBootstrapKeyRef.current = null;
+      setIntegrationsBootstrapLoading(false);
+      setStudioWebhookLoading(false);
+      resetBootstrapState();
+      return;
+    }
+
+    const requestKey = buildBootstrapKey(supabaseId, activeTeamId);
+    currentBootstrapKeyRef.current = requestKey;
+
+    if (lastSuccessfulBootstrapKeyRef.current === requestKey) {
+      setIntegrationsBootstrapLoading(false);
+      setStudioWebhookLoading(false);
+      return;
+    }
+
+    if (inFlightBootstrapKeyRef.current === requestKey) {
+      return;
+    }
+
+    const cachedBootstrap = integrationsBootstrapCacheByKey.get(requestKey);
+    if (cachedBootstrap) {
+      applyBootstrapResult(cachedBootstrap);
+      lastSuccessfulBootstrapKeyRef.current = requestKey;
+      setIntegrationsBootstrapLoading(false);
+      setStudioWebhookLoading(false);
+      return;
+    }
+
+    setIntegrationsBootstrapLoading(true);
+    setStudioWebhookLoading(true);
+    inFlightBootstrapKeyRef.current = requestKey;
+
+    const existingRequest = integrationsBootstrapInFlightByKey.get(requestKey);
+    const requestPromise =
+      existingRequest ??
+      integrationsService.getStudioWebhookConfig(supabaseId, activeTeamId).finally(() => {
+        integrationsBootstrapInFlightByKey.delete(requestKey);
+      });
+
+    if (!existingRequest) {
+      integrationsBootstrapInFlightByKey.set(requestKey, requestPromise);
+    }
+
+    try {
+      const bootstrap = await requestPromise;
+      integrationsBootstrapCacheByKey.set(requestKey, bootstrap);
+
+      if (currentBootstrapKeyRef.current !== requestKey) {
         return;
       }
 
-      setStudioWebhookLoading(true);
-      try {
-        const config = await integrationsService.getStudioWebhookConfig(supabaseId, activeTeamId);
-        setStudioWebhookConfig(config);
-        setStudioWebhookExpiryMode(config.expiryMode);
-        setStudioWebhookTokenMode(config.tokenMode);
-      } catch (error) {
-        console.error("[useIntegrations] Erro ao carregar configuração do webhook:", error);
-        toast.error(error instanceof Error ? error.message : "Não foi possível carregar o webhook");
-      } finally {
+      applyBootstrapResult(bootstrap);
+      lastSuccessfulBootstrapKeyRef.current = requestKey;
+    } catch (error) {
+      if (currentBootstrapKeyRef.current === requestKey) {
+        resetBootstrapState();
+      }
+      console.error("[useIntegrations] Erro ao carregar configuração de integrações:", error);
+      toast.error(error instanceof Error ? error.message : "Não foi possível carregar as integrações");
+    } finally {
+      if (currentBootstrapKeyRef.current === requestKey) {
+        setIntegrationsBootstrapLoading(false);
         setStudioWebhookLoading(false);
       }
-    };
-
-    executeLoad().catch((error) => {
-      console.error("[useIntegrations] Erro inesperado ao carregar webhook:", error);
-      setStudioWebhookLoading(false);
-    });
-  }, [activeTeamId, supabaseId]);
+      if (inFlightBootstrapKeyRef.current === requestKey) {
+        inFlightBootstrapKeyRef.current = null;
+      }
+    }
+  }, [activeTeamId, applyBootstrapResult, resetBootstrapState, supabaseId]);
 
   useEffect(() => {
-    loadStudioWebhookConfig();
+    void loadStudioWebhookConfig();
   }, [loadStudioWebhookConfig]);
 
   const copyLeadFormUrl = useCallback(() => {
@@ -122,7 +199,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         });
 
         setStudioWebhookGeneratedUrl(result.webhookUrl);
-        setStudioWebhookConfig({
+        const updatedWebhookConfig: IntegrationsState["studioWebhookConfig"] = {
           configured: result.configured,
           tokenMode: result.tokenMode,
           tokenPreview: result.tokenPreview,
@@ -130,9 +207,27 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
           expiresAt: result.expiresAt,
           isExpired: result.isExpired,
           lastUsedAt: result.lastUsedAt,
+          webhookUrl: result.webhookUrl,
           webhookUrlTemplate: result.webhookUrlTemplate,
-        });
+        };
+        setStudioWebhookConfig(updatedWebhookConfig);
         setStudioWebhookManualToken("");
+
+        const bootstrapKey = buildBootstrapKey(supabaseId, activeTeamId);
+        const cachedBootstrap = integrationsBootstrapCacheByKey.get(bootstrapKey);
+        integrationsBootstrapCacheByKey.set(bootstrapKey, {
+          leadFormUrl: cachedBootstrap?.leadFormUrl ?? leadFormUrl,
+          configured: updatedWebhookConfig.configured,
+          tokenMode: updatedWebhookConfig.tokenMode,
+          tokenPreview: updatedWebhookConfig.tokenPreview,
+          expiryMode: updatedWebhookConfig.expiryMode,
+          expiresAt: updatedWebhookConfig.expiresAt,
+          isExpired: updatedWebhookConfig.isExpired,
+          lastUsedAt: updatedWebhookConfig.lastUsedAt,
+          webhookUrl: updatedWebhookConfig.webhookUrl,
+          webhookUrlTemplate: updatedWebhookConfig.webhookUrlTemplate,
+        });
+        lastSuccessfulBootstrapKeyRef.current = bootstrapKey;
         toast.success("Webhook configurado com sucesso");
       } catch (error) {
         console.error("[useIntegrations] Erro ao salvar webhook:", error);
@@ -148,6 +243,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     });
   }, [
     activeTeamId,
+    leadFormUrl,
     studioWebhookTokenMode,
     studioWebhookManualToken,
     studioWebhookExpiryMode,
@@ -156,7 +252,8 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
 
   const copyStudioWebhookUrl = useCallback(() => {
     const executeCopy = async () => {
-      const webhookUrlToCopy = studioWebhookGeneratedUrl || studioWebhookConfig?.webhookUrlTemplate || "";
+      const webhookUrlToCopy =
+        studioWebhookGeneratedUrl || studioWebhookConfig?.webhookUrl || studioWebhookConfig?.webhookUrlTemplate || "";
 
       if (!webhookUrlToCopy) {
         toast.error("Configure o webhook para obter a URL");
@@ -181,7 +278,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
       console.error("[useIntegrations] Erro inesperado ao copiar URL do webhook:", error);
       toast.error("Não foi possível copiar a URL do webhook");
     });
-  }, [studioWebhookGeneratedUrl, studioWebhookConfig?.webhookUrlTemplate]);
+  }, [studioWebhookGeneratedUrl, studioWebhookConfig?.webhookUrl, studioWebhookConfig?.webhookUrlTemplate]);
 
   const copyStudioWebhookContract = useCallback(() => {
     const executeCopy = async () => {
@@ -209,6 +306,7 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     studioWebhookManualToken,
     studioWebhookExpiryMode,
     studioWebhookGeneratedUrl,
+    integrationsBootstrapLoading,
     studioWebhookLoading,
     studioWebhookSaving,
     studioWebhookContractJson: STUDIO_WEBHOOK_CONTRACT_JSON,

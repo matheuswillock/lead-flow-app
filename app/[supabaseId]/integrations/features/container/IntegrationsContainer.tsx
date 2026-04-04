@@ -2,16 +2,23 @@
 
 import { LeadFormIntegration } from "../components/LeadFormIntegration";
 import { StudioWebhookIntegration } from "../components/StudioWebhookIntegration";
+import { IntegrationsPageSkeleton } from "../components/IntegrationsPageSkeleton";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess";
+import { useIntegrationsContext } from "../context/IntegrationsContext";
 
 export function IntegrationsContainer() {
-  const { activeTeam } = useTeamContext();
+  const { activeTeam, isLoading: isTeamLoading } = useTeamContext();
+  const { integrationsBootstrapLoading } = useIntegrationsContext();
   const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
+
+  if (isTeamLoading || (canAccessIntegrations && integrationsBootstrapLoading)) {
+    return <IntegrationsPageSkeleton />;
+  }
 
   if (!canAccessIntegrations) {
     return (
-      <div className="space-y-6 p-6">
+      <div className="flex flex-col gap-6 p-6">
         <div>
           <h1 className="text-2xl font-semibold">Integrações</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -30,7 +37,7 @@ export function IntegrationsContainer() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="flex flex-col gap-6 p-6">
       <div>
         <h1 className="text-2xl font-semibold">Integrações</h1>
         <p className="mt-1 text-sm text-muted-foreground">
