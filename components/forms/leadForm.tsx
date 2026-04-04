@@ -893,7 +893,7 @@ export function LeadForm({
                                                 </button>
                                             </Badge>
                                         ))}
-                                        <input
+                                        <Input
                                             type="text"
                                             value={extraGuestsDraft}
                                             onChange={(e) =>

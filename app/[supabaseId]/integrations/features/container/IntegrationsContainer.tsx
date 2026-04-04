@@ -1,6 +1,7 @@
 "use client";
 
 import { LeadFormIntegration } from "../components/LeadFormIntegration";
+import { StudioWebhookIntegration } from "../components/StudioWebhookIntegration";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess";
 
@@ -38,6 +39,7 @@ export function IntegrationsContainer() {
       </div>
 
       <LeadFormIntegration />
+      <StudioWebhookIntegration />
     </div>
   );
 }
