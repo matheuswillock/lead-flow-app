@@ -1,8 +1,12 @@
+import type { Metadata } from "next"
 import { cookies } from "next/headers"
 import { UserProvider } from "@/app/context/UserContext"
 import { TeamProvider } from "@/app/context/TeamContext"
 import { LayoutContent } from "./components/LayoutContent"
 import { NotificationsProvider } from "./notifications/features/context/NotificationsContext"
+import { NO_INDEX_METADATA } from "@/lib/metadata/policies"
+
+export const metadata: Metadata = NO_INDEX_METADATA
 
 interface ProtectedLayoutProps {
   children: React.ReactNode
