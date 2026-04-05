@@ -1,9 +1,13 @@
 import { ILeadUseCase } from "./ILeadUseCase";
-import type { LeadCreateOptions, LeadCreationActivityContext } from "./ILeadUseCase";
+import type {
+  LeadCreateOptions,
+  LeadCreationActivityContext,
+  UpdateLeadStatusTriggerInput,
+} from "./ILeadUseCase";
 import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
 import { IProfileUseCase } from "../profiles/IProfileUseCase";
 import { Output } from "@/lib/output";
-import { LeadStatus, ActivityType, InviteDispatchStatus, Prisma } from "@prisma/client";
+import { LeadStatus, ActivityType, InviteDispatchStatus, Prisma, TeamStatusRuleType } from "@prisma/client";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
@@ -21,12 +25,14 @@ import { isManagerLikeRole } from "@/lib/roles";
 import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { Attachment } from "resend";
+import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
   scheduled: "Agendado",
   no_show: "No Show",
   pricingRequest: "Cotação",
+  future_sale: "Venda Futura",
   offerNegotiation: "Negociação",
   pending_documents: "Documentos pendentes",
   offerSubmission: "Proposta",
@@ -673,7 +679,12 @@ export class LeadUseCase implements ILeadUseCase {
     }
   }
 
-  async updateLeadStatus(supabaseId: string, id: string, status: LeadStatus): Promise<Output> {
+  async updateLeadStatus(
+    supabaseId: string,
+    id: string,
+    status: LeadStatus,
+    trigger?: UpdateLeadStatusTriggerInput
+  ): Promise<Output> {
     try {
       // Verificar se o usuário existe e tem permissão
       const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
@@ -688,6 +699,61 @@ export class LeadUseCase implements ILeadUseCase {
       
       if (!existingLead) {
         return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      const activeStatusRules = existingLead.teamId
+        ? await teamStatusRuleService.findActiveByTargetStatus(existingLead.teamId, status)
+        : [];
+
+      const disabledStatusRule = activeStatusRules.find(
+        (rule) => rule.type === TeamStatusRuleType.disabled_status
+      );
+      if (disabledStatusRule) {
+        return new Output(
+          false,
+          [],
+          [`O status ${getStatusLabel(status)} está desabilitado para este time.`],
+          null
+        );
+      }
+
+      const combinedTransitionRules = activeStatusRules.filter(
+        (rule) =>
+          rule.type === TeamStatusRuleType.combined_transition &&
+          rule.requiredStatus
+      );
+
+      for (const rule of combinedTransitionRules) {
+        if (existingLead.status === rule.requiredStatus) {
+          continue;
+        }
+
+        const defaultConfirmationMessage = `Regra de transição: confirme mover para ${getStatusLabel(
+          status
+        )} sem o pré-requisito ${getStatusLabel(rule.requiredStatus!)}.`;
+        const defaultBlockingMessage = `Regra de transição: o lead só pode ser movido para ${getStatusLabel(
+          status
+        )} quando estiver em ${getStatusLabel(rule.requiredStatus!)}.`;
+
+        if (rule.requireConfirmation) {
+          if (trigger?.confirmRuleId === rule.id) {
+            continue;
+          }
+
+          return new Output(false, [], [rule.confirmationMessage || defaultConfirmationMessage], {
+            requiresConfirmation: true,
+            confirmationRuleId: rule.id,
+            targetStatus: status,
+            requiredStatus: rule.requiredStatus,
+            confirmationMessage: rule.confirmationMessage || null,
+          });
+        }
+
+        return new Output(false, [], [rule.confirmationMessage || defaultBlockingMessage], {
+          requiresConfirmation: false,
+          targetStatus: status,
+          requiredStatus: rule.requiredStatus,
+        });
       }
 
       if (status === LeadStatus.scheduled) {
@@ -712,8 +778,41 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
+      const statusUpdateExtraData: Prisma.LeadUpdateInput = {};
+
+      if (status === LeadStatus.future_sale) {
+        const followUpAt = trigger?.followUpAt ? new Date(trigger.followUpAt) : null;
+        if (!followUpAt || Number.isNaN(followUpAt.getTime())) {
+          return new Output(
+            false,
+            [],
+            ["Venda Futura exige data válida para entrar em contato."],
+            null
+          );
+        }
+
+        statusUpdateExtraData.followUpAt = followUpAt;
+        statusUpdateExtraData.followUpNotes = trigger?.followUpNotes?.trim() || null;
+        statusUpdateExtraData.followUpSourceStatus = existingLead.status;
+      }
+
+      if (status === LeadStatus.opportunityLost || status === LeadStatus.operator_denied) {
+        const reason = trigger?.reason?.trim() || "";
+        if (!reason) {
+          return new Output(
+            false,
+            [],
+            ["Informe o motivo para concluir a mudança de status."],
+            null
+          );
+        }
+
+        statusUpdateExtraData.lossReason = reason;
+        statusUpdateExtraData.lossReasonDetails = trigger?.reasonDetails?.trim() || null;
+      }
+
       // Atualizar o status do lead
-      const lead = await this.leadRepository.updateStatus(id, status);
+      const lead = await this.leadRepository.updateStatus(id, status, statusUpdateExtraData);
 
       // Se o status for contract_finalized, criar registro na tabela LeadFinalized
       if (status === LeadStatus.contract_finalized) {
@@ -747,6 +846,14 @@ export class LeadUseCase implements ILeadUseCase {
                 to: status,
                 fromLabel,
                 toLabel,
+                ...(status === LeadStatus.future_sale && {
+                  followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
+                  followUpNotes: lead.followUpNotes || null,
+                }),
+                ...((status === LeadStatus.opportunityLost || status === LeadStatus.operator_denied) && {
+                  lossReason: lead.lossReason || null,
+                  lossReasonDetails: lead.lossReasonDetails || null,
+                }),
               },
               createdBy: profileInfo.id,
             },
@@ -771,6 +878,45 @@ export class LeadUseCase implements ILeadUseCase {
             });
           } catch (error) {
             console.warn("Não foi possível registrar atividade de no-show:", error);
+          }
+        }
+
+        if (status === LeadStatus.future_sale) {
+          try {
+            await prisma.leadActivity.create({
+              data: {
+                leadId: id,
+                type: ActivityType.note,
+                body: `Contato futuro agendado por ${actorLabel}`,
+                payload: {
+                  followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
+                  followUpNotes: lead.followUpNotes || null,
+                },
+                createdBy: profileInfo.id,
+              },
+            });
+          } catch (error) {
+            console.warn("Não foi possível registrar atividade de venda futura:", error);
+          }
+        }
+
+        if (status === LeadStatus.opportunityLost || status === LeadStatus.operator_denied) {
+          try {
+            await prisma.leadActivity.create({
+              data: {
+                leadId: id,
+                type: ActivityType.note,
+                body: `Motivo registrado por ${actorLabel}: ${lead.lossReason || "Não informado"}`,
+                payload: {
+                  status,
+                  reason: lead.lossReason || null,
+                  reasonDetails: lead.lossReasonDetails || null,
+                },
+                createdBy: profileInfo.id,
+              },
+            });
+          } catch (error) {
+            console.warn("Não foi possível registrar motivo do status:", error);
           }
         }
 
@@ -929,6 +1075,12 @@ export class LeadUseCase implements ILeadUseCase {
       meetingNotes: lead.meetingNotes,
       meetingLink: lead.meetingLink,
       meetingHeald: lead.meetingHeald,
+      followUpAt: lead.followUpAt ? lead.followUpAt.toISOString() : null,
+      followUpNotes: lead.followUpNotes ?? null,
+      followUpSourceStatus: lead.followUpSourceStatus ?? null,
+      lossReason: lead.lossReason ?? null,
+      lossReasonDetails: lead.lossReasonDetails ?? null,
+      statusEnteredAt: lead.statusEnteredAt ? lead.statusEnteredAt.toISOString() : null,
       closerId: lead.closerId ?? null,
       notes: lead.notes,
       createdBy: lead.createdBy,
@@ -939,6 +1091,8 @@ export class LeadUseCase implements ILeadUseCase {
       ticket: lead.ticket ? Number(lead.ticket) : null,
       contractDueDate: lead.contractDueDate ? lead.contractDueDate.toISOString() : null,
       soldPlan: lead.soldPlan,
+      leadTimeDueAt: lead.leadTimeDueAt ?? null,
+      isLeadTimeBreached: lead.isLeadTimeBreached ?? false,
       attachmentCount: lead._count?.attachments || lead.attachments?.length || 0,
       ...(lead.manager && {
         manager: {

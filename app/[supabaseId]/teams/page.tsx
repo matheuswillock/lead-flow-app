@@ -11,12 +11,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
 import { TeamCheckoutStep } from "./features/checkout/TeamCheckoutStep";
@@ -39,9 +41,104 @@ type EligibleProfile = {
   email: string;
 };
 
+const STATUS_OPTIONS = [
+  { value: "new_opportunity", label: "Nova oportunidade" },
+  { value: "scheduled", label: "Agendado" },
+  { value: "no_show", label: "No Show" },
+  { value: "pricingRequest", label: "Cotação" },
+  { value: "future_sale", label: "Venda Futura" },
+  { value: "offerNegotiation", label: "Negociação" },
+  { value: "pending_documents", label: "Documentos pendentes" },
+  { value: "offerSubmission", label: "Proposta" },
+  { value: "dps_agreement", label: "DPS | Contrato" },
+  { value: "invoicePayment", label: "Boleto" },
+  { value: "disqualified", label: "Desqualificado" },
+  { value: "opportunityLost", label: "Perdido" },
+  { value: "operator_denied", label: "Negado operadora" },
+  { value: "contract_finalized", label: "Negócio fechado" },
+] as const;
+
+type LeadTimeRuleDraft = {
+  leadTimeValue: string;
+  leadTimeUnit: "hours" | "days";
+};
+
+type CombinedRuleDraft = {
+  id: string;
+  targetStatus: string;
+  requiredStatus: string;
+  requireConfirmation: boolean;
+  confirmationMessage: string;
+  isEnabled: boolean;
+};
+
+type StatusOptionValue = (typeof STATUS_OPTIONS)[number]["value"];
+
+type TeamStatusRulesSnapshot = {
+  disabledStatuses: string[];
+  leadTimeRules: Array<{
+    status: string;
+    leadTimeValue: number;
+    leadTimeUnit: "hours" | "days";
+  }>;
+  combinedRules: Array<{
+    targetStatus: string;
+    requiredStatus: string;
+    requireConfirmation: boolean;
+    confirmationMessage: string | null;
+    isEnabled: boolean;
+  }>;
+};
+
+const buildTeamStatusRulesSnapshot = (input: {
+  disabledStatuses: string[];
+  leadTimeRules: Record<string, LeadTimeRuleDraft>;
+  combinedRules: CombinedRuleDraft[];
+}): TeamStatusRulesSnapshot => {
+  const disabledStatuses = Array.from(new Set(input.disabledStatuses || [])).sort((a, b) =>
+    a.localeCompare(b)
+  );
+
+  const leadTimeRules = Object.entries(input.leadTimeRules || {})
+    .map(([status, value]) => {
+      const leadTimeUnit: "hours" | "days" = value.leadTimeUnit === "days" ? "days" : "hours";
+      return {
+        status,
+        leadTimeValue: Number(value.leadTimeValue),
+        leadTimeUnit,
+      };
+    })
+    .filter((rule) => Number.isFinite(rule.leadTimeValue) && rule.leadTimeValue > 0)
+    .sort((a, b) => a.status.localeCompare(b.status));
+
+  const combinedRules = (input.combinedRules || [])
+    .map((rule) => ({
+      targetStatus: rule.targetStatus,
+      requiredStatus: rule.requiredStatus,
+      requireConfirmation: rule.requireConfirmation === true,
+      confirmationMessage: rule.confirmationMessage?.trim() || null,
+      isEnabled: rule.isEnabled !== false,
+    }))
+    .filter((rule) => rule.targetStatus && rule.requiredStatus)
+    .sort((a, b) => {
+      const keyA = `${a.targetStatus}|${a.requiredStatus}|${a.requireConfirmation ? "1" : "0"}|${a.confirmationMessage || ""}|${a.isEnabled ? "1" : "0"}`;
+      const keyB = `${b.targetStatus}|${b.requiredStatus}|${b.requireConfirmation ? "1" : "0"}|${b.confirmationMessage || ""}|${b.isEnabled ? "1" : "0"}`;
+      return keyA.localeCompare(keyB);
+    });
+
+  return {
+    disabledStatuses,
+    leadTimeRules,
+    combinedRules,
+  };
+};
+
 export default function TeamsPage() {
   const { user } = useUser();
   const { teams, activeTeamId, setActiveTeamId, refreshTeams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
+  const [teamSearchQuery, setTeamSearchQuery] = useState("");
+  const [teamsPage, setTeamsPage] = useState(1);
+  const teamsPerPage = 6;
   const [switchingTeamId, setSwitchingTeamId] = useState<string | null>(null);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -66,6 +163,14 @@ export default function TeamsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [transferCandidateId, setTransferCandidateId] = useState("");
+  const [disabledStatuses, setDisabledStatuses] = useState<string[]>([]);
+  const [leadTimeRules, setLeadTimeRules] = useState<Record<string, LeadTimeRuleDraft>>({});
+  const [combinedRules, setCombinedRules] = useState<CombinedRuleDraft[]>([]);
+  const [initialRulesSnapshot, setInitialRulesSnapshot] = useState<TeamStatusRulesSnapshot | null>(
+    null
+  );
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [rulesSaving, setRulesSaving] = useState(false);
   const addMemberFieldRef = React.useRef<HTMLDivElement | null>(null);
   const addMemberOptionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -83,6 +188,31 @@ export default function TeamsPage() {
       profile.email.toLowerCase().includes(normalizedQuery)
     );
   });
+  const filteredTeams = teams.filter((team) => {
+    const q = teamSearchQuery.trim().toLowerCase();
+    if (!q) return true;
+    const roleLabel =
+      team.role === "manager" ? "manager" : team.role === "backoffice" ? "backoffice" : "operator";
+    return (
+      team.name.toLowerCase().includes(q) ||
+      roleLabel.includes(q) ||
+      (team.functions || []).join(",").toLowerCase().includes(q)
+    );
+  });
+  const teamsTotalPages = Math.max(1, Math.ceil(filteredTeams.length / teamsPerPage));
+  const teamsCurrentPage = Math.min(teamsPage, teamsTotalPages);
+  const paginatedTeams = filteredTeams.slice(
+    (teamsCurrentPage - 1) * teamsPerPage,
+    teamsCurrentPage * teamsPerPage
+  );
+  const currentRulesSnapshot = React.useMemo(
+    () => buildTeamStatusRulesSnapshot({ disabledStatuses, leadTimeRules, combinedRules }),
+    [disabledStatuses, leadTimeRules, combinedRules]
+  );
+  const hasRulesChanges = React.useMemo(() => {
+    if (!initialRulesSnapshot) return false;
+    return JSON.stringify(currentRulesSnapshot) !== JSON.stringify(initialRulesSnapshot);
+  }, [currentRulesSnapshot, initialRulesSnapshot]);
 
   React.useEffect(() => {
     if (!isAddMemberDropdownOpen) return;
@@ -101,6 +231,10 @@ export default function TeamsPage() {
       document.removeEventListener("touchstart", handlePointerOutside);
     };
   }, [isAddMemberDropdownOpen]);
+
+  React.useEffect(() => {
+    setTeamsPage(1);
+  }, [teamSearchQuery]);
 
   React.useEffect(() => {
     if (!isAddMemberDropdownOpen) {
@@ -192,6 +326,202 @@ export default function TeamsPage() {
     }
   };
 
+  const loadTeamStatusRules = async (teamId: string) => {
+    if (!teamId) return;
+    setRulesLoading(true);
+    try {
+      const response = await fetch(`/api/v1/teams/${teamId}/status-rules`, {
+        headers: {
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": teamId,
+        },
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        setDisabledStatuses([]);
+        setLeadTimeRules({});
+        setCombinedRules([]);
+        setInitialRulesSnapshot(
+          buildTeamStatusRulesSnapshot({
+            disabledStatuses: [],
+            leadTimeRules: {},
+            combinedRules: [],
+          })
+        );
+        return;
+      }
+
+      const payload = result.result as {
+        disabledStatuses?: string[];
+        leadTimeRules?: Array<{ status: string; leadTimeValue: number; leadTimeUnit: "hours" | "days" }>;
+        combinedRules?: Array<{
+          id: string;
+          targetStatus: string;
+          requiredStatus: string;
+          requireConfirmation: boolean;
+          confirmationMessage: string | null;
+          isEnabled: boolean;
+        }>;
+      };
+
+      const nextDisabledStatuses = payload.disabledStatuses || [];
+      const nextLeadTimeRules: Record<string, LeadTimeRuleDraft> = {};
+      (payload.leadTimeRules || []).forEach((rule) => {
+        nextLeadTimeRules[rule.status] = {
+          leadTimeValue: String(rule.leadTimeValue || ""),
+          leadTimeUnit: rule.leadTimeUnit === "days" ? "days" : "hours",
+        };
+      });
+      const nextCombinedRules = (payload.combinedRules || []).map((rule) => ({
+        id: rule.id,
+        targetStatus: rule.targetStatus,
+        requiredStatus: rule.requiredStatus,
+        requireConfirmation: rule.requireConfirmation,
+        confirmationMessage: rule.confirmationMessage || "",
+        isEnabled: rule.isEnabled,
+      }));
+
+      setDisabledStatuses(nextDisabledStatuses);
+      setLeadTimeRules(nextLeadTimeRules);
+      setCombinedRules(nextCombinedRules);
+      setInitialRulesSnapshot(
+        buildTeamStatusRulesSnapshot({
+          disabledStatuses: nextDisabledStatuses,
+          leadTimeRules: nextLeadTimeRules,
+          combinedRules: nextCombinedRules,
+        })
+      );
+    } catch (error) {
+      console.error("Erro ao carregar regras do time:", error);
+      setDisabledStatuses([]);
+      setLeadTimeRules({});
+      setCombinedRules([]);
+      setInitialRulesSnapshot(
+        buildTeamStatusRulesSnapshot({
+          disabledStatuses: [],
+          leadTimeRules: {},
+          combinedRules: [],
+        })
+      );
+    } finally {
+      setRulesLoading(false);
+    }
+  };
+
+  const handleSaveTeamStatusRules = async () => {
+    if (!manageTeamId) return;
+    setRulesSaving(true);
+    try {
+      const leadTimePayload = Object.entries(leadTimeRules)
+        .map(([status, value]) => ({
+          status,
+          leadTimeValue: Number(value.leadTimeValue),
+          leadTimeUnit: value.leadTimeUnit,
+        }))
+        .filter((rule) => Number.isFinite(rule.leadTimeValue) && rule.leadTimeValue > 0);
+
+      const combinedRulesPayload = combinedRules
+        .map((rule) => ({
+          targetStatus: rule.targetStatus,
+          requiredStatus: rule.requiredStatus,
+          requireConfirmation: rule.requireConfirmation,
+          confirmationMessage: rule.confirmationMessage || null,
+          isEnabled: rule.isEnabled,
+        }))
+        .filter((rule) => rule.targetStatus && rule.requiredStatus);
+
+      const response = await fetch(`/api/v1/teams/${manageTeamId}/status-rules`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": manageTeamId,
+        },
+        body: JSON.stringify({
+          disabledStatuses,
+          leadTimeRules: leadTimePayload,
+          combinedRules: combinedRulesPayload,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível salvar as regras.");
+      }
+      toast.success("Regras do time salvas com sucesso.");
+      await loadTeamStatusRules(manageTeamId);
+    } catch (error: any) {
+      console.error("Erro ao salvar regras:", error);
+      toast.error(error?.message || "Erro ao salvar regras.");
+    } finally {
+      setRulesSaving(false);
+    }
+  };
+
+  const handleToggleDisabledStatus = (status: StatusOptionValue, checked: boolean) => {
+    setDisabledStatuses((prev) => {
+      if (checked) {
+        return prev.includes(status) ? prev : [...prev, status];
+      }
+      return prev.filter((item) => item !== status);
+    });
+  };
+
+  const handleLeadTimeEnabled = (status: StatusOptionValue, enabled: boolean) => {
+    setLeadTimeRules((prev) => {
+      if (!enabled) {
+        const next = { ...prev };
+        delete next[status];
+        return next;
+      }
+      return {
+        ...prev,
+        [status]: prev[status] || {
+          leadTimeValue: "",
+          leadTimeUnit: "hours",
+        },
+      };
+    });
+  };
+
+  const handleLeadTimeFieldChange = (
+    status: StatusOptionValue,
+    field: keyof LeadTimeRuleDraft,
+    value: string
+  ) => {
+    setLeadTimeRules((prev) => ({
+      ...prev,
+      [status]: {
+        leadTimeValue: prev[status]?.leadTimeValue ?? "",
+        leadTimeUnit: prev[status]?.leadTimeUnit ?? "hours",
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleAddCombinedRule = () => {
+    const defaultTarget = "invoicePayment";
+    const defaultRequired = "dps_agreement";
+    setCombinedRules((prev) => [
+      ...prev,
+      {
+        id: `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        targetStatus: defaultTarget,
+        requiredStatus: defaultRequired,
+        requireConfirmation: false,
+        confirmationMessage: "",
+        isEnabled: true,
+      },
+    ]);
+  };
+
+  const handleUpdateCombinedRule = (id: string, patch: Partial<CombinedRuleDraft>) => {
+    setCombinedRules((prev) => prev.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)));
+  };
+
+  const handleRemoveCombinedRule = (id: string) => {
+    setCombinedRules((prev) => prev.filter((rule) => rule.id !== id));
+  };
+
   const loadManageData = async (teamId: string) => {
     if (!teamId) return;
     setManageLoading(true);
@@ -221,6 +551,7 @@ export default function TeamsPage() {
       } else {
         setTransferCandidateId("");
       }
+      await loadTeamStatusRules(teamId);
     } catch (error: any) {
       console.error("Erro ao carregar membros:", error);
       toast.error(error?.message || "Erro ao carregar dados do time.");
@@ -425,8 +756,16 @@ export default function TeamsPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm text-muted-foreground">
-                {teams.length} time(s) encontrado(s).
+              <div className="flex min-w-[240px] flex-1 items-center gap-3">
+                <Input
+                  value={teamSearchQuery}
+                  onChange={(event) => setTeamSearchQuery(event.target.value)}
+                  placeholder="Filtrar times por nome..."
+                  className="h-9 max-w-[320px]"
+                />
+                <div className="text-sm text-muted-foreground">
+                  {filteredTeams.length} time(s) encontrado(s).
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Tooltip>
@@ -484,13 +823,13 @@ export default function TeamsPage() {
                   </div>
                 ))}
               </div>
-            ) : teams.length === 0 ? (
+            ) : filteredTeams.length === 0 ? (
               <div className="rounded-lg border border-border/60 p-4 text-sm text-muted-foreground">
-                Nenhum time encontrado para este usuario.
+                Nenhum time encontrado para este filtro.
               </div>
             ) : (
               <div className="space-y-3">
-                {teams.map((team) => {
+                {paginatedTeams.map((team) => {
                   const isActive = team.id === activeTeamId
                   const isMaster = user?.id && team.masterId === user.id
                   return (
@@ -552,6 +891,31 @@ export default function TeamsPage() {
                     </div>
                   )
                 })}
+                {teamsTotalPages > 1 ? (
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTeamsPage((prev) => Math.max(1, prev - 1))}
+                      disabled={teamsCurrentPage <= 1}
+                    >
+                      Anterior
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Página {teamsCurrentPage} de {teamsTotalPages}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTeamsPage((prev) => Math.min(teamsTotalPages, prev + 1))}
+                      disabled={teamsCurrentPage >= teamsTotalPages}
+                    >
+                      Próxima
+                    </Button>
+                  </div>
+                ) : null}
               </div>
             )}
           </CardContent>
@@ -604,6 +968,9 @@ export default function TeamsPage() {
             setTransferCandidates([])
             setConfirmAction(null)
             setConfirmPassword("")
+            setDisabledStatuses([])
+            setLeadTimeRules({})
+            setCombinedRules([])
           }
         }}
       >
@@ -635,7 +1002,13 @@ export default function TeamsPage() {
                 </div>
               </div>
             ) : (
-              <div className="space-y-6">
+              <Tabs defaultValue="basic-info" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="basic-info">Informações básicas</TabsTrigger>
+                  <TabsTrigger value="rules">Regras</TabsTrigger>
+                </TabsList>
+                <TabsContent value="basic-info" className="mt-4">
+                  <div className="space-y-6">
               <div className="space-y-3">
                 <Label>Nome do time</Label>
                 <div className="flex flex-wrap items-center gap-2">
@@ -955,7 +1328,227 @@ export default function TeamsPage() {
                   </div>
                 </>
               ) : null}
-              </div>
+                  </div>
+                </TabsContent>
+                <TabsContent value="rules" className="mt-4 space-y-6">
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="text-lg font-semibold">Status desabilitados</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Impede que leads sejam movidos para os status marcados.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      {STATUS_OPTIONS.map((status) => (
+                        <label
+                          key={status.value}
+                          className="flex items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-sm"
+                        >
+                          <Checkbox
+                            checked={disabledStatuses.includes(status.value)}
+                            onCheckedChange={(checked) =>
+                              handleToggleDisabledStatus(status.value, checked === true)
+                            }
+                          />
+                          <span>{status.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="text-lg font-semibold">Lead time por status</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Tempo máximo que o card pode ficar parado em cada status.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      {STATUS_OPTIONS.map((status) => {
+                        const rule = leadTimeRules[status.value];
+                        const enabled = !!rule;
+                        return (
+                          <div
+                            key={status.value}
+                            className="grid grid-cols-1 gap-2 rounded-md border border-border/60 px-3 py-3 md:grid-cols-[minmax(0,1fr)_120px_130px]"
+                          >
+                            <label className="flex items-center gap-2 text-sm">
+                              <Checkbox
+                                checked={enabled}
+                                onCheckedChange={(checked) =>
+                                  handleLeadTimeEnabled(status.value, checked === true)
+                                }
+                              />
+                              <span>{status.label}</span>
+                            </label>
+                            <Input
+                              type="number"
+                              min={1}
+                              placeholder="Valor"
+                              value={rule?.leadTimeValue ?? ""}
+                              onChange={(event) =>
+                                handleLeadTimeFieldChange(
+                                  status.value,
+                                  "leadTimeValue",
+                                  event.target.value
+                                )
+                              }
+                              disabled={!enabled}
+                            />
+                            <Select
+                              value={rule?.leadTimeUnit ?? "hours"}
+                              onValueChange={(value) =>
+                                handleLeadTimeFieldChange(status.value, "leadTimeUnit", value)
+                              }
+                              disabled={!enabled}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="hours">Horas</SelectItem>
+                                <SelectItem value="days">Dias</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-lg font-semibold">Regras combinadas</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Exemplo: só mover para Boleto após DPS | Contrato.
+                        </p>
+                      </div>
+                      <Button type="button" variant="outline" size="sm" onClick={handleAddCombinedRule}>
+                        Adicionar regra
+                      </Button>
+                    </div>
+
+                    {combinedRules.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Nenhuma regra combinada cadastrada.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {combinedRules.map((rule) => (
+                          <div key={rule.id} className="rounded-md border border-border/60 p-3 space-y-3">
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                              <div className="space-y-1">
+                                <Label>Status alvo</Label>
+                                <Select
+                                  value={rule.targetStatus}
+                                  onValueChange={(value) =>
+                                    handleUpdateCombinedRule(rule.id, { targetStatus: value })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Status alvo" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {STATUS_OPTIONS.map((status) => (
+                                      <SelectItem key={status.value} value={status.value}>
+                                        {status.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label>Status pré-requisito</Label>
+                                <Select
+                                  value={rule.requiredStatus}
+                                  onValueChange={(value) =>
+                                    handleUpdateCombinedRule(rule.id, { requiredStatus: value })
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Status obrigatório" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {STATUS_OPTIONS.map((status) => (
+                                      <SelectItem key={status.value} value={status.value}>
+                                        {status.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                              <label className="flex items-center gap-2 text-sm">
+                                <Checkbox
+                                  checked={rule.isEnabled}
+                                  onCheckedChange={(checked) =>
+                                    handleUpdateCombinedRule(rule.id, { isEnabled: checked === true })
+                                  }
+                                />
+                                <span>Regra ativa</span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm">
+                                <Checkbox
+                                  checked={rule.requireConfirmation}
+                                  onCheckedChange={(checked) =>
+                                    handleUpdateCombinedRule(rule.id, {
+                                      requireConfirmation: checked === true,
+                                      confirmationMessage:
+                                        checked === true ? rule.confirmationMessage : "",
+                                    })
+                                  }
+                                />
+                                <span>Exigir confirmação</span>
+                              </label>
+                            </div>
+
+                            {rule.requireConfirmation ? (
+                              <div className="space-y-1">
+                                <Label>Mensagem de confirmação</Label>
+                                <Input
+                                  value={rule.confirmationMessage}
+                                  onChange={(event) =>
+                                    handleUpdateCombinedRule(rule.id, {
+                                      confirmationMessage: event.target.value,
+                                    })
+                                  }
+                                  placeholder="Mensagem exibida ao usuário na confirmação"
+                                />
+                              </div>
+                            ) : null}
+
+                            <div className="flex justify-end">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveCombinedRule(rule.id)}
+                              >
+                                Remover regra
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      onClick={handleSaveTeamStatusRules}
+                      disabled={rulesLoading || rulesSaving || !hasRulesChanges}
+                    >
+                      {rulesSaving ? "Salvando regras..." : "Salvar regras"}
+                    </Button>
+                  </div>
+                </TabsContent>
+              </Tabs>
             )}
           </div>
         </DialogContent>
