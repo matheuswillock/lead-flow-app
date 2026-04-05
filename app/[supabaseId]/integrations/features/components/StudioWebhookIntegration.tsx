@@ -1,7 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { CircleAlert, Copy, Info, Save, Webhook } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { CircleAlert, Copy, FileText, Info, RefreshCcw, Save, Webhook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,12 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { useIntegrationsContext } from "../context/IntegrationsContext";
+import type { StudioWebhookLogItem } from "../services/IIntegrationsService";
 
 const expiryModeLabel: Record<"hours_24" | "months_6" | "indeterminate", string> = {
   hours_24: "24 horas",
@@ -86,7 +91,7 @@ const renderStudioJsonSnippet = (json: string): ReactNode[] =>
       );
     }
 
-    return (
+  return (
       <div key={`line-${lineIndex}`} className="leading-6">
         {tokens}
       </div>
@@ -118,6 +123,60 @@ const formatTimeUntilExpiration = (expiresAtIso: string | null): string | null =
   return hours > 0 ? `Expira em ${totalDays}d ${hours}h` : `Expira em ${totalDays}d`;
 };
 
+const formatWebhookLogDateTime = (value: string): string => {
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "-";
+  }
+
+  return parsedDate.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+};
+
+const formatPayloadForDetails = (payload: unknown): string => {
+  if (typeof payload === "string") {
+    return payload;
+  }
+
+  if (typeof payload === "undefined") {
+    return "null";
+  }
+
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch {
+    return JSON.stringify(
+      {
+        serializationError: "unserializable_payload",
+      },
+      null,
+      2
+    );
+  }
+};
+
+const getWebhookLogStatusBadgeVariant = (statusCode: number): "default" | "secondary" | "destructive" | "outline" => {
+  if (statusCode >= 200 && statusCode < 300) {
+    return "default";
+  }
+
+  if (statusCode >= 400) {
+    return "destructive";
+  }
+
+  if (statusCode >= 300) {
+    return "secondary";
+  }
+
+  return "outline";
+};
+
 export function StudioWebhookIntegration() {
   const {
     activeTeamId,
@@ -128,14 +187,20 @@ export function StudioWebhookIntegration() {
     studioWebhookGeneratedUrl,
     studioWebhookLoading,
     studioWebhookSaving,
+    studioWebhookLogs,
+    studioWebhookLogsLoading,
+    selectedStudioWebhookLogId,
     studioWebhookContractJson,
     setStudioWebhookTokenMode,
     setStudioWebhookManualToken,
     setStudioWebhookExpiryMode,
+    setSelectedStudioWebhookLogId,
+    loadStudioWebhookLogs,
     saveStudioWebhookConfig,
     copyStudioWebhookUrl,
     copyStudioWebhookContract,
   } = useIntegrationsContext();
+  const [openedAccordionItem, setOpenedAccordionItem] = useState<string>("studio-webhook-settings");
 
   const urlToDisplay =
     studioWebhookGeneratedUrl || studioWebhookConfig?.webhookUrl || studioWebhookConfig?.webhookUrlTemplate || "";
@@ -146,6 +211,21 @@ export function StudioWebhookIntegration() {
   const isManualTokenFilled = studioWebhookTokenMode !== "manual" || studioWebhookManualToken.trim().length > 0;
   const canSaveWebhookConfig =
     Boolean(activeTeamId) && isManualTokenFilled && !studioWebhookSaving && !studioWebhookLoading;
+  const selectedStudioWebhookLog = useMemo<StudioWebhookLogItem | null>(() => {
+    if (!selectedStudioWebhookLogId) {
+      return studioWebhookLogs[0] ?? null;
+    }
+
+    return studioWebhookLogs.find((log) => log.id === selectedStudioWebhookLogId) ?? studioWebhookLogs[0] ?? null;
+  }, [selectedStudioWebhookLogId, studioWebhookLogs]);
+
+  useEffect(() => {
+    if (openedAccordionItem !== "studio-webhook-logs") {
+      return;
+    }
+
+    void loadStudioWebhookLogs();
+  }, [loadStudioWebhookLogs, openedAccordionItem]);
 
   const webhookStatusBadge: WebhookStatusBadgeConfig = studioWebhookLoading
     ? { label: "Verificando configuração", variant: "secondary" }
@@ -173,9 +253,15 @@ export function StudioWebhookIntegration() {
     return { label: expiresInLabel, variant: "secondary" };
   })();
 
-  return (
+    return (
     <div className="rounded-lg border p-6">
-      <Accordion type="single" collapsible className="w-full">
+      <Accordion
+        type="single"
+        collapsible
+        value={openedAccordionItem}
+        onValueChange={setOpenedAccordionItem}
+        className="w-full space-y-4"
+      >
         <AccordionItem value="studio-webhook-settings" className="border-b-0">
           <AccordionTrigger className="py-0 hover:no-underline">
             <div className="flex items-start gap-3 pr-3">
@@ -412,6 +498,177 @@ export function StudioWebhookIntegration() {
                   </p>
                 </AlertDescription>
               </Alert>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="studio-webhook-logs" className="border-b-0">
+          <AccordionTrigger className="py-0 hover:no-underline">
+            <div className="flex items-start gap-3 pr-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <FileText className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-base font-semibold">Logs de Webhook</h3>
+                  <Badge variant="secondary">{studioWebhookLogs.length} registros</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Visualize os últimos 15 recebimentos do webhook com status e payload completo.
+                </p>
+              </div>
+            </div>
+          </AccordionTrigger>
+
+          <AccordionContent className="pt-4">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Lista fixa dos 15 últimos eventos recebidos no endpoint do webhook.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadStudioWebhookLogs({ force: true })}
+                  disabled={!activeTeamId || studioWebhookLogsLoading}
+                >
+                  <RefreshCcw className={cn("mr-2 h-4 w-4", studioWebhookLogsLoading && "animate-spin")} />
+                  Atualizar logs
+                </Button>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                <div className="rounded-md border">
+                  <div className="border-b px-3 py-2">
+                    <p className="text-sm font-semibold">Recebimentos</p>
+                  </div>
+
+                  <ScrollArea className="h-[360px]">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Descrição</TableHead>
+                          <TableHead className="w-[120px] text-right">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {studioWebhookLogsLoading ? (
+                          Array.from({ length: 5 }).map((_, index) => (
+                            <TableRow key={`studio-webhook-log-skeleton-${index}`}>
+                              <TableCell>
+                                <div className="flex flex-col gap-2 py-1">
+                                  <Skeleton className="h-4 w-[90%]" />
+                                  <Skeleton className="h-3 w-[45%]" />
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Skeleton className="ml-auto h-7 w-16" />
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : studioWebhookLogs.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={2} className="py-8 text-center text-sm text-muted-foreground">
+                              Nenhum log de webhook encontrado para este time.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          studioWebhookLogs.map((log) => {
+                            const isSelected = selectedStudioWebhookLog?.id === log.id;
+
+                            return (
+                              <TableRow
+                                key={log.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setSelectedStudioWebhookLogId(log.id)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    setSelectedStudioWebhookLogId(log.id);
+                                  }
+                                }}
+                                className={cn("cursor-pointer", isSelected && "bg-muted/60")}
+                              >
+                                <TableCell>
+                                  <div className="flex flex-col gap-1">
+                                    <p className="truncate font-medium">{log.endpoint}</p>
+                                    <p className="text-xs text-muted-foreground">{formatWebhookLogDateTime(log.createdAt)}</p>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Badge variant={getWebhookLogStatusBadgeVariant(log.statusCode)}>{log.statusCode}</Badge>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </div>
+
+                <div className="rounded-md border">
+                  <div className="border-b px-3 py-2">
+                    <p className="text-sm font-semibold">Detalhes</p>
+                  </div>
+
+                  {selectedStudioWebhookLog ? (
+                    <ScrollArea className="h-[360px] p-4">
+                      <div className="flex flex-col gap-4 pr-4">
+                        <p className="break-all text-3xl font-semibold leading-tight text-foreground">
+                          {selectedStudioWebhookLog.endpoint}
+                        </p>
+
+                        <div className="flex flex-col gap-3 text-sm">
+                          <div className="flex flex-col gap-1">
+                            <p className="font-semibold text-foreground">Data da requisição</p>
+                            <p className="text-muted-foreground">{formatWebhookLogDateTime(selectedStudioWebhookLog.createdAt)}</p>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <p className="font-semibold text-foreground">Status</p>
+                            <Badge className="w-fit" variant={getWebhookLogStatusBadgeVariant(selectedStudioWebhookLog.statusCode)}>
+                              {selectedStudioWebhookLog.statusCode}
+                            </Badge>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <p className="font-semibold text-foreground">Método</p>
+                            <p className="text-muted-foreground">{selectedStudioWebhookLog.method}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <p className="text-sm font-semibold text-foreground">Conteúdo da requisição</p>
+                          <pre className="max-h-[200px] overflow-x-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">
+                            {formatPayloadForDetails(selectedStudioWebhookLog.requestPayload)}
+                          </pre>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <p className="text-sm font-semibold text-foreground">Conteúdo da resposta</p>
+                          <pre className="max-h-[200px] overflow-x-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">
+                            {formatPayloadForDetails(selectedStudioWebhookLog.responsePayload)}
+                          </pre>
+                        </div>
+
+                        {selectedStudioWebhookLog.errorMessage ? (
+                          <Alert variant="destructive">
+                            <CircleAlert className="h-4 w-4" />
+                            <AlertDescription>{selectedStudioWebhookLog.errorMessage}</AlertDescription>
+                          </Alert>
+                        ) : null}
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <div className="flex h-[360px] items-center justify-center p-6">
+                      <p className="text-sm text-muted-foreground">
+                        Selecione um log na tabela para visualizar os detalhes completos.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </AccordionContent>
         </AccordionItem>

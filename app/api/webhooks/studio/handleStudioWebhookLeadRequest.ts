@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
-import { detectStudioWebhookPayloadSqlInjection } from "@/lib/webhooks/studioWebhookSecurity";
+import {
+  detectStudioWebhookPayloadSqlInjection,
+  sanitizeStudioWebhookEndpointForLogs,
+} from "@/lib/webhooks/studioWebhookSecurity";
 import { studioWebhookErrors, studioWebhookIntegrationUseCase } from "@/app/api/useCases/integrations/StudioWebhookIntegrationUseCase";
 import { StudioWebhookLeadRequestSchema } from "./DTO/requestStudioWebhookLead";
 
@@ -38,12 +41,70 @@ type HandleStudioWebhookLeadRequestInput = {
   token?: string;
 };
 
+type JsonParseResult = {
+  payload: unknown;
+  isValidJson: boolean;
+};
+
+const parseWebhookRequestBody = (rawBody: string): JsonParseResult => {
+  if (!rawBody.trim()) {
+    return {
+      payload: { rawBody },
+      isValidJson: false,
+    };
+  }
+
+  try {
+    return {
+      payload: JSON.parse(rawBody),
+      isValidJson: true,
+    };
+  } catch {
+    return {
+      payload: { rawBody },
+      isValidJson: false,
+    };
+  }
+};
+
 export const handleStudioWebhookLeadRequest = async ({
   request,
   routePrefix,
   teamId,
   token,
 }: HandleStudioWebhookLeadRequestInput): Promise<NextResponse> => {
+  const method = request.method.toUpperCase();
+  let logTeamId: string | null = null;
+  let logEndpoint = request.nextUrl.pathname;
+  let requestPayloadForLog: unknown = null;
+
+  const respondWithLog = async ({
+    statusCode,
+    output,
+    resultType,
+    errorMessage,
+  }: {
+    statusCode: number;
+    output: Output;
+    resultType: "success" | "error";
+    errorMessage?: string | null;
+  }): Promise<NextResponse> => {
+    if (logTeamId) {
+      await studioWebhookIntegrationUseCase.registerWebhookRequestLog({
+        teamId: logTeamId,
+        method,
+        endpoint: logEndpoint,
+        statusCode,
+        resultType,
+        requestPayload: requestPayloadForLog,
+        responsePayload: output,
+        errorMessage: errorMessage ?? null,
+      });
+    }
+
+    return NextResponse.json(output, { status: statusCode });
+  };
+
   try {
     const validatedTeamId = TeamIdSchema.safeParse(teamId);
     if (!validatedTeamId.success) {
@@ -58,53 +119,75 @@ export const handleStudioWebhookLeadRequest = async ({
       );
     }
 
+    const shouldAttachTeamToLog = await studioWebhookIntegrationUseCase.verifyTeamExists(validatedTeamId.data);
+    if (shouldAttachTeamToLog) {
+      logTeamId = validatedTeamId.data;
+      logEndpoint = sanitizeStudioWebhookEndpointForLogs(request.nextUrl.pathname, logTeamId);
+    }
+
+    const rawBody = await request.text().catch(() => "");
+    const parsedBody = parseWebhookRequestBody(rawBody);
+    requestPayloadForLog = parsedBody.payload;
+
     if (typeof token === "string") {
       const validatedToken = TokenSchema.safeParse(token);
       if (!validatedToken.success) {
-        return NextResponse.json(
-          new Output(
-            false,
-            [],
-            validatedToken.error.issues.map((issue) => issue.message),
-            null
-          ),
-          { status: 400 }
+        const output = new Output(
+          false,
+          [],
+          validatedToken.error.issues.map((issue) => issue.message),
+          null
         );
+        return respondWithLog({
+          statusCode: 400,
+          output,
+          resultType: "error",
+          errorMessage: output.errorMessages.join(", "),
+        });
       }
     }
 
-    const rawBody = await request.json().catch(() => null);
-    if (!rawBody || typeof rawBody !== "object") {
-      return NextResponse.json(
-        new Output(false, [], ["Invalid JSON payload"], null),
-        { status: 400 }
-      );
+    if (!parsedBody.isValidJson || !parsedBody.payload || typeof parsedBody.payload !== "object") {
+      const output = new Output(false, [], ["Invalid JSON payload"], null);
+      return respondWithLog({
+        statusCode: 400,
+        output,
+        resultType: "error",
+        errorMessage: "Invalid JSON payload",
+      });
     }
 
-    const sqlInspection = detectStudioWebhookPayloadSqlInjection(rawBody);
+    const sqlInspection = detectStudioWebhookPayloadSqlInjection(parsedBody.payload);
     if (sqlInspection.suspicious) {
       console.warn(`${routePrefix} Conteúdo suspeito detectado`, {
         path: sqlInspection.path,
         rule: sqlInspection.rule,
         teamId: validatedTeamId.data,
       });
-      return NextResponse.json(
-        new Output(false, [], ["Invalid payload content"], null),
-        { status: 400 }
-      );
+
+      const output = new Output(false, [], ["Invalid payload content"], null);
+      return respondWithLog({
+        statusCode: 400,
+        output,
+        resultType: "error",
+        errorMessage: "Invalid payload content",
+      });
     }
 
-    const bodyValidation = StudioWebhookLeadRequestSchema.safeParse(rawBody);
+    const bodyValidation = StudioWebhookLeadRequestSchema.safeParse(parsedBody.payload);
     if (!bodyValidation.success) {
-      return NextResponse.json(
-        new Output(
-          false,
-          [],
-          bodyValidation.error.issues.map((issue) => issue.message),
-          null
-        ),
-        { status: 400 }
+      const output = new Output(
+        false,
+        [],
+        bodyValidation.error.issues.map((issue) => issue.message),
+        null
       );
+      return respondWithLog({
+        statusCode: 400,
+        output,
+        resultType: "error",
+        errorMessage: output.errorMessages.join(", "),
+      });
     }
 
     const output = await studioWebhookIntegrationUseCase.processWebhookLead({
@@ -114,15 +197,30 @@ export const handleStudioWebhookLeadRequest = async ({
     });
 
     if (!output.isValid) {
-      return NextResponse.json(output, { status: resolveErrorStatus(output) });
+      const statusCode = resolveErrorStatus(output);
+      return respondWithLog({
+        statusCode,
+        output,
+        resultType: "error",
+        errorMessage: output.errorMessages.join(", "),
+      });
     }
 
-    return NextResponse.json(output, { status: 201 });
+    return respondWithLog({
+      statusCode: 201,
+      output,
+      resultType: "success",
+      errorMessage: null,
+    });
   } catch (error) {
     console.error(`${routePrefix} Erro ao processar webhook:`, error);
-    return NextResponse.json(
-      new Output(false, [], ["Internal server error"], null),
-      { status: 500 }
-    );
+    const output = new Output(false, [], ["Internal server error"], null);
+
+    return respondWithLog({
+      statusCode: 500,
+      output,
+      resultType: "error",
+      errorMessage: error instanceof Error ? error.message : "Internal server error",
+    });
   }
 };

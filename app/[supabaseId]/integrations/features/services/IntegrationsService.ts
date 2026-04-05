@@ -1,6 +1,7 @@
 import type {
   BuildLeadFormUrlParams,
   BuildStudioWebhookUrlParams,
+  GetStudioWebhookLogsResponse,
   IntegrationsBootstrapResponse,
   IIntegrationsService,
   SaveStudioWebhookConfigPayload,
@@ -78,6 +79,23 @@ class IntegrationsService implements IIntegrationsService {
     }
 
     return output.result as IntegrationsBootstrapResponse;
+  }
+
+  async getStudioWebhookLogs(supabaseId: string, teamId: string): Promise<GetStudioWebhookLogsResponse> {
+    const response = await fetch(`/api/v1/integrations/studio-webhook/logs?teamId=${encodeURIComponent(teamId)}`, {
+      method: "GET",
+      headers: {
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": teamId,
+      },
+    });
+
+    const output = await response.json();
+    if (!response.ok || !output?.isValid) {
+      throw new Error(this.extractErrorMessage(output, "Não foi possível carregar os logs do webhook"));
+    }
+
+    return output.result as GetStudioWebhookLogsResponse;
   }
 
   async saveStudioWebhookConfig(

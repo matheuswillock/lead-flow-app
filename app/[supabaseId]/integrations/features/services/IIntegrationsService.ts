@@ -37,12 +37,30 @@ export type SaveStudioWebhookConfigResponse = StudioWebhookConfigData & {
   webhookUrl: string;
 };
 
+export type StudioWebhookLogItem = {
+  id: string;
+  teamId: string;
+  method: string;
+  endpoint: string;
+  statusCode: number;
+  resultType: "success" | "error";
+  requestPayload: unknown;
+  responsePayload: unknown;
+  errorMessage: string | null;
+  createdAt: string;
+};
+
+export type GetStudioWebhookLogsResponse = {
+  logs: StudioWebhookLogItem[];
+};
+
 export interface IIntegrationsService {
   resolveAppUrl(): string;
   buildLeadFormUrl(params: BuildLeadFormUrlParams): string;
   buildStudioWebhookUrl(params: BuildStudioWebhookUrlParams): string;
   copyToClipboard(value: string): Promise<boolean>;
   getStudioWebhookConfig(supabaseId: string, teamId: string): Promise<IntegrationsBootstrapResponse>;
+  getStudioWebhookLogs(supabaseId: string, teamId: string): Promise<GetStudioWebhookLogsResponse>;
   saveStudioWebhookConfig(
     supabaseId: string,
     payload: SaveStudioWebhookConfigPayload

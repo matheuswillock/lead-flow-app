@@ -11,9 +11,11 @@ import {
   safeStudioWebhookTokenEquals,
 } from "@/lib/webhooks/studioWebhookSecurity";
 import {
+  type GetStudioWebhookLogsUseCaseInput,
   IStudioWebhookIntegrationUseCase,
   type GetStudioWebhookConfigUseCaseInput,
   type ProcessStudioWebhookLeadInput,
+  type RegisterStudioWebhookRequestLogUseCaseInput,
   type StudioWebhookTokenMode,
   type UpsertStudioWebhookConfigUseCaseInput,
 } from "./IStudioWebhookIntegrationUseCase";
@@ -26,6 +28,7 @@ const UNAUTHORIZED_ERROR = "Webhook token não autorizado";
 const TOKEN_EXPIRED_ERROR = "Webhook token expirado";
 const NO_TOKEN_SENTINEL = "__studio_webhook_no_token__";
 const NO_TOKEN_PREVIEW = "Sem token";
+const STUDIO_WEBHOOK_LOG_LIMIT = 15;
 
 const normalizeOptionalString = (value?: string): string | undefined => {
   if (!value) return undefined;
@@ -77,6 +80,16 @@ const buildWebhookUrl = (appUrl: string, teamId: string, tokenMode: StudioWebhoo
 
 export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegrationUseCase {
   constructor(private readonly service: IStudioWebhookIntegrationService) {}
+
+  async verifyTeamExists(teamId: string): Promise<boolean> {
+    try {
+      const team = await this.service.getTeamWithMaster(teamId);
+      return Boolean(team);
+    } catch (error) {
+      console.error("[StudioWebhookIntegrationUseCase] Erro ao validar existência do time:", error);
+      return false;
+    }
+  }
 
   async getConfiguration(input: GetStudioWebhookConfigUseCaseInput): Promise<Output> {
     try {
@@ -253,6 +266,53 @@ export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegratio
 
       console.error("[StudioWebhookIntegrationUseCase] Erro ao processar webhook:", error);
       return new Output(false, [], ["Erro interno ao processar webhook"], null);
+    }
+  }
+
+  async getLatestWebhookLogs(input: GetStudioWebhookLogsUseCaseInput): Promise<Output> {
+    try {
+      const team = await this.service.getTeamWithMaster(input.teamId);
+      if (!team) {
+        return new Output(false, [], ["Time não encontrado"], null);
+      }
+
+      const safeLimit = Math.max(1, Math.min(input.limit ?? STUDIO_WEBHOOK_LOG_LIMIT, STUDIO_WEBHOOK_LOG_LIMIT));
+      const logs = await this.service.listLatestWebhookRequestLogs(input.teamId, safeLimit);
+
+      return new Output(true, [], [], {
+        logs: logs.map((log) => ({
+          id: log.id,
+          teamId: log.teamId,
+          method: log.method,
+          endpoint: log.endpoint,
+          statusCode: log.statusCode,
+          resultType: log.resultType,
+          requestPayload: log.requestPayload,
+          responsePayload: log.responsePayload,
+          errorMessage: log.errorMessage,
+          createdAt: log.createdAt.toISOString(),
+        })),
+      });
+    } catch (error) {
+      console.error("[StudioWebhookIntegrationUseCase] Erro ao listar logs do webhook:", error);
+      return new Output(false, [], ["Erro ao listar logs do webhook"], null);
+    }
+  }
+
+  async registerWebhookRequestLog(input: RegisterStudioWebhookRequestLogUseCaseInput): Promise<void> {
+    try {
+      await this.service.createWebhookRequestLog({
+        teamId: input.teamId,
+        method: input.method,
+        endpoint: input.endpoint,
+        statusCode: input.statusCode,
+        resultType: input.resultType,
+        requestPayload: input.requestPayload,
+        responsePayload: input.responsePayload,
+        errorMessage: input.errorMessage ?? null,
+      });
+    } catch (error) {
+      console.error("[StudioWebhookIntegrationUseCase] Erro ao registrar log do webhook:", error);
     }
   }
 }

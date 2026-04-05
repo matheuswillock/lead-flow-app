@@ -1,3 +1,5 @@
+import type { StudioWebhookLogItem } from "../services/IIntegrationsService";
+
 export interface IntegrationsState {
   supabaseId: string;
   leadFormUrl: string;
@@ -20,15 +22,20 @@ export interface IntegrationsState {
   integrationsBootstrapLoading: boolean;
   studioWebhookLoading: boolean;
   studioWebhookSaving: boolean;
+  studioWebhookLogs: StudioWebhookLogItem[];
+  studioWebhookLogsLoading: boolean;
+  selectedStudioWebhookLogId: string | null;
   studioWebhookContractJson: string;
 }
 
 export interface IntegrationsActions {
   copyLeadFormUrl: () => void;
   loadStudioWebhookConfig: () => Promise<void>;
+  loadStudioWebhookLogs: (options?: { force?: boolean }) => Promise<void>;
   setStudioWebhookTokenMode: (mode: "manual" | "auto" | "none") => void;
   setStudioWebhookManualToken: (token: string) => void;
   setStudioWebhookExpiryMode: (mode: "hours_24" | "months_6" | "indeterminate") => void;
+  setSelectedStudioWebhookLogId: (logId: string | null) => void;
   saveStudioWebhookConfig: () => void;
   copyStudioWebhookUrl: () => void;
   copyStudioWebhookContract: () => void;

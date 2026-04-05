@@ -54,10 +54,38 @@ export type StudioWebhookLeadResult = {
   leadCode: string;
 };
 
+export type StudioWebhookRequestLogResultType = "success" | "error";
+
+export type CreateStudioWebhookRequestLogInput = {
+  teamId: string;
+  method: string;
+  endpoint: string;
+  statusCode: number;
+  resultType: StudioWebhookRequestLogResultType;
+  requestPayload?: unknown;
+  responsePayload?: unknown;
+  errorMessage?: string | null;
+};
+
+export type StudioWebhookRequestLogSnapshot = {
+  id: string;
+  teamId: string;
+  method: string;
+  endpoint: string;
+  statusCode: number;
+  resultType: string;
+  requestPayload: unknown;
+  responsePayload: unknown;
+  errorMessage: string | null;
+  createdAt: Date;
+};
+
 export interface IStudioWebhookIntegrationService {
   getTeamWithMaster(teamId: string): Promise<StudioWebhookTeamSnapshot | null>;
   getWebhookConfigByTeamId(teamId: string): Promise<StudioWebhookConfigSnapshot | null>;
   upsertWebhookConfig(input: UpsertStudioWebhookConfigInput): Promise<StudioWebhookConfigSnapshot>;
   touchWebhookLastUsed(teamId: string): Promise<void>;
   createLeadFromWebhook(input: CreateLeadFromStudioWebhookInput): Promise<StudioWebhookLeadResult>;
+  createWebhookRequestLog(input: CreateStudioWebhookRequestLogInput): Promise<void>;
+  listLatestWebhookRequestLogs(teamId: string, limit: number): Promise<StudioWebhookRequestLogSnapshot[]>;
 }

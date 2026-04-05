@@ -6154,6 +6154,32 @@
           "response": []
         },
         {
+          "name": "List Studio Webhook Logs (Private)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/integrations/studio-webhook/logs?teamId={{teamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "integrations", "studio-webhook", "logs"],
+              "query": [
+                { "key": "teamId", "value": "{{teamId}}" }
+              ]
+            },
+            "description": "Lista os 15 últimos logs de recebimento do webhook genérico do time ativo."
+          },
+          "response": []
+        },
+        {
           "name": "Save Studio Webhook Config (Private)",
           "request": {
             "method": "PUT",

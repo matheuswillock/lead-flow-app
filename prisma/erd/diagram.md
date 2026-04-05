@@ -331,6 +331,19 @@ indeterminate indeterminate
     }
   
 
+  "team_studio_webhook_request_logs" {
+    String id "🗝️"
+    String method 
+    String endpoint 
+    Int statusCode 
+    String resultType 
+    Json requestPayload "❓"
+    Json responsePayload "❓"
+    String errorMessage "❓"
+    DateTime createdAt 
+    }
+  
+
   "notifications" {
     String id "🗝️"
     NotificationType type 
@@ -429,9 +442,11 @@ indeterminate indeterminate
     "teams" o{--}o "pending_actions" : "pendingActions"
     "teams" o{--}o "notifications" : "notifications"
     "teams" o{--}o "team_studio_webhook_configs" : "studioWebhookConfig"
+    "teams" o{--}o "team_studio_webhook_request_logs" : "studioWebhookRequestLogs"
     "team_studio_webhook_configs" o|--|| "StudioWebhookTokenExpiryMode" : "enum:expiryMode"
     "team_studio_webhook_configs" o|--|| "teams" : "team"
     "team_studio_webhook_configs" o|--|| "profiles" : "updatedBy"
+    "team_studio_webhook_request_logs" o|--|| "teams" : "team"
     "notifications" o|--|| "NotificationType" : "enum:type"
     "notifications" o|--|| "profiles" : "recipient"
     "notifications" o|--|o "profiles" : "actor"

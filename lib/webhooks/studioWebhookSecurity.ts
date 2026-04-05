@@ -197,3 +197,14 @@ export const detectStudioWebhookPayloadSqlInjection = (
 ): StudioWebhookSqlInspectionResult => {
   return inspectPayloadForSqlInjection(payload, "payload");
 };
+
+export const sanitizeStudioWebhookEndpointForLogs = (pathname: string, teamId: string): string => {
+  const normalizedPath = pathname.split("?")[0];
+  const tokenRoutePrefix = `/api/webhooks/studio/${teamId}/`;
+
+  if (normalizedPath.startsWith(tokenRoutePrefix)) {
+    return `${tokenRoutePrefix}[token]`;
+  }
+
+  return normalizedPath;
+};

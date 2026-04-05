@@ -14,6 +14,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ChevronDown, Search } from "lucide-react";
+import { DateRange } from "react-day-picker";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -38,23 +39,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   loading?: boolean;
-}
-
-function parseDateInput(value: string, endOfDay: boolean) {
-  const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) return undefined;
-
-  const date = new Date(year, month - 1, day, 0, 0, 0, 0);
-  if (endOfDay) {
-    date.setHours(23, 59, 59, 999);
-  }
-
-  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 export function DataTable<TData, TValue>({
@@ -66,8 +56,7 @@ export function DataTable<TData, TValue>({
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
   const [rowSelection, setRowSelection] = React.useState({});
-  const [createdFrom, setCreatedFrom] = React.useState("");
-  const [createdTo, setCreatedTo] = React.useState("");
+  const [createdAtRange, setCreatedAtRange] = React.useState<DateRange | undefined>(undefined);
 
   const table = useReactTable({
     data,
@@ -92,21 +81,24 @@ export function DataTable<TData, TValue>({
     const createdAtColumn = table.getColumn("createdAt");
     if (!createdAtColumn) return;
 
-    if (!createdFrom && !createdTo) {
+    if (!createdAtRange?.from && !createdAtRange?.to) {
       createdAtColumn.setFilterValue(undefined);
       return;
     }
 
-    const startDate = createdFrom ? parseDateInput(createdFrom, false) : undefined;
-    const endDate = createdTo ? parseDateInput(createdTo, true) : undefined;
+    const startDate = createdAtRange.from ? new Date(createdAtRange.from) : undefined;
+    if (startDate) {
+      startDate.setHours(0, 0, 0, 0);
+    }
 
-    if (!startDate && !endDate) {
-      createdAtColumn.setFilterValue(undefined);
-      return;
+    const endReference = createdAtRange.to ?? createdAtRange.from;
+    const endDate = endReference ? new Date(endReference) : undefined;
+    if (endDate) {
+      endDate.setHours(23, 59, 59, 999);
     }
 
     createdAtColumn.setFilterValue([startDate, endDate]);
-  }, [createdFrom, createdTo, table]);
+  }, [createdAtRange, table]);
 
   return (
     <div className="w-full">
@@ -139,35 +131,11 @@ export function DataTable<TData, TValue>({
               <SelectItem value="operator">Operator</SelectItem>
             </SelectContent>
           </Select>
-          <div className="flex items-center gap-2">
-            <Input
-              type="date"
-              value={createdFrom}
-              onChange={(event) => setCreatedFrom(event.target.value)}
-              className="h-9 w-[150px]"
-              aria-label="Filtro criado em de"
-            />
-            <span className="text-xs text-muted-foreground">até</span>
-            <Input
-              type="date"
-              value={createdTo}
-              onChange={(event) => setCreatedTo(event.target.value)}
-              className="h-9 w-[150px]"
-              aria-label="Filtro criado em até"
-            />
-            {(createdFrom || createdTo) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setCreatedFrom("");
-                  setCreatedTo("");
-                }}
-              >
-                Limpar
-              </Button>
-            )}
-          </div>
+          <LeadsDateFilter
+            title="Data de Criação"
+            value={createdAtRange}
+            onChange={setCreatedAtRange}
+          />
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
