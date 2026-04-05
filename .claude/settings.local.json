@@ -2,7 +2,26 @@
   "permissions": {
     "allow": [
       "Bash(bun run:*)",
-      "Bash(python3)"
+      "Bash(python3)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/crm/features)",
+      "Bash(xargs grep:*)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/crm/features/context)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/crm/features/services)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/crm/features/container)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/components)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/components/leads-filters)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features/context)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features/services)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features/container)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features/context/DashboardContext.tsx)",
+      "Bash(wc -l /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features/context/DashboardContext.tsx)",
+      "Bash(ls /a/develop/lead-flow-app/app/api/v1/leads/[id]/status)",
+      "Bash(cat /a/develop/lead-flow-app/app/api/v1/leads/[id]/status/route.ts)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/crm/loading.tsx)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/crm/)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); items=d['item']; print\\([i['name'] for i in items[:5]]\\)\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); items=d['item']; print\\([i['name'] for i in items]\\)\")"
     ]
   }
 }
