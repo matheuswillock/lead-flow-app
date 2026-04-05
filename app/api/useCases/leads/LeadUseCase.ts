@@ -723,37 +723,48 @@ export class LeadUseCase implements ILeadUseCase {
           rule.requiredStatus
       );
 
-      for (const rule of combinedTransitionRules) {
-        if (existingLead.status === rule.requiredStatus) {
-          continue;
-        }
+      if (combinedTransitionRules.length > 0) {
+        // OR logic: transition is allowed when the current status satisfies ANY rule.
+        const anySatisfied = combinedTransitionRules.some(
+          (rule) => existingLead.status === rule.requiredStatus
+        );
 
-        const defaultConfirmationMessage = `Regra de transição: confirme mover para ${getStatusLabel(
-          status
-        )} sem o pré-requisito ${getStatusLabel(rule.requiredStatus!)}.`;
-        const defaultBlockingMessage = `Regra de transição: o lead só pode ser movido para ${getStatusLabel(
-          status
-        )} quando estiver em ${getStatusLabel(rule.requiredStatus!)}.`;
+        if (!anySatisfied) {
+          // Allow if the user already confirmed any rule in this set.
+          const alreadyConfirmed = combinedTransitionRules.some(
+            (rule) => rule.requireConfirmation && trigger?.confirmRuleId === rule.id
+          );
 
-        if (rule.requireConfirmation) {
-          if (trigger?.confirmRuleId === rule.id) {
-            continue;
+          if (!alreadyConfirmed) {
+            // Surface the first confirmation rule if available, otherwise the first blocking rule.
+            const ruleToSurface =
+              combinedTransitionRules.find((rule) => rule.requireConfirmation) ??
+              combinedTransitionRules[0]!;
+
+            const defaultConfirmationMessage = `Regra de transição: confirme mover para ${getStatusLabel(
+              status
+            )} sem o pré-requisito ${getStatusLabel(ruleToSurface.requiredStatus!)}.`;
+            const defaultBlockingMessage = `Regra de transição: o lead só pode ser movido para ${getStatusLabel(
+              status
+            )} quando estiver em ${getStatusLabel(ruleToSurface.requiredStatus!)}.`;
+
+            if (ruleToSurface.requireConfirmation) {
+              return new Output(false, [], [ruleToSurface.confirmationMessage || defaultConfirmationMessage], {
+                requiresConfirmation: true,
+                confirmationRuleId: ruleToSurface.id,
+                targetStatus: status,
+                requiredStatus: ruleToSurface.requiredStatus,
+                confirmationMessage: ruleToSurface.confirmationMessage || null,
+              });
+            }
+
+            return new Output(false, [], [ruleToSurface.confirmationMessage || defaultBlockingMessage], {
+              requiresConfirmation: false,
+              targetStatus: status,
+              requiredStatus: ruleToSurface.requiredStatus,
+            });
           }
-
-          return new Output(false, [], [rule.confirmationMessage || defaultConfirmationMessage], {
-            requiresConfirmation: true,
-            confirmationRuleId: rule.id,
-            targetStatus: status,
-            requiredStatus: rule.requiredStatus,
-            confirmationMessage: rule.confirmationMessage || null,
-          });
         }
-
-        return new Output(false, [], [rule.confirmationMessage || defaultBlockingMessage], {
-          requiresConfirmation: false,
-          targetStatus: status,
-          requiredStatus: rule.requiredStatus,
-        });
       }
 
       if (status === LeadStatus.scheduled) {
@@ -779,6 +790,10 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const statusUpdateExtraData: Prisma.LeadUpdateInput = {};
+
+      if (status !== existingLead.status) {
+        statusUpdateExtraData.statusEnteredAt = new Date();
+      }
 
       if (status === LeadStatus.future_sale) {
         const followUpAt = trigger?.followUpAt ? new Date(trigger.followUpAt) : null;

@@ -230,7 +230,6 @@ export class LeadRepository implements ILeadRepository {
       where: { id },
       data: {
         status,
-        statusEnteredAt: new Date(),
         ...(extraData ?? {}),
       },
       include: {
