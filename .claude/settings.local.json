@@ -27,7 +27,10 @@
       "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/pipeline/features/)",
       "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/pipeline/features/context/PipelineTypes.ts)",
       "Bash(head -60 /a/develop/lead-flow-app/app/[supabaseId]/pipeline/features/context/PipelineTypes.ts)",
-      "Bash(head -80 /a/develop/lead-flow-app/app/[supabaseId]/board/features/context/BoardTypes.ts)"
+      "Bash(head -80 /a/develop/lead-flow-app/app/[supabaseId]/board/features/context/BoardTypes.ts)",
+      "Bash(bunx prisma:*)",
+      "Bash(node -e \"const c = require\\('./postman/Lead-Flow-API-Collection.json'\\); console.log\\('items count:', c.item.length\\); c.item.forEach\\(\\(i,idx\\) => console.log\\(idx, i.name\\)\\);\")",
+      "Bash(node -e ':*)"
     ]
   }
 }

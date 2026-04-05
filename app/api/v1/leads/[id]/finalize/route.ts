@@ -111,6 +111,17 @@ export async function POST(
           createdBy: teamAccess.access.profileId,
         },
       }),
+
+      // Criar entrada na carteira (upsert para ser idempotente)
+      prisma.leadPortfolio.upsert({
+        where: { leadId },
+        create: {
+          leadId,
+          teamId: teamAccess.access.teamId,
+          portfolioStatus: 'active',
+        },
+        update: {},
+      }),
     ]);
 
     return NextResponse.json(
