@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { integrationsService } from "../services/IntegrationsService";
 import type { IntegrationsState, IntegrationsActions } from "./IntegrationsTypes";
-import type { IntegrationsBootstrapResponse } from "../services/IIntegrationsService";
+import type { IntegrationsBootstrapResponse, StudioWebhookLogItem } from "../services/IIntegrationsService";
 
 const STUDIO_WEBHOOK_CONTRACT_JSON = `{
   "name": "Maria Silva",
@@ -29,6 +29,8 @@ const STUDIO_WEBHOOK_CONTRACT_JSON = `{
 
 const integrationsBootstrapInFlightByKey = new Map<string, Promise<IntegrationsBootstrapResponse>>();
 const integrationsBootstrapCacheByKey = new Map<string, IntegrationsBootstrapResponse>();
+const studioWebhookLogsInFlightByKey = new Map<string, Promise<StudioWebhookLogItem[]>>();
+const studioWebhookLogsCacheByKey = new Map<string, StudioWebhookLogItem[]>();
 
 const buildBootstrapKey = (supabaseId: string, teamId: string): string => `${supabaseId}:${teamId}`;
 
@@ -39,6 +41,9 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
   const [integrationsBootstrapLoading, setIntegrationsBootstrapLoading] = useState(false);
   const [studioWebhookLoading, setStudioWebhookLoading] = useState(false);
   const [studioWebhookSaving, setStudioWebhookSaving] = useState(false);
+  const [studioWebhookLogs, setStudioWebhookLogs] = useState<StudioWebhookLogItem[]>([]);
+  const [studioWebhookLogsLoading, setStudioWebhookLogsLoading] = useState(false);
+  const [selectedStudioWebhookLogId, setSelectedStudioWebhookLogId] = useState<string | null>(null);
   const [studioWebhookTokenMode, setStudioWebhookTokenMode] = useState<"manual" | "auto" | "none">("auto");
   const [studioWebhookManualToken, setStudioWebhookManualToken] = useState("");
   const [studioWebhookExpiryMode, setStudioWebhookExpiryMode] = useState<"hours_24" | "months_6" | "indeterminate">("months_6");
@@ -46,6 +51,9 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
   const inFlightBootstrapKeyRef = useRef<string | null>(null);
   const lastSuccessfulBootstrapKeyRef = useRef<string | null>(null);
   const currentBootstrapKeyRef = useRef<string | null>(null);
+  const inFlightLogsKeyRef = useRef<string | null>(null);
+  const lastSuccessfulLogsKeyRef = useRef<string | null>(null);
+  const currentLogsKeyRef = useRef<string | null>(null);
 
   const resetBootstrapState = useCallback(() => {
     setLeadFormUrl("");
@@ -54,6 +62,23 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     setStudioWebhookExpiryMode("months_6");
     setStudioWebhookManualToken("");
     setStudioWebhookGeneratedUrl("");
+  }, []);
+
+  const resetLogsState = useCallback(() => {
+    setStudioWebhookLogs([]);
+    setSelectedStudioWebhookLogId(null);
+    setStudioWebhookLogsLoading(false);
+  }, []);
+
+  const applyWebhookLogs = useCallback((logs: StudioWebhookLogItem[]) => {
+    setStudioWebhookLogs(logs);
+    setSelectedStudioWebhookLogId((currentSelectedLogId) => {
+      if (currentSelectedLogId && logs.some((log) => log.id === currentSelectedLogId)) {
+        return currentSelectedLogId;
+      }
+
+      return logs[0]?.id ?? null;
+    });
   }, []);
 
   const applyBootstrapResult = useCallback((bootstrap: IntegrationsBootstrapResponse) => {
@@ -80,9 +105,13 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
       currentBootstrapKeyRef.current = null;
       inFlightBootstrapKeyRef.current = null;
       lastSuccessfulBootstrapKeyRef.current = null;
+      currentLogsKeyRef.current = null;
+      inFlightLogsKeyRef.current = null;
+      lastSuccessfulLogsKeyRef.current = null;
       setIntegrationsBootstrapLoading(false);
       setStudioWebhookLoading(false);
       resetBootstrapState();
+      resetLogsState();
       return;
     }
 
@@ -148,11 +177,96 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
         inFlightBootstrapKeyRef.current = null;
       }
     }
-  }, [activeTeamId, applyBootstrapResult, resetBootstrapState, supabaseId]);
+  }, [activeTeamId, applyBootstrapResult, resetBootstrapState, resetLogsState, supabaseId]);
 
   useEffect(() => {
     void loadStudioWebhookConfig();
   }, [loadStudioWebhookConfig]);
+
+  const loadStudioWebhookLogs = useCallback(
+    async (options?: { force?: boolean }) => {
+      if (!activeTeamId) {
+        currentLogsKeyRef.current = null;
+        inFlightLogsKeyRef.current = null;
+        lastSuccessfulLogsKeyRef.current = null;
+        resetLogsState();
+        return;
+      }
+
+      const requestKey = buildBootstrapKey(supabaseId, activeTeamId);
+      const forceReload = options?.force === true;
+      const previousKey = currentLogsKeyRef.current;
+      currentLogsKeyRef.current = requestKey;
+
+      if (previousKey && previousKey !== requestKey) {
+        setStudioWebhookLogs([]);
+        setSelectedStudioWebhookLogId(null);
+      }
+
+      if (!forceReload && lastSuccessfulLogsKeyRef.current === requestKey) {
+        return;
+      }
+
+      if (inFlightLogsKeyRef.current === requestKey) {
+        return;
+      }
+
+      const cachedLogs = !forceReload ? studioWebhookLogsCacheByKey.get(requestKey) : undefined;
+      if (cachedLogs) {
+        applyWebhookLogs(cachedLogs);
+        lastSuccessfulLogsKeyRef.current = requestKey;
+        setStudioWebhookLogsLoading(false);
+        return;
+      }
+
+      setStudioWebhookLogsLoading(true);
+      inFlightLogsKeyRef.current = requestKey;
+
+      const existingRequest = studioWebhookLogsInFlightByKey.get(requestKey);
+      const requestPromise =
+        existingRequest ??
+        integrationsService
+          .getStudioWebhookLogs(supabaseId, activeTeamId)
+          .then((result) => result.logs)
+          .finally(() => {
+            studioWebhookLogsInFlightByKey.delete(requestKey);
+          });
+
+      if (!existingRequest) {
+        studioWebhookLogsInFlightByKey.set(requestKey, requestPromise);
+      }
+
+      try {
+        const logs = await requestPromise;
+        studioWebhookLogsCacheByKey.set(requestKey, logs);
+
+        if (currentLogsKeyRef.current !== requestKey) {
+          return;
+        }
+
+        applyWebhookLogs(logs);
+        lastSuccessfulLogsKeyRef.current = requestKey;
+      } catch (error) {
+        if (currentLogsKeyRef.current === requestKey) {
+          resetLogsState();
+        }
+        console.error("[useIntegrations] Erro ao carregar logs do webhook:", error);
+        toast.error(error instanceof Error ? error.message : "Não foi possível carregar os logs do webhook");
+      } finally {
+        if (currentLogsKeyRef.current === requestKey) {
+          setStudioWebhookLogsLoading(false);
+        }
+        if (inFlightLogsKeyRef.current === requestKey) {
+          inFlightLogsKeyRef.current = null;
+        }
+      }
+    },
+    [activeTeamId, applyWebhookLogs, resetLogsState, supabaseId]
+  );
+
+  useEffect(() => {
+    void loadStudioWebhookLogs({ force: true });
+  }, [activeTeamId, loadStudioWebhookLogs]);
 
   const copyLeadFormUrl = useCallback(() => {
     const executeCopy = async () => {
@@ -309,12 +423,17 @@ export function useIntegrations(supabaseId: string): IntegrationsState & Integra
     integrationsBootstrapLoading,
     studioWebhookLoading,
     studioWebhookSaving,
+    studioWebhookLogs,
+    studioWebhookLogsLoading,
+    selectedStudioWebhookLogId,
     studioWebhookContractJson: STUDIO_WEBHOOK_CONTRACT_JSON,
     copyLeadFormUrl,
     loadStudioWebhookConfig,
+    loadStudioWebhookLogs,
     setStudioWebhookTokenMode,
     setStudioWebhookManualToken,
     setStudioWebhookExpiryMode,
+    setSelectedStudioWebhookLogId,
     saveStudioWebhookConfig,
     copyStudioWebhookUrl,
     copyStudioWebhookContract,

@@ -37,8 +37,28 @@ export type ProcessStudioWebhookLeadInput = {
   payload: StudioWebhookLeadPayload;
 };
 
+export type StudioWebhookRequestLogResultType = "success" | "error";
+
+export type RegisterStudioWebhookRequestLogUseCaseInput = {
+  teamId: string;
+  method: string;
+  endpoint: string;
+  statusCode: number;
+  resultType: StudioWebhookRequestLogResultType;
+  requestPayload?: unknown;
+  responsePayload?: unknown;
+  errorMessage?: string | null;
+};
+
+export type GetStudioWebhookLogsUseCaseInput = {
+  teamId: string;
+  limit?: number;
+};
+
 export interface IStudioWebhookIntegrationUseCase {
   getConfiguration(input: GetStudioWebhookConfigUseCaseInput): Promise<Output>;
   upsertConfiguration(input: UpsertStudioWebhookConfigUseCaseInput): Promise<Output>;
   processWebhookLead(input: ProcessStudioWebhookLeadInput): Promise<Output>;
+  getLatestWebhookLogs(input: GetStudioWebhookLogsUseCaseInput): Promise<Output>;
+  registerWebhookRequestLog(input: RegisterStudioWebhookRequestLogUseCaseInput): Promise<void>;
 }

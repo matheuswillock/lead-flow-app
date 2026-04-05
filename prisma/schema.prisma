@@ -520,6 +520,7 @@ model Team {
   pendingActions   PendingAction[]
   notifications    Notification[]
   studioWebhookConfig TeamStudioWebhookConfig?
+  studioWebhookRequestLogs TeamStudioWebhookRequestLog[]
 
   @@index([masterId])
   @@map("teams")
@@ -544,6 +545,25 @@ model TeamStudioWebhookConfig {
   @@index([updatedByProfileId])
   @@index([expiresAt])
   @@map("team_studio_webhook_configs")
+}
+
+model TeamStudioWebhookRequestLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  teamId          String   @db.Uuid
+  method          String   @db.Text
+  endpoint        String   @db.Text
+  statusCode      Int
+  resultType      String   @db.Text
+  requestPayload  Json?
+  responsePayload Json?
+  errorMessage    String?  @db.Text
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("team_studio_webhook_request_logs")
 }
 
 model Notification {
