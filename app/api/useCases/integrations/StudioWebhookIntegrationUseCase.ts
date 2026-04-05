@@ -81,6 +81,16 @@ const buildWebhookUrl = (appUrl: string, teamId: string, tokenMode: StudioWebhoo
 export class StudioWebhookIntegrationUseCase implements IStudioWebhookIntegrationUseCase {
   constructor(private readonly service: IStudioWebhookIntegrationService) {}
 
+  async verifyTeamExists(teamId: string): Promise<boolean> {
+    try {
+      const team = await this.service.getTeamWithMaster(teamId);
+      return Boolean(team);
+    } catch (error) {
+      console.error("[StudioWebhookIntegrationUseCase] Erro ao validar existência do time:", error);
+      return false;
+    }
+  }
+
   async getConfiguration(input: GetStudioWebhookConfigUseCaseInput): Promise<Output> {
     try {
       const team = await this.service.getTeamWithMaster(input.teamId);

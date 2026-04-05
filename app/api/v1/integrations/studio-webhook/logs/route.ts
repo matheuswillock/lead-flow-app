@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     if (!output.isValid) {
       const isNotFound = output.errorMessages.some((message) => message.toLowerCase().includes("não encontrado"));
-      return NextResponse.json(output, { status: isNotFound ? 404 : 400 });
+      return NextResponse.json(output, { status: isNotFound ? 404 : 500 });
     }
 
     return NextResponse.json(output, { status: 200 });

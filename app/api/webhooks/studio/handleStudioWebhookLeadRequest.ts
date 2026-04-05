@@ -119,8 +119,11 @@ export const handleStudioWebhookLeadRequest = async ({
       );
     }
 
-    logTeamId = validatedTeamId.data;
-    logEndpoint = sanitizeStudioWebhookEndpointForLogs(request.nextUrl.pathname, logTeamId);
+    const shouldAttachTeamToLog = await studioWebhookIntegrationUseCase.verifyTeamExists(validatedTeamId.data);
+    if (shouldAttachTeamToLog) {
+      logTeamId = validatedTeamId.data;
+      logEndpoint = sanitizeStudioWebhookEndpointForLogs(request.nextUrl.pathname, logTeamId);
+    }
 
     const rawBody = await request.text().catch(() => "");
     const parsedBody = parseWebhookRequestBody(rawBody);

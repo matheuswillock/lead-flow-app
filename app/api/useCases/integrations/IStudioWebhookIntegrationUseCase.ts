@@ -56,6 +56,7 @@ export type GetStudioWebhookLogsUseCaseInput = {
 };
 
 export interface IStudioWebhookIntegrationUseCase {
+  verifyTeamExists(teamId: string): Promise<boolean>;
   getConfiguration(input: GetStudioWebhookConfigUseCaseInput): Promise<Output>;
   upsertConfiguration(input: UpsertStudioWebhookConfigUseCaseInput): Promise<Output>;
   processWebhookLead(input: ProcessStudioWebhookLeadInput): Promise<Output>;
