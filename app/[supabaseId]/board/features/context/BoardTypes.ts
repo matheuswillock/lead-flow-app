@@ -21,6 +21,12 @@ export type Lead = {
   meetingNotes: string | null;
   meetingLink: string | null;
   meetingHeald: MeetingHeald | null;
+  followUpAt?: string | null;
+  followUpNotes?: string | null;
+  followUpSourceStatus?: LeadStatus | null;
+  lossReason?: string | null;
+  lossReasonDetails?: string | null;
+  statusEnteredAt?: string | null;
   closerId: string | null;
   notes: string | null;
   createdBy: string | null;
@@ -31,6 +37,8 @@ export type Lead = {
   ticket: number | null;
   contractDueDate: string | null;
   soldPlan: string | null;
+  leadTimeDueAt?: string | null;
+  isLeadTimeBreached?: boolean;
   attachmentCount?: number;
   manager?: {
     id: string;

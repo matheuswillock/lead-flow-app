@@ -6,6 +6,7 @@ import { Output } from "@/lib/output";
 import { LeadStatus } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import type { UpdateLeadStatusTriggerInput } from "@/app/api/useCases/leads/ILeadUseCase";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -25,8 +26,9 @@ export async function PUT(
       return NextResponse.json(output, { status: 403 });
     }
 
-    const body = await request.json();
-    const { status } = body;
+    const body = await request.json().catch(() => null);
+    const status = body?.status;
+    const trigger = (body?.trigger ?? undefined) as UpdateLeadStatusTriggerInput | undefined;
 
     if (!status || !Object.values(LeadStatus).includes(status)) {
       const output = new Output(false, [], ["Status inválido"], null);
@@ -50,8 +52,19 @@ export async function PUT(
       return NextResponse.json(output, { status: 404 });
     }
 
-    const output = await leadUseCase.updateLeadStatus(teamAccess.access.supabaseId, id, status);
-    const responseStatus = output.isValid ? 200 : 400;
+    const output = await leadUseCase.updateLeadStatus(
+      teamAccess.access.supabaseId,
+      id,
+      status,
+      trigger
+    );
+    const needsConfirmation = !!(
+      output.result &&
+      typeof output.result === "object" &&
+      "requiresConfirmation" in output.result &&
+      (output.result as { requiresConfirmation?: boolean }).requiresConfirmation
+    );
+    const responseStatus = output.isValid ? 200 : needsConfirmation ? 409 : 400;
     return NextResponse.json(output, { status: responseStatus });
 
   } catch (error) {

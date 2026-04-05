@@ -3,9 +3,19 @@
 import { ReactNode } from "react";
 import PipelineTable from "./PipelineTable";
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog";
-import { Table2, Plus, Settings } from "lucide-react";
+import { Table2, Plus, Settings, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -38,6 +48,57 @@ interface PipelineContainerProps {
   useExternalFilters?: boolean;
 }
 
+type PipelineColumnOptionKey = (typeof PIPELINE_TABLE_COLUMN_OPTIONS)[number]["key"];
+
+function SortablePipelineColumnOption({
+  option,
+  isChecked,
+  onCheckedChange,
+}: {
+  option: (typeof PIPELINE_TABLE_COLUMN_OPTIONS)[number];
+  isChecked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  const checkboxId = `pipeline-column-${option.key}`;
+  const { setNodeRef, attributes, listeners, transform, transition, isDragging } = useSortable({
+    id: option.key,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
+    >
+      <div className="flex items-center gap-3">
+        <Checkbox
+          id={checkboxId}
+          checked={isChecked}
+          onCheckedChange={(value) => onCheckedChange(value === true)}
+        />
+        <Label htmlFor={checkboxId} className="text-sm font-medium leading-none">
+          {option.label}
+        </Label>
+      </div>
+      <button
+        type="button"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:text-foreground"
+        aria-label={`Reordenar coluna ${option.label}`}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 export function PipelineContainer({
   title = "Pipeline de Leads",
   viewModeToggle,
@@ -58,8 +119,48 @@ export function PipelineContainer({
     patchLead,
     tableColumnVisibility,
     setTableColumnVisibility,
+    tableColumnOrder,
     setTableColumnOrder,
   } = usePipelineContext();
+
+  const sensors = useSensors(useSensor(PointerSensor));
+
+  const orderedColumnOptions = (() => {
+    const optionMap = new Map(
+      PIPELINE_TABLE_COLUMN_OPTIONS.map((option) => [option.key, option] as const)
+    );
+    const sorted: (typeof PIPELINE_TABLE_COLUMN_OPTIONS)[number][] = [];
+    tableColumnOrder.forEach((columnId) => {
+      const option = optionMap.get(columnId as PipelineColumnOptionKey);
+      if (option) {
+        sorted.push(option);
+        optionMap.delete(columnId as PipelineColumnOptionKey);
+      }
+    });
+    optionMap.forEach((option) => sorted.push(option));
+    return sorted;
+  })();
+
+  const handleColumnConfigDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const currentOrder = orderedColumnOptions.map((option) => option.key);
+    const oldIndex = currentOrder.indexOf(active.id as PipelineColumnOptionKey);
+    const newIndex = currentOrder.indexOf(over.id as PipelineColumnOptionKey);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const nextOrder = arrayMove(currentOrder, oldIndex, newIndex);
+    setTableColumnOrder((prev) => {
+      const hasDrag = prev.includes("drag");
+      const hasActions = prev.includes("actions");
+      return [
+        ...(hasDrag ? ["drag"] : []),
+        ...nextOrder,
+        ...(hasActions ? ["actions"] : []),
+      ];
+    });
+  };
   
   // Calcular total de leads
   const totalLeads = allLeads.length;
@@ -87,11 +188,11 @@ export function PipelineContainer({
             <Plus className="mr-2 size-4" />
             Adicionar novo lead
           </Button>
-          <Dialog>
+          <Sheet>
             <TooltipProvider delayDuration={0}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <DialogTrigger asChild>
+                  <SheetTrigger asChild>
                     <Button
                       type="button"
                       variant="outline"
@@ -101,50 +202,48 @@ export function PipelineContainer({
                     >
                       <Settings className="h-4 w-4" />
                     </Button>
-                  </DialogTrigger>
+                  </SheetTrigger>
                 </TooltipTrigger>
                 <TooltipContent>Configuração das colunas</TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <DialogContent className="sm:max-w-[420px]">
-              <DialogHeader>
-                <DialogTitle>Configuração das colunas</DialogTitle>
-                <DialogDescription>
+            <SheetContent side="right" className="w-[420px] sm:w-[460px]">
+              <SheetHeader>
+                <SheetTitle>Configuração das colunas</SheetTitle>
+                <SheetDescription>
                   Selecione quais headers devem aparecer na tabela do pipeline.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-3">
-                {PIPELINE_TABLE_COLUMN_OPTIONS.map((option) => {
-                  const checkboxId = `pipeline-column-${option.key}`;
-                  const isChecked = tableColumnVisibility[option.key] !== false;
-
-                  return (
-                    <div
-                      key={option.key}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          id={checkboxId}
-                          checked={isChecked}
-                          onCheckedChange={(value) => {
-                            const nextChecked = value === true;
+                </SheetDescription>
+              </SheetHeader>
+              <div className="mt-4 grid gap-3">
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleColumnConfigDragEnd}
+                >
+                  <SortableContext
+                    items={orderedColumnOptions.map((option) => option.key)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="grid gap-3">
+                      {orderedColumnOptions.map((option) => (
+                        <SortablePipelineColumnOption
+                          key={option.key}
+                          option={option}
+                          isChecked={tableColumnVisibility[option.key] !== false}
+                          onCheckedChange={(nextChecked) => {
                             setTableColumnVisibility((prev) => ({
                               ...prev,
                               [option.key]: nextChecked,
                             }));
                           }}
                         />
-                        <Label htmlFor={checkboxId} className="text-sm font-medium leading-none">
-                          {option.label}
-                        </Label>
-                      </div>
+                      ))}
                     </div>
-                  );
-                })}
+                  </SortableContext>
+                </DndContext>
               </div>
               <p className="text-xs text-muted-foreground">
-                Isso afeta apenas a tabela do pipeline. Para alterar a ordem, arraste os headers direto na tabela.
+                Isso afeta apenas a tabela do pipeline. Você pode arrastar os itens acima para definir a ordem.
               </p>
               <div className="flex justify-end">
                 <Button
@@ -159,8 +258,8 @@ export function PipelineContainer({
                   Restaurar padrão
                 </Button>
               </div>
-            </DialogContent>
-          </Dialog>
+            </SheetContent>
+          </Sheet>
           <LeadImportButton onImportComplete={refreshLeads} />
         </div>
       </div>

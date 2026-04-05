@@ -50,6 +50,7 @@ enum LeadStatus {
   scheduled
   no_show
   pricingRequest
+  future_sale
   offerNegotiation
   pending_documents
   offerSubmission
@@ -59,6 +60,17 @@ enum LeadStatus {
   opportunityLost
   operator_denied
   contract_finalized
+}
+
+enum TeamStatusRuleType {
+  disabled_status
+  lead_time
+  combined_transition
+}
+
+enum TeamLeadTimeUnit {
+  hours
+  days
 }
 
 enum ActivityType {
@@ -207,6 +219,8 @@ model Profile {
   receivedNotifications    Notification[]     @relation("NotificationRecipient")
   sentNotifications        Notification[]     @relation("NotificationActor")
   updatedStudioWebhookConfigs TeamStudioWebhookConfig[] @relation("StudioWebhookConfigUpdater")
+  createdTeamFilterPresets TeamFilterPreset[] @relation("TeamFilterPresetCreator")
+  createdTeamStatusRules TeamStatusRule[] @relation("TeamStatusRuleCreator")
 
   @@index([role])
   @@index([managerId])
@@ -329,6 +343,12 @@ model Lead {
   meetingNotes      String?       @db.Text
   meetingLink       String?       @db.Text
   meetingHeald      MeetingHeald?
+  followUpAt        DateTime?     @db.Timestamptz(6)
+  followUpNotes     String?       @db.Text
+  followUpSourceStatus LeadStatus?
+  lossReason        String?       @db.Text
+  lossReasonDetails String?       @db.Text
+  statusEnteredAt   DateTime      @default(now()) @db.Timestamptz(6)
   notes             String?       @db.Text
 
   // Novos campos para leads finalizados (apenas em edição)
@@ -362,6 +382,8 @@ model Lead {
   @@index([createdBy])
   @@index([updatedBy])
   @@index([meetingDate])
+  @@index([followUpAt])
+  @@index([statusEnteredAt])
   @@map("leads")
 }
 
@@ -521,9 +543,53 @@ model Team {
   notifications    Notification[]
   studioWebhookConfig TeamStudioWebhookConfig?
   studioWebhookRequestLogs TeamStudioWebhookRequestLog[]
+  filterPresets TeamFilterPreset[]
+  statusRules TeamStatusRule[]
 
   @@index([masterId])
   @@map("teams")
+}
+
+model TeamFilterPreset {
+  id          String   @id @default(uuid()) @db.Uuid
+  teamId      String   @db.Uuid
+  createdBy   String   @db.Uuid
+  name        String   @db.Text
+  description String?  @db.Text
+  queryJson   Json
+  lastUsedAt  DateTime? @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator Profile @relation("TeamFilterPresetCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdBy])
+  @@index([teamId, lastUsedAt(sort: Desc)])
+  @@map("team_filter_presets")
+}
+
+model TeamStatusRule {
+  id                  String             @id @default(uuid()) @db.Uuid
+  teamId              String             @db.Uuid
+  createdBy           String             @db.Uuid
+  type                TeamStatusRuleType
+  targetStatus        LeadStatus
+  requiredStatus      LeadStatus?
+  leadTimeValue       Int?
+  leadTimeUnit        TeamLeadTimeUnit?
+  requireConfirmation Boolean            @default(false)
+  confirmationMessage String?            @db.Text
+  isEnabled           Boolean            @default(true)
+  createdAt           DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime           @updatedAt @db.Timestamptz(6)
+
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator Profile @relation("TeamStatusRuleCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([teamId, isEnabled])
+  @@index([teamId, type, targetStatus, isEnabled])
+  @@map("team_status_rules")
 }
 
 model TeamStudioWebhookConfig {

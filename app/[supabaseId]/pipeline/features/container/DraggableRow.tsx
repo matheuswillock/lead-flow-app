@@ -5,6 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { flexRender, Row } from "@tanstack/react-table";
 import { Lead } from "../context/PipelineTypes";
+import { cn } from "@/lib/utils";
 
 interface DraggableRowProps {
   row: Row<Lead>;
@@ -34,7 +35,10 @@ export function DraggableRow({ row, onRowClick }: DraggableRowProps) {
       ref={setNodeRef}
       style={style}
       data-state={row.getIsSelected() && "selected"}
-      className="cursor-pointer"
+      className={cn(
+        "cursor-pointer",
+        row.original.isLeadTimeBreached && "animate-pulse bg-destructive/10"
+      )}
       onClick={() => onRowClick(row.original)}
     >
       {row.getVisibleCells().map((cell) => (

@@ -5782,6 +5782,227 @@
                     "description": "Auto-generated from app/api/v1/teams/pending-actions/[id]/route.ts"
                   },
                   "response": []
+                },
+                {
+                  "name": "GET /api/v1/teams/{{teamId}}/status-rules",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/status-rules",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "status-rules"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/status-rules/route.ts"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "PUT /api/v1/teams/{{teamId}}/status-rules",
+                  "request": {
+                    "method": "PUT",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/status-rules",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "status-rules"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/status-rules/route.ts",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\"disabledStatuses\":[],\"leadTimeRules\":[],\"combinedRules\":[]}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "GET /api/v1/teams/{{teamId}}/crm/filter-presets",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/crm/filter-presets",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "crm",
+                        "filter-presets"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/crm/filter-presets/route.ts"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/v1/teams/{{teamId}}/crm/filter-presets",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/crm/filter-presets",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "crm",
+                        "filter-presets"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/crm/filter-presets/route.ts",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\"name\":\"Meu preset\",\"description\":\"Filtro para leads quentes\",\"queryJson\":{\"query\":\"\",\"statusFilter\":[],\"assignedUsers\":[],\"closerFilter\":[],\"periodStart\":\"\",\"periodEnd\":\"\",\"onlyMeetingsHeld\":false}}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "PATCH /api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "crm",
+                        "filter-presets",
+                        "{{presetId}}"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/crm/filter-presets/[presetId]/route.ts",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\"name\":\"Preset atualizado\"}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "DELETE /api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "crm",
+                        "filter-presets",
+                        "{{presetId}}"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/crm/filter-presets/[presetId]/route.ts"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}/use",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}/use",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "crm",
+                        "filter-presets",
+                        "{{presetId}}",
+                        "use"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/crm/filter-presets/[presetId]/use/route.ts",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{}"
+                    }
+                  },
+                  "response": []
                 }
               ]
             },

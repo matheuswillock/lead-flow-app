@@ -13,6 +13,11 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
+import {
+  EMPTY_TEAM_STATUS_RULES,
+  resolveLeadTimeState,
+  type TeamStatusRulesResponse,
+} from "@/lib/teamStatusRules";
 
 interface IPipelineProviderProps {
   children: ReactNode;
@@ -114,6 +119,7 @@ const COLUMNS: { key: ColumnKey; title: string }[] = [
   { key: "scheduled", title: "Agendado" },
   { key: "no_show", title: "No Show" },
   { key: "pricingRequest", title: "Cotação" },
+  { key: "future_sale", title: "Venda Futura" },
   { key: "offerNegotiation", title: "Negociação" },
   { key: "pending_documents", title: "Documentos pendentes" },
   { key: "offerSubmission", title: "Proposta" },
@@ -165,6 +171,8 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const [periodStart, setPeriodStart] = useState<string>("");
   const [periodEnd, setPeriodEnd] = useState<string>("");
   const [assignedUser, setAssignedUser] = useState<string>("todos");
+  const [teamStatusRules, setTeamStatusRules] =
+    useState<TeamStatusRulesResponse>(EMPTY_TEAM_STATUS_RULES);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
@@ -298,6 +306,37 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     }
   }, [pipelineColumnOrderStorageKey, tableColumnOrder]);
 
+  const loadTeamStatusRules = useCallback(async () => {
+    if (!supabaseId || !activeTeamId) {
+      setTeamStatusRules(EMPTY_TEAM_STATUS_RULES);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/v1/teams/${activeTeamId}/status-rules`, {
+        headers: {
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId,
+        },
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid || !result?.result) {
+        setTeamStatusRules(EMPTY_TEAM_STATUS_RULES);
+        return;
+      }
+      setTeamStatusRules({
+        ...EMPTY_TEAM_STATUS_RULES,
+        ...result.result,
+      });
+    } catch (error) {
+      console.error("[PipelineContext] Erro ao carregar regras de status:", error);
+      setTeamStatusRules(EMPTY_TEAM_STATUS_RULES);
+    }
+  }, [activeTeamId, supabaseId]);
+
+  useEffect(() => {
+    void loadTeamStatusRules();
+  }, [loadTeamStatusRules]);
+
   // Mapeamento de status para labels legíveis
   const statusLabels: Record<ColumnKey, string> = useMemo(() => {
     const labels: Record<ColumnKey, string> = {} as Record<ColumnKey, string>;
@@ -357,13 +396,27 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
           console.info('[PipelineContext] Leads fetched from API:', result.result.length, 'leads');
           lastLeadsLoadKeyRef.current = loadKey;
           
+          const leadsWithLeadTimeState = result.result.map((lead: Lead) => {
+            const state = resolveLeadTimeState(
+              lead.status,
+              lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
+              teamStatusRules.leadTimeRules
+            );
+            return {
+              ...lead,
+              statusEnteredAt: lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
+              leadTimeDueAt: state.dueAt,
+              isLeadTimeBreached: state.isBreached,
+            };
+          });
+
           // Armazenar todos os leads em um array flat
-          setAllLeads(result.result);
+          setAllLeads(leadsWithLeadTimeState);
 
           // Se há um lead selecionado, atualizar com os novos dados
           const currentSelected = selectedRef.current;
           if (currentSelected && currentSelected.id) {
-            const updatedLead = result.result.find((l: Lead) => l.id === currentSelected.id);
+            const updatedLead = leadsWithLeadTimeState.find((l: Lead) => l.id === currentSelected.id);
             if (updatedLead) {
               const hasChanges = 
                 updatedLead.meetingDate !== currentSelected.meetingDate ||
@@ -415,7 +468,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId]);
+  }, [activeFunctions, activeRole, activeTeamId, resolvedPipelineService, supabaseId, teamStatusRules.leadTimeRules]);
 
   useEffect(() => {
     selectedRef.current = selected;

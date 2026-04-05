@@ -13,6 +13,14 @@ export interface LeadCreateOptions {
   autoScheduleMeeting?: boolean;
 }
 
+export interface UpdateLeadStatusTriggerInput {
+  followUpAt?: string;
+  followUpNotes?: string;
+  reason?: string;
+  reasonDetails?: string;
+  confirmRuleId?: string;
+}
+
 export interface ILeadUseCase {
   createLead(
     supabaseId: string,
@@ -49,7 +57,12 @@ export interface ILeadUseCase {
   ): Promise<Output>;
   updateLead(supabaseId: string, id: string, data: UpdateLeadRequest): Promise<Output>;
   deleteLead(supabaseId: string, id: string): Promise<Output>;
-  updateLeadStatus(supabaseId: string, id: string, status: LeadStatus): Promise<Output>;
+  updateLeadStatus(
+    supabaseId: string,
+    id: string,
+    status: LeadStatus,
+    trigger?: UpdateLeadStatusTriggerInput
+  ): Promise<Output>;
   assignLeadToOperator(supabaseId: string, id: string, operatorId: string): Promise<Output>;
   transferLead(supabaseId: string, id: string, data: TransferLeadRequest): Promise<Output>;
   getLeadsByStatus(supabaseId: string, status: LeadStatus): Promise<Output>;
