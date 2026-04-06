@@ -144,6 +144,14 @@ enum StudioWebhookTokenExpiryMode {
   @@map("studio_webhook_token_expiry_mode")
 }
 
+enum PortfolioStatus {
+  active
+  pending
+  canceled
+
+  @@map("portfolio_status")
+}
+
 // -----------------------------
 // PROFILES (public.profiles)
 // - Primary key is also a FK to auth.users.id (1:1)
@@ -371,6 +379,7 @@ model Lead {
   activities    LeadActivity[]
   LeadsSchedule LeadsSchedule[]
   LeadFinalized LeadFinalized[]
+  portfolio     LeadPortfolio?
   attachments   LeadAttachment[]
 
   // Unique per tenant
@@ -469,6 +478,24 @@ model LeadFinalized {
   @@map("lead_finalized")
 }
 
+model LeadPortfolio {
+  id              String          @id @default(uuid()) @db.Uuid
+  leadId          String          @unique @db.Uuid
+  teamId          String          @db.Uuid
+  portfolioStatus PortfolioStatus @default(active)
+  note            String?         @db.Text
+  lastContactAt   DateTime?       @db.Timestamptz(6)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(6)
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([teamId, portfolioStatus])
+  @@map("lead_portfolio")
+}
+
 // -----------------------------
 // LEAD ATTACHMENTS (public.lead_attachments)
 // -----------------------------
@@ -543,8 +570,9 @@ model Team {
   notifications    Notification[]
   studioWebhookConfig TeamStudioWebhookConfig?
   studioWebhookRequestLogs TeamStudioWebhookRequestLog[]
-  filterPresets TeamFilterPreset[]
-  statusRules TeamStatusRule[]
+  filterPresets    TeamFilterPreset[]
+  statusRules      TeamStatusRule[]
+  portfolioEntries LeadPortfolio[]
 
   @@index([masterId])
   @@map("teams")

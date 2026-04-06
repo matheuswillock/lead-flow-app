@@ -27,6 +27,17 @@ export const EMPTY_TEAM_STATUS_RULES: TeamStatusRulesResponse = {
   combinedRules: [],
 };
 
+export const createLeadTimeRulesVersion = (leadTimeRules: TeamStatusLeadTimeRule[]) => {
+  if (leadTimeRules.length === 0) {
+    return "no-rules";
+  }
+
+  return leadTimeRules
+    .map((rule) => `${rule.status}:${rule.leadTimeValue}:${rule.leadTimeUnit}`)
+    .sort()
+    .join("|");
+};
+
 const leadTimeUnitToMilliseconds = (value: number, unit: TeamLeadTimeUnit) => {
   if (unit === "days") {
     return value * 24 * 60 * 60 * 1000;
@@ -62,4 +73,3 @@ export const resolveLeadTimeState = (
     dueAt: dueAt.toISOString(),
   };
 };
-

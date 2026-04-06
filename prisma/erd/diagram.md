@@ -128,6 +128,14 @@ months_6 months_6
 indeterminate indeterminate
         }
     
+
+
+        portfolio_status {
+            active active
+pending pending
+canceled canceled
+        }
+    
   "profiles" {
     String id "🗝️"
     String email 
@@ -303,6 +311,16 @@ indeterminate indeterminate
     }
   
 
+  "lead_portfolio" {
+    String id "🗝️"
+    PortfolioStatus portfolioStatus 
+    String note "❓"
+    DateTime lastContactAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "lead_attachments" {
     String id "🗝️"
     String fileName 
@@ -471,6 +489,7 @@ indeterminate indeterminate
     "leads" o{--}o "lead_activities" : "activities"
     "leads" o{--}o "leads_schedule" : "LeadsSchedule"
     "leads" o{--}o "lead_finalized" : "LeadFinalized"
+    "leads" o{--}o "lead_portfolio" : "portfolio"
     "leads" o{--}o "lead_attachments" : "attachments"
     "lead_activities" o|--|| "ActivityType" : "enum:type"
     "lead_activities" o|--|| "leads" : "lead"
@@ -481,6 +500,9 @@ indeterminate indeterminate
     "leads_schedule" o|--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
     "leads_schedule" o|--|| "leads" : "lead"
     "lead_finalized" o|--|| "leads" : "lead"
+    "lead_portfolio" o|--|| "PortfolioStatus" : "enum:portfolioStatus"
+    "lead_portfolio" o|--|| "leads" : "lead"
+    "lead_portfolio" o|--|| "teams" : "team"
     "lead_attachments" o|--|| "leads" : "lead"
     "lead_attachments" o|--|| "profiles" : "uploader"
     "pending_operators" o|--}o "UserFunction" : "enum:functions"
@@ -496,6 +518,7 @@ indeterminate indeterminate
     "teams" o{--}o "team_studio_webhook_request_logs" : "studioWebhookRequestLogs"
     "teams" o{--}o "team_filter_presets" : "filterPresets"
     "teams" o{--}o "team_status_rules" : "statusRules"
+    "teams" o{--}o "lead_portfolio" : "portfolioEntries"
     "team_filter_presets" o|--|| "teams" : "team"
     "team_filter_presets" o|--|| "profiles" : "creator"
     "team_status_rules" o|--|| "TeamStatusRuleType" : "enum:type"

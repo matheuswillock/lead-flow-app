@@ -11,6 +11,7 @@ import { useUserContext } from "@/app/context/UserContext";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
 import {
+  createLeadTimeRulesVersion,
   EMPTY_TEAM_STATUS_RULES,
   resolveLeadTimeState,
   type TeamStatusRulesResponse,
@@ -308,7 +309,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   // Função para carregar leads da API
   const loadLeads = useCallback(async (options?: { force?: boolean }) => {
     const roleToSend = activeRole || "manager";
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}`;
+    const leadTimeRulesVersion = createLeadTimeRulesVersion(teamStatusRules.leadTimeRules);
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}`;
 
     if (
       !options?.force &&
