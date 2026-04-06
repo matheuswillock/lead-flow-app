@@ -28,6 +28,7 @@ no no
 scheduled scheduled
 no_show no_show
 pricingRequest pricingRequest
+future_sale future_sale
 offerNegotiation offerNegotiation
 pending_documents pending_documents
 offerSubmission offerSubmission
@@ -37,6 +38,21 @@ disqualified disqualified
 opportunityLost opportunityLost
 operator_denied operator_denied
 contract_finalized contract_finalized
+        }
+    
+
+
+        TeamStatusRuleType {
+            disabled_status disabled_status
+lead_time lead_time
+combined_transition combined_transition
+        }
+    
+
+
+        TeamLeadTimeUnit {
+            hours hours
+days days
         }
     
 
@@ -110,6 +126,14 @@ LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
             hours_24 hours_24
 months_6 months_6
 indeterminate indeterminate
+        }
+    
+
+
+        portfolio_status {
+            active active
+pending pending
+canceled canceled
         }
     
   "profiles" {
@@ -224,6 +248,12 @@ indeterminate indeterminate
     String meetingNotes "❓"
     String meetingLink "❓"
     MeetingHeald meetingHeald "❓"
+    DateTime followUpAt "❓"
+    String followUpNotes "❓"
+    LeadStatus followUpSourceStatus "❓"
+    String lossReason "❓"
+    String lossReasonDetails "❓"
+    DateTime statusEnteredAt 
     String notes "❓"
     Decimal ticket "❓"
     DateTime contractDueDate "❓"
@@ -281,6 +311,16 @@ indeterminate indeterminate
     }
   
 
+  "lead_portfolio" {
+    String id "🗝️"
+    PortfolioStatus portfolioStatus 
+    String note "❓"
+    DateTime lastContactAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "lead_attachments" {
     String id "🗝️"
     String fileName 
@@ -313,6 +353,32 @@ indeterminate indeterminate
     String id "🗝️"
     String name 
     Boolean isDefault 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "team_filter_presets" {
+    String id "🗝️"
+    String name 
+    String description "❓"
+    Json queryJson 
+    DateTime lastUsedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "team_status_rules" {
+    String id "🗝️"
+    TeamStatusRuleType type 
+    LeadStatus targetStatus 
+    LeadStatus requiredStatus "❓"
+    Int leadTimeValue "❓"
+    TeamLeadTimeUnit leadTimeUnit "❓"
+    Boolean requireConfirmation 
+    String confirmationMessage "❓"
+    Boolean isEnabled 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -402,6 +468,8 @@ indeterminate indeterminate
     "profiles" o{--}o "notifications" : "receivedNotifications"
     "profiles" o{--}o "notifications" : "sentNotifications"
     "profiles" o{--}o "team_studio_webhook_configs" : "updatedStudioWebhookConfigs"
+    "profiles" o{--}o "team_filter_presets" : "createdTeamFilterPresets"
+    "profiles" o{--}o "team_status_rules" : "createdTeamStatusRules"
     "health_plan_options" o|--|o "profiles" : "creator"
     "backoffice_users" o|--|| "profiles" : "profile"
     "backoffice_users" o|--|o "profiles" : "creator"
@@ -411,6 +479,7 @@ indeterminate indeterminate
     "backoffice_payments" o|--|o "profiles" : "creator"
     "leads" o|--|| "LeadStatus" : "enum:status"
     "leads" o|--|o "MeetingHeald" : "enum:meetingHeald"
+    "leads" o|--|o "LeadStatus" : "enum:followUpSourceStatus"
     "leads" o|--|| "profiles" : "manager"
     "leads" o|--|o "teams" : "team"
     "leads" o|--|o "profiles" : "assignee"
@@ -420,6 +489,7 @@ indeterminate indeterminate
     "leads" o{--}o "lead_activities" : "activities"
     "leads" o{--}o "leads_schedule" : "LeadsSchedule"
     "leads" o{--}o "lead_finalized" : "LeadFinalized"
+    "leads" o{--}o "lead_portfolio" : "portfolio"
     "leads" o{--}o "lead_attachments" : "attachments"
     "lead_activities" o|--|| "ActivityType" : "enum:type"
     "lead_activities" o|--|| "leads" : "lead"
@@ -430,6 +500,9 @@ indeterminate indeterminate
     "leads_schedule" o|--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
     "leads_schedule" o|--|| "leads" : "lead"
     "lead_finalized" o|--|| "leads" : "lead"
+    "lead_portfolio" o|--|| "PortfolioStatus" : "enum:portfolioStatus"
+    "lead_portfolio" o|--|| "leads" : "lead"
+    "lead_portfolio" o|--|| "teams" : "team"
     "lead_attachments" o|--|| "leads" : "lead"
     "lead_attachments" o|--|| "profiles" : "uploader"
     "pending_operators" o|--}o "UserFunction" : "enum:functions"
@@ -443,6 +516,17 @@ indeterminate indeterminate
     "teams" o{--}o "notifications" : "notifications"
     "teams" o{--}o "team_studio_webhook_configs" : "studioWebhookConfig"
     "teams" o{--}o "team_studio_webhook_request_logs" : "studioWebhookRequestLogs"
+    "teams" o{--}o "team_filter_presets" : "filterPresets"
+    "teams" o{--}o "team_status_rules" : "statusRules"
+    "teams" o{--}o "lead_portfolio" : "portfolioEntries"
+    "team_filter_presets" o|--|| "teams" : "team"
+    "team_filter_presets" o|--|| "profiles" : "creator"
+    "team_status_rules" o|--|| "TeamStatusRuleType" : "enum:type"
+    "team_status_rules" o|--|| "LeadStatus" : "enum:targetStatus"
+    "team_status_rules" o|--|o "LeadStatus" : "enum:requiredStatus"
+    "team_status_rules" o|--|o "TeamLeadTimeUnit" : "enum:leadTimeUnit"
+    "team_status_rules" o|--|| "teams" : "team"
+    "team_status_rules" o|--|| "profiles" : "creator"
     "team_studio_webhook_configs" o|--|| "StudioWebhookTokenExpiryMode" : "enum:expiryMode"
     "team_studio_webhook_configs" o|--|| "teams" : "team"
     "team_studio_webhook_configs" o|--|| "profiles" : "updatedBy"

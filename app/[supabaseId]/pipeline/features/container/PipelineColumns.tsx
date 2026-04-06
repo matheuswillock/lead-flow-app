@@ -69,6 +69,7 @@ function getStatusColor(status: string): string {
     scheduled: "bg-purple-500",
     no_show: "bg-orange-500",
     pricingRequest: "bg-yellow-500",
+    future_sale: "bg-fuchsia-500",
     offerNegotiation: "bg-amber-500",
     pending_documents: "bg-gray-500",
     offerSubmission: "bg-cyan-500",

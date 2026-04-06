@@ -7,6 +7,17 @@ import BoardFooter from "./BoardFooter";
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog";
 import { FinalizeContractDialog } from "./FinalizeContractDialog";
 import { ScheduleMeetingDialog, type ScheduleMeetingSuccessPayload } from "./ScheduleMeetingDialog";
+import { LeadStatusTriggerDialog, type LeadStatusTriggerPayload } from "./LeadStatusTriggerDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import useBoardContext from "../context/BoardHook";
 import { Lead } from "../context/BoardTypes";
 import { toast } from "sonner";
@@ -37,10 +48,14 @@ export function BoardContainer({
     pendingScheduledDrop,
     clearPendingScheduledDrop,
     applyScheduledTransition,
+    pendingStatusTriggerDrop,
+    clearPendingStatusTriggerDrop,
+    applyPendingStatusTriggerTransition,
     data,
   } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [showStatusTriggerDialog, setShowStatusTriggerDialog] = useState(false);
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const scheduleSucceededRef = useRef(false);
@@ -52,6 +67,20 @@ export function BoardContainer({
     if (!pendingScheduledDrop) return null;
     return data[pendingScheduledDrop.from]?.find((item) => item.id === pendingScheduledDrop.leadId) ?? null;
   }, [data, pendingScheduledDrop]);
+  const pendingStatusTriggerLead = useMemo(() => {
+    if (!pendingStatusTriggerDrop) return null;
+    return (
+      data[pendingStatusTriggerDrop.from]?.find((item) => item.id === pendingStatusTriggerDrop.leadId) ??
+      null
+    );
+  }, [data, pendingStatusTriggerDrop]);
+  const pendingNeedsTriggerDialog = useMemo(
+    () =>
+      pendingStatusTriggerDrop?.to === "future_sale" ||
+      pendingStatusTriggerDrop?.to === "opportunityLost" ||
+      pendingStatusTriggerDrop?.to === "operator_denied",
+    [pendingStatusTriggerDrop]
+  );
 
   const handleFinalizeContract = (lead: Lead) => {
     setSelectedLead(lead);
@@ -72,6 +101,14 @@ export function BoardContainer({
     setScheduleDialogMode(pendingScheduledDrop.from === "no_show" ? "reschedule" : "create");
     setShowScheduleDialog(true);
   }, [pendingDropLead, pendingScheduledDrop]);
+
+  useEffect(() => {
+    if (!pendingStatusTriggerDrop || !pendingStatusTriggerLead) return;
+    setSelectedLead(pendingStatusTriggerLead);
+    if (pendingNeedsTriggerDialog) {
+      setShowStatusTriggerDialog(true);
+    }
+  }, [pendingNeedsTriggerDialog, pendingStatusTriggerDrop, pendingStatusTriggerLead]);
 
   const handleNoShow = async (lead: Lead) => {
     if (!supabaseId) {
@@ -133,6 +170,44 @@ export function BoardContainer({
     setSelectedLead(null);
   };
 
+  const handleStatusTriggerSuccess = async (payload: LeadStatusTriggerPayload) => {
+    if (!pendingStatusTriggerDrop) return;
+
+    if (payload.kind === "future_sale") {
+      await applyPendingStatusTriggerTransition({
+        followUpAt: payload.followUpAt,
+        followUpNotes: payload.followUpNotes,
+        confirmRuleId: payload.confirmRuleId,
+      });
+    } else {
+      await applyPendingStatusTriggerTransition({
+        reason: payload.reason,
+        reasonDetails: payload.reasonDetails,
+        confirmRuleId: payload.confirmRuleId,
+      });
+    }
+
+    setShowStatusTriggerDialog(false);
+    setSelectedLead(null);
+  };
+
+  const handleConfirmPendingRule = async () => {
+    if (!pendingStatusTriggerDrop?.confirmationRuleId) return;
+    await applyPendingStatusTriggerTransition({
+      confirmRuleId: pendingStatusTriggerDrop.confirmationRuleId,
+    });
+    setSelectedLead(null);
+  };
+
+  const statusTriggerLabel =
+    pendingStatusTriggerDrop?.to === "future_sale"
+      ? "Venda Futura"
+      : pendingStatusTriggerDrop?.to === "opportunityLost"
+      ? "Perdido"
+      : pendingStatusTriggerDrop?.to === "operator_denied"
+      ? "Negado operadora"
+      : "Status";
+
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 p-4">
 
@@ -189,6 +264,56 @@ export function BoardContainer({
             teamMembers={[]}
             mode={scheduleDialogMode}
           />
+
+          {pendingStatusTriggerDrop && pendingNeedsTriggerDialog && (
+            <LeadStatusTriggerDialog
+              open={showStatusTriggerDialog}
+              onOpenChange={(open) => {
+                setShowStatusTriggerDialog(open);
+                if (!open) {
+                  clearPendingStatusTriggerDrop();
+                  setSelectedLead(null);
+                }
+              }}
+              mode={pendingStatusTriggerDrop.to === "future_sale" ? "future_sale" : "loss_reason"}
+              leadName={selectedLead?.name || ""}
+              statusLabel={statusTriggerLabel}
+              confirmationMessage={pendingStatusTriggerDrop.confirmationMessage || null}
+              confirmationRuleId={pendingStatusTriggerDrop.confirmationRuleId || null}
+              onConfirm={handleStatusTriggerSuccess}
+            />
+          )}
+
+          <AlertDialog
+            open={!!pendingStatusTriggerDrop && !pendingNeedsTriggerDialog}
+            onOpenChange={(open) => {
+              if (!open) {
+                clearPendingStatusTriggerDrop();
+                setSelectedLead(null);
+              }
+            }}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Confirmação necessária</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {pendingStatusTriggerDrop?.confirmationMessage ||
+                    "Deseja confirmar esta transição de status?"}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void handleConfirmPendingRule();
+                  }}
+                >
+                  Confirmar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       )}
     </div>

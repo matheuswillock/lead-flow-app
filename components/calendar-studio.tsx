@@ -109,6 +109,20 @@ const getInitials = (name?: string | null) => {
 
 const getStatusLabel = (status: Lead["status"]) => getLeadStatusLabel(status)
 
+type CalendarEventType = "meeting" | "future_sale" | "lead_time"
+
+type CalendarEventItem = {
+  type: CalendarEventType
+  lead: Lead
+  date: Date
+}
+
+const getEventPriority = (type: CalendarEventType) => {
+  if (type === "meeting") return 0
+  if (type === "future_sale") return 1
+  return 2
+}
+
 export default function CalendarStudio() {
   const {
     data,
@@ -207,35 +221,72 @@ export default function CalendarStudio() {
     return new Map(closers.map((closer) => [closer.id, closer.name]))
   }, [closers])
 
-  const leadsWithMeetings = React.useMemo(
-    () => allLeads.filter((lead) => !!lead.meetingDate),
-    [allLeads]
-  )
+  const calendarEvents = React.useMemo(() => {
+    const events: CalendarEventItem[] = []
+    allLeads.forEach((lead) => {
+      if (lead.meetingDate) {
+        const meetingDate = new Date(lead.meetingDate)
+        if (!Number.isNaN(meetingDate.getTime())) {
+          events.push({
+            type: "meeting",
+            lead,
+            date: meetingDate,
+          })
+        }
+      }
 
-  const meetingCounts = React.useMemo(() => {
+      if (lead.status === "future_sale" && lead.followUpAt) {
+        const followUpDate = new Date(lead.followUpAt)
+        if (!Number.isNaN(followUpDate.getTime())) {
+          events.push({
+            type: "future_sale",
+            lead,
+            date: followUpDate,
+          })
+        }
+      }
+
+      if (lead.isLeadTimeBreached && lead.leadTimeDueAt) {
+        const leadTimeDueDate = new Date(lead.leadTimeDueAt)
+        if (!Number.isNaN(leadTimeDueDate.getTime())) {
+          events.push({
+            type: "lead_time",
+            lead,
+            date: leadTimeDueDate,
+          })
+        }
+      }
+    })
+    return events
+  }, [allLeads])
+
+  const dayEventCounts = React.useMemo(() => {
     const counts = new Map<string, number>()
-    leadsWithMeetings.forEach((lead) => {
-      if (!lead.meetingDate) return
-      const key = toDateKey(new Date(lead.meetingDate))
+    calendarEvents.forEach((event) => {
+      const key = toDateKey(event.date)
       counts.set(key, (counts.get(key) ?? 0) + 1)
     })
     return counts
-  }, [leadsWithMeetings])
+  }, [calendarEvents])
 
   const dayEvents = React.useMemo(() => {
-    if (!date) return []
-    return leadsWithMeetings.filter((lead) =>
-      lead.meetingDate ? isSameDay(date, new Date(lead.meetingDate)) : false
-    )
-  }, [date, leadsWithMeetings])
+    if (!date) return [] as CalendarEventItem[]
+    return calendarEvents
+      .filter((event) => isSameDay(date, event.date))
+      .sort((left, right) => {
+        const byTime = left.date.getTime() - right.date.getTime()
+        if (byTime !== 0) return byTime
+        return getEventPriority(left.type) - getEventPriority(right.type)
+      })
+  }, [date, calendarEvents])
 
   const filteredEvents = React.useMemo(() => {
     const nameQuery = leadNameFilter.trim().toLowerCase()
     const idQuery = leadIdFilter.trim().toLowerCase()
-    return dayEvents.filter((lead) => {
-      const meetingDate = lead.meetingDate ? new Date(lead.meetingDate) : null
-      const matchesTime =
-        !selectedTime || (meetingDate && isWithinSlot(meetingDate, selectedTime))
+    return dayEvents.filter((event) => {
+      const lead = event.lead
+      const eventDate = event.date
+      const matchesTime = !selectedTime || isWithinSlot(eventDate, selectedTime)
       const matchesName =
         !nameQuery || lead.name.toLowerCase().includes(nameQuery)
       const matchesId =
@@ -352,7 +403,7 @@ export default function CalendarStudio() {
               }}
               components={{
                 DayButton: (props) => {
-                  const count = meetingCounts.get(toDateKey(props.day.date)) ?? 0
+                  const count = dayEventCounts.get(toDateKey(props.day.date)) ?? 0
                   return (
                     <CalendarDayButton
                       {...props}
@@ -533,31 +584,40 @@ export default function CalendarStudio() {
               ) : filteredEvents.length === 0 ? (
                 <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 rounded-md border border-dashed p-6 text-center">
                   <p className="text-sm text-muted-foreground">
-                    Nenhuma agenda para este dia e horario.
+                    Nenhuma agenda ou lembrete para este dia e horário.
                   </p>
                   <Button onClick={() => setLeadPickerOpen(true)}>Agendar nova reunião</Button>
                 </div>
               ) : (
-                filteredEvents.map((lead) => {
-                  const meetingStart = lead.meetingDate ? new Date(lead.meetingDate) : null
+                filteredEvents.map((event) => {
+                  const lead = event.lead
+                  const closerLabel = getCloserLabel(lead, closersById)
+                  const isMeeting = event.type === "meeting"
+                  const isFutureSale = event.type === "future_sale"
+                  const isLeadTimeReminder = event.type === "lead_time"
+
+                  const meetingStart = isMeeting ? event.date : null
                   const meetingEnd = meetingStart
                     ? new Date(meetingStart.getTime() + 30 * 60 * 1000)
                     : null
-                  const closerLabel = getCloserLabel(lead, closersById)
-                    const meetingTitle = lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`
+                  const meetingTitle = lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`
                   const showLeadName = meetingTitle !== lead.name
-                  const isCanceled = lead.status === "no_show"
+                  const isCanceled = isMeeting && lead.status === "no_show"
                   const isOverdue =
+                    isMeeting &&
                     !!meetingStart &&
                     meetingStart.getTime() < Date.now() &&
                     lead.status === "scheduled" &&
                     lead.meetingHeald !== "yes"
+
                   return (
                     <div
-                      key={lead.id}
+                      key={`${event.type}:${lead.id}:${event.date.toISOString()}`}
                       className={cn(
                         "bg-muted hover:bg-muted/80 after:bg-primary/70 relative rounded-md p-3 pl-6 text-left text-sm transition-colors after:absolute after:inset-y-3 after:left-3 after:w-1 after:rounded-full",
                         isCanceled && "opacity-70",
+                        isFutureSale && "after:bg-orange-500/80",
+                        isLeadTimeReminder && "after:bg-red-500/80 animate-pulse"
                       )}
                     >
                       <button
@@ -568,45 +628,77 @@ export default function CalendarStudio() {
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex flex-wrap items-center gap-2">
                             <div className={cn("font-medium", isCanceled && "line-through")}>
-                              {meetingTitle}
+                              {isMeeting
+                                ? meetingTitle
+                                : isFutureSale
+                                ? `Lead a vencer: ${lead.name}`
+                                : `Lead time vencido: ${lead.name}`}
                             </div>
-                            {isOverdue && <Badge variant="default">Reuniao vencida</Badge>}
-                            {isCanceled && (
+                            {isMeeting && isOverdue && <Badge variant="default">Reunião vencida</Badge>}
+                            {isMeeting && isCanceled && (
                               <Badge className="border-red-500 bg-transparent text-red-500 hover:bg-transparent">
-                                Reuniao cancelada
+                                Reunião cancelada
+                              </Badge>
+                            )}
+                            {isFutureSale && (
+                              <Badge className="border-orange-500 bg-orange-500/15 text-orange-600 hover:bg-orange-500/15">
+                                Lead a vencer
+                              </Badge>
+                            )}
+                            {isLeadTimeReminder && (
+                              <Badge className="border-red-500 bg-red-500/15 text-red-600 hover:bg-red-500/15">
+                                Lead time vencido
                               </Badge>
                             )}
                           </div>
                           <span className="text-xs text-muted-foreground">{lead.leadCode}</span>
                         </div>
-                        {showLeadName && (
+
+                        {isMeeting && showLeadName && (
                           <div className="text-xs text-muted-foreground">Lead: {lead.name}</div>
                         )}
-                        <div
-                          className={cn(
-                            "text-xs text-muted-foreground",
-                            isCanceled && "line-through",
-                          )}
-                        >
-                          {meetingStart && meetingEnd
+
+                        <div className={cn("text-xs text-muted-foreground", isCanceled && "line-through")}>
+                          {isMeeting && meetingStart && meetingEnd
                             ? formatDateRange(meetingStart, meetingEnd)
-                            : "Horario indefinido"}
+                            : event.date.toLocaleString("pt-BR", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
                         </div>
-                        <div
-                          className={cn(
-                            "text-xs text-muted-foreground",
-                            isCanceled && "line-through",
-                          )}
-                        >
+                        <div className={cn("text-xs text-muted-foreground", isCanceled && "line-through")}>
                           Closer: {closerLabel}
                         </div>
-                        {lead.meetingNotes && (
+
+                        {isMeeting && lead.meetingNotes && (
                           <div className="text-xs text-muted-foreground">
-                            Observacoes: {lead.meetingNotes}
+                            Observações: {lead.meetingNotes}
+                          </div>
+                        )}
+
+                        {isFutureSale && (
+                          <>
+                            <div className="text-xs text-muted-foreground">
+                              Entrar em contato com o cliente referente ao lead.
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Comentários: {lead.followUpNotes?.trim() || "Sem comentários."}
+                            </div>
+                          </>
+                        )}
+
+                        {isLeadTimeReminder && (
+                          <div className="text-xs text-muted-foreground">
+                            Este lead ultrapassou o tempo máximo configurado para o status{" "}
+                            <strong>{getStatusLabel(lead.status)}</strong>.
                           </div>
                         )}
                       </button>
-                      {lead.status === "scheduled" && canToggleMeetingHeald && (
+
+                      {isMeeting && lead.status === "scheduled" && canToggleMeetingHeald && (
                         <div
                           className="mt-2 flex items-center justify-between gap-2"
                           onClick={(event) => event.stopPropagation()}
@@ -619,37 +711,55 @@ export default function CalendarStudio() {
                                 void handleToggleMeetingHeald(lead, checked === true)
                               }}
                             />
-                            Reuniao realizada?
+                            Reunião realizada?
                           </label>
                           {meetingHealdSavingId === lead.id && (
                             <span className="text-xs text-muted-foreground">Salvando...</span>
                           )}
                         </div>
                       )}
+
                       <div className="mt-2 flex flex-wrap justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setLeadToSchedule(lead)
-                            setScheduleDialogMode("reschedule")
-                            setScheduleDialogOpen(true)
-                          }}
-                        >
-                          Reagendar reuniao
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setLeadToCancel(lead)
-                            setCancelDialogOpen(true)
-                          }}
-                          className="border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white cursor-pointer"
-                        >
-                          Cancelar agenda
-                        </Button>
+                        {isMeeting ? (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setLeadToSchedule(lead)
+                                setScheduleDialogMode("reschedule")
+                                setScheduleDialogOpen(true)
+                              }}
+                            >
+                              Reagendar reunião
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setLeadToCancel(lead)
+                                setCancelDialogOpen(true)
+                              }}
+                              className="border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white cursor-pointer"
+                            >
+                              Cancelar agenda
+                            </Button>
+                          </>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setLeadToSchedule(lead)
+                              setScheduleDialogMode("create")
+                              setScheduleDialogOpen(true)
+                            }}
+                          >
+                            Agendar reunião
+                          </Button>
+                        )}
                       </div>
                     </div>
                   )

@@ -5,7 +5,6 @@ import {
   ColumnDef,
   ColumnFiltersState,
   SortingState,
-  VisibilityState,
   flexRender,
   getCoreRowModel,
   getFacetedRowModel,
@@ -51,6 +50,7 @@ import {
   ScheduleMeetingDialog,
   type ScheduleMeetingSuccessPayload,
 } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
+import { FinalizeContractDialog, type FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import { ChangeStatusDialog } from "./ChangeStatusDialog";
 import { createColumns } from "./PipelineColumns";
 import { useParams } from "next/navigation";
@@ -110,6 +110,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [showChangeStatusDialog, setShowChangeStatusDialog] = useState(false);
+  const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
@@ -223,11 +224,31 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     }
   };
 
-  const handleFinalizeContract = async (lead: Lead) => {
-    setSelected(lead);
-    // Aqui você pode adicionar a lógica para finalizar o contrato
-    // Por exemplo, abrir um modal ou chamar uma API
-    toast.success('Funcionalidade de finalizar contrato será implementada');
+  const handleFinalizeContract = (lead: Lead) => {
+    setSelectedLead(lead);
+    setShowFinalizeDialog(true);
+  };
+
+  const handleFinalizeSubmit = async (data: FinalizeContractData) => {
+    if (!selectedLead) return;
+
+    const response = await fetch(`/api/v1/leads/${selectedLead.id}/finalize`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(supabaseId ? { "x-supabase-user-id": supabaseId } : {}),
+        ...(activeTeamId ? { "x-team-id": activeTeamId } : {}),
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error("Erro ao finalizar contrato");
+    }
+
+    setShowFinalizeDialog(false);
+    setSelectedLead(null);
+    await refreshLeads();
   };
 
   const handleChangeStatus = (lead: Lead) => {
@@ -672,6 +693,18 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
           closers={closers}
           teamMembers={[]}
           onSchedulePatched={applyScheduledPatch}
+        />
+      )}
+
+      {selectedLead && (
+        <FinalizeContractDialog
+          open={showFinalizeDialog}
+          onOpenChange={(open) => {
+            setShowFinalizeDialog(open);
+            if (!open) setSelectedLead(null);
+          }}
+          leadName={selectedLead.name}
+          onFinalize={handleFinalizeSubmit}
         />
       )}
 

@@ -90,7 +90,7 @@ const mapStatus = (value: string | null | undefined): LeadStatus => {
   if (normalized === "pendente") return LeadStatus.pending_documents;
   if (normalized === "doctos pendentes") return LeadStatus.pending_documents;
   if (normalized === "implementacao enviada") return LeadStatus.offerSubmission;
-  if (normalized === "venda futura") return LeadStatus.offerSubmission;
+  if (normalized === "venda futura") return LeadStatus.future_sale;
 
   if (normalized.includes("perdido")) return LeadStatus.opportunityLost;
   if (normalized.includes("desqualificado")) return LeadStatus.disqualified;
