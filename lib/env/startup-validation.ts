@@ -7,6 +7,12 @@ import { validateEnv } from './index';
  * Called by instrumentation.ts hook.
  */
 export function validateEnvironmentOnStartup(): void {
+  // Skip hard validation during CI build — the server doesn't start in that context
+  if (process.env.CI === 'true') {
+    console.info('⏭️  [Startup] CI environment detected — skipping startup env validation.\n');
+    return;
+  }
+
   console.info('\n🚀 [Startup] Validating environment variables...\n');
 
   const result = validateEnv();
