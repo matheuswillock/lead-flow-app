@@ -13,6 +13,7 @@
     "governance:sync": "bun scripts/ai-governance.ts sync-adapters",
     "governance:check": "bun scripts/ai-governance.ts check",
     "governance:warn-allowlist": "bun scripts/ai-governance.ts warn-allowlist",
+    "skills:sync": "bun scripts/skills-sync.ts",
     "scaffold:feature": "bun scripts/scaffold-feature.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
