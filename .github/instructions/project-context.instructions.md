@@ -357,7 +357,31 @@ bunx prisma studio
 
 ---
 
-## Variáveis de Ambiente Críticas
+## Variáveis de Ambiente
+
+### Validação Automática
+
+O projeto utiliza validação automática de variáveis de ambiente em **build time** e **runtime**:
+
+- **Build time**: `next.config.ts` valida todas as variáveis antes do build
+- **Runtime**: `instrumentation.ts` valida na inicialização do servidor
+- **Schema**: Zod schema em `lib/env/validation.ts` define formatos esperados
+- **Acesso type-safe**: `lib/env/EnvService.ts` fornece variáveis validadas e tipadas
+
+**Como usar:**
+```typescript
+import { getValidatedEnv } from '@/lib/env';
+
+const env = getValidatedEnv();
+console.log(env.NEXT_PUBLIC_APP_URL); // Type-safe!
+```
+
+**Adicionar nova variável:**
+1. Adicionar ao `.env.example` com valor de exemplo
+2. Adicionar ao schema em `lib/env/validation.ts`
+3. Se crítica, adicionar ao array `CRITICAL_ENV_VARS`
+
+### Variáveis Críticas
 
 ```env
 DATABASE_URL=
@@ -368,9 +392,19 @@ SUPABASE_SERVICE_ROLE_KEY=
 ASAAS_API_KEY=
 ASAAS_ENV=
 ASAAS_WEBHOOK_TOKEN=
+ENCRYPTION_KEY=
 RESEND_API_KEY=
 NEXT_PUBLIC_APP_URL=
 ```
+
+**Formato esperado:**
+- URLs: devem começar com `http://` ou `https://`
+- API Keys Asaas: devem começar com `aact_`
+- API Keys Resend: devem começar com `re_`
+- Encryption keys: 64 caracteres hexadecimais (gerar com `openssl rand -hex 32`)
+- Database URLs: devem começar com `postgresql://`
+- Email addresses: formato válido de email
+- `ASAAS_ENV`: `sandbox` ou `production`
 
 ---
 
