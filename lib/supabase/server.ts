@@ -7,9 +7,6 @@ export const createSupabaseServer = async () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !anon) {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[supabase] Variáveis NEXT_PUBLIC_SUPABASE_URL / ANON_KEY ausentes.')
-    }
     return null
   }
   
@@ -41,7 +38,6 @@ export const createSupabaseAdmin = () => {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!url || !serviceRoleKey) {
-    console.error('[supabase-admin] Variáveis NEXT_PUBLIC_SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY ausentes')
     return null
   }
 

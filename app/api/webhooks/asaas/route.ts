@@ -19,45 +19,20 @@ export async function POST(request: NextRequest) {
     const asaasToken = request.headers.get('asaas-access-token');
     const expectedToken = process.env.ASAAS_WEBHOOK_TOKEN;
     
-    console.info('🔐 [Webhook Asaas] ============================================');
-    console.info('🔐 [Webhook Asaas] VALIDAÇÃO DE TOKEN:');
-
-    console.info('🔑 [Webhook Asaas] Token recebido:', asaasToken || 'NULO/AUSENTE');
-    console.info('🔑 [Webhook Asaas] Token esperado:', expectedToken || 'NULO/AUSENTE');
-    console.info('🔑 [Webhook Asaas] Token recebido (length):', asaasToken?.length || 0);
-    console.info('🔑 [Webhook Asaas] Token esperado (length):', expectedToken?.length || 0);
-    console.info('🔑 [Webhook Asaas] Tokens match (===):', asaasToken === expectedToken);
-    console.info('🔑 [Webhook Asaas] Tokens match (trim):', asaasToken?.trim() === expectedToken?.trim());
-    console.info('🔐 [Webhook Asaas] ============================================');
-
     // Validar token (trim para remover espaços)
     const receivedToken = asaasToken?.trim();
     const expectedTokenTrimmed = expectedToken?.trim();
-    
+
     if (!receivedToken) {
       console.error('❌ [Webhook Asaas] Token não fornecido no header');
-      console.error('❌ [Webhook Asaas] Headers recebidos:', Object.keys(Object.fromEntries(request.headers.entries())));
       return NextResponse.json(
         { error: 'Unauthorized: Token não fornecido' },
         { status: 401 }
       );
     }
 
-    if (!expectedTokenTrimmed) {
-      console.error('❌ [Webhook Asaas] ASAAS_WEBHOOK_TOKEN não configurado no .env');
-      console.error('❌ [Webhook Asaas] process.env.ASAAS_WEBHOOK_TOKEN:', process.env.ASAAS_WEBHOOK_TOKEN);
-      return NextResponse.json(
-        { error: 'Internal Server Error: Webhook token não configurado' },
-        { status: 500 }
-      );
-    }
-
     if (receivedToken !== expectedTokenTrimmed) {
       console.error('❌ [Webhook Asaas] Token inválido');
-      console.error('   Recebido (trim):', receivedToken);
-      console.error('   Esperado (trim):', expectedTokenTrimmed);
-      console.error('   Recebido (raw):', asaasToken);
-      console.error('   Esperado (raw):', expectedToken);
       return NextResponse.json(
         { error: 'Unauthorized: Token inválido' },
         { status: 401 }
