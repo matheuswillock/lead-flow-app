@@ -137,6 +137,13 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 - Effects **MUST NOT** depend on unstable function/object identities that recreate requests on every render.
 - Reuse data already available in existing Context providers before creating a new fetch for the same domain.
 
+### TeamContext Reuse in Backend Routes (FOR NEW FEATURES)
+
+- Routes that call `getTeamAccess()` **MUST** extract `TeamContext` (`profileId` + `teamMember`) from the result and pass it through the call chain: `Route → UseCase → Service → Repository`.
+- Use cases and services **MUST** accept `ctx: TeamContext` as a parameter and forward it to repository methods instead of triggering a new `profile` + `teamMember` lookup.
+- Repository methods **MUST** provide a `WithCtx` variant (e.g. `findLeadsWithCtx`, `getStatusMetricsWithCtx`) that accepts `TeamContext` directly, skipping the internal `getTeamContext()` call.
+- The pair `profile.findUnique + teamMember.findUnique` **MUST NOT** be executed more than once per HTTP request. `getTeamAccess()` is the single point of resolution.
+
 ### Action Button Request Lock
 
 - Any button triggering backend mutation **MUST** lock on first click: set loading state immediately, disable trigger while pending, prevent re-entry until `finally`.

@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import type { IMetricsUseCase, MetricsFilters } from "./IMetricsUseCase";
+import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository";
 import { DashboardFilters } from "../../services/DashboardInfos/types/DashboardFilters";
 import { IDashboardInfosService } from "../../services";
 
@@ -37,7 +38,7 @@ export class MetricsUseCase implements IMetricsUseCase {
   /**
    * Busca métricas do dashboard
    */
-  async getDashboardMetrics(filters: MetricsFilters): Promise<Output> {
+  async getDashboardMetrics(filters: MetricsFilters, ctx: TeamContext): Promise<Output> {
     try {
       // Validar entrada
       if (!filters.supabaseId) {
@@ -77,7 +78,7 @@ export class MetricsUseCase implements IMetricsUseCase {
       };
 
       // Chamar o serviço
-      const metrics = await this.dashboardInfosService.getDashboardMetrics(serviceFilters);
+      const metrics = await this.dashboardInfosService.getDashboardMetrics(serviceFilters, ctx);
 
       return new Output(
         true,
@@ -101,7 +102,7 @@ export class MetricsUseCase implements IMetricsUseCase {
   /**
    * Busca métricas detalhadas por status
    */
-  async getDetailedStatusMetrics(supabaseId: string, teamId: string): Promise<Output> {
+  async getDetailedStatusMetrics(supabaseId: string, teamId: string, ctx: TeamContext): Promise<Output> {
     try {
       // Validar entrada
       if (!supabaseId) {
@@ -122,7 +123,7 @@ export class MetricsUseCase implements IMetricsUseCase {
       }
 
       // Chamar o serviço
-      const detailedMetrics = await this.dashboardInfosService.getDetailedStatusMetrics(supabaseId, teamId);
+      const detailedMetrics = await this.dashboardInfosService.getDetailedStatusMetrics(supabaseId, teamId, ctx);
 
       return new Output(
         true,

@@ -61,11 +61,33 @@ export interface SaleMetricsData {
   };
 }
 
+export interface TeamContext {
+  profileId: string;
+  teamMember: {
+    role: string;
+    functions: string[];
+  };
+}
+
+export interface MetricsFiltersWithContext extends MetricsFilters {
+  ctx: TeamContext;
+}
+
 export interface IMetricsRepository {
+  /**
+   * Resolve profileId e role do usuário — deve ser chamado uma única vez por request.
+   */
+  resolveTeamContext(supabaseId: string, teamId: string): Promise<TeamContext>;
+
   /**
    * Busca leads básicos para cálculo de métricas
    */
   findLeadsForMetrics(filters: MetricsFilters): Promise<LeadMetricsData[]>;
+
+  /**
+   * Busca leads básicos para cálculo de métricas com contexto já resolvido (evita re-query)
+   */
+  findLeadsForMetricsWithCtx(filters: MetricsFiltersWithContext): Promise<LeadMetricsData[]>;
 
   /**
    * Busca métricas detalhadas por status
@@ -73,9 +95,19 @@ export interface IMetricsRepository {
   getStatusMetrics(supabaseId: string, teamId: string): Promise<StatusMetricsData[]>;
 
   /**
+   * Busca métricas detalhadas por status com contexto já resolvido
+   */
+  getStatusMetricsWithCtx(ctx: TeamContext, teamId: string): Promise<StatusMetricsData[]>;
+
+  /**
    * Busca leads agrupados por período
    */
   getLeadsByPeriod(supabaseId: string, teamId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]>;
+
+  /**
+   * Busca leads agrupados por período com contexto já resolvido
+   */
+  getLeadsByPeriodWithCtx(ctx: TeamContext, teamId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]>;
 
   /**
    * Busca agendamentos da tabela LeadsSchedule
@@ -88,7 +120,17 @@ export interface IMetricsRepository {
   getFinalizedLeads(filters: MetricsFilters): Promise<SaleMetricsData[]>;
 
   /**
+   * Busca vendas finalizadas com contexto já resolvido
+   */
+  getFinalizedLeadsWithCtx(filters: MetricsFiltersWithContext): Promise<SaleMetricsData[]>;
+
+  /**
    * Busca reuniões realizadas (meetingHeald = yes) por período (meetingDate)
    */
   getMeetingsHeldLeads(filters: MetricsFilters): Promise<MeetingHeldLeadMetricsData[]>;
+
+  /**
+   * Busca reuniões realizadas com contexto já resolvido
+   */
+  getMeetingsHeldLeadsWithCtx(filters: MetricsFiltersWithContext): Promise<MeetingHeldLeadMetricsData[]>;
 }
