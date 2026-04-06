@@ -40,11 +40,11 @@ export const description = "Gráfico de Leads e Conversões por Período"
 const chartConfig = {
   conversoes: {
     label: "Conversões",
-    color: "var(--primary)", // Usa a cor primary do tema
+    color: "var(--chart-2)",
   },
   leads: {
     label: "Leads",
-    color: "var(--chart-1)", // Usa a cor chart-1 do tema
+    color: "var(--primary)",
   },
 } satisfies ChartConfig
 
@@ -178,8 +178,10 @@ export function ChartAreaInteractive() {
               minTickGap={32}
               tickFormatter={(value) => {
                 try {
-                  const date = parseISO(value)
-                  return format(date, "dd/MMM", { locale: ptBR })
+                  if (/^\d{4}-\d{2}$/.test(value)) {
+                    return format(parseISO(`${value}-01`), "MMM/yy", { locale: ptBR })
+                  }
+                  return format(parseISO(value), "dd/MMM", { locale: ptBR })
                 } catch {
                   return value
                 }
@@ -191,8 +193,11 @@ export function ChartAreaInteractive() {
                 <ChartTooltipContent
                   labelFormatter={(value) => {
                     try {
-                      const date = parseISO(String(value))
-                      return format(date, "dd 'de' MMMM", { locale: ptBR })
+                      const v = String(value)
+                      if (/^\d{4}-\d{2}$/.test(v)) {
+                        return format(parseISO(`${v}-01`), "MMMM 'de' yyyy", { locale: ptBR })
+                      }
+                      return format(parseISO(v), "dd 'de' MMMM", { locale: ptBR })
                     } catch {
                       return String(value)
                     }
