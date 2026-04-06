@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.109.0",
+  "version": "0.112.0",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -13,6 +13,7 @@
     "governance:sync": "bun scripts/ai-governance.ts sync-adapters",
     "governance:check": "bun scripts/ai-governance.ts check",
     "governance:warn-allowlist": "bun scripts/ai-governance.ts warn-allowlist",
+    "skills:sync": "bun scripts/skills-sync.ts",
     "scaffold:feature": "bun scripts/scaffold-feature.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -93,6 +94,7 @@
     "react-hook-form": "^7.62.0",
     "recharts": "2.15.4",
     "resend": "^6.2.0",
+    "server-only": "^0.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",

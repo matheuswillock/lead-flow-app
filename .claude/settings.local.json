@@ -30,7 +30,11 @@
       "Bash(head -80 /a/develop/lead-flow-app/app/[supabaseId]/board/features/context/BoardTypes.ts)",
       "Bash(bunx prisma:*)",
       "Bash(node -e \"const c = require\\('./postman/Lead-Flow-API-Collection.json'\\); console.log\\('items count:', c.item.length\\); c.item.forEach\\(\\(i,idx\\) => console.log\\(idx, i.name\\)\\);\")",
-      "Bash(node -e ':*)"
+      "Bash(node -e ':*)",
+      "Bash(grep -r \"validate\\\\|CRITICAL\\\\|required\\\\|missing\" /a/develop/lead-flow-app --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.js\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/lib/env/*\")",
+      "Bash(find /a/develop/lead-flow-app -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/lib/env/*\" -exec grep -l \"validate.*env\\\\|CRITICAL.*env\\\\|required.*env\" {} \\\\;)",
+      "Bash(ls -la /a/develop/lead-flow-app/app/[supabaseId]/dashboard/)",
+      "Bash(find /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features -type f)"
     ]
   }
 }

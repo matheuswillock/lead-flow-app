@@ -1,4 +1,5 @@
 import type { Output } from "@/lib/output";
+import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository";
 
 export interface MetricsFilters {
   supabaseId: string;
@@ -13,6 +14,6 @@ export interface MetricsFilters {
  * Defines the contract for all metrics-related business operations
  */
 export interface IMetricsUseCase {
-  getDashboardMetrics(filters: MetricsFilters): Promise<Output>;
-  getDetailedStatusMetrics(supabaseId: string, teamId: string): Promise<Output>;
+  getDashboardMetrics(filters: MetricsFilters, ctx: TeamContext): Promise<Output>;
+  getDetailedStatusMetrics(supabaseId: string, teamId: string, ctx: TeamContext): Promise<Output>;
 }

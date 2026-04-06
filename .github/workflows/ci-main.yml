@@ -102,20 +102,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
       - name: Deploy to Vercel (Production)
         id: vercel-prod
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: .
-          vercel-args: "--prod"
+        run: |
+          DEPLOY_URL=$(vercel deploy --prod \
+            --token=${{ secrets.VERCEL_TOKEN }} \
+            --yes \
+            2>&1 | tail -1)
+          echo "deploy-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       - name: Production Summary
         run: |
           echo "### Production Deploy (main)" >> $GITHUB_STEP_SUMMARY
-          echo "- URL: ${{ steps.vercel-prod.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: ${{ steps.vercel-prod.outputs.deploy-url }}" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: main" >> $GITHUB_STEP_SUMMARY

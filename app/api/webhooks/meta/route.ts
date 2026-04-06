@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     const token = searchParams.get('hub.verify_token');
     const challenge = searchParams.get('hub.challenge');
 
-    const verifyToken = process.env.META_VERIFY_TOKEN || 'meta_lead_webhook_verify_token';
+    const verifyToken = process.env.META_VERIFY_TOKEN;
 
     console.info('🔍 Verificação do webhook Meta recebida:', {
       mode,

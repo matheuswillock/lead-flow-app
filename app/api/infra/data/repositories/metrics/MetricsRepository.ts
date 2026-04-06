@@ -1,9 +1,12 @@
+import { MeetingHeald } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { isManagerLikeRole } from "@/lib/roles";
-import type { 
-  IMetricsRepository, 
-  LeadMetricsData, 
-  StatusMetricsData, 
+import type {
+  IMetricsRepository,
+  TeamContext,
+  MetricsFiltersWithContext,
+  LeadMetricsData,
+  StatusMetricsData,
   LeadsPeriodData,
   MetricsFilters,
   ScheduleMetricsData,
@@ -12,7 +15,11 @@ import type {
 } from "./IMetricsRepository";
 
 export class MetricsRepository implements IMetricsRepository {
-  private async getTeamContext(supabaseId: string, teamId: string) {
+  // ---------------------------------------------------------------------------
+  // Contexto de time — resolve uma única vez por request
+  // ---------------------------------------------------------------------------
+
+  private async getTeamContext(supabaseId: string, teamId: string): Promise<TeamContext> {
     const profile = await prisma.profile.findUnique({
       where: { supabaseId },
       select: { id: true },
@@ -23,12 +30,7 @@ export class MetricsRepository implements IMetricsRepository {
     }
 
     const teamMember = await prisma.teamMember.findUnique({
-      where: {
-        teamId_profileId: {
-          teamId,
-          profileId: profile.id,
-        },
-      },
+      where: { teamId_profileId: { teamId, profileId: profile.id } },
       select: { role: true, functions: true },
     });
 
@@ -46,50 +48,98 @@ export class MetricsRepository implements IMetricsRepository {
 
     return { profileId: profile.id, teamMember };
   }
-  
-  /**
-   * Busca leads básicos para cálculo de métricas
-   * - Se supabaseId for de um Manager master: busca leads do manager + operators dele
-   * - Se supabaseId for de um Manager não-master: busca leads do master (todos da equipe)
-   * - Se supabaseId for de um Operator: busca apenas os leads do operator
-   */
-  async findLeadsForMetrics(filters: MetricsFilters): Promise<LeadMetricsData[]> {
-    const { supabaseId, teamId, startDate, endDate } = filters;
-    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
 
-    // Construir where clause baseado na role
-    let whereClause: any;
+  async resolveTeamContext(supabaseId: string, teamId: string): Promise<TeamContext> {
+    return this.getTeamContext(supabaseId, teamId);
+  }
 
-    if (isManagerLikeRole(teamMember.role)) {
-      // Manager: buscar leads do time
-      whereClause = {
-        teamId,
-        ...(startDate && endDate && {
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
-        }),
-      };
-    } else {
-      // Operator: buscar apenas leads atribuídos a ele OU criados por ele
-      whereClause = {
-        OR: [
-          { assignedTo: profileId },
-          { createdBy: profileId }
-        ],
-        teamId,
-        ...(startDate && endDate && {
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
-        }),
-      };
+  // ---------------------------------------------------------------------------
+  // Helpers privados de where clause
+  // ---------------------------------------------------------------------------
+
+  private buildLeadWhere(
+    ctx: TeamContext,
+    teamId: string,
+    dateField: "createdAt" | "meetingDate",
+    startDate?: Date,
+    endDate?: Date,
+    extraWhere?: object
+  ) {
+    const dateFilter =
+      startDate && endDate ? { [dateField]: { gte: startDate, lte: endDate } } : {};
+
+    if (isManagerLikeRole(ctx.teamMember.role)) {
+      return { teamId, ...dateFilter, ...extraWhere };
     }
 
-    return await prisma.lead.findMany({
-      where: whereClause,
+    return {
+      OR: [{ assignedTo: ctx.profileId }, { createdBy: ctx.profileId }],
+      teamId,
+      ...dateFilter,
+      ...extraWhere,
+    };
+  }
+
+  private buildLeadFinalizedWhere(
+    ctx: TeamContext,
+    teamId: string,
+    startDate?: Date,
+    endDate?: Date
+  ) {
+    const dateFilter =
+      startDate && endDate ? { createdAt: { gte: startDate, lte: endDate } } : {};
+
+    if (isManagerLikeRole(ctx.teamMember.role)) {
+      return { lead: { teamId }, ...dateFilter };
+    }
+
+    return {
+      lead: {
+        OR: [{ assignedTo: ctx.profileId }, { createdBy: ctx.profileId }],
+        teamId,
+      },
+      ...dateFilter,
+    };
+  }
+
+  private buildMeetingsHeldWhere(
+    ctx: TeamContext,
+    teamId: string,
+    startDate?: Date,
+    endDate?: Date
+  ) {
+    const dateFilter =
+      startDate && endDate ? { meetingDate: { gte: startDate, lte: endDate } } : {};
+
+    if (isManagerLikeRole(ctx.teamMember.role)) {
+      return { teamId, meetingHeald: MeetingHeald.yes, ...dateFilter };
+    }
+
+    return {
+      teamId,
+      meetingHeald: MeetingHeald.yes,
+      OR: [
+        { assignedTo: ctx.profileId },
+        { createdBy: ctx.profileId },
+        { closerId: ctx.profileId },
+      ],
+      ...dateFilter,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // findLeadsForMetrics
+  // ---------------------------------------------------------------------------
+
+  async findLeadsForMetrics(filters: MetricsFilters): Promise<LeadMetricsData[]> {
+    const ctx = await this.getTeamContext(filters.supabaseId, filters.teamId);
+    return this.findLeadsForMetricsWithCtx({ ...filters, ctx });
+  }
+
+  async findLeadsForMetricsWithCtx(filters: MetricsFiltersWithContext): Promise<LeadMetricsData[]> {
+    const { ctx, teamId, startDate, endDate } = filters;
+    return prisma.lead.findMany({
+      where: this.buildLeadWhere(ctx, teamId, "createdAt", startDate, endDate),
       select: {
         id: true,
         status: true,
@@ -103,216 +153,19 @@ export class MetricsRepository implements IMetricsRepository {
     });
   }
 
-  /**
-   * Busca métricas detalhadas por status
-   * - Se supabaseId for de um Manager master: busca leads do manager + operators dele
-   * - Se supabaseId for de um Manager não-master: busca leads do master (todos da equipe)
-   * - Se supabaseId for de um Operator: busca apenas os leads do operator
-   */
-  async getStatusMetrics(supabaseId: string, teamId: string): Promise<StatusMetricsData[]> {
-    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
+  // ---------------------------------------------------------------------------
+  // getFinalizedLeads
+  // ---------------------------------------------------------------------------
 
-    // Construir where clause baseado na role
-    let whereClause: any;
-
-    if (isManagerLikeRole(teamMember.role)) {
-      // Manager: buscar leads do time
-      whereClause = {
-        teamId,
-      };
-    } else {
-      // Operator: buscar apenas leads atribuídos a ele OU criados por ele
-      whereClause = {
-        OR: [
-          { assignedTo: profileId },
-          { createdBy: profileId }
-        ],
-        teamId,
-      };
-    }
-
-    const results = await prisma.lead.groupBy({
-      by: ['status'],
-      where: whereClause,
-      _count: {
-        _all: true,
-      },
-      _avg: {
-        currentValue: true,
-      },
-      _sum: {
-        currentValue: true,
-      },
-    });
-
-    return results.map(result => ({
-      status: result.status,
-      _count: {
-        id: result._count._all,
-      },
-      _avg: result._avg,
-      _sum: result._sum,
-    }));
-  }
-
-  /**
-   * Busca leads agrupados por período
-   * - Se supabaseId for de um Manager master: busca leads do manager + operators dele
-   * - Se supabaseId for de um Manager não-master: busca leads do master (todos da equipe)
-   * - Se supabaseId for de um Operator: busca apenas os leads do operator
-   */
-  async getLeadsByPeriod(supabaseId: string, teamId: string, startDate: Date, endDate: Date): Promise<LeadsPeriodData[]> {
-    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
-
-    // Construir where clause baseado na role
-    let whereClause: any;
-
-    if (isManagerLikeRole(teamMember.role)) {
-      // Manager: buscar leads do time
-      whereClause = {
-        teamId,
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      };
-    } else {
-      // Operator: buscar apenas leads atribuídos a ele OU criados por ele
-      whereClause = {
-        OR: [
-          { assignedTo: profileId },
-          { createdBy: profileId }
-        ],
-        teamId,
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-      };
-    }
-
-    const results = await prisma.lead.groupBy({
-      by: ['createdAt'],
-      where: whereClause,
-      _count: {
-        _all: true,
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-    });
-
-    return results.map(result => ({
-      createdAt: result.createdAt,
-      _count: {
-        id: result._count._all,
-      },
-    }));
-  }
-
-  /**
-   * Busca agendamentos da tabela LeadsSchedule
-   * - Se supabaseId for de um Manager master: busca agendamentos do manager + operators dele
-   * - Se supabaseId for de um Manager não-master: busca agendamentos do master (todos da equipe)
-   * - Se supabaseId for de um Operator: busca apenas agendamentos do operator
-   */
-  async getScheduledLeads(filters: MetricsFilters): Promise<ScheduleMetricsData[]> {
-    const { supabaseId, teamId, startDate, endDate } = filters;
-    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
-
-    // Construir where clause baseado na role
-    let whereClause: any;
-
-    if (isManagerLikeRole(teamMember.role)) {
-      // Manager: buscar agendamentos do time
-      whereClause = {
-        lead: {
-          teamId,
-        },
-        ...(startDate && endDate && {
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
-        }),
-      };
-    } else {
-      // Operator: buscar apenas agendamentos atribuídos a ele OU criados por ele
-      whereClause = {
-        lead: {
-          OR: [
-            { assignedTo: profileId },
-            { createdBy: profileId }
-          ],
-          teamId,
-        },
-        ...(startDate && endDate && {
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
-        }),
-      };
-    }
-
-    return await prisma.leadsSchedule.findMany({
-      where: whereClause,
-      select: {
-        id: true,
-        leadId: true,
-        date: true,
-        createdAt: true,
-      },
-    });
-  }
-
-  /**
-   * Busca vendas finalizadas da tabela LeadFinalized
-   * - Se supabaseId for de um Manager master: busca vendas do manager + operators dele
-   * - Se supabaseId for de um Manager não-master: busca vendas do master (todos da equipe)
-   * - Se supabaseId for de um Operator: busca apenas vendas do operator
-   */
   async getFinalizedLeads(filters: MetricsFilters): Promise<SaleMetricsData[]> {
-    const { supabaseId, teamId, startDate, endDate } = filters;
-    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
+    const ctx = await this.getTeamContext(filters.supabaseId, filters.teamId);
+    return this.getFinalizedLeadsWithCtx({ ...filters, ctx });
+  }
 
-    // Construir where clause baseado na role
-    let whereClause: any;
-
-    if (isManagerLikeRole(teamMember.role)) {
-      // Manager: buscar vendas do time
-      whereClause = {
-        lead: {
-          teamId,
-        },
-        ...(startDate && endDate && {
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
-        }),
-      };
-    } else {
-      // Operator: buscar apenas vendas atribuídas a ele OU criadas por ele
-      whereClause = {
-        lead: {
-          OR: [
-            { assignedTo: profileId },
-            { createdBy: profileId }
-          ],
-          teamId,
-        },
-        ...(startDate && endDate && {
-          createdAt: {
-            gte: startDate,
-            lte: endDate,
-          },
-        }),
-      };
-    }
-
-    return await prisma.leadFinalized.findMany({
-      where: whereClause,
+  async getFinalizedLeadsWithCtx(filters: MetricsFiltersWithContext): Promise<SaleMetricsData[]> {
+    const { ctx, teamId, startDate, endDate } = filters;
+    return prisma.leadFinalized.findMany({
+      where: this.buildLeadFinalizedWhere(ctx, teamId, startDate, endDate),
       select: {
         id: true,
         leadId: true,
@@ -320,57 +173,121 @@ export class MetricsRepository implements IMetricsRepository {
         finalizedDateAt: true,
         startDateAt: true,
         duration: true,
-        lead: {
-          select: {
-            createdAt: true,
-          },
-        },
+        lead: { select: { createdAt: true } },
       },
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // getMeetingsHeldLeads
+  // ---------------------------------------------------------------------------
+
   async getMeetingsHeldLeads(filters: MetricsFilters): Promise<MeetingHeldLeadMetricsData[]> {
-    const { supabaseId, teamId, startDate, endDate } = filters;
-    const { profileId, teamMember } = await this.getTeamContext(supabaseId, teamId);
+    const ctx = await this.getTeamContext(filters.supabaseId, filters.teamId);
+    return this.getMeetingsHeldLeadsWithCtx({ ...filters, ctx });
+  }
 
-    let whereClause: any;
-
-    if (isManagerLikeRole(teamMember.role)) {
-      whereClause = {
-        teamId,
-        meetingHeald: 'yes',
-        ...(startDate && endDate && {
-          meetingDate: {
-            gte: startDate,
-            lte: endDate,
-          },
-        }),
-      };
-    } else {
-      whereClause = {
-        teamId,
-        meetingHeald: 'yes',
-        OR: [
-          { assignedTo: profileId },
-          { createdBy: profileId },
-          { closerId: profileId },
-        ],
-        ...(startDate && endDate && {
-          meetingDate: {
-            gte: startDate,
-            lte: endDate,
-          },
-        }),
-      };
-    }
-
-    return await prisma.lead.findMany({
-      where: whereClause,
+  async getMeetingsHeldLeadsWithCtx(
+    filters: MetricsFiltersWithContext
+  ): Promise<MeetingHeldLeadMetricsData[]> {
+    const { ctx, teamId, startDate, endDate } = filters;
+    return prisma.lead.findMany({
+      where: this.buildMeetingsHeldWhere(ctx, teamId, startDate, endDate),
       select: {
         meetingDate: true,
         assignedTo: true,
         closerId: true,
       },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // getLeadsByPeriod
+  // ---------------------------------------------------------------------------
+
+  async getLeadsByPeriod(
+    supabaseId: string,
+    teamId: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<LeadsPeriodData[]> {
+    const ctx = await this.getTeamContext(supabaseId, teamId);
+    return this.getLeadsByPeriodWithCtx(ctx, teamId, startDate, endDate);
+  }
+
+  async getLeadsByPeriodWithCtx(
+    ctx: TeamContext,
+    teamId: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<LeadsPeriodData[]> {
+    const results = await prisma.lead.groupBy({
+      by: ["createdAt"],
+      where: this.buildLeadWhere(ctx, teamId, "createdAt", startDate, endDate),
+      _count: { _all: true },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return results.map((result) => ({
+      createdAt: result.createdAt,
+      _count: { id: result._count._all },
+    }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // getStatusMetrics
+  // ---------------------------------------------------------------------------
+
+  async getStatusMetrics(supabaseId: string, teamId: string): Promise<StatusMetricsData[]> {
+    const ctx = await this.getTeamContext(supabaseId, teamId);
+    return this.getStatusMetricsWithCtx(ctx, teamId);
+  }
+
+  async getStatusMetricsWithCtx(ctx: TeamContext, teamId: string): Promise<StatusMetricsData[]> {
+    const results = await prisma.lead.groupBy({
+      by: ["status"],
+      where: this.buildLeadWhere(ctx, teamId, "createdAt"),
+      _count: { _all: true },
+      _avg: { currentValue: true },
+      _sum: { currentValue: true },
+    });
+
+    return results.map((result) => ({
+      status: result.status,
+      _count: { id: result._count._all },
+      _avg: result._avg,
+      _sum: result._sum,
+    }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // getScheduledLeads
+  // ---------------------------------------------------------------------------
+
+  async getScheduledLeads(filters: MetricsFilters): Promise<ScheduleMetricsData[]> {
+    const { supabaseId, teamId, startDate, endDate } = filters;
+    const ctx = await this.getTeamContext(supabaseId, teamId);
+
+    const dateFilter =
+      startDate && endDate ? { createdAt: { gte: startDate, lte: endDate } } : {};
+
+    let whereClause: any;
+
+    if (isManagerLikeRole(ctx.teamMember.role)) {
+      whereClause = { lead: { teamId }, ...dateFilter };
+    } else {
+      whereClause = {
+        lead: {
+          OR: [{ assignedTo: ctx.profileId }, { createdBy: ctx.profileId }],
+          teamId,
+        },
+        ...dateFilter,
+      };
+    }
+
+    return prisma.leadsSchedule.findMany({
+      where: whereClause,
+      select: { id: true, leadId: true, date: true, createdAt: true },
     });
   }
 }

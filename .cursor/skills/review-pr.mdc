@@ -1,0 +1,51 @@
+---
+description: Review de PR com checklist completo do Lead Flow antes de abrir ou mergear
+alwaysApply: false
+---
+
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: .claude/skills/review-pr.md -->
+<!-- Regenerate with: bun run skills:sync -->
+
+
+Execute o checklist de PR do Lead Flow antes de abrir ou aprovar um pull request.
+
+## Checklist de execução
+
+Execute cada item na ordem e reporte o resultado:
+
+### 1. Typecheck
+```bash
+bun run typecheck
+```
+Deve passar sem erros de tipo.
+
+### 2. Lint
+```bash
+bun run lint
+```
+Deve passar sem erros de lint.
+
+### 3. Governance check
+```bash
+bun run governance:check
+```
+Deve retornar `[governance:check] OK`. Se falhar, corrija antes de continuar.
+
+### 4. Verificações manuais
+
+Responda cada item:
+
+- [ ] **Seguiu `agents.md`?** — arquitetura Route→UseCase→Service→Prisma no backend, features/ layout no frontend
+- [ ] **Criou exceção legada?** — se sim, atualizou `.governance/ai-governance.config.json`?
+- [ ] **Criou endpoint backend novo?** — se sim, atualizou `postman/Lead-Flow-API-Collection.json`? E `postman/Lead-Flow-Environment.json` se adicionou novas variáveis de ambiente?
+- [ ] **UseCases novos retornam `Output`?** — verificar `lib/output/index.ts`
+- [ ] **Nenhum `window.alert/confirm/prompt`** no código frontend?
+- [ ] **Nenhum arquivo `*_IMPLEMENTATION_SUMMARY.md`** criado?
+- [ ] **Nenhum uso de npm ou yarn** (apenas Bun)?
+
+### 5. Resumo
+
+Ao final, liste:
+- Arquivos criados/modificados relevantes
+- Qualquer item do checklist que falhou e o que precisa ser corrigido
