@@ -195,16 +195,20 @@ jobs:
           ref: develop
           fetch-depth: 0
 
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
       - name: Deploy to Vercel (Preview)
         id: vercel-preview
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: .
+        run: |
+          DEPLOY_URL=$(vercel deploy \
+            --token=${{ secrets.VERCEL_TOKEN }} \
+            --yes \
+            2>&1 | tail -1)
+          echo "preview-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       - name: Preview Summary
         run: |
