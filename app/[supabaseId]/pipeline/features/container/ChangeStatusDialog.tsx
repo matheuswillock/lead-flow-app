@@ -23,6 +23,17 @@ import {
   type ScheduleMeetingSuccessPayload,
 } from '@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog';
 import { FinalizeContractDialog, FinalizeContractData } from '@/app/[supabaseId]/board/features/container/FinalizeContractDialog';
+import { LeadStatusTriggerDialog, type LeadStatusTriggerPayload } from '@/app/[supabaseId]/board/features/container/LeadStatusTriggerDialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { UserAssociated } from '@/app/api/v1/profiles/DTO/profileResponseDTO';
 import { useParams } from 'next/navigation';
 import { useTeamContext } from '@/app/context/TeamContext';
@@ -37,6 +48,15 @@ interface ChangeStatusDialogProps {
   teamMembers?: UserAssociated[];
   onSchedulePatched?: (payload: ScheduleMeetingSuccessPayload) => void;
 }
+
+type PendingConfirmation = {
+  status: string;
+  confirmationRuleId: string;
+  message: string;
+};
+
+const needsTriggerDialog = (status: string) =>
+  status === 'future_sale' || status === 'opportunityLost' || status === 'operator_denied';
 
 export function ChangeStatusDialog({
   open,
@@ -54,55 +74,110 @@ export function ChangeStatusDialog({
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
+  const [showStatusTriggerDialog, setShowStatusTriggerDialog] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
 
-  const handleStatusChange = async (newStatus: string) => {
-    setSelectedStatus(newStatus);
-
-    // Se for agendamento, abrir dialog de agendamento
-    if (newStatus === 'scheduled') {
-      onOpenChange(false);
-      setShowScheduleDialog(true);
-      return;
-    }
-
-    // Se for finalização, abrir dialog de finalização
-    if (newStatus === 'contract_finalized') {
-      onOpenChange(false);
-      setShowFinalizeDialog(true);
-      return;
-    }
-
-    // Para outros status, atualizar diretamente
-    await updateLeadStatus(newStatus);
-  };
-
-  const updateLeadStatus = async (newStatus: string) => {
-    if (!lead) return;
+  const updateLeadStatus = async (
+    newStatus: string,
+    trigger?: {
+      followUpAt?: string;
+      followUpNotes?: string;
+      reason?: string;
+      reasonDetails?: string;
+      confirmRuleId?: string;
+    },
+    allowAutoConfirmation = false
+  ) => {
+    if (!lead) return false;
 
     const loadingToast = toast.loading('Atualizando status...');
 
     try {
       const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
         method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
-        ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
-      },
-        body: JSON.stringify({ status: newStatus }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
+        },
+        body: JSON.stringify({
+          status: newStatus,
+          ...(trigger ? { trigger } : {}),
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error('Erro ao atualizar status');
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.isValid) {
+        const requiresConfirmation = !!result?.result?.requiresConfirmation;
+        const confirmationRuleId =
+          typeof result?.result?.confirmationRuleId === 'string'
+            ? result.result.confirmationRuleId
+            : null;
+        const confirmationMessage =
+          result?.errorMessages?.[0] ||
+          'Confirmação adicional é necessária para concluir esta transição.';
+
+        if (requiresConfirmation && confirmationRuleId) {
+          if (allowAutoConfirmation) {
+            return updateLeadStatus(
+              newStatus,
+              {
+                ...(trigger ?? {}),
+                confirmRuleId: confirmationRuleId,
+              },
+              false
+            );
+          }
+
+          setPendingConfirmation({
+            status: newStatus,
+            confirmationRuleId,
+            message: confirmationMessage,
+          });
+          toast.info(confirmationMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
+        throw new Error(result?.errorMessages?.[0] || 'Erro ao atualizar status');
       }
 
       toast.success('Status atualizado com sucesso!', { id: loadingToast });
       onOpenChange(false);
       await onStatusChanged();
+      return true;
     } catch (error) {
-      toast.error('Erro ao atualizar status', { id: loadingToast });
+      toast.error(error instanceof Error ? error.message : 'Erro ao atualizar status', {
+        id: loadingToast,
+      });
       console.error('Erro ao atualizar status:', error);
+      return false;
     }
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    setSelectedStatus(newStatus);
+    setPendingConfirmation(null);
+
+    if (newStatus === 'scheduled') {
+      onOpenChange(false);
+      setShowScheduleDialog(true);
+      return;
+    }
+
+    if (newStatus === 'contract_finalized') {
+      onOpenChange(false);
+      setShowFinalizeDialog(true);
+      return;
+    }
+
+    if (needsTriggerDialog(newStatus)) {
+      onOpenChange(false);
+      setShowStatusTriggerDialog(true);
+      return;
+    }
+
+    await updateLeadStatus(newStatus);
   };
 
   const handleScheduleSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
@@ -134,6 +209,48 @@ export function ChangeStatusDialog({
     await onStatusChanged();
   };
 
+  const handleStatusTriggerConfirm = async (payload: LeadStatusTriggerPayload) => {
+    if (!selectedStatus) return;
+
+    if (payload.kind === 'future_sale') {
+      await updateLeadStatus(
+        selectedStatus,
+        {
+          followUpAt: payload.followUpAt,
+          followUpNotes: payload.followUpNotes,
+          confirmRuleId: payload.confirmRuleId,
+        },
+        true
+      );
+    } else {
+      await updateLeadStatus(
+        selectedStatus,
+        {
+          reason: payload.reason,
+          reasonDetails: payload.reasonDetails,
+          confirmRuleId: payload.confirmRuleId,
+        },
+        true
+      );
+    }
+
+    setShowStatusTriggerDialog(false);
+  };
+
+  const handleConfirmCombinedRule = async () => {
+    if (!pendingConfirmation) return;
+
+    const updated = await updateLeadStatus(
+      pendingConfirmation.status,
+      { confirmRuleId: pendingConfirmation.confirmationRuleId },
+      false
+    );
+
+    if (updated) {
+      setPendingConfirmation(null);
+    }
+  };
+
   if (!lead) return null;
 
   return (
@@ -146,7 +263,7 @@ export function ChangeStatusDialog({
               Altere o status de <strong>{lead.name}</strong>
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="status">Novo Status</Label>
@@ -167,7 +284,6 @@ export function ChangeStatusDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Dialog de Agendamento */}
       {lead && (
         <ScheduleMeetingDialog
           open={showScheduleDialog}
@@ -180,7 +296,6 @@ export function ChangeStatusDialog({
         />
       )}
 
-      {/* Dialog de Finalização */}
       {lead && (
         <FinalizeContractDialog
           open={showFinalizeDialog}
@@ -189,6 +304,45 @@ export function ChangeStatusDialog({
           onFinalize={handleFinalizeContract}
         />
       )}
+
+      {lead && selectedStatus && needsTriggerDialog(selectedStatus) && (
+        <LeadStatusTriggerDialog
+          open={showStatusTriggerDialog}
+          onOpenChange={setShowStatusTriggerDialog}
+          mode={selectedStatus === 'future_sale' ? 'future_sale' : 'loss_reason'}
+          leadName={lead.name}
+          statusLabel={statusLabels[selectedStatus] || selectedStatus}
+          confirmationMessage={pendingConfirmation?.message || null}
+          confirmationRuleId={pendingConfirmation?.confirmationRuleId || null}
+          onConfirm={handleStatusTriggerConfirm}
+        />
+      )}
+
+      <AlertDialog
+        open={!!pendingConfirmation && !needsTriggerDialog(pendingConfirmation.status)}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirmation(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmação necessária</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingConfirmation?.message || 'Deseja confirmar esta mudança de status?'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={(event) => {
+              event.preventDefault();
+              void handleConfirmCombinedRule();
+            }}>
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
+

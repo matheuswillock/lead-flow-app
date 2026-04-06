@@ -4,7 +4,7 @@ import { DateRange } from "react-day-picker";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollText, Plus, Settings } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -153,11 +153,11 @@ export default function BoardHeader({
             Adicionar novo lead
           </Button>
           <LeadImportButton onImportComplete={refreshLeads} />
-          <Dialog>
+          <Sheet>
             <TooltipProvider delayDuration={0}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <DialogTrigger asChild>
+                  <SheetTrigger asChild>
                     <Button
                       type="button"
                       variant="outline"
@@ -167,18 +167,18 @@ export default function BoardHeader({
                     >
                       <Settings className="h-4 w-4" />
                     </Button>
-                  </DialogTrigger>
+                  </SheetTrigger>
                 </TooltipTrigger>
                 <TooltipContent>Configuração dos cards</TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <DialogContent className="sm:max-w-[420px]">
-              <DialogHeader>
-                <DialogTitle>Configuração dos cards</DialogTitle>
-                <DialogDescription>
+            <SheetContent side="right" className="w-[420px] sm:w-[460px]">
+              <SheetHeader>
+                <SheetTitle>Configuração dos cards</SheetTitle>
+                <SheetDescription>
                   Selecione quais informações aparecem no card do lead.
-                </DialogDescription>
-              </DialogHeader>
+                </SheetDescription>
+              </SheetHeader>
               <div className="grid gap-3">
                 {LEAD_CARD_OPTIONS.map((option) => {
                   const checkboxId = `lead-card-display-${option.key}`;
@@ -210,8 +210,8 @@ export default function BoardHeader({
               <p className="text-xs text-muted-foreground">
                 Isso afeta apenas os cards do board.
               </p>
-            </DialogContent>
-          </Dialog>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
 

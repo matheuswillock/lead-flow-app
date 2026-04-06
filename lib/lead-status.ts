@@ -7,6 +7,7 @@ export const leadStatusLabels: Record<LeadStatus, string> = {
   scheduled: "Agendado",
   no_show: "No Show",
   pricingRequest: "Cotacao",
+  future_sale: "Venda Futura",
   offerNegotiation: "Negociacao",
   pending_documents: "Documentos pendentes",
   offerSubmission: "Proposta enviada",

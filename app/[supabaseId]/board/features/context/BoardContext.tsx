@@ -10,6 +10,12 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
+import {
+  createLeadTimeRulesVersion,
+  EMPTY_TEAM_STATUS_RULES,
+  resolveLeadTimeState,
+  type TeamStatusRulesResponse,
+} from "@/lib/teamStatusRules";
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -37,6 +43,14 @@ interface TaskOwner {
 type PendingScheduledDrop = {
   leadId: string;
   from: ColumnKey;
+};
+
+type PendingStatusTriggerDrop = {
+  leadId: string;
+  from: ColumnKey;
+  to: ColumnKey;
+  confirmationRuleId?: string | null;
+  confirmationMessage?: string | null;
 };
 
 interface IBoardContextState {
@@ -80,6 +94,15 @@ interface IBoardContextState {
   pendingScheduledDrop: PendingScheduledDrop | null;
   clearPendingScheduledDrop: () => void;
   applyScheduledTransition: (from: ColumnKey, payload: Partial<Lead> & Pick<Lead, "id" | "status">) => void;
+  pendingStatusTriggerDrop: PendingStatusTriggerDrop | null;
+  clearPendingStatusTriggerDrop: () => void;
+  applyPendingStatusTriggerTransition: (trigger: {
+    followUpAt?: string;
+    followUpNotes?: string;
+    reason?: string;
+    reasonDetails?: string;
+    confirmRuleId?: string;
+  }) => Promise<void>;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
@@ -88,6 +111,7 @@ const COLUMNS: { key: ColumnKey; title: string }[] = [
   { key: "scheduled", title: "Agendado" },
   { key: "no_show", title: "No Show" },
   { key: "pricingRequest", title: "Cotação" },
+  { key: "future_sale", title: "Venda Futura" },
   { key: "offerNegotiation", title: "Negociação" },
   { key: "pending_documents", title: "Documentos pendentes" },
   { key: "offerSubmission", title: "Proposta" },
@@ -168,8 +192,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [assignedUsers, setAssignedUsers] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<ColumnKey[]>([]);
   const [closerFilter, setCloserFilter] = useState<string[]>([]);
+  const [teamStatusRules, setTeamStatusRules] =
+    useState<TeamStatusRulesResponse>(EMPTY_TEAM_STATUS_RULES);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pendingScheduledDrop, setPendingScheduledDrop] = useState<PendingScheduledDrop | null>(null);
+  const [pendingStatusTriggerDrop, setPendingStatusTriggerDrop] = useState<PendingStatusTriggerDrop | null>(null);
 
   // Sync external CRM filters into board filter state whenever they change.
   // Using useEffect (not lazy initializer) is safe because data loads asynchronously;
@@ -247,10 +274,43 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     }
   }, [leadCardDisplayStorageKey, leadCardDisplay]);
 
+  const loadTeamStatusRules = useCallback(async () => {
+    if (!supabaseId || !activeTeamId) {
+      setTeamStatusRules(EMPTY_TEAM_STATUS_RULES);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/v1/teams/${activeTeamId}/status-rules`, {
+        headers: {
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId,
+        },
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid || !result?.result) {
+        setTeamStatusRules(EMPTY_TEAM_STATUS_RULES);
+        return;
+      }
+      setTeamStatusRules({
+        ...EMPTY_TEAM_STATUS_RULES,
+        ...result.result,
+      });
+    } catch (error) {
+      console.error("[BoardContext] Erro ao carregar regras de status:", error);
+      setTeamStatusRules(EMPTY_TEAM_STATUS_RULES);
+    }
+  }, [activeTeamId, supabaseId]);
+
+  useEffect(() => {
+    void loadTeamStatusRules();
+  }, [loadTeamStatusRules]);
+
   // Função para carregar leads da API
   const loadLeads = useCallback(async (options?: { force?: boolean }) => {
     const roleToSend = activeRole || "manager";
-    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}`;
+    const leadTimeRulesVersion = createLeadTimeRulesVersion(teamStatusRules.leadTimeRules);
+    const loadKey = `${supabaseId}:${activeTeamId ?? ""}:${roleToSend}:${(activeFunctions ?? []).slice().sort().join("|")}:${leadTimeRulesVersion}`;
 
     if (
       !options?.force &&
@@ -323,6 +383,21 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
             })));
           }
           
+          const leadsWithLeadTimeState = result.result.map((lead: Lead) => {
+            const state = resolveLeadTimeState(
+              lead.status,
+              lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
+              teamStatusRules.leadTimeRules
+            );
+
+            return {
+              ...lead,
+              statusEnteredAt: lead.statusEnteredAt || lead.updatedAt || lead.createdAt,
+              leadTimeDueAt: state.dueAt,
+              isLeadTimeBreached: state.isBreached,
+            };
+          });
+
           // Organizar leads por status (coluna)
           const leadsGroupedByStatus: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
           
@@ -332,7 +407,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           });
           
           // Distribui os leads nas colunas corretas baseado no status
-          result.result.forEach((lead: Lead) => {
+          leadsWithLeadTimeState.forEach((lead: Lead) => {
             if (leadsGroupedByStatus[lead.status]) {
               leadsGroupedByStatus[lead.status].push(lead);
             }
@@ -348,7 +423,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
               currentMeetingDate: currentSelected.meetingDate
             });
 
-            const updatedLead = result.result.find((l: Lead) => l.id === currentSelected.id);
+            const updatedLead = leadsWithLeadTimeState.find((l: Lead) => l.id === currentSelected.id);
             if (updatedLead) {
               console.info('[BoardContext] Found updated lead in API response:', {
                 newMeetingDate: updatedLead.meetingDate,
@@ -414,7 +489,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     leadsLoadInFlightPromiseRef.current = requestPromise;
 
     return requestPromise;
-  }, [activeFunctions, activeRole, activeTeamId, resolvedBoardService, supabaseId]);
+  }, [activeFunctions, activeRole, activeTeamId, resolvedBoardService, supabaseId, teamStatusRules.leadTimeRules]);
 
   useEffect(() => {
     userRef.current = user;
@@ -529,14 +604,44 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           return;
         }
 
-        const didMove = moveLeadBetweenColumns(leadId, from, to);
-        if (didMove) {
-          void updateLeadStatusInAPI(leadId, to);
+        if (to === "future_sale" || to === "opportunityLost" || to === "operator_denied") {
+          setPendingStatusTriggerDrop({
+            leadId,
+            from,
+            to,
+            confirmationRuleId: null,
+            confirmationMessage: null,
+          });
+          return;
         }
+
+        void (async () => {
+          const result = await updateLeadStatusInAPI(leadId, to, undefined, { from, to });
+          if (!result?.isValid) return;
+
+          const payload =
+            result.result && typeof result.result === "object"
+              ? (result.result as Partial<Lead>)
+              : {};
+
+          moveLeadBetweenColumns(leadId, from, to, payload);
+          await loadLeads({ force: true });
+        })();
       };
 
       // Função para atualizar status na API
-      const updateLeadStatusInAPI = async (leadId: string, newStatus: ColumnKey) => {
+      const updateLeadStatusInAPI = async (
+        leadId: string,
+        newStatus: ColumnKey,
+        trigger?: {
+          followUpAt?: string;
+          followUpNotes?: string;
+          reason?: string;
+          reasonDetails?: string;
+          confirmRuleId?: string;
+        },
+        pendingDropContext?: { from: ColumnKey; to: ColumnKey }
+      ) => {
         // 🚀 Toast de loading para feedback imediato
         const loadingToast = toast.loading('Atualizando status do lead...');
         
@@ -548,45 +653,93 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
               'x-supabase-user-id': supabaseId,
               'x-team-id': activeTeamId || ''
             },
-            body: JSON.stringify({ status: newStatus })
+            body: JSON.stringify({
+              status: newStatus,
+              ...(trigger ? { trigger } : {}),
+            })
           });
 
-          if (!response.ok) {
-            throw new Error('Erro ao atualizar status do lead');
+          const result = await response.json().catch(() => null);
+
+          if (!response.ok || !result?.isValid) {
+            const requiresConfirmation =
+              !!result?.result &&
+              typeof result.result === "object" &&
+              !!result.result.requiresConfirmation;
+
+            if (requiresConfirmation) {
+              const confirmationMessage =
+                result?.errorMessages?.[0] ||
+                "Confirmação adicional é necessária para concluir esta transição.";
+              const confirmationRuleId =
+                typeof result?.result?.confirmationRuleId === "string"
+                  ? result.result.confirmationRuleId
+                  : null;
+
+              setPendingStatusTriggerDrop((prev) => {
+                if (prev && prev.leadId === leadId && prev.to === newStatus) {
+                  return {
+                    ...prev,
+                    confirmationRuleId,
+                    confirmationMessage,
+                  };
+                }
+
+                if (!pendingDropContext) {
+                  return prev;
+                }
+
+                return {
+                  leadId,
+                  from: pendingDropContext.from,
+                  to: pendingDropContext.to,
+                  confirmationRuleId,
+                  confirmationMessage,
+                };
+              });
+
+              toast.info(confirmationMessage, { id: loadingToast, duration: 5000 });
+              return result;
+            }
+
+            throw new Error(result?.errorMessages?.[0] || 'Erro ao atualizar status do lead');
           }
           
           // ✅ Sucesso
           const statusLabels: Record<ColumnKey, string> = {
-            'new_opportunity': 'Nova Oportunidade',
-            'scheduled': 'Agendado',
-            'no_show': 'Não Compareceu',
-            'pricingRequest': 'Solicitação de Preço',
-            'offerNegotiation': 'Negociação de Proposta',
-            'pending_documents': 'Documentos Pendentes',
-            'offerSubmission': 'Proposta Enviada',
-            'dps_agreement': 'Acordo DPS',
-            'invoicePayment': 'Pagamento de Fatura',
-            'disqualified': 'Desqualificado',
-            'opportunityLost': 'Oportunidade Perdida',
-            'operator_denied': 'Operadora Negou',
-            'contract_finalized': 'Contrato Finalizado'
-          };
+             'new_opportunity': 'Nova Oportunidade',
+             'scheduled': 'Agendado',
+             'no_show': 'Não Compareceu',
+             'pricingRequest': 'Solicitação de Preço',
+             'future_sale': 'Venda Futura',
+             'offerNegotiation': 'Negociação de Proposta',
+             'pending_documents': 'Documentos Pendentes',
+             'offerSubmission': 'Proposta Enviada',
+             'dps_agreement': 'Acordo DPS',
+             'invoicePayment': 'Pagamento de Fatura',
+             'disqualified': 'Desqualificado',
+             'opportunityLost': 'Oportunidade Perdida',
+             'operator_denied': 'Operadora Negou',
+             'contract_finalized': 'Contrato Finalizado'
+           };
           
           toast.success(`Status atualizado para: ${statusLabels[newStatus] || newStatus}`, {
             id: loadingToast,
             duration: 3000,
           });
+          return result;
         } catch (error) {
           console.error('Erro ao atualizar status do lead:', error);
           
           // ❌ Erro - Reverter mudança visual
-          toast.error('Erro ao atualizar status. Recarregando...', {
+          toast.error(error instanceof Error ? error.message : 'Erro ao atualizar status. Recarregando...', {
             id: loadingToast,
             duration: 4000,
           });
           
           // Recarregar dados para reverter UI
           await loadLeads({ force: true });
+          return null;
         }
       };
 
@@ -634,6 +787,48 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
   const clearPendingScheduledDrop = () => {
     setPendingScheduledDrop(null);
+  };
+
+  const clearPendingStatusTriggerDrop = () => {
+    setPendingStatusTriggerDrop(null);
+  };
+
+  const applyPendingStatusTriggerTransition = async (trigger: {
+    followUpAt?: string;
+    followUpNotes?: string;
+    reason?: string;
+    reasonDetails?: string;
+    confirmRuleId?: string;
+  }) => {
+    if (!pendingStatusTriggerDrop) return;
+
+    const result = await updateLeadStatusInAPI(
+      pendingStatusTriggerDrop.leadId,
+      pendingStatusTriggerDrop.to,
+      {
+        ...trigger,
+        confirmRuleId:
+          trigger.confirmRuleId ||
+          pendingStatusTriggerDrop.confirmationRuleId ||
+          undefined,
+      }
+    );
+
+    if (!result?.isValid) return;
+
+    const payload =
+      result.result && typeof result.result === "object"
+        ? (result.result as Partial<Lead>)
+        : {};
+
+    moveLeadBetweenColumns(
+      pendingStatusTriggerDrop.leadId,
+      pendingStatusTriggerDrop.from,
+      pendingStatusTriggerDrop.to,
+      payload
+    );
+    setPendingStatusTriggerDrop(null);
+    await loadLeads({ force: true });
   };
 
   const applyScheduledTransition = (
@@ -740,6 +935,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingScheduledDrop,
       clearPendingScheduledDrop,
       applyScheduledTransition,
+      pendingStatusTriggerDrop,
+      clearPendingStatusTriggerDrop,
+      applyPendingStatusTriggerTransition,
       finalizeContract
     };
   

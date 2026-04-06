@@ -122,6 +122,13 @@
       "description": "ID do time ativo para endpoints de integrações e webhook studio"
     },
     {
+      "key": "presetId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID do preset de filtro CRM para testes dos endpoints /crm/filter-presets"
+    },
+    {
       "key": "studioWebhookToken",
       "value": "",
       "type": "default",

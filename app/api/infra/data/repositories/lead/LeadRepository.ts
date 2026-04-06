@@ -225,10 +225,13 @@ export class LeadRepository implements ILeadRepository {
     });
   }
 
-  async updateStatus(id: string, status: LeadStatus): Promise<Lead> {
+  async updateStatus(id: string, status: LeadStatus, extraData?: Prisma.LeadUpdateInput): Promise<Lead> {
     return await prisma.lead.update({
       where: { id },
-      data: { status },
+      data: {
+        status,
+        ...(extraData ?? {}),
+      },
       include: {
         manager: {
           select: {

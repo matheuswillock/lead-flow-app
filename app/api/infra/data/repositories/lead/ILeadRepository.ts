@@ -58,7 +58,7 @@ export interface ILeadRepository {
   ): Promise<{ leads: Lead[] }>;
   update(id: string, data: Prisma.LeadUpdateInput): Promise<Lead>;
   delete(id: string): Promise<void>;
-  updateStatus(id: string, status: LeadStatus): Promise<Lead>;
+  updateStatus(id: string, status: LeadStatus, extraData?: Prisma.LeadUpdateInput): Promise<Lead>;
   assignToOperator(id: string, operatorId: string): Promise<Lead>;
   transferToManager(id: string, newManagerId: string, reason?: string): Promise<Lead>;
   getLeadsByStatus(managerId: string, status: LeadStatus): Promise<Lead[]>;

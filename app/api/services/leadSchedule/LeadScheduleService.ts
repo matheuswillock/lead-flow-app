@@ -35,6 +35,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
   scheduled: "Agendado",
   no_show: "No Show",
   pricingRequest: "Cotação",
+  future_sale: "Venda Futura",
   offerNegotiation: "Negociação",
   pending_documents: "Documentos pendentes",
   offerSubmission: "Proposta",

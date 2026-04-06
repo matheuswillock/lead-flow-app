@@ -14,6 +14,8 @@ import {
   Plug,
   ChevronDown,
   ChevronRight,
+  TrendingUp,
+  Briefcase,
 } from "lucide-react"
 
 import {
@@ -63,6 +65,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "CRM", url: `/${supabaseId}/crm`, icon: KanbanSquare },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays },
+    { title: "Performance", url: `/${supabaseId}/performance`, icon: TrendingUp, managerOnly: true, requiresIntegrationsAccess: true },
+    { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true },
     {
       title: "Integrações",
       url: `/${supabaseId}/integrations`,

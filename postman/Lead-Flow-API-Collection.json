@@ -5782,6 +5782,227 @@
                     "description": "Auto-generated from app/api/v1/teams/pending-actions/[id]/route.ts"
                   },
                   "response": []
+                },
+                {
+                  "name": "GET /api/v1/teams/{{teamId}}/status-rules",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/status-rules",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "status-rules"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/status-rules/route.ts"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "PUT /api/v1/teams/{{teamId}}/status-rules",
+                  "request": {
+                    "method": "PUT",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/status-rules",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "status-rules"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/status-rules/route.ts",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\"disabledStatuses\":[],\"leadTimeRules\":[],\"combinedRules\":[]}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "GET /api/v1/teams/{{teamId}}/crm/filter-presets",
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/crm/filter-presets",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "crm",
+                        "filter-presets"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/crm/filter-presets/route.ts"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/v1/teams/{{teamId}}/crm/filter-presets",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/crm/filter-presets",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "crm",
+                        "filter-presets"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/crm/filter-presets/route.ts",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\"name\":\"Meu preset\",\"description\":\"Filtro para leads quentes\",\"queryJson\":{\"query\":\"\",\"statusFilter\":[],\"assignedUsers\":[],\"closerFilter\":[],\"periodStart\":\"\",\"periodEnd\":\"\",\"onlyMeetingsHeld\":false}}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "PATCH /api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}",
+                  "request": {
+                    "method": "PATCH",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "crm",
+                        "filter-presets",
+                        "{{presetId}}"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/crm/filter-presets/[presetId]/route.ts",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\"name\":\"Preset atualizado\"}"
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "DELETE /api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}",
+                  "request": {
+                    "method": "DELETE",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "crm",
+                        "filter-presets",
+                        "{{presetId}}"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/crm/filter-presets/[presetId]/route.ts"
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}/use",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/teams/{{teamId}}/crm/filter-presets/{{presetId}}/use",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "teams",
+                        "{{teamId}}",
+                        "crm",
+                        "filter-presets",
+                        "{{presetId}}",
+                        "use"
+                      ]
+                    },
+                    "description": "Auto-generated from app/api/v1/teams/[teamId]/crm/filter-presets/[presetId]/use/route.ts",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{}"
+                    }
+                  },
+                  "response": []
                 }
               ]
             },
@@ -6070,8 +6291,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/integrations/lead-form",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "integrations", "lead-form"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "integrations",
+                "lead-form"
+              ]
             },
             "description": "Cria um lead público (sem autenticação). Pode incluir dados de agendamento opcionais (closerId, meetingDate, meetingTitle)."
           },
@@ -6084,11 +6312,24 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/integrations/bootstrap?supabaseId={{supabaseId}}&teamId={{teamId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "integrations", "bootstrap"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "integrations",
+                "bootstrap"
+              ],
               "query": [
-                { "key": "supabaseId", "value": "{{supabaseId}}" },
-                { "key": "teamId", "value": "{{teamId}}" }
+                {
+                  "key": "supabaseId",
+                  "value": "{{supabaseId}}"
+                },
+                {
+                  "key": "teamId",
+                  "value": "{{teamId}}"
+                }
               ]
             },
             "description": "Carrega os dados iniciais do formulário público em uma única resposta (planos de saúde + closers do time)."
@@ -6102,8 +6343,15 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/integrations/health-plans",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "integrations", "health-plans"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "integrations",
+                "health-plans"
+              ]
             },
             "description": "Lista planos de saúde disponíveis (endpoint público, sem autenticação)."
           },
@@ -6116,11 +6364,24 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/v1/integrations/team-closers?supabaseId={{supabaseId}}&teamId={{teamId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "integrations", "team-closers"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "integrations",
+                "team-closers"
+              ],
               "query": [
-                { "key": "supabaseId", "value": "{{supabaseId}}" },
-                { "key": "teamId", "value": "{{teamId}}" }
+                {
+                  "key": "supabaseId",
+                  "value": "{{supabaseId}}"
+                },
+                {
+                  "key": "teamId",
+                  "value": "{{teamId}}"
+                }
               ]
             },
             "description": "Lista closers do time (endpoint público). Retorna apenas id, nome e avatar."
@@ -6143,10 +6404,20 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/integrations/studio-webhook?teamId={{teamId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "integrations", "studio-webhook"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "integrations",
+                "studio-webhook"
+              ],
               "query": [
-                { "key": "teamId", "value": "{{teamId}}" }
+                {
+                  "key": "teamId",
+                  "value": "{{teamId}}"
+                }
               ]
             },
             "description": "Retorna bootstrap da página de integrações do time ativo (leadFormUrl + configuração atual do webhook genérico)."
@@ -6169,10 +6440,21 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/v1/integrations/studio-webhook/logs?teamId={{teamId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "integrations", "studio-webhook", "logs"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "integrations",
+                "studio-webhook",
+                "logs"
+              ],
               "query": [
-                { "key": "teamId", "value": "{{teamId}}" }
+                {
+                  "key": "teamId",
+                  "value": "{{teamId}}"
+                }
               ]
             },
             "description": "Lista os 15 últimos logs de recebimento do webhook genérico do time ativo."
@@ -6203,8 +6485,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/integrations/studio-webhook",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "integrations", "studio-webhook"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "integrations",
+                "studio-webhook"
+              ]
             },
             "description": "Cria/atualiza configuração do webhook genérico por time (token manual, automático ou sem token, com expiração)."
           },
@@ -6226,12 +6515,192 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/integrations/availability",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "integrations", "availability"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "integrations",
+                "availability"
+              ]
             },
             "description": "Verifica disponibilidade de horários de um closer para uma data (endpoint público). Retorna slots de 30min disponíveis."
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Performance",
+      "item": [
+        {
+          "name": "GET Sales Performance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/performance/sales?preset=1m&page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "performance",
+                "sales"
+              ],
+              "query": [
+                {
+                  "key": "preset",
+                  "value": "1m"
+                },
+                {
+                  "key": "startDate",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "endDate",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "sdrId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "closerId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Retorna vendas com reunião realizada (meetingHeald=yes) e status=contract_finalized no período. Permissão: manager (tudo) ou closer (somente próprios leads)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Portfolio (Carteira)",
+      "item": [
+        {
+          "name": "GET List Portfolio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolio?page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio"
+              ],
+              "query": [
+                {
+                  "key": "portfolioStatus",
+                  "value": "active",
+                  "disabled": true
+                },
+                {
+                  "key": "sdrId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "closerId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Lista carteira paginada. Permissão: manager/backoffice (tudo) ou closer (somente próprios clientes)."
+          }
+        },
+        {
+          "name": "PATCH Update Portfolio Entry",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"portfolioStatus\": \"active\",\n  \"note\": \"Observação\",\n  \"lastContactAt\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolio/{{leadId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio",
+                "{{leadId}}"
+              ]
+            },
+            "description": "Atualiza status, nota e último contato de um lead na carteira."
+          }
         }
       ]
     }

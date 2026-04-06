@@ -16,13 +16,19 @@ class CrmFiltersPreferenceService implements ICrmFiltersPreferenceService {
   getFilters(scope: CrmPreferenceScope): CrmFiltersState | null {
     if (typeof window === "undefined") return null;
     try {
-      const raw = window.sessionStorage.getItem(this.getStorageKey(scope));
+      const storageKey = this.getStorageKey(scope);
+      const raw =
+        window.localStorage.getItem(storageKey) ??
+        window.sessionStorage.getItem(storageKey);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
+      if (!window.localStorage.getItem(storageKey)) {
+        window.localStorage.setItem(storageKey, raw);
+      }
       return { ...DEFAULT_CRM_FILTERS, ...parsed } as CrmFiltersState;
     } catch (error) {
       console.error(
-        "[CrmFiltersPreferenceService] Error reading session storage:",
+        "[CrmFiltersPreferenceService] Error reading local storage:",
         error
       );
       return null;
@@ -32,13 +38,13 @@ class CrmFiltersPreferenceService implements ICrmFiltersPreferenceService {
   setFilters(scope: CrmPreferenceScope, filters: CrmFiltersState): void {
     if (typeof window === "undefined") return;
     try {
-      window.sessionStorage.setItem(
+      window.localStorage.setItem(
         this.getStorageKey(scope),
         JSON.stringify(filters)
       );
     } catch (error) {
       console.error(
-        "[CrmFiltersPreferenceService] Error writing session storage:",
+        "[CrmFiltersPreferenceService] Error writing local storage:",
         error
       );
     }

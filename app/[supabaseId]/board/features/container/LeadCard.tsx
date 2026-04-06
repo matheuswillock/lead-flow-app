@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { CopyIcon } from "@/components/ui/copy";
 import { toast } from "sonner";
 import useBoardContext from "../context/BoardHook";
+import { cn } from "@/lib/utils";
 
 interface LeadCardProps {
     lead: LeadResponseDTO;
@@ -123,7 +124,10 @@ export function LeadCard({
             onMouseDown={handleCardMouseDown}
             onDragStart={(e) => handleCardDragStart(e, lead.id, columnKey)}
             onClick={() => handleCardClick(lead)}
-            className="cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent m-0"
+            className={cn(
+                "cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow bg-accent m-0",
+                lead.isLeadTimeBreached && "border-destructive/70 ring-1 ring-destructive/40 animate-pulse"
+            )}
         >
             {hasHeaderInfo && (
                 <CardHeader>
@@ -221,6 +225,11 @@ export function LeadCard({
                         {closerName && (
                             <div>Closer: {closerName}</div>
                         )}
+                    </div>
+                )}
+                {lead.isLeadTimeBreached && (
+                    <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
+                        Lead a vencer: tempo máximo neste status ultrapassado.
                     </div>
                 )}
                 {showNotesSection && (
