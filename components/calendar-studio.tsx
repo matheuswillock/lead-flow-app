@@ -424,12 +424,22 @@ export default function CalendarStudio() {
     }
   }, [selectedTime])
 
-  React.useEffect(() => {
-    const meetingLeadIds = dayEvents
+  // Chave estável: só muda quando o dia selecionado ou os IDs dos leads de reunião realmente mudam.
+  // Isso evita múltiplos requests causados por re-renders do contexto que recriam o array dayEvents.
+  const attendeesFetchKey = React.useMemo(() => {
+    const meetingIds = dayEvents
       .filter((e) => e.type === "meeting")
       .map((e) => e.lead.id)
+      .sort()
+      .join(",")
+    const dateKey = date ? `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}` : "none"
+    return `${dateKey}|${meetingIds}`
+  }, [date, dayEvents])
 
-    if (meetingLeadIds.length === 0 || !supabaseId || !activeTeamId) {
+  React.useEffect(() => {
+    const meetingEvents = dayEvents.filter((e) => e.type === "meeting")
+
+    if (meetingEvents.length === 0 || !supabaseId || !activeTeamId) {
       setAttendeesByLead({})
       return
     }
@@ -438,32 +448,41 @@ export default function CalendarStudio() {
     setAttendeesLoading(true)
 
     Promise.all(
-      meetingLeadIds.map(async (leadId) => {
+      meetingEvents.map(async ({ lead }) => {
         try {
-          const res = await fetch(`/api/v1/leads/${leadId}/schedule/attendees`, {
+          // Passa emails do contexto como hints para o servidor pular o prisma.lead.findUnique
+          const params = new URLSearchParams()
+          if (lead.closer?.email) params.set("closerEmail", lead.closer.email)
+          if (lead.assignee?.email) params.set("sdrEmail", lead.assignee.email)
+          if (lead.email) params.set("leadEmail", lead.email)
+
+          const res = await fetch(`/api/v1/leads/${lead.id}/schedule/attendees?${params}`, {
             headers: {
               "x-supabase-user-id": supabaseId,
               "x-team-id": activeTeamId,
             },
           })
-          if (!res.ok) return [leadId, null] as const
-          const json = await res.json()
-          if (!json?.isValid || !json?.result) return [leadId, null] as const
-          return [leadId, { attendees: json.result.attendees as ScheduleAttendee[], hasGoogleData: json.result.hasGoogleData as boolean }] as const
+          if (!res.ok) return [lead.id, null] as const
+          const json = await res.json().catch(() => null)
+          if (!json?.isValid || !json?.result) return [lead.id, null] as const
+          return [lead.id, { attendees: json.result.attendees as ScheduleAttendee[], hasGoogleData: json.result.hasGoogleData as boolean }] as const
         } catch {
-          return [leadId, null] as const
+          return [lead.id, null] as const
         }
       })
     ).then((entries) => {
       if (cancelled) return
       setAttendeesByLead(Object.fromEntries(entries))
       setAttendeesLoading(false)
+    }).catch(() => {
+      if (cancelled) return
+      setAttendeesLoading(false)
     })
 
     return () => {
       cancelled = true
     }
-  }, [dayEvents, supabaseId, activeTeamId])
+  }, [attendeesFetchKey, supabaseId, activeTeamId])
 
   return (
     <div className="flex min-h-0 h-full w-full max-w-full flex-1 flex-col gap-4 overflow-x-hidden p-4">
@@ -773,7 +792,7 @@ export default function CalendarStudio() {
                               </div>
                             )
                           }
-                          if (!entry || entry.attendees.length === 0) return null
+                          if (!entry || !entry.attendees || entry.attendees.length === 0) return null
                           return (
                             <div className="mt-1.5 flex flex-col gap-1">
                               {!entry.hasGoogleData && (

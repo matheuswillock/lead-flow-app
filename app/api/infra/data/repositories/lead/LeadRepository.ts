@@ -1,6 +1,7 @@
 import { ILeadRepository } from "./ILeadRepository";
 import { Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
+import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
 
 export class LeadRepository implements ILeadRepository {
   async create(data: Prisma.LeadCreateInput): Promise<Lead> {
@@ -757,6 +758,65 @@ export class LeadRepository implements ILeadRepository {
     });
 
     return resultAssigned.count + resultCreated.count;
+  }
+
+  async findCloserForCalendar(leadId: string): Promise<LeadCloserForCalendar | null> {
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: {
+        closer: {
+          select: {
+            id: true,
+            supabaseId: true,
+            fullName: true,
+            email: true,
+            googleCalendarConnected: true,
+            googleRefreshToken: true,
+            googleAccessToken: true,
+            googleTokenExpiresAt: true,
+          },
+        },
+      },
+    });
+
+    const c = lead?.closer;
+    if (!c?.supabaseId) return null;
+    return { ...c, supabaseId: c.supabaseId };
+  }
+
+  async findForAttendeesRoleMap(leadId: string): Promise<LeadForAttendeesRoleMap | null> {
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: {
+        teamId: true,
+        email: true,
+        closer: {
+          select: {
+            id: true,
+            supabaseId: true,
+            fullName: true,
+            email: true,
+            googleCalendarConnected: true,
+            googleRefreshToken: true,
+            googleAccessToken: true,
+            googleTokenExpiresAt: true,
+          },
+        },
+        assignee: {
+          select: { email: true },
+        },
+      },
+    });
+
+    if (!lead) return null;
+
+    const c = lead.closer;
+    return {
+      teamId: lead.teamId,
+      email: lead.email,
+      closer: c?.supabaseId ? { ...c, supabaseId: c.supabaseId } : null,
+      assignee: lead.assignee,
+    };
   }
 }
 

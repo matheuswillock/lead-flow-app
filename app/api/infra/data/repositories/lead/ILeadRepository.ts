@@ -1,4 +1,5 @@
 import { Lead, LeadStatus, Prisma } from "@prisma/client";
+import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
 
 export interface ILeadRepository {
   create(data: Prisma.LeadCreateInput): Promise<Lead>;
@@ -63,4 +64,8 @@ export interface ILeadRepository {
   transferToManager(id: string, newManagerId: string, reason?: string): Promise<Lead>;
   getLeadsByStatus(managerId: string, status: LeadStatus): Promise<Lead[]>;
   reassignLeadsToMaster(deletedUserId: string, masterId: string): Promise<number>;
+  /** Busca apenas os dados do closer com tokens OAuth — usado pelo calendário para RSVP do Google */
+  findCloserForCalendar(leadId: string): Promise<LeadCloserForCalendar | null>;
+  /** Busca os dados mínimos necessários para montar o roleMap de participantes */
+  findForAttendeesRoleMap(leadId: string): Promise<LeadForAttendeesRoleMap | null>;
 }
