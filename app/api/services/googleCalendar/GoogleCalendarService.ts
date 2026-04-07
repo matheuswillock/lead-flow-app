@@ -228,6 +228,42 @@ export async function getCalendarBusyIntervals({
     .map((item: any) => ({ start: item.start, end: item.end }));
 }
 
+export type AttendeeResponseStatus = "accepted" | "declined" | "tentative" | "needsAction";
+
+export type CalendarAttendee = {
+  email: string;
+  displayName?: string | null;
+  responseStatus: AttendeeResponseStatus;
+  organizer?: boolean;
+  self?: boolean;
+};
+
+export async function getCalendarEventAttendees({
+  organizer,
+  eventId,
+  calendarId = "primary",
+}: {
+  organizer: Profile;
+  eventId: string;
+  calendarId?: string;
+}): Promise<CalendarAttendee[]> {
+  const accessToken = await getValidAccessToken(organizer);
+  const baseUrl = `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`;
+  const event = await googleCalendarFetch<any>(
+    `${baseUrl}/${encodeURIComponent(eventId)}?fields=attendees`,
+    accessToken,
+    { method: "GET" }
+  );
+  if (!Array.isArray(event?.attendees)) return [];
+  return (event.attendees as any[]).map((a) => ({
+    email: a.email ?? "",
+    displayName: a.displayName ?? null,
+    responseStatus: (a.responseStatus ?? "needsAction") as AttendeeResponseStatus,
+    organizer: a.organizer ?? false,
+    self: a.self ?? false,
+  }));
+}
+
 export async function resendCalendarInvite({
   organizer,
   eventId,
