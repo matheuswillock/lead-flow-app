@@ -482,7 +482,6 @@ export default function CalendarStudio() {
     return () => {
       cancelled = true
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attendeesFetchKey, supabaseId, activeTeamId])
 
   return (
