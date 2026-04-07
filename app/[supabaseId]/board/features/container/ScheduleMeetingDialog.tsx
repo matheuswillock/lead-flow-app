@@ -49,6 +49,8 @@ type ScheduleInviteDispatch = {
   error: string | null;
 };
 
+const SCHEDULE_TIMEZONE = "America/Sao_Paulo";
+
 interface ScheduleMeetingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -205,7 +207,7 @@ export function ScheduleMeetingDialog({
   const toDateKey = (date: Date) => {
     if (!isValidDate(date)) return null;
     return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Sao_Paulo",
+      timeZone: SCHEDULE_TIMEZONE,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -213,7 +215,11 @@ export function ScheduleMeetingDialog({
   };
 
   const formatTime = (date: Date) =>
-    date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    date.toLocaleTimeString("pt-BR", {
+      timeZone: SCHEDULE_TIMEZONE,
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
   useEffect(() => {
     if (!open || !isValidDate(meetingDate) || !closerId || !supabaseId) {
@@ -242,7 +248,11 @@ export function ScheduleMeetingDialog({
             "x-supabase-user-id": supabaseId,
             "x-team-id": activeTeamId || "",
           },
-          body: JSON.stringify({ closerId, date: dateKey }),
+          body: JSON.stringify({
+            closerId,
+            date: dateKey,
+            excludeLeadId: lead.id,
+          }),
         });
 
         const result = await response.json();
@@ -279,7 +289,7 @@ export function ScheduleMeetingDialog({
     return () => {
       isMounted = false;
     };
-  }, [open, meetingDate, closerId, supabaseId, activeTeamId]);
+  }, [open, meetingDate, closerId, supabaseId, activeTeamId, lead.id]);
 
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 

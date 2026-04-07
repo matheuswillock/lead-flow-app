@@ -26,6 +26,12 @@ interface LegacyExceptionsConfig {
   useCaseWithoutOutputAllowlist?: string[];
   frontendFeatureStructureAllowlist?: string[];
   nonTypeScriptFileAllowlist?: string[];
+  routeRepositoryImportAllowlist?: string[];
+  routeHttpRequestAllowlist?: string[];
+  useCaseHttpRequestAllowlist?: string[];
+  repositoryHttpRequestAllowlist?: string[];
+  serviceImportOutsideUseCaseAllowlist?: string[];
+  nonRepositoryDatabaseAccessAllowlist?: string[];
 }
 
 interface GovernanceConfig {
@@ -114,6 +120,51 @@ const FRONTEND_BROWSER_DIALOG_SCAN_DIRECTORIES = [
 const FRONTEND_SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx"]);
 const WINDOW_BROWSER_DIALOG_REGEX = /\bwindow\s*\.\s*(alert|confirm|prompt)\s*\(/;
 const GLOBAL_BROWSER_DIALOG_REGEX = /(^|[^.\w$])(alert|confirm|prompt)\s*\(/;
+const STATIC_IMPORT_SPECIFIER_REGEX =
+  /\b(?:import|export)\s+(?:type\s+)?(?:[\w*\s{},]+\s+from\s*)?["']([^"']+)["']/g;
+const DYNAMIC_IMPORT_SPECIFIER_REGEX = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
+const FETCH_REQUEST_REGEX = /\bfetch\s*\(/;
+const AXIOS_REQUEST_REGEX = /\baxios\s*(?:\(|\.)/;
+
+function extractImportSpecifiers(fileContent: string): string[] {
+  const specifiers = new Set<string>();
+
+  for (const match of fileContent.matchAll(STATIC_IMPORT_SPECIFIER_REGEX)) {
+    const specifier = match[1]?.trim();
+    if (specifier) {
+      specifiers.add(specifier);
+    }
+  }
+
+  for (const match of fileContent.matchAll(DYNAMIC_IMPORT_SPECIFIER_REGEX)) {
+    const specifier = match[1]?.trim();
+    if (specifier) {
+      specifiers.add(specifier);
+    }
+  }
+
+  return Array.from(specifiers);
+}
+
+function containsServiceImport(fileContent: string): boolean {
+  return extractImportSpecifiers(fileContent).some((specifier) =>
+    specifier.includes("/services/"),
+  );
+}
+
+function containsRepositoryImport(fileContent: string): boolean {
+  return extractImportSpecifiers(fileContent).some(
+    (specifier) =>
+      specifier.includes("/repositories/") ||
+      specifier.includes("infra/data/repositories/"),
+  );
+}
+
+function containsHttpRequestCall(fileContent: string): boolean {
+  return (
+    FETCH_REQUEST_REGEX.test(fileContent) || AXIOS_REQUEST_REGEX.test(fileContent)
+  );
+}
 
 function normalizeRelativePath(absolutePath: string): string {
   return path.relative(ROOT, absolutePath).split(path.sep).join("/");
@@ -432,6 +483,296 @@ async function validatePrismaInV1Routes(
     if (!currentViolations.has(allowlistedPath)) {
       warnings.push(
         `Legacy exception may be removable (no Prisma detected anymore): ${allowlistedPath}`,
+      );
+    }
+  }
+}
+
+async function validateRouteRepositoryImports(
+  config: GovernanceConfig,
+  issues: string[],
+  warnings: string[],
+): Promise<void> {
+  const allowlist = normalizePathList(
+    config.legacyExceptions.routeRepositoryImportAllowlist,
+  );
+
+  const routeFiles = await collectFilesRecursively(
+    path.join(ROOT, "app", "api", "v1"),
+    (filename) => filename === "route.ts",
+  );
+
+  const currentViolations = new Set<string>();
+
+  for (const routeFile of routeFiles) {
+    const relative = normalizeRelativePath(routeFile);
+    const fileContent = await fs.readFile(routeFile, "utf8");
+
+    if (!containsRepositoryImport(fileContent)) {
+      continue;
+    }
+
+    currentViolations.add(relative);
+    if (!allowlist.has(relative)) {
+      issues.push(
+        `Route importando Repository diretamente: ${relative}. Route deve chamar apenas UseCase (e libs de autenticação).`,
+      );
+    }
+  }
+
+  for (const allowlistedPath of allowlist) {
+    const absolutePath = toAbsolutePath(allowlistedPath);
+    if (!(await pathExists(absolutePath))) {
+      issues.push(
+        `Legacy exception path does not exist (routeRepositoryImportAllowlist): ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    if (!currentViolations.has(allowlistedPath)) {
+      warnings.push(
+        `Legacy exception may be removable (route no longer imports Repository): ${allowlistedPath}`,
+      );
+    }
+  }
+}
+
+async function validateServiceImportsOutsideUseCases(
+  config: GovernanceConfig,
+  issues: string[],
+  warnings: string[],
+): Promise<void> {
+  const allowlist = normalizePathList(
+    config.legacyExceptions.serviceImportOutsideUseCaseAllowlist,
+  );
+
+  const apiFiles = await collectFilesRecursively(
+    path.join(ROOT, "app", "api"),
+    (filename) => filename.endsWith(".ts"),
+  );
+
+  const currentViolations = new Set<string>();
+
+  for (const apiFile of apiFiles) {
+    const relative = normalizeRelativePath(apiFile);
+
+    if (relative.startsWith("app/api/useCases/")) {
+      continue;
+    }
+
+    const fileContent = await fs.readFile(apiFile, "utf8");
+    if (!containsServiceImport(fileContent)) {
+      continue;
+    }
+
+    currentViolations.add(relative);
+    if (!allowlist.has(relative)) {
+      issues.push(
+        `Import de Service fora de UseCase detectado: ${relative}. Service deve ser chamado apenas pela camada de UseCase.`,
+      );
+    }
+  }
+
+  for (const allowlistedPath of allowlist) {
+    const absolutePath = toAbsolutePath(allowlistedPath);
+    if (!(await pathExists(absolutePath))) {
+      issues.push(
+        `Legacy exception path does not exist (serviceImportOutsideUseCaseAllowlist): ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    if (!currentViolations.has(allowlistedPath)) {
+      warnings.push(
+        `Legacy exception may be removable (service import outside UseCase no longer detected): ${allowlistedPath}`,
+      );
+    }
+  }
+}
+
+async function validateHttpRequestBoundaries(
+  config: GovernanceConfig,
+  issues: string[],
+  warnings: string[],
+): Promise<void> {
+  const routeAllowlist = normalizePathList(
+    config.legacyExceptions.routeHttpRequestAllowlist,
+  );
+  const useCaseAllowlist = normalizePathList(
+    config.legacyExceptions.useCaseHttpRequestAllowlist,
+  );
+  const repositoryAllowlist = normalizePathList(
+    config.legacyExceptions.repositoryHttpRequestAllowlist,
+  );
+
+  const routeFiles = await collectFilesRecursively(
+    path.join(ROOT, "app", "api", "v1"),
+    (filename) => filename === "route.ts",
+  );
+  const useCaseFiles = await collectFilesRecursively(
+    path.join(ROOT, "app", "api", "useCases"),
+    (filename) => filename.endsWith(".ts"),
+  );
+  const repositoryFiles = await collectFilesRecursively(
+    path.join(ROOT, "app", "api", "infra", "data", "repositories"),
+    (filename) => filename.endsWith(".ts"),
+  );
+
+  const currentRouteViolations = new Set<string>();
+  const currentUseCaseViolations = new Set<string>();
+  const currentRepositoryViolations = new Set<string>();
+
+  for (const routeFile of routeFiles) {
+    const relative = normalizeRelativePath(routeFile);
+    const fileContent = await fs.readFile(routeFile, "utf8");
+    if (!containsHttpRequestCall(fileContent)) {
+      continue;
+    }
+
+    currentRouteViolations.add(relative);
+    if (!routeAllowlist.has(relative)) {
+      issues.push(
+        `Route com requisição HTTP externa detectada: ${relative}. Apenas Service pode realizar requisições HTTP.`,
+      );
+    }
+  }
+
+  for (const useCaseFile of useCaseFiles) {
+    const relative = normalizeRelativePath(useCaseFile);
+    const fileContent = await fs.readFile(useCaseFile, "utf8");
+    if (!containsHttpRequestCall(fileContent)) {
+      continue;
+    }
+
+    currentUseCaseViolations.add(relative);
+    if (!useCaseAllowlist.has(relative)) {
+      issues.push(
+        `UseCase com requisição HTTP externa detectada: ${relative}. Apenas Service pode realizar requisições HTTP.`,
+      );
+    }
+  }
+
+  for (const repositoryFile of repositoryFiles) {
+    const relative = normalizeRelativePath(repositoryFile);
+    const fileContent = await fs.readFile(repositoryFile, "utf8");
+    if (!containsHttpRequestCall(fileContent)) {
+      continue;
+    }
+
+    currentRepositoryViolations.add(relative);
+    if (!repositoryAllowlist.has(relative)) {
+      issues.push(
+        `Repository com requisição HTTP externa detectada: ${relative}. Apenas Service pode realizar requisições HTTP.`,
+      );
+    }
+  }
+
+  for (const allowlistedPath of routeAllowlist) {
+    const absolutePath = toAbsolutePath(allowlistedPath);
+    if (!(await pathExists(absolutePath))) {
+      issues.push(
+        `Legacy exception path does not exist (routeHttpRequestAllowlist): ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    if (!currentRouteViolations.has(allowlistedPath)) {
+      warnings.push(
+        `Legacy exception may be removable (Route no longer performs HTTP request): ${allowlistedPath}`,
+      );
+    }
+  }
+
+  for (const allowlistedPath of useCaseAllowlist) {
+    const absolutePath = toAbsolutePath(allowlistedPath);
+    if (!(await pathExists(absolutePath))) {
+      issues.push(
+        `Legacy exception path does not exist (useCaseHttpRequestAllowlist): ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    if (!currentUseCaseViolations.has(allowlistedPath)) {
+      warnings.push(
+        `Legacy exception may be removable (UseCase no longer performs HTTP request): ${allowlistedPath}`,
+      );
+    }
+  }
+
+  for (const allowlistedPath of repositoryAllowlist) {
+    const absolutePath = toAbsolutePath(allowlistedPath);
+    if (!(await pathExists(absolutePath))) {
+      issues.push(
+        `Legacy exception path does not exist (repositoryHttpRequestAllowlist): ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    if (!currentRepositoryViolations.has(allowlistedPath)) {
+      warnings.push(
+        `Legacy exception may be removable (Repository no longer performs HTTP request): ${allowlistedPath}`,
+      );
+    }
+  }
+}
+
+async function validateNonRepositoryDatabaseAccess(
+  config: GovernanceConfig,
+  issues: string[],
+  warnings: string[],
+): Promise<void> {
+  const allowlist = normalizePathList(
+    config.legacyExceptions.nonRepositoryDatabaseAccessAllowlist,
+  );
+
+  const apiFiles = await collectFilesRecursively(
+    path.join(ROOT, "app", "api"),
+    (filename) => filename.endsWith(".ts"),
+  );
+
+  const currentViolations = new Set<string>();
+
+  for (const apiFile of apiFiles) {
+    const relative = normalizeRelativePath(apiFile);
+
+    if (relative.startsWith("app/api/infra/data/repositories/")) {
+      continue;
+    }
+
+    // Reaproveita validação específica já existente para routes em /api/v1.
+    if (relative.startsWith("app/api/v1/")) {
+      continue;
+    }
+
+    if (relative === "app/api/infra/data/prisma.ts") {
+      continue;
+    }
+
+    const fileContent = await fs.readFile(apiFile, "utf8");
+    if (!/\bprisma\s*\./.test(fileContent)) {
+      continue;
+    }
+
+    currentViolations.add(relative);
+    if (!allowlist.has(relative)) {
+      issues.push(
+        `Acesso ao banco fora da camada Repository detectado: ${relative}. Somente Repository deve executar queries Prisma.`,
+      );
+    }
+  }
+
+  for (const allowlistedPath of allowlist) {
+    const absolutePath = toAbsolutePath(allowlistedPath);
+    if (!(await pathExists(absolutePath))) {
+      issues.push(
+        `Legacy exception path does not exist (nonRepositoryDatabaseAccessAllowlist): ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    if (!currentViolations.has(allowlistedPath)) {
+      warnings.push(
+        `Legacy exception may be removable (non-repository DB access no longer detected): ${allowlistedPath}`,
       );
     }
   }
@@ -778,6 +1119,10 @@ async function checkGovernance(
   validateCanonicalMetadata(config, canonicalText, issues);
   await validateAdapters(config, canonicalText, canonicalAbsolutePath, issues);
   await validatePrismaInV1Routes(config, issues, warnings);
+  await validateRouteRepositoryImports(config, issues, warnings);
+  await validateServiceImportsOutsideUseCases(config, issues, warnings);
+  await validateHttpRequestBoundaries(config, issues, warnings);
+  await validateNonRepositoryDatabaseAccess(config, issues, warnings);
   await validateUseCaseOutputContract(config, issues, warnings);
   await validateFrontendFeatureStructure(config, issues, warnings);
   await validateNonTypeScriptFiles(config, issues, warnings);
