@@ -1,12 +1,22 @@
 "use client"
 
-import { usePathname } from 'next/navigation'
+import Link from 'next/link'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { ThemeToggle } from '@/components/theme-toggle'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb'
 
 export function SiteHeader() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const pathSegments = (pathname || '/').split('/').filter(Boolean)
 
   const routeName = pathSegments.length >= 2 ? pathSegments[1] : pathSegments[0] || ''
@@ -22,8 +32,18 @@ export function SiteHeader() {
     "manager-users": "Gerenciar Usuários",
     teams: "Gerenciar Times",
     notifications: "Notificações",
+    clients: "Clientes",
+    payments: "Pagamentos",
+    users: "Usuários",
   }
   const currentTitle = titleMap[routeName] ?? ''
+
+  const isBackofficeClientDetails =
+    pathSegments[0] === 'backoffice' && pathSegments[1] === 'clients' && Boolean(pathSegments[2])
+
+  const backofficeClientName = searchParams.get('name') || 'Usuário'
+  const detailsTab = searchParams.get('tab') === 'invoices' ? 'Faturas' : 'Times'
+
   return (
   <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b box-border transition-[height] ease-linear">
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
@@ -32,7 +52,27 @@ export function SiteHeader() {
           orientation="vertical"
           className="mx-2 data-[orientation=vertical]:h-4"
         />
-        <h1 className="text-sm font-semibold">{currentTitle}</h1>
+        {isBackofficeClientDetails ? (
+          <Breadcrumb className="hidden md:block">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/backoffice/clients">Clientes</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{backofficeClientName}</BreadcrumbPage>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{detailsTab}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        ) : (
+          <h1 className="text-sm font-semibold">{currentTitle}</h1>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <ThemeToggle />
         </div>

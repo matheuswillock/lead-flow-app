@@ -90,4 +90,9 @@ export interface IProfileRepository {
   ): Promise<Profile | null>;
   updatePassword(supabaseId: string, newPassword: string): Promise<boolean>;
   deleteProfile(supabaseId: string): Promise<Profile | null>;
+  createBackofficeProfile(
+    supabaseId: string,
+    email: string,
+    fullName: string
+  ): Promise<{ profileId: string }>;
 }

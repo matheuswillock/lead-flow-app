@@ -8,3 +8,7 @@ export function isManagerLikeRole(role?: string | null): boolean {
   const normalizedRole = normalizeRole(role);
   return normalizedRole === "manager" || normalizedRole === "backoffice";
 }
+
+export function isBackofficeRole(role?: string | null): boolean {
+  return normalizeRole(role) === "backoffice";
+}
