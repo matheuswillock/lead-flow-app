@@ -31,7 +31,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.info('🔐 [Forgot Password] Solicitação de reset de senha para:', email);
+    const forwardedFor = request.headers.get('x-forwarded-for');
+    const realIp = request.headers.get('x-real-ip');
+    const ip = forwardedFor?.split(',')[0]?.trim() || realIp || 'unknown';
+    const userAgent = request.headers.get('user-agent') || 'unknown';
+    const originScreen = request.headers.get('x-origin-screen') || 'unknown';
+    const requestedAt = new Date().toISOString();
+
+    console.info('🔐 [Forgot Password] Solicitação de reset de senha', {
+      email,
+      originScreen,
+      path: 'POST /api/v1/auth/forgot-password',
+      ip,
+      userAgent,
+      requestedAt,
+    });
 
     // Buscar usuário no banco de dados
     const user = await prisma.profile.findUnique({
@@ -153,7 +167,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.info('✅ [Forgot Password] E-mail de recuperação enviado com sucesso');
+    console.info('✅ [Forgot Password] E-mail de recuperação enviado com sucesso', {
+      requestUserId: user.supabaseId,
+      email,
+      originScreen,
+      path: 'POST /api/v1/auth/forgot-password',
+      ip,
+      userAgent,
+      requestedAt,
+    });
     console.info('📬 [Forgot Password] Email ID:', emailResult.data);
 
     return NextResponse.json(

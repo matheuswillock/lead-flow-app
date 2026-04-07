@@ -214,6 +214,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          "x-origin-screen": "account-settings",
         },
         body: JSON.stringify(updates),
       });
@@ -257,6 +258,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          "x-origin-screen": "account-settings",
         },
         body: JSON.stringify({ password: newPassword }),
       });

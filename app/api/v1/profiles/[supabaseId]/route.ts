@@ -66,8 +66,16 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ supabaseId: string }> }
 ) {
+  let supabaseId = '';
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  const realIp = request.headers.get('x-real-ip');
+  const ip = forwardedFor?.split(',')[0]?.trim() || realIp || 'unknown';
+  const userAgent = request.headers.get('user-agent') || 'unknown';
+  const originScreen = request.headers.get('x-origin-screen') || 'unknown';
+  const requestedAt = new Date().toISOString();
+
   try {
-    const { supabaseId } = await params;
+    supabaseId = (await params).supabaseId;
 
     if (!supabaseId) {
       const output = new Output(false, [], ["Supabase ID is required"], null);
@@ -75,7 +83,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    
+
     let updateData;
     try {
       updateData = validateUpdateProfileRequest(body);
@@ -84,11 +92,33 @@ export async function PUT(
       return NextResponse.json(output, { status: 400 });
     }
 
+    if (updateData.email) {
+      console.info('📧 [Change Email] Solicitação de alteração de e-mail', {
+        requestUserId: supabaseId,
+        originScreen,
+        path: 'PUT /api/v1/profiles/[supabaseId]',
+        ip,
+        userAgent,
+        requestedAt,
+      });
+    }
+
     const result = await profileUseCase.updateProfile(supabaseId, updateData);
 
     if (!result.isValid) {
-      return NextResponse.json(result, { 
-        status: result.errorMessages.includes("Profile not found") ? 404 : 400 
+      return NextResponse.json(result, {
+        status: result.errorMessages.includes("Profile not found") ? 404 : 400
+      });
+    }
+
+    if (updateData.email) {
+      console.info('✅ [Change Email] E-mail alterado com sucesso', {
+        requestUserId: supabaseId,
+        originScreen,
+        path: 'PUT /api/v1/profiles/[supabaseId]',
+        ip,
+        userAgent,
+        requestedAt,
       });
     }
 
