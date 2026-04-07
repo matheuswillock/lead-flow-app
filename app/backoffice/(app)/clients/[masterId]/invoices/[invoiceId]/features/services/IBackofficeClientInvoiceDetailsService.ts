@@ -2,4 +2,5 @@ import type { BackofficeClientInvoiceDetails } from "../context/BackofficeClient
 
 export interface IBackofficeClientInvoiceDetailsService {
   getById(masterId: string, invoiceId: string): Promise<BackofficeClientInvoiceDetails>
+  notifyStatusEmail(masterId: string, invoiceId: string): Promise<{ message: string }>
 }

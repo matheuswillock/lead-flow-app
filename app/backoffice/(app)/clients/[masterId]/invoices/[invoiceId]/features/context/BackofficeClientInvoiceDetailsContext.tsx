@@ -15,8 +15,10 @@ import type { IBackofficeClientInvoiceDetailsService } from "../services/IBackof
 interface BackofficeClientInvoiceDetailsContextValue {
   invoice: BackofficeClientInvoiceDetails | null
   isLoading: boolean
+  isSendingNotification: boolean
   error: string | null
   reload: () => Promise<void>
+  sendStatusNotification: () => Promise<string>
 }
 
 const BackofficeClientInvoiceDetailsContext = createContext<
@@ -38,6 +40,7 @@ export function BackofficeClientInvoiceDetailsProvider({
 }: BackofficeClientInvoiceDetailsProviderProps) {
   const [invoice, setInvoice] = useState<BackofficeClientInvoiceDetails | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isSendingNotification, setIsSendingNotification] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
 
@@ -65,13 +68,30 @@ export function BackofficeClientInvoiceDetailsProvider({
     void loadInvoice()
   }, [loadInvoice])
 
+  const sendStatusNotification = useCallback(async () => {
+    if (isSendingNotification) {
+      return "Envio de notificação já em andamento"
+    }
+
+    setIsSendingNotification(true)
+
+    try {
+      const result = await service.notifyStatusEmail(masterId, invoiceId)
+      return result.message
+    } finally {
+      setIsSendingNotification(false)
+    }
+  }, [invoiceId, isSendingNotification, masterId, service])
+
   return (
     <BackofficeClientInvoiceDetailsContext.Provider
       value={{
         invoice,
         isLoading,
+        isSendingNotification,
         error,
         reload: loadInvoice,
+        sendStatusNotification,
       }}
     >
       {children}

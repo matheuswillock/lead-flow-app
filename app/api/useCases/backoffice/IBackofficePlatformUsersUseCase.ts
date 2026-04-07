@@ -25,4 +25,9 @@ export interface IBackofficePlatformUsersUseCase {
     masterProfileId: string,
     invoiceId: string
   ): Promise<Output>
+
+  notifyMasterUserInvoiceStatusEmail(
+    masterProfileId: string,
+    invoiceId: string
+  ): Promise<Output>
 }
