@@ -55,6 +55,7 @@ const IGNORED_DIRECTORIES = new Set([
   "dist",
   "coverage",
   "test-results",
+  "worktrees", // Claude Code worktrees — temporary isolated copies, not project code
 ]);
 
 interface FrontendPatternRequirement {

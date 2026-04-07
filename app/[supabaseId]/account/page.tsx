@@ -561,7 +561,7 @@ export default function AccountProfilePage() {
                         </div>
                       </div>
 
-                      <input
+                      <Input
                         ref={fileInputRef}
                         type="file"
                         accept="image/*"

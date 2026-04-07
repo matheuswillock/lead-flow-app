@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { CirclePlus } from "@/components/animate-ui/icons/circle-plus"
+import { CheckCircle2, XCircle, HelpCircle, Clock } from "lucide-react"
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog"
 import useBoardContext from "@/app/[supabaseId]/board/features/context/BoardHook"
 import {
@@ -33,6 +34,45 @@ import { CalendarDayButton } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { Checkbox } from "@/components/ui/checkbox"
+
+type AttendeeRole = "closer" | "sdr" | "lead" | "extra"
+
+type ScheduleAttendee = {
+  email: string
+  displayName: string | null
+  role: AttendeeRole
+  responseStatus: "accepted" | "declined" | "tentative" | "needsAction"
+}
+
+type AttendeesByLead = Record<string, { attendees: ScheduleAttendee[]; hasGoogleData: boolean } | null>
+
+const RSVP_LABEL: Record<ScheduleAttendee["responseStatus"], string> = {
+  accepted: "Confirmado",
+  declined: "Recusou",
+  tentative: "Talvez",
+  needsAction: "Aguardando",
+}
+
+const ROLE_LABEL: Record<AttendeeRole, string> = {
+  closer: "Closer",
+  sdr: "SDR",
+  lead: "Lead",
+  extra: "Convidado",
+}
+
+const RSVP_COLOR: Record<ScheduleAttendee["responseStatus"], string> = {
+  accepted: "border-green-500 bg-green-500/10 text-green-600",
+  declined: "border-red-500 bg-red-500/10 text-red-600",
+  tentative: "border-yellow-500 bg-yellow-500/10 text-yellow-600",
+  needsAction: "border-muted-foreground/40 bg-transparent text-muted-foreground",
+}
+
+const RSVP_ICON: Record<ScheduleAttendee["responseStatus"], React.ElementType> = {
+  accepted: CheckCircle2,
+  declined: XCircle,
+  tentative: HelpCircle,
+  needsAction: Clock,
+}
 
 const SLOT_MINUTES = 30
 const ALL_TIME_SLOTS = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => {
@@ -151,6 +191,8 @@ export default function CalendarStudio() {
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
   const [leadToCancel, setLeadToCancel] = React.useState<Lead | null>(null)
   const [meetingHealdSavingId, setMeetingHealdSavingId] = React.useState<string | null>(null)
+  const [attendeesByLead, setAttendeesByLead] = React.useState<AttendeesByLead>({})
+  const [attendeesLoading, setAttendeesLoading] = React.useState(false)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext()
@@ -381,6 +423,47 @@ export default function CalendarStudio() {
       target.scrollIntoView({ block: "center" })
     }
   }, [selectedTime])
+
+  React.useEffect(() => {
+    const meetingLeadIds = dayEvents
+      .filter((e) => e.type === "meeting")
+      .map((e) => e.lead.id)
+
+    if (meetingLeadIds.length === 0 || !supabaseId || !activeTeamId) {
+      setAttendeesByLead({})
+      return
+    }
+
+    let cancelled = false
+    setAttendeesLoading(true)
+
+    Promise.all(
+      meetingLeadIds.map(async (leadId) => {
+        try {
+          const res = await fetch(`/api/v1/leads/${leadId}/schedule/attendees`, {
+            headers: {
+              "x-supabase-user-id": supabaseId,
+              "x-team-id": activeTeamId,
+            },
+          })
+          if (!res.ok) return [leadId, null] as const
+          const json = await res.json()
+          if (!json?.isValid || !json?.result) return [leadId, null] as const
+          return [leadId, { attendees: json.result.attendees as ScheduleAttendee[], hasGoogleData: json.result.hasGoogleData as boolean }] as const
+        } catch {
+          return [leadId, null] as const
+        }
+      })
+    ).then((entries) => {
+      if (cancelled) return
+      setAttendeesByLead(Object.fromEntries(entries))
+      setAttendeesLoading(false)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [dayEvents, supabaseId, activeTeamId])
 
   return (
     <div className="flex min-h-0 h-full w-full max-w-full flex-1 flex-col gap-4 overflow-x-hidden p-4">
@@ -678,6 +761,50 @@ export default function CalendarStudio() {
                             Observações: {lead.meetingNotes}
                           </div>
                         )}
+
+                        {isMeeting && (() => {
+                          const entry = attendeesByLead[lead.id]
+                          if (attendeesLoading && entry === undefined) {
+                            return (
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {[1, 2, 3].map((i) => (
+                                  <Skeleton key={i} className="h-5 w-20 rounded-full" />
+                                ))}
+                              </div>
+                            )
+                          }
+                          if (!entry || entry.attendees.length === 0) return null
+                          return (
+                            <div className="mt-1.5 flex flex-col gap-1">
+                              {!entry.hasGoogleData && (
+                                <span className="text-[10px] text-muted-foreground italic">
+                                  Confirmações indisponíveis (envio por e-mail)
+                                </span>
+                              )}
+                              <div className="flex flex-wrap gap-1.5">
+                                {entry.attendees.map((a) => {
+                                  const Icon = RSVP_ICON[a.responseStatus]
+                                  return (
+                                    <span
+                                      key={a.email}
+                                      title={a.email}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium leading-none",
+                                        RSVP_COLOR[a.responseStatus]
+                                      )}
+                                    >
+                                      <Icon className="size-3 shrink-0" />
+                                      <span className="opacity-60">{ROLE_LABEL[a.role]}</span>
+                                      <span>{a.displayName ?? a.email.split("@")[0]}</span>
+                                      <span className="opacity-40">·</span>
+                                      <span>{RSVP_LABEL[a.responseStatus]}</span>
+                                    </span>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })()}
 
                         {isFutureSale && (
                           <>
