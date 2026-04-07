@@ -1,6 +1,8 @@
 import type { SubscriptionPlan } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { asaasApi, asaasFetch } from "@/lib/asaas"
+import { createEmailService } from "@/lib/services/EmailService"
+import { getAppUrl } from "@/lib/utils/app-url"
 import type { IBackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficePlatformUsersRepository"
 import type { IBackofficePlatformUsersUseCase } from "./IBackofficePlatformUsersUseCase"
 
@@ -114,6 +116,24 @@ function getSortableInvoiceDate(payment: AsaasPaymentItem): number {
   if (!reference) return 0
   const date = new Date(reference)
   return Number.isNaN(date.getTime()) ? 0 : date.getTime()
+}
+
+function formatInvoiceDate(value?: string): string {
+  if (!value) return "não informada"
+
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) {
+    return "não informada"
+  }
+
+  return parsed.toLocaleDateString("pt-BR")
+}
+
+function formatInvoiceCurrency(value?: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(normalizeAsaasValue(value))
 }
 
 function getMonthlyPlanAmount(plan: SubscriptionPlan | null, operatorCount: number): number | null {
@@ -479,6 +499,140 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][getMasterUserInvoiceById]", error)
       return new Output(false, [], ["Erro ao carregar detalhes da fatura"], null)
+    }
+  }
+
+  async notifyMasterUserInvoiceStatusEmail(
+    masterProfileId: string,
+    invoiceId: string
+  ): Promise<Output> {
+    try {
+      if (!invoiceId || invoiceId.trim().length === 0) {
+        return new Output(false, [], ["ID da fatura é obrigatório"], null)
+      }
+
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      if (!master.asaasCustomerId) {
+        return new Output(false, [], ["Usuário não possui cliente Asaas vinculado"], null)
+      }
+
+      const payment = (await asaasFetch(`${asaasApi.payments}/${invoiceId}`, {
+        method: "GET",
+      })) as AsaasPaymentItem
+
+      if (!payment?.id) {
+        return new Output(false, [], ["Fatura não encontrada"], null)
+      }
+
+      if (payment.customer && payment.customer !== master.asaasCustomerId) {
+        return new Output(false, [], ["Fatura não pertence ao cliente selecionado"], null)
+      }
+
+      const statusGroup = getStatusGroup(payment.status)
+      if (statusGroup !== "upcoming" && statusGroup !== "overdue") {
+        return new Output(
+          false,
+          [],
+          ["Notificação disponível apenas para faturas a vencer ou vencidas"],
+          null
+        )
+      }
+
+      const isOverdue = statusGroup === "overdue"
+      const appUrl = getAppUrl({ removeTrailingSlash: true })
+      const manageUrl = `${appUrl}/sign-in`
+      const invoiceUrl = payment.invoiceUrl ?? manageUrl
+      const invoiceNumber = payment.invoiceNumber ? `#${payment.invoiceNumber}` : payment.id
+      const dueDate = formatInvoiceDate(payment.dueDate)
+      const value = formatInvoiceCurrency(payment.value)
+      const customerName = master.fullName ?? master.email
+
+      const subject = isOverdue
+        ? "Corretor Studio - Sua assinatura está vencida"
+        : "Corretor Studio - Sua assinatura está a vencer"
+
+      const html = `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          </head>
+          <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+            <table role="presentation" style="width:100%;border-collapse:collapse;">
+              <tr>
+                <td align="center" style="padding:24px;">
+                  <table role="presentation" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;">
+                    <tr>
+                      <td style="background:#ff6900;color:#ffffff;padding:24px;text-align:center;">
+                        <h1 style="margin:0;font-size:22px;">Corretor Studio</h1>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:28px 24px;">
+                        <h2 style="margin:0 0 12px 0;color:#171717;font-size:20px;">
+                          ${isOverdue ? "Sua assinatura está vencida" : "Sua assinatura está a vencer"}
+                        </h2>
+                        <p style="margin:0 0 16px 0;color:#525252;line-height:1.5;">
+                          Olá, <strong>${customerName}</strong>. Identificamos a fatura <strong>${invoiceNumber}</strong>
+                          ${isOverdue ? "em atraso" : "próxima do vencimento"}.
+                        </p>
+
+                        <div style="background:#fafafa;border:1px solid #e5e5e5;border-radius:8px;padding:16px;margin:16px 0;">
+                          <p style="margin:0 0 8px 0;color:#171717;"><strong>Valor:</strong> ${value}</p>
+                          <p style="margin:0 0 8px 0;color:#171717;"><strong>Vencimento:</strong> ${dueDate}</p>
+                          <p style="margin:0;color:#171717;"><strong>Status:</strong> ${
+                            isOverdue ? "Vencida" : "A vencer"
+                          }</p>
+                        </div>
+
+                        <div style="margin-top:24px;">
+                          <a href="${invoiceUrl}" style="display:inline-block;background:#ff6900;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">
+                            Visualizar fatura
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+        </html>
+      `
+
+      const emailService = createEmailService()
+      const emailResult = await emailService.sendEmail({
+        to: [master.email],
+        subject,
+        html,
+      })
+
+      if (!emailResult.success) {
+        console.error("[BackofficePlatformUsersUseCase][notifyMasterUserInvoiceStatusEmail]", emailResult)
+        return new Output(false, [], ["Não foi possível enviar o e-mail de notificação"], null)
+      }
+
+      return new Output(
+        true,
+        [
+          isOverdue
+            ? "Notificação de assinatura vencida enviada com sucesso"
+            : "Notificação de assinatura a vencer enviada com sucesso",
+        ],
+        [],
+        {
+          invoiceId: payment.id,
+          statusGroup,
+        }
+      )
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][notifyMasterUserInvoiceStatusEmail]", error)
+      return new Output(false, [], ["Erro ao disparar notificação por e-mail"], null)
     }
   }
 }

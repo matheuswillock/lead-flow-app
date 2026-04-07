@@ -2,8 +2,8 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, Search, Users } from "lucide-react"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { AlertCircle, ChevronDown, Search, Users } from "lucide-react"
+import { Accordion, AccordionContent, AccordionItem } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -60,6 +60,7 @@ export function BackofficeClientsContainer() {
   } = useBackofficeClients()
 
   const [localFilters, setLocalFilters] = useState<BackofficeClientsFilters>(filters)
+  const [openClientId, setOpenClientId] = useState<string>("")
 
   const totalTeams = useMemo(
     () => clients.reduce((acc, client) => acc + client.teamsCount, 0),
@@ -90,6 +91,10 @@ export function BackofficeClientsContainer() {
     setLocalFilters(cleared)
     setFilters(cleared)
     await clearFilters()
+  }
+
+  function toggleClientAccordion(clientId: string) {
+    setOpenClientId((previous) => (previous === clientId ? "" : clientId))
   }
 
   return (
@@ -158,34 +163,57 @@ export function BackofficeClientsContainer() {
           </div>
         ) : (
           <div className="overflow-auto">
-            <Accordion type="single" collapsible className="w-full min-w-[1200px]">
+            <Accordion
+              type="single"
+              collapsible
+              value={openClientId}
+              onValueChange={setOpenClientId}
+              className="w-full min-w-[1200px]"
+            >
               {clients.map((client) => (
                 <AccordionItem key={client.id} value={client.id} className="border-b last:border-b-0">
-                  <div className="grid w-full grid-cols-[1.8fr_1fr_1.8fr_1.2fr_0.8fr_1.2fr_1fr_0.9fr] gap-3 px-4 py-3 text-sm pr-8 items-center">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => toggleClientAccordion(client.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault()
+                        toggleClientAccordion(client.id)
+                      }
+                    }}
+                    className="grid w-full cursor-pointer grid-cols-[1.8fr_1fr_1.8fr_1.2fr_0.8fr_1.2fr_1fr_0.9fr] gap-3 px-4 py-3 text-sm pr-8 items-center hover:bg-muted/10"
+                  >
                     <span className="font-medium truncate text-center">{client.fullName || "Sem nome"}</span>
                     <span className="text-center">{formatDate(client.createdAt)}</span>
                     <span className="truncate text-center">{client.email}</span>
                     <span className="truncate text-center">{client.phone || "—"}</span>
                     <span className="inline-flex items-center justify-center gap-1">
                       {client.teamsCount}
-                      <AccordionTrigger
-                        className="h-5 w-5 flex-none justify-center px-0 py-0 hover:no-underline"
-                        aria-label={`Mostrar times de ${client.fullName || "usuário"}`}
-                      >
-                        <span className="sr-only">Mostrar times</span>
-                      </AccordionTrigger>
                     </span>
                     <span className="text-center">{renderPlanLabel(client.plan)}</span>
                     <span className="inline-flex items-center justify-center gap-1">
                       <Users className="h-4 w-4" />
                       {client.linkedUsersCount}
                     </span>
-                    <span className="text-center">
-                      <Button asChild size="sm" variant="outline">
+                    <span className="flex items-center justify-center gap-2">
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="outline"
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                      >
                         <Link href={`/backoffice/clients/${client.id}?name=${encodeURIComponent(client.fullName || "Usuário")}&tab=teams`}>
                           Visualizar
                         </Link>
                       </Button>
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${
+                          openClientId === client.id ? "rotate-180" : ""
+                        }`}
+                        aria-hidden="true"
+                      />
                     </span>
                   </div>
 

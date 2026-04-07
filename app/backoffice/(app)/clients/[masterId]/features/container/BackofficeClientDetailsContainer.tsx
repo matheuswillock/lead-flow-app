@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { Search } from "lucide-react"
+import { CalendarDays, DollarSign, Eye, Search, Tag } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Accordion,
@@ -13,7 +13,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
 import {
@@ -37,11 +37,27 @@ import { useBackofficeClientDetails } from "../context/BackofficeClientDetailsCo
 
 const INVOICE_STATUS_BADGES: Record<
   "paid" | "overdue" | "upcoming" | "other",
-  { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+  {
+    label: string
+    variant: "default" | "secondary" | "destructive" | "outline"
+    className?: string
+  }
 > = {
-  paid: { label: "Paga", variant: "default" },
-  overdue: { label: "Vencida", variant: "destructive" },
-  upcoming: { label: "A vencer", variant: "outline" },
+  paid: {
+    label: "Paga",
+    variant: "outline",
+    className: "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
+  },
+  overdue: {
+    label: "Vencida",
+    variant: "outline",
+    className: "border-red-500/40 bg-red-500/15 text-red-300",
+  },
+  upcoming: {
+    label: "A vencer",
+    variant: "outline",
+    className: "border-orange-500/40 bg-orange-500/20 text-orange-200",
+  },
   other: { label: "Em processamento", variant: "secondary" },
 }
 
@@ -370,20 +386,6 @@ export function BackofficeClientDetailsContainer() {
             <TabsContent value="invoices" className="mt-4">
               <Card>
                 <CardHeader className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <CardTitle>Faturas</CardTitle>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isInvoicesLoading}
-                      onClick={() => {
-                        void setInvoicesFilters({ status: "all", period: "all" })
-                      }}
-                    >
-                      Limpar filtros
-                    </Button>
-                  </div>
-
                   <div className="flex flex-wrap items-center gap-2">
                     <Select
                       value={invoiceFilters.status}
@@ -426,12 +428,36 @@ export function BackofficeClientDetailsContainer() {
                         ))}
                       </SelectContent>
                     </Select>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9"
+                      disabled={isInvoicesLoading}
+                      onClick={() => {
+                        void setInvoicesFilters({ status: "all", period: "all" })
+                      }}
+                    >
+                      Limpar filtros
+                    </Button>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="default">Cobradas: {invoicesSummary.charged}</Badge>
-                    <Badge variant="outline">A vencer: {invoicesSummary.upcoming}</Badge>
-                    <Badge variant="destructive">Vencidas: {invoicesSummary.overdue}</Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                    >
+                      Cobradas: {invoicesSummary.charged}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="border-orange-500/40 bg-orange-500/20 text-orange-200"
+                    >
+                      A vencer: {invoicesSummary.upcoming}
+                    </Badge>
+                    <Badge variant="outline" className="border-red-500/40 bg-red-500/15 text-red-300">
+                      Vencidas: {invoicesSummary.overdue}
+                    </Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -450,14 +476,39 @@ export function BackofficeClientDetailsContainer() {
                   ) : (
                     <div className="space-y-3">
                       <div className="rounded-md border overflow-hidden">
-                        <Table>
+                        <Table className="table-fixed">
                           <TableHeader>
                             <TableRow>
-                              <TableHead>Data da fatura</TableHead>
-                              <TableHead>Vencimento</TableHead>
-                              <TableHead>Valor</TableHead>
-                              <TableHead>Status</TableHead>
-                              <TableHead>Ações</TableHead>
+                              <TableHead className="w-[20%] px-4 text-left">
+                                <span className="inline-flex items-center gap-1">
+                                  <CalendarDays className="h-3.5 w-3.5" />
+                                  Data da fatura
+                                </span>
+                              </TableHead>
+                              <TableHead className="w-[20%] px-4 text-left">
+                                <span className="inline-flex items-center gap-1">
+                                  <CalendarDays className="h-3.5 w-3.5" />
+                                  Vencimento
+                                </span>
+                              </TableHead>
+                              <TableHead className="w-[18%] px-4 text-right">
+                                <span className="inline-flex items-center gap-1">
+                                  <DollarSign className="h-3.5 w-3.5" />
+                                  Valor
+                                </span>
+                              </TableHead>
+                              <TableHead className="w-[18%] px-4 text-center">
+                                <span className="inline-flex items-center gap-1">
+                                  <Tag className="h-3.5 w-3.5" />
+                                  Status
+                                </span>
+                              </TableHead>
+                              <TableHead className="w-[24%] px-4 text-center">
+                                <span className="inline-flex items-center gap-1">
+                                  <Eye className="h-3.5 w-3.5" />
+                                  Ações
+                                </span>
+                              </TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
@@ -465,16 +516,28 @@ export function BackofficeClientDetailsContainer() {
                               const statusInfo = INVOICE_STATUS_BADGES[invoice.statusGroup]
 
                               return (
-                                <TableRow key={invoice.id}>
-                                  <TableCell>{formatNullableDate(invoice.dateCreated)}</TableCell>
-                                  <TableCell>{formatNullableDate(invoice.dueDate)}</TableCell>
-                                  <TableCell className="font-medium">{formatCurrency(invoice.value)}</TableCell>
-                                  <TableCell>
-                                    <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                                <TableRow key={invoice.id} className="h-12">
+                                  <TableCell className="px-4 align-middle">
+                                    {formatNullableDate(invoice.dateCreated)}
                                   </TableCell>
-                                  <TableCell>
+                                  <TableCell className="px-4 align-middle">
+                                    {formatNullableDate(invoice.dueDate)}
+                                  </TableCell>
+                                  <TableCell className="px-4 text-right align-middle font-medium tabular-nums">
+                                    {formatCurrency(invoice.value)}
+                                  </TableCell>
+                                  <TableCell className="px-4 text-center align-middle">
+                                    <Badge variant={statusInfo.variant} className={statusInfo.className}>
+                                      {statusInfo.label}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="px-4 text-center align-middle">
                                     <Button asChild variant="outline" size="sm">
-                                      <Link href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}>
+                                      <Link
+                                        href={`/backoffice/clients/${details.id}/invoices/${invoice.id}`}
+                                        className="inline-flex items-center gap-1"
+                                      >
+                                        <Eye className="h-3.5 w-3.5" />
                                         Visualizar
                                       </Link>
                                     </Button>

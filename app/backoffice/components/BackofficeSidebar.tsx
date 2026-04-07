@@ -73,7 +73,7 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
               <Link href="/backoffice">
                 <div className="flex items-center gap-2">
                   <Image
-                    src="/logo.png"
+                    src="/corretor-studio-icon.svg"
                     alt="Corretor Studio"
                     width={28}
                     height={28}

@@ -28,3 +28,45 @@ export async function GET(
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
 }
+
+export async function POST(
+  request: NextRequest,
+  {
+    params,
+  }: {
+    params: Promise<{ id: string; invoiceId: string }>
+  }
+) {
+  try {
+    const result = await getBackofficeAccess(request)
+    if (result.error) {
+      return NextResponse.json(result.error, { status: result.status })
+    }
+
+    const body = await request.json()
+    if (body?.action !== "notify-status-email") {
+      return NextResponse.json(
+        new Output(false, [], ["Ação inválida"], null),
+        { status: 400 }
+      )
+    }
+
+    const { id, invoiceId } = await params
+    const useCase = new BackofficePlatformUsersUseCase(new BackofficePlatformUsersRepository())
+    const output = await useCase.notifyMasterUserInvoiceStatusEmail(id, invoiceId)
+
+    if (output.isValid) {
+      return NextResponse.json(output, { status: 200 })
+    }
+
+    const notFound = output.errorMessages.some((message) =>
+      message.toLowerCase().includes("não encontrada") ||
+      message.toLowerCase().includes("não encontrado")
+    )
+
+    return NextResponse.json(output, { status: notFound ? 404 : 400 })
+  } catch (error) {
+    console.error("[BackofficePlatformUserInvoiceByIdRoute][POST]", error)
+    return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
+  }
+}
