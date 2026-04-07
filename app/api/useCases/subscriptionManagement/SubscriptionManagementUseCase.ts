@@ -1,12 +1,90 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService";
+import { asaasApi, asaasFetch } from "@/lib/asaas";
 import type { 
   ISubscriptionManagementUseCase, 
   UpdatePaymentMethodDTO 
 } from "./ISubscriptionManagementUseCase";
 
+interface AsaasPaymentItem {
+  id: string;
+  customer?: string;
+  status?: string;
+  value?: number;
+  dueDate?: string;
+  dateCreated?: string;
+  clientPaymentDate?: string;
+  paymentDate?: string;
+  description?: string;
+  billingType?: string;
+  invoiceUrl?: string;
+  bankSlipUrl?: string;
+  invoiceNumber?: string;
+}
+
 export class SubscriptionManagementUseCase implements ISubscriptionManagementUseCase {
+  private async fetchAllCustomerPayments(customerId: string): Promise<AsaasPaymentItem[]> {
+    const limit = 100;
+    let offset = 0;
+    let totalCount: number | null = null;
+    const items: AsaasPaymentItem[] = [];
+
+    for (let iteration = 0; iteration < 30; iteration += 1) {
+      const params = new URLSearchParams({
+        customer: customerId,
+        offset: String(offset),
+        limit: String(limit),
+      });
+
+      const response = await asaasFetch(`${asaasApi.payments}?${params.toString()}`, {
+        method: "GET",
+      });
+
+      const chunk = Array.isArray(response?.data)
+        ? (response.data as AsaasPaymentItem[])
+        : [];
+
+      if (totalCount === null && Number.isFinite(Number(response?.totalCount))) {
+        totalCount = Number(response.totalCount);
+      }
+
+      if (chunk.length === 0) {
+        break;
+      }
+
+      items.push(...chunk);
+      offset += chunk.length;
+
+      if (chunk.length < limit) {
+        break;
+      }
+
+      if (totalCount !== null && offset >= totalCount) {
+        break;
+      }
+    }
+
+    return items;
+  }
+
+  private getInvoiceSortTimestamp(invoice: AsaasPaymentItem): number {
+    const reference = invoice.dueDate ?? invoice.dateCreated;
+    if (!reference) return 0;
+
+    const parsed = new Date(reference);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+  }
+
+  private normalizeMoney(value: unknown): number {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  }
+
   
   async getSubscription(supabaseId: string): Promise<Output> {
     try {
@@ -165,10 +243,45 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
       // Buscar profile do usuário
       const profile = await prisma.profile.findUnique({
-        where: { supabaseId }
+        where: { supabaseId },
+        select: {
+          id: true,
+          supabaseId: true,
+          fullName: true,
+          email: true,
+          asaasCustomerId: true,
+          asaasSubscriptionId: true,
+        }
       });
 
-      if (!profile || !profile.subscriptionId) {
+      if (!profile) {
+        return new Output(
+          false,
+          [],
+          ['Usuário não encontrado'],
+          null
+        );
+      }
+
+      let customerId = profile.asaasCustomerId;
+
+      // Fallback para cenários legados onde o customer não foi persistido no profile
+      if (!customerId && profile.asaasSubscriptionId) {
+        try {
+          const subscription = await asaasFetch(
+            `${asaasApi.subscriptions}/${profile.asaasSubscriptionId}`,
+            { method: "GET" }
+          ) as { customer?: string };
+
+          if (subscription?.customer) {
+            customerId = subscription.customer;
+          }
+        } catch (subscriptionError) {
+          console.error('[SubscriptionManagementUseCase][getInvoices] Erro ao buscar assinatura no Asaas:', subscriptionError);
+        }
+      }
+
+      if (!customerId) {
         return new Output(
           true,
           ['Nenhuma fatura encontrada'],
@@ -177,9 +290,23 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // TODO: Buscar faturas da API Asaas
-      // Por enquanto, retornar array vazio ou criar uma tabela de histórico de pagamentos
-      const invoices: any[] = [];
+      const allPayments = await this.fetchAllCustomerPayments(customerId);
+
+      const invoices = allPayments
+        .filter((item) => item.customer === customerId)
+        .sort((a, b) => this.getInvoiceSortTimestamp(b) - this.getInvoiceSortTimestamp(a))
+        .map((item) => ({
+          id: item.id,
+          status: item.status ?? 'PENDING',
+          value: this.normalizeMoney(item.value),
+          dueDate: item.dueDate ?? '',
+          paymentDate: item.clientPaymentDate ?? item.paymentDate ?? undefined,
+          description: item.description ?? 'Fatura de assinatura',
+          billingType: item.billingType ?? 'UNDEFINED',
+          invoiceUrl: item.invoiceUrl ?? undefined,
+          bankSlipUrl: item.bankSlipUrl ?? undefined,
+          invoiceNumber: item.invoiceNumber ?? undefined,
+        }));
 
       return new Output(
         true,

@@ -3,8 +3,31 @@ import { subscriptionManagementUseCase } from '@/app/api/useCases/subscriptionMa
 
 export async function GET(request: NextRequest) {
   try {
+    const authenticatedSupabaseId = request.headers.get('x-supabase-user-id');
+    if (!authenticatedSupabaseId) {
+      const unauthorizedResult = {
+        isValid: false,
+        successMessages: [],
+        errorMessages: ['Não autenticado'],
+        result: null
+      };
+      return NextResponse.json(unauthorizedResult, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const supabaseId = searchParams.get('supabaseId');
+    const supabaseIdParam = searchParams.get('supabaseId');
+
+    if (supabaseIdParam && supabaseIdParam !== authenticatedSupabaseId) {
+      const forbiddenResult = {
+        isValid: false,
+        successMessages: [],
+        errorMessages: ['Acesso negado para consultar assinatura de outro usuário'],
+        result: null
+      };
+      return NextResponse.json(forbiddenResult, { status: 403 });
+    }
+
+    const supabaseId = authenticatedSupabaseId;
 
     if (!supabaseId) {
       const errorResult = {
@@ -37,9 +60,32 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const authenticatedSupabaseId = request.headers.get('x-supabase-user-id');
+    if (!authenticatedSupabaseId) {
+      const unauthorizedResult = {
+        isValid: false,
+        successMessages: [],
+        errorMessages: ['Não autenticado'],
+        result: null
+      };
+      return NextResponse.json(unauthorizedResult, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const supabaseId = searchParams.get('supabaseId');
+    const supabaseIdParam = searchParams.get('supabaseId');
     const reason = searchParams.get('reason') || undefined;
+
+    if (supabaseIdParam && supabaseIdParam !== authenticatedSupabaseId) {
+      const forbiddenResult = {
+        isValid: false,
+        successMessages: [],
+        errorMessages: ['Acesso negado para cancelar assinatura de outro usuário'],
+        result: null
+      };
+      return NextResponse.json(forbiddenResult, { status: 403 });
+    }
+
+    const supabaseId = authenticatedSupabaseId;
 
     if (!supabaseId) {
       const errorResult = {
