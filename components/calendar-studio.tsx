@@ -44,7 +44,72 @@ type ScheduleAttendee = {
   responseStatus: "accepted" | "declined" | "tentative" | "needsAction"
 }
 
-type AttendeesByLead = Record<string, { attendees: ScheduleAttendee[]; hasGoogleData: boolean } | null>
+type AttendeesByLead = Record<string, { attendees: ScheduleAttendee[]; hasGoogleData: boolean }>
+
+const ROLE_ORDER: AttendeeRole[] = ["closer", "sdr", "lead", "extra"]
+
+const normalizeEmail = (value?: string | null) => value?.toLowerCase().trim() ?? ""
+
+const toSafeResponseStatus = (
+  status: unknown
+): ScheduleAttendee["responseStatus"] => {
+  if (status === "accepted") return "accepted"
+  if (status === "declined") return "declined"
+  if (status === "tentative") return "tentative"
+  return "needsAction"
+}
+
+const buildFallbackAttendees = (lead: Lead): ScheduleAttendee[] => {
+  const roleMap = new Map<string, AttendeeRole>()
+
+  const closerEmail = normalizeEmail(lead.closer?.email)
+  const sdrEmail = normalizeEmail(lead.assignee?.email)
+  const leadEmail = normalizeEmail(lead.email)
+
+  if (closerEmail) roleMap.set(closerEmail, "closer")
+  if (sdrEmail && sdrEmail !== closerEmail) roleMap.set(sdrEmail, "sdr")
+  if (leadEmail) roleMap.set(leadEmail, "lead")
+
+  return Array.from(roleMap.entries()).map(([email, role]) => ({
+    email,
+    displayName: null,
+    role,
+    responseStatus: "needsAction",
+  }))
+}
+
+const mergeAttendeesWithFallback = (
+  lead: Lead,
+  attendeesFromApi: unknown
+): ScheduleAttendee[] => {
+  const merged = new Map<string, ScheduleAttendee>()
+
+  for (const attendee of buildFallbackAttendees(lead)) {
+    merged.set(attendee.email, attendee)
+  }
+
+  if (Array.isArray(attendeesFromApi)) {
+    for (const rawAttendee of attendeesFromApi) {
+      const attendee = rawAttendee as Partial<ScheduleAttendee>
+      const email = normalizeEmail(attendee.email)
+      if (!email) continue
+
+      const existing = merged.get(email)
+      const role = attendee.role ?? existing?.role ?? "extra"
+
+      merged.set(email, {
+        email,
+        displayName: attendee.displayName ?? existing?.displayName ?? null,
+        role,
+        responseStatus: toSafeResponseStatus(attendee.responseStatus),
+      })
+    }
+  }
+
+  return Array.from(merged.values()).sort(
+    (a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role)
+  )
+}
 
 const RSVP_LABEL: Record<ScheduleAttendee["responseStatus"], string> = {
   accepted: "Confirmado",
@@ -449,6 +514,11 @@ export default function CalendarStudio() {
 
     Promise.all(
       meetingEvents.map(async ({ lead }) => {
+        const fallbackEntry = {
+          attendees: buildFallbackAttendees(lead),
+          hasGoogleData: false,
+        }
+
         try {
           // Passa emails do contexto como hints para o servidor pular o prisma.lead.findUnique
           const params = new URLSearchParams()
@@ -462,12 +532,28 @@ export default function CalendarStudio() {
               "x-team-id": activeTeamId,
             },
           })
-          if (!res.ok) return [lead.id, null] as const
+          if (!res.ok) return [lead.id, fallbackEntry] as const
+
           const json = await res.json().catch(() => null)
-          if (!json?.isValid || !json?.result) return [lead.id, null] as const
-          return [lead.id, { attendees: json.result.attendees as ScheduleAttendee[], hasGoogleData: json.result.hasGoogleData as boolean }] as const
+
+          if (!json?.isValid || !json?.result) {
+            return [lead.id, fallbackEntry] as const
+          }
+
+          const mergedAttendees = mergeAttendeesWithFallback(
+            lead,
+            json.result.attendees
+          )
+
+          return [
+            lead.id,
+            {
+              attendees: mergedAttendees,
+              hasGoogleData: Boolean(json.result.hasGoogleData),
+            },
+          ] as const
         } catch {
-          return [lead.id, null] as const
+          return [lead.id, fallbackEntry] as const
         }
       })
     ).then((entries) => {

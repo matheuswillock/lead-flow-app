@@ -49,7 +49,11 @@
       "Bash(cp -r \"a:/develop/lead-flow-app/app/backoffice/clients/.\" \"a:/develop/lead-flow-app/app/backoffice/\\(app\\)/clients/\")",
       "Bash(cp -r \"a:/develop/lead-flow-app/app/backoffice/payments/.\" \"a:/develop/lead-flow-app/app/backoffice/\\(app\\)/payments/\")",
       "Bash(cp -r \"a:/develop/lead-flow-app/app/backoffice/users/.\" \"a:/develop/lead-flow-app/app/backoffice/\\(app\\)/users/\")",
-      "Bash(bunx tsc:*)"
+      "Bash(bunx tsc:*)",
+      "Bash(find /a/develop/lead-flow-app/app/lead-form/[supabaseId]/[teamId]/features/context -type f -name \"*.ts\")",
+      "Bash(find /a/develop/lead-flow-app/app/lead-form/[supabaseId]/[teamId]/features/services -type f -name \"*.ts\")",
+      "Bash(ls -la /a/develop/lead-flow-app/app/api/v1/leads/*/activities/)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")"
     ]
   }
 }

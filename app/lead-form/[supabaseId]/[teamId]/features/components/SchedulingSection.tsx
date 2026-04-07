@@ -105,6 +105,8 @@ export function SchedulingSection({
   const [extraGuestsDraft, setExtraGuestsDraft] = useState("");
 
   const selectedGuestEmails = useMemo(() => parseEmails(extraGuests), [extraGuests]);
+  const schedulingReady =
+    !!closerId && hasLoadedAvailability && !availabilityLoading && availableTimes.length > 0;
 
   useEffect(() => {
     if (!closerId && closers.length === 1) {
@@ -251,7 +253,7 @@ export function SchedulingSection({
           value={meetingNotes}
           onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onMeetingNotesChange(e.target.value)}
           rows={3}
-          disabled={disabled}
+          disabled={disabled || !schedulingReady}
         />
       </div>
 
@@ -295,7 +297,7 @@ export function SchedulingSection({
               }}
               placeholder="ex: convidado1@email.com, convidado2@email.com"
               className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              disabled={disabled}
+              disabled={disabled || !schedulingReady}
             />
           </div>
 
@@ -303,7 +305,7 @@ export function SchedulingSection({
             <span>Adicionar membros do time:</span>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" size="sm" disabled={disabled}>
+                <Button type="button" variant="outline" size="sm" disabled={disabled || !schedulingReady}>
                   Selecionar
                 </Button>
               </DropdownMenuTrigger>

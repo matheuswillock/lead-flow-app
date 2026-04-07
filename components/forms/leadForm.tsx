@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { leadFormData } from "@/lib/validations/validationForms";
+import { leadFormData, leadFormSchema } from "@/lib/validations/validationForms";
 import { useEffect, useState } from "react";
 import React from "react";
 import { UseFormReturn } from "react-hook-form";
@@ -99,6 +99,8 @@ export interface ILeadFormProps {
     isEditMode?: boolean;
     scheduleChangeWarning?: boolean;
     changedScheduleFields?: LeadScheduleField[];
+    currentProfileId?: string;
+    currentUserIsSdr?: boolean;
 }
 
 export function LeadForm({
@@ -130,7 +132,9 @@ export function LeadForm({
     showMeetingLink,
     isEditMode = false,
     scheduleChangeWarning = false,
-    changedScheduleFields = []
+    changedScheduleFields = [],
+    currentProfileId,
+    currentUserIsSdr = false,
 }: ILeadFormProps) {
     const [hasChanges, setHasChanges] = useState(false);
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
@@ -227,7 +231,11 @@ export function LeadForm({
             return true;
         });
     }, [form.formState.errors, scheduleChangeWarning, changedScheduleFieldSet]);
-    const isSubmitDisabled = !hasChanges || hasBlockingErrors || isLoading || isUpdating;
+    const isSchemaValid = React.useMemo(
+        () => leadFormSchema.safeParse(watchedValues).success,
+        [watchedValues]
+    );
+    const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
     const watchedMeetingDate = form.watch("meetingDate");
     const watchedCloserId = form.watch("closerId");
     const isMeetingDateChanged = scheduleChangeWarning && changedScheduleFieldSet.has("meetingDate");
@@ -237,6 +245,9 @@ export function LeadForm({
     const meetingDateObject = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
     const hasValidMeetingDate =
         meetingDateObject instanceof Date && !Number.isNaN(meetingDateObject.getTime());
+    const schedulingReady = !!watchedCloserId && hasLoadedAvailability && !availabilityLoading;
+    const scheduleFieldsDisabled = isLoading || isUpdating || (!isEditMode && !schedulingReady);
+    const scheduleDateDisabled = isLoading || isUpdating || (!isEditMode && !watchedCloserId);
 
     useEffect(() => {
         if (!initialData) {
@@ -650,7 +661,7 @@ export function LeadForm({
                                         field.onChange(date ? date.toISOString() : '');
                                     }}
                                     label="Data e Horário da Reunião"
-                                    disabled={isLoading || isUpdating}
+                                    disabled={scheduleDateDisabled}
                                     disablePastDates={true}
                                     availableTimes={availableTimes}
                                     invalid={isMeetingDateChanged}
@@ -764,14 +775,14 @@ export function LeadForm({
 
             </div>
             <div className="sm:col-span-2">
-                {!hasValidMeetingDate && (
+                {!watchedCloserId && (
                     <p className="text-xs text-muted-foreground">
-                        Selecione uma data para carregar horários disponíveis.
+                        Selecione um closer para habilitar data e carregar horários disponíveis.
                     </p>
                 )}
-                {hasValidMeetingDate && !watchedCloserId && (
+                {watchedCloserId && !hasValidMeetingDate && (
                     <p className="text-xs text-muted-foreground">
-                        Selecione um closer para carregar horários disponíveis.
+                        Selecione uma data para carregar horários disponíveis.
                     </p>
                 )}
                 {availabilityLoading && (
@@ -807,7 +818,7 @@ export function LeadForm({
                                     "min-h-[84px] resize-y",
                                     isMeetingNotesChanged && "border-destructive focus-visible:ring-destructive"
                                 )}
-                                disabled={isLoading || isUpdating}
+                                disabled={scheduleFieldsDisabled}
                                 aria-invalid={isMeetingNotesChanged || undefined}
                             />
                         </FormControl>
@@ -912,7 +923,7 @@ export function LeadForm({
                                             }}
                                             placeholder="ex: convidado1@email.com, convidado2@email.com"
                                             className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                                            disabled={isLoading || isUpdating}
+                                            disabled={scheduleFieldsDisabled}
                                             aria-invalid={isExtraGuestsChanged || undefined}
                                         />
                                     </div>
@@ -920,7 +931,7 @@ export function LeadForm({
                                         <span>Adicionar membros do time:</span>
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
-                                                <Button type="button" variant="outline" size="sm">
+                                                <Button type="button" variant="outline" size="sm" disabled={scheduleFieldsDisabled}>
                                                     Selecionar
                                                 </Button>
                                             </DropdownMenuTrigger>
@@ -1133,10 +1144,43 @@ export function LeadForm({
                             !hasErrorWithoutFallback &&
                             !hasResponsibleOptions;
                         useEffect(() => {
-                            if (!field.value && responsibleUsers?.length > 0) {
-                                field.onChange(responsibleUsers[0].id);
+                            if (!responsibleUsers?.length) {
+                                return;
                             }
-                        }, [responsibleUsers, field.value, field.onChange]);
+
+                            const preferredResponsibleId =
+                                !isEditMode &&
+                                currentUserIsSdr &&
+                                currentProfileId &&
+                                responsibleUsers.some((user) => user.id === currentProfileId)
+                                    ? currentProfileId
+                                    : responsibleUsers[0].id;
+
+                            if (!field.value) {
+                                field.onChange(preferredResponsibleId);
+                                return;
+                            }
+
+                            const responsibleFieldState = form.getFieldState("responsible");
+                            if (
+                                !isEditMode &&
+                                !responsibleFieldState.isDirty &&
+                                currentUserIsSdr &&
+                                currentProfileId &&
+                                field.value !== currentProfileId &&
+                                responsibleUsers.some((user) => user.id === currentProfileId)
+                            ) {
+                                field.onChange(currentProfileId);
+                            }
+                        }, [
+                            responsibleUsers,
+                            field.value,
+                            field.onChange,
+                            form,
+                            isEditMode,
+                            currentProfileId,
+                            currentUserIsSdr,
+                        ]);
 
                         return (
                             <FormItem className="flex flex-col">

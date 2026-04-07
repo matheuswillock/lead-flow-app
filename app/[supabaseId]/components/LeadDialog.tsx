@@ -133,7 +133,11 @@ const toScheduleDateKey = (date: Date) => {
 };
 
 const formatScheduleTime = (date: Date) =>
-  date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  date.toLocaleTimeString("pt-BR", {
+    timeZone: SCHEDULE_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 export default function LeadDialog({
   open,
@@ -1616,6 +1620,7 @@ export default function LeadDialog({
           meetingLink: data.meetingLink || undefined,
           closerId: closerIdValue,
           extraGuests: normalizedGuests,
+          transitionStatusToScheduled: true,
         }),
       });
       const scheduleResult = await scheduleResponse.json().catch(() => null);
@@ -1905,6 +1910,7 @@ export default function LeadDialog({
           body: JSON.stringify({
             closerId: normalizedCloserId,
             date: dateKey,
+            excludeLeadId: lead?.id || undefined,
           }),
         });
 
@@ -1949,7 +1955,7 @@ export default function LeadDialog({
     return () => {
       isMounted = false;
     };
-  }, [open, supabaseId, activeTeamId, watchedMeetingDate, watchedCloserId]);
+  }, [open, supabaseId, activeTeamId, watchedMeetingDate, watchedCloserId, lead?.id]);
 
   useEffect(() => {
     if (!open || availableTimes.length === 0) return;
@@ -2278,6 +2284,8 @@ export default function LeadDialog({
                     isEditMode={!!lead}
                     scheduleChangeWarning={highlightedScheduleFields.length > 0}
                     changedScheduleFields={highlightedScheduleFields}
+                    currentProfileId={user.id}
+                    currentUserIsSdr={activeFunctions.includes("SDR") || user.functions.includes("SDR")}
                   />
                 )}
               </div>
