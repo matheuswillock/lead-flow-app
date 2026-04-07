@@ -6703,6 +6703,173 @@
           }
         }
       ]
+    },
+    {
+      "name": "Backoffice",
+      "description": "Endpoints do módulo backoffice Corretor Studio",
+      "item": [
+        {
+          "name": "GET Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "me"]
+            },
+            "description": "Retorna dados do usuário backoffice autenticado."
+          }
+        },
+        {
+          "name": "GET Clients",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "clients"]
+            },
+            "description": "Lista todos os clientes backoffice."
+          }
+        },
+        {
+          "name": "POST Create Client",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Cliente Exemplo\",\n  \"email\": \"cliente@exemplo.com\",\n  \"phone\": \"11999999999\",\n  \"cpfCnpj\": \"12345678901\",\n  \"notes\": \"Observações\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/clients",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "clients"]
+            },
+            "description": "Cria novo cliente backoffice e integra com Asaas."
+          }
+        },
+        {
+          "name": "GET Client by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/clients/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "clients", ":id"],
+              "variable": [{ "key": "id", "value": "{{backofficeClientId}}" }]
+            },
+            "description": "Retorna cliente backoffice por ID."
+          }
+        },
+        {
+          "name": "GET Payments",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "payments"]
+            },
+            "description": "Lista cobranças backoffice. Aceita ?clientId= para filtrar."
+          }
+        },
+        {
+          "name": "POST Create Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"{{backofficeClientId}}\",\n  \"billingType\": \"PIX\",\n  \"amount\": 99.90,\n  \"dueDate\": \"2026-05-01\",\n  \"description\": \"Cobrança de serviço\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "payments"]
+            },
+            "description": "Cria cobrança no Asaas e persiste localmente. Retorna QR PIX se billingType=PIX."
+          }
+        },
+        {
+          "name": "GET Payment by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/payments/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "payments", ":id"],
+              "variable": [{ "key": "id", "value": "{{backofficePaymentId}}" }]
+            },
+            "description": "Retorna cobrança backoffice por ID."
+          }
+        },
+        {
+          "name": "GET Backoffice Users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "users"]
+            },
+            "description": "Lista usuários backoffice com dados de perfil."
+          }
+        },
+        {
+          "name": "POST Create Backoffice User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"novo@corretorstudio.com\",\n  \"fullName\": \"Novo Usuário\",\n  \"temporaryPassword\": \"Backoffice@2025\",\n  \"fullAccess\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "users"]
+            },
+            "description": "Cria usuário backoffice. Requer fullAccess=true no token. Email deve ser @corretorstudio.com."
+          }
+        },
+        {
+          "name": "PATCH Update Backoffice User",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": true,\n  \"fullAccess\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/users/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "users", ":id"],
+              "variable": [{ "key": "id", "value": "{{backofficeUserId}}" }]
+            },
+            "description": "Atualiza isActive ou fullAccess de usuário backoffice. Requer fullAccess=true."
+          }
+        }
+      ]
     }
   ]
 }

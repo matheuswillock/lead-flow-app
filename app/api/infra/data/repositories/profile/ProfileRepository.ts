@@ -840,6 +840,24 @@ class PrismaProfileRepository implements IProfileRepository {
             return null;
         }
     }
+
+    async createBackofficeProfile(
+        supabaseId: string,
+        email: string,
+        fullName: string
+    ): Promise<{ profileId: string }> {
+        const profile = await prisma.profile.create({
+            data: {
+                supabaseId,
+                email,
+                fullName,
+                role: "backoffice",
+                isMaster: false,
+            },
+        })
+        console.info("[ProfileRepository] BackofficeProfile criado:", profile.id)
+        return { profileId: profile.id }
+    }
 }
 
 export const profileRepository: IProfileRepository = new PrismaProfileRepository();

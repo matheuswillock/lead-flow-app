@@ -34,7 +34,21 @@
       "Bash(grep -r \"validate\\\\|CRITICAL\\\\|required\\\\|missing\" /a/develop/lead-flow-app --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.js\" ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/lib/env/*\")",
       "Bash(find /a/develop/lead-flow-app -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) ! -path \"*/node_modules/*\" ! -path \"*/.next/*\" ! -path \"*/lib/env/*\" -exec grep -l \"validate.*env\\\\|CRITICAL.*env\\\\|required.*env\" {} \\\\;)",
       "Bash(ls -la /a/develop/lead-flow-app/app/[supabaseId]/dashboard/)",
-      "Bash(find /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features -type f)"
+      "Bash(find /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features -type f)",
+      "Bash(find /a/develop/lead-flow-app/app/api/v1 -name \"route.ts\" -exec wc -l {} \\\\;)",
+      "Bash(grep -v \"^.*[0-9].*$\")",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/dashboard/)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features/)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/crm/features/)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features/services/)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features/context/)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/dashboard/features/container/)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/)",
+      "Bash(ls /a/develop/lead-flow-app/app/[supabaseId]/components/)",
+      "Bash(cat /a/develop/lead-flow-app/app/[supabaseId]/components/LayoutContent.tsx)",
+      "Bash(cp -r \"a:/develop/lead-flow-app/app/backoffice/clients/.\" \"a:/develop/lead-flow-app/app/backoffice/\\(app\\)/clients/\")",
+      "Bash(cp -r \"a:/develop/lead-flow-app/app/backoffice/payments/.\" \"a:/develop/lead-flow-app/app/backoffice/\\(app\\)/payments/\")",
+      "Bash(cp -r \"a:/develop/lead-flow-app/app/backoffice/users/.\" \"a:/develop/lead-flow-app/app/backoffice/\\(app\\)/users/\")"
     ]
   }
 }

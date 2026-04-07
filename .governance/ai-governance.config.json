@@ -71,7 +71,8 @@
       "app/api/v1/teams/[teamId]/members/route.ts",
       "app/api/v1/teams/[teamId]/route.ts",
       "app/api/v1/teams/[teamId]/transfer/route.ts",
-      "app/api/v1/users/delete/route.ts"
+      "app/api/v1/users/delete/route.ts",
+      "app/api/v1/backoffice/me/route.ts"
     ],
     "useCaseWithoutOutputAllowlist": [],
     "frontendFeatureStructureAllowlist": [
@@ -95,7 +96,13 @@
       "app/[supabaseId]/notifications",
       "app/[supabaseId]/pipeline",
       "app/[supabaseId]/subscription",
-      "app/[supabaseId]/teams"
+      "app/[supabaseId]/teams",
+      "app/backoffice",
+      "app/backoffice/sign-in",
+      "app/backoffice/(app)",
+      "app/backoffice/(app)/clients",
+      "app/backoffice/(app)/payments",
+      "app/backoffice/(app)/users"
     ],
     "nonTypeScriptFileAllowlist": [
       "eslint.config.mjs",

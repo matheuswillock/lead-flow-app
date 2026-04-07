@@ -1,0 +1,29 @@
+import { NextResponse, type NextRequest } from "next/server"
+import { Output } from "@/lib/output"
+import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { BackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/BackofficeClientRepository"
+import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService"
+import { BackofficeClientUseCase } from "@/app/api/useCases/backoffice/BackofficeClientUseCase"
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const result = await getBackofficeAccess(request)
+    if (result.error) {
+      return NextResponse.json(result.error, { status: result.status })
+    }
+
+    const { id } = await params
+    const useCase = new BackofficeClientUseCase(
+      new BackofficeClientRepository(),
+      new AsaasCustomerService()
+    )
+    const output = await useCase.getClientById(id)
+    return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
+  } catch (error) {
+    console.error("[BackofficeClientByIdRoute][GET]", error)
+    return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
+  }
+}

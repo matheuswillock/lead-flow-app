@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.112.0",
+  "version": "0.113.0",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -23,6 +23,8 @@
     "format": "prettier --write .",
     "postinstall": "prisma generate",
     "prisma:seed": "bunx prisma db seed",
+    "db:seed:app": "bunx tsx prisma/seed-app.ts",
+    "db:seed:backoffice": "bunx tsx prisma/seed-backoffice.ts",
     "prisma:migrate": "bunx prisma migrate dev",
     "prisma:backfill-leadcode": "bunx tsx scripts/backfill-leadcode.ts",
     "prisma:generate-import-leads-sql": "bunx tsx scripts/generate-backfill-import-leads.ts",

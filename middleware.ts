@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/auth-sessions"
-import { isManagerLikeRole } from "@/lib/roles"
+import { isManagerLikeRole, isBackofficeRole } from "@/lib/roles"
 
 // Configure runtime
 export const runtime = 'nodejs'
@@ -27,6 +27,48 @@ export async function middleware(request: NextRequest) {
 
   // Check if it's a public route - let it pass
   if (publicRoutes.includes(pathname)) {
+    return response
+  }
+
+  // Backoffice sign-in page: public within /backoffice
+  if (pathname === '/backoffice/sign-in') {
+    // Already authenticated as backoffice → redirect to app
+    if (user) {
+      try {
+        const { prisma } = await import('@/app/api/infra/data/prisma')
+        const profile = await prisma.profile.findUnique({
+          where: { supabaseId: user.id },
+          select: { role: true },
+        })
+        if (profile && isBackofficeRole(profile.role)) {
+          return NextResponse.redirect(new URL('/backoffice', request.url))
+        }
+      } catch {
+        // fail-open: show sign-in page
+      }
+    }
+    return response
+  }
+
+  // Protect all other /backoffice routes — backoffice role only
+  if (pathname.startsWith('/backoffice')) {
+    if (!user) {
+      return NextResponse.redirect(new URL('/backoffice/sign-in', request.url))
+    }
+    try {
+      const { prisma } = await import('@/app/api/infra/data/prisma')
+      const profile = await prisma.profile.findUnique({
+        where: { supabaseId: user.id },
+        select: { role: true },
+      })
+      if (!profile || !isBackofficeRole(profile.role)) {
+        // Authenticated but not backoffice → redirect to their CRM
+        return NextResponse.redirect(new URL(`/${user.id}/crm`, request.url))
+      }
+    } catch (error) {
+      console.error('[middleware] Error verifying backoffice role:', error)
+      return NextResponse.redirect(new URL('/backoffice/sign-in', request.url))
+    }
     return response
   }
 

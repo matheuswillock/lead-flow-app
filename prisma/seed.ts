@@ -1,91 +1,72 @@
-import { createClient } from "@supabase/supabase-js"
+/**
+ * Entrypoint do Prisma seed — executa app + backoffice em sequência.
+ * Chamado por: bunx prisma db seed  /  bun run prisma:seed
+ *
+ * Para executar separadamente:
+ *   bun run db:seed:app
+ *   bun run db:seed:backoffice
+ */
+import { ensureUser, type SeedUser } from "./seed-helpers"
+import { PrismaClient, UserRole } from "@prisma/client"
+import { listUserByEmail } from "./seed-helpers"
 
-type SeedUser = { email: string; password: string; fullName?: string }
+const prisma = new PrismaClient()
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+// ── App users ────────────────────────────────────────────────────────────────
 
-if (!url || !serviceKey) {
-  console.error("[seed] Defina NEXT_PUBLIC_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no ambiente.")
-  process.exit(1)
+const APP_USERS: SeedUser[] = [
+  { email: "bruno@onsidemarketing.com.br", password: "Onside@2025" },
+  { email: "nathielewillock@gmail.com", password: "Teste@2025" },
+  { email: "matheuswillock@gmail.com", password: "Nath@1308" },
+]
+
+// ── Backoffice users ──────────────────────────────────────────────────────────
+
+const BACKOFFICE_USERS = [
+  {
+    email: "matheuswillock@corretorstudio.com",
+    password: "Backoffice@2025",
+    fullAccess: true,
+  },
+]
+
+async function ensureBackofficeUser(supabaseId: string, email: string, fullAccess: boolean) {
+  const profile = await prisma.profile.upsert({
+    where: { email },
+    create: { email, role: UserRole.backoffice, supabaseId, isMaster: false },
+    update: { role: UserRole.backoffice, supabaseId },
+  })
+
+  await prisma.backofficeUser.upsert({
+    where: { profileId: profile.id },
+    create: { id: profile.id, profileId: profile.id, email, fullAccess, isActive: true },
+    update: { fullAccess, isActive: true, email },
+  })
+
+  console.info(`[seed] BackofficeUser pronto: ${email}`)
 }
 
-const supabase = createClient(url, serviceKey)
-const supabaseAnon = anonKey ? createClient(url, anonKey) : null
+// ── Main ──────────────────────────────────────────────────────────────────────
 
-async function listUserByEmail(email: string) {
-  let page = 1
-  const perPage = 1000
-  for (;;) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage })
-    if (error) throw error
-    const found = data.users.find((u) => u.email?.toLowerCase() === email.toLowerCase())
-    if (found) return found
-    if (data.users.length < perPage) return null
-    page += 1
+async function main() {
+  console.info("[seed] Iniciando (app + backoffice)...")
+
+  for (const u of APP_USERS) {
+    await ensureUser(u)
   }
-}
 
-async function ensureUser(u: SeedUser) {
-  // 1) Buscar primeiro (idempotente)
-  let user = await listUserByEmail(u.email)
-
-  // 2) Criar se não existir
-  if (!user) {
-    const { data, error } = await supabase.auth.admin.createUser({
-      email: u.email,
-      password: u.password,
-      email_confirm: true,
-    })
-    if (error) {
-      // 422 (already exists) ou alguns 500 intermitentes → rechecagem
-      const msg = (error as any)?.message?.toLowerCase?.() || ""
-      if (error.status === 422 || msg.includes("already") || error.status === 500) {
-        user = await listUserByEmail(u.email)
-        // fallback opcional via anon signUp
-        if (!user && supabaseAnon) {
-          const { data: su, error: suErr } = await supabaseAnon.auth.signUp({
-            email: u.email,
-            password: u.password,
-          })
-          if (!suErr) user = su.user ?? (await listUserByEmail(u.email))
-        }
-      } else {
-        throw error
-      }
-    } else {
-      user = data?.user ?? null
+  for (const u of BACKOFFICE_USERS) {
+    await ensureUser(u)
+    const authUser = await listUserByEmail(u.email)
+    if (authUser) {
+      await ensureBackofficeUser(authUser.id, u.email, u.fullAccess)
     }
   }
 
-  if (!user) throw new Error(`[seed] Não foi possível resolver o usuário ${u.email}`)
-
-  // 3) Garantir confirmação e senha atual
-  const { data: updated, error: updErr } = await supabase.auth.admin.updateUserById(user.id, {
-    email_confirm: true,
-    password: u.password,
-  })
-  if (updErr) throw updErr
-
-  console.info(`[seed] Usuário pronto: ${u.email} (id: ${updated.user.id})`)
-}
-
-async function main() {
-  console.info("[seed] Iniciando...")
-  const users: SeedUser[] = [
-    { email: "bruno@onsidemarketing.com.br", password: "Onside@2025" },
-    { email: "nathielewillock@gmail.com", password: "Teste@2025" },
-    { email: "matheuswillock@gmail.com", password: "Nath@1308" }
-  ]
-
-  for (const u of users) {
-    await ensureUser(u)
-  }
   console.info("[seed] Concluído.")
 }
 
 main().catch((e) => {
   console.error("[seed] Falhou:", e)
   process.exit(1)
-})
+}).finally(() => prisma.$disconnect())

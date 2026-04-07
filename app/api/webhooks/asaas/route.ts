@@ -355,6 +355,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Sincronizar status de BackofficePayment se aplicável
+    if (
+      (body.event === 'PAYMENT_RECEIVED' || body.event === 'PAYMENT_CONFIRMED') &&
+      body.payment?.id
+    ) {
+      try {
+        const { BackofficePaymentRepository } = await import(
+          '@/app/api/infra/data/repositories/backoffice/BackofficePaymentRepository'
+        )
+        const backofficePaymentRepo = new BackofficePaymentRepository()
+        const existing = await backofficePaymentRepo.findByAsaasPaymentId(body.payment.id)
+        if (existing) {
+          await backofficePaymentRepo.updateStatus(existing.id, body.payment.status, {
+            invoiceUrl: body.payment.invoiceUrl ?? existing.invoiceUrl ?? undefined,
+          })
+          console.info('[Webhook][BackofficePayment] status updated:', existing.id, body.payment.status)
+        }
+      } catch (err) {
+        console.error('[Webhook][BackofficePayment] sync error:', err)
+        // Non-blocking — não impede resposta 200 ao Asaas
+      }
+    }
+
     // Retornar 200 para o Asaas saber que processamos com sucesso
     return NextResponse.json(
       { success: true, message: 'Webhook processado', isPaid },
