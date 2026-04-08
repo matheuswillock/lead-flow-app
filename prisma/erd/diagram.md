@@ -136,6 +136,60 @@ pending pending
 canceled canceled
         }
     
+
+
+        email_credit_plan {
+            starter starter
+plus plus
+pro pro
+business business
+        }
+    
+
+
+        email_credit_subscription_status {
+            active active
+suspended suspended
+canceled canceled
+        }
+    
+
+
+        email_campaign_status {
+            draft draft
+scheduled scheduled
+sending sending
+sent sent
+canceled canceled
+failed failed
+        }
+    
+
+
+        email_log_status {
+            queued queued
+sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+failed failed
+        }
+    
+
+
+        email_event_type {
+            sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+delivery_delayed delivery_delayed
+unsubscribed unsubscribed
+        }
+    
   "profiles" {
     String id "🗝️"
     String email 
@@ -442,6 +496,115 @@ canceled canceled
     DateTime updatedAt 
     }
   
+
+  "email_credit_subscriptions" {
+    String id "🗝️"
+    EmailCreditPlan plan 
+    Int monthlyCredits 
+    EmailCreditSubscriptionStatus status 
+    DateTime currentPeriodStart 
+    DateTime currentPeriodEnd 
+    DateTime canceledAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_credit_usages" {
+    String id "🗝️"
+    DateTime periodStart 
+    DateTime periodEnd 
+    Int creditsUsed 
+    Int overageCount 
+    Decimal overageCharged 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_templates" {
+    String id "🗝️"
+    String name 
+    String subject 
+    String previewText "❓"
+    Json mailyJson "❓"
+    String html "❓"
+    Boolean isArchived 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_contact_lists" {
+    String id "🗝️"
+    String name 
+    String description "❓"
+    String csvStoragePath "❓"
+    Int totalContacts 
+    Boolean isArchived 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_contacts" {
+    String id "🗝️"
+    String email 
+    String name "❓"
+    Json customFields "❓"
+    Boolean isUnsubscribed 
+    Boolean isBounced 
+    Boolean isComplained 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_campaigns" {
+    String id "🗝️"
+    String name 
+    EmailCampaignStatus status 
+    DateTime scheduledAt "❓"
+    DateTime sentAt "❓"
+    Int totalRecipients 
+    Int totalSent 
+    Int totalDelivered 
+    Int totalOpened 
+    Int totalClicked 
+    Int totalBounced 
+    Int totalComplained 
+    String errorMessage "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_logs" {
+    String id "🗝️"
+    String resendEmailId "❓"
+    String recipientEmail 
+    String recipientName "❓"
+    String subject 
+    EmailLogStatus status 
+    DateTime sentAt "❓"
+    DateTime deliveredAt "❓"
+    DateTime openedAt "❓"
+    DateTime clickedAt "❓"
+    DateTime bouncedAt "❓"
+    DateTime complainedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_events" {
+    String id "🗝️"
+    EmailEventType type 
+    DateTime occurredAt 
+    Json metadata "❓"
+    DateTime createdAt 
+    }
+  
     "profiles" o|--|| "UserRole" : "enum:role"
     "profiles" o|--}o "UserFunction" : "enum:functions"
     "profiles" o|--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -470,6 +633,10 @@ canceled canceled
     "profiles" o{--}o "team_studio_webhook_configs" : "updatedStudioWebhookConfigs"
     "profiles" o{--}o "team_filter_presets" : "createdTeamFilterPresets"
     "profiles" o{--}o "team_status_rules" : "createdTeamStatusRules"
+    "profiles" o{--}o "email_credit_subscriptions" : "emailCreditSubscription"
+    "profiles" o{--}o "email_templates" : "emailTemplatesCreated"
+    "profiles" o{--}o "email_contact_lists" : "emailContactListsCreated"
+    "profiles" o{--}o "email_campaigns" : "emailCampaignsCreated"
     "health_plan_options" o|--|o "profiles" : "creator"
     "backoffice_users" o|--|| "profiles" : "profile"
     "backoffice_users" o|--|o "profiles" : "creator"
@@ -519,6 +686,10 @@ canceled canceled
     "teams" o{--}o "team_filter_presets" : "filterPresets"
     "teams" o{--}o "team_status_rules" : "statusRules"
     "teams" o{--}o "lead_portfolio" : "portfolioEntries"
+    "teams" o{--}o "email_templates" : "emailTemplates"
+    "teams" o{--}o "email_contact_lists" : "emailContactLists"
+    "teams" o{--}o "email_campaigns" : "emailCampaigns"
+    "teams" o{--}o "email_logs" : "emailLogs"
     "team_filter_presets" o|--|| "teams" : "team"
     "team_filter_presets" o|--|| "profiles" : "creator"
     "team_status_rules" o|--|| "TeamStatusRuleType" : "enum:type"
@@ -543,4 +714,29 @@ canceled canceled
     "team_members" o|--}o "UserFunction" : "enum:functions"
     "team_members" o|--|| "teams" : "team"
     "team_members" o|--|| "profiles" : "profile"
+    "email_credit_subscriptions" o|--|| "EmailCreditPlan" : "enum:plan"
+    "email_credit_subscriptions" o|--|| "EmailCreditSubscriptionStatus" : "enum:status"
+    "email_credit_subscriptions" o|--|| "profiles" : "profile"
+    "email_credit_subscriptions" o{--}o "email_credit_usages" : "usages"
+    "email_credit_usages" o|--|| "email_credit_subscriptions" : "subscription"
+    "email_templates" o|--|| "teams" : "team"
+    "email_templates" o|--|| "profiles" : "creator"
+    "email_templates" o{--}o "email_campaigns" : "campaigns"
+    "email_contact_lists" o|--|| "teams" : "team"
+    "email_contact_lists" o|--|| "profiles" : "creator"
+    "email_contact_lists" o{--}o "email_contacts" : "contacts"
+    "email_contact_lists" o{--}o "email_campaigns" : "campaigns"
+    "email_contacts" o|--|| "email_contact_lists" : "list"
+    "email_campaigns" o|--|| "EmailCampaignStatus" : "enum:status"
+    "email_campaigns" o|--|| "teams" : "team"
+    "email_campaigns" o|--|| "profiles" : "creator"
+    "email_campaigns" o|--|| "email_templates" : "template"
+    "email_campaigns" o|--|| "email_contact_lists" : "contactList"
+    "email_campaigns" o{--}o "email_logs" : "logs"
+    "email_logs" o|--|| "EmailLogStatus" : "enum:status"
+    "email_logs" o|--|| "teams" : "team"
+    "email_logs" o|--|o "email_campaigns" : "campaign"
+    "email_logs" o{--}o "email_events" : "events"
+    "email_events" o|--|| "EmailEventType" : "enum:type"
+    "email_events" o|--|| "email_logs" : "log"
 ```

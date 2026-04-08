@@ -152,6 +152,60 @@ enum PortfolioStatus {
   @@map("portfolio_status")
 }
 
+enum EmailCreditPlan {
+  starter
+  plus
+  pro
+  business
+
+  @@map("email_credit_plan")
+}
+
+enum EmailCreditSubscriptionStatus {
+  active
+  suspended
+  canceled
+
+  @@map("email_credit_subscription_status")
+}
+
+enum EmailCampaignStatus {
+  draft
+  scheduled
+  sending
+  sent
+  canceled
+  failed
+
+  @@map("email_campaign_status")
+}
+
+enum EmailLogStatus {
+  queued
+  sent
+  delivered
+  opened
+  clicked
+  bounced
+  complained
+  failed
+
+  @@map("email_log_status")
+}
+
+enum EmailEventType {
+  sent
+  delivered
+  opened
+  clicked
+  bounced
+  complained
+  delivery_delayed
+  unsubscribed
+
+  @@map("email_event_type")
+}
+
 // -----------------------------
 // PROFILES (public.profiles)
 // - Primary key is also a FK to auth.users.id (1:1)
@@ -229,6 +283,12 @@ model Profile {
   updatedStudioWebhookConfigs TeamStudioWebhookConfig[] @relation("StudioWebhookConfigUpdater")
   createdTeamFilterPresets TeamFilterPreset[] @relation("TeamFilterPresetCreator")
   createdTeamStatusRules TeamStatusRule[] @relation("TeamStatusRuleCreator")
+
+  // Email campaigns relations
+  emailCreditSubscription   EmailCreditSubscription?  @relation("EmailCreditSubscriptionOwner")
+  emailTemplatesCreated     EmailTemplate[]           @relation("EmailTemplateCreator")
+  emailContactListsCreated  EmailContactList[]        @relation("EmailContactListCreator")
+  emailCampaignsCreated     EmailCampaign[]           @relation("EmailCampaignCreator")
 
   @@index([role])
   @@index([managerId])
@@ -574,6 +634,12 @@ model Team {
   statusRules      TeamStatusRule[]
   portfolioEntries LeadPortfolio[]
 
+  // Email campaigns relations
+  emailTemplates    EmailTemplate[]    @relation("TeamEmailTemplates")
+  emailContactLists EmailContactList[] @relation("TeamEmailContactLists")
+  emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
+  emailLogs         EmailLog[]         @relation("TeamEmailLogs")
+
   @@index([masterId])
   @@map("teams")
 }
@@ -726,4 +792,184 @@ model TeamMember {
   @@unique([teamId, profileId])
   @@index([profileId])
   @@map("team_members")
+}
+
+// -----------------------------
+// EMAIL CAMPAIGNS MODULE
+// -----------------------------
+
+model EmailCreditSubscription {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  profileId          String                        @unique @db.Uuid
+  plan               EmailCreditPlan
+  monthlyCredits     Int
+  status             EmailCreditSubscriptionStatus @default(active)
+  currentPeriodStart DateTime                      @db.Timestamptz(6)
+  currentPeriodEnd   DateTime                      @db.Timestamptz(6)
+  canceledAt         DateTime?                     @db.Timestamptz(6)
+  createdAt          DateTime                      @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                      @updatedAt @db.Timestamptz(6)
+
+  profile Profile           @relation("EmailCreditSubscriptionOwner", fields: [profileId], references: [id], onDelete: Cascade)
+  usages  EmailCreditUsage[]
+
+  @@index([currentPeriodEnd])
+  @@map("email_credit_subscriptions")
+}
+
+model EmailCreditUsage {
+  id             String                  @id @default(uuid()) @db.Uuid
+  subscriptionId String                  @db.Uuid
+  periodStart    DateTime                @db.Timestamptz(6)
+  periodEnd      DateTime                @db.Timestamptz(6)
+  creditsUsed    Int                     @default(0)
+  overageCount   Int                     @default(0)
+  overageCharged Decimal                 @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime                @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                @updatedAt @db.Timestamptz(6)
+
+  subscription EmailCreditSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, periodStart])
+  @@map("email_credit_usages")
+}
+
+model EmailTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  teamId      String   @db.Uuid
+  createdBy   String   @db.Uuid
+  name        String   @db.Text
+  subject     String   @db.Text
+  previewText String?  @db.Text
+  mailyJson   Json?
+  html        String?  @db.Text
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  team      Team            @relation("TeamEmailTemplates", fields: [teamId], references: [id], onDelete: Cascade)
+  creator   Profile         @relation("EmailTemplateCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  campaigns EmailCampaign[]
+
+  @@index([teamId, isArchived])
+  @@index([createdBy])
+  @@map("email_templates")
+}
+
+model EmailContactList {
+  id             String   @id @default(uuid()) @db.Uuid
+  teamId         String   @db.Uuid
+  createdBy      String   @db.Uuid
+  name           String   @db.Text
+  description    String?  @db.Text
+  csvStoragePath String?  @db.Text
+  totalContacts  Int      @default(0)
+  isArchived     Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+
+  team      Team            @relation("TeamEmailContactLists", fields: [teamId], references: [id], onDelete: Cascade)
+  creator   Profile         @relation("EmailContactListCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  contacts  EmailContact[]
+  campaigns EmailCampaign[]
+
+  @@index([teamId, isArchived])
+  @@index([createdBy])
+  @@map("email_contact_lists")
+}
+
+model EmailContact {
+  id             String          @id @default(uuid()) @db.Uuid
+  listId         String          @db.Uuid
+  email          String          @db.Text
+  name           String?         @db.Text
+  customFields   Json?
+  isUnsubscribed Boolean         @default(false)
+  isBounced      Boolean         @default(false)
+  isComplained   Boolean         @default(false)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(6)
+
+  list EmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, email])
+  @@index([listId, isUnsubscribed])
+  @@index([listId, isBounced])
+  @@map("email_contacts")
+}
+
+model EmailCampaign {
+  id              String              @id @default(uuid()) @db.Uuid
+  teamId          String              @db.Uuid
+  createdBy       String              @db.Uuid
+  name            String              @db.Text
+  templateId      String              @db.Uuid
+  contactListId   String              @db.Uuid
+  status          EmailCampaignStatus @default(draft)
+  scheduledAt     DateTime?           @db.Timestamptz(6)
+  sentAt          DateTime?           @db.Timestamptz(6)
+  totalRecipients Int                 @default(0)
+  totalSent       Int                 @default(0)
+  totalDelivered  Int                 @default(0)
+  totalOpened     Int                 @default(0)
+  totalClicked    Int                 @default(0)
+  totalBounced    Int                 @default(0)
+  totalComplained Int                 @default(0)
+  errorMessage    String?             @db.Text
+  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(6)
+
+  team        Team             @relation("TeamEmailCampaigns", fields: [teamId], references: [id], onDelete: Cascade)
+  creator     Profile          @relation("EmailCampaignCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  template    EmailTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  contactList EmailContactList @relation(fields: [contactListId], references: [id], onDelete: Restrict)
+  logs        EmailLog[]
+
+  @@index([teamId, status])
+  @@index([teamId, scheduledAt])
+  @@index([createdBy])
+  @@map("email_campaigns")
+}
+
+model EmailLog {
+  id             String         @id @default(uuid()) @db.Uuid
+  teamId         String         @db.Uuid
+  campaignId     String?        @db.Uuid
+  resendEmailId  String?        @unique @db.Text
+  recipientEmail String         @db.Text
+  recipientName  String?        @db.Text
+  subject        String         @db.Text
+  status         EmailLogStatus @default(queued)
+  sentAt         DateTime?      @db.Timestamptz(6)
+  deliveredAt    DateTime?      @db.Timestamptz(6)
+  openedAt       DateTime?      @db.Timestamptz(6)
+  clickedAt      DateTime?      @db.Timestamptz(6)
+  bouncedAt      DateTime?      @db.Timestamptz(6)
+  complainedAt   DateTime?      @db.Timestamptz(6)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(6)
+
+  team     Team           @relation("TeamEmailLogs", fields: [teamId], references: [id], onDelete: Cascade)
+  campaign EmailCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  events   EmailEvent[]
+
+  @@index([teamId, status])
+  @@index([teamId, campaignId])
+  @@index([recipientEmail])
+  @@index([sentAt(sort: Desc)])
+  @@map("email_logs")
+}
+
+model EmailEvent {
+  id         String         @id @default(uuid()) @db.Uuid
+  logId      String         @db.Uuid
+  type       EmailEventType
+  occurredAt DateTime       @db.Timestamptz(6)
+  metadata   Json?
+  createdAt  DateTime       @default(now()) @db.Timestamptz(6)
+
+  log EmailLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+
+  @@index([logId, occurredAt(sort: Desc)])
+  @@map("email_events")
 }
