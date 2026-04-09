@@ -8,9 +8,10 @@
  *
  * Ações executadas:
  *   1. Exibir estado atual no auth schema
- *   2. Remover identity Google da auth.identities
- *   3. Normalizar raw_app_meta_data para provider/providers = email
- *   4. Exibir estado final para conferência
+ *   2. Validar que o usuário já possui identity de email
+ *   3. Remover identity Google da auth.identities
+ *   4. Normalizar raw_app_meta_data para provider/providers = email
+ *   5. Exibir estado final para conferência
  *
  * Uso:
  *   Dry-run:
@@ -55,6 +56,22 @@ async function getCurrentState() {
   };
 }
 
+async function hasEmailIdentity() {
+  const emailIdentityRows = await prisma.$queryRaw<Array<{
+    id: string;
+    provider: string;
+    identity_data: unknown;
+  }>>`
+    SELECT id, provider, identity_data
+    FROM auth.identities
+    WHERE user_id = ${AUTH_USER_ID}::uuid
+      AND provider = 'email'
+    LIMIT 1
+  `;
+
+  return emailIdentityRows.length > 0;
+}
+
 async function normalize() {
   await prisma.$transaction(async (tx) => {
     await tx.$executeRaw`
@@ -88,6 +105,14 @@ async function main() {
 
   const before = await getCurrentState();
   console.info("[normalize-google-auth] BEFORE", JSON.stringify(before, null, 2));
+
+  const emailIdentityExists = await hasEmailIdentity();
+  if (!emailIdentityExists) {
+    console.error(
+      "[normalize-google-auth] ABORTED: email identity not found for target user. Create or validate an email identity before removing Google."
+    );
+    process.exit(1);
+  }
 
   if (dryRun) {
     console.info("[normalize-google-auth] DRY RUN - nenhuma alteração aplicada.");
