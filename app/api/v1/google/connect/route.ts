@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
 
 const LOG_PREFIX = "[GoogleConnect]";
 
@@ -88,6 +89,39 @@ export async function POST(request: NextRequest) {
 
     const { accessToken, refreshToken, expiresAt, email } = validation.data;
 
+    const currentProfile = await profileRepository.findBySupabaseId(supabaseId);
+    if (!currentProfile) {
+      logError("Perfil nao encontrado para o usuario autenticado.", {
+        status: "error",
+        step: "profile_lookup",
+        supabaseId,
+      });
+      const output = new Output(false, [], ["Perfil nao encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    if (email) {
+      const existingGoogleEmailProfile = await profileRepository.findByGoogleEmail(email);
+      if (existingGoogleEmailProfile && existingGoogleEmailProfile.supabaseId !== supabaseId) {
+        logError("Tentativa de vincular Google email ja associado a outro perfil.", {
+          status: "error",
+          step: "google_email_conflict",
+          supabaseId,
+          email,
+          conflictingSupabaseId: existingGoogleEmailProfile.supabaseId,
+        });
+        const output = new Output(
+          false,
+          [],
+          ["Este e-mail Google ja esta vinculado a outro usuario."],
+          null
+        );
+        return NextResponse.json(output, { status: 409 });
+      }
+    }
+
+    const previousGoogleEmail = currentProfile.googleEmail;
+
     const profile = await profileRepository.updateGoogleCalendarAuth(supabaseId, {
       accessToken,
       refreshToken: refreshToken ?? null,
@@ -109,6 +143,34 @@ export async function POST(request: NextRequest) {
       });
       const output = new Output(false, [], ["Falha ao salvar credenciais Google"], null);
       return NextResponse.json(output, { status: 400 });
+    }
+
+    if (email && previousGoogleEmail && previousGoogleEmail !== email) {
+      logInfo("Google email atualizado para o perfil autenticado.", {
+        status: "success",
+        step: "google_email_changed",
+        supabaseId,
+        previousGoogleEmail,
+        newGoogleEmail: email,
+      });
+    }
+
+    const notifyOutput = await googleConnectionUseCase.notifyGoogleConnected({
+      supabaseId,
+      profileId: currentProfile.id,
+      activeTeamId: currentProfile.activeTeamId ?? null,
+      googleEmail: email ?? currentProfile.email,
+      previousGoogleEmail,
+    });
+
+    if (!notifyOutput.isValid) {
+      logError("Falha ao registrar notificacao de conexao Google.", {
+        status: "error",
+        step: "notify_connect",
+        supabaseId,
+        email: email ?? null,
+        errors: notifyOutput.errorMessages,
+      });
     }
 
     logInfo("Google conectado com sucesso.", {

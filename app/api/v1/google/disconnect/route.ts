@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
 
 const LOG_PREFIX = "[GoogleDisconnect]";
 
@@ -49,6 +50,9 @@ export async function POST(request: NextRequest) {
 
     supabaseId = user.id;
 
+    const currentProfile = await profileRepository.findBySupabaseId(supabaseId);
+    const disconnectedEmail = currentProfile?.googleEmail ?? currentProfile?.email ?? null;
+
     const profile = await profileRepository.updateGoogleCalendarAuth(supabaseId, {
       accessToken: null,
       refreshToken: null,
@@ -75,6 +79,25 @@ export async function POST(request: NextRequest) {
         } else {
           logInfo("Identity Google removida do Supabase Auth.", { status: "success", step: "unlink_identity", supabaseId });
         }
+      }
+    }
+
+    if (currentProfile) {
+      const notifyOutput = await googleConnectionUseCase.notifyGoogleDisconnected({
+        supabaseId,
+        profileId: currentProfile.id,
+        activeTeamId: currentProfile.activeTeamId ?? null,
+        googleEmail: disconnectedEmail,
+      });
+
+      if (!notifyOutput.isValid) {
+        logError("Falha ao registrar notificacao de desconexao Google.", {
+          status: "error",
+          step: "notify_disconnect",
+          supabaseId,
+          email: disconnectedEmail,
+          errors: notifyOutput.errorMessages,
+        });
       }
     }
 

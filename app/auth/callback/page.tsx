@@ -84,6 +84,31 @@ function AuthCallbackContent() {
       const refreshToken = session.provider_refresh_token;
       const supabaseId = session.user.id;
       const next = searchParams.get("next") || "/crm";
+      const connectContextRaw = sessionStorage.getItem("googleConnectContext");
+      let connectContext: { source?: string; expectedSupabaseId?: string } | null = null;
+      if (connectContextRaw) {
+        try {
+          connectContext = JSON.parse(connectContextRaw) as {
+            source?: string;
+            expectedSupabaseId?: string;
+          };
+        } catch {
+          sessionStorage.removeItem("googleConnectContext");
+        }
+      }
+      const isAccountReconnectFlow = next === "/account" || connectContext?.source === "account";
+
+      if (
+        isAccountReconnectFlow &&
+        connectContext?.expectedSupabaseId &&
+        connectContext.expectedSupabaseId !== supabaseId
+      ) {
+        sessionStorage.removeItem("googleConnectContext");
+        setError(
+          "A autenticacao retornou para um usuario diferente do esperado. Tente reconectar novamente."
+        );
+        return;
+      }
 
       const googleIdentity = session.user.identities?.find(
         (identity) => identity.provider === "google"
@@ -99,6 +124,14 @@ function AuthCallbackContent() {
       });
 
       if (profileResponse.status === 404) {
+        if (isAccountReconnectFlow) {
+          sessionStorage.removeItem("googleConnectContext");
+          setError(
+            "Nao foi possivel vincular a conta Google ao usuario atual. Tente novamente na tela de conta."
+          );
+          return;
+        }
+
         // Verificar se o e-mail do Google já está vinculado a outro profile existente.
         // Isso acontece quando o usuário desconecta o Google e tenta conectar um novo
         // e-mail que pertence a outro usuário já cadastrado na plataforma.
@@ -166,9 +199,12 @@ function AuthCallbackContent() {
       });
 
       if (!response.ok) {
+        sessionStorage.removeItem("googleConnectContext");
         setError("Falha ao salvar integração do Google.");
         return;
       }
+
+      sessionStorage.removeItem("googleConnectContext");
 
       router.replace(`/${supabaseId}${next}`);
     };

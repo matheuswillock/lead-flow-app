@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import { Bell, CircleAlert, ExternalLink, RefreshCw } from "lucide-react";
+import { Bell, CircleAlert, ExternalLink, Mail, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,6 +49,31 @@ function hasLeadLink(notification: NotificationItem) {
 
 function isProposalPendingNotification(notification: NotificationItem) {
   return notification.type === "LEAD_PROPOSAL_PENDING";
+}
+
+function getNotificationEvent(notification: NotificationItem) {
+  const metadata = notification.metadata;
+  if (!metadata || typeof metadata !== "object") return null;
+  return typeof metadata.event === "string" ? metadata.event : null;
+}
+
+function getGoogleNotificationBadge(notification: NotificationItem) {
+  const event = getNotificationEvent(notification);
+  if (event === "GOOGLE_CONNECTED") {
+    return {
+      label: "Google conectado",
+      className: "bg-emerald-100 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-200",
+    };
+  }
+
+  if (event === "GOOGLE_DISCONNECTED") {
+    return {
+      label: "Google desconectado",
+      className: "bg-rose-100 text-rose-900 dark:bg-rose-500/20 dark:text-rose-200",
+    };
+  }
+
+  return null;
 }
 
 export function NotificationsContainer() {
@@ -149,6 +174,7 @@ export function NotificationsContainer() {
           const activityId = getActivityId(notification);
           const canOpenLead = hasLeadLink(notification) && !!leadCode;
           const isProposalPending = isProposalPendingNotification(notification);
+          const googleBadge = getGoogleNotificationBadge(notification);
           const actorName =
             notification.actor?.fullName ||
             notification.actor?.email ||
@@ -169,6 +195,12 @@ export function NotificationsContainer() {
                     <div className="mb-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
                       <CircleAlert className="h-3.5 w-3.5" />
                       Urgente
+                    </div>
+                  ) : null}
+                  {googleBadge ? (
+                    <div className={cn("mb-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium", googleBadge.className)}>
+                      <Mail className="h-3.5 w-3.5" />
+                      {googleBadge.label}
                     </div>
                   ) : null}
                   <p className="text-sm font-medium">{notification.message}</p>
