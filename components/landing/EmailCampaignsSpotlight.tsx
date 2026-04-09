@@ -49,7 +49,7 @@ export function EmailCampaignsSpotlight() {
         className="pointer-events-none absolute inset-0 opacity-20"
         style={{
           background:
-            "radial-gradient(50% 40% at 80% 50%, color-mix(in oklab, var(--chart-2) 20%, transparent) 0%, transparent 60%), radial-gradient(30% 30% at 10% 80%, color-mix(in oklab, var(--primary) 15%, transparent) 0%, transparent 60%)",
+            "radial-gradient(50% 40% at 80% 50%, color-mix(in oklab, var(--brand-rose) 20%, transparent) 0%, transparent 60%), radial-gradient(30% 30% at 10% 80%, color-mix(in oklab, var(--primary) 15%, transparent) 0%, transparent 60%)",
         }}
       />
 
@@ -86,7 +86,7 @@ export function EmailCampaignsSpotlight() {
             Email marketing integrado{" "}
             <span
               style={{
-                background: "linear-gradient(135deg, var(--primary), var(--chart-2))",
+                background: "linear-gradient(135deg, var(--primary), var(--brand-rose))",
                 WebkitBackgroundClip: "text",
                 backgroundClip: "text",
                 color: "transparent",

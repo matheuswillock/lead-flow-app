@@ -49,7 +49,7 @@ export function TestimonialsSection() {
         className="pointer-events-none absolute inset-0 opacity-20"
         style={{
           background:
-            "radial-gradient(45% 35% at 70% 30%, color-mix(in oklab, var(--chart-4) 18%, transparent) 0%, transparent 60%)",
+            "radial-gradient(45% 35% at 70% 30%, color-mix(in oklab, var(--brand-purple) 18%, transparent) 0%, transparent 60%)",
         }}
       />
 
@@ -65,7 +65,7 @@ export function TestimonialsSection() {
             Corretores que{" "}
             <span
               style={{
-                background: "linear-gradient(135deg, var(--primary), var(--chart-2))",
+                background: "linear-gradient(135deg, var(--primary), var(--brand-rose))",
                 WebkitBackgroundClip: "text",
                 backgroundClip: "text",
                 color: "transparent",

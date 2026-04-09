@@ -93,7 +93,7 @@ export default function HomePage() {
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "radial-gradient(55% 45% at 15% 0%, color-mix(in oklab, var(--primary) 18%, transparent) 0%, transparent 60%), radial-gradient(35% 25% at 100% 5%, color-mix(in oklab, var(--chart-2) 14%, transparent) 0%, transparent 60%)",
+              "radial-gradient(55% 45% at 15% 0%, color-mix(in oklab, var(--primary) 18%, transparent) 0%, transparent 60%), radial-gradient(35% 25% at 100% 5%, color-mix(in oklab, var(--brand-rose) 14%, transparent) 0%, transparent 60%)",
           }}
         />
 
@@ -138,7 +138,7 @@ export default function HomePage() {
                 <span className="block">
                   <span
                     style={{
-                      background: "linear-gradient(135deg, var(--primary) 0%, var(--chart-2) 100%)",
+                      background: "linear-gradient(135deg, var(--primary) 0%, var(--brand-rose) 100%)",
                       WebkitBackgroundClip: "text",
                       backgroundClip: "text",
                       color: "transparent",

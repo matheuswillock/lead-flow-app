@@ -31,6 +31,8 @@
 |-------|-----------|-----------|------|
 | `--primary` | `#ff6900` | `#f54900` | Brand orange — CTAs, active states, highlights, links |
 | `--primary-foreground` | `#fff7f0` | `#fff7f0` | Text on primary backgrounds |
+| `--brand-rose` | `#e57082` | `#e06070` | Logo rose — brand gradient endpoint, background orbs |
+| `--brand-purple` | `#cd6cdd` | `#b85ec8` | Logo lilás — testimonials orb, optional 3rd gradient stop |
 | `--background` | `#ffffff` | `#0d0d0e` | Page background |
 | `--foreground` | `#111111` | `#f5f5f5` | Primary text |
 | `--card` | `#ffffff` | `#18181b` | Card surfaces |
@@ -55,8 +57,8 @@
 ### Gradient Recipe
 
 ```css
-/* Brand gradient — heading accent text */
-background: linear-gradient(135deg, #ff6900 0%, #14b8a6 100%);
+/* Brand gradient — heading accent text (matches logo orange → rose) */
+background: linear-gradient(135deg, var(--primary) 0%, var(--brand-rose) 100%);
 -webkit-background-clip: text;
 background-clip: text;
 color: transparent;
@@ -438,13 +440,15 @@ xl:  1280px — max-width containers centered, larger hero font
 ### Quick Color Reference
 ```
 Primary orange:    var(--primary)      → #ff6900 (light) / #f54900 (dark)
+Brand rose:        var(--brand-rose)   → #e57082 (light) / #e06070 (dark)  ← gradient endpoint
+Brand purple:      var(--brand-purple) → #cd6cdd (light) / #b85ec8 (dark)  ← logo lilás
 Text primary:      var(--foreground)   → #111111 (light) / #f5f5f5 (dark)
 Text secondary:    var(--muted-foreground)
 Card surface:      var(--card)
 Border:            var(--border)
 Background:        var(--background)
-Chart accent 2:    var(--chart-2)      → teal (#14b8a6 light)
-Chart accent 4:    var(--chart-4)      → amber (#fbbf24 light)
+Chart accent 2:    var(--chart-2)      → teal (data charts ONLY — NOT for brand gradients)
+Chart accent 4:    var(--chart-4)      → amber (data charts ONLY)
 ```
 
 ### Reusable Patterns

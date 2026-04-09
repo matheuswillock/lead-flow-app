@@ -65,7 +65,7 @@ export function HowItWorksSection() {
             Como funciona o{" "}
             <span
               style={{
-                background: "linear-gradient(135deg, var(--primary), var(--chart-2))",
+                background: "linear-gradient(135deg, var(--primary), var(--brand-rose))",
                 WebkitBackgroundClip: "text",
                 backgroundClip: "text",
                 color: "transparent",

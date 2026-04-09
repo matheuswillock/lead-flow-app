@@ -34,7 +34,7 @@ export default function LandingSection() {
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "radial-gradient(60% 40% at 20% 0%, color-mix(in oklab, var(--primary) 22%, transparent) 0%, transparent 60%), radial-gradient(30% 20% at 100% 10%, color-mix(in oklab, var(--chart-2) 18%, transparent) 0%, transparent 60%)",
+              "radial-gradient(60% 40% at 20% 0%, color-mix(in oklab, var(--primary) 22%, transparent) 0%, transparent 60%), radial-gradient(30% 20% at 100% 10%, color-mix(in oklab, var(--brand-rose) 18%, transparent) 0%, transparent 60%)",
           }}
         />
 
