@@ -133,10 +133,9 @@ export default function HomePage() {
 
               {/* Headline */}
               <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[3.75rem] xl:text-7xl font-extrabold leading-[1.1] tracking-tight text-foreground">
-                <span className="block">Gerencie leads,</span>
-                <span className="block">equipe e marketing</span>
+                <span className="block">Feche mais planos</span>
+                <span className="block">de saúde com o</span>
                 <span className="block">
-                  no{" "}
                   <span
                     style={{
                       background: "linear-gradient(135deg, var(--primary) 0%, var(--chart-2) 100%)",
@@ -145,15 +144,15 @@ export default function HomePage() {
                       color: "transparent",
                     }}
                   >
-                    CRM dos corretores
+                    CRM certo
                   </span>
+                  {" "}para o seu time.
                 </span>
-                <span className="block">de saúde.</span>
               </h1>
 
               {/* Subtitle */}
               <p className="mt-6 max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed">
-                Pipeline Kanban, gestão de times, campanhas de email e métricas em tempo real — tudo em uma única plataforma feita para corretores de planos de saúde.
+                Pipeline Kanban, gestão de times, campanhas de email e métricas em tempo real — tudo em uma plataforma feita para corretores de planos de saúde.
               </p>
 
               {/* CTAs */}
