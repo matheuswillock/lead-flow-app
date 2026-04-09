@@ -99,6 +99,22 @@ function AuthCallbackContent() {
       });
 
       if (profileResponse.status === 404) {
+        // Verificar se o e-mail do Google já está vinculado a outro profile existente.
+        // Isso acontece quando o usuário desconecta o Google e tenta conectar um novo
+        // e-mail que pertence a outro usuário já cadastrado na plataforma.
+        if (googleEmail) {
+          const emailCheckResponse = await fetch(
+            `/api/v1/profiles/by-email?email=${encodeURIComponent(googleEmail)}`,
+            { cache: "no-store" }
+          );
+          if (emailCheckResponse.ok) {
+            setError(
+              "Este e-mail Google já está vinculado a outra conta na plataforma. Faça login com a conta original."
+            );
+            return;
+          }
+        }
+
         const userMetadata = session.user.user_metadata as { full_name?: string; name?: string } | undefined;
         const fullName = userMetadata?.full_name || userMetadata?.name;
 

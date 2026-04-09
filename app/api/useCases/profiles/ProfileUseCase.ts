@@ -390,6 +390,19 @@ export class RegisterNewUserProfile implements IProfileUseCase {
             return new Output(false, [], ["Failed to delete profile"], null);
         }
     }
+
+    async checkEmailExists(email: string): Promise<Output> {
+        try {
+            const profile = await this.repo.findByEmail(email);
+            if (!profile) {
+                return new Output(false, [], ["Profile nao encontrado"], null);
+            }
+            return new Output(true, ["Profile encontrado"], [], { exists: true });
+        } catch (error) {
+            console.error("[ProfileUseCase] checkEmailExists error:", error);
+            return new Output(false, [], ["Erro ao verificar e-mail"], null);
+        }
+    }
 }
 
 export class RegisterExistingUserProfile implements IProfileUseCase {
@@ -503,5 +516,10 @@ export class RegisterExistingUserProfile implements IProfileUseCase {
     async deleteProfile(supabaseId: string): Promise<Output> {
         const base = new RegisterNewUserProfile(this.repo);
         return base.deleteProfile(supabaseId);
+    }
+
+    async checkEmailExists(email: string): Promise<Output> {
+        const base = new RegisterNewUserProfile(this.repo);
+        return base.checkEmailExists(email);
     }
 }

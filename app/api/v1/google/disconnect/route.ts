@@ -63,6 +63,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
+    const { data: identitiesData, error: identitiesError } = await supabase.auth.getUserIdentities();
+    if (identitiesError) {
+      logError("Falha ao buscar identities do usuario.", { status: "error", step: "get_identities", supabaseId, error: identitiesError.message });
+    } else {
+      const googleIdentity = identitiesData?.identities?.find((i) => i.provider === "google");
+      if (googleIdentity) {
+        const { error: unlinkError } = await supabase.auth.unlinkIdentity(googleIdentity);
+        if (unlinkError) {
+          logError("Falha ao remover identity Google do Supabase Auth.", { status: "error", step: "unlink_identity", supabaseId, error: unlinkError.message });
+        } else {
+          logInfo("Identity Google removida do Supabase Auth.", { status: "success", step: "unlink_identity", supabaseId });
+        }
+      }
+    }
+
     logInfo("Google desconectado com sucesso.", {
       status: "success",
       step: "persist",
