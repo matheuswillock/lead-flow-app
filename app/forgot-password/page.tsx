@@ -11,6 +11,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 
 export default function ForgotPasswordPage() {
+  const SUCCESS_MESSAGE = 'Link enviado com sucesso para seu e-mail.'
+
   const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,17 +47,16 @@ export default function ForgotPasswordPage() {
         body: JSON.stringify({ email })
       })
 
-      const result = await response.json()
-
-      if (result.isValid) {
-        setSuccess(true)
-        setEmail('')
-      } else {
-        setError(result.errorMessages?.[0] || 'Erro ao enviar e-mail de recuperação')
+      if (!response.ok) {
+        console.error('Forgot password returned non-OK status', response.status)
       }
+
+      setSuccess(true)
+      setEmail('')
     } catch (err) {
       console.error('Erro ao solicitar reset de senha:', err)
-      setError('Erro ao processar solicitação. Tente novamente.')
+      setSuccess(true)
+      setEmail('')
     } finally {
       setIsLoading(false)
     }
@@ -84,7 +85,7 @@ export default function ForgotPasswordPage() {
               <Alert className="bg-green-50 border-green-200">
                 <Mail className="h-4 w-4 text-green-600" />
                 <AlertDescription className="text-green-800">
-                  Enviamos um link de recuperação de senha para seu e-mail.
+                  {SUCCESS_MESSAGE}
                 </AlertDescription>
               </Alert>
 
