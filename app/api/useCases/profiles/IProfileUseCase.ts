@@ -41,4 +41,5 @@ export interface IProfileUseCase {
   updateProfileIcon(supabaseId: string, profileIconId: string | null): Promise<Output>;
   updatePassword(supabaseId: string, newPassword: string): Promise<Output>;
   deleteProfile(supabaseId: string): Promise<Output>;
+  checkEmailExists(email: string): Promise<Output>;
 }
