@@ -80,7 +80,6 @@
       "app/auth/callback",
       "app/checkout-return",
       "app/cookies",
-      "app/forgot-password",
       "app/operator-confirmed",
       "app/pix-confirmed",
       "app/privacy-policy",
