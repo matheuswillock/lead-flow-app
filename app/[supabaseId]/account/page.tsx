@@ -337,6 +337,12 @@ export default function AccountProfilePage() {
         linkIdentity?: (params: any) => Promise<{ error: { message: string } | null }>;
       };
 
+      // Flag de contexto para o callback distinguir reconexao da tela de conta.
+      sessionStorage.setItem(
+        "googleConnectContext",
+        JSON.stringify({ source: "account", expectedSupabaseId: supabaseId })
+      );
+
       const params: SignInWithOAuthCredentials = {
         provider: "google",
         options: {
@@ -354,12 +360,23 @@ export default function AccountProfilePage() {
         data.user?.identities?.some((identity) => identity.provider === "google") ?? false;
 
       const linkIdentity = auth.linkIdentity?.bind(auth);
-      const signInWithOAuth = auth.signInWithOAuth.bind(auth);
 
-      const { error } =
-        !hasGoogleIdentity && linkIdentity ? await linkIdentity(params) : await signInWithOAuth(params);
+      if (hasGoogleIdentity) {
+        sessionStorage.removeItem("googleConnectContext");
+        toast.info("Sua conta ja possui identidade Google vinculada.");
+        return;
+      }
+
+      if (!linkIdentity) {
+        sessionStorage.removeItem("googleConnectContext");
+        toast.error("Nao foi possivel iniciar a vinculacao Google nesta versao do cliente.");
+        return;
+      }
+
+      const { error } = await linkIdentity(params);
 
       if (error) {
+        sessionStorage.removeItem("googleConnectContext");
         if (error.message === "Manual linking is disabled") {
           toast.error("Vinculacao manual desativada no Supabase. Ative em Auth > Providers.");
         } else {
@@ -367,6 +384,7 @@ export default function AccountProfilePage() {
         }
       }
     } catch (error) {
+      sessionStorage.removeItem("googleConnectContext");
       console.error("Erro ao conectar Google:", error);
       toast.error("Erro inesperado ao conectar Google");
     } finally {

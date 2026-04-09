@@ -1,4 +1,4 @@
-import { NotificationType } from "@prisma/client";
+import { NotificationType, type Prisma } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 
 type MentionNotificationInput = {
@@ -75,7 +75,28 @@ type CountUnreadInput = {
   teamId: string;
 };
 
+type SystemNotificationInput = {
+  recipientProfileId: string;
+  teamId: string;
+  message: string;
+  type?: NotificationType;
+  metadata?: Prisma.InputJsonValue;
+};
+
 class NotificationService {
+  async createSystemNotification(input: SystemNotificationInput) {
+    return prisma.notification.create({
+      data: {
+        recipientProfileId: input.recipientProfileId,
+        actorProfileId: null,
+        teamId: input.teamId,
+        type: input.type ?? NotificationType.TEAM_MEMBER_ADDED,
+        message: input.message,
+        metadata: input.metadata,
+      },
+    });
+  }
+
   async createMentionNotifications(input: MentionNotificationInput) {
     const uniqueRecipients = Array.from(
       new Set(

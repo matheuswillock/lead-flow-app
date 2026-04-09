@@ -587,10 +587,11 @@ export function LeadForm({
                     <FormItem className="sm:col-span-2">
                         <FormLabel className="block text-sm font-medium mb-1">Observações Adicionais</FormLabel>
                         <FormControl>
-                            <Input
+                            <Textarea
                                 {...field}
                                 placeholder="Observações relevantes"
                                 disabled={isLoading || isUpdating}
+                                rows={3}
                             />
                         </FormControl>
                     </FormItem>
