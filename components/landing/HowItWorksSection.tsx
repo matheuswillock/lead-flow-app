@@ -1,39 +1,44 @@
 "use client"
 
 import { div as MotionDiv } from "framer-motion/client"
-import { ArrowRight, BarChart3, CalendarDays, Filter, UserPlus, Users2 } from "lucide-react"
+import { BarChart3, CalendarDays, Filter, UserPlus, Users2 } from "lucide-react"
 
 const steps = [
   {
+    number: "01",
     icon: UserPlus,
-    title: "1. Capture Leads",
-    description: "Adicione leads manualmente ou via integração com formulários externos. Todos os dados organizados em um só lugar.",
-    color: "var(--chart-1)"
+    title: "Capture Leads",
+    description: "Adicione leads manualmente ou via integração com formulários externos.",
+    color: "var(--chart-1)",
   },
   {
+    number: "02",
     icon: Filter,
-    title: "2. Organize no Pipeline",
-    description: "Leads automaticamente aparecem no quadro Kanban. Defina suas etapas personalizadas: Novo, Contato, Proposta, Fechamento.",
-    color: "var(--chart-2)"
+    title: "Organize no Pipeline",
+    description: "Leads aparecem no Kanban. Defina etapas: Novo, Contato, Proposta, Fechamento.",
+    color: "var(--chart-2)",
   },
   {
+    number: "03",
     icon: CalendarDays,
-    title: "3. Agende Reuniões",
-    description: "Marque reuniões direto do lead com integração ao Google Calendar e controle seus compromissos diários.",
-    color: "var(--chart-3)"
+    title: "Agende Reuniões",
+    description: "Marque reuniões direto do lead com integração ao Google Calendar.",
+    color: "var(--chart-3)",
   },
   {
+    number: "04",
     icon: Users2,
-    title: "4. Trabalhe em Times",
-    description: "Separe operações por time, gerencie funções (SDR/Closer) e mantenha o trabalho organizado por workspace.",
-    color: "var(--chart-4)"
+    title: "Trabalhe em Times",
+    description: "Separe operações por time, gerencie funções SDR/Closer por workspace.",
+    color: "var(--chart-4)",
   },
   {
+    number: "05",
     icon: BarChart3,
-    title: "5. Analise & Cresça",
-    description: "Acompanhe métricas essenciais e indicadores de performance para tomar decisões rápidas.",
-    color: "var(--primary)"
-  }
+    title: "Analise & Cresça",
+    description: "Acompanhe métricas e indicadores para tomar decisões rápidas.",
+    color: "var(--primary)",
+  },
 ]
 
 export function HowItWorksSection() {
@@ -41,7 +46,7 @@ export function HowItWorksSection() {
     <section id="how-it-works" className="relative py-20 md:py-28">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-25"
+        className="pointer-events-none absolute inset-0 opacity-20"
         style={{
           background:
             "radial-gradient(50% 35% at 20% 50%, color-mix(in oklab, var(--chart-3) 18%, transparent) 0%, transparent 60%)",
@@ -74,88 +79,92 @@ export function HowItWorksSection() {
           </p>
         </MotionDiv>
 
-        <div className="relative">
-          {/* Connection line - desktop only */}
+        {/* Desktop: horizontal timeline */}
+        <div className="hidden lg:block relative">
+          {/* Connector line */}
           <div
-            className="hidden lg:block absolute left-[60px] top-[60px] bottom-[60px] w-0.5 opacity-20"
+            className="absolute left-0 right-0 h-px opacity-20 top-[3.5rem]"
             style={{ background: "var(--border)" }}
+            aria-hidden
           />
 
-          <div className="space-y-12">
+          <div className="grid grid-cols-5 gap-4">
             {steps.map((step, idx) => (
               <MotionDiv
-                key={step.title}
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
+                key={step.number}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: idx * 0.1 }}
-                className="relative"
+                className="flex flex-col items-center text-center px-2"
               >
-                <div className="flex items-start gap-6">
+                {/* Number + icon circle */}
+                <div className="relative mb-5">
+                  <span
+                    className="absolute -top-5 left-1/2 -translate-x-1/2 text-5xl font-extrabold leading-none select-none"
+                    style={{ color: step.color, opacity: 0.15 }}
+                  >
+                    {step.number}
+                  </span>
                   <div
-                    className="relative z-10 flex h-[120px] w-[120px] flex-shrink-0 items-center justify-center rounded-2xl shadow-lg backdrop-blur transition-transform hover:scale-105"
+                    className="relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg"
                     style={{
                       background: `color-mix(in oklab, ${step.color} 15%, var(--card))`,
                       border: `1px solid color-mix(in oklab, ${step.color} 30%, transparent)`,
                     }}
                   >
-                    <step.icon className="h-12 w-12" style={{ color: step.color }} />
-                  </div>
-
-                  <div className="flex-1 pt-4">
-                    <h3 className="text-2xl font-bold mb-3">{step.title}</h3>
-                    <p className="text-lg text-muted-foreground max-w-2xl leading-relaxed">
-                      {step.description}
-                    </p>
-
-                    {idx < steps.length - 1 && (
-                      <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground">
-                        <ArrowRight className="h-4 w-4" style={{ color: step.color }} />
-                        <span>Próximo passo</span>
-                      </div>
-                    )}
+                    <step.icon className="h-6 w-6" style={{ color: step.color }} />
                   </div>
                 </div>
+
+                <h3 className="text-base font-bold mb-2">{step.title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{step.description}</p>
               </MotionDiv>
             ))}
           </div>
         </div>
 
-        {/*
-        <MotionDiv
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6, delay: 0.5 }}
-          className="mt-16 text-center"
-        >
-          <div
-            className="inline-block rounded-2xl border px-8 py-6 shadow-lg backdrop-blur"
-            style={{
-              borderColor: "var(--border)",
-              background: "color-mix(in oklab, var(--card) 80%, transparent)",
-            }}
-          >
-            <p className="text-lg font-semibold mb-2">
-              Pronto para organizar seu time, agenda e funil?
-            </p>
-            <p className="text-muted-foreground mb-4">
-              Crie sua conta e comece a usar o Corretor Studio hoje mesmo.
-            </p>
-            <a
-              href="/subscribe"
-              className="cursor-pointer inline-flex items-center justify-center rounded-xl px-6 py-3 font-semibold shadow-lg transition-all hover:shadow-xl"
-              style={{
-                background: "var(--primary)",
-                color: "var(--primary-foreground)",
-              }}
+        {/* Mobile: vertical list */}
+        <div className="lg:hidden space-y-8">
+          {steps.map((step, idx) => (
+            <MotionDiv
+              key={step.number}
+              initial={{ opacity: 0, x: -16 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: idx * 0.08 }}
+              className="flex items-start gap-5"
             >
-              Criar minha conta
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </a>
-          </div>
-        </MotionDiv>
-        */}
+              {/* Number circle */}
+              <div className="flex-shrink-0 flex flex-col items-center">
+                <div
+                  className="flex h-12 w-12 items-center justify-center rounded-2xl shadow-lg font-extrabold text-sm"
+                  style={{
+                    background: `color-mix(in oklab, ${step.color} 15%, var(--card))`,
+                    border: `1px solid color-mix(in oklab, ${step.color} 30%, transparent)`,
+                    color: step.color,
+                  }}
+                >
+                  {step.number}
+                </div>
+                {idx < steps.length - 1 && (
+                  <div
+                    className="w-px flex-1 mt-2 min-h-[2rem] opacity-20"
+                    style={{ background: "var(--border)" }}
+                  />
+                )}
+              </div>
+
+              <div className="pt-2 pb-4">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <step.icon className="h-4 w-4" style={{ color: step.color }} />
+                  <h3 className="text-lg font-bold">{step.title}</h3>
+                </div>
+                <p className="text-muted-foreground leading-relaxed">{step.description}</p>
+              </div>
+            </MotionDiv>
+          ))}
+        </div>
       </div>
     </section>
   )

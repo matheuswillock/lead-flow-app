@@ -1,13 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "../ui/button";
-import { LogIn } from "lucide-react";
+import { ArrowRight, LogIn } from "lucide-react";
 
 export function LandingHeader() {
     return (
-        <header className="sticky top-0 z-20 border-b bg-background" style={{ borderColor: "var(--border)" }}>
+        <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur-lg" style={{ borderColor: "var(--border)" }}>
             <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">
-                <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
+                <Link href="/" className="flex items-center gap-2 font-bold tracking-tight flex-shrink-0">
                     <Image
                         src="/corretor-studio-icon.svg"
                         alt="Corretor Studio"
@@ -16,12 +16,15 @@ export function LandingHeader() {
                         className="h-8 w-8"
                         priority
                     />
-                    <span>Corretor Studio</span>
+                    <span className="hidden sm:inline">Corretor Studio</span>
                 </Link>
 
                 <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-muted-foreground">
                     <Link href="/#features" className="hover:text-foreground transition-colors">
                         Funcionalidades
+                    </Link>
+                    <Link href="/#email-campaigns" className="hover:text-foreground transition-colors">
+                        Campanhas
                     </Link>
                     <Link href="/#how-it-works" className="hover:text-foreground transition-colors">
                         Como funciona
@@ -31,14 +34,33 @@ export function LandingHeader() {
                     </Link>
                 </nav>
 
-                <Button
-                    className="cursor-pointer inline-flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-lg font-semibold text-foreground/80 hover:text-foreground "
-                    variant="link"
-                >
-                    <Link href="/sign-in" className="inline-flex items-center gap-2 text-foreground">
-                        <LogIn className="h-8 w-8" /> Entrar
-                    </Link>
-                </Button>
+                <div className="flex items-center gap-2 sm:gap-3">
+                    <Button
+                        asChild
+                        variant="ghost"
+                        className="hidden sm:inline-flex items-center gap-2 text-sm font-medium text-foreground/70 hover:text-foreground"
+                    >
+                        <Link href="/sign-in">
+                            <LogIn className="h-4 w-4" />
+                            Entrar
+                        </Link>
+                    </Button>
+
+                    <Button
+                        asChild
+                        className="inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold shadow-md"
+                        style={{
+                            background: "var(--primary)",
+                            color: "var(--primary-foreground)",
+                            boxShadow: "0 4px 14px -4px color-mix(in oklab, var(--primary) 50%, transparent)",
+                        }}
+                    >
+                        <Link href="/#demo">
+                            Começar grátis
+                            <ArrowRight className="h-4 w-4" />
+                        </Link>
+                    </Button>
+                </div>
             </div>
         </header>
     );
