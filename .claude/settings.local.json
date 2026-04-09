@@ -53,7 +53,8 @@
       "Bash(find /a/develop/lead-flow-app/app/lead-form/[supabaseId]/[teamId]/features/context -type f -name \"*.ts\")",
       "Bash(find /a/develop/lead-flow-app/app/lead-form/[supabaseId]/[teamId]/features/services -type f -name \"*.ts\")",
       "Bash(ls -la /a/develop/lead-flow-app/app/api/v1/leads/*/activities/)",
-      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(xargs ls:*)"
     ]
   }
 }
