@@ -3,7 +3,6 @@ import Link from "next/link"
 import Image from "next/image"
 import { ArrowRight, CheckCircle2, TrendingUp, Users } from "lucide-react"
 import { LandingHeader } from "@/components/landing/landingHeader"
-import { LogoBar } from "@/components/landing/LogoBar"
 import { FeaturesSection } from "@/components/landing/FeaturesSection"
 import { EmailCampaignsSpotlight } from "@/components/landing/EmailCampaignsSpotlight"
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection"
@@ -12,6 +11,11 @@ import { LandingFooter } from "@/components/landing/LandingFooter"
 import { HomeClientRuntime } from "@/components/landing/HomeClientRuntime"
 import { createPublicPageMetadata } from "@/lib/metadata/policies"
 import { getAbsoluteUrl } from "@/lib/metadata/share"
+import {
+  getPublicResourcePath,
+  PUBLIC_RESOURCE_ENTRIES,
+  PUBLIC_RESOURCES_HUB_PATH,
+} from "@/lib/seo/publicResources"
 
 const homeTitle = "Corretor Studio | CRM e Marketing para Corretores de Saúde"
 const homeDescription =
@@ -21,6 +25,13 @@ export const metadata: Metadata = createPublicPageMetadata({
   title: homeTitle,
   description: homeDescription,
   canonicalPath: "/",
+  keywords: [
+    "crm para corretores de saude",
+    "pipeline comercial planos de saude",
+    "gestao de leads corretora",
+    "software para corretor de saude",
+    "corretor studio",
+  ],
 })
 
 export default function HomePage() {
@@ -56,6 +67,43 @@ export default function HomePage() {
       "Plataforma de gestão de leads para corretores de saúde com CRM, pipeline comercial, times e agendamento de reuniões. Campanhas de email em breve.",
   }
 
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: [
+      {
+        "@type": "Question",
+        name: "O Corretor Studio e indicado para qual tipo de corretor?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "A plataforma foi desenhada para corretores e equipes comerciais que atuam com planos de saude e precisam de mais controle de funil e conversao.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "O Corretor Studio substitui planilhas de leads?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Sim. O objetivo e centralizar o processo comercial com rastreabilidade, ownership de leads e indicadores para decisao.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Existe suporte em portugues e foco no mercado brasileiro?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Sim. O produto foi pensado para o contexto de operacao comercial no Brasil e oferece suporte em PT-BR.",
+        },
+      },
+    ],
+  }
+
+  const seoResourceCards = PUBLIC_RESOURCE_ENTRIES.map((resource) => ({
+    slug: resource.slug,
+    title: resource.intent,
+    summary: resource.description,
+  }))
+
   return (
     <main className="landing-page min-h-screen bg-background text-foreground">
       <script
@@ -69,6 +117,10 @@ export default function HomePage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
 
       <LandingHeader />
@@ -190,25 +242,56 @@ export default function HomePage() {
 
       {/* <LogoBar /> */}
 
-      <div data-nosnippet>
-        <FeaturesSection />
-      </div>
+      <FeaturesSection />
 
-      <div data-nosnippet>
-        <EmailCampaignsSpotlight />
-      </div>
+      <EmailCampaignsSpotlight />
 
-      <div data-nosnippet>
-        <HowItWorksSection />
-      </div>
+      <HowItWorksSection />
 
-      <div data-nosnippet>
-          {/* <TestimonialsSection /> */}
-      </div>
+      {/* <TestimonialsSection /> */}
 
-      <div data-nosnippet>
-        <PricingSection />
-      </div>
+      <PricingSection />
+
+      <section className="relative py-20 md:py-28 border-t border-border/60">
+        <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
+          <div className="max-w-3xl">
+            <p className="text-sm uppercase tracking-wide text-muted-foreground">Recursos para SEO e descoberta por IA</p>
+            <h2 className="mt-3 text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
+              Conteudo estrategico para gestores e corretores de saude
+            </h2>
+            <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
+              Explore guias praticos para CRM, pipeline, integracoes e produtividade comercial. Cada pagina foi estruturada para responder intencoes de busca de alta relevancia.
+            </p>
+          </div>
+
+          <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
+            {seoResourceCards.map((card) => (
+              <Link
+                key={card.slug}
+                href={getPublicResourcePath(card.slug)}
+                className="group rounded-2xl border border-border p-6 transition-all hover:border-primary/30 hover:-translate-y-0.5 landing-surface-card-soft"
+              >
+                <h3 className="text-xl font-semibold tracking-tight">{card.title}</h3>
+                <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{card.summary}</p>
+                <span className="mt-5 inline-flex items-center text-sm font-semibold text-primary">
+                  Ler guia
+                  <ArrowRight className="ml-1.5 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </span>
+              </Link>
+            ))}
+          </div>
+
+          <div className="mt-8">
+            <Link
+              href={PUBLIC_RESOURCES_HUB_PATH}
+              className="inline-flex items-center rounded-2xl px-6 py-3.5 text-sm font-semibold landing-secondary-cta"
+            >
+              Ver central de recursos
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+      </section>
 
       <LandingFooter />
 

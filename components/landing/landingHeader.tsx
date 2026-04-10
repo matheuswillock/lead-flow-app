@@ -33,6 +33,9 @@ export function LandingHeader() {
                         <Link href="/#demo" className="hover:text-foreground transition-colors">
                             Demonstração
                         </Link>
+                        <Link href="/recursos" className="hover:text-foreground transition-colors">
+                            Recursos
+                        </Link>
                     </nav>
                 </div>
 

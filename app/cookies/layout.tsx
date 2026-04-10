@@ -6,6 +6,7 @@ export const metadata: Metadata = createPublicPageMetadata({
   description:
     "Saiba como o Corretor Studio utiliza cookies para melhorar a experiencia, analise de uso e funcionamento da plataforma.",
   canonicalPath: "/cookies",
+  keywords: ["politica de cookies", "cookies corretor studio", "preferencias de cookies"],
 })
 
 export default function CookiesLayout({ children }: { children: React.ReactNode }) {
