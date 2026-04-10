@@ -4,6 +4,7 @@ import { getAbsoluteUrl } from "@/lib/metadata/share"
 const disallowedPaths = [
   "/api/",
   "/auth/",
+  "/backoffice/",
   "/sign-in",
   "/sign-up",
   "/forgot-password",
@@ -38,20 +39,25 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/subscribe", "/privacy-policy", "/terms", "/cookies"],
+        allow: ["/"],
         disallow: disallowedPaths,
       },
       {
         userAgent: [
           "Googlebot",
+          "Google-Extended",
           "Bingbot",
+          "OAI-SearchBot",
           "GPTBot",
           "ChatGPT-User",
           "CCBot",
           "ClaudeBot",
+          "Claude-Web",
           "PerplexityBot",
+          "Applebot-Extended",
+          "Bytespider",
         ],
-        allow: ["/", "/subscribe", "/privacy-policy", "/terms", "/cookies"],
+        allow: ["/"],
         disallow: disallowedPaths,
       },
     ],

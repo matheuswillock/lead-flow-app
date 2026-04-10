@@ -1,6 +1,6 @@
 {
   "name": "lead-flow-app",
-  "version": "0.118.0",
+  "version": "0.119.0",
   "private": true,
   "engines": {
     "node": ">=24"
@@ -13,6 +13,8 @@
     "governance:sync": "bun scripts/ai-governance.ts sync-adapters",
     "governance:check": "bun scripts/ai-governance.ts check",
     "governance:warn-allowlist": "bun scripts/ai-governance.ts warn-allowlist",
+    "design:sync": "bun scripts/design/sync-tokens.ts",
+    "design:check": "bun scripts/design/sync-tokens.ts --check",
     "skills:sync": "bun scripts/skills-sync.ts",
     "scaffold:feature": "bun scripts/scaffold-feature.ts",
     "typecheck": "tsc --noEmit",

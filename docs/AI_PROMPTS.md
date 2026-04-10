@@ -20,6 +20,7 @@
 
 ### 📋 Utilitários
 9. [Checklist de Prompt](#-checklist-de-prompt)
+10. [Prompt de Imagem LP (Nanobanana)](#-prompt-de-imagem-lp-nanobanana)
 
 ---
 
@@ -616,6 +617,111 @@ Antes de usar qualquer prompt, certifique-se de:
 - [ ] Listar campos/validações necessárias
 - [ ] Mencionar referências no código existente
 - [ ] Incluir exemplos específicos quando necessário
+
+## 🖼️ Prompt de Imagem LP (Nanobanana)
+
+Use este playbook para gerar imagem hero da landing page com maior aderência de marca.
+
+### 1. Brand Inputs (fixo)
+
+Sempre passe este bloco ao gerar prompt:
+
+```yaml
+brandInputs:
+  primary: "#ff6900"
+  primaryDarkAccent: "#f54900"
+  background: "#07090f"
+  surface: "#1a1d24"
+  text: "#f5f7fb"
+  border: "rgba(255,255,255,0.10)"
+```
+
+### 2. Logo Guidance (fixo)
+
+```yaml
+logoGuidance:
+  rule: "usar logo.svg original, sem redesenhar"
+  position: "topo esquerdo do painel"
+  height: "24px"
+  keepProportion: true
+  forbidEffects:
+    - "sem glow"
+    - "sem distorção"
+    - "sem efeito 3D"
+```
+
+> Se `logo.svg` não estiver disponível no fluxo da ferramenta, use o arquivo existente no projeto como fallback visual: `public/corretor-studio-icon.svg`.
+
+### 3. Brand Constraints (fixo)
+
+- Laranja como acento principal
+- Visual dark SaaS premium
+- Evitar roxo dominante
+- Evitar excesso de neon
+
+### 4. Output A — Prompt Principal
+
+Copie, cole e ajuste apenas o necessário:
+
+```text
+Crie uma imagem hero para landing page de um CRM imobiliário premium, estilo SaaS moderno, dark mode elegante, interface realista em perspectiva levemente isométrica (3/4), com um dashboard kanban ao centro.
+
+Brand Inputs obrigatórios:
+- primary: #ff6900 (dark accent #f54900)
+- background: #07090f
+- surface: #1a1d24
+- text: #f5f7fb
+- border: rgba(255,255,255,0.10)
+
+Logo Guidance obrigatório:
+- usar logo.svg original, sem redesenhar
+- posição topo esquerdo do painel
+- altura de 24px
+- manter proporção original
+- sem glow, sem distorção, sem efeito 3D
+
+Composição visual:
+- fundo cinza-claro texturizado com micro pontos
+- painel escuro quase preto com bordas suaves e sombra macia
+- glow laranja sutil e controlado
+- colunas de pipeline (ex.: Novo, Contato, Proposta, Fechamento)
+- cards de leads com conteúdo genérico (sem dados reais)
+- badges flutuantes estilo pill: "+40% conversão média" e "500+ corretores ativos"
+- tipografia limpa e contemporânea
+- espaço negativo para headline e CTA da LP
+
+Direção estética:
+- product marketing shot
+- high-end fintech precision
+- profundidade por camadas
+- iluminação suave de estúdio
+- nítido, profissional, sem pessoas
+
+Formato final:
+- 16:9
+- 2560x1440
+```
+
+### 5. Output B — Prompt Negativo
+
+```text
+sem watermark, sem logos de terceiros, sem texto embaralhado, sem visual cartunesco, sem roxo dominante, sem excesso de neon, sem ruído pesado, sem blur exagerado, sem layout poluído, sem aparência genérica de template.
+```
+
+### 6. Fallback de Execução
+
+Se o gerador não respeitar logo/texto:
+
+1. Gere a cena sem logo e sem textos críticos.
+2. Aplique `logo.svg` (ou fallback `public/corretor-studio-icon.svg`) no layout final da LP.
+3. Sobreponha badges/textos no front com CSS para manter nitidez.
+
+### 7. Critérios de Aceite
+
+- A hierarquia cromática está correta (laranja como acento principal).
+- Fundo e superfícies seguem estética dark premium.
+- Logo está nítida, proporcional e sem distorção.
+- Existe área de respiro suficiente para headline/CTA (hero 16:9).
 
 ---
 

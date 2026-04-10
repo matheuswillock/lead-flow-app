@@ -11,6 +11,11 @@ export const metadata: Metadata = {
     title: subscribeTitle,
     description: subscribeDescription,
     canonicalPath: '/subscribe',
+    keywords: [
+      "assinatura crm corretor de saude",
+      "plano corretor studio",
+      "crm para corretora de saude",
+    ],
   }),
 };
 

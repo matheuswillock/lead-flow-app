@@ -6,6 +6,7 @@ export const metadata: Metadata = createPublicPageMetadata({
   description:
     "Leia os Termos de Uso do Corretor Studio, plataforma SaaS para gestao de leads, operacao comercial e acompanhamento de performance.",
   canonicalPath: "/terms",
+  keywords: ["termos de uso corretor studio", "contrato saas corretor studio", "condicoes de uso crm"],
 })
 
 export default function TermsLayout({ children }: { children: React.ReactNode }) {
