@@ -1,0 +1,52 @@
+# VCS
+.git
+.gitignore
+
+# Dependências — Docker instala via bun install no stage deps
+node_modules
+
+# Build artifacts — gerados em cada build
+.next/cache
+.next/server
+.next/types
+
+# Arquivos de ambiente — nunca baked na imagem
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+*.tsbuildinfo
+
+# Testes e coverage
+coverage
+test-results
+
+# Ferramentas de dev não necessárias no container
+scripts
+postman
+prisma/erd
+prisma/seed*.ts
+
+# Documentação
+CLAUDE.md
+AGENTS.md
+agents.md
+*.md
+!next.config.ts
+
+# Docker (evita loop de cópia)
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Editor / OS
+.DS_Store
+*.pem
+.vercel
+.vscode
+.idea
+
+# Arquivos de CI
+.github

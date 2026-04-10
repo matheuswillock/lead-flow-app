@@ -1,0 +1,41 @@
+# docker-compose.yml — Produção
+#
+# Gerenciado pelo CI (ci-main.yml):
+#   docker compose -f /opt/lead-flow/docker-compose.yml up -d --remove-orphans
+#
+# Nginx no host faz reverse proxy: 80/443 → 127.0.0.1:3000
+#
+# Variáveis de runtime: /opt/lead-flow/.env (nunca na imagem)
+# Imagem: ghcr.io/matheuswillock/lead-flow-app:production (tag fixa de produção)
+# Rollback: IMAGE_TAG=prod-<sha> docker compose up -d
+
+name: lead-flow
+
+services:
+  app:
+    image: ghcr.io/matheuswillock/lead-flow-app:production
+    container_name: lead-flow-production
+    restart: unless-stopped
+    ports:
+      # Bind apenas no loopback — acesso externo via Nginx
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

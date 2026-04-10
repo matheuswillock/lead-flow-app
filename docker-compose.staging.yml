@@ -1,0 +1,43 @@
+# docker-compose.staging.yml — Staging
+#
+# Gerenciado pelo CI (ci-develop.yml):
+#   docker compose -f /opt/lead-flow-staging/docker-compose.staging.yml up -d --remove-orphans
+#
+# Nginx no host faz reverse proxy: 80/443 (domínio staging) → 127.0.0.1:3001
+# O container escuta na porta 3000 internamente — o mapeamento 3001:3000 faz a bridge.
+#
+# Variáveis de runtime: /opt/lead-flow-staging/.env
+# ASAAS_ENV=sandbox sempre forçado para não atingir pagamentos reais em staging.
+
+name: lead-flow-staging
+
+services:
+  app:
+    image: ghcr.io/matheuswillock/lead-flow-app:staging
+    container_name: lead-flow-staging
+    restart: unless-stopped
+    ports:
+      # Porta host 3001 → porta container 3000
+      - "127.0.0.1:3001:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      # Garante sandbox mesmo que .env tenha ASAAS_ENV=production por engano
+      - ASAAS_ENV=sandbox
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

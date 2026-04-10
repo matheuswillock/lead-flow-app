@@ -13,10 +13,13 @@ permissions:
   contents: write
   pull-requests: write
   deployments: write
+  packages: write   # Necessário para push ao GitHub Container Registry (ghcr.io)
 
 env:
   CI: true
   NEXT_TELEMETRY_DISABLED: 1
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/matheuswillock/lead-flow-app
 
 jobs:
   quality:
@@ -58,11 +61,11 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-  build:
-    name: Build & Prepare Artifact
+  build-and-push:
+    name: Build Docker Image (Staging) & Push to GHCR
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     needs: quality
     steps:
       - name: Checkout
@@ -83,54 +86,59 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Cache Next.js build
-        uses: actions/cache@v4
-        with:
-          path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '!node_modules/**') }}
-          restore-keys: |
-            ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
-            ${{ runner.os }}-next-
-
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      # Staging usa STAGING_NEXT_PUBLIC_APP_URL se disponível, senão cai para a URL de produção
-      - name: Build (staging)
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.STAGING_NEXT_PUBLIC_APP_URL || secrets.NEXT_PUBLIC_APP_URL }}
-          NEXT_PUBLIC_ENCRYPTION_KEY: ${{ secrets.NEXT_PUBLIC_ENCRYPTION_KEY }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || '' }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-        run: bun run build
-
-      # Migrations no banco de staging (usa DIRECT_URL para evitar PgBouncer)
+      # Migrations de staging — usa STAGING_DIRECT_URL se disponível, senão cai para produção
       - name: Run Prisma Migrations (staging)
         env:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL || secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.STAGING_DIRECT_URL || secrets.DIRECT_URL }}
         run: bunx prisma migrate deploy
 
-      - name: Prepare deployment package
-        run: |
-          cp -r .next/static .next/standalone/.next/static
-          cp -r public .next/standalone/public
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Upload staging artifact
-        uses: actions/upload-artifact@v4
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          name: deploy-staging-${{ github.sha }}
-          path: .next/standalone/
-          retention-days: 1
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (staging)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=staging
+            type=sha,prefix=staging-,format=short
+
+      # Staging usa STAGING_NEXT_PUBLIC_APP_URL se disponível, senão cai para a URL de produção
+      - name: Build and push Docker image (staging)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_APP_URL=${{ secrets.STAGING_NEXT_PUBLIC_APP_URL || secrets.NEXT_PUBLIC_APP_URL }}
+            NEXT_PUBLIC_ENCRYPTION_KEY=${{ secrets.NEXT_PUBLIC_ENCRYPTION_KEY }}
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL || '' }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache-staging
+          cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache-staging,mode=max
 
   version-bump:
     name: Auto Version Bump (develop)
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
-    needs: build
+    needs: build-and-push
     outputs:
       new_version: ${{ steps.bump.outputs.new_version }}
       bumped: ${{ steps.bump.outputs.bumped }}
@@ -208,30 +216,34 @@ jobs:
     needs: version-bump
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       DEPLOY_HOST: ${{ secrets.HOSTINGER_HOST }}
       DEPLOY_USER: ${{ secrets.HOSTINGER_USER }}
       DEPLOY_PORT: ${{ secrets.HOSTINGER_PORT || '22' }}
-      DEPLOY_PATH: /var/www/lead-flow-staging
-      PM2_APP_NAME: lead-flow-staging
+      COMPOSE_PATH: /opt/lead-flow-staging
     steps:
-      - name: Checkout latest develop (includes bump)
+      - name: Checkout latest develop (includes version bump)
         uses: actions/checkout@v4
         with:
           ref: develop
           fetch-depth: 0
 
-      - name: Download staging artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: deploy-staging-${{ github.sha }}
-          path: ./standalone
-
-      # Grava .env de staging — ASAAS_ENV=sandbox por padrão para não tocar em produção
-      - name: Write .env file (staging)
+      - name: Setup SSH
         run: |
-          cat > ./standalone/.env << 'ENVEOF'
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      # Grava .env de staging — ASAAS_ENV=sandbox hardcoded (reforçado pelo docker-compose.staging.yml)
+      - name: Write .env on VPS (staging)
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -p "$DEPLOY_PORT" \
+            -o StrictHostKeyChecking=no \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "mkdir -p $COMPOSE_PATH && cat > $COMPOSE_PATH/.env << 'ENVEOF'
           NODE_ENV=production
           NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
@@ -246,7 +258,7 @@ jobs:
           DATABASE_URL=${{ secrets.STAGING_DATABASE_URL || secrets.DATABASE_URL }}
           DIRECT_URL=${{ secrets.STAGING_DIRECT_URL || secrets.DIRECT_URL }}
           RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
-          EMAIL_TEST_MODE=${{ secrets.EMAIL_TEST_MODE || 'true' }}
+          EMAIL_TEST_MODE=true
           RESEND_OWNER_EMAIL=${{ secrets.RESEND_OWNER_EMAIL }}
           SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
           ASAAS_API_KEY=${{ secrets.ASAAS_API_KEY }}
@@ -266,35 +278,27 @@ jobs:
           META_VERIFY_TOKEN=${{ secrets.META_VERIFY_TOKEN }}
           GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID || '' }}
           GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET || '' }}
-          ENVEOF
+          ENVEOF"
 
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-
-      - name: Deploy to VPS staging (rsync)
-        run: |
-          rsync -az --delete \
-            -e "ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT -o StrictHostKeyChecking=no" \
-            ./standalone/ \
-            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
-
-      - name: Restart staging application (PM2)
+      - name: Deploy via Docker Compose (staging)
         run: |
           ssh -i ~/.ssh/deploy_key \
             -p "$DEPLOY_PORT" \
             -o StrictHostKeyChecking=no \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "pm2 restart $PM2_APP_NAME 2>/dev/null || PORT=3001 pm2 start $DEPLOY_PATH/server.js --name $PM2_APP_NAME && pm2 save"
+            "
+              echo '${{ secrets.GITHUB_TOKEN }}' | \
+                docker login ghcr.io -u '${{ github.actor }}' --password-stdin && \
+              docker pull ${{ env.IMAGE_NAME }}:staging && \
+              docker compose -f $COMPOSE_PATH/docker-compose.staging.yml up -d --remove-orphans && \
+              docker logout ghcr.io && \
+              docker image prune -f
+            "
 
       - name: Staging Summary
         run: |
           echo "### Staging Deploy (develop)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Host:** $DEPLOY_HOST" >> $GITHUB_STEP_SUMMARY
-          echo "- **Path:** $DEPLOY_PATH" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`${{ env.IMAGE_NAME }}:staging\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Version:** v${{ needs.version-bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **App URL:** ${{ secrets.STAGING_NEXT_PUBLIC_APP_URL || secrets.NEXT_PUBLIC_APP_URL }}" >> $GITHUB_STEP_SUMMARY
 

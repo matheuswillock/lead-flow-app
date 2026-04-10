@@ -12,10 +12,13 @@ concurrency:
 permissions:
   contents: read
   deployments: write
+  packages: write   # Necessário para push ao GitHub Container Registry (ghcr.io)
 
 env:
   CI: true
   NEXT_TELEMETRY_DISABLED: 1
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/matheuswillock/lead-flow-app
 
 jobs:
   quality:
@@ -56,10 +59,10 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-  build:
-    name: Build & Prepare Artifact
+  build-and-push:
+    name: Build Docker Image & Push to GHCR
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     needs: quality
     steps:
       - name: Checkout
@@ -80,72 +83,86 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Cache Next.js build
-        uses: actions/cache@v4
-        with:
-          path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '!node_modules/**') }}
-          restore-keys: |
-            ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-
-            ${{ runner.os }}-next-
-
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      # NEXT_PUBLIC_* vars são embutidos no bundle durante o build — devem ter os valores reais
-      - name: Build (production)
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
-          NEXT_PUBLIC_ENCRYPTION_KEY: ${{ secrets.NEXT_PUBLIC_ENCRYPTION_KEY }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || '' }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-        run: bun run build
-
-      # Migrations aplicadas antes do deploy — usa DIRECT_URL para evitar PgBouncer
+      # Migrations usam DIRECT_URL para evitar pooler do PgBouncer
       - name: Run Prisma Migrations
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
         run: bunx prisma migrate deploy
 
-      # Monta o pacote standalone com assets estáticos e arquivos públicos
-      - name: Prepare deployment package
-        run: |
-          cp -r .next/static .next/standalone/.next/static
-          cp -r public .next/standalone/public
+      # Docker Buildx para suporte a cache de registry
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Upload deployment artifact
-        uses: actions/upload-artifact@v4
+      # Autentica no GHCR com GITHUB_TOKEN automático — nenhum secret adicional
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          name: deploy-${{ github.sha }}
-          path: .next/standalone/
-          retention-days: 1
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Gera tags e labels OCI para a imagem
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=production
+            type=sha,prefix=prod-,format=short
+
+      # Build multi-stage + push para GHCR
+      # NEXT_PUBLIC_* são passados como build-args (baked no bundle em build-time)
+      # Cache de registry acelera builds subsequentes sem consumir cota do GHA cache
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
+            NEXT_PUBLIC_ENCRYPTION_KEY=${{ secrets.NEXT_PUBLIC_ENCRYPTION_KEY }}
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL || '' }}
+            RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
   deploy-production:
     name: Deploy Hostinger (Production)
-    needs: build
+    needs: build-and-push
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       DEPLOY_HOST: ${{ secrets.HOSTINGER_HOST }}
       DEPLOY_USER: ${{ secrets.HOSTINGER_USER }}
       DEPLOY_PORT: ${{ secrets.HOSTINGER_PORT || '22' }}
-      DEPLOY_PATH: /var/www/lead-flow
-      PM2_APP_NAME: lead-flow
+      COMPOSE_PATH: /opt/lead-flow
     steps:
-      - name: Download deployment artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: deploy-${{ github.sha }}
-          path: ./standalone
-
-      # Grava o .env com todos os secrets do GitHub no artefato antes do rsync
-      - name: Write .env file
+      - name: Setup SSH
         run: |
-          cat > ./standalone/.env << 'ENVEOF'
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      # Grava o .env no VPS com todos os secrets de runtime
+      # O arquivo .env nunca entra na imagem Docker — apenas no VPS em disco
+      - name: Write .env on VPS
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -p "$DEPLOY_PORT" \
+            -o StrictHostKeyChecking=no \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "mkdir -p $COMPOSE_PATH && cat > $COMPOSE_PATH/.env << 'ENVEOF'
           NODE_ENV=production
           NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
@@ -180,34 +197,28 @@ jobs:
           META_VERIFY_TOKEN=${{ secrets.META_VERIFY_TOKEN }}
           GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID || '' }}
           GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET || '' }}
-          ENVEOF
+          ENVEOF"
 
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-
-      - name: Deploy to VPS (rsync)
-        run: |
-          rsync -az --delete \
-            -e "ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT -o StrictHostKeyChecking=no" \
-            ./standalone/ \
-            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
-
-      - name: Restart application (PM2)
+      # Faz pull da nova imagem e reinicia via Docker Compose
+      # GITHUB_TOKEN tem permissão de leitura no GHCR do mesmo repositório
+      - name: Deploy via Docker Compose
         run: |
           ssh -i ~/.ssh/deploy_key \
             -p "$DEPLOY_PORT" \
             -o StrictHostKeyChecking=no \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "pm2 restart $PM2_APP_NAME 2>/dev/null || pm2 start $DEPLOY_PATH/server.js --name $PM2_APP_NAME && pm2 save"
+            "
+              echo '${{ secrets.GITHUB_TOKEN }}' | \
+                docker login ghcr.io -u '${{ github.actor }}' --password-stdin && \
+              docker pull ${{ env.IMAGE_NAME }}:production && \
+              docker compose -f $COMPOSE_PATH/docker-compose.yml up -d --remove-orphans && \
+              docker logout ghcr.io && \
+              docker image prune -f
+            "
 
       - name: Production Summary
         run: |
           echo "### Production Deploy (main)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Host:** $DEPLOY_HOST" >> $GITHUB_STEP_SUMMARY
-          echo "- **Path:** $DEPLOY_PATH" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image:** \`${{ env.IMAGE_NAME }}:production\`" >> $GITHUB_STEP_SUMMARY
           echo "- **SHA:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **App URL:** ${{ secrets.NEXT_PUBLIC_APP_URL }}" >> $GITHUB_STEP_SUMMARY
