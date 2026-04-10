@@ -4906,6 +4906,33 @@
                     }
                   },
                   "response": []
+                },
+                {
+                  "name": "GET /api/v1/profiles/by-email",
+                  "request": {
+                    "method": "GET",
+                    "header": [],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/profiles/by-email?email=exemplo@email.com",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "profiles",
+                        "by-email"
+                      ],
+                      "query": [
+                        {
+                          "key": "email",
+                          "value": "exemplo@email.com"
+                        }
+                      ]
+                    },
+                    "description": "Verifica se existe um profile com o e-mail informado. Retorna 200 se encontrado, 404 se não encontrado. Usado pelo auth callback para evitar criação de usuário órfão."
+                  },
+                  "response": []
                 }
               ]
             },

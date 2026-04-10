@@ -159,6 +159,21 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
+    async findFirstTeamIdByProfileId(profileId: string): Promise<string | null> {
+        try {
+            const teamMember = await prisma.teamMember.findFirst({
+                where: { profileId },
+                select: { teamId: true },
+                orderBy: { createdAt: "asc" },
+            });
+
+            return teamMember?.teamId ?? null;
+        } catch (error) {
+            console.error("Error fetching first teamId by profileId:", error);
+            return null;
+        }
+    }
+
     async existingByEmailOrPhone(email: string, phone: string): Promise<boolean> {
         try {
             const profile = await prisma.profile.findFirst({
@@ -178,6 +193,18 @@ class PrismaProfileRepository implements IProfileRepository {
             return profile ?? null;
         } catch (error) {
             console.error("Error fetching profile by email:", error);
+            return null;
+        }
+    }
+
+    async findByGoogleEmail(googleEmail: string): Promise<Profile | null> {
+        try {
+            const profile = await prisma.profile.findFirst({
+                where: { googleEmail },
+            });
+            return profile ?? null;
+        } catch (error) {
+            console.error("Error fetching profile by google email:", error);
             return null;
         }
     }

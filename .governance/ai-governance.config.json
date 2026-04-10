@@ -34,7 +34,6 @@
   ],
   "legacyExceptions": {
     "prismaInV1RouteAllowlist": [
-      "app/api/v1/auth/forgot-password/route.ts",
       "app/api/v1/billing/summary/route.ts",
       "app/api/v1/dashboard/schedules/route.ts",
       "app/api/v1/debug/lead-query/route.ts",
@@ -86,7 +85,6 @@
       "app/auth/callback",
       "app/checkout-return",
       "app/cookies",
-      "app/forgot-password",
       "app/operator-confirmed",
       "app/pix-confirmed",
       "app/privacy-policy",
@@ -156,7 +154,6 @@
       "app/api/demo/route.ts",
       "app/api/email/route.ts",
       "app/api/email/send/route.ts",
-      "app/api/v1/auth/forgot-password/route.ts",
       "app/api/v1/backoffice/clients/[id]/route.ts",
       "app/api/v1/backoffice/clients/route.ts",
       "app/api/v1/backoffice/users/[id]/route.ts",

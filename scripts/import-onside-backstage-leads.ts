@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PrismaClient, LeadStatus, ActivityType, UserRole } from "@prisma/client";
-import * as XLSX from "xlsx";
+import { readXlsxRowsFromFile } from "../lib/spreadsheet/readXlsxRows";
 
 const prisma = new PrismaClient();
 
@@ -425,18 +425,10 @@ async function preValidate(inputPath: string) {
   };
 }
 
-function parseSheetRows(inputPath: string): { parsedRows: ParsedLeadRow[]; skippedMissingName: number } {
-  const workbook = XLSX.readFile(inputPath, { cellDates: false });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!sheet) {
-    throw new Error("Sheet not found in workbook.");
-  }
-
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    raw: false,
-    defval: "",
-  });
+async function parseSheetRows(
+  inputPath: string
+): Promise<{ parsedRows: ParsedLeadRow[]; skippedMissingName: number }> {
+  const rows = await readXlsxRowsFromFile(inputPath);
 
   const headerIndex = findHeaderIndex(rows);
   if (headerIndex === -1) {
@@ -588,7 +580,7 @@ async function run() {
   try {
     const pools = await preValidate(args.inputPath);
 
-    const { parsedRows, skippedMissingName } = parseSheetRows(args.inputPath);
+    const { parsedRows, skippedMissingName } = await parseSheetRows(args.inputPath);
     counters.parsedRows = parsedRows.length;
     counters.skippedMissingName = skippedMissingName;
 

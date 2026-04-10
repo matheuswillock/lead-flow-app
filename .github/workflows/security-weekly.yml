@@ -1,0 +1,25 @@
+name: Security (Weekly)
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+concurrency:
+  group: security-weekly-${{ github.ref_name || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    uses: ./.github/workflows/security-reusable.yml
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    with:
+      include_dev_dependencies: true
