@@ -9,10 +9,7 @@ const stats = [
 
 export function LogoBar() {
   return (
-    <section
-      className="relative border-y py-8"
-      style={{ borderColor: "var(--border)", background: "color-mix(in oklab, var(--muted) 40%, transparent)" }}
-    >
+    <section className="relative border-y border-border py-8 bg-muted/40">
       <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
         <p className="text-center text-sm font-medium text-muted-foreground mb-6">
           Confiado por mais de 500 corretores de saúde em todo o Brasil
@@ -22,23 +19,13 @@ export function LogoBar() {
           {stats.map((stat) => (
             <div
               key={stat.label}
-              className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 rounded-xl border px-4 py-3"
-              style={{
-                borderColor: "var(--border)",
-                background: "color-mix(in oklab, var(--card) 70%, transparent)",
-              }}
+              className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 rounded-xl px-4 py-3 landing-surface-card-soft"
             >
-              <div
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg"
-                style={{
-                  background: "color-mix(in oklab, var(--primary) 12%, transparent)",
-                  color: "var(--primary)",
-                }}
-              >
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary">
                 <stat.icon className="h-4 w-4" />
               </div>
               <div className="text-center sm:text-left">
-                <div className="text-lg font-extrabold leading-none" style={{ color: "var(--primary)" }}>
+                <div className="text-lg font-extrabold leading-none text-primary">
                   {stat.value}
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">{stat.label}</div>

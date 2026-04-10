@@ -7,21 +7,16 @@ import { motion } from "framer-motion"
 export default function LandingSection() {
   return (
     <main className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b" style={{ borderColor: "var(--border)" }}>
+      <header className="sticky top-0 z-20 border-b border-border">
         <div className="mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 font-bold tracking-tight">
-            <span
-              className="inline-block h-6 w-6 rounded-md"
-              style={{ background: "var(--primary)" }}
-              aria-hidden
-            />
+            <span className="inline-block h-6 w-6 rounded-md bg-primary" aria-hidden />
             <span>Seu Produto</span>
           </Link>
 
           <Link
             href="/login"
-            className="inline-flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-sm font-semibold bg-card text-foreground/90 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
-            style={{ borderColor: "var(--border)" }}
+            className="inline-flex items-center gap-2 rounded-2xl border border-border px-3.5 py-2.5 text-sm font-semibold bg-card text-foreground/90 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
           >
             <LogIn className="h-4 w-4" /> Entrar
           </Link>
@@ -29,14 +24,7 @@ export default function LandingSection() {
       </header>
 
       <section className="relative overflow-hidden min-h-[calc(100dvh-4rem)]">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(60% 40% at 20% 0%, color-mix(in oklab, var(--primary) 22%, transparent) 0%, transparent 60%), radial-gradient(30% 20% at 100% 10%, color-mix(in oklab, var(--brand-rose) 18%, transparent) 0%, transparent 60%)",
-          }}
-        />
+        <div aria-hidden className="pointer-events-none absolute inset-0 landing-hero-orbs" />
 
         <div className="relative z-10 mx-auto max-w-6xl px-6 sm:px-8 lg:px-10 py-14 md:py-20 min-h-[calc(100dvh-4rem)] flex items-center justify-center">
           <div className="flex flex-col items-center text-center">
@@ -44,13 +32,9 @@ export default function LandingSection() {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="mx-auto inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-3 py-1 text-xs sm:text-sm text-muted-foreground shadow-sm backdrop-blur"
-              style={{ background: "color-mix(in oklab, var(--card) 60%, transparent)" }}
+              className="mx-auto inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs sm:text-sm text-muted-foreground shadow-sm backdrop-blur bg-card/60"
             >
-              <span
-                className="inline-block h-2 w-2 rounded-full"
-                style={{ background: "var(--primary)" }}
-              />
+              <span className="inline-block h-2 w-2 rounded-full bg-primary" />
               Sistema completo para corretores de saúde
             </motion.div>
 
@@ -89,13 +73,7 @@ export default function LandingSection() {
               <div className="text-center">
                 <Link
                   href="#demo"
-                  className="group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2"
-                  style={{
-                    background: "var(--primary)",
-                    color: "var(--primary-foreground)",
-                    boxShadow:
-                      "0 10px 25px -10px color-mix(in oklab, var(--primary) 55%, transparent)",
-                  }}
+                  className="group inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2 landing-primary-cta"
                 >
                   Agendar demonstração
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />

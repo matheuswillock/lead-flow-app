@@ -42,8 +42,8 @@ const features: Feature[] = [
     icon: Mail,
     title: "Campanhas de Email",
     description:
-      "Envie campanhas segmentadas para suas listas de contatos com editor visual, agendamento automático e analytics detalhados.",
-    badge: "Novo",
+      "Em breve: campanhas segmentadas para listas de contatos com editor visual, agendamento automático e analytics detalhados.",
+    badge: "Em breve",
     benefits: [
       "Editor visual drag-and-drop (Maily)",
       "Upload de listas via CSV",
@@ -77,11 +77,7 @@ export function FeaturesSection() {
     <section id="features" className="relative py-20 md:py-28">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-25"
-        style={{
-          background:
-            "radial-gradient(50% 30% at 80% 20%, color-mix(in oklab, var(--chart-1) 15%, transparent) 0%, transparent 60%)",
-        }}
+        className="pointer-events-none absolute inset-0 opacity-25 landing-features-orbs"
       />
 
       <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
@@ -95,18 +91,13 @@ export function FeaturesSection() {
           <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
             Tudo que você precisa para{" "}
             <span
-              style={{
-                background: "linear-gradient(135deg, var(--primary), var(--brand-rose))",
-                WebkitBackgroundClip: "text",
-                backgroundClip: "text",
-                color: "transparent",
-              }}
+              className="landing-primary-gradient"
             >
               vender mais
             </span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            CRM + email marketing + gestão de equipe em uma plataforma completa para corretores de saúde.
+            CRM completo hoje, com modulo de campanhas de email chegando em breve para ampliar sua operação.
           </p>
         </MotionDiv>
 
@@ -119,18 +110,10 @@ export function FeaturesSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
-            className="group relative md:col-span-2 rounded-2xl border p-8 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30"
-            style={{
-              borderColor: "var(--border)",
-              background: "color-mix(in oklab, var(--card) 85%, transparent)",
-            }}
+            className="group relative md:col-span-2 rounded-2xl p-8 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30 landing-surface-card"
           >
             <div
-              className="inline-flex h-14 w-14 items-center justify-center rounded-xl mb-5 transition-transform group-hover:scale-110"
-              style={{
-                background: "color-mix(in oklab, var(--primary) 15%, transparent)",
-                color: "var(--primary)",
-              }}
+              className="inline-flex h-14 w-14 items-center justify-center rounded-xl mb-5 transition-transform group-hover:scale-110 bg-primary/15 text-primary"
             >
               <Kanban className="h-7 w-7" />
             </div>
@@ -139,7 +122,7 @@ export function FeaturesSection() {
             <ul className="space-y-2.5">
               {features[0].benefits?.map((benefit) => (
                 <li key={benefit} className="flex items-start gap-3 text-sm text-muted-foreground">
-                  <ArrowRight className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: "var(--primary)" }} />
+                  <ArrowRight className="h-4 w-4 mt-0.5 flex-shrink-0 text-primary" />
                   <span>{benefit}</span>
                 </li>
               ))}
@@ -151,18 +134,10 @@ export function FeaturesSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="group relative rounded-2xl border p-6 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30"
-            style={{
-              borderColor: "var(--border)",
-              background: "color-mix(in oklab, var(--card) 85%, transparent)",
-            }}
+            className="group relative rounded-2xl p-6 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30 landing-surface-card-compact"
           >
             <div
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl mb-4 transition-transform group-hover:scale-110"
-              style={{
-                background: "color-mix(in oklab, var(--primary) 15%, transparent)",
-                color: "var(--primary)",
-              }}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl mb-4 transition-transform group-hover:scale-110 bg-primary/15 text-primary"
             >
               <CalendarDays className="h-5 w-5" />
             </div>
@@ -176,18 +151,10 @@ export function FeaturesSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.15 }}
-            className="group relative rounded-2xl border p-6 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30"
-            style={{
-              borderColor: "var(--border)",
-              background: "color-mix(in oklab, var(--card) 85%, transparent)",
-            }}
+            className="group relative rounded-2xl p-6 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30 landing-surface-card-compact"
           >
             <div
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl mb-4 transition-transform group-hover:scale-110"
-              style={{
-                background: "color-mix(in oklab, var(--primary) 15%, transparent)",
-                color: "var(--primary)",
-              }}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl mb-4 transition-transform group-hover:scale-110 bg-primary/15 text-primary"
             >
               <Users2 className="h-5 w-5" />
             </div>
@@ -200,29 +167,15 @@ export function FeaturesSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.2 }}
-            className="group relative md:col-span-2 rounded-2xl border p-8 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30"
-            style={{
-              borderColor: "var(--border)",
-              background: "color-mix(in oklab, var(--card) 85%, transparent)",
-            }}
+            className="group relative md:col-span-2 rounded-2xl p-8 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30 landing-surface-card"
           >
-            {/* Novo badge */}
-            <span
-              className="absolute top-4 right-4 rounded-full px-2.5 py-0.5 text-xs font-bold"
-              style={{
-                background: "var(--primary)",
-                color: "var(--primary-foreground)",
-              }}
-            >
-              Novo
+            {/* Em breve badge */}
+            <span className="absolute top-4 right-4 rounded-full px-2.5 py-0.5 text-xs font-bold bg-primary text-primary-foreground">
+              Em breve
             </span>
 
             <div
-              className="inline-flex h-14 w-14 items-center justify-center rounded-xl mb-5 transition-transform group-hover:scale-110"
-              style={{
-                background: "color-mix(in oklab, var(--primary) 15%, transparent)",
-                color: "var(--primary)",
-              }}
+              className="inline-flex h-14 w-14 items-center justify-center rounded-xl mb-5 transition-transform group-hover:scale-110 bg-primary/15 text-primary"
             >
               <Mail className="h-7 w-7" />
             </div>
@@ -231,7 +184,6 @@ export function FeaturesSection() {
             <ul className="space-y-2.5">
               {features[3].benefits?.map((benefit) => (
                 <li key={benefit} className="flex items-start gap-3 text-sm text-muted-foreground">
-                  <ArrowRight className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: "var(--primary)" }} />
                   <span>{benefit}</span>
                 </li>
               ))}
@@ -246,18 +198,10 @@ export function FeaturesSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: 0.25 + idx * 0.08 }}
-              className="group relative rounded-2xl border p-6 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30"
-              style={{
-                borderColor: "var(--border)",
-                background: "color-mix(in oklab, var(--card) 85%, transparent)",
-              }}
+              className="group relative rounded-2xl p-6 shadow-lg backdrop-blur transition-all hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30 landing-surface-card-compact"
             >
               <div
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl mb-4 transition-transform group-hover:scale-110"
-                style={{
-                  background: "color-mix(in oklab, var(--primary) 15%, transparent)",
-                  color: "var(--primary)",
-                }}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl mb-4 transition-transform group-hover:scale-110 bg-primary/15 text-primary"
               >
                 <feature.icon className="h-5 w-5" />
               </div>

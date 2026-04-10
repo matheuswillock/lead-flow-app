@@ -7,16 +7,15 @@ import { LogoBar } from "@/components/landing/LogoBar"
 import { FeaturesSection } from "@/components/landing/FeaturesSection"
 import { EmailCampaignsSpotlight } from "@/components/landing/EmailCampaignsSpotlight"
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection"
-import { TestimonialsSection } from "@/components/landing/TestimonialsSection"
 import { PricingSection } from "@/components/landing/PricingSection"
+import { LandingFooter } from "@/components/landing/LandingFooter"
 import { HomeClientRuntime } from "@/components/landing/HomeClientRuntime"
-import { HeartIcon } from "@/components/ui/heart"
 import { createPublicPageMetadata } from "@/lib/metadata/policies"
 import { getAbsoluteUrl } from "@/lib/metadata/share"
 
 const homeTitle = "Corretor Studio | CRM e Marketing para Corretores de Saúde"
 const homeDescription =
-  "CRM + email marketing para corretores de saúde. Pipeline Kanban, gestão de equipe, campanhas de email, agenda e métricas para aumentar conversão."
+  "CRM para corretores de saúde. Pipeline Kanban, gestão de equipe, agenda e métricas para aumentar conversão. Campanhas de email em breve."
 
 export const metadata: Metadata = createPublicPageMetadata({
   title: homeTitle,
@@ -54,7 +53,7 @@ export default function HomePage() {
     inLanguage: "pt-BR",
     url: websiteUrl,
     description:
-      "Plataforma de gestão de leads e marketing para corretores de saúde com CRM, pipeline comercial, campanhas de email, times e agendamento de reuniões.",
+      "Plataforma de gestão de leads para corretores de saúde com CRM, pipeline comercial, times e agendamento de reuniões. Campanhas de email em breve.",
   }
 
   return (
@@ -76,35 +75,9 @@ export default function HomePage() {
 
       {/* Hero Section */}
       <section className="relative overflow-hidden min-h-[calc(100dvh-4rem)]">
-        {/* Dot grid background */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-40"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle, color-mix(in oklab, var(--border) 80%, transparent) 1px, transparent 1px)",
-            backgroundSize: "28px 28px",
-          }}
-        />
-
-        {/* Gradient overlays */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(55% 45% at 15% 0%, color-mix(in oklab, var(--primary) 18%, transparent) 0%, transparent 60%), radial-gradient(35% 25% at 100% 5%, color-mix(in oklab, var(--brand-rose) 14%, transparent) 0%, transparent 60%)",
-          }}
-        />
-
-        {/* Bottom fade to merge with next section */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute bottom-0 left-0 right-0 h-32"
-          style={{
-            background: "linear-gradient(to bottom, transparent, var(--background))",
-          }}
-        />
+        <div aria-hidden className="pointer-events-none absolute inset-0 opacity-40 landing-hero-dot-grid" />
+        <div aria-hidden className="pointer-events-none absolute inset-0 landing-hero-orbs" />
+        <div aria-hidden className="pointer-events-none absolute bottom-0 left-0 right-0 h-32 landing-hero-fade" />
 
         <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-16 md:py-20 min-h-[calc(100dvh-4rem)] flex items-center">
           <div className="w-full lg:grid lg:grid-cols-12 lg:gap-12 lg:items-center">
@@ -115,19 +88,11 @@ export default function HomePage() {
               {/* Announcement badge */}
               <Link
                 href="#email-campaigns"
-                className="group mb-6 inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs sm:text-sm font-medium transition-colors hover:border-primary/40"
-                style={{
-                  borderColor: "color-mix(in oklab, var(--primary) 30%, var(--border))",
-                  background: "color-mix(in oklab, var(--primary) 8%, var(--card))",
-                  color: "var(--foreground)",
-                }}
+                className="group mb-6 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs sm:text-sm font-medium transition-colors hover:border-primary/40 landing-pill-badge"
               >
-                <span
-                  className="inline-block h-1.5 w-1.5 rounded-full animate-pulse"
-                  style={{ background: "var(--primary)" }}
-                />
-                <span style={{ color: "var(--primary)" }} className="font-semibold">Novo</span>
-                <span className="text-muted-foreground">Campanhas de Email integradas ao CRM</span>
+                <span className="inline-block h-1.5 w-1.5 rounded-full animate-pulse bg-primary" />
+                <span className="font-semibold text-primary">Em breve</span>
+                <span className="text-muted-foreground">Campanhas de Email no Corretor Studio</span>
                 <ArrowRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </Link>
 
@@ -136,14 +101,7 @@ export default function HomePage() {
                 <span className="block">Feche mais planos</span>
                 <span className="block">de saúde com o</span>
                 <span className="block">
-                  <span
-                    style={{
-                      background: "linear-gradient(135deg, var(--primary) 0%, var(--brand-rose) 100%)",
-                      WebkitBackgroundClip: "text",
-                      backgroundClip: "text",
-                      color: "transparent",
-                    }}
-                  >
+                  <span className="landing-primary-gradient">
                     CRM certo
                   </span>
                   {" "}para o seu time.
@@ -152,19 +110,15 @@ export default function HomePage() {
 
               {/* Subtitle */}
               <p className="mt-6 max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed">
-                Pipeline Kanban, gestão de times, campanhas de email e métricas em tempo real — tudo em uma plataforma feita para corretores de planos de saúde.
+                Pipeline Kanban, gestão de times e métricas em tempo real em uma plataforma feita para corretores de planos de saúde. Campanhas de email chegam{" "}
+                <span className="font-semibold landing-primary-gradient">(em breve)</span>.
               </p>
 
               {/* CTAs */}
               <div className="mt-8 flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
                 <Link
                   href="#demo"
-                  className="cursor-pointer group inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-base font-semibold shadow-xl w-full sm:w-auto focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2 transition-all hover:scale-[1.02]"
-                  style={{
-                    background: "var(--primary)",
-                    color: "var(--primary-foreground)",
-                    boxShadow: "0 12px 28px -8px color-mix(in oklab, var(--primary) 60%, transparent)",
-                  }}
+                  className="cursor-pointer group inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-base font-semibold shadow-xl w-full sm:w-auto focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2 transition-all hover:scale-[1.02] landing-primary-cta"
                 >
                   Agendar demonstração
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />
@@ -172,8 +126,7 @@ export default function HomePage() {
 
                 <Link
                   href="#how-it-works"
-                  className="cursor-pointer inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-base font-semibold border w-full sm:w-auto transition-all hover:bg-muted/50"
-                  style={{ borderColor: "var(--border)" }}
+                  className="cursor-pointer inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-base font-semibold w-full sm:w-auto transition-all hover:bg-muted/50 landing-secondary-cta"
                 >
                   Ver como funciona
                 </Link>
@@ -182,15 +135,15 @@ export default function HomePage() {
               {/* Trust line */}
               <div className="mt-6 flex flex-wrap items-center justify-center lg:justify-start gap-4 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4" style={{ color: "var(--primary)" }} />
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
                   Sem cartão de crédito
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4" style={{ color: "var(--primary)" }} />
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
                   Suporte em PT-BR
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4" style={{ color: "var(--primary)" }} />
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
                   Cancele quando quiser
                 </span>
               </div>
@@ -201,23 +154,15 @@ export default function HomePage() {
               <div className="relative w-full max-w-lg">
                 {/* Floating badge top-left */}
                 <div
-                  className="absolute -top-4 -left-4 z-10 flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold"
-                  style={{
-                    background: "color-mix(in oklab, var(--card) 85%, transparent)",
-                    borderColor: "var(--border)",
-                  }}
+                  className="absolute -top-4 -left-4 z-10 flex items-center gap-2 rounded-2xl px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold landing-hero-floating"
                 >
-                  <TrendingUp className="h-4 w-4" style={{ color: "var(--primary)" }} />
+                  <TrendingUp className="h-4 w-4 text-primary" />
                   <span>+40% conversão média</span>
                 </div>
 
                 {/* Product image */}
                 <div
-                  className="rounded-3xl border overflow-hidden shadow-2xl"
-                  style={{
-                    borderColor: "var(--border)",
-                    boxShadow: "0 32px 64px -16px color-mix(in oklab, var(--primary) 20%, rgba(0,0,0,0.3))",
-                  }}
+                  className="rounded-3xl overflow-hidden shadow-2xl landing-hero-floating"
                 >
                   <Image
                     src="/product-banner.svg"
@@ -231,13 +176,9 @@ export default function HomePage() {
 
                 {/* Floating badge bottom-right */}
                 <div
-                  className="absolute -bottom-4 -right-4 z-10 flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold"
-                  style={{
-                    background: "color-mix(in oklab, var(--card) 85%, transparent)",
-                    borderColor: "var(--border)",
-                  }}
+                  className="absolute -bottom-4 -right-4 z-10 flex items-center gap-2 rounded-2xl px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold landing-hero-floating"
                 >
-                  <Users className="h-4 w-4" style={{ color: "var(--primary)" }} />
+                  <Users className="h-4 w-4 text-primary" />
                   <span>500+ corretores ativos</span>
                 </div>
               </div>
@@ -247,7 +188,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <LogoBar />
+      {/* <LogoBar /> */}
 
       <div data-nosnippet>
         <FeaturesSection />
@@ -262,87 +203,14 @@ export default function HomePage() {
       </div>
 
       <div data-nosnippet>
-        <TestimonialsSection />
+          {/* <TestimonialsSection /> */}
       </div>
 
       <div data-nosnippet>
         <PricingSection />
       </div>
 
-      <footer className="relative border-t" style={{ borderColor: "var(--border)" }}>
-        <div className="mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-12 lg:py-16">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10">
-
-            {/* Col 1: Brand */}
-            <div className="lg:col-span-2">
-              <Link href="/" className="flex items-center gap-2 font-bold tracking-tight mb-4">
-                <Image
-                  src="/corretor-studio-icon.svg"
-                  alt="Corretor Studio"
-                  width={28}
-                  height={28}
-                  className="h-7 w-7"
-                />
-                <span>Corretor Studio</span>
-              </Link>
-              <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
-                O CRM e plataforma de email marketing para corretores de planos de saúde de alta performance.
-              </p>
-              <div className="mt-5 flex items-center gap-2 text-sm text-muted-foreground">
-                <span>Made with</span>
-                <HeartIcon style={{ color: "var(--primary)" }} className="h-4 w-4" />
-                <span className="font-semibold" style={{ color: "var(--primary)" }}>
-                  Willock&apos;s House
-                </span>
-              </div>
-            </div>
-
-            {/* Col 2: Produto */}
-            <div>
-              <h4 className="text-sm font-semibold text-foreground mb-4">Produto</h4>
-              <nav className="flex flex-col gap-3">
-                <Link href="/#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Funcionalidades
-                </Link>
-                <Link href="/#email-campaigns" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Campanhas de Email
-                </Link>
-                <Link href="/#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Como funciona
-                </Link>
-                <Link href="/#demo" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Agendar Demo
-                </Link>
-              </nav>
-            </div>
-
-            {/* Col 3: Legal */}
-            <div>
-              <h4 className="text-sm font-semibold text-foreground mb-4">Legal</h4>
-              <nav className="flex flex-col gap-3">
-                <Link href="/privacy-policy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Política de Privacidade
-                </Link>
-                <Link href="/terms" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  Termos de Uso
-                </Link>
-              </nav>
-            </div>
-
-          </div>
-
-          {/* Bottom strip */}
-          <div
-            className="mt-10 pt-6 border-t flex flex-col sm:flex-row justify-between items-center gap-3 text-sm text-muted-foreground"
-            style={{ borderColor: "var(--border)" }}
-          >
-            <p>© {new Date().getFullYear()} Corretor Studio. Todos os direitos reservados.</p>
-            <p className="text-xs">
-              Desenvolvido para corretores de planos de saúde no Brasil
-            </p>
-          </div>
-        </div>
-      </footer>
+      <LandingFooter />
 
       <HomeClientRuntime />
     </main>
