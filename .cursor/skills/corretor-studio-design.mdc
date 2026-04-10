@@ -1,0 +1,144 @@
+---
+description: Agent interno para criação de propostas visuais do Corretor Studio com base no DESIGN.md
+alwaysApply: false
+---
+
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: .claude/skills/corretor-studio-design.md -->
+<!-- Regenerate with: bun run skills:sync -->
+
+
+Implemente propostas de design para o Corretor Studio seguindo estritamente o contrato visual do projeto.
+
+## Objetivo
+
+Gerar direção visual e especificação prática para interfaces alinhadas ao `DESIGN.md`, sem desviar do design system canônico.
+
+## Fontes obrigatórias (ordem de prioridade)
+
+1. `DESIGN.md` (fonte canônica de design e tokens)
+2. `agents.md` (governança e restrições do repositório)
+3. Padrões shadcn/ui já existentes no projeto
+
+Se houver conflito entre decisões visuais anteriores e o `DESIGN.md`, prevalece o `DESIGN.md`.
+
+## Entradas esperadas no briefing
+
+Sempre extraia ou confirme estes campos antes de propor a solução:
+
+- `tipo_tela`: landing, dashboard, seção, modal, formulário, fluxo etc.
+- `objetivo_conversao`: qual ação principal deve acontecer.
+- `publico`: perfil de usuário (manager, operator, lead, backoffice, visitante).
+- `restricoes`: técnicas, de conteúdo, prazo, compliance, acessibilidade.
+
+Se algum campo estiver ausente, assuma o mínimo necessário e declare as assunções explicitamente.
+
+## Fluxo obrigatório de trabalho
+
+1. **Interpretar briefing**
+   - Traduzir objetivo de negócio para hierarquia visual e prioridade de CTA.
+   - Definir o momento de uso da interface (descoberta, decisão, execução, acompanhamento).
+
+2. **Selecionar tokens semânticos**
+   - Mapear superfícies via `--surface-*`.
+   - Mapear ênfase via `--primary`, `--precision-*` e `--semantic-*`.
+   - Definir motion com `--motion-*` e respeitar `prefers-reduced-motion`.
+
+3. **Compor layout e componentes**
+   - Priorizar composição com shadcn/ui antes de markup customizado.
+   - Aplicar linguagem do Corretor Studio: warm-precision, hierarquia clara e CTA forte.
+   - Definir grade, espaçamento e responsividade conforme regras do `DESIGN.md`.
+
+4. **Validar qualidade**
+   - Contraste, foco visível, touch target >= 44x44.
+   - Consistência entre light/dark.
+   - Coerência de tipografia (`Poppins + Inter`) e sem mistura de linguagem visual.
+
+5. **Entregar saída final**
+   - Retornar **brief estruturado em JSON**.
+   - Incluir **checklist de conformidade visual**.
+
+## Contrato de saída (obrigatório)
+
+Responda sempre nestes dois blocos:
+
+1. `design_brief_json`:
+```json
+{
+  "contexto": {
+    "tipo_tela": "",
+    "objetivo_conversao": "",
+    "publico": "",
+    "restricoes": []
+  },
+  "direcao_visual": {
+    "visual_dna": "Hybrid Warm-Precision",
+    "narrativa_interface": "",
+    "hierarquia_cta": ""
+  },
+  "tokens": {
+    "surface": [],
+    "brand": [],
+    "precision": [],
+    "semantic": [],
+    "motion": []
+  },
+  "layout": {
+    "estrutura": "",
+    "grade": "",
+    "espacamento": "",
+    "responsividade": []
+  },
+  "componentes": [
+    {
+      "nome": "",
+      "base": "shadcn",
+      "variantes": [],
+      "estados": []
+    }
+  ],
+  "acessibilidade": {
+    "contraste": "",
+    "foco_visivel": true,
+    "touch_target_minimo": "44x44",
+    "reduced_motion": true
+  },
+  "copy_direcao": {
+    "tom": "",
+    "microcopy_cta": [],
+    "mensagens_apoio": []
+  },
+  "assuncoes": []
+}
+```
+
+2. `checklist_conformidade`:
+- [ ] Usa tokens semânticos (sem hex hardcoded em UI themable)
+- [ ] Respeita tipografia `Poppins + Inter`
+- [ ] CTA primário com hierarquia inequívoca
+- [ ] Light/dark consistentes com o contrato
+- [ ] Componentes priorizam shadcn/ui
+- [ ] Motion usa `--motion-*` e respeita reduced motion
+- [ ] Sem violação de regiões gerenciadas por `design:sync`
+
+## Guardrails (MUST)
+
+- Não usar valores hex hardcoded em JSX/TSX para UI tematizável.
+- Não editar manualmente regiões gerenciadas de tokens em `app/globals.css`.
+- Não inventar nova família tipográfica sem aprovação explícita.
+- Não propor paleta fora da direção do Corretor Studio.
+- Não introduzir padrões visuais conflitantes com o `DESIGN.md`.
+
+## Anti-padrões (MUST NOT)
+
+- Grid uniforme repetitiva sem hierarquia de conversão.
+- Excesso de acentos cromáticos concorrentes.
+- “Cardização” indiscriminada com mesmo raio/sombra para tudo.
+- Motion contínuo decorativo sem função.
+- Contraste insuficiente em estados de foco/hover/disabled.
+
+## Critérios de aceite da resposta
+
+- A resposta é imediatamente acionável para design e implementação.
+- O JSON está completo, coerente e sem campos críticos vazios.
+- O checklist marca conformidade real com o contrato do projeto.
