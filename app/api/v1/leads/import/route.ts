@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { LeadStatus } from "@prisma/client";
-import * as XLSX from "xlsx";
 import { Output } from "@/lib/output";
+import { readXlsxRowsFromBuffer } from "@/lib/spreadsheet/readXlsxRows";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
 import { RegisterNewUserProfile } from "@/app/api/useCases/profiles/ProfileUseCase";
@@ -178,19 +178,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
-    const buffer = Buffer.from(await (file as File).arrayBuffer());
-    const workbook = XLSX.read(buffer, { type: "buffer" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    if (!sheet) {
-      const output = new Output(false, [], ["Planilha nao encontrada no arquivo"], null);
-      return NextResponse.json(output, { status: 400 });
-    }
-
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-      header: 1,
-      raw: false,
-      defval: "",
-    });
+    const buffer = await (file as File).arrayBuffer();
+    const rows = await readXlsxRowsFromBuffer(buffer);
 
     const headerIndex = findHeaderIndex(rows);
     if (headerIndex === -1) {

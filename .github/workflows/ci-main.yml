@@ -10,8 +10,10 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
   deployments: write
+  security-events: write
 
 env:
   CI: true
@@ -56,11 +58,23 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+  security:
+    name: Security
+    uses: ./.github/workflows/security-reusable.yml
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    with:
+      include_dev_dependencies: false
+
   build:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: quality
+    needs:
+      - quality
+      - security
     steps:
       - name: Checkout
         uses: actions/checkout@v4

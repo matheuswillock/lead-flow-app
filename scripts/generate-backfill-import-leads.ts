@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import * as XLSX from "xlsx";
+import { readXlsxRowsFromFile } from "../lib/spreadsheet/readXlsxRows";
 
 const MANAGER_PROFILE_ID = "1b1cc33f-1aea-4877-bc53-ca49d52ee764";
 
@@ -139,11 +139,8 @@ function findHeaderRowIndex(matrix: unknown[][]): number {
   return 0;
 }
 
-function loadRows(inputPath: string): Row[] {
-  const wb = XLSX.readFile(inputPath, { cellDates: true });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null }) as unknown[][];
-
+async function loadRows(inputPath: string): Promise<Row[]> {
+  const matrix = await readXlsxRowsFromFile(inputPath);
   const headerIdx = findHeaderRowIndex(matrix);
   const headers = (matrix[headerIdx] || []).map((h) => String(h ?? "").trim());
 
@@ -181,7 +178,7 @@ function buildLeadCode(name: string, idx1Based: number, yyyymmdd: string): strin
   return `${first}${yyyymmdd}${seq}${rand}${last}`;
 }
 
-function main() {
+async function main() {
   const root = process.cwd();
   const candidates = [
     path.join(root, "leadsExternos.csv"),
@@ -205,7 +202,7 @@ function main() {
   const yyyymmdd = importStamp.slice(0, 10).replace(/-/g, "");
 
   console.info(`[generate] Lendo: ${path.relative(root, inputPath)}`);
-  const rows = loadRows(inputPath);
+  const rows = await loadRows(inputPath);
   console.info(`[generate] Linhas detectadas: ${rows.length}`);
 
   const outDir = path.join(root, "scripts");
@@ -346,4 +343,7 @@ function main() {
   console.info(`[generate] Linhas ignoradas (sem nome): ${skipped}`);
 }
 
-main();
+void main().catch((error) => {
+  console.error("[generate] FATAL:", error);
+  process.exit(1);
+});
