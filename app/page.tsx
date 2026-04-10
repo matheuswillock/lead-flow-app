@@ -217,7 +217,7 @@ export default function HomePage() {
                   className="rounded-3xl overflow-hidden shadow-2xl landing-hero-floating"
                 >
                   <Image
-                    src="/product-banner.svg"
+                    src="/images/product-banner.svg"
                     alt="Corretor Studio — pipeline e gestão de leads"
                     width={600}
                     height={400}

@@ -45,9 +45,9 @@ export function LandingHeader() {
                         variant="ghost"
                         className="inline-flex items-center gap-2 px-2.5 text-sm font-medium text-foreground/70 hover:text-foreground"
                     >
-                        <Link href="/sign-in">
+                        <Link href="/sign-in" aria-label="Entrar na conta">
                             <LogIn className="h-4 w-4" />
-                            <span className="hidden sm:inline">Entrar</span>
+                            <span>Entrar</span>
                         </Link>
                     </Button>
 
