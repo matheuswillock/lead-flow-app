@@ -136,6 +136,60 @@ pending pending
 canceled canceled
         }
     
+
+
+        email_credit_plan {
+            starter starter
+plus plus
+pro pro
+business business
+        }
+    
+
+
+        email_credit_subscription_status {
+            active active
+suspended suspended
+canceled canceled
+        }
+    
+
+
+        email_campaign_status {
+            draft draft
+scheduled scheduled
+sending sending
+sent sent
+canceled canceled
+failed failed
+        }
+    
+
+
+        email_log_status {
+            queued queued
+sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+failed failed
+        }
+    
+
+
+        email_event_type {
+            sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+delivery_delayed delivery_delayed
+unsubscribed unsubscribed
+        }
+    
   "profiles" {
     String id "🗝️"
     String email 

@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { EmailCreditsCard } from './EmailCreditsCard';
 
 export function SubscriptionContainer() {
   const router = useRouter();
@@ -119,6 +120,11 @@ export function SubscriptionContainer() {
       </div>
 
       <SubscriptionInvoices invoices={invoices} />
+
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Créditos de Email</h2>
+        <EmailCreditsCard />
+      </div>
 
       {/* Dialog de reativação */}
       {subscription && (
