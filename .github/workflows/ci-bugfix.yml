@@ -15,7 +15,6 @@ concurrency:
 permissions:
   contents: read
   pull-requests: write
-  deployments: write
 
 env:
   CI: true
@@ -99,48 +98,21 @@ jobs:
       - name: Generate Prisma Client
         run: bun run prisma:generate
 
+      # Bugfix branches usam placeholders — validação real acontece no merge para develop
       - name: Build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL || 'https://placeholder.example.com' }}
+          NEXT_PUBLIC_ENCRYPTION_KEY: ${{ secrets.NEXT_PUBLIC_ENCRYPTION_KEY || 'placeholder-encryption-key-64-hex-chars-padding-here-00000000000000' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 're_placeholder' }}
         run: bun run build
-
-  deploy-preview:
-    name: Deploy Vercel (Preview)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: build
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      - name: Deploy to Vercel (Preview)
-        id: vercel-preview
-        run: |
-          DEPLOY_URL=$(vercel deploy \
-            --token=${{ secrets.VERCEL_TOKEN }} \
-            --yes \
-            2>&1 | tail -1)
-          echo "preview-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      - name: Preview Summary
-        run: |
-          echo "### Preview Deploy (bugfix)" >> $GITHUB_STEP_SUMMARY
-          echo "- URL: ${{ steps.vercel-preview.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
 
   auto-pr-to-develop:
     name: Open PR to develop
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: deploy-preview
+    needs: build
     steps:
       - name: Create PR if not exists (bugfix -> develop)
         uses: actions/github-script@v7

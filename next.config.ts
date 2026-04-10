@@ -21,6 +21,9 @@ if (process.env.CI !== 'true') {
 }
 
 const nextConfig: NextConfig = {
+  // Gera pasta .next/standalone com tudo necessário para rodar em VPS sem node_modules completo
+  output: 'standalone',
+
   // Configurações para reduzir warnings
   serverExternalPackages: ['@supabase/supabase-js'],
   

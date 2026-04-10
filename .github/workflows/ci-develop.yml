@@ -1,5 +1,5 @@
 # .github/workflows/ci-develop.yml
-name: CI (develop -> version -> preview -> PR main)
+name: CI (develop -> version -> staging -> PR main)
 
 on:
   push:
@@ -59,10 +59,10 @@ jobs:
         run: bun run typecheck
 
   build:
-    name: Build
+    name: Build & Prepare Artifact
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: quality
     steps:
       - name: Checkout
@@ -95,15 +95,35 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Generate Prisma Client
-        run: bun run prisma:generate
-
-      - name: Build
+      # Staging usa STAGING_NEXT_PUBLIC_APP_URL se disponível, senão cai para a URL de produção
+      - name: Build (staging)
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key' }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 're_placeholder' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.STAGING_NEXT_PUBLIC_APP_URL || secrets.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_ENCRYPTION_KEY: ${{ secrets.NEXT_PUBLIC_ENCRYPTION_KEY }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || '' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: bun run build
+
+      # Migrations no banco de staging (usa DIRECT_URL para evitar PgBouncer)
+      - name: Run Prisma Migrations (staging)
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL || secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.STAGING_DIRECT_URL || secrets.DIRECT_URL }}
+        run: bunx prisma migrate deploy
+
+      - name: Prepare deployment package
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+
+      - name: Upload staging artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-staging-${{ github.sha }}
+          path: .next/standalone/
+          retention-days: 1
 
   version-bump:
     name: Auto Version Bump (develop)
@@ -182,12 +202,19 @@ jobs:
           echo "- New Version: v${{ steps.bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
           echo "- Bump Type: ${{ steps.bump.outputs.bump_type }}" >> $GITHUB_STEP_SUMMARY
 
-  deploy-preview:
-    name: Deploy Vercel (Preview) from develop
+  deploy-staging:
+    name: Deploy Hostinger (Staging)
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
     needs: version-bump
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 15
+    env:
+      DEPLOY_HOST: ${{ secrets.HOSTINGER_HOST }}
+      DEPLOY_USER: ${{ secrets.HOSTINGER_USER }}
+      DEPLOY_PORT: ${{ secrets.HOSTINGER_PORT || '22' }}
+      DEPLOY_PATH: /var/www/lead-flow-staging
+      PM2_APP_NAME: lead-flow-staging
     steps:
       - name: Checkout latest develop (includes bump)
         uses: actions/checkout@v4
@@ -195,33 +222,88 @@ jobs:
           ref: develop
           fetch-depth: 0
 
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
+      - name: Download staging artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: deploy-staging-${{ github.sha }}
+          path: ./standalone
 
-      - name: Deploy to Vercel (Preview)
-        id: vercel-preview
+      # Grava .env de staging — ASAAS_ENV=sandbox por padrão para não tocar em produção
+      - name: Write .env file (staging)
         run: |
-          DEPLOY_URL=$(vercel deploy \
-            --token=${{ secrets.VERCEL_TOKEN }} \
-            --yes \
-            2>&1 | tail -1)
-          echo "preview-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          cat > ./standalone/.env << 'ENVEOF'
+          NODE_ENV=production
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_LEAD_ATTACHMENTS_BUCKET=${{ secrets.SUPABASE_LEAD_ATTACHMENTS_BUCKET }}
+          SUPABASE_PROFILE_ICONS_BUCKET=${{ secrets.SUPABASE_PROFILE_ICONS_BUCKET }}
+          POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}
+          POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}
+          POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+          DATABASE_URL=${{ secrets.STAGING_DATABASE_URL || secrets.DATABASE_URL }}
+          DIRECT_URL=${{ secrets.STAGING_DIRECT_URL || secrets.DIRECT_URL }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          EMAIL_TEST_MODE=${{ secrets.EMAIL_TEST_MODE || 'true' }}
+          RESEND_OWNER_EMAIL=${{ secrets.RESEND_OWNER_EMAIL }}
+          SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
+          ASAAS_API_KEY=${{ secrets.ASAAS_API_KEY }}
+          ASAAS_WALLET_ID=${{ secrets.ASAAS_WALLET_ID }}
+          ASAAS_WEBHOOK_TOKEN=${{ secrets.ASAAS_WEBHOOK_TOKEN }}
+          ASAAS_ENV=sandbox
+          ASAAS_URL=${{ secrets.ASAAS_URL_sandbox }}
+          ASAAS_URL_sandbox=${{ secrets.ASAAS_URL_sandbox }}
+          NEXT_PUBLIC_APP_URL=${{ secrets.STAGING_NEXT_PUBLIC_APP_URL || secrets.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL || '' }}
+          NEXT_API_BASE_URL=${{ secrets.NEXT_API_BASE_URL || '/api/v1' }}
+          ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+          NEXT_PUBLIC_ENCRYPTION_KEY=${{ secrets.NEXT_PUBLIC_ENCRYPTION_KEY }}
+          INTEGRATIONS_ENCRYPTION_KEY=${{ secrets.INTEGRATIONS_ENCRYPTION_KEY }}
+          META_APP_SECRET=${{ secrets.META_APP_SECRET || '' }}
+          META_ACCESS_TOKEN=${{ secrets.META_ACCESS_TOKEN || '' }}
+          META_VERIFY_TOKEN=${{ secrets.META_VERIFY_TOKEN }}
+          GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID || '' }}
+          GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET || '' }}
+          ENVEOF
 
-      - name: Preview Summary
+      - name: Setup SSH
         run: |
-          echo "### Preview Deploy (develop)" >> $GITHUB_STEP_SUMMARY
-          echo "- URL: ${{ steps.vercel-preview.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Version: v${{ needs.version-bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$DEPLOY_PORT" -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to VPS staging (rsync)
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p $DEPLOY_PORT -o StrictHostKeyChecking=no" \
+            ./standalone/ \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_PATH/"
+
+      - name: Restart staging application (PM2)
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -p "$DEPLOY_PORT" \
+            -o StrictHostKeyChecking=no \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "pm2 restart $PM2_APP_NAME 2>/dev/null || PORT=3001 pm2 start $DEPLOY_PATH/server.js --name $PM2_APP_NAME && pm2 save"
+
+      - name: Staging Summary
+        run: |
+          echo "### Staging Deploy (develop)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Host:** $DEPLOY_HOST" >> $GITHUB_STEP_SUMMARY
+          echo "- **Path:** $DEPLOY_PATH" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** v${{ needs.version-bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **App URL:** ${{ secrets.STAGING_NEXT_PUBLIC_APP_URL || secrets.NEXT_PUBLIC_APP_URL }}" >> $GITHUB_STEP_SUMMARY
 
   auto-pr-develop-to-main:
     name: Open PR develop -> main
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: deploy-preview
+    needs: deploy-staging
     steps:
       - name: Checkout develop (latest)
         uses: actions/checkout@v4
@@ -284,7 +366,7 @@ jobs:
               '- [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?',
               '- [ ] Rodou typecheck/lint?',
               '- [ ] Rodou governance check?',
-              '- [ ] Preview deploy OK',
+              '- [ ] Staging deploy OK',
               '',
               '*PR criado automaticamente.*'
             ].join('\n');
