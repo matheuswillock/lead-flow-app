@@ -496,6 +496,115 @@ unsubscribed unsubscribed
     DateTime updatedAt 
     }
   
+
+  "email_credit_subscriptions" {
+    String id "🗝️"
+    EmailCreditPlan plan 
+    Int monthlyCredits 
+    EmailCreditSubscriptionStatus status 
+    DateTime currentPeriodStart 
+    DateTime currentPeriodEnd 
+    DateTime canceledAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_credit_usages" {
+    String id "🗝️"
+    DateTime periodStart 
+    DateTime periodEnd 
+    Int creditsUsed 
+    Int overageCount 
+    Decimal overageCharged 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_templates" {
+    String id "🗝️"
+    String name 
+    String subject 
+    String previewText "❓"
+    Json mailyJson "❓"
+    String html "❓"
+    Boolean isArchived 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_contact_lists" {
+    String id "🗝️"
+    String name 
+    String description "❓"
+    String csvStoragePath "❓"
+    Int totalContacts 
+    Boolean isArchived 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_contacts" {
+    String id "🗝️"
+    String email 
+    String name "❓"
+    Json customFields "❓"
+    Boolean isUnsubscribed 
+    Boolean isBounced 
+    Boolean isComplained 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_campaigns" {
+    String id "🗝️"
+    String name 
+    EmailCampaignStatus status 
+    DateTime scheduledAt "❓"
+    DateTime sentAt "❓"
+    Int totalRecipients 
+    Int totalSent 
+    Int totalDelivered 
+    Int totalOpened 
+    Int totalClicked 
+    Int totalBounced 
+    Int totalComplained 
+    String errorMessage "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_logs" {
+    String id "🗝️"
+    String resendEmailId "❓"
+    String recipientEmail 
+    String recipientName "❓"
+    String subject 
+    EmailLogStatus status 
+    DateTime sentAt "❓"
+    DateTime deliveredAt "❓"
+    DateTime openedAt "❓"
+    DateTime clickedAt "❓"
+    DateTime bouncedAt "❓"
+    DateTime complainedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_events" {
+    String id "🗝️"
+    EmailEventType type 
+    DateTime occurredAt 
+    Json metadata "❓"
+    DateTime createdAt 
+    }
+  
     "profiles" |o--|| "UserRole" : "enum:role"
     "profiles" |o--}o "UserFunction" : "enum:functions"
     "profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -557,4 +666,23 @@ unsubscribed unsubscribed
     "team_members" |o--}o "UserFunction" : "enum:functions"
     "team_members" }o--|| teams : "team"
     "team_members" }o--|| profiles : "profile"
+    "email_credit_subscriptions" |o--|| "EmailCreditPlan" : "enum:plan"
+    "email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
+    "email_credit_subscriptions" |o--|| profiles : "profile"
+    "email_credit_usages" }o--|| email_credit_subscriptions : "subscription"
+    "email_templates" }o--|| teams : "team"
+    "email_templates" }o--|| profiles : "creator"
+    "email_contact_lists" }o--|| teams : "team"
+    "email_contact_lists" }o--|| profiles : "creator"
+    "email_contacts" }o--|| email_contact_lists : "list"
+    "email_campaigns" |o--|| "EmailCampaignStatus" : "enum:status"
+    "email_campaigns" }o--|| teams : "team"
+    "email_campaigns" }o--|| profiles : "creator"
+    "email_campaigns" }o--|| email_templates : "template"
+    "email_campaigns" }o--|| email_contact_lists : "contactList"
+    "email_logs" |o--|| "EmailLogStatus" : "enum:status"
+    "email_logs" }o--|| teams : "team"
+    "email_logs" }o--|o email_campaigns : "campaign"
+    "email_events" |o--|| "EmailEventType" : "enum:type"
+    "email_events" }o--|| email_logs : "log"
 ```
