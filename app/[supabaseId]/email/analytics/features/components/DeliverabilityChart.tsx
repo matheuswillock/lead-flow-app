@@ -64,7 +64,7 @@ export function DeliverabilityChart() {
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} />
             <Tooltip
-              formatter={(value: number) => [value.toLocaleString("pt-BR"), "Emails"]}
+              formatter={(value) => [Number(value ?? 0).toLocaleString("pt-BR"), "Emails"]}
             />
             <Bar dataKey="value" fill="#ff6900" radius={[4, 4, 0, 0]} />
           </BarChart>
