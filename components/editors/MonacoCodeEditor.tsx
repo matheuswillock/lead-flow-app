@@ -25,6 +25,7 @@ export interface MonacoCodeEditorProps {
   options?: MonacoEditorNamespace.IStandaloneEditorConstructionOptions
   themeVariant?: 'auto' | 'dracula' | 'resend-dark'
   placeholder?: string
+  onMount?: (editor: MonacoEditorNamespace.IStandaloneCodeEditor, monaco: typeof Monaco) => void
 }
 
 function defineLeadFlowDracula(monaco: typeof Monaco) {
@@ -134,6 +135,7 @@ export function MonacoCodeEditor({
   options,
   themeVariant = 'auto',
   placeholder,
+  onMount,
 }: MonacoCodeEditorProps) {
   const { resolvedTheme } = useTheme()
   const editorTheme =
@@ -185,6 +187,7 @@ export function MonacoCodeEditor({
         options={mergedOptions}
         loading={<div className={cn('h-full w-full animate-pulse', loadingBackgroundClass)} />}
         onChange={(nextValue) => onChange(nextValue ?? '')}
+        onMount={onMount}
       />
       {shouldShowPlaceholder ? (
         <div className="pointer-events-none absolute left-[3.25rem] top-3 z-10 text-[14px] text-[#8B8B8B]">

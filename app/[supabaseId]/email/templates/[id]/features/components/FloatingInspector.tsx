@@ -1,27 +1,23 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import type { ReactNode, SVGProps } from 'react'
 import {
-  AlignCenter,
-  AlignLeft,
-  AlignRight,
   Braces,
   FileText,
-  Grid2x2,
   Palette,
   Pin,
   PinOff,
   Square,
 } from 'lucide-react'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import type {
   BorderSide,
-  BorderStyleKind,
   BorderValues,
   BoxRadius,
   BoxSpacing,
   MailyPageStyle,
-  PageStyleBodyAlign,
 } from '../utils/emailPageStyle'
 
 function clampNonNegativeInt(value: number) {
@@ -29,47 +25,192 @@ function clampNonNegativeInt(value: number) {
   return Math.max(0, Math.floor(value))
 }
 
-function ControlLabel({ children }: { children: string }) {
-  return <p className="text-[12px] text-white/72">{children}</p>
+function sanitizeNumberish(value: string, fallback = 0) {
+  const parsed = Number(value.trim())
+  return Number.isFinite(parsed) ? clampNonNegativeInt(parsed) : fallback
 }
 
-function modeButtonClass(active: boolean) {
-  return cn(
-    'inline-flex h-8 w-8 items-center justify-center rounded-xl border text-white/70 transition-colors',
-    active
-      ? 'border-[#40495a] bg-[#2b3140] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
-      : 'border-[#232833] bg-[#111117] hover:border-[#303746] hover:bg-[#171a21] hover:text-white'
+function normalizeColor(value: string) {
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) {
+    return value
+  }
+
+  return '#000000'
+}
+
+function ControlLabel({ children }: { children: string }) {
+  return <p className="text-[12px] font-medium text-white/72">{children}</p>
+}
+
+function SideLabel({ children }: { children: string }) {
+  return <p className="text-[11px] text-white/44">{children}</p>
+}
+
+function GridModeIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className={cn('h-3.5 w-3.5', className)}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="2.25" y="2.25" width="4.5" height="4.5" rx="1" />
+      <rect x="9.25" y="2.25" width="4.5" height="4.5" rx="1" />
+      <rect x="2.25" y="9.25" width="4.5" height="4.5" rx="1" />
+      <rect x="9.25" y="9.25" width="4.5" height="4.5" rx="1" />
+    </svg>
   )
 }
 
-function RowInputShell({ children }: { children: React.ReactNode }) {
-  return <div className="flex items-center gap-1">{children}</div>
+function AlignContainerLeftIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" {...props}>
+      <path d="M2.5 3v10" />
+      <rect x="4.75" y="4.25" width="7" height="7.5" rx="1.5" />
+    </svg>
+  )
 }
 
-function NumberUnitInput({
-  value,
-  onChange,
-  unit = 'px',
-}: {
-  value: number
-  onChange: (next: number) => void
-  unit?: string
-}) {
+function AlignContainerCenterIcon(props: SVGProps<SVGSVGElement>) {
   return (
-    <div className="flex min-w-0 flex-1 items-center rounded-2xl border border-[#232833] bg-[#111117]">
-      <input
-        type="number"
-        min={0}
-        value={value}
-        onChange={(event) => onChange(clampNonNegativeInt(Number(event.target.value)))}
-        className="h-8 min-w-0 flex-1 bg-transparent px-3 text-[12px] font-semibold text-white outline-none"
-      />
-      <span className="pr-3 text-[11px] text-white/45">{unit}</span>
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" {...props}>
+      <path d="M8 2.5v11" />
+      <rect x="4.5" y="4.25" width="7" height="7.5" rx="1.5" />
+    </svg>
+  )
+}
+
+function AlignContainerRightIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" {...props}>
+      <path d="M13.5 3v10" />
+      <rect x="4.25" y="4.25" width="7" height="7.5" rx="1.5" />
+    </svg>
+  )
+}
+
+function SegmentShell({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cn('rounded-[16px] border border-[#232833] bg-[#111117] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]', className)}>
+      {children}
     </div>
   )
 }
 
-function NumberSelectInput({
+function CompactModeToggle<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T
+  onChange: (next: T) => void
+  options: Array<{ value: T; icon: ReactNode; label: string }>
+}) {
+  return (
+    <SegmentShell className="p-0.5">
+      <ToggleGroup
+        type="single"
+        value={value}
+        onValueChange={(next) => {
+          if (next) onChange(next as T)
+        }}
+        className="gap-0.5"
+      >
+        {options.map((option) => (
+          <ToggleGroupItem
+            key={option.value}
+            value={option.value}
+            size="sm"
+            className="h-8 min-w-8 rounded-[12px] border-0 bg-transparent px-2 text-white/58 shadow-none data-[state=on]:bg-[#40464d] data-[state=on]:text-white hover:bg-[#1a1f26] hover:text-white"
+            aria-label={option.label}
+            title={option.label}
+          >
+            {option.icon}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </SegmentShell>
+  )
+}
+
+function SegmentedChoice<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T
+  onChange: (next: T) => void
+  options: Array<{ value: T; icon: ReactNode; label: string }>
+}) {
+  return (
+    <SegmentShell>
+      <ToggleGroup
+        type="single"
+        value={value}
+        onValueChange={(next) => {
+          if (next) onChange(next as T)
+        }}
+        className="w-full gap-1"
+      >
+        {options.map((option) => (
+          <ToggleGroupItem
+            key={option.value}
+            value={option.value}
+            size="sm"
+            className="h-9 flex-1 rounded-[12px] border-0 bg-transparent px-0 text-white/56 shadow-none data-[state=on]:bg-[#40464d] data-[state=on]:text-white hover:bg-[#1a1f26] hover:text-white"
+            aria-label={option.label}
+            title={option.label}
+          >
+            {option.icon}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </SegmentShell>
+  )
+}
+
+function RawInput({
+  value,
+  onChange,
+  placeholder,
+  disabled = false,
+}: {
+  value: string
+  onChange: (next: string) => void
+  placeholder?: string
+  disabled?: boolean
+}) {
+  return (
+    <div className={cn('flex min-w-0 flex-1 items-center rounded-[14px] border border-[#232833] bg-[#111117] px-3', disabled && 'opacity-70')}>
+      <input
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="h-9 min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-white outline-none placeholder:text-white/30 disabled:cursor-not-allowed"
+      />
+    </div>
+  )
+}
+
+function NumberInput({
+  value,
+  onChange,
+  placeholder = '0',
+}: {
+  value: number
+  onChange: (next: number) => void
+  placeholder?: string
+}) {
+  return <RawInput value={String(value)} onChange={(next) => onChange(sanitizeNumberish(next, value))} placeholder={placeholder} />
+}
+
+function NumberWithUnitField({
   value,
   onChange,
   unit = 'px',
@@ -79,68 +220,79 @@ function NumberSelectInput({
   unit?: string
 }) {
   return (
-    <RowInputShell>
-      <div className="flex min-w-0 flex-1 items-center rounded-2xl border border-[#232833] bg-[#111117]">
-        <input
-          type="number"
-          min={0}
-          value={value}
-          onChange={(event) => onChange(clampNonNegativeInt(Number(event.target.value)))}
-          className="h-8 min-w-0 flex-1 bg-transparent px-3 text-[12px] font-semibold text-white outline-none"
-        />
+    <div className="flex items-center gap-2">
+      <NumberInput value={value} onChange={onChange} />
+      <div className="flex h-9 min-w-[64px] items-center justify-center rounded-[14px] border border-[#232833] bg-[#111117] px-3 text-[12px] font-medium text-white/74">
+        {unit}
       </div>
-      <div className="flex h-8 min-w-[72px] items-center rounded-2xl border border-[#232833] bg-[#111117] px-2">
-        <span className="text-[12px] font-medium text-white/88">{unit}</span>
-      </div>
-    </RowInputShell>
+    </div>
   )
 }
 
-function TextUnitInput({
+function UnitSelect({
   value,
+  options,
   onChange,
-  placeholder,
 }: {
   value: string
+  options: Array<{ value: string; label: string }>
   onChange: (next: string) => void
-  placeholder?: string
 }) {
   return (
-    <RowInputShell>
-      <div className="flex min-w-0 flex-1 items-center rounded-2xl border border-[#232833] bg-[#111117]">
-        <input
-          type="text"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-          className="h-8 min-w-0 flex-1 bg-transparent px-3 text-[12px] font-semibold text-white outline-none placeholder:text-white/30"
-        />
-      </div>
-      <div className="flex h-8 min-w-[72px] items-center rounded-2xl border border-[#232833] bg-[#111117] px-2">
-        <span className="text-[12px] font-medium text-white/88">px</span>
-      </div>
-    </RowInputShell>
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="h-9 min-w-[72px] rounded-[14px] border-[#232833] bg-[#111117] px-3 text-[12px] font-medium text-white shadow-none hover:bg-[#171a21] focus:ring-0">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="border-[#232833] bg-[#111117] text-white">
+        <SelectGroup>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value} className="focus:bg-[#1a1f26] focus:text-white">
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   )
 }
 
-function BorderStyleSelect({
+function DimensionField({
   value,
   onChange,
+  allowAuto = false,
 }: {
-  value: BorderStyleKind
-  onChange: (next: BorderStyleKind) => void
+  value: string | number
+  onChange: (next: string) => void
+  allowAuto?: boolean
 }) {
+  const normalizedValue = String(value).trim()
+  const unit = allowAuto && normalizedValue.toLowerCase() === 'auto' ? 'auto' : 'px'
+  const displayValue = unit === 'auto' ? 'auto' : normalizedValue.length > 0 ? String(sanitizeNumberish(normalizedValue)) : ''
+
   return (
-    <div className="flex h-8 min-w-[92px] items-center rounded-2xl border border-[#232833] bg-[#111117] px-2">
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value as BorderStyleKind)}
-        className="w-full appearance-none bg-transparent text-[12px] font-medium text-white outline-none"
-      >
-        <option value="solid">Solid</option>
-        <option value="dashed">Dashed</option>
-        <option value="dotted">Dotted</option>
-      </select>
+    <div className="flex items-center gap-2">
+      <RawInput
+        value={displayValue}
+        onChange={(next) => {
+          if (unit === 'auto') return
+          onChange(String(sanitizeNumberish(next, displayValue ? sanitizeNumberish(displayValue) : 0)))
+        }}
+        placeholder={unit === 'auto' ? 'auto' : '0'}
+        disabled={unit === 'auto'}
+      />
+      <UnitSelect
+        value={unit}
+        options={allowAuto ? [{ value: 'px', label: 'px' }, { value: 'auto', label: 'auto' }] : [{ value: 'px', label: 'px' }]}
+        onChange={(next) => {
+          if (next === 'auto') {
+            onChange('auto')
+            return
+          }
+
+          const nextValue = unit === 'auto' ? '0' : displayValue || '0'
+          onChange(nextValue)
+        }}
+      />
     </div>
   )
 }
@@ -154,12 +306,12 @@ function ColorField({
   value: string
   onChange: (next: string) => void
 }) {
-  const safeColorValue = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : '#000000'
+  const safeColorValue = normalizeColor(value)
 
   return (
     <div className="space-y-1.5">
       <ControlLabel>{label}</ControlLabel>
-      <div className="flex items-center gap-2 rounded-2xl border border-[#232833] bg-[#111117] px-2 py-1">
+      <div className="flex items-center gap-2 rounded-[14px] border border-[#232833] bg-[#111117] px-2.5">
         <input
           type="color"
           value={safeColorValue}
@@ -170,33 +322,10 @@ function ColorField({
           type="text"
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="h-6 min-w-0 flex-1 bg-transparent text-[12px] font-semibold text-white outline-none placeholder:text-white/35"
+          className="h-9 min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-white outline-none placeholder:text-white/35"
           placeholder="#ffffff"
         />
       </div>
-    </div>
-  )
-}
-
-function ModeButtons({
-  uniformActive,
-  detailedActive,
-  onUniform,
-  onDetailed,
-}: {
-  uniformActive: boolean
-  detailedActive: boolean
-  onUniform: () => void
-  onDetailed: () => void
-}) {
-  return (
-    <div className="flex items-center gap-1">
-      <button type="button" onClick={onUniform} className={modeButtonClass(uniformActive)} title="Uniform">
-        <Square className="h-3.5 w-3.5" />
-      </button>
-      <button type="button" onClick={onDetailed} className={modeButtonClass(detailedActive)} title="Per side">
-        <Grid2x2 className="h-3.5 w-3.5" />
-      </button>
     </div>
   )
 }
@@ -218,12 +347,9 @@ function SideSpacingGrid({
   return (
     <div className="grid grid-cols-2 gap-2">
       {items.map((item) => (
-        <div key={item.key} className="space-y-1">
-          <p className="text-[11px] text-white/42">{item.label}</p>
-          <NumberUnitInput
-            value={value[item.key]}
-            onChange={(next) => onChange({ ...value, [item.key]: next })}
-          />
+        <div key={item.key} className="space-y-1.5">
+          <SideLabel>{item.label}</SideLabel>
+          <NumberWithUnitField value={value[item.key]} onChange={(next) => onChange({ ...value, [item.key]: next })} />
         </div>
       ))}
     </div>
@@ -247,11 +373,37 @@ function RadiusGrid({
   return (
     <div className="grid grid-cols-2 gap-2">
       {items.map((item) => (
-        <div key={item.key} className="space-y-1">
-          <p className="text-[11px] text-white/42">{item.label}</p>
-          <NumberUnitInput
-            value={value[item.key]}
-            onChange={(next) => onChange({ ...value, [item.key]: next })}
+        <div key={item.key} className="space-y-1.5">
+          <SideLabel>{item.label}</SideLabel>
+          <NumberWithUnitField value={value[item.key]} onChange={(next) => onChange({ ...value, [item.key]: next })} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function BorderWidthGrid({
+  value,
+  onChange,
+}: {
+  value: BorderValues
+  onChange: (next: BorderValues) => void
+}) {
+  const items: Array<{ key: keyof BorderValues; label: string }> = [
+    { key: 'top', label: 'Top' },
+    { key: 'right', label: 'Right' },
+    { key: 'bottom', label: 'Bottom' },
+    { key: 'left', label: 'Left' },
+  ]
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {items.map((item) => (
+        <div key={item.key} className="space-y-1.5">
+          <SideLabel>{item.label}</SideLabel>
+          <NumberWithUnitField
+            value={value[item.key].width}
+            onChange={(next) => onChange({ ...value, [item.key]: { ...value[item.key], width: next } })}
           />
         </div>
       ))}
@@ -259,40 +411,71 @@ function RadiusGrid({
   )
 }
 
-function BorderSideEditor({
-  label,
+function BorderColorGrid({
   value,
   onChange,
 }: {
-  label: string
-  value: BorderSide
-  onChange: (next: BorderSide) => void
+  value: BorderValues
+  onChange: (next: BorderValues) => void
 }) {
-  const safeColorValue = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value.color) ? value.color : '#000000'
+  const items: Array<{ key: keyof BorderValues; label: string }> = [
+    { key: 'top', label: 'Top' },
+    { key: 'right', label: 'Right' },
+    { key: 'bottom', label: 'Bottom' },
+    { key: 'left', label: 'Left' },
+  ]
 
   return (
-    <div className="space-y-1">
-      <p className="text-[11px] text-white/42">{label}</p>
-      <div className="flex items-center gap-1">
-        <NumberUnitInput value={value.width} onChange={(width) => onChange({ ...value, width })} />
-        <BorderStyleSelect value={value.style} onChange={(style) => onChange({ ...value, style })} />
-        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-[#232833] bg-[#111117] px-2 py-1">
-          <input
-            type="color"
-            value={safeColorValue}
-            onChange={(event) => onChange({ ...value, color: event.target.value })}
-            className="h-5 w-5 cursor-pointer rounded-md border border-white/20 bg-transparent p-0"
-          />
-          <input
-            type="text"
-            value={value.color}
-            onChange={(event) => onChange({ ...value, color: event.target.value })}
-            className="h-6 min-w-0 flex-1 bg-transparent text-[12px] font-semibold text-white outline-none"
-          />
+    <div className="grid grid-cols-2 gap-2">
+      {items.map((item) => (
+        <div key={item.key} className="space-y-1.5">
+          <SideLabel>{item.label}</SideLabel>
+          <div className="flex items-center gap-2 rounded-[14px] border border-[#232833] bg-[#111117] px-2.5">
+            <input
+              type="color"
+              value={normalizeColor(value[item.key].color)}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  [item.key]: {
+                    ...value[item.key],
+                    color: event.target.value,
+                  },
+                })
+              }
+              className="h-5 w-5 cursor-pointer rounded-md border border-white/20 bg-transparent p-0"
+            />
+            <input
+              type="text"
+              value={value[item.key].color}
+              onChange={(event) =>
+                onChange({
+                  ...value,
+                  [item.key]: {
+                    ...value[item.key],
+                    color: event.target.value,
+                  },
+                })
+              }
+              className="h-9 min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-white outline-none"
+            />
+          </div>
         </div>
-      </div>
+      ))}
     </div>
   )
+}
+
+function toUniformBorderValues(
+  border: BorderValues,
+  patch: Partial<BorderSide>
+): BorderValues {
+  return {
+    top: { ...border.top, ...patch },
+    right: { ...border.right, ...patch },
+    bottom: { ...border.bottom, ...patch },
+    left: { ...border.left, ...patch },
+  }
 }
 
 interface FloatingInspectorProps {
@@ -337,8 +520,8 @@ export function FloatingInspector({
       )}
     >
       <div className="flex items-center justify-between border-b border-[#171b22] px-4 py-4">
-        <div className="flex items-center gap-2">
-          <span className="rounded-md border border-[#232833] bg-[#111117] p-1 text-white/80">
+        <div className="flex items-center gap-2.5">
+          <span className="rounded-lg border border-[#232833] bg-[#111117] p-1.5 text-white/82">
             <FileText className="h-3.5 w-3.5" />
           </span>
           <h3 className="text-[13px] font-semibold text-white">Page style</h3>
@@ -362,8 +545,8 @@ export function FloatingInspector({
       </div>
 
       <div className="flex-1 space-y-6 overflow-y-auto px-4 py-4">
-        <section className="space-y-3">
-          <h4 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/40">Background</h4>
+        <section className="space-y-4">
+          <h4 className="text-[13px] font-medium text-white/84">Background</h4>
           <ColorField
             label="Background"
             value={pageStyle.pageBackground}
@@ -371,19 +554,26 @@ export function FloatingInspector({
           />
 
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <ControlLabel>Padding</ControlLabel>
-              <ModeButtons
-                uniformActive={pageStyle.pagePaddingMode === 'uniform'}
-                detailedActive={pageStyle.pagePaddingMode === 'per-side'}
-                onUniform={() => onPageStyleChange({ pagePaddingMode: 'uniform' })}
-                onDetailed={() => onPageStyleChange({ pagePaddingMode: 'per-side' })}
+              <CompactModeToggle
+                value={pageStyle.pagePaddingMode}
+                onChange={(pagePaddingMode) => onPageStyleChange({ pagePaddingMode })}
+                options={[
+                  { value: 'uniform', icon: <Square className="h-3.5 w-3.5" />, label: 'Uniforme' },
+                  { value: 'per-side', icon: <GridModeIcon />, label: 'Por lado' },
+                ]}
               />
             </div>
+
             {pageStyle.pagePaddingMode === 'uniform' ? (
-              <NumberUnitInput
+              <NumberWithUnitField
                 value={pageStyle.pagePadding.top}
-                onChange={(next) => onPageStyleChange({ pagePadding: { top: next, right: next, bottom: next, left: next } })}
+                onChange={(next) =>
+                  onPageStyleChange({
+                    pagePadding: { top: next, right: next, bottom: next, left: next },
+                  })
+                }
               />
             ) : (
               <SideSpacingGrid
@@ -394,36 +584,25 @@ export function FloatingInspector({
           </div>
         </section>
 
-        <section className="space-y-3 border-t border-[#171b22] pt-4">
+        <section className="space-y-4 border-t border-[#171b22] pt-4">
           <h4 className="text-[24px] font-semibold leading-none text-white">Body</h4>
 
-          <div className="inline-flex w-full items-center gap-1 rounded-2xl border border-[#232833] bg-[#111117] p-1">
-            {([
-              { key: 'left', icon: <AlignLeft className="h-3.5 w-3.5" /> },
-              { key: 'center', icon: <AlignCenter className="h-3.5 w-3.5" /> },
-              { key: 'right', icon: <AlignRight className="h-3.5 w-3.5" /> },
-            ] as Array<{ key: PageStyleBodyAlign; icon: ReactNode }>).map((option) => (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => onPageStyleChange({ bodyAlign: option.key })}
-                className={cn(
-                  'flex h-8 flex-1 items-center justify-center rounded-xl text-white/60 transition-colors',
-                  pageStyle.bodyAlign === option.key
-                    ? 'border border-[#40495a] bg-[#2b3140] text-white'
-                    : 'hover:bg-[#171a21] hover:text-white'
-                )}
-              >
-                {option.icon}
-              </button>
-            ))}
-          </div>
+          <SegmentedChoice
+            value={pageStyle.bodyAlign}
+            onChange={(bodyAlign) => onPageStyleChange({ bodyAlign })}
+            options={[
+              { value: 'left', icon: <AlignContainerLeftIcon className="h-4 w-4" />, label: 'Esquerda' },
+              { value: 'center', icon: <AlignContainerCenterIcon className="h-4 w-4" />, label: 'Centro' },
+              { value: 'right', icon: <AlignContainerRightIcon className="h-4 w-4" />, label: 'Direita' },
+            ]}
+          />
 
           <ColorField
             label="Text"
             value={pageStyle.bodyTextColor}
             onChange={(bodyTextColor) => onPageStyleChange({ bodyTextColor })}
           />
+
           <ColorField
             label="Background"
             value={pageStyle.bodyBackground}
@@ -432,32 +611,35 @@ export function FloatingInspector({
 
           <div className="space-y-1.5">
             <ControlLabel>Width</ControlLabel>
-            <NumberSelectInput value={pageStyle.bodyWidth} onChange={(bodyWidth) => onPageStyleChange({ bodyWidth })} />
+            <DimensionField value={pageStyle.bodyWidth} onChange={(bodyWidth) => onPageStyleChange({ bodyWidth: sanitizeNumberish(bodyWidth, pageStyle.bodyWidth) })} />
           </div>
 
           <div className="space-y-1.5">
             <ControlLabel>Height</ControlLabel>
-            <TextUnitInput
-              value={pageStyle.bodyHeight}
-              onChange={(bodyHeight) => onPageStyleChange({ bodyHeight })}
-              placeholder="auto"
-            />
+            <DimensionField value={pageStyle.bodyHeight} onChange={(bodyHeight) => onPageStyleChange({ bodyHeight })} allowAuto />
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <ControlLabel>Padding</ControlLabel>
-              <ModeButtons
-                uniformActive={pageStyle.bodyPaddingMode === 'uniform'}
-                detailedActive={pageStyle.bodyPaddingMode === 'per-side'}
-                onUniform={() => onPageStyleChange({ bodyPaddingMode: 'uniform' })}
-                onDetailed={() => onPageStyleChange({ bodyPaddingMode: 'per-side' })}
+              <CompactModeToggle
+                value={pageStyle.bodyPaddingMode}
+                onChange={(bodyPaddingMode) => onPageStyleChange({ bodyPaddingMode })}
+                options={[
+                  { value: 'uniform', icon: <Square className="h-3.5 w-3.5" />, label: 'Uniforme' },
+                  { value: 'per-side', icon: <GridModeIcon />, label: 'Por lado' },
+                ]}
               />
             </div>
+
             {pageStyle.bodyPaddingMode === 'uniform' ? (
-              <NumberUnitInput
+              <NumberWithUnitField
                 value={pageStyle.bodyPadding.top}
-                onChange={(next) => onPageStyleChange({ bodyPadding: { top: next, right: next, bottom: next, left: next } })}
+                onChange={(next) =>
+                  onPageStyleChange({
+                    bodyPadding: { top: next, right: next, bottom: next, left: next },
+                  })
+                }
               />
             ) : (
               <SideSpacingGrid
@@ -468,17 +650,20 @@ export function FloatingInspector({
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <ControlLabel>Corner radius</ControlLabel>
-              <ModeButtons
-                uniformActive={pageStyle.bodyRadiusMode === 'uniform'}
-                detailedActive={pageStyle.bodyRadiusMode === 'per-corner'}
-                onUniform={() => onPageStyleChange({ bodyRadiusMode: 'uniform' })}
-                onDetailed={() => onPageStyleChange({ bodyRadiusMode: 'per-corner' })}
+              <CompactModeToggle
+                value={pageStyle.bodyRadiusMode}
+                onChange={(bodyRadiusMode) => onPageStyleChange({ bodyRadiusMode })}
+                options={[
+                  { value: 'uniform', icon: <Square className="h-3.5 w-3.5" />, label: 'Uniforme' },
+                  { value: 'per-corner', icon: <GridModeIcon />, label: 'Por canto' },
+                ]}
               />
             </div>
+
             {pageStyle.bodyRadiusMode === 'uniform' ? (
-              <NumberUnitInput
+              <NumberWithUnitField
                 value={pageStyle.bodyRadius.topLeft}
                 onChange={(next) =>
                   onPageStyleChange({
@@ -500,61 +685,67 @@ export function FloatingInspector({
           </div>
 
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <ControlLabel>Border</ControlLabel>
-              <ModeButtons
-                uniformActive={pageStyle.bodyBorderMode === 'uniform'}
-                detailedActive={pageStyle.bodyBorderMode === 'per-side'}
-                onUniform={() => onPageStyleChange({ bodyBorderMode: 'uniform' })}
-                onDetailed={() => onPageStyleChange({ bodyBorderMode: 'per-side' })}
+              <CompactModeToggle
+                value={pageStyle.bodyBorderMode}
+                onChange={(bodyBorderMode) => onPageStyleChange({ bodyBorderMode })}
+                options={[
+                  { value: 'uniform', icon: <Square className="h-3.5 w-3.5" />, label: 'Uniforme' },
+                  { value: 'per-side', icon: <GridModeIcon />, label: 'Por lado' },
+                ]}
               />
             </div>
+
             {pageStyle.bodyBorderMode === 'uniform' ? (
-              <BorderSideEditor
-                label="All sides"
-                value={pageStyle.bodyBorder.top}
+              <NumberWithUnitField
+                value={pageStyle.bodyBorder.top.width}
                 onChange={(next) =>
                   onPageStyleChange({
-                    bodyBorder: {
-                      top: next,
-                      right: next,
-                      bottom: next,
-                      left: next,
-                    } as BorderValues,
+                    bodyBorder: toUniformBorderValues(pageStyle.bodyBorder, { width: next }),
                   })
                 }
               />
             ) : (
-              <div className="space-y-2">
-                <BorderSideEditor
-                  label="Top"
-                  value={pageStyle.bodyBorder.top}
-                  onChange={(top) =>
-                    onPageStyleChange({ bodyBorder: { ...pageStyle.bodyBorder, top } })
-                  }
-                />
-                <BorderSideEditor
-                  label="Right"
-                  value={pageStyle.bodyBorder.right}
-                  onChange={(right) =>
-                    onPageStyleChange({ bodyBorder: { ...pageStyle.bodyBorder, right } })
-                  }
-                />
-                <BorderSideEditor
-                  label="Bottom"
-                  value={pageStyle.bodyBorder.bottom}
-                  onChange={(bottom) =>
-                    onPageStyleChange({ bodyBorder: { ...pageStyle.bodyBorder, bottom } })
-                  }
-                />
-                <BorderSideEditor
-                  label="Left"
-                  value={pageStyle.bodyBorder.left}
-                  onChange={(left) =>
-                    onPageStyleChange({ bodyBorder: { ...pageStyle.bodyBorder, left } })
-                  }
-                />
+              <BorderWidthGrid
+                value={pageStyle.bodyBorder}
+                onChange={(bodyBorder) => onPageStyleChange({ bodyBorder })}
+              />
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <ControlLabel>Border color</ControlLabel>
+            {pageStyle.bodyBorderMode === 'uniform' ? (
+              <div className="rounded-[14px] border border-[#232833] bg-[#111117] px-2.5">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={normalizeColor(pageStyle.bodyBorder.top.color)}
+                    onChange={(event) =>
+                      onPageStyleChange({
+                        bodyBorder: toUniformBorderValues(pageStyle.bodyBorder, { color: event.target.value }),
+                      })
+                    }
+                    className="h-5 w-5 cursor-pointer rounded-md border border-white/20 bg-transparent p-0"
+                  />
+                  <input
+                    type="text"
+                    value={pageStyle.bodyBorder.top.color}
+                    onChange={(event) =>
+                      onPageStyleChange({
+                        bodyBorder: toUniformBorderValues(pageStyle.bodyBorder, { color: event.target.value }),
+                      })
+                    }
+                    className="h-9 min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-white outline-none"
+                  />
+                </div>
               </div>
+            ) : (
+              <BorderColorGrid
+                value={pageStyle.bodyBorder}
+                onChange={(bodyBorder) => onPageStyleChange({ bodyBorder })}
+              />
             )}
           </div>
         </section>
@@ -564,7 +755,7 @@ export function FloatingInspector({
         <button
           type="button"
           onClick={onOpenTheme}
-          className="flex w-full items-center justify-between rounded-xl border border-[#232833] bg-[#111117] px-3 py-2 text-left text-[12px] font-semibold text-white/88 transition-colors hover:border-[#303746] hover:bg-[#171a21]"
+          className="flex h-11 w-full items-center justify-between rounded-xl border border-[#232833] bg-[#111117] px-3 text-left text-[13px] font-semibold text-white/88 transition-colors hover:border-[#303746] hover:bg-[#171a21]"
         >
           <span>Edit theme</span>
           <Palette className="h-3.5 w-3.5 text-white/70" />
@@ -572,7 +763,7 @@ export function FloatingInspector({
         <button
           type="button"
           onClick={onOpenGlobalCss}
-          className="flex w-full items-center justify-between rounded-xl border border-[#232833] bg-[#111117] px-3 py-2 text-left text-[12px] font-semibold text-white/88 transition-colors hover:border-[#303746] hover:bg-[#171a21]"
+          className="flex h-11 w-full items-center justify-between rounded-xl border border-[#232833] bg-[#111117] px-3 text-left text-[13px] font-semibold text-white/88 transition-colors hover:border-[#303746] hover:bg-[#171a21]"
         >
           <span>Global CSS</span>
           <Braces className="h-3.5 w-3.5 text-white/70" />

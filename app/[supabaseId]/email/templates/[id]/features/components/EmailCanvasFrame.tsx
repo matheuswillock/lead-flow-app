@@ -130,7 +130,7 @@ export function EmailCanvasFrame({
               <input
                 value={subject}
                 onChange={(event) => onChangeSubject(event.target.value)}
-                placeholder="Acme &lt;acme@example.com&gt;"
+                placeholder="Assunto do email"
                 className="min-w-0 bg-white text-[15px] text-zinc-600 outline-none placeholder:text-zinc-400"
               />
               <input
