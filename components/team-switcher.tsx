@@ -114,7 +114,7 @@ export function TeamSwitcher({
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
-        className="h-[80dvh] max-h-[80dvh] w-[var(--radix-popover-trigger-width)] min-w-56 max-w-[calc(100vw-1rem)] rounded-lg p-0"
+        className="h-[90dvh] max-h-[90dvh] w-[var(--radix-popover-trigger-width)] min-w-56 max-w-[calc(100vw-1rem)] rounded-lg p-0"
         align="start"
         side={isMobile ? "bottom" : "right"}
         sideOffset={4}
