@@ -5,16 +5,6 @@ import Image from "next/image"
 import { Heart } from "lucide-react"
 
 const footerLinks = {
-  resources: {
-    title: "Recursos",
-    links: [
-      { label: "Central de Recursos", href: "/recursos" },
-      { label: "CRM para corretores de saude", href: "/recursos/crm-corretores-saude" },
-      { label: "Pipeline comercial", href: "/recursos/pipeline-planos-saude" },
-      { label: "CRM vs planilha", href: "/recursos/crm-vs-planilha" },
-      { label: "FAQ", href: "/recursos/faq-corretor-studio" },
-    ],
-  },
   legal: {
     title: "Legal",
     links: [
@@ -34,7 +24,7 @@ export function LandingFooter() {
       />
 
       <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-12">
           {/* Brand */}
           <div>
             <Link href="/" className="flex items-center gap-2 mb-4">
@@ -55,22 +45,6 @@ export function LandingFooter() {
               <Heart className="w-4 h-4 text-primary pulsing-heart fill-primary flex-shrink-0 translate-y-[1px]" />
               <span className="font-semibold landing-primary-gradient">Willock&apos;s House</span>
             </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold mb-4 text-foreground">{footerLinks.resources.title}</h3>
-            <ul className="space-y-3">
-              {footerLinks.resources.links.map((link) => (
-                <li key={link.label}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
           </div>
 
           <div>

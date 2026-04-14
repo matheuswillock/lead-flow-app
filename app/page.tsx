@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
-import { ArrowRight, CheckCircle2, TrendingUp, Users } from "lucide-react"
+import { ArrowRight, TrendingUp, Users } from "lucide-react"
 import { LandingHeader } from "@/components/landing/landingHeader"
 import { FeaturesSection } from "@/components/landing/FeaturesSection"
 import { EmailCampaignsSpotlight } from "@/components/landing/EmailCampaignsSpotlight"
@@ -11,11 +11,6 @@ import { LandingFooter } from "@/components/landing/LandingFooter"
 import { HomeClientRuntime } from "@/components/landing/HomeClientRuntime"
 import { createPublicPageMetadata } from "@/lib/metadata/policies"
 import { getAbsoluteUrl } from "@/lib/metadata/share"
-import {
-  getPublicResourcePath,
-  PUBLIC_RESOURCE_ENTRIES,
-  PUBLIC_RESOURCES_HUB_PATH,
-} from "@/lib/seo/publicResources"
 
 const homeTitle = "Corretor Studio | CRM e Marketing para Corretores de Saúde"
 const homeDescription =
@@ -98,12 +93,6 @@ export default function HomePage() {
     ],
   }
 
-  const seoResourceCards = PUBLIC_RESOURCE_ENTRIES.map((resource) => ({
-    slug: resource.slug,
-    title: resource.intent,
-    summary: resource.description,
-  }))
-
   return (
     <main className="landing-page min-h-screen bg-background text-foreground">
       <script
@@ -184,21 +173,6 @@ export default function HomePage() {
                 </Link>
               </div>
 
-              {/* Trust line */}
-              <div className="mt-6 flex flex-wrap items-center justify-center lg:justify-start gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  Sem cartão de crédito
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  Suporte em PT-BR
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  Cancele quando quiser
-                </span>
-              </div>
             </div>
 
             {/* Right: Product visual */}
@@ -251,47 +225,6 @@ export default function HomePage() {
       {/* <TestimonialsSection /> */}
 
       <PricingSection />
-
-      <section className="relative py-20 md:py-28 border-t border-border/60">
-        <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10">
-          <div className="max-w-3xl">
-            <p className="text-sm uppercase tracking-wide text-muted-foreground">Recursos para SEO e descoberta por IA</p>
-            <h2 className="mt-3 text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
-              Conteudo estrategico para gestores e corretores de saude
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-              Explore guias praticos para CRM, pipeline, integracoes e produtividade comercial. Cada pagina foi estruturada para responder intencoes de busca de alta relevancia.
-            </p>
-          </div>
-
-          <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-5">
-            {seoResourceCards.map((card) => (
-              <Link
-                key={card.slug}
-                href={getPublicResourcePath(card.slug)}
-                className="group rounded-2xl border border-border p-6 transition-all hover:border-primary/30 hover:-translate-y-0.5 landing-surface-card-soft"
-              >
-                <h3 className="text-xl font-semibold tracking-tight">{card.title}</h3>
-                <p className="mt-3 text-sm text-muted-foreground leading-relaxed">{card.summary}</p>
-                <span className="mt-5 inline-flex items-center text-sm font-semibold text-primary">
-                  Ler guia
-                  <ArrowRight className="ml-1.5 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                </span>
-              </Link>
-            ))}
-          </div>
-
-          <div className="mt-8">
-            <Link
-              href={PUBLIC_RESOURCES_HUB_PATH}
-              className="inline-flex items-center rounded-2xl px-6 py-3.5 text-sm font-semibold landing-secondary-cta"
-            >
-              Ver central de recursos
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-      </section>
 
       <LandingFooter />
 
