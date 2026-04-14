@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto"
 import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
 import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficeUserRepository"
@@ -85,7 +84,6 @@ export class BackofficeUserUseCase {
       }
 
       // Criar BackofficeUser
-      const id = randomUUID()
       const backofficeUser = await this.userRepo.create({
         id: profileId,
         profileId,

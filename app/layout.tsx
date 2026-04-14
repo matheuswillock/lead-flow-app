@@ -5,6 +5,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "./context/AuthContext"
 import { Toaster } from "sonner";
 import {
+  getAbsoluteUrl,
   getMetadataBase,
   SHARE_IMAGE_ALT,
   SHARE_IMAGE_HEIGHT,
@@ -20,16 +21,19 @@ export const metadata: Metadata = {
   metadataBase: getMetadataBase(),
   title: appTitle, 
   description: appDescription,
+  alternates: {
+    canonical: getAbsoluteUrl("/"),
+  },
   openGraph: {
     title: appTitle,
     description: appDescription,
-    url: "/",
+    url: getAbsoluteUrl("/"),
     siteName: SHARE_SITE_NAME,
     locale: "pt_BR",
     type: "website",
     images: [
       {
-        url: SHARE_IMAGE_PATH,
+        url: getAbsoluteUrl(SHARE_IMAGE_PATH),
         width: SHARE_IMAGE_WIDTH,
         height: SHARE_IMAGE_HEIGHT,
         alt: SHARE_IMAGE_ALT,
@@ -40,7 +44,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: appTitle,
     description: appDescription,
-    images: [SHARE_IMAGE_PATH],
+    images: [getAbsoluteUrl(SHARE_IMAGE_PATH)],
   },
   icons: {
     icon: '/corretor-studio-icon.svg',
@@ -49,7 +53,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
+    <html lang="pt-BR" suppressHydrationWarning data-scroll-behavior="smooth">
       <body className="min-h-screen bg-background text-foreground">        
         <ThemeProvider
           attribute="class"

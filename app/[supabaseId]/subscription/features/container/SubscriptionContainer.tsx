@@ -3,6 +3,9 @@
 import { useRouter, useParams } from 'next/navigation';
 import { useState } from 'react';
 import { useSubscriptionContext } from '../context/SubscriptionContext';
+import { useUserContext } from '@/app/context/UserContext';
+import { useTeamContext } from '@/app/context/TeamContext';
+import { isTeamAllowedForEmailCampaigns } from '@/lib/emailCampaignsAccess';
 import { SubscriptionCard } from './SubscriptionCard';
 import { SubscriptionError } from './SubscriptionError';
 import { SubscriptionHeader } from './SubscriptionHeader';
@@ -13,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { EmailCreditsCard } from './EmailCreditsCard';
 
 export function SubscriptionContainer() {
   const router = useRouter();
@@ -29,6 +33,14 @@ export function SubscriptionContainer() {
     fetchInvoices,
     cancelSubscription
   } = useSubscriptionContext();
+
+  const { user } = useUserContext();
+  const { activeTeam } = useTeamContext();
+
+  const EMAIL_MODULE_ALLOWED_EMAILS = ['matheuswillock@gmail.com', 'bruno@onsidemarketing.com.br'];
+  const canAccessEmailCampaigns = isTeamAllowedForEmailCampaigns(activeTeam?.id);
+  const canAccessEmailModule = EMAIL_MODULE_ALLOWED_EMAILS.includes(user?.email ?? '');
+  const isPermanentSubscription = subscription?.hasPermanentSubscription === true;
 
   const handleReactivate = () => {
     setReactivateDialogOpen(true);
@@ -118,7 +130,16 @@ export function SubscriptionContainer() {
         />
       </div>
 
-      <SubscriptionInvoices invoices={invoices} />
+      {!isPermanentSubscription && (
+        <SubscriptionInvoices invoices={invoices} />
+      )}
+
+      {canAccessEmailCampaigns && canAccessEmailModule && (
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold">Créditos de Email</h2>
+          <EmailCreditsCard />
+        </div>
+      )}
 
       {/* Dialog de reativação */}
       {subscription && (

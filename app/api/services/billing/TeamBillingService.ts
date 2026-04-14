@@ -1,24 +1,7 @@
 import { prisma } from "@/app/api/infra/data/prisma";
+import { BILLING_PRICES, type BillingSummary } from "@/app/api/shared/billing/billingConfig";
 
-export const BILLING_PRICES = {
-  base: 59.9,
-  extraTeam: 29.9,
-  extraUser: 19.9,
-};
-
-export type BillingSummary = {
-  masterId: string;
-  teamCount: number;
-  distinctUserCount: number;
-  totalUsersIncludingMaster: number;
-  billableTeams: number;
-  billableUsers: number;
-  basePrice: number;
-  extraTeamsPrice: number;
-  extraUsersPrice: number;
-  totalPrice: number;
-  hasPermanentSubscription: boolean;
-};
+export { BILLING_PRICES };
 
 export async function getBillingSummary(masterId: string): Promise<BillingSummary> {
   const master = await prisma.profile.findUnique({

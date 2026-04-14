@@ -27,8 +27,11 @@ function getMaskedEmail(email: string): string {
 }
 
 function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
+  const atIndex = email.indexOf('@')
+  if (atIndex <= 0 || atIndex !== email.lastIndexOf('@')) return false
+  const domain = email.slice(atIndex + 1)
+  const dotIndex = domain.lastIndexOf('.')
+  return dotIndex > 0 && dotIndex < domain.length - 1
 }
 
 function checkAndRegisterRateLimit(ip: string): { allowed: boolean; remaining: number } {

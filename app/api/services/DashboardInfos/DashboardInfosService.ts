@@ -226,7 +226,7 @@ export class DashboardInfosService implements IDashboardInfosService {
     periodDates: { startDate: Date; endDate: Date },
     finalizedLeads: import("@/app/api/infra/data/repositories/metrics/IMetricsRepository").SaleMetricsData[]
   ) {
-    const { supabaseId, teamId, period = "30d" } = filters;
+    const { teamId, period = "30d" } = filters;
     const { startDate, endDate } = periodDates;
 
     const leadsByPeriod = await metricsRepository.getLeadsByPeriodWithCtx(

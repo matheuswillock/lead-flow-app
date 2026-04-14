@@ -1,0 +1,165 @@
+<svg width="600" height="400" viewBox="0 0 600 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fadeOut" x1="0" y1="300" x2="0" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0d0d12" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#0d0d12" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="600" height="400" fill="#0d0d12"/>
+
+  <!-- NAV (h=44) -->
+  <rect width="600" height="44" fill="#18181b"/>
+  <line x1="0" y1="44" x2="600" y2="44" stroke="#27272a" stroke-width="1"/>
+  <rect x="12" y="12" width="20" height="20" rx="5" fill="#ff6900"/>
+  <text x="22" y="26" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="700" fill="white" text-anchor="middle">CS</text>
+  <text x="38" y="27" font-family="Helvetica Neue,Arial,sans-serif" font-size="12" font-weight="600" fill="#f5f5f5">Corretor Studio</text>
+  <text x="150" y="27" font-family="Helvetica Neue,Arial,sans-serif" font-size="11" fill="#e4e4e7">Pipeline</text>
+  <line x1="150" y1="43" x2="182" y2="43" stroke="#ff6900" stroke-width="2"/>
+  <text x="198" y="27" font-family="Helvetica Neue,Arial,sans-serif" font-size="11" fill="#52525b">Agenda</text>
+  <text x="244" y="27" font-family="Helvetica Neue,Arial,sans-serif" font-size="11" fill="#52525b">Campanhas</text>
+  <text x="316" y="27" font-family="Helvetica Neue,Arial,sans-serif" font-size="11" fill="#52525b">Times</text>
+  <rect x="485" y="11" width="98" height="24" rx="7" fill="#ff6900"/>
+  <text x="534" y="27" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="600" fill="white" text-anchor="middle">+ Novo Lead</text>
+  <circle cx="582" cy="22" r="11" fill="#3f3f46"/>
+  <text x="582" y="26" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="600" fill="#a1a1aa" text-anchor="middle">MW</text>
+
+  <!-- TITLE BAR (y=44, h=38) -->
+  <rect y="44" width="600" height="38" fill="#111114"/>
+  <line x1="0" y1="82" x2="600" y2="82" stroke="#27272a" stroke-width="1"/>
+  <text x="12" y="59" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" font-weight="700" fill="#f5f5f5">Pipeline de Leads</text>
+  <text x="12" y="75" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" fill="#52525b">48 leads · Semana atual</text>
+  <rect x="424" y="49" width="68" height="24" rx="6" fill="#27272a"/>
+  <text x="458" y="65" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="500" fill="#f5f5f5" text-anchor="middle">Kanban</text>
+  <text x="506" y="65" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" fill="#52525b">Lista</text>
+
+  <!-- COL 1: NOVO (x=10, w=140) -->
+  <rect x="10" y="88" width="140" height="28" rx="6" fill="#1c1c21"/>
+  <rect x="10" y="88" width="3" height="28" rx="1.5" fill="#6366f1"/>
+  <text x="20" y="107" font-family="Helvetica Neue,Arial,sans-serif" font-size="11" font-weight="600" fill="#f5f5f5">Novo</text>
+  <rect x="105" y="93" width="36" height="18" rx="9" fill="#6366f1" fill-opacity="0.15"/>
+  <text x="123" y="106" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="700" fill="#818cf8" text-anchor="middle">16</text>
+
+  <rect x="10" y="122" width="140" height="68" rx="6" fill="#1c1c21" stroke="#2a2a32" stroke-width="1"/>
+  <circle cx="27" cy="143" r="11" fill="#6366f1" fill-opacity="0.15"/>
+  <text x="27" y="147" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="700" fill="#818cf8" text-anchor="middle">JS</text>
+  <text x="43" y="140" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="600" fill="#f5f5f5">João Silva</text>
+  <text x="43" y="154" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" fill="#71717a">Construtora Alfa</text>
+  <rect x="14" y="162" width="60" height="18" rx="4" fill="#ff6900" fill-opacity="0.1"/>
+  <text x="44" y="174" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="600" fill="#ff6900" text-anchor="middle">R$ 1.200</text>
+  <rect x="80" y="162" width="30" height="18" rx="4" fill="#27272a"/>
+  <text x="95" y="174" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" fill="#71717a" text-anchor="middle">SDR</text>
+
+  <rect x="10" y="196" width="140" height="68" rx="6" fill="#1c1c21" stroke="#2a2a32" stroke-width="1"/>
+  <circle cx="27" cy="217" r="11" fill="#e57082" fill-opacity="0.15"/>
+  <text x="27" y="221" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="700" fill="#e57082" text-anchor="middle">MT</text>
+  <text x="43" y="214" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="600" fill="#f5f5f5">Maria Torres</text>
+  <text x="43" y="228" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" fill="#71717a">TechVida S.A.</text>
+  <rect x="14" y="236" width="52" height="18" rx="4" fill="#ff6900" fill-opacity="0.1"/>
+  <text x="40" y="248" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="600" fill="#ff6900" text-anchor="middle">R$ 890</text>
+  <rect x="72" y="236" width="30" height="18" rx="4" fill="#27272a"/>
+  <text x="87" y="248" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" fill="#71717a" text-anchor="middle">SDR</text>
+
+  <rect x="10" y="270" width="140" height="68" rx="6" fill="#1c1c21" stroke="#2a2a32" stroke-width="1"/>
+  <circle cx="27" cy="291" r="11" fill="#f59e0b" fill-opacity="0.15"/>
+  <text x="27" y="295" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="700" fill="#f59e0b" text-anchor="middle">PC</text>
+  <text x="43" y="288" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="600" fill="#f5f5f5">Pedro Costa</text>
+  <text x="43" y="302" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" fill="#71717a">MegaSaúde</text>
+  <rect x="14" y="310" width="60" height="18" rx="4" fill="#ff6900" fill-opacity="0.1"/>
+  <text x="44" y="322" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="600" fill="#ff6900" text-anchor="middle">R$ 2.100</text>
+  <rect x="80" y="310" width="30" height="18" rx="4" fill="#27272a"/>
+  <text x="95" y="322" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" fill="#71717a" text-anchor="middle">SDR</text>
+
+  <!-- COL 2: CONTATO (x=156, w=140) -->
+  <rect x="156" y="88" width="140" height="28" rx="6" fill="#1c1c21"/>
+  <rect x="156" y="88" width="3" height="28" rx="1.5" fill="#f59e0b"/>
+  <text x="166" y="107" font-family="Helvetica Neue,Arial,sans-serif" font-size="11" font-weight="600" fill="#f5f5f5">Contato</text>
+  <rect x="249" y="93" width="36" height="18" rx="9" fill="#f59e0b" fill-opacity="0.15"/>
+  <text x="267" y="106" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="700" fill="#f59e0b" text-anchor="middle">12</text>
+
+  <rect x="156" y="122" width="140" height="68" rx="6" fill="#1c1c21" stroke="#2a2a32" stroke-width="1"/>
+  <circle cx="173" cy="143" r="11" fill="#22c55e" fill-opacity="0.15"/>
+  <text x="173" y="147" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="700" fill="#22c55e" text-anchor="middle">AO</text>
+  <text x="189" y="140" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="600" fill="#f5f5f5">Ana Oliveira</text>
+  <text x="189" y="154" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" fill="#71717a">MedSaúde Ltda</text>
+  <rect x="160" y="162" width="62" height="18" rx="4" fill="#ff6900" fill-opacity="0.1"/>
+  <text x="191" y="174" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="600" fill="#ff6900" text-anchor="middle">R$ 1.540</text>
+  <rect x="228" y="162" width="50" height="18" rx="4" fill="#27272a"/>
+  <text x="253" y="174" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" fill="#71717a" text-anchor="middle">CLOSER</text>
+
+  <rect x="156" y="196" width="140" height="68" rx="6" fill="#1c1c21" stroke="#2a2a32" stroke-width="1"/>
+  <circle cx="173" cy="217" r="11" fill="#6366f1" fill-opacity="0.15"/>
+  <text x="173" y="221" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="700" fill="#818cf8" text-anchor="middle">CP</text>
+  <text x="189" y="214" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="600" fill="#f5f5f5">Carlos Pereira</text>
+  <text x="189" y="228" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" fill="#71717a">VivaPlus</text>
+  <rect x="160" y="236" width="52" height="18" rx="4" fill="#ff6900" fill-opacity="0.1"/>
+  <text x="186" y="248" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="600" fill="#ff6900" text-anchor="middle">R$ 780</text>
+  <rect x="218" y="236" width="50" height="18" rx="4" fill="#27272a"/>
+  <text x="243" y="248" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" fill="#71717a" text-anchor="middle">CLOSER</text>
+
+  <rect x="156" y="270" width="140" height="36" rx="6" fill="#1c1c21" fill-opacity="0.2" stroke="#2a2a32" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="226" y="292" font-family="Helvetica Neue,Arial,sans-serif" font-size="11" fill="#3f3f46" text-anchor="middle">+ Lead</text>
+
+  <!-- COL 3: PROPOSTA (x=302, w=140) -->
+  <rect x="302" y="88" width="140" height="28" rx="6" fill="#1c1c21"/>
+  <rect x="302" y="88" width="3" height="28" rx="1.5" fill="#e57082"/>
+  <text x="312" y="107" font-family="Helvetica Neue,Arial,sans-serif" font-size="11" font-weight="600" fill="#f5f5f5">Proposta</text>
+  <rect x="395" y="93" width="36" height="18" rx="9" fill="#e57082" fill-opacity="0.15"/>
+  <text x="413" y="106" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="700" fill="#e57082" text-anchor="middle">8</text>
+
+  <rect x="302" y="122" width="140" height="68" rx="6" fill="#1c1c21" stroke="#2a2a32" stroke-width="1"/>
+  <circle cx="319" cy="143" r="11" fill="#cd6cdd" fill-opacity="0.15"/>
+  <text x="319" y="147" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="700" fill="#cd6cdd" text-anchor="middle">LM</text>
+  <text x="335" y="140" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="600" fill="#f5f5f5">Luiza Mendes</text>
+  <text x="335" y="154" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" fill="#71717a">HealCorp</text>
+  <rect x="306" y="162" width="62" height="18" rx="4" fill="#ff6900" fill-opacity="0.1"/>
+  <text x="337" y="174" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="600" fill="#ff6900" text-anchor="middle">R$ 3.200</text>
+  <rect x="374" y="162" width="50" height="18" rx="4" fill="#27272a"/>
+  <text x="399" y="174" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" fill="#71717a" text-anchor="middle">CLOSER</text>
+
+  <rect x="302" y="196" width="140" height="68" rx="6" fill="#1c1c21" stroke="#2a2a32" stroke-width="1"/>
+  <circle cx="319" cy="217" r="11" fill="#f59e0b" fill-opacity="0.15"/>
+  <text x="319" y="221" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="700" fill="#f59e0b" text-anchor="middle">RT</text>
+  <text x="335" y="214" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="600" fill="#f5f5f5">Rafael Torres</text>
+  <text x="335" y="228" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" fill="#71717a">SafeLife</text>
+  <rect x="306" y="236" width="62" height="18" rx="4" fill="#ff6900" fill-opacity="0.1"/>
+  <text x="337" y="248" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="600" fill="#ff6900" text-anchor="middle">R$ 1.890</text>
+  <rect x="374" y="236" width="50" height="18" rx="4" fill="#27272a"/>
+  <text x="399" y="248" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" fill="#71717a" text-anchor="middle">CLOSER</text>
+
+  <rect x="302" y="270" width="140" height="36" rx="6" fill="#1c1c21" fill-opacity="0.2" stroke="#2a2a32" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="372" y="292" font-family="Helvetica Neue,Arial,sans-serif" font-size="11" fill="#3f3f46" text-anchor="middle">+ Lead</text>
+
+  <!-- COL 4: FECHAMENTO (x=448, w=142) -->
+  <rect x="448" y="88" width="142" height="28" rx="6" fill="#1c1c21"/>
+  <rect x="448" y="88" width="3" height="28" rx="1.5" fill="#22c55e"/>
+  <text x="458" y="107" font-family="Helvetica Neue,Arial,sans-serif" font-size="11" font-weight="600" fill="#f5f5f5">Fechamento</text>
+  <rect x="549" y="93" width="30" height="18" rx="9" fill="#22c55e" fill-opacity="0.15"/>
+  <text x="564" y="106" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="700" fill="#22c55e" text-anchor="middle">5</text>
+
+  <!-- Featured card (green border) -->
+  <rect x="448" y="122" width="142" height="68" rx="6" fill="#1c1c21" stroke="#22c55e" stroke-width="1" stroke-opacity="0.4"/>
+  <rect x="448" y="122" width="142" height="3" rx="1.5" fill="#22c55e" fill-opacity="0.5"/>
+  <circle cx="465" cy="143" r="11" fill="#22c55e" fill-opacity="0.15"/>
+  <text x="465" y="147" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="700" fill="#22c55e" text-anchor="middle">BL</text>
+  <text x="481" y="140" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="600" fill="#f5f5f5">Beatriz Lima</text>
+  <text x="481" y="154" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" fill="#71717a">PrimeSaúde</text>
+  <rect x="452" y="162" width="62" height="18" rx="4" fill="#ff6900" fill-opacity="0.1"/>
+  <text x="483" y="174" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="600" fill="#ff6900" text-anchor="middle">R$ 4.500</text>
+  <rect x="520" y="162" width="62" height="18" rx="4" fill="#22c55e" fill-opacity="0.12"/>
+  <text x="551" y="174" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="600" fill="#22c55e" text-anchor="middle">Fechado</text>
+
+  <rect x="448" y="196" width="142" height="68" rx="6" fill="#1c1c21" stroke="#2a2a32" stroke-width="1"/>
+  <circle cx="465" cy="217" r="11" fill="#e57082" fill-opacity="0.15"/>
+  <text x="465" y="221" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="700" fill="#e57082" text-anchor="middle">RS</text>
+  <text x="481" y="214" font-family="Helvetica Neue,Arial,sans-serif" font-size="10" font-weight="600" fill="#f5f5f5">Rodrigo Santos</text>
+  <text x="481" y="228" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" fill="#71717a">Alpha Vida</text>
+  <rect x="452" y="236" width="62" height="18" rx="4" fill="#ff6900" fill-opacity="0.1"/>
+  <text x="483" y="248" font-family="Helvetica Neue,Arial,sans-serif" font-size="9" font-weight="600" fill="#ff6900" text-anchor="middle">R$ 2.750</text>
+  <rect x="520" y="236" width="62" height="18" rx="4" fill="#22c55e" fill-opacity="0.12"/>
+  <text x="551" y="248" font-family="Helvetica Neue,Arial,sans-serif" font-size="8" font-weight="600" fill="#22c55e" text-anchor="middle">Fechado</text>
+
+  <!-- Bottom gradient fade -->
+  <rect y="300" width="600" height="100" fill="url(#fadeOut)"/>
+</svg>

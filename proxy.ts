@@ -2,9 +2,6 @@ import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/auth-sessions"
 import { isManagerLikeRole, isBackofficeRole } from "@/lib/roles"
 
-// Configure runtime
-export const runtime = 'nodejs'
-
 // Define protected route prefixes (actual URL paths)
 const protectedPrefixes = ["/dashboard", "/account", "/crm", "/board", "/pipeline", "/manager-users", "/notifications", "/integrations"]
 
@@ -14,7 +11,7 @@ const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe", "/checkout-retu
 // Routes that require manager role
 const managerOnlyRoutes = ["/manager-users", "/integrations"]
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   
   // Skip middleware completely for webhook routes

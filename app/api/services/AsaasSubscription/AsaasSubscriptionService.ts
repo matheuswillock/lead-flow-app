@@ -30,6 +30,7 @@ export interface AsaasSubscription {
   };
   endDate?: string;              // Data de término da assinatura
   maxPayments?: number;          // Número máximo de cobranças
+  updatePendingPayments?: boolean;
 }
 
 export interface AsaasSubscriptionResponse {

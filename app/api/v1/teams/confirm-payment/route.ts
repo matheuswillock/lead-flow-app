@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     const profile = await prisma.profile.findUnique({
       where: { supabaseId },
-      select: { id: true, isMaster: true },
+      select: { id: true, isMaster: true, role: true, managerId: true, canManageAccountTeams: true },
     });
 
     if (!profile) {
@@ -39,9 +39,13 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (!profile.isMaster) {
+    const canConfirmTeamPayment =
+      profile.isMaster ||
+      (profile.role === "manager" && profile.canManageAccountTeams === true);
+
+    if (!canConfirmTeamPayment) {
       return NextResponse.json(
-        new Output(false, [], ["Apenas masters podem confirmar pagamento de time"], null),
+        new Output(false, [], ["Apenas o master ou um manager delegado pode confirmar pagamento de time"], null),
         { status: 403 }
       );
     }
@@ -79,7 +83,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (action.masterId !== profile.id) {
+    const billingOwnerId = profile.isMaster ? profile.id : profile.managerId;
+
+    if (action.masterId !== billingOwnerId) {
       return NextResponse.json(new Output(false, [], ["Ação não pertence a este master"], null), {
         status: 403,
       });

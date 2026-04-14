@@ -29,6 +29,8 @@ export interface ProfileResponseDTO {
   role: UserRole;
   functions: UserFunction[];
   isMaster: boolean;
+  canCreateAccountUsers: boolean;
+  canManageAccountTeams: boolean;
   hasPermanentSubscription: boolean;
   managerId: string | null;
   profileIconId: string | null;
@@ -98,6 +100,8 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     role: profile.role,
     functions: profile.functions ?? [],
     isMaster: profile.isMaster ?? false,
+    canCreateAccountUsers: profile.canCreateAccountUsers ?? false,
+    canManageAccountTeams: profile.canManageAccountTeams ?? false,
     hasPermanentSubscription: profile.hasPermanentSubscription ?? false,
     managerId: profile.managerId,
     profileIconId: profile.profileIconId,

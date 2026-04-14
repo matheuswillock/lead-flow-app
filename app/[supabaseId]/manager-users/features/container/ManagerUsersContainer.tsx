@@ -16,7 +16,6 @@ import { UserFormDialog } from "./UserFormDialog";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { DeletePendingOperatorDialog } from "./DeletePendingOperatorDialog";
 import { PendingOperatorsAlert } from "./PendingOperatorsAlert";
-import { OperatorCheckoutStep } from "../checkout/OperatorCheckoutStep";
 import type { ManagerUserTableRow } from "../types";
 import { createColumns } from "./ManagerUsersColumns";
 import { useTeamContext } from "@/app/context/TeamContext";
@@ -41,7 +40,8 @@ export function ManagerUsersContainer({
   const { activeRole, isTeamMaster, activeTeamId } = useTeamContext();
   const resolvedRole = activeRole ?? currentUserRole;
   const resolvedIsMaster = isTeamMaster ?? currentUserIsMaster;
-  const canCreateOrDelete = resolvedIsMaster;
+  const canCreateUser = resolvedIsMaster || (resolvedRole === "manager" && user?.canCreateAccountUsers === true);
+  const canDeleteUser = resolvedIsMaster;
   const [isDeletePendingDialogOpen, setIsDeletePendingDialogOpen] = useState(false);
   const [pendingOperatorToDelete, setPendingOperatorToDelete] = useState<ManagerUserTableRow | null>(null);
   const errorContext = {
@@ -68,9 +68,6 @@ export function ManagerUsersContainer({
     resendInvite,
     togglePermanentSubscription,
     refreshData,
-    operatorCheckout,
-    closeOperatorCheckout,
-    completeOperatorCheckout,
     
     // Controle de UI
     openCreateModal,
@@ -79,7 +76,14 @@ export function ManagerUsersContainer({
     closeEditModal,
     openDeleteDialog,
     closeDeleteDialog,
-  } = useManagerUsers({ supabaseId, currentUserRole, currentProfileId: user?.id, hasPermanentSubscription });
+  } = useManagerUsers({
+    supabaseId,
+    currentUserRole,
+    currentProfileId: user?.id,
+    currentUserIsMaster: resolvedIsMaster,
+    currentUserCanCreateUsers: user?.canCreateAccountUsers === true,
+    hasPermanentSubscription,
+  });
 
   // Handler para abrir dialog de deletar operador pendente
   const handleDeletePendingOperator = (user: ManagerUserTableRow) => {
@@ -154,19 +158,6 @@ export function ManagerUsersContainer({
     );
   }
 
-
-  if (operatorCheckout.isOpen && operatorCheckout.operatorData) {
-    return (
-      <OperatorCheckoutStep
-        managerId={supabaseId}
-        teamId={activeTeamId || ""}
-        operatorData={operatorCheckout.operatorData}
-        onCancel={closeOperatorCheckout}
-        onComplete={completeOperatorCheckout}
-      />
-    );
-  }
-
   const columns = createColumns({
     onEdit: openEditModal,
     onDelete: openDeleteDialog,
@@ -174,7 +165,7 @@ export function ManagerUsersContainer({
     onResendInvite: resendInvite,
     onTogglePermanentSubscription: togglePermanentSubscription,
     currentUserIsMaster: resolvedIsMaster,
-    canDelete: canCreateOrDelete,
+    canDelete: canDeleteUser,
   });
 
   // O usuário logado não deve se ver na tabela de gerenciamento.
@@ -196,7 +187,7 @@ export function ManagerUsersContainer({
             </p>
             </div>
 
-            {canCreateOrDelete && (
+            {canCreateUser && (
               <Button 
                   onClick={openCreateModal} 
                   className="gap-2 text-base cursor-pointer font-medium" 
@@ -277,7 +268,7 @@ export function ManagerUsersContainer({
       </Card>
 
       {/* Modais */}
-      {canCreateOrDelete && (
+      {canCreateUser && (
         <UserFormDialog
           open={isCreateModalOpen}
           onOpenChange={closeCreateModal}
@@ -298,7 +289,7 @@ export function ManagerUsersContainer({
         currentProfileId={user?.id}
       />
 
-      {canCreateOrDelete && (
+      {canDeleteUser && (
         <>
           <DeleteUserDialog
             open={isDeleteDialogOpen}

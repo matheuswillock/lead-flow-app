@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import {
+  getAbsoluteUrl,
   getMetadataBase,
   SHARE_IMAGE_ALT,
   SHARE_IMAGE_HEIGHT,
@@ -28,19 +29,31 @@ interface PublicPageMetadataInput {
   title: string
   description: string
   canonicalPath: string
+  keywords?: string[]
+  ogType?: "website" | "article"
+  publishedTime?: string
+  modifiedTime?: string
 }
 
 export function createPublicPageMetadata({
   title,
   description,
   canonicalPath,
+  keywords,
+  ogType = "website",
+  publishedTime,
+  modifiedTime,
 }: PublicPageMetadataInput): Metadata {
+  const absoluteCanonical = getAbsoluteUrl(canonicalPath)
+  const absoluteShareImage = getAbsoluteUrl(SHARE_IMAGE_PATH)
+
   return {
     metadataBase: getMetadataBase(),
     title,
     description,
+    keywords,
     alternates: {
-      canonical: canonicalPath,
+      canonical: absoluteCanonical,
     },
     robots: {
       index: true,
@@ -49,13 +62,15 @@ export function createPublicPageMetadata({
     openGraph: {
       title,
       description,
-      url: canonicalPath,
+      url: absoluteCanonical,
       siteName: SHARE_SITE_NAME,
       locale: "pt_BR",
-      type: "website",
+      type: ogType,
+      publishedTime,
+      modifiedTime,
       images: [
         {
-          url: SHARE_IMAGE_PATH,
+          url: absoluteShareImage,
           width: SHARE_IMAGE_WIDTH,
           height: SHARE_IMAGE_HEIGHT,
           alt: SHARE_IMAGE_ALT,
@@ -66,7 +81,7 @@ export function createPublicPageMetadata({
       card: "summary_large_image",
       title,
       description,
-      images: [SHARE_IMAGE_PATH],
+      images: [absoluteShareImage],
     },
   }
 }

@@ -40,6 +40,8 @@ export interface UserData {
   role: UserRole;
   functions: UserFunction[];
   isMaster: boolean;
+  canCreateAccountUsers: boolean;
+  canManageAccountTeams: boolean;
   hasPermanentSubscription: boolean;
   managerId: string | null;
   subscriptionStatus: string | null;

@@ -54,7 +54,10 @@
       "Bash(find /a/develop/lead-flow-app/app/lead-form/[supabaseId]/[teamId]/features/services -type f -name \"*.ts\")",
       "Bash(ls -la /a/develop/lead-flow-app/app/api/v1/leads/*/activities/)",
       "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(grep -n \"AttachmentList\\\\|attachment\" /a/develop/lead-flow-app/app/[supabaseId]/components/LeadDialog.tsx)",
+      "Bash(grep -n \"DialogContent\\\\|onOpenChange\\\\|Dialog\" /a/develop/lead-flow-app/app/[supabaseId]/components/LeadDialog.tsx)",
+      "Bash(grep -n \"LeadForm\\\\|leadForm\" /a/develop/lead-flow-app/app/[supabaseId]/components/LeadDialog.tsx)"
     ]
   }
 }

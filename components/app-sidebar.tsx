@@ -14,8 +14,12 @@ import {
   Plug,
   ChevronDown,
   ChevronRight,
-  TrendingUp,
   Briefcase,
+  FileText,
+  BookUser,
+  Send,
+  History,
+  BarChart3,
 } from "lucide-react"
 
 import {
@@ -38,6 +42,7 @@ import { TeamSwitcher } from "@/components/team-switcher"
 import { isManagerLikeRole } from "@/lib/roles"
 import { SupportRequestDialog } from "@/components/support-request-dialog"
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess"
+import { isTeamAllowedForEmailCampaigns } from "@/lib/emailCampaignsAccess"
 import { useTeamPresence } from "@/hooks/useTeamPresence"
 
 type SidebarItem = {
@@ -46,7 +51,10 @@ type SidebarItem = {
   icon: React.ComponentType<{ className?: string }>
   managerOnly?: boolean
   masterOnly?: boolean
+  closerOrManager?: boolean
   requiresIntegrationsAccess?: boolean
+  requiresEmailCampaignsAccess?: boolean
+  inDevelopment?: boolean
 }
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
@@ -54,7 +62,11 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster } = useTeamContext();
   const isMaster = user?.isMaster === true;
   const isManager = isManagerLikeRole(user?.role);
+  const isCloser = user?.functions?.includes("CLOSER") === true;
   const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
+  const canAccessEmailCampaigns = isTeamAllowedForEmailCampaigns(activeTeam?.id);
+  const EMAIL_MODULE_ALLOWED_EMAILS = ["matheuswillock@gmail.com", "bruno@onsidemarketing.com.br"];
+  const canAccessEmailModule = EMAIL_MODULE_ALLOWED_EMAILS.includes(user?.email ?? "");
   const teamActivityStorageKey = useMemo(
     () => `sidebar-team-activity-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
     [supabaseId, activeTeamId]
@@ -65,15 +77,23 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "CRM", url: `/${supabaseId}/crm`, icon: KanbanSquare },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays },
-    { title: "Performance", url: `/${supabaseId}/performance`, icon: TrendingUp, managerOnly: true, requiresIntegrationsAccess: true },
-    { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true },
+    { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true, inDevelopment: true },
     {
       title: "Integrações",
       url: `/${supabaseId}/integrations`,
       icon: Plug,
       managerOnly: true,
-      requiresIntegrationsAccess: true
+      requiresIntegrationsAccess: true,
+      inDevelopment: true,
     },
+  ];
+
+  const emailItems: SidebarItem[] = [
+    { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
+    { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
+    { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
+    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
+    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
   ];
 
   const teamItems: SidebarItem[] = [
@@ -124,7 +144,16 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     if (item.masterOnly && !isTeamMaster) {
       return false;
     }
+    if (item.closerOrManager && !isManager && !isMaster && !isCloser) {
+      return false;
+    }
     if (item.requiresIntegrationsAccess && !canAccessIntegrations) {
+      return false;
+    }
+    if (item.requiresEmailCampaignsAccess && !canAccessEmailCampaigns) {
+      return false;
+    }
+    if (item.inDevelopment && !canAccessEmailModule) {
       return false;
     }
     return true;
@@ -197,9 +226,16 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                           return (
                             <SidebarMenuItem key={item.title}>
                               <SidebarMenuButton asChild>
-                                <Link href={item.url}>
-                                  <item.icon />
-                                  <span>{item.title}</span>
+                                <Link href={item.url} className="flex items-center justify-between gap-2">
+                                  <span className="flex items-center gap-2">
+                                    <item.icon className="size-4 shrink-0" />
+                                    <span>{item.title}</span>
+                                  </span>
+                                  {item.inDevelopment && (
+                                    <span className="shrink-0 rounded-sm bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-orange-500">
+                                      Beta
+                                    </span>
+                                  )}
                                 </Link>
                               </SidebarMenuButton>
                             </SidebarMenuItem>
@@ -208,6 +244,40 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                     </SidebarMenu>
                 </SidebarGroupContent>
             </SidebarGroup>
+            {(isManager || isMaster || isCloser) && canAccessEmailCampaigns && canAccessEmailModule && (
+              <SidebarGroup>
+                <SidebarGroupLabel>
+                  Email
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {emailItems.map((item) => {
+                      if (!canShowItem(item)) {
+                        return null;
+                      }
+
+                      return (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton asChild>
+                            <Link href={item.url} className="flex items-center justify-between gap-2">
+                              <span className="flex items-center gap-2">
+                                <item.icon className="size-4 shrink-0" />
+                                <span>{item.title}</span>
+                              </span>
+                              {item.inDevelopment && (
+                                <span className="shrink-0 rounded-sm bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-orange-500">
+                                  Beta
+                                </span>
+                              )}
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
             <SidebarGroup>
               <SidebarGroupLabel>Time</SidebarGroupLabel>
               <SidebarGroupContent>
