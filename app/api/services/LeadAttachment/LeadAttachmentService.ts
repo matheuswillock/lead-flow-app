@@ -177,20 +177,20 @@ export class LeadAttachmentService implements ILeadAttachmentService {
   private validateFile(file: File): { isValid: boolean; error?: string } {
     // Verificar tamanho
     if (file.size > this.MAX_FILE_SIZE) {
-      return { isValid: false, error: "File size must be less than 10MB" };
+      return { isValid: false, error: "Arquivo muito grande. Tamanho máximo: 10MB" };
     }
 
     // Verificar tipo MIME
     if (!this.ALLOWED_TYPES.includes(file.type)) {
       return {
         isValid: false,
-        error: "File type not allowed. Accepted: images, PDFs, Word, Excel, text files",
+        error: "Tipo de arquivo não permitido. Aceitos: imagens, PDF, Word, Excel e texto",
       };
     }
 
     // Verificar se o arquivo não está vazio
     if (file.size === 0) {
-      return { isValid: false, error: "File cannot be empty" };
+      return { isValid: false, error: "O arquivo está vazio" };
     }
 
     return { isValid: true };

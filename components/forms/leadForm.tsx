@@ -95,6 +95,7 @@ export interface ILeadFormProps {
     availabilityError?: string | null;
     hasLoadedAvailability?: boolean;
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
+    onUploadStateChange?: (isUploading: boolean) => void;
     showMeetingLink?: boolean;
     isEditMode?: boolean;
     scheduleChangeWarning?: boolean;
@@ -129,6 +130,7 @@ export function LeadForm({
     availabilityError,
     hasLoadedAvailability = false,
     leadId,
+    onUploadStateChange,
     showMeetingLink,
     isEditMode = false,
     scheduleChangeWarning = false,
@@ -1101,7 +1103,7 @@ export function LeadForm({
                     </p>
                 </div>
                 {leadId ? (
-                    <AttachmentList leadId={leadId} leadName={form.getValues("name")} />
+                    <AttachmentList leadId={leadId} leadName={form.getValues("name")} onUploadStateChange={onUploadStateChange} />
                 ) : (
                     <div className="flex items-center justify-center p-8 border border-dashed rounded-lg bg-muted/20">
                         <div className="text-center space-y-2">

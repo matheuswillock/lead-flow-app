@@ -153,6 +153,7 @@ export default function LeadDialog({
   const { createLead, updateLead } = useLeads();
   const { lead: leadDetails, loading: leadDetailsLoading, error: leadDetailsError, fetchLead } = useLead(lead?.id ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const [meetingHealdSaving, setMeetingHealdSaving] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [finalizeCompleted, setFinalizeCompleted] = useState(false);
@@ -2154,8 +2155,14 @@ export default function LeadDialog({
       <Dialog open={open && !showFinalizeDialog} onOpenChange={setOpen}>
         <DialogContent
           className="bg-transparent border-none shadow-none p-0 w-[95vw] max-w-[95vw] sm:w-[90vw] sm:max-w-[90vw] lg:w-[60vw] lg:max-w-[60vw] max-h-[90vh] flex items-center justify-center [&>button]:hidden"
-          onEscapeKeyDown={() => setOpen(false)}
-          onPointerDownOutside={() => setOpen(false)}
+          onEscapeKeyDown={(e) => {
+            if (isAttachmentUploading) { e.preventDefault(); return; }
+            setOpen(false);
+          }}
+          onPointerDownOutside={(e) => {
+            if (isAttachmentUploading) { e.preventDefault(); return; }
+            setOpen(false);
+          }}
         >
           <div className="w-full max-w-full h-[90vh] max-h-[90vh] flex flex-col gap-2 lg:flex-row lg:items-stretch">
             <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm flex flex-col h-full min-h-0 lg:flex-[0_0_80%] lg:h-[95%] lg:max-h-[95%] lg:self-center dialog-scrollbar overflow-y-auto">
@@ -2276,6 +2283,7 @@ export default function LeadDialog({
                     availabilityError={availabilityError}
                     hasLoadedAvailability={hasLoadedAvailability}
                     leadId={lead?.id}
+                    onUploadStateChange={setIsAttachmentUploading}
                     showMeetingHeald={canShowMeetingHeald}
                     meetingHealdReadOnly={false}
                     meetingHealdSaving={meetingHealdSaving}
