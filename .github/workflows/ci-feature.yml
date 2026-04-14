@@ -26,6 +26,7 @@ env:
 jobs:
   quality:
     name: Lint & Typecheck
+    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -64,6 +65,7 @@ jobs:
 
   security:
     name: Security
+    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
     uses: ./.github/workflows/security-reusable.yml
     permissions:
       contents: read
@@ -74,6 +76,7 @@ jobs:
 
   build:
     name: Build
+    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
@@ -122,6 +125,7 @@ jobs:
 
   deploy-preview:
     name: Deploy Vercel (Preview)
+    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: build
@@ -152,6 +156,7 @@ jobs:
 
   auto-pr-to-develop:
     name: Open PR to develop
+    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: deploy-preview
@@ -166,6 +171,11 @@ jobs:
             const head = context.ref.replace('refs/heads/', '');
             const base = 'develop';
 
+            if (head === base) {
+              core.info(`Head e base são iguais (${head}). Sem PR.`);
+              return;
+            }
+
             const prs = await github.rest.pulls.list({
               owner, repo,
               head: `${owner}:${head}`,
@@ -176,6 +186,18 @@ jobs:
 
             if (prs.data.length > 0) {
               core.info(`PR já existe: #${prs.data[0].number} ${prs.data[0].html_url}`);
+              return;
+            }
+
+            const cmp = await github.rest.repos.compareCommits({
+              owner,
+              repo,
+              base,
+              head,
+            });
+
+            if ((cmp.data.ahead_by || 0) === 0) {
+              core.info(`${head} não está à frente de ${base}. Sem PR.`);
               return;
             }
 
