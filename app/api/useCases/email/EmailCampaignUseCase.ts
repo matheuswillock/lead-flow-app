@@ -179,7 +179,7 @@ export class EmailCampaignUseCase {
       }
 
       const masterId = campaign.team.master.id
-      const hasCredits = await this.creditService.hasEnoughCredits(masterId, 1)
+      const hasCredits = await this.creditService.hasEnoughCredits(masterId)
       if (!hasCredits) {
         return new Output(false, [], ["Sem assinatura de créditos de email ativa. Ative um plano em Assinaturas"], null)
       }

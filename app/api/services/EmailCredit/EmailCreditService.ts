@@ -67,7 +67,7 @@ export class EmailCreditService implements IEmailCreditService {
     }
   }
 
-  async hasEnoughCredits(profileId: string, amount: number): Promise<boolean> {
+  async hasEnoughCredits(profileId: string): Promise<boolean> {
     const status = await this.getStatus(profileId)
     // Permite envio mesmo sem créditos (vai para overage), mas requer assinatura ativa
     return status.hasSubscription

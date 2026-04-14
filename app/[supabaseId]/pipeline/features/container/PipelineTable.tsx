@@ -89,7 +89,6 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     handleRowClick, 
     statusLabels, 
     isLoading,
-    setSelected,
     refreshLeads,
     patchLead,
     errors,

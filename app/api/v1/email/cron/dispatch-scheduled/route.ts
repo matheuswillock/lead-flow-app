@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
         }
 
         const masterId = campaign.team.master.id
-        const hasCredits = await creditService.hasEnoughCredits(masterId, 1)
+        const hasCredits = await creditService.hasEnoughCredits(masterId)
         if (!hasCredits) {
           await prisma.emailCampaign.update({
             where: { id: campaign.id },
