@@ -73,7 +73,15 @@ export interface IProfileRepository {
   ): Promise<Profile | null>;
   updateProfileById(
     profileId: string,
-    updates: { fullName?: string; phone?: string; email?: string; role?: string; functions?: ("SDR" | "CLOSER")[] }
+    updates: {
+      fullName?: string;
+      phone?: string;
+      email?: string;
+      role?: string;
+      functions?: ("SDR" | "CLOSER")[];
+      canCreateAccountUsers?: boolean;
+      canManageAccountTeams?: boolean;
+    }
   ): Promise<Profile | null>;
   updateProfileIcon(
     supabaseId: string,

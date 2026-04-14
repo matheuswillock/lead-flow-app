@@ -209,6 +209,8 @@ unsubscribed unsubscribed
     UserRole role 
     UserFunction functions 
     Boolean isMaster 
+    Boolean canCreateAccountUsers 
+    Boolean canManageAccountTeams 
     Boolean hasPermanentSubscription 
     Boolean googleCalendarConnected 
     String googleAccessToken "❓"

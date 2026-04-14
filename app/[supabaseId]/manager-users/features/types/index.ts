@@ -14,6 +14,8 @@ export interface ManagerUser {
   profileIconId?: string | null;
   profileIconUrl?: string;
   managerId?: string; // Para operators
+  canCreateAccountUsers?: boolean;
+  canManageAccountTeams?: boolean;
   leadsCount?: number; // Contador de leads
   meetingsCount?: number; // Contador de agendamentos (closer)
   hasPermanentSubscription?: boolean; // Indica assinatura permanente
@@ -23,8 +25,8 @@ export interface ManagerUser {
   pendingPayment?: {
     id: string;
     paymentId: string;
-    paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED';
-    paymentMethod: 'PIX' | 'CREDIT_CARD' | 'UNDEFINED';
+    paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'RECEIVED' | 'APPROVED' | 'RECEIVED_IN_CASH';
+    paymentMethod: 'PIX' | 'BOLETO' | 'CREDIT_CARD' | 'UNDEFINED';
     operatorCreated: boolean;
   };
 }
@@ -36,8 +38,8 @@ export interface PendingOperator {
   email: string;
   role: string;
   paymentId: string;
-  paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED';
-  paymentMethod: 'PIX' | 'CREDIT_CARD' | 'UNDEFINED';
+  paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'RECEIVED' | 'APPROVED' | 'RECEIVED_IN_CASH';
+  paymentMethod: 'PIX' | 'BOLETO' | 'CREDIT_CARD' | 'UNDEFINED';
   operatorCreated: boolean;
   operatorId?: string;
   createdAt: string;
@@ -58,7 +60,7 @@ export interface OperatorPaymentData {
 export interface ManagerUserTableRow extends ManagerUser {
   canEdit: boolean;
   canDelete: boolean;
-  status: 'active' | 'pending_payment' | 'payment_confirmed' | 'payment_failed' | 'pending_creation';
+  status: 'active' | 'pending_payment' | 'payment_confirmed' | 'payment_failed' | 'pending_creation' | 'subscription_updated';
   pendingPayment?: PendingOperator;
 }
 
@@ -79,6 +81,8 @@ export const CreateManagerUserSchema = z.object({
   functions: z.array(z.enum(["SDR", "CLOSER"]))
     .max(2, "Selecione no máximo 2 funções")
     .optional(),
+  canCreateAccountUsers: z.boolean().optional(),
+  canManageAccountTeams: z.boolean().optional(),
 });
 
 export const UpdateManagerUserSchema = z.object({
@@ -90,6 +94,8 @@ export const UpdateManagerUserSchema = z.object({
   functions: z.array(z.enum(["SDR", "CLOSER"]))
     .max(2, "Selecione no máximo 2 funções")
     .optional(),
+  canCreateAccountUsers: z.boolean().optional(),
+  canManageAccountTeams: z.boolean().optional(),
 });
 
 // Tipos inferidos dos schemas

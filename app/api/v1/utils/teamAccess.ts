@@ -8,6 +8,10 @@ export type TeamAccess = {
   supabaseId: string;
   teamId: string;
   profileId: string;
+  isMaster: boolean;
+  managerId: string;
+  canCreateAccountUsers: boolean;
+  canManageAccountTeams: boolean;
   teamMember: {
     role: UserRole;
     functions: UserFunction[];
@@ -29,7 +33,14 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
 
   const profile = await prisma.profile.findUnique({
     where: { supabaseId },
-    select: { id: true, activeTeamId: true },
+    select: {
+      id: true,
+      activeTeamId: true,
+      isMaster: true,
+      managerId: true,
+      canCreateAccountUsers: true,
+      canManageAccountTeams: true,
+    },
   });
 
   if (!profile) {
@@ -59,7 +70,15 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
         profileId: profile.id,
       },
     },
-    select: { role: true, functions: true },
+    select: {
+      role: true,
+      functions: true,
+      team: {
+        select: {
+          masterId: true,
+        },
+      },
+    },
   });
 
   if (!teamMember) {
@@ -74,6 +93,12 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       supabaseId,
       teamId,
       profileId: profile.id,
+      isMaster: teamMember.team.masterId === profile.id || profile.isMaster,
+      managerId: profile.managerId ?? teamMember.team.masterId ?? profile.id,
+      canCreateAccountUsers:
+        teamMember.role === "manager" && profile.canCreateAccountUsers === true,
+      canManageAccountTeams:
+        teamMember.role === "manager" && profile.canManageAccountTeams === true,
       teamMember,
     },
   };
@@ -93,4 +118,12 @@ export function hasLeadActivityAccess(teamMember: { role: UserRole; functions: U
   }
 
   return teamMember.functions?.includes("SDR") || teamMember.functions?.includes("CLOSER");
+}
+
+export function hasDelegatedUserCreationAccess(access: TeamAccess) {
+  return access.isMaster || access.canCreateAccountUsers;
+}
+
+export function hasDelegatedTeamManagementAccess(access: TeamAccess) {
+  return access.isMaster || access.canManageAccountTeams;
 }

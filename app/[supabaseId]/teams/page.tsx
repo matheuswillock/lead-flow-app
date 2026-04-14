@@ -135,7 +135,7 @@ const buildTeamStatusRulesSnapshot = (input: {
 
 export default function TeamsPage() {
   const { user } = useUser();
-  const { teams, activeTeamId, setActiveTeamId, refreshTeams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
+  const { teams, activeTeamId, activeRole, setActiveTeamId, refreshTeams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
   const [teamSearchQuery, setTeamSearchQuery] = useState("");
   const [teamsPage, setTeamsPage] = useState(1);
   const teamsPerPage = 6;
@@ -176,6 +176,7 @@ export default function TeamsPage() {
 
   const params = useParams();
   const supabaseId = params.supabaseId as string;
+  const canManageTeams = !!(user?.isMaster || (activeRole === "manager" && user?.canManageAccountTeams));
   const isOnlyMasterTeam = user?.id
     ? teams.filter((team) => team.masterId === user.id).length <= 1
     : false;
@@ -586,6 +587,7 @@ export default function TeamsPage() {
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
+          "x-team-id": manageTeamId,
         },
         body: JSON.stringify({ name: trimmedName }),
       });
@@ -683,6 +685,7 @@ export default function TeamsPage() {
           headers: {
             "Content-Type": "application/json",
             "x-supabase-user-id": supabaseId,
+            "x-team-id": manageTeamId,
           },
           body: JSON.stringify({ password: confirmPassword }),
         });
@@ -787,7 +790,7 @@ export default function TeamsPage() {
                   type="button"
                   variant="secondary"
                   onClick={() => setIsCreateTeamOpen(true)}
-                  disabled={!user?.isMaster}
+                  disabled={!canManageTeams}
                 >
                   Criar time
                 </Button>
@@ -1016,12 +1019,12 @@ export default function TeamsPage() {
                     value={renameValue}
                     onChange={(event) => setRenameValue(event.target.value)}
                     placeholder="Nome do time"
-                    disabled={!user?.isMaster || isRenaming}
+                    disabled={!canManageTeams || isRenaming}
                   />
                   <Button
                     type="button"
                     onClick={handleRenameTeam}
-                    disabled={!user?.isMaster || isRenaming || !renameValue.trim()}
+                    disabled={!canManageTeams || isRenaming || !renameValue.trim()}
                   >
                     {isRenaming ? "Salvando..." : "Salvar"}
                   </Button>
@@ -1252,7 +1255,7 @@ export default function TeamsPage() {
                 </div>
               </div>
 
-              {user?.isMaster ? (
+              {canManageTeams ? (
                 <>
                   <Separator />
                   <div className="space-y-3">
@@ -1285,45 +1288,47 @@ export default function TeamsPage() {
                           </Button>
                         </div>
                       )}
-                      <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium">Transferir time</p>
-                          <p className="text-xs text-muted-foreground">
-                            O novo master assumira a cobranca e a gestao deste time.
-                          </p>
+                      {user?.isMaster ? (
+                        <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">Transferir time</p>
+                            <p className="text-xs text-muted-foreground">
+                              O novo master assumira a cobranca e a gestao deste time.
+                            </p>
+                          </div>
+                          <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[260px]">
+                            <Select
+                              value={transferCandidateId}
+                              onValueChange={setTransferCandidateId}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecione um novo master" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {transferCandidates.map((candidate) => (
+                                  <SelectItem key={candidate.id} value={candidate.id}>
+                                    {candidate.name} ({candidate.email})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                if (!transferCandidateId) {
+                                  toast.error("Selecione um novo master.")
+                                  return
+                                }
+                                setConfirmAction("transfer")
+                              }}
+                            >
+                              Transferir time
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[260px]">
-                          <Select
-                            value={transferCandidateId}
-                            onValueChange={setTransferCandidateId}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione um novo master" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {transferCandidates.map((candidate) => (
-                                <SelectItem key={candidate.id} value={candidate.id}>
-                                  {candidate.name} ({candidate.email})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              if (!transferCandidateId) {
-                                toast.error("Selecione um novo master.")
-                                return
-                              }
-                              setConfirmAction("transfer")
-                            }}
-                          >
-                            Transferir time
-                          </Button>
-                        </div>
-                      </div>
+                      ) : null}
                     </div>
                   </div>
                 </>

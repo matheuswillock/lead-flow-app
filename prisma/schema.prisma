@@ -231,6 +231,8 @@ model Profile {
   role                     UserRole            @default(manager)
   functions                UserFunction[]      @default([])
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
+  canCreateAccountUsers    Boolean             @default(false)
+  canManageAccountTeams    Boolean             @default(false)
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
   googleCalendarConnected  Boolean             @default(false)
   googleAccessToken        String?             @db.Text

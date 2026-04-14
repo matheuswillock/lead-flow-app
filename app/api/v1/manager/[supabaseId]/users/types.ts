@@ -13,7 +13,9 @@ export const CreateUserSchema = z.object({
     .max(2, "Selecione no máximo 2 funções")
     .optional(),
   profileIconUrl: z.string().url("URL do ícone deve ser válida").optional(),
-  hasPermanentSubscription: z.boolean().optional().default(false)
+  hasPermanentSubscription: z.boolean().optional().default(false),
+  canCreateAccountUsers: z.boolean().optional(),
+  canManageAccountTeams: z.boolean().optional(),
 });
 
 export const UpdateUserSchema = z.object({
@@ -26,7 +28,9 @@ export const UpdateUserSchema = z.object({
   functions: z.array(z.enum(["SDR", "CLOSER"]))
     .max(2, "Selecione no máximo 2 funções")
     .optional(),
-  profileIconUrl: z.string().url("URL do ícone deve ser válida").optional().nullable()
+  profileIconUrl: z.string().url("URL do ícone deve ser válida").optional().nullable(),
+  canCreateAccountUsers: z.boolean().optional(),
+  canManageAccountTeams: z.boolean().optional(),
 });
 
 export const AssociateOperatorSchema = z.object({

@@ -1,298 +1,139 @@
-import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService";
-import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
+import { Output } from "@/lib/output";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { getEmailService } from "@/lib/services/EmailService";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
+import type { Prisma, UserFunction, UserRole } from "@prisma/client";
+
+async function findActionByCheckoutId(checkoutId: string) {
+  return prisma.pendingAction.findFirst({
+    where: { checkoutId },
+    include: {
+      master: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          functions: true,
+          cpfCnpj: true,
+          phone: true,
+          postalCode: true,
+          address: true,
+          addressNumber: true,
+          neighborhood: true,
+          complement: true,
+          asaasCustomerId: true,
+          asaasSubscriptionId: true,
+          subscriptionStatus: true,
+          subscriptionNextDueDate: true,
+          subscriptionCycle: true,
+          hasPermanentSubscription: true,
+        },
+      },
+    },
+  });
+}
+
+async function findActionById(id: string) {
+  return prisma.pendingAction.findUnique({
+    where: { id },
+    include: {
+      master: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          functions: true,
+          cpfCnpj: true,
+          phone: true,
+          postalCode: true,
+          address: true,
+          addressNumber: true,
+          neighborhood: true,
+          complement: true,
+          asaasCustomerId: true,
+          asaasSubscriptionId: true,
+          subscriptionStatus: true,
+          subscriptionNextDueDate: true,
+          subscriptionCycle: true,
+          hasPermanentSubscription: true,
+        },
+      },
+    },
+  });
+}
+
+type ResolvedPendingAction = NonNullable<Awaited<ReturnType<typeof findActionById>>>;
+type PendingActionPayload = Record<string, any>;
+type CreatedPendingUser = {
+  profileId: string;
+  email: string;
+  name: string;
+  role: string;
+};
+type AppliedPendingActionResult = {
+  teamId: string;
+  createdUser?: CreatedPendingUser;
+};
+
+const toBillingOwnerProfile = (action: ResolvedPendingAction): BillingOwnerProfile => ({
+  id: action.master.id,
+  fullName: action.master.fullName,
+  email: action.master.email,
+  cpfCnpj: action.master.cpfCnpj,
+  phone: action.master.phone,
+  postalCode: action.master.postalCode,
+  address: action.master.address,
+  addressNumber: action.master.addressNumber,
+  neighborhood: action.master.neighborhood,
+  complement: action.master.complement,
+  asaasCustomerId: action.master.asaasCustomerId,
+  asaasSubscriptionId: action.master.asaasSubscriptionId,
+  subscriptionStatus: action.master.subscriptionStatus,
+  subscriptionNextDueDate: action.master.subscriptionNextDueDate,
+  subscriptionCycle: action.master.subscriptionCycle,
+  hasPermanentSubscription: action.master.hasPermanentSubscription,
+});
 
 export class PendingActionUseCase {
   async applyPendingActionByCheckout(checkoutId: string, paymentId?: string): Promise<Output> {
-    const action = await prisma.pendingAction.findFirst({
-      where: { checkoutId },
-      include: { master: true },
-    });
-
+    const action = await findActionByCheckoutId(checkoutId);
     if (!action) {
       return new Output(false, [], ["Ação pendente não encontrada"], null);
     }
 
-    if (action.status === "applied") {
-      return new Output(true, ["Ação já aplicada"], [], action);
-    }
-
-    if (action.status === "canceled") {
-      return new Output(false, [], ["Ação cancelada"], null);
-    }
-
-    try {
-      await prisma.$transaction(async (tx) => {
-        if (action.actionType === "create_team") {
-          const teamName = (action.payload as any)?.name as string | undefined;
-
-          if (!teamName) {
-            throw new Error("Nome do time não informado na ação pendente");
-          }
-
-          const team = await tx.team.create({
-            data: {
-              name: teamName,
-              masterId: action.masterId,
-              isDefault: false,
-            },
-          });
-
-          await tx.teamMember.create({
-            data: {
-              teamId: team.id,
-              profileId: action.masterId,
-              role: "manager",
-              functions: action.master.functions ?? [],
-            },
-          });
-
-          await tx.pendingAction.update({
-            where: { id: action.id },
-            data: {
-              status: "applied",
-              paymentId: paymentId ?? action.paymentId,
-              teamId: team.id,
-            },
-          });
-          return;
-        }
-
-        if (action.actionType === "add_member") {
-          const payload = action.payload as any;
-          const teamId = action.teamId || payload?.teamId;
-          const profileId = payload?.profileId as string | undefined;
-
-          if (!teamId || !profileId) {
-            throw new Error("Dados insuficientes para adicionar membro");
-          }
-
-          const existingMember = await tx.teamMember.findUnique({
-            where: {
-              teamId_profileId: {
-                teamId,
-                profileId,
-              },
-            },
-          });
-
-          if (!existingMember) {
-            await tx.teamMember.create({
-              data: {
-                teamId,
-                profileId,
-                role: (payload?.role || "operator") as any,
-                functions: payload?.functions ?? [],
-              },
-            });
-          }
-
-          await tx.pendingAction.update({
-            where: { id: action.id },
-            data: {
-              status: "applied",
-              paymentId: paymentId ?? action.paymentId,
-              teamId,
-            },
-          });
-          return;
-        }
-
-        if (action.actionType === "add_user") {
-          const payload = action.payload as any;
-          const teamId = action.teamId || payload?.teamId;
-          const email = (payload?.email as string | undefined)?.trim().toLowerCase();
-          const name = payload?.name as string | undefined;
-          const role = payload?.role || "operator";
-          const functions = payload?.functions ?? [];
-
-          if (!teamId || !email || !name) {
-            throw new Error("Dados insuficientes para criar usuário");
-          }
-
-          let profile = await tx.profile.findFirst({
-            where: { email: { equals: email, mode: "insensitive" } },
-            select: { id: true },
-          });
-
-          if (!profile) {
-            profile = await tx.profile.create({
-              data: {
-                fullName: name,
-                email,
-                role,
-                functions,
-                managerId: action.masterId,
-                isMaster: false,
-              },
-              select: { id: true },
-            });
-          }
-
-          const existingMember = await tx.teamMember.findUnique({
-            where: {
-              teamId_profileId: {
-                teamId,
-                profileId: profile.id,
-              },
-            },
-          });
-
-          if (!existingMember) {
-            await tx.teamMember.create({
-              data: {
-                teamId,
-                profileId: profile.id,
-                role,
-                functions,
-              },
-            });
-          }
-
-          await tx.pendingAction.update({
-            where: { id: action.id },
-            data: {
-              status: "applied",
-              paymentId: paymentId ?? action.paymentId,
-              teamId,
-            },
-          });
-          return;
-        }
-
-        if (action.actionType === "transfer_team") {
-          const payload = action.payload as any;
-          const teamId = action.teamId || payload?.teamId;
-          const newMasterId = payload?.newMasterId as string | undefined;
-
-          if (!teamId || !newMasterId) {
-            throw new Error("Dados insuficientes para transferir time");
-          }
-
-          const team = await tx.team.findUnique({
-            where: { id: teamId },
-            select: { masterId: true },
-          });
-
-          if (!team) {
-            throw new Error("Time não encontrado");
-          }
-
-          await tx.team.update({
-            where: { id: teamId },
-            data: { masterId: newMasterId },
-          });
-
-          await tx.teamMember.update({
-            where: {
-              teamId_profileId: {
-                teamId,
-                profileId: newMasterId,
-              },
-            },
-            data: { role: "manager" },
-          });
-
-          await tx.profile.update({
-            where: { id: newMasterId },
-            data: { isMaster: true },
-          });
-
-          await tx.pendingAction.update({
-            where: { id: action.id },
-            data: {
-              status: "applied",
-              paymentId: paymentId ?? action.paymentId,
-              teamId,
-            },
-          });
-          return;
-        } else {
-          throw new Error(`Tipo de ação não suportado: ${action.actionType}`);
-        }
-      });
-
-      if (action.actionType === "add_user") {
-        const payload = action.payload as any;
-        const email = (payload?.email as string | undefined)?.trim().toLowerCase();
-        const name = payload?.name as string | undefined;
-        if (email && name) {
-          try {
-            const supabaseAdmin = createSupabaseAdmin();
-            const emailService = getEmailService();
-            const redirectTo = getFullUrl("/set-password");
-
-            if (supabaseAdmin) {
-              const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-                type: "invite",
-                email,
-                options: {
-                  redirectTo,
-                  data: {
-                    name,
-                    invited: true,
-                    first_access: true,
-                  },
-                },
-              });
-
-              if (!error && data?.properties?.action_link) {
-                const supabaseUserId = (data as any)?.user?.id as string | undefined;
-                if (supabaseUserId) {
-                  await prisma.profile.update({
-                    where: { email },
-                    data: { supabaseId: supabaseUserId },
-                  });
-                }
-
-                await emailService.sendOperatorInviteEmail({
-                  operatorName: name,
-                  operatorEmail: email,
-                  operatorRole: payload?.role || "operator",
-                  managerName: action.master.fullName || action.master.email,
-                  inviteUrl: data.properties.action_link,
-                });
-              }
-            }
-          } catch (inviteError) {
-            console.warn("Erro ao enviar convite do usuário pendente:", inviteError);
-          }
-        }
-      }
-
-      const summary = await getBillingSummary(action.masterId);
-
-      if (!summary.hasPermanentSubscription && action.master.asaasSubscriptionId) {
-        await AsaasSubscriptionService.updateSubscription(action.master.asaasSubscriptionId, {
-          value: summary.totalPrice,
-        });
-      }
-
-      return new Output(true, ["Ação pendente aplicada com sucesso"], [], null);
-    } catch (error: any) {
-      console.error("Erro ao aplicar ação pendente:", error);
-
-      await prisma.pendingAction.update({
-        where: { id: action.id },
-        data: {
-          status: "failed",
-          paymentId: paymentId ?? action.paymentId,
-        },
-      });
-
-      return new Output(false, [], [error?.message || "Erro ao aplicar ação pendente"], null);
-    }
+    return this.applyResolvedPendingAction(action, paymentId);
   }
 
   async applyPendingActionByPaymentId(paymentId: string): Promise<Output> {
     let action = await prisma.pendingAction.findFirst({
       where: { paymentId },
-      include: { master: true },
+      include: {
+        master: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            functions: true,
+            cpfCnpj: true,
+            phone: true,
+            postalCode: true,
+            address: true,
+            addressNumber: true,
+            neighborhood: true,
+            complement: true,
+            asaasCustomerId: true,
+            asaasSubscriptionId: true,
+            subscriptionStatus: true,
+            subscriptionNextDueDate: true,
+            subscriptionCycle: true,
+            hasPermanentSubscription: true,
+          },
+        },
+      },
     });
 
     if (!action) {
@@ -302,10 +143,7 @@ export class PendingActionUseCase {
 
         if (externalReference?.startsWith("pending-action-")) {
           const actionId = externalReference.replace("pending-action-", "");
-          action = await prisma.pendingAction.findUnique({
-            where: { id: actionId },
-            include: { master: true },
-          });
+          action = await findActionById(actionId);
 
           if (action && !action.paymentId) {
             await prisma.pendingAction.update({
@@ -316,7 +154,7 @@ export class PendingActionUseCase {
           }
         }
       } catch (error) {
-        console.warn("[applyPendingActionByPaymentId] Erro ao buscar payment no Asaas:", error);
+        console.warn("[PendingActionUseCase] Erro ao buscar payment no Asaas:", error);
       }
     }
 
@@ -324,6 +162,10 @@ export class PendingActionUseCase {
       return new Output(false, [], ["Ação pendente não encontrada"], null);
     }
 
+    return this.applyResolvedPendingAction(action, paymentId);
+  }
+
+  private async applyResolvedPendingAction(action: ResolvedPendingAction, paymentId?: string): Promise<Output> {
     if (action.status === "applied") {
       return new Output(true, ["Ação já aplicada"], [], action);
     }
@@ -333,253 +175,66 @@ export class PendingActionUseCase {
     }
 
     try {
-      await prisma.$transaction(async (tx) => {
+      const appliedResult = await prisma.$transaction(async (tx) => {
         if (action.actionType === "create_team") {
-          const teamName = (action.payload as any)?.name as string | undefined;
-
-          if (!teamName) {
-            throw new Error("Nome do time não informado na ação pendente");
-          }
-
-          const team = await tx.team.create({
-            data: {
-              name: teamName,
-              masterId: action.masterId,
-              isDefault: false,
-            },
-          });
-
-          await tx.teamMember.create({
-            data: {
-              teamId: team.id,
-              profileId: action.masterId,
-              role: "manager",
-              functions: action.master.functions ?? [],
-            },
-          });
-
-          await tx.pendingAction.update({
-            where: { id: action.id },
-            data: {
-              status: "applied",
-              paymentId: paymentId ?? action.paymentId,
-              teamId: team.id,
-            },
-          });
-          return;
+          return this.applyCreateTeam(tx, action, paymentId);
         }
 
         if (action.actionType === "add_member") {
-          const payload = action.payload as any;
-          const teamId = action.teamId || payload?.teamId;
-          const profileId = payload?.profileId as string | undefined;
-
-          if (!teamId || !profileId) {
-            throw new Error("Dados insuficientes para adicionar membro");
-          }
-
-          const existingMember = await tx.teamMember.findUnique({
-            where: {
-              teamId_profileId: {
-                teamId,
-                profileId,
-              },
-            },
-          });
-
-          if (!existingMember) {
-            await tx.teamMember.create({
-              data: {
-                teamId,
-                profileId,
-                role: (payload?.role || "operator") as any,
-                functions: payload?.functions ?? [],
-              },
-            });
-          }
-
-          await tx.pendingAction.update({
-            where: { id: action.id },
-            data: {
-              status: "applied",
-              paymentId: paymentId ?? action.paymentId,
-              teamId,
-            },
-          });
-          return;
+          return this.applyAddMember(tx, action, paymentId);
         }
 
         if (action.actionType === "add_user") {
-          const payload = action.payload as any;
-          const teamId = action.teamId || payload?.teamId;
-          const email = (payload?.email as string | undefined)?.trim().toLowerCase();
-          const name = payload?.name as string | undefined;
-          const role = payload?.role || "operator";
-          const functions = payload?.functions ?? [];
-
-          if (!teamId || !email || !name) {
-            throw new Error("Dados insuficientes para criar usuário");
-          }
-
-          let profile = await tx.profile.findFirst({
-            where: { email: { equals: email, mode: "insensitive" } },
-            select: { id: true },
-          });
-
-          if (!profile) {
-            profile = await tx.profile.create({
-              data: {
-                fullName: name,
-                email,
-                role,
-                functions,
-                managerId: action.masterId,
-                isMaster: false,
-              },
-              select: { id: true },
-            });
-          }
-
-          const existingMember = await tx.teamMember.findUnique({
-            where: {
-              teamId_profileId: {
-                teamId,
-                profileId: profile.id,
-              },
-            },
-          });
-
-          if (!existingMember) {
-            await tx.teamMember.create({
-              data: {
-                teamId,
-                profileId: profile.id,
-                role,
-                functions,
-              },
-            });
-          }
-
-          await tx.pendingAction.update({
-            where: { id: action.id },
-            data: {
-              status: "applied",
-              paymentId: paymentId ?? action.paymentId,
-              teamId,
-            },
-          });
-          return;
+          return this.applyAddUser(tx, action, paymentId);
         }
 
         if (action.actionType === "transfer_team") {
-          const payload = action.payload as any;
-          const teamId = action.teamId || payload?.teamId;
-          const newMasterId = payload?.newMasterId as string | undefined;
-
-          if (!teamId || !newMasterId) {
-            throw new Error("Dados insuficientes para transferir time");
-          }
-
-          const team = await tx.team.findUnique({
-            where: { id: teamId },
-            select: { masterId: true },
-          });
-
-          if (!team) {
-            throw new Error("Time não encontrado");
-          }
-
-          await tx.team.update({
-            where: { id: teamId },
-            data: { masterId: newMasterId },
-          });
-
-          await tx.teamMember.update({
-            where: {
-              teamId_profileId: {
-                teamId,
-                profileId: newMasterId,
-              },
-            },
-            data: { role: "manager" },
-          });
-
-          await tx.profile.update({
-            where: { id: newMasterId },
-            data: { isMaster: true },
-          });
-
-          await tx.pendingAction.update({
-            where: { id: action.id },
-            data: {
-              status: "applied",
-              paymentId: paymentId ?? action.paymentId,
-              teamId,
-            },
-          });
-          return;
+          return this.applyTransferTeam(tx, action, paymentId);
         }
 
         throw new Error(`Tipo de ação não suportado: ${action.actionType}`);
       });
 
-      if (action.actionType === "add_user") {
-        const payload = action.payload as any;
-        const email = (payload?.email as string | undefined)?.trim().toLowerCase();
-        const name = payload?.name as string | undefined;
-        if (email && name) {
-          try {
-            const supabaseAdmin = createSupabaseAdmin();
-            const emailService = getEmailService();
-            const redirectTo = getFullUrl("/set-password");
+      if (appliedResult.createdUser) {
+        await this.sendInviteForCreatedUser(action, appliedResult.createdUser);
+      }
 
-            if (supabaseAdmin) {
-              const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-                type: "invite",
-                email,
-                options: {
-                  redirectTo,
-                  data: {
-                    name,
-                    invited: true,
-                    first_access: true,
-                  },
-                },
-              });
+      const targetRecurringTotal = Number((action.payload as PendingActionPayload)?.targetRecurringTotal ?? 0);
+      if (!Number.isNaN(targetRecurringTotal) && targetRecurringTotal > 0) {
+        try {
+          await incrementalBillingService.syncRecurringSubscription({
+            master: toBillingOwnerProfile(action),
+            targetRecurringTotal,
+            reason: `Atualização recorrente após ${action.actionType}`,
+          });
 
-              if (!error && data?.properties?.action_link) {
-                const supabaseUserId = (data as any)?.user?.id as string | undefined;
-                if (supabaseUserId) {
-                  await prisma.profile.update({
-                    where: { email },
-                    data: { supabaseId: supabaseUserId },
-                  });
-                }
-
-                await emailService.sendOperatorInviteEmail({
-                  operatorName: name,
-                  operatorEmail: email,
-                  operatorRole: payload?.role || "operator",
-                  managerName: action.master.fullName || action.master.email,
-                  inviteUrl: data.properties.action_link,
-                });
-              }
-            }
-          } catch (inviteError) {
-            console.warn("Erro ao enviar convite do usuário pendente:", inviteError);
-          }
+          await prisma.pendingAction.update({
+            where: { id: action.id },
+            data: {
+              payload: {
+                ...(action.payload as PendingActionPayload),
+                paymentStatus: "CONFIRMED",
+                subscriptionSyncStatus: "updated",
+                subscriptionUpdatedAt: new Date().toISOString(),
+              },
+            },
+          });
+        } catch (subscriptionError) {
+          console.error("[PendingActionUseCase] Falha ao sincronizar assinatura recorrente:", subscriptionError);
+          await prisma.pendingAction.update({
+            where: { id: action.id },
+            data: {
+              payload: {
+                ...(action.payload as PendingActionPayload),
+                paymentStatus: "CONFIRMED",
+                subscriptionSyncStatus: "failed",
+              },
+            },
+          });
         }
       }
 
-      const summary = await getBillingSummary(action.masterId);
-
-      if (!summary.hasPermanentSubscription && action.master.asaasSubscriptionId) {
-        await AsaasSubscriptionService.updateSubscription(action.master.asaasSubscriptionId, {
-          value: summary.totalPrice,
-        });
-      }
-
-      return new Output(true, ["Ação pendente aplicada com sucesso"], [], null);
+      return new Output(true, ["Ação pendente aplicada com sucesso"], [], appliedResult);
     } catch (error: any) {
       console.error("Erro ao aplicar ação pendente:", error);
 
@@ -588,10 +243,353 @@ export class PendingActionUseCase {
         data: {
           status: "failed",
           paymentId: paymentId ?? action.paymentId,
+          payload: {
+            ...(action.payload as PendingActionPayload),
+            paymentStatus: "FAILED",
+          },
         },
       });
 
       return new Output(false, [], [error?.message || "Erro ao aplicar ação pendente"], null);
+    }
+  }
+
+  private async applyCreateTeam(
+    tx: Prisma.TransactionClient,
+    action: ResolvedPendingAction,
+    paymentId?: string
+  ): Promise<AppliedPendingActionResult> {
+    const payload = (action.payload as PendingActionPayload) || {};
+    const teamName = payload.name as string | undefined;
+
+    if (!teamName) {
+      throw new Error("Nome do time não informado na ação pendente");
+    }
+
+    const team = await tx.team.create({
+      data: {
+        name: teamName,
+        masterId: action.masterId,
+        isDefault: false,
+      },
+    });
+
+    await tx.teamMember.upsert({
+      where: {
+        teamId_profileId: {
+          teamId: team.id,
+          profileId: action.masterId,
+        },
+      },
+      update: {
+        role: "manager",
+        functions: action.master.functions ?? [],
+      },
+      create: {
+        teamId: team.id,
+        profileId: action.masterId,
+        role: "manager",
+        functions: action.master.functions ?? [],
+      },
+    });
+
+    const requesterProfileId = payload.requestedByProfileId as string | undefined;
+    const requesterFunctions = (payload.requestedByFunctions as UserFunction[] | undefined) ?? [];
+    if (requesterProfileId && requesterProfileId !== action.masterId) {
+      await tx.teamMember.upsert({
+        where: {
+          teamId_profileId: {
+            teamId: team.id,
+            profileId: requesterProfileId,
+          },
+        },
+        update: {
+          role: "manager",
+          functions: requesterFunctions,
+        },
+        create: {
+          teamId: team.id,
+          profileId: requesterProfileId,
+          role: "manager",
+          functions: requesterFunctions,
+        },
+      });
+    }
+
+    await tx.pendingAction.update({
+      where: { id: action.id },
+      data: {
+        status: "applied",
+        paymentId: paymentId ?? action.paymentId,
+        teamId: team.id,
+        payload: {
+          ...payload,
+          paymentStatus: "CONFIRMED",
+        },
+      },
+    });
+
+    return { teamId: team.id };
+  }
+
+  private async applyAddMember(
+    tx: Prisma.TransactionClient,
+    action: ResolvedPendingAction,
+    paymentId?: string
+  ): Promise<AppliedPendingActionResult> {
+    const payload = (action.payload as PendingActionPayload) || {};
+    const teamId = action.teamId || payload.teamId;
+    const profileId = payload.profileId as string | undefined;
+
+    if (!teamId || !profileId) {
+      throw new Error("Dados insuficientes para adicionar membro");
+    }
+
+    const existingMember = await tx.teamMember.findUnique({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId,
+        },
+      },
+    });
+
+    if (!existingMember) {
+      await tx.teamMember.create({
+        data: {
+          teamId,
+          profileId,
+          role: (payload.role || "operator") as UserRole,
+          functions: (payload.functions as UserFunction[] | undefined) ?? [],
+        },
+      });
+    }
+
+    await tx.pendingAction.update({
+      where: { id: action.id },
+      data: {
+        status: "applied",
+        paymentId: paymentId ?? action.paymentId,
+        teamId,
+        payload: {
+          ...payload,
+          paymentStatus: "CONFIRMED",
+        },
+      },
+    });
+
+    return { teamId };
+  }
+
+  private async applyAddUser(
+    tx: Prisma.TransactionClient,
+    action: ResolvedPendingAction,
+    paymentId?: string
+  ): Promise<AppliedPendingActionResult> {
+    const payload = (action.payload as PendingActionPayload) || {};
+    const teamId = action.teamId || payload.teamId;
+    const email = (payload.email as string | undefined)?.trim().toLowerCase();
+    const name = payload.name as string | undefined;
+    const role = (payload.role || "operator") as UserRole;
+    const functions = (payload.functions as UserFunction[] | undefined) ?? [];
+
+    if (!teamId || !email || !name) {
+      throw new Error("Dados insuficientes para criar usuário");
+    }
+
+    const delegatedPermissions =
+      role === "manager"
+        ? {
+            canCreateAccountUsers: payload.canCreateAccountUsers === true,
+            canManageAccountTeams: payload.canManageAccountTeams === true,
+          }
+        : {
+            canCreateAccountUsers: false,
+            canManageAccountTeams: false,
+          };
+
+    let profile = await tx.profile.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+      select: { id: true },
+    });
+
+    if (!profile) {
+      profile = await tx.profile.create({
+        data: {
+          fullName: name,
+          email,
+          role,
+          functions,
+          managerId: action.masterId,
+          isMaster: false,
+          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+        },
+        select: { id: true },
+      });
+    } else {
+      await tx.profile.update({
+        where: { id: profile.id },
+        data: {
+          fullName: name,
+          role,
+          functions,
+          managerId: action.masterId,
+          canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+          canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+        },
+      });
+    }
+
+    const existingMember = await tx.teamMember.findUnique({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId: profile.id,
+        },
+      },
+    });
+
+    if (!existingMember) {
+      await tx.teamMember.create({
+        data: {
+          teamId,
+          profileId: profile.id,
+          role,
+          functions,
+        },
+      });
+    }
+
+    await tx.pendingAction.update({
+      where: { id: action.id },
+      data: {
+        status: "applied",
+        paymentId: paymentId ?? action.paymentId,
+        teamId,
+        payload: {
+          ...payload,
+          paymentStatus: "CONFIRMED",
+        },
+      },
+    });
+
+    return {
+      teamId,
+      createdUser: {
+        profileId: profile.id,
+        email,
+        name,
+        role,
+      },
+    };
+  }
+
+  private async applyTransferTeam(
+    tx: Prisma.TransactionClient,
+    action: ResolvedPendingAction,
+    paymentId?: string
+  ): Promise<AppliedPendingActionResult> {
+    const payload = (action.payload as PendingActionPayload) || {};
+    const teamId = action.teamId || payload.teamId;
+    const newMasterId = payload.newMasterId as string | undefined;
+
+    if (!teamId || !newMasterId) {
+      throw new Error("Dados insuficientes para transferir time");
+    }
+
+    const team = await tx.team.findUnique({
+      where: { id: teamId },
+      select: { masterId: true },
+    });
+
+    if (!team) {
+      throw new Error("Time não encontrado");
+    }
+
+    await tx.team.update({
+      where: { id: teamId },
+      data: { masterId: newMasterId },
+    });
+
+    await tx.teamMember.update({
+      where: {
+        teamId_profileId: {
+          teamId,
+          profileId: newMasterId,
+        },
+      },
+      data: { role: "manager" },
+    });
+
+    await tx.profile.update({
+      where: { id: newMasterId },
+      data: { isMaster: true },
+    });
+
+    await tx.pendingAction.update({
+      where: { id: action.id },
+      data: {
+        status: "applied",
+        paymentId: paymentId ?? action.paymentId,
+        teamId,
+        payload: {
+          ...payload,
+          paymentStatus: "CONFIRMED",
+        },
+      },
+    });
+
+    return { teamId };
+  }
+
+  private async sendInviteForCreatedUser(
+    action: ResolvedPendingAction,
+    createdUser: CreatedPendingUser
+  ) {
+    try {
+      const supabaseAdmin = createSupabaseAdmin();
+      const emailService = getEmailService();
+      const redirectTo = getFullUrl("/set-password");
+
+      if (!supabaseAdmin) {
+        return;
+      }
+
+      const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+        type: "invite",
+        email: createdUser.email,
+        options: {
+          redirectTo,
+          data: {
+            name: createdUser.name,
+            invited: true,
+            first_access: true,
+          },
+        },
+      });
+
+      if (error || !data?.properties?.action_link) {
+        throw new Error("Erro ao gerar link de convite");
+      }
+
+      const supabaseUserId = (data as any)?.user?.id as string | undefined;
+      if (supabaseUserId) {
+        await prisma.profile.update({
+          where: { id: createdUser.profileId },
+          data: { supabaseId: supabaseUserId },
+        });
+      }
+
+      await emailService.sendOperatorInviteEmail({
+        operatorName: createdUser.name,
+        operatorEmail: createdUser.email,
+        operatorRole: createdUser.role,
+        managerName: action.master.fullName || action.master.email,
+        inviteUrl: data.properties.action_link,
+      });
+    } catch (inviteError) {
+      console.warn("Erro ao enviar convite do usuário pendente:", inviteError);
     }
   }
 }

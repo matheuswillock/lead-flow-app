@@ -657,7 +657,15 @@ class PrismaProfileRepository implements IProfileRepository {
 
     async updateProfileById(
         profileId: string,
-        updates: { fullName?: string; phone?: string; email?: string; role?: string; functions?: ("SDR" | "CLOSER")[] }
+        updates: {
+            fullName?: string;
+            phone?: string;
+            email?: string;
+            role?: string;
+            functions?: ("SDR" | "CLOSER")[];
+            canCreateAccountUsers?: boolean;
+            canManageAccountTeams?: boolean;
+        }
     ): Promise<Profile | null> {
         try {
             console.info("🔄 [updateProfileById] Iniciando atualização para profileId:", profileId);
@@ -756,6 +764,22 @@ class PrismaProfileRepository implements IProfileRepository {
             if (updates.functions !== undefined) {
                 updateData.functions = updates.functions;
                 console.info("🧩 [updateProfileById] Atualizando functions:", updates.functions);
+            }
+
+            if (updates.canCreateAccountUsers !== undefined) {
+                updateData.canCreateAccountUsers = updates.canCreateAccountUsers;
+                console.info(
+                    "🔐 [updateProfileById] Atualizando canCreateAccountUsers:",
+                    updates.canCreateAccountUsers
+                );
+            }
+
+            if (updates.canManageAccountTeams !== undefined) {
+                updateData.canManageAccountTeams = updates.canManageAccountTeams;
+                console.info(
+                    "🔐 [updateProfileById] Atualizando canManageAccountTeams:",
+                    updates.canManageAccountTeams
+                );
             }
 
             const profile = await prisma.profile.update({

@@ -3,10 +3,71 @@ import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getBillingSummary, BILLING_PRICES } from "@/app/api/services/billing/TeamBillingService";
 import { z } from "zod";
+import {
+  getTeamAccess,
+  hasDelegatedTeamManagementAccess,
+} from "@/app/api/v1/utils/teamAccess";
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
 });
+
+async function createTeamForAccount(args: {
+  teamName: string;
+  masterId: string;
+  requesterProfileId: string;
+  masterFunctions: ("SDR" | "CLOSER")[];
+  requesterFunctions: ("SDR" | "CLOSER")[];
+}) {
+  const team = await prisma.team.create({
+    data: {
+      name: args.teamName,
+      masterId: args.masterId,
+      isDefault: false,
+    },
+  });
+
+  await prisma.teamMember.upsert({
+    where: {
+      teamId_profileId: {
+        teamId: team.id,
+        profileId: args.masterId,
+      },
+    },
+    update: {
+      role: "manager",
+    },
+    create: {
+      teamId: team.id,
+      profileId: args.masterId,
+      role: "manager",
+      functions: args.masterFunctions,
+    },
+  });
+
+  if (args.requesterProfileId !== args.masterId) {
+    await prisma.teamMember.upsert({
+      where: {
+        teamId_profileId: {
+          teamId: team.id,
+          profileId: args.requesterProfileId,
+        },
+      },
+      update: {
+        role: "manager",
+        functions: args.requesterFunctions,
+      },
+      create: {
+        teamId: team.id,
+        profileId: args.requesterProfileId,
+        role: "manager",
+        functions: args.requesterFunctions,
+      },
+    });
+  }
+
+  return team;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -73,22 +134,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const profile = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { id: true, fullName: true, email: true, isMaster: true, hasPermanentSubscription: true, functions: true, asaasCustomerId: true },
-    });
+    const teamAccess = await getTeamAccess(request);
+    if ("error" in teamAccess) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    }
 
-    if (!profile) {
+    const { profileId, managerId, teamMember, isMaster } = teamAccess.access;
+    if (!hasDelegatedTeamManagementAccess(teamAccess.access)) {
       return NextResponse.json(
-        new Output(false, [], ["Perfil não encontrado"], null),
-        { status: 404 }
+        new Output(false, [], ["Apenas o master ou um manager delegado pode criar times"], null),
+        { status: 403 }
       );
     }
 
-    if (!profile.isMaster) {
+    const [profile, billingOwner] = await Promise.all([
+      prisma.profile.findUnique({
+        where: { supabaseId },
+        select: { id: true, fullName: true, email: true, functions: true },
+      }),
+      prisma.profile.findUnique({
+        where: { id: managerId },
+        select: { id: true, hasPermanentSubscription: true, functions: true },
+      }),
+    ]);
+
+    if (!profile || !billingOwner) {
       return NextResponse.json(
-        new Output(false, [], ["Apenas masters podem criar times"], null),
-        { status: 403 }
+        new Output(false, [], ["Perfil não encontrado"], null),
+        { status: 404 }
       );
     }
 
@@ -101,22 +174,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(new Output(false, [], errors, null), { status: 400 });
     }
 
-    if (profile.hasPermanentSubscription) {
-      const team = await prisma.team.create({
-        data: {
-          name: validatedData.name,
-          masterId: profile.id,
-          isDefault: false,
-        },
-      });
-
-      await prisma.teamMember.create({
-        data: {
-          teamId: team.id,
-          profileId: profile.id,
-          role: "manager",
-          functions: profile.functions ?? [],
-        },
+    if (billingOwner.hasPermanentSubscription) {
+      const team = await createTeamForAccount({
+        teamName: validatedData.name,
+        masterId: managerId,
+        requesterProfileId: profileId,
+        masterFunctions: billingOwner.functions ?? [],
+        requesterFunctions: isMaster ? profile.functions ?? [] : teamMember.functions ?? [],
       });
 
       return NextResponse.json(
@@ -125,7 +189,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const currentSummary = await getBillingSummary(profile.id);
+    const currentSummary = await getBillingSummary(managerId);
     const nextTeams = currentSummary.teamCount + 1;
     const nextBillableTeams = Math.max(0, nextTeams - 1);
     const nextTotal = currentSummary.basePrice +
@@ -135,21 +199,12 @@ export async function POST(request: NextRequest) {
     const delta = Number((nextTotal - currentSummary.totalPrice).toFixed(2));
 
     if (delta <= 0) {
-      const team = await prisma.team.create({
-        data: {
-          name: validatedData.name,
-          masterId: profile.id,
-          isDefault: false,
-        },
-      });
-
-      await prisma.teamMember.create({
-        data: {
-          teamId: team.id,
-          profileId: profile.id,
-          role: "manager",
-          functions: profile.functions ?? [],
-        },
+      const team = await createTeamForAccount({
+        teamName: validatedData.name,
+        masterId: managerId,
+        requesterProfileId: profileId,
+        masterFunctions: billingOwner.functions ?? [],
+        requesterFunctions: isMaster ? profile.functions ?? [] : teamMember.functions ?? [],
       });
 
       return NextResponse.json(

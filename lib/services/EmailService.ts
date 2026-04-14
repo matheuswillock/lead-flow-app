@@ -58,6 +58,23 @@ export interface OperatorInviteEmailData {
   inviteUrl: string;
 }
 
+export interface PendingAccountUserPaymentEmailData {
+  masterName: string;
+  masterEmail: string;
+  requestedUserName: string;
+  requestedUserEmail: string;
+  requestedRole: string;
+  requesterName: string;
+  requesterEmail: string;
+  billingType: "PIX" | "BOLETO" | "CREDIT_CARD" | "UNDEFINED";
+  amount: number;
+  newRecurringTotal: number;
+  paymentId: string;
+  boletoUrl?: string;
+  boletoDueDate?: string;
+  pixPayload?: string;
+}
+
 export interface ResetPasswordEmailData {
   userName: string;
   userEmail: string;
@@ -738,6 +755,109 @@ export class EmailService {
     return this.sendEmail({
       to: [data.operatorEmail],
       subject: `Convite: Você foi adicionado ao Corretor Studio por ${data.managerName}`,
+      html,
+    });
+  }
+
+  async sendPendingAccountUserPaymentEmail(data: PendingAccountUserPaymentEmailData) {
+    const manageUrl = getFullUrl("/subscription");
+    const billingTypeLabel =
+      data.billingType === "PIX"
+        ? "PIX"
+        : data.billingType === "BOLETO"
+          ? "boleto"
+          : data.billingType === "CREDIT_CARD"
+            ? "cartão de crédito"
+            : "assinatura atual";
+
+    const paymentInstructions =
+      data.billingType === "PIX"
+        ? `
+          <p style="margin: 0 0 12px 0; color: #525252; font-size: 15px; line-height: 1.6;">
+            Copie o código PIX abaixo para concluir a cobrança adicional:
+          </p>
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: #171717;">
+            ${data.pixPayload || "Código PIX indisponível"}
+          </div>
+        `
+        : data.billingType === "BOLETO"
+          ? `
+            <p style="margin: 0 0 12px 0; color: #525252; font-size: 15px; line-height: 1.6;">
+              A cobrança foi gerada em boleto. Use o link abaixo para visualizar e pagar:
+            </p>
+            <div style="margin-bottom: 16px;">
+              <a href="${data.boletoUrl || manageUrl}" style="display: inline-block; background: #ff6900; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 10px; font-weight: 600;">
+                Abrir boleto
+              </a>
+            </div>
+            <p style="margin: 0; color: #737373; font-size: 14px;">
+              Vencimento: ${data.boletoDueDate || "consulte no portal"}
+            </p>
+          `
+          : `
+            <p style="margin: 0 0 12px 0; color: #525252; font-size: 15px; line-height: 1.6;">
+              A cobrança incremental foi enviada ao ${billingTypeLabel}. Assim que o pagamento for confirmado, o novo usuário será criado automaticamente.
+            </p>
+          `;
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);">
+                <tr>
+                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Corretor Studio</h1>
+                    <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.92); font-size: 15px;">Cobrança incremental pendente</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 36px 32px;">
+                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 24px; font-weight: 600;">Olá, ${data.masterName}</h2>
+                    <p style="margin: 0 0 20px 0; color: #525252; font-size: 16px; line-height: 1.7;">
+                      ${data.requesterName} solicitou a criação de um novo usuário na sua conta. A conta ficará pendente até a confirmação da cobrança adicional.
+                    </p>
+
+                    <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 14px; padding: 20px; margin-bottom: 20px;">
+                      <p style="margin: 0 0 8px 0; color: #171717; font-size: 15px;"><strong>Usuário solicitado:</strong> ${data.requestedUserName}</p>
+                      <p style="margin: 0 0 8px 0; color: #171717; font-size: 15px;"><strong>E-mail:</strong> ${data.requestedUserEmail}</p>
+                      <p style="margin: 0 0 8px 0; color: #171717; font-size: 15px;"><strong>Nível:</strong> ${data.requestedRole}</p>
+                      <p style="margin: 0 0 8px 0; color: #171717; font-size: 15px;"><strong>Solicitado por:</strong> ${data.requesterName} (${data.requesterEmail})</p>
+                      <p style="margin: 0 0 8px 0; color: #171717; font-size: 15px;"><strong>Valor adicional:</strong> ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(data.amount)}</p>
+                      <p style="margin: 0; color: #171717; font-size: 15px;"><strong>Novo valor recorrente:</strong> ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(data.newRecurringTotal)}</p>
+                    </div>
+
+                    <div style="background: #fff7ed; border: 1px solid #fdba74; border-radius: 14px; padding: 20px; margin-bottom: 24px;">
+                      <p style="margin: 0 0 8px 0; color: #9a3412; font-size: 15px;"><strong>ID da cobrança:</strong> ${data.paymentId}</p>
+                      <p style="margin: 0 0 16px 0; color: #9a3412; font-size: 15px;"><strong>Forma de cobrança:</strong> ${billingTypeLabel}</p>
+                      ${paymentInstructions}
+                    </div>
+
+                    <div style="text-align: center;">
+                      <a href="${manageUrl}" style="display: inline-block; background: #111827; color: #ffffff; text-decoration: none; padding: 12px 18px; border-radius: 10px; font-weight: 600;">
+                        Abrir assinatura
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    return this.sendEmail({
+      to: [data.masterEmail],
+      subject: `Pagamento pendente para adicionar ${data.requestedUserName} à conta`,
       html,
     });
   }

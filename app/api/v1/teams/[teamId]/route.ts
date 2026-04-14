@@ -4,7 +4,11 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { createClient } from "@supabase/supabase-js";
 import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService";
-import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
+import {
+  getTeamAccess,
+  hasDelegatedTeamManagementAccess,
+} from "@/app/api/v1/utils/teamAccess";
+import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 
 const updateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
@@ -58,27 +62,20 @@ export async function PATCH(
       return NextResponse.json(new Output(false, [], errors, null), { status: 400 });
     }
 
-    const requester = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { id: true },
-    });
-
-    if (!requester) {
-      return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), { status: 404 });
+    const teamAccess = await getTeamAccess(request);
+    if ("error" in teamAccess) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
-    const team = await prisma.team.findUnique({
-      where: { id: teamId },
-      select: { id: true, masterId: true },
-    });
-
-    if (!team) {
-      return NextResponse.json(new Output(false, [], ["Time não encontrado"], null), { status: 404 });
+    if (teamAccess.access.teamId !== teamId) {
+      return NextResponse.json(new Output(false, [], ["Acesso negado para este time"], null), {
+        status: 403,
+      });
     }
 
-    if (team.masterId !== requester.id) {
+    if (!hasDelegatedTeamManagementAccess(teamAccess.access)) {
       return NextResponse.json(
-        new Output(false, [], ["Apenas o master pode editar este time"], null),
+        new Output(false, [], ["Apenas o master ou um manager delegado pode editar este time"], null),
         { status: 403 }
       );
     }
@@ -129,29 +126,54 @@ export async function DELETE(
       return NextResponse.json(new Output(false, [], errors, null), { status: 400 });
     }
 
-    const requester = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: { id: true, email: true, hasPermanentSubscription: true, asaasSubscriptionId: true },
-    });
-
-    if (!requester) {
-      return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), { status: 404 });
+    const teamAccess = await getTeamAccess(request);
+    if ("error" in teamAccess) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
-    const team = await prisma.team.findUnique({
-      where: { id: teamId },
-      select: { id: true, masterId: true, name: true },
-    });
-
-    if (!team) {
-      return NextResponse.json(new Output(false, [], ["Time não encontrado"], null), { status: 404 });
+    if (teamAccess.access.teamId !== teamId) {
+      return NextResponse.json(new Output(false, [], ["Acesso negado para este time"], null), {
+        status: 403,
+      });
     }
 
-    if (team.masterId !== requester.id) {
+    if (!hasDelegatedTeamManagementAccess(teamAccess.access)) {
       return NextResponse.json(
-        new Output(false, [], ["Apenas o master pode excluir este time"], null),
+        new Output(false, [], ["Apenas o master ou um manager delegado pode excluir este time"], null),
         { status: 403 }
       );
+    }
+
+    const [requester, billingOwner] = await Promise.all([
+      prisma.profile.findUnique({
+        where: { supabaseId },
+        select: { id: true, email: true },
+      }),
+      prisma.profile.findUnique({
+        where: { id: teamAccess.access.managerId },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          cpfCnpj: true,
+          phone: true,
+          postalCode: true,
+          address: true,
+          addressNumber: true,
+          neighborhood: true,
+          complement: true,
+          asaasCustomerId: true,
+          asaasSubscriptionId: true,
+          subscriptionStatus: true,
+          subscriptionNextDueDate: true,
+          subscriptionCycle: true,
+          hasPermanentSubscription: true,
+        },
+      }),
+    ]);
+
+    if (!requester || !billingOwner) {
+      return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), { status: 404 });
     }
 
     const supabaseAdmin = createSupabaseAdminClient();
@@ -173,13 +195,13 @@ export async function DELETE(
 
     await prisma.team.delete({ where: { id: teamId } });
 
-    if (!requester.hasPermanentSubscription) {
-      const summary = await getBillingSummary(requester.id);
-      if (requester.asaasSubscriptionId) {
-        await AsaasSubscriptionService.updateSubscription(requester.asaasSubscriptionId, {
-          value: summary.totalPrice,
-        });
-      }
+    if (!billingOwner.hasPermanentSubscription) {
+      const summary = await getBillingSummary(billingOwner.id);
+      await incrementalBillingService.syncRecurringSubscription({
+        master: billingOwner,
+        targetRecurringTotal: summary.totalPrice,
+        reason: "Atualização recorrente após deleção de time",
+      });
     }
 
     return NextResponse.json(
