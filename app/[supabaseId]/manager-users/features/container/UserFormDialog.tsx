@@ -424,7 +424,7 @@ export function UserFormDialog({
             />
 
             {showDelegatedPermissions ? (
-              <div className="space-y-3 rounded-lg border border-border/60 p-4">
+              <div className="space-y-3">
                 <div>
                   <p className="text-sm font-medium">Permissões delegadas</p>
                   <p className="text-xs text-muted-foreground">
