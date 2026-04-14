@@ -1,9 +1,9 @@
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
+
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
 @custom-variant dark (&:is(.dark *));
-
-/* Import Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
 
 /* Managed by bun run design:sync from DESIGN.md */
 /* TOKENS:THEME_INLINE:START */
@@ -341,6 +341,7 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid var(--border);
     background: color-mix(in oklab, var(--card) 85%, transparent);
     box-shadow: 0 20px 40px -20px color-mix(in oklab, var(--primary) 22%, transparent);
+    -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
   }
 
@@ -348,6 +349,7 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid var(--border);
     background: color-mix(in oklab, var(--card) 80%, transparent);
     box-shadow: 0 16px 32px -24px color-mix(in oklab, var(--primary) 18%, transparent);
+    -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
   }
 
@@ -355,6 +357,7 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid var(--border);
     background: color-mix(in oklab, var(--card) 70%, transparent);
     box-shadow: 0 16px 32px -24px color-mix(in oklab, var(--primary) 18%, transparent);
+    -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
   }
 
@@ -362,6 +365,7 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid var(--border);
     background: color-mix(in oklab, var(--card) 85%, transparent);
     box-shadow: 0 20px 40px -20px color-mix(in oklab, var(--primary) 22%, transparent);
+    -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
   }
 
