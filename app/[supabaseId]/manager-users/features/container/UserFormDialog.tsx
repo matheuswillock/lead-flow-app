@@ -264,7 +264,7 @@ export function UserFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-130 max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Editar Usuário" : "Criar Novo Usuário"}
@@ -277,7 +277,8 @@ export function UserFormDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col flex-1 min-h-0">
+            <div className="overflow-y-auto flex-1 space-y-4 pr-6">
             <FormField
               control={form.control}
               name="name"
@@ -533,8 +534,9 @@ export function UserFormDialog({
                 </div>
               </div>
             )}
+            </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="gap-2 pt-4">
                 <Button
                     type="button"
                     variant="outline"

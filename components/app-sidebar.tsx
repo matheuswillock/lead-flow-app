@@ -14,7 +14,6 @@ import {
   Plug,
   ChevronDown,
   ChevronRight,
-  TrendingUp,
   Briefcase,
   Mail,
   FileText,
@@ -56,6 +55,7 @@ type SidebarItem = {
   closerOrManager?: boolean
   requiresIntegrationsAccess?: boolean
   requiresEmailCampaignsAccess?: boolean
+  inDevelopment?: boolean
 }
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
@@ -66,6 +66,8 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const isCloser = user?.functions?.includes("CLOSER") === true;
   const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
   const canAccessEmailCampaigns = isTeamAllowedForEmailCampaigns(activeTeam?.id);
+  const EMAIL_MODULE_ALLOWED_EMAILS = ["matheuswillock@gmail.com", "bruno@onsidemarketing.com.br"];
+  const canAccessEmailModule = EMAIL_MODULE_ALLOWED_EMAILS.includes(user?.email ?? "");
   const teamActivityStorageKey = useMemo(
     () => `sidebar-team-activity-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
     [supabaseId, activeTeamId]
@@ -76,23 +78,23 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "CRM", url: `/${supabaseId}/crm`, icon: KanbanSquare },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays },
-    { title: "Performance", url: `/${supabaseId}/performance`, icon: TrendingUp, managerOnly: true, requiresIntegrationsAccess: true },
-    { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true },
+    { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true, inDevelopment: true },
     {
       title: "Integrações",
       url: `/${supabaseId}/integrations`,
       icon: Plug,
       managerOnly: true,
-      requiresIntegrationsAccess: true
+      requiresIntegrationsAccess: true,
+      inDevelopment: true,
     },
   ];
 
   const emailItems: SidebarItem[] = [
-    { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, requiresEmailCampaignsAccess: true },
-    { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, requiresEmailCampaignsAccess: true },
-    { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, requiresEmailCampaignsAccess: true },
-    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, requiresEmailCampaignsAccess: true },
-    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, requiresEmailCampaignsAccess: true },
+    { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
+    { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
+    { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
+    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
+    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
   ];
 
   const teamItems: SidebarItem[] = [
@@ -150,6 +152,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       return false;
     }
     if (item.requiresEmailCampaignsAccess && !canAccessEmailCampaigns) {
+      return false;
+    }
+    if (item.inDevelopment && !canAccessEmailModule) {
       return false;
     }
     return true;
@@ -222,9 +227,16 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                           return (
                             <SidebarMenuItem key={item.title}>
                               <SidebarMenuButton asChild>
-                                <Link href={item.url}>
-                                  <item.icon />
-                                  <span>{item.title}</span>
+                                <Link href={item.url} className="flex items-center justify-between gap-2">
+                                  <span className="flex items-center gap-2">
+                                    <item.icon />
+                                    <span>{item.title}</span>
+                                  </span>
+                                  {item.inDevelopment && (
+                                    <span className="shrink-0 rounded-sm bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-orange-500">
+                                      Beta
+                                    </span>
+                                  )}
                                 </Link>
                               </SidebarMenuButton>
                             </SidebarMenuItem>
@@ -233,7 +245,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                     </SidebarMenu>
                 </SidebarGroupContent>
             </SidebarGroup>
-            {(isManager || isMaster || isCloser) && canAccessEmailCampaigns && (
+            {(isManager || isMaster || isCloser) && canAccessEmailCampaigns && canAccessEmailModule && (
               <SidebarGroup>
                 <SidebarGroupLabel>
                   <Mail className="mr-1 h-3.5 w-3.5" />
@@ -249,9 +261,16 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                       return (
                         <SidebarMenuItem key={item.title}>
                           <SidebarMenuButton asChild>
-                            <Link href={item.url}>
-                              <item.icon />
-                              <span>{item.title}</span>
+                            <Link href={item.url} className="flex items-center justify-between gap-2">
+                              <span className="flex items-center gap-2">
+                                <item.icon />
+                                <span>{item.title}</span>
+                              </span>
+                              {item.inDevelopment && (
+                                <span className="shrink-0 rounded-sm bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-orange-500">
+                                  Beta
+                                </span>
+                              )}
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>

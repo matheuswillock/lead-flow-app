@@ -105,6 +105,7 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 - Use npm or yarn (project standard is Bun).
 - Hardcode URLs when `NEXT_PUBLIC_APP_URL` or `getFullUrl()` should be used.
 - Use browser-native dialogs (`window.alert`, `window.confirm`, `window.prompt`, or global equivalents). Use shadcn `AlertDialog`/`Dialog` and `sonner` instead.
+- Create `DialogContent` without scroll support when the content may overflow the viewport. Every `DialogContent` with non-trivial content **MUST** use `max-h-[90vh] flex flex-col` on the `DialogContent`, a scrollable inner `div` with `overflow-y-auto flex-1` wrapping the form fields, and a fixed `DialogFooter` outside the scrollable area.
 
 ### MUST
 
