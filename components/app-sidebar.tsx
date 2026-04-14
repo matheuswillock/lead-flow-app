@@ -15,7 +15,6 @@ import {
   ChevronDown,
   ChevronRight,
   Briefcase,
-  Mail,
   FileText,
   BookUser,
   Send,
@@ -229,7 +228,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                               <SidebarMenuButton asChild>
                                 <Link href={item.url} className="flex items-center justify-between gap-2">
                                   <span className="flex items-center gap-2">
-                                    <item.icon />
+                                    <item.icon className="size-4 shrink-0" />
                                     <span>{item.title}</span>
                                   </span>
                                   {item.inDevelopment && (
@@ -248,7 +247,6 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
             {(isManager || isMaster || isCloser) && canAccessEmailCampaigns && canAccessEmailModule && (
               <SidebarGroup>
                 <SidebarGroupLabel>
-                  <Mail className="mr-1 h-3.5 w-3.5" />
                   Email
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
@@ -263,7 +261,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                           <SidebarMenuButton asChild>
                             <Link href={item.url} className="flex items-center justify-between gap-2">
                               <span className="flex items-center gap-2">
-                                <item.icon />
+                                <item.icon className="size-4 shrink-0" />
                                 <span>{item.title}</span>
                               </span>
                               {item.inDevelopment && (
