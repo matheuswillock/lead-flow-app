@@ -1,7 +1,7 @@
 export interface DispatchBatchResult {
   sent: number
   failed: number
-  resendIds: string[]
+  dispatched: Array<{ email: string; resendId: string }>
 }
 
 export interface IEmailCampaignDispatchService {

@@ -16,7 +16,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       throw new Error("Resend não está configurado. Verifique a variável RESEND_API_KEY")
     }
 
-    const result: DispatchBatchResult = { sent: 0, failed: 0, resendIds: [] }
+    const result: DispatchBatchResult = { sent: 0, failed: 0, dispatched: [] }
     const chunks = this.chunkArray(params.recipients, BATCH_SIZE)
 
     for (const chunk of chunks) {
@@ -36,14 +36,17 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
 
         if (batchResult.data) {
           const items = Array.isArray(batchResult.data) ? batchResult.data : []
-          for (const item of items) {
-            if (item && item.id) {
-              result.resendIds.push(item.id)
+          items.forEach((item, idx) => {
+            if (item?.id) {
+              result.dispatched.push({ email: chunk[idx].email, resendId: item.id })
               result.sent++
             } else {
               result.failed++
             }
-          }
+          })
+        } else if (batchResult.error) {
+          console.error("[EmailCampaignDispatchService][dispatchBatch] Erro da API Resend:", batchResult.error)
+          result.failed += chunk.length
         }
       } catch (error) {
         console.error("[EmailCampaignDispatchService][dispatchBatch] Erro no batch:", error)

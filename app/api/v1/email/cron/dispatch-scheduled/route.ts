@@ -55,10 +55,14 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        await prisma.emailCampaign.update({
-          where: { id: campaign.id },
+        const lockResult = await prisma.emailCampaign.updateMany({
+          where: { id: campaign.id, status: "scheduled" },
           data: { status: "sending" },
         })
+
+        if (lockResult.count === 0) {
+          continue
+        }
 
         const contacts = await prisma.emailContact.findMany({
           where: {
@@ -88,16 +92,17 @@ export async function GET(request: NextRequest) {
           teamId: campaign.teamId,
         })
 
-        if (result.resendIds.length > 0) {
+        if (result.dispatched.length > 0) {
           const sentAt = new Date()
+          const emailToContact = new Map(recipientsList.map((c) => [c.email, c]))
           await prisma.emailLog.createMany({
-            data: recipientsList.slice(0, result.resendIds.length).map((contact, idx) => ({
+            data: result.dispatched.map(({ email, resendId }) => ({
               id: randomUUID(),
               teamId: campaign.teamId,
               campaignId: campaign.id,
-              resendEmailId: result.resendIds[idx] ?? null,
-              recipientEmail: contact.email,
-              recipientName: contact.name ?? null,
+              resendEmailId: resendId,
+              recipientEmail: email,
+              recipientName: emailToContact.get(email)?.name ?? null,
               subject: campaign.template.subject,
               status: "sent" as const,
               sentAt,

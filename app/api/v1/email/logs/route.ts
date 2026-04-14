@@ -34,8 +34,12 @@ export async function GET(request: NextRequest) {
       }),
       ...(campaignId && { campaignId }),
       ...(status && { status: status as never }),
-      ...(from && { sentAt: { gte: new Date(from) } }),
-      ...(to && { sentAt: { lte: new Date(to) } }),
+      ...((from || to) && {
+        sentAt: {
+          ...(from && { gte: new Date(from) }),
+          ...(to && { lte: new Date(to) }),
+        },
+      }),
     }
 
     const [logs, total] = await prisma.$transaction([

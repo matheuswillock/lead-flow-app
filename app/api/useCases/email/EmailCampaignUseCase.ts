@@ -184,11 +184,15 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Sem assinatura de créditos de email ativa. Ative um plano em Assinaturas"], null)
       }
 
-      // Marcar como sending
-      await prisma.emailCampaign.update({
-        where: { id },
+      // Marcar como sending de forma atômica para evitar envios duplicados concorrentes
+      const lockResult = await prisma.emailCampaign.updateMany({
+        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
         data: { status: "sending" },
       })
+
+      if (lockResult.count === 0) {
+        return new Output(false, [], ["Campanha não encontrada ou já está sendo enviada"], null)
+      }
 
       // Buscar contatos ativos
       const contacts = await prisma.emailContact.findMany({
@@ -216,17 +220,18 @@ export class EmailCampaignUseCase {
         teamId: ctx.teamId,
       })
 
-      // Criar EmailLog para cada email enviado
-      if (dispatchResult.resendIds.length > 0) {
+      // Criar EmailLog para cada email enviado com mapeamento explícito email→resendId
+      if (dispatchResult.dispatched.length > 0) {
         const now = new Date()
+        const emailToContact = new Map(recipientsList.map((c) => [c.email, c]))
         await prisma.emailLog.createMany({
-          data: recipientsList.slice(0, dispatchResult.resendIds.length).map((contact, idx) => ({
+          data: dispatchResult.dispatched.map(({ email, resendId }) => ({
             id: randomUUID(),
             teamId: ctx.teamId,
             campaignId: campaign.id,
-            resendEmailId: dispatchResult.resendIds[idx] ?? null,
-            recipientEmail: contact.email,
-            recipientName: contact.name ?? null,
+            resendEmailId: resendId,
+            recipientEmail: email,
+            recipientName: emailToContact.get(email)?.name ?? null,
             subject: campaign.template.subject,
             status: "sent" as const,
             sentAt: now,
