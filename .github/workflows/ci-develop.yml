@@ -266,10 +266,10 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
-          commit-message: chore: bump version to v${{ needs.version-bump.outputs.new_version }} [skip ci]
+          commit-message: "chore: bump version to v${{ needs.version-bump.outputs.new_version }} [skip ci]"
           branch: release/develop-to-main
           base: main
-          title: release: v${{ needs.version-bump.outputs.new_version }}
+          title: "release: v${{ needs.version-bump.outputs.new_version }}"
           body: |
             ## Release (develop → main)
 
