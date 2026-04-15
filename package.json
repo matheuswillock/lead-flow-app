@@ -59,7 +59,7 @@
     "@monaco-editor/react": "^4.7.0",
     "@next/codemod": "^16.2.1-canary.38",
     "@prisma/adapter-pg": "6.19.3",
-    "@prisma/client": "6.19.3",
+    "@prisma/client": "7.7.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.11",
