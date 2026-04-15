@@ -162,7 +162,7 @@ jobs:
     needs: deploy-preview
     steps:
       - name: Create PR if not exists (feature -> develop)
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
