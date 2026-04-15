@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { asaasApi, asaasFetch, asaasHeaders } from "@/lib/asaas";
-import { asaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
-import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
-import { getBillingSummary, BILLING_PRICES } from "@/app/api/services/billing/TeamBillingService";
+import {
+  getTeamAccess,
+  hasDelegatedTeamManagementAccess,
+} from "@/app/api/v1/utils/teamAccess";
+import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 
 const formatTeamName = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -20,8 +21,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const teamName = formatTeamName(body?.name);
-    const billingType = body?.billingType as string | undefined;
-    const creditCard = body?.creditCard as any | undefined;
 
     if (!teamName || teamName.length < 2) {
       return NextResponse.json(
@@ -30,49 +29,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!billingType || !["PIX", "BOLETO", "CREDIT_CARD"].includes(billingType)) {
+    const teamAccess = await getTeamAccess(request);
+    if ("error" in teamAccess) {
+      return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+    }
+
+    const { profileId, managerId, teamMember } = teamAccess.access;
+    if (!hasDelegatedTeamManagementAccess(teamAccess.access)) {
       return NextResponse.json(
-        new Output(false, [], ["Forma de pagamento invalida"], null),
-        { status: 400 }
+        new Output(false, [], ["Apenas o master ou um manager delegado pode criar times"], null),
+        { status: 403 }
       );
     }
 
-    if (billingType === "CREDIT_CARD" && !creditCard) {
-      return NextResponse.json(
-        new Output(false, [], ["Dados do cartao sao obrigatorios"], null),
-        { status: 400 }
-      );
-    }
+    const [requester, master] = await Promise.all([
+      prisma.profile.findUnique({
+        where: { id: profileId },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          functions: true,
+        },
+      }),
+      prisma.profile.findUnique({
+        where: { id: managerId },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          hasPermanentSubscription: true,
+          cpfCnpj: true,
+          phone: true,
+          postalCode: true,
+          address: true,
+          addressNumber: true,
+          neighborhood: true,
+          complement: true,
+          asaasCustomerId: true,
+          asaasSubscriptionId: true,
+          subscriptionStatus: true,
+          subscriptionNextDueDate: true,
+          subscriptionCycle: true,
+        },
+      }),
+    ]);
 
-    const master = await prisma.profile.findUnique({
-      where: { supabaseId },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        isMaster: true,
-        hasPermanentSubscription: true,
-        cpfCnpj: true,
-        phone: true,
-        postalCode: true,
-        address: true,
-        addressNumber: true,
-        neighborhood: true,
-        complement: true,
-        asaasCustomerId: true,
-        subscriptionStatus: true,
-      },
-    });
-
-    if (!master) {
+    if (!requester || !master) {
       return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), {
         status: 404,
-      });
-    }
-
-    if (!master.isMaster) {
-      return NextResponse.json(new Output(false, [], ["Apenas masters podem criar times"], null), {
-        status: 403,
       });
     }
 
@@ -90,15 +95,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const currentSummary = await getBillingSummary(master.id);
-    const nextTeams = currentSummary.teamCount + 1;
-    const nextBillableTeams = Math.max(0, nextTeams - 1);
-    const nextTotal =
-      currentSummary.basePrice +
-      nextBillableTeams * BILLING_PRICES.extraTeam +
-      currentSummary.billableUsers * BILLING_PRICES.extraUser;
-
-    const amount = Number((nextTotal - currentSummary.totalPrice).toFixed(2));
+    const projectedBilling = await incrementalBillingService.projectBilling(master.id, {
+      additionalTeams: 1,
+    });
+    const amount = projectedBilling.billingDelta;
 
     if (amount <= 0) {
       return NextResponse.json(
@@ -114,130 +114,84 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const pendingPayload = {
+      name: teamName,
+      requestedByProfileId: requester.id,
+      requestedByName: requester.fullName || requester.email,
+      requestedByEmail: requester.email,
+      requestedByFunctions: requester.functions ?? teamMember.functions ?? [],
+      billingDelta: projectedBilling.billingDelta,
+      targetRecurringTotal: projectedBilling.targetRecurringTotal,
+    };
+
     const pendingAction = await prisma.pendingAction.create({
       data: {
         masterId: master.id,
         actionType: "create_team",
         status: "pending",
-        payload: { name: teamName },
+        payload: pendingPayload,
       },
       select: { id: true },
     });
 
-    const createCustomer = async () => {
-      const customer = await asaasCustomerService.createCustomer({
-        name: master.fullName || master.email,
-        email: master.email,
-        cpfCnpj: master.cpfCnpj || "",
-        phone: master.phone || undefined,
-        postalCode: master.postalCode || undefined,
-        address: master.address || undefined,
-        addressNumber: master.addressNumber || undefined,
-        complement: master.complement || undefined,
-        province: master.neighborhood || undefined,
-        externalReference: master.id,
+    try {
+      const charge = await incrementalBillingService.createIncrementalCharge({
+        master,
+        pendingActionId: pendingAction.id,
+        amount,
+        description: `Time adicional - ${teamName}`,
       });
 
-      await prisma.profile.update({
-        where: { id: master.id },
-        data: { asaasCustomerId: customer.customerId },
-      });
-
-      return customer.customerId;
-    };
-
-    let customerId = master.asaasCustomerId;
-    if (customerId) {
-      const customerCheck = await fetch(`${asaasApi.customers}/${customerId}`, {
-        headers: {
-          ...asaasHeaders,
+      await prisma.pendingAction.update({
+        where: { id: pendingAction.id },
+        data: {
+          paymentId: charge.paymentId,
+          payload: {
+            ...pendingPayload,
+            paymentId: charge.paymentId,
+            paymentStatus: charge.paymentStatus,
+            billingType: charge.billingType,
+          },
         },
-        cache: "no-store",
       });
 
-      if (!customerCheck.ok) {
-        console.warn(
-          "[POST /api/v1/teams/payments/create] Customer do master invalido no Asaas, recriando...",
-          { customerId, status: customerCheck.status }
-        );
-        customerId = await createCustomer();
+      const result: any = {
+        pendingActionId: pendingAction.id,
+        paymentId: charge.paymentId,
+        paymentStatus: charge.paymentStatus || "PENDING",
+        billingType: charge.billingType,
+        amount: charge.amount,
+        dueDate: charge.dueDate,
+      };
+
+      if (charge.pix) {
+        result.pix = charge.pix;
       }
-    } else {
-      customerId = await createCustomer();
-    }
 
-    if (billingType === "CREDIT_CARD") {
-      if (!master.postalCode || !master.addressNumber || !master.phone) {
-        return NextResponse.json(
-          new Output(false, [], ["Dados do master incompletos para cartao"], null),
-          { status: 400 }
-        );
+      if (charge.boleto) {
+        result.boleto = charge.boleto;
       }
+
+      return NextResponse.json(new Output(true, ["Pagamento criado com sucesso"], [], result), {
+        status: 201,
+      });
+    } catch (chargeError: any) {
+      await prisma.pendingAction.update({
+        where: { id: pendingAction.id },
+        data: {
+          status: "failed",
+          payload: {
+            ...pendingPayload,
+            paymentStatus: "FAILED",
+          },
+        },
+      });
+
+      return NextResponse.json(
+        new Output(false, [], [chargeError.message || "Erro ao criar pagamento"], null),
+        { status: 500 }
+      );
     }
-
-    const dueDate = new Date().toISOString().slice(0, 10);
-    const paymentPayload: any = {
-      customer: customerId,
-      billingType,
-      value: amount,
-      dueDate,
-      description: `Time adicional - ${teamName}`,
-      externalReference: `pending-action-${pendingAction.id}`,
-    };
-
-    if (billingType === "CREDIT_CARD") {
-      paymentPayload.creditCard = creditCard;
-      paymentPayload.creditCardHolderInfo = {
-        name: master.fullName || master.email,
-        email: master.email,
-        cpfCnpj: master.cpfCnpj,
-        postalCode: master.postalCode,
-        addressNumber: master.addressNumber,
-        addressComplement: master.complement || null,
-        phone: master.phone,
-        mobilePhone: master.phone,
-      };
-    }
-
-    const payment = await asaasFetch(asaasApi.payments, {
-      method: "POST",
-      body: JSON.stringify(paymentPayload),
-    });
-
-    await prisma.pendingAction.update({
-      where: { id: pendingAction.id },
-      data: { paymentId: payment.id },
-    });
-
-    const result: any = {
-      pendingActionId: pendingAction.id,
-      paymentId: payment.id,
-      paymentStatus: payment.status || "PENDING",
-      amount,
-    };
-
-    if (billingType === "PIX") {
-      const pix = await AsaasSubscriptionService.getPixQrCode(payment.id);
-      result.pix = {
-        encodedImage: pix.encodedImage,
-        payload: pix.payload,
-        expirationDate: pix.expirationDate,
-      };
-    }
-
-    if (billingType === "BOLETO") {
-      const boletoIdentification = await AsaasSubscriptionService.getBoletoIdentificationField(payment.id);
-      result.boleto = {
-        bankSlipUrl: payment.bankSlipUrl || payment.invoiceUrl,
-        identificationField: boletoIdentification.identificationField,
-        barCode: boletoIdentification.barCode,
-        dueDate: payment.dueDate,
-      };
-    }
-
-    return NextResponse.json(new Output(true, ["Pagamento criado com sucesso"], [], result), {
-      status: 201,
-    });
   } catch (error: any) {
     console.error("[POST /api/v1/teams/payments/create] Erro:", error);
     return NextResponse.json(

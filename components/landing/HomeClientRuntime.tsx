@@ -32,17 +32,7 @@ export function HomeClientRuntime() {
   if (!showCookieConsent) return null
 
   return (
-    <div
-      className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-2xl border p-4 shadow-2xl backdrop-blur-xl"
-      style={{
-        borderColor: "rgba(255, 255, 255, 0.12)",
-        background:
-          "linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04))",
-        boxShadow:
-          "0 8px 32px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.06)",
-      }}
-      data-nosnippet
-    >
+    <div className="fixed bottom-4 right-4 z-50 w-[min(92vw,360px)] rounded-2xl border border-border/20 p-4 shadow-2xl backdrop-blur-xl bg-background/80" data-nosnippet>
       <p className="text-sm text-muted-foreground">
         Usamos cookies para melhorar sua experiência e analisar o uso da plataforma.
       </p>
@@ -52,11 +42,7 @@ export function HomeClientRuntime() {
             localStorage.setItem("cookieConsent", "accepted")
             setShowCookieConsent(false)
           }}
-          className="cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold"
-          style={{
-            background: "var(--primary)",
-            color: "var(--primary-foreground)",
-          }}
+          className="cursor-pointer inline-flex items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold bg-primary text-primary-foreground"
         >
           Aceitar
         </button>
@@ -65,10 +51,7 @@ export function HomeClientRuntime() {
             localStorage.setItem("cookieConsent", "declined")
             setShowCookieConsent(false)
           }}
-          className="cursor-pointer inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold text-muted-foreground"
-          style={{
-            borderColor: "rgba(255, 255, 255, 0.16)",
-          }}
+          className="cursor-pointer inline-flex items-center justify-center rounded-xl border border-border/20 px-3 py-2 text-sm font-semibold text-muted-foreground"
         >
           Recusar
         </button>

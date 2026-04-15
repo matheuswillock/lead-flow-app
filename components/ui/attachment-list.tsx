@@ -23,10 +23,27 @@ export interface Attachment {
   };
 }
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB — espelha o backend
+const ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "text/csv",
+];
+
 interface AttachmentListProps {
   leadId: string;
   leadName?: string;
   className?: string;
+  onUploadStateChange?: (isUploading: boolean) => void;
 }
 
 const ATTACHMENTS_CACHE_TTL_MS = 60 * 1000;
@@ -70,11 +87,16 @@ async function loadAttachmentsWithDedupe(leadId: string, force = false): Promise
   return await requestPromise;
 }
 
-export function AttachmentList({ leadId, leadName, className }: AttachmentListProps) {
+export function AttachmentList({ leadId, leadName, className, onUploadStateChange }: AttachmentListProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const setUploadState = (value: boolean) => {
+    setIsUploading(value);
+    onUploadStateChange?.(value);
+  };
 
   const fetchAttachments = useCallback(async (force = false) => {
     setIsLoading(true);
@@ -124,11 +146,23 @@ export function AttachmentList({ leadId, leadName, className }: AttachmentListPr
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
-    setIsUploading(true);
-    
+    setUploadState(true);
+
     try {
-      // Upload de múltiplos arquivos
       for (const file of Array.from(files)) {
+        if (file.size > MAX_FILE_SIZE) {
+          toast.error(`Arquivo muito grande: ${file.name}`, {
+            description: "Tamanho máximo permitido: 10MB",
+          });
+          continue;
+        }
+        if (!ALLOWED_TYPES.includes(file.type)) {
+          toast.error(`Tipo não permitido: ${file.name}`, {
+            description: "Aceitos: imagens, PDF, Word, Excel e texto",
+          });
+          continue;
+        }
+
         const formData = new FormData();
         formData.append("file", file);
 
@@ -157,8 +191,11 @@ export function AttachmentList({ leadId, leadName, className }: AttachmentListPr
       await fetchAttachments(true);
     } catch (error) {
       console.error("Erro no upload:", error);
+      toast.error("Erro ao enviar arquivo", {
+        description: "Verifique sua conexão e tente novamente.",
+      });
     } finally {
-      setIsUploading(false);
+      setUploadState(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -247,12 +284,18 @@ export function AttachmentList({ leadId, leadName, className }: AttachmentListPr
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : attachments.length === 0 ? (
+      ) : attachments.length === 0 && !isUploading ? (
         <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-md">
           Nenhum arquivo anexado
         </div>
       ) : (
         <div className="space-y-2">
+          {isUploading && (
+            <div className="flex items-center gap-3 p-3 border border-dashed rounded-md animate-pulse">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+              <span className="text-sm text-muted-foreground">Enviando arquivo...</span>
+            </div>
+          )}
           {attachments.map((attachment) => (
             <div
               key={attachment.id}

@@ -1,24 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
-import { CreateUserSchema, UpdateUserSchema, AssociateOperatorSchema, DissociateOperatorSchema } from "./types";
+import {
+  CreateUserSchema,
+  UpdateUserSchema,
+  AssociateOperatorSchema,
+  DissociateOperatorSchema,
+  type CreateUserRequest,
+} from "./types";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
+import {
+  getTeamAccess,
+  hasDelegatedUserCreationAccess,
+} from "@/app/api/v1/utils/teamAccess";
 import { NotificationType, UserRole } from "@prisma/client";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { isManagerLikeRole } from "@/lib/roles";
-
-async function getTeamMasterId(teamId: string) {
-  const team = await prisma.team.findUnique({
-    where: { id: teamId },
-    select: { masterId: true },
-  });
-
-  return team?.masterId ?? null;
-}
+import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
+import { asaasApi, asaasFetch } from "@/lib/asaas";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -38,6 +41,228 @@ async function getProfileLabel(profileId: string) {
     select: { fullName: true, email: true },
   });
   return profile?.fullName || profile?.email || "Usuário";
+}
+
+async function getBillingOwnerProfile(profileId: string): Promise<BillingOwnerProfile | null> {
+  return prisma.profile.findUnique({
+    where: { id: profileId },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      cpfCnpj: true,
+      phone: true,
+      postalCode: true,
+      address: true,
+      addressNumber: true,
+      neighborhood: true,
+      complement: true,
+      asaasCustomerId: true,
+      asaasSubscriptionId: true,
+      subscriptionStatus: true,
+      subscriptionNextDueDate: true,
+      subscriptionCycle: true,
+      hasPermanentSubscription: true,
+    },
+  });
+}
+
+function resolveDelegatedPermissions(
+  role: CreateUserRequest["role"],
+  requestedPermissions: {
+    canCreateAccountUsers?: boolean;
+    canManageAccountTeams?: boolean;
+  },
+  options: {
+    canManageDelegation: boolean;
+  }
+) {
+  if (role !== "manager") {
+    return {
+      canCreateAccountUsers: false,
+      canManageAccountTeams: false,
+    };
+  }
+
+  if (!options.canManageDelegation) {
+    return {
+      canCreateAccountUsers: false,
+      canManageAccountTeams: false,
+    };
+  }
+
+  return {
+    canCreateAccountUsers: requestedPermissions.canCreateAccountUsers === true,
+    canManageAccountTeams: requestedPermissions.canManageAccountTeams === true,
+  };
+}
+
+async function createUserAndInvite(args: {
+  teamId: string;
+  masterId: string;
+  requesterProfileId: string;
+  actorName: string;
+  teamName: string;
+  userData: CreateUserRequest;
+  delegatedPermissions: {
+    canCreateAccountUsers: boolean;
+    canManageAccountTeams: boolean;
+  };
+}) {
+  const email = normalizeEmail(args.userData.email);
+
+  const profile = await prisma.profile.create({
+    data: {
+      fullName: args.userData.name,
+      email,
+      role: args.userData.role as UserRole,
+      functions: args.userData.functions ?? [],
+      managerId: args.masterId,
+      isMaster: false,
+      hasPermanentSubscription: args.userData.hasPermanentSubscription ?? false,
+      canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
+      canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      profileIconId: true,
+      profileIconUrl: true,
+    },
+  });
+
+  const teamMemberRecord = await prisma.teamMember.create({
+    data: {
+      teamId: args.teamId,
+      profileId: profile.id,
+      role: args.userData.role as UserRole,
+      functions: args.userData.functions ?? [],
+    },
+    select: {
+      role: true,
+      functions: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  try {
+    await notificationService.createTeamMembershipNotification({
+      teamId: args.teamId,
+      actorProfileId: args.requesterProfileId,
+      actorName: args.actorName,
+      teamName: args.teamName,
+      recipientProfileId: profile.id,
+      type: NotificationType.TEAM_MEMBER_ADDED,
+    });
+  } catch (notificationError) {
+    console.error(
+      "[ManagerUsersRoute][createUserAndInvite] Erro ao criar notificação de membro adicionado:",
+      notificationError
+    );
+  }
+
+  try {
+    const supabaseAdmin = createSupabaseAdmin();
+    if (!supabaseAdmin) {
+      throw new Error("Falha ao criar cliente Supabase Admin");
+    }
+
+    const redirectTo = getFullUrl("/set-password");
+
+    const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: "invite",
+      email,
+      options: {
+        redirectTo,
+        data: {
+          name: args.userData.name,
+          invited: true,
+          first_access: true,
+        },
+      },
+    });
+
+    if (linkError || !data?.properties?.action_link) {
+      throw new Error("Erro ao gerar link de convite");
+    }
+
+    const supabaseUserId = (data as any)?.user?.id as string | undefined;
+    const inviteLink = data.properties.action_link;
+
+    if (supabaseUserId) {
+      await prisma.profile.update({
+        where: { id: profile.id },
+        data: { supabaseId: supabaseUserId },
+      });
+    }
+
+    const requesterProfile = await prisma.profile.findUnique({
+      where: { id: args.requesterProfileId },
+      select: { fullName: true, email: true },
+    });
+
+    const emailService = getEmailService();
+    await emailService.sendOperatorInviteEmail({
+      operatorName: args.userData.name,
+      operatorEmail: email,
+      operatorRole: args.userData.role,
+      managerName: requesterProfile?.fullName || requesterProfile?.email || "Manager",
+      inviteUrl: inviteLink,
+    });
+  } catch (_inviteError) {
+    await prisma.teamMember.delete({
+      where: {
+        teamId_profileId: {
+          teamId: args.teamId,
+          profileId: profile.id,
+        },
+      },
+    });
+
+    await prisma.profile.delete({ where: { id: profile.id } });
+    throw new Error("Erro ao enviar convite. Tente novamente.");
+  }
+
+  return {
+    id: profile.id,
+    name: profile.fullName || args.userData.name,
+    email: profile.email,
+    role: teamMemberRecord.role.toLowerCase(),
+    functions: teamMemberRecord.functions,
+    profileIconId: profile.profileIconId,
+    profileIconUrl: profile.profileIconUrl,
+    managerId: args.masterId,
+    canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
+    canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
+    createdAt: teamMemberRecord.createdAt,
+    updatedAt: teamMemberRecord.updatedAt,
+  };
+}
+
+async function getPendingPaymentStatus(paymentId?: string | null) {
+  if (!paymentId) {
+    return null;
+  }
+
+  try {
+    const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, {
+      method: "GET",
+    });
+    return {
+      paymentId,
+      paymentStatus: payment?.status || "PENDING",
+      paymentMethod: payment?.billingType || "UNDEFINED",
+    };
+  } catch (error) {
+    console.error("[ManagerUsersRoute] Erro ao consultar pagamento pendente:", error);
+    return {
+      paymentId,
+      paymentStatus: "PENDING",
+      paymentMethod: "UNDEFINED",
+    };
+  }
 }
 
 /**
@@ -67,26 +292,29 @@ export async function POST(
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
-    const { teamId, profileId, teamMember } = teamAccess.access;
+    const { teamId, profileId, teamMember, isMaster, managerId } = teamAccess.access;
     if (!isManagerLikeRole(teamMember.role)) {
       const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
       return NextResponse.json(output, { status: 403 });
     }
 
-    const masterId = await getTeamMasterId(teamId);
-    if (!masterId) {
-      const output = new Output(false, [], ["Time não encontrado"], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-
-    if (masterId !== profileId) {
-      const output = new Output(false, [], ["Apenas o master do time pode adicionar usuários"], null);
+    if (!hasDelegatedUserCreationAccess(teamAccess.access)) {
+      const output = new Output(
+        false,
+        [],
+        ["Apenas o master ou um manager delegado pode adicionar usuários da conta"],
+        null
+      );
       return NextResponse.json(output, { status: 403 });
     }
 
-    const [actorName, teamName] = await Promise.all([
+    const [actorName, teamName, requesterProfile] = await Promise.all([
       getProfileLabel(profileId),
       getTeamName(teamId),
+      prisma.profile.findUnique({
+        where: { id: profileId },
+        select: { email: true },
+      }),
     ]);
 
     const body = await request.json();
@@ -101,142 +329,190 @@ export async function POST(
     }
 
     const email = normalizeEmail(validatedData.email);
-
-    const existingProfile = await prisma.profile.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } },
-      select: { id: true },
+    const canManageDelegation = isMaster;
+    const delegatedPermissions = resolveDelegatedPermissions(validatedData.role, validatedData, {
+      canManageDelegation,
     });
 
-    if (existingProfile) {
+    if (!isMaster && (validatedData.canCreateAccountUsers || validatedData.canManageAccountTeams)) {
+      const output = new Output(
+        false,
+        [],
+        ["Apenas o master pode delegar permissões adicionais para managers"],
+        null
+      );
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    const [existingProfile, existingPendingOperator, existingPendingAction, billingOwner] = await Promise.all([
+      prisma.profile.findFirst({
+        where: { email: { equals: email, mode: "insensitive" } },
+        select: { id: true },
+      }),
+      prisma.pendingOperator.findFirst({
+        where: {
+          email: { equals: email, mode: "insensitive" },
+          operatorCreated: false,
+        },
+        select: { id: true },
+      }),
+      prisma.pendingAction.findFirst({
+        where: {
+          actionType: "add_user",
+          status: { in: ["pending", "failed"] },
+          payload: {
+            path: ["email"],
+            equals: email,
+          },
+        },
+        select: { id: true },
+      }),
+      getBillingOwnerProfile(managerId),
+    ]);
+
+    if (existingProfile || existingPendingOperator || existingPendingAction) {
       const output = new Output(false, [], ["Email já está em uso"], null);
       return NextResponse.json(output, { status: 409 });
     }
 
-    const profile = await prisma.profile.create({
-      data: {
-        fullName: validatedData.name,
-        email,
-        role: validatedData.role as UserRole,
-        functions: validatedData.functions ?? [],
-        managerId: masterId,
-        isMaster: false,
-        hasPermanentSubscription: validatedData.hasPermanentSubscription ?? false,
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        profileIconId: true,
-        profileIconUrl: true,
-      },
-    });
-
-    const teamMemberRecord = await prisma.teamMember.create({
-      data: {
-        teamId,
-        profileId: profile.id,
-        role: validatedData.role as UserRole,
-        functions: validatedData.functions ?? [],
-      },
-      select: {
-        role: true,
-        functions: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    try {
-      await notificationService.createTeamMembershipNotification({
-        teamId,
-        actorProfileId: profileId,
-        actorName,
-        teamName,
-        recipientProfileId: profile.id,
-        type: NotificationType.TEAM_MEMBER_ADDED,
-      });
-    } catch (notificationError) {
-      console.error("[ManagerUsersRoute][POST] Erro ao criar notificação de membro adicionado:", notificationError);
+    if (!billingOwner) {
+      const output = new Output(false, [], ["Conta master responsável pela cobrança não foi encontrada"], null);
+      return NextResponse.json(output, { status: 404 });
     }
 
+    if (billingOwner.hasPermanentSubscription) {
+      const createdUser = await createUserAndInvite({
+        teamId,
+        masterId: managerId,
+        requesterProfileId: profileId,
+        actorName,
+        teamName,
+        userData: validatedData,
+        delegatedPermissions,
+      });
+
+      const output = new Output(true, ["Usuário criado com sucesso"], [], createdUser);
+      return NextResponse.json(output, { status: 200 });
+    }
+
+    const projectedBilling = await incrementalBillingService.projectBilling(managerId, {
+      additionalUsers: 1,
+    });
+
+    if (projectedBilling.billingDelta <= 0) {
+      const createdUser = await createUserAndInvite({
+        teamId,
+        masterId: managerId,
+        requesterProfileId: profileId,
+        actorName,
+        teamName,
+        userData: validatedData,
+        delegatedPermissions,
+      });
+
+      const output = new Output(true, ["Usuário criado com sucesso"], [], createdUser);
+      return NextResponse.json(output, { status: 200 });
+    }
+
+    const payload = {
+      name: validatedData.name,
+      email,
+      role: validatedData.role,
+      functions: validatedData.functions ?? [],
+      teamId,
+      requestedByProfileId: profileId,
+      requestedByName: actorName,
+      requestedByEmail: requesterProfile?.email || "",
+      canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
+      canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+      billingDelta: projectedBilling.billingDelta,
+      targetRecurringTotal: projectedBilling.targetRecurringTotal,
+    };
+
+    const pendingAction = await prisma.pendingAction.create({
+      data: {
+        masterId: managerId,
+        teamId,
+        actionType: "add_user",
+        status: "pending",
+        payload,
+      },
+      select: { id: true },
+    });
+
     try {
-      const supabaseAdmin = createSupabaseAdmin();
-      if (!supabaseAdmin) {
-        throw new Error("Falha ao criar cliente Supabase Admin");
-      }
+      const charge = await incrementalBillingService.createIncrementalCharge({
+        master: billingOwner,
+        pendingActionId: pendingAction.id,
+        amount: projectedBilling.billingDelta,
+        description: `Usuário adicional - ${validatedData.name}`,
+      });
 
-      const redirectTo = getFullUrl("/set-password");
-
-      const { data, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-        type: "invite",
-        email,
-        options: {
-          redirectTo,
-          data: {
-            name: validatedData.name,
-            invited: true,
-            first_access: true,
+      await prisma.pendingAction.update({
+        where: { id: pendingAction.id },
+        data: {
+          paymentId: charge.paymentId,
+          payload: {
+            ...payload,
+            paymentId: charge.paymentId,
+            paymentStatus: charge.paymentStatus,
+            billingType: charge.billingType,
           },
         },
       });
 
-      if (linkError || !data?.properties?.action_link) {
-        throw new Error("Erro ao gerar link de convite");
-      }
-
-      const supabaseUserId = (data as any)?.user?.id as string | undefined;
-      const inviteLink = data.properties.action_link;
-
-      if (supabaseUserId) {
-        await prisma.profile.update({
-          where: { id: profile.id },
-          data: { supabaseId: supabaseUserId },
+      if (charge.billingType === "PIX" || charge.billingType === "BOLETO") {
+        const emailService = getEmailService();
+        await emailService.sendPendingAccountUserPaymentEmail({
+          masterName: billingOwner.fullName || billingOwner.email,
+          masterEmail: billingOwner.email,
+          requestedUserName: validatedData.name,
+          requestedUserEmail: email,
+          requestedRole: validatedData.role,
+          requesterName: actorName,
+          requesterEmail: requesterProfile?.email || "",
+          billingType: charge.billingType,
+          amount: projectedBilling.billingDelta,
+          newRecurringTotal: projectedBilling.targetRecurringTotal,
+          paymentId: charge.paymentId,
+          boletoUrl: charge.boleto?.bankSlipUrl ?? undefined,
+          boletoDueDate: charge.boleto?.dueDate ?? undefined,
+          pixPayload: charge.pix?.payload ?? undefined,
         });
       }
 
-      const requesterProfile = await prisma.profile.findUnique({
-        where: { id: profileId },
-        select: { fullName: true, email: true },
+      const output = new Output(true, ["Solicitação de usuário criada com sucesso"], [], {
+        pendingActionId: pendingAction.id,
+        paymentId: charge.paymentId,
+        paymentStatus: charge.paymentStatus,
+        billingType: charge.billingType,
+        amount: charge.amount,
+        dueDate: charge.dueDate,
+        pix: charge.pix,
+        boleto: charge.boleto,
       });
 
-      const emailService = getEmailService();
-      await emailService.sendOperatorInviteEmail({
-        operatorName: validatedData.name,
-        operatorEmail: email,
-        operatorRole: validatedData.role,
-        managerName: requesterProfile?.fullName || requesterProfile?.email || "Manager",
-        inviteUrl: inviteLink,
-      });
-    } catch (_inviteError) {
-      await prisma.teamMember.delete({
-        where: {
-          teamId_profileId: {
-            teamId,
-            profileId: profile.id,
+      return NextResponse.json(output, { status: 202 });
+    } catch (chargeError: any) {
+      await prisma.pendingAction.update({
+        where: { id: pendingAction.id },
+        data: {
+          status: "failed",
+          payload: {
+            ...payload,
+            paymentStatus: "FAILED",
           },
         },
       });
 
-      await prisma.profile.delete({ where: { id: profile.id } });
-
-      const failureOutput = new Output(false, [], ["Erro ao enviar convite. Tente novamente."], null);
-      return NextResponse.json(failureOutput, { status: 500 });
+      const output = new Output(
+        false,
+        [],
+        [chargeError?.message || "Não foi possível gerar a cobrança incremental do novo usuário"],
+        null
+      );
+      return NextResponse.json(output, { status: 500 });
     }
-
-    const output = new Output(true, ["Usuário criado com sucesso"], [], {
-      id: profile.id,
-      name: profile.fullName || validatedData.name,
-      email: profile.email,
-      role: teamMemberRecord.role.toLowerCase(),
-      functions: teamMemberRecord.functions,
-      profileIconId: profile.profileIconId,
-      profileIconUrl: profile.profileIconUrl,
-      managerId: masterId,
-      createdAt: teamMemberRecord.createdAt,
-      updatedAt: teamMemberRecord.updatedAt,
-    });
-
-    return NextResponse.json(output, { status: 200 });
   } catch (error) {
     console.error("Erro ao criar usuário:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
@@ -273,7 +549,7 @@ export async function GET(
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
-    const { teamId, profileId, teamMember } = teamAccess.access;
+    const { teamId, profileId, teamMember, isMaster, managerId } = teamAccess.access;
     if (!isManagerLikeRole(teamMember.role)) {
       const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
       return NextResponse.json(output, { status: 403 });
@@ -290,8 +566,19 @@ export async function GET(
         where: { email: { equals: normalizedEmail, mode: "insensitive" }, operatorCreated: false },
         select: { id: true },
       });
+      const existingPendingAction = await prisma.pendingAction.findFirst({
+        where: {
+          actionType: "add_user",
+          status: { in: ["pending", "failed"] },
+          payload: {
+            path: ["email"],
+            equals: normalizedEmail,
+          },
+        },
+        select: { id: true },
+      });
 
-      if (existingProfile || existingPending) {
+      if (existingProfile || existingPending || existingPendingAction) {
         const output = new Output(false, [], ["Email já está em uso"], { available: false });
         return NextResponse.json(output, { status: 409 });
       }
@@ -299,14 +586,6 @@ export async function GET(
       const output = new Output(true, [], [], { available: true });
       return NextResponse.json(output, { status: 200 });
     }
-
-    const masterId = await getTeamMasterId(teamId);
-    if (!masterId) {
-      const output = new Output(false, [], ["Time não encontrado"], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-
-    const isTeamMaster = masterId === profileId;
 
     const teamMembers = await prisma.teamMember.findMany({
       where: { teamId },
@@ -320,6 +599,8 @@ export async function GET(
             profileIconUrl: true,
             hasPermanentSubscription: true,
             googleCalendarConnected: true,
+            canCreateAccountUsers: true,
+            canManageAccountTeams: true,
             _count: {
               select: {
                 leadsAsAssignee: {
@@ -342,7 +623,7 @@ export async function GET(
     const totalOperators = teamMembers.filter((member) => member.role === "operator").length;
 
     const activeUsers = teamMembers
-      .filter((member) => (isTeamMaster ? true : member.profileId !== profileId))
+      .filter((member) => (isMaster ? true : member.profileId !== profileId))
       .map((member) => ({
         id: member.profile.id,
         name: member.profile.fullName || "Usuário",
@@ -351,7 +632,9 @@ export async function GET(
         functions: member.functions,
         profileIconId: member.profile.profileIconId,
         profileIconUrl: member.profile.profileIconUrl,
-        managerId: masterId,
+        managerId,
+        canCreateAccountUsers: member.profile.canCreateAccountUsers,
+        canManageAccountTeams: member.profile.canManageAccountTeams,
         leadsCount: member.profile._count?.leadsAsAssignee ?? 0,
         meetingsCount: member.profile._count?.leadsAsCloser ?? 0,
         createdAt: member.createdAt,
@@ -360,38 +643,93 @@ export async function GET(
         googleCalendarConnected: member.profile.googleCalendarConnected ?? false,
       }));
 
-    let pendingAsUsers: any[] = [];
-    if (isTeamMaster) {
-      const pendingOperators = await prisma.pendingOperator.findMany({
-        where: {
-          teamId,
-          operatorCreated: false,
-        },
-        orderBy: { createdAt: "desc" },
-      });
+    const pendingAsUsers: any[] = [];
+    if (isMaster || hasDelegatedUserCreationAccess(teamAccess.access)) {
+      const [pendingOperators, pendingActions] = await Promise.all([
+        prisma.pendingOperator.findMany({
+          where: {
+            teamId,
+            operatorCreated: false,
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.pendingAction.findMany({
+          where: {
+            teamId,
+            actionType: "add_user",
+            status: { in: ["pending", "failed"] },
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+      ]);
 
-      pendingAsUsers = pendingOperators.map((pending) => ({
-        id: pending.id,
-        name: pending.name,
-        email: pending.email,
-        role: String(pending.role).toLowerCase(),
-        profileIconId: null,
-        profileIconUrl: null,
-        managerId: masterId,
-        leadsCount: 0,
-        meetingsCount: 0,
-        createdAt: pending.createdAt,
-        updatedAt: pending.updatedAt,
-        isPending: true,
-        googleCalendarConnected: false,
-        pendingPayment: {
+      pendingAsUsers.push(
+        ...pendingOperators.map((pending) => ({
           id: pending.id,
-          paymentId: pending.paymentId,
-          paymentStatus: pending.paymentStatus,
-          paymentMethod: pending.paymentMethod,
-          operatorCreated: pending.operatorCreated,
-        },
-      }));
+          name: pending.name,
+          email: pending.email,
+          role: String(pending.role).toLowerCase(),
+          profileIconId: null,
+          profileIconUrl: null,
+          managerId,
+          canCreateAccountUsers: false,
+          canManageAccountTeams: false,
+          leadsCount: 0,
+          meetingsCount: 0,
+          createdAt: pending.createdAt,
+          updatedAt: pending.updatedAt,
+          isPending: true,
+          googleCalendarConnected: false,
+          pendingPayment: {
+            id: pending.id,
+            paymentId: pending.paymentId,
+            paymentStatus: pending.paymentStatus,
+            paymentMethod: pending.paymentMethod,
+            operatorCreated: pending.operatorCreated,
+          },
+        }))
+      );
+
+      const pendingActionsWithPayments = await Promise.all(
+        pendingActions.map(async (action) => {
+          const payload = (action.payload as any) || {};
+          const payment =
+            action.status === "failed"
+              ? {
+                  paymentId: action.paymentId || payload.paymentId || "",
+                  paymentStatus: "FAILED",
+                  paymentMethod: payload.billingType || "UNDEFINED",
+                }
+              : await getPendingPaymentStatus(action.paymentId || payload.paymentId || null);
+
+          return {
+            id: action.id,
+            name: payload.name || "Usuário pendente",
+            email: payload.email || "",
+            role: String(payload.role || "operator").toLowerCase(),
+            profileIconId: null,
+            profileIconUrl: null,
+            managerId,
+            canCreateAccountUsers: payload.canCreateAccountUsers === true,
+            canManageAccountTeams: payload.canManageAccountTeams === true,
+            leadsCount: 0,
+            meetingsCount: 0,
+            createdAt: action.createdAt,
+            updatedAt: action.updatedAt,
+            isPending: true,
+            googleCalendarConnected: false,
+            pendingPayment: {
+              id: action.id,
+              paymentId: payment?.paymentId || action.paymentId || "",
+              paymentStatus: payment?.paymentStatus || "PENDING",
+              paymentMethod: payment?.paymentMethod || payload.billingType || "UNDEFINED",
+              operatorCreated: false,
+            },
+          };
+        })
+      );
+
+      pendingAsUsers.push(...pendingActionsWithPayments);
     }
 
     const output = new Output(true, [], [], [...activeUsers, ...pendingAsUsers]);
@@ -439,19 +777,11 @@ export async function PUT(
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
-    const { teamId, profileId, teamMember } = teamAccess.access;
+    const { teamId, profileId, teamMember, isMaster, managerId } = teamAccess.access;
     if (!isManagerLikeRole(teamMember.role)) {
       const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
       return NextResponse.json(output, { status: 403 });
     }
-
-    const masterId = await getTeamMasterId(teamId);
-    if (!masterId) {
-      const output = new Output(false, [], ["Time não encontrado"], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-
-    const isTeamMaster = masterId === profileId;
 
     const body = await request.json();
     const { action } = body;
@@ -470,7 +800,7 @@ export async function PUT(
         return NextResponse.json(output, { status: 400 });
       }
 
-      if (!isTeamMaster) {
+      if (!isMaster) {
         const output = new Output(false, [], ["Apenas o master do time pode adicionar usuários"], null);
         return NextResponse.json(output, { status: 403 });
       }
@@ -525,12 +855,12 @@ export async function PUT(
         return NextResponse.json(output, { status: 400 });
       }
 
-      if (!isTeamMaster) {
+      if (!isMaster) {
         const output = new Output(false, [], ["Apenas o master do time pode remover usuários"], null);
         return NextResponse.json(output, { status: 403 });
       }
 
-      if (validatedData.profileId === masterId) {
+      if (validatedData.profileId === managerId) {
         const output = new Output(false, [], ["Não é possível remover o master do time"], null);
         return NextResponse.json(output, { status: 400 });
       }
@@ -584,19 +914,67 @@ export async function PUT(
       return NextResponse.json(output, { status: 404 });
     }
 
-    if (!isTeamMaster && validatedData.id === masterId) {
+    if (!isMaster && validatedData.id === managerId) {
       const output = new Output(false, [], ["Você não pode editar o master do time"], null);
       return NextResponse.json(output, { status: 403 });
     }
 
-    if (validatedData.name || validatedData.email) {
+    if (
+      !isMaster &&
+      (validatedData.canCreateAccountUsers !== undefined || validatedData.canManageAccountTeams !== undefined)
+    ) {
+      const output = new Output(
+        false,
+        [],
+        ["Apenas o master pode alterar permissões delegadas de managers"],
+        null
+      );
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    if (
+      validatedData.id === profileId &&
+      (validatedData.canCreateAccountUsers !== undefined || validatedData.canManageAccountTeams !== undefined)
+    ) {
+      const output = new Output(
+        false,
+        [],
+        ["Você não pode alterar as próprias permissões delegadas"],
+        null
+      );
+      return NextResponse.json(output, { status: 403 });
+    }
+
+    const nextDelegatedPermissions = resolveDelegatedPermissions(
+      validatedData.role ?? (targetMember.role.toLowerCase() as CreateUserRequest["role"]),
+      validatedData,
+      { canManageDelegation: isMaster }
+    );
+
+    if (
+      validatedData.name ||
+      validatedData.email ||
+      validatedData.role ||
+      validatedData.functions ||
+      validatedData.canCreateAccountUsers !== undefined ||
+      validatedData.canManageAccountTeams !== undefined
+    ) {
       await profileRepository.updateProfileById(validatedData.id, {
         ...(validatedData.name ? { fullName: validatedData.name } : {}),
         ...(validatedData.email ? { email: normalizeEmail(validatedData.email) } : {}),
+        ...(validatedData.role ? { role: validatedData.role } : {}),
+        ...(validatedData.functions ? { functions: validatedData.functions } : {}),
+        canCreateAccountUsers: nextDelegatedPermissions.canCreateAccountUsers,
+        canManageAccountTeams: nextDelegatedPermissions.canManageAccountTeams,
       });
     }
 
-    if (validatedData.role || validatedData.functions) {
+    if (
+      validatedData.role ||
+      validatedData.functions ||
+      validatedData.canCreateAccountUsers !== undefined ||
+      validatedData.canManageAccountTeams !== undefined
+    ) {
       await prisma.teamMember.update({
         where: {
           teamId_profileId: {
@@ -625,6 +1003,8 @@ export async function PUT(
             email: true,
             profileIconId: true,
             profileIconUrl: true,
+            canCreateAccountUsers: true,
+            canManageAccountTeams: true,
           },
         },
       },
@@ -638,7 +1018,9 @@ export async function PUT(
       functions: updatedMember?.functions ?? validatedData.functions,
       profileIconId: updatedMember?.profile.profileIconId,
       profileIconUrl: updatedMember?.profile.profileIconUrl,
-      managerId: masterId,
+      managerId,
+      canCreateAccountUsers: updatedMember?.profile.canCreateAccountUsers ?? false,
+      canManageAccountTeams: updatedMember?.profile.canManageAccountTeams ?? false,
     });
 
     return NextResponse.json(output, { status: 200 });
@@ -685,19 +1067,13 @@ export async function DELETE(
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
 
-    const { teamId, profileId, teamMember } = teamAccess.access;
+    const { teamId, profileId, teamMember, isMaster, managerId } = teamAccess.access;
     if (!isManagerLikeRole(teamMember.role)) {
       const output = new Output(false, [], ["Acesso negado. Apenas managers podem realizar esta operação"], null);
       return NextResponse.json(output, { status: 403 });
     }
 
-    const masterId = await getTeamMasterId(teamId);
-    if (!masterId) {
-      const output = new Output(false, [], ["Time não encontrado"], null);
-      return NextResponse.json(output, { status: 404 });
-    }
-
-    if (masterId !== profileId) {
+    if (!isMaster) {
       const output = new Output(false, [], ["Apenas o master do time pode remover usuários"], null);
       return NextResponse.json(output, { status: 403 });
     }
@@ -712,7 +1088,7 @@ export async function DELETE(
       return NextResponse.json(output, { status: 400 });
     }
 
-    if (userId === masterId) {
+    if (userId === managerId) {
       const output = new Output(false, [], ["Você não pode remover o master do time"], null);
       return NextResponse.json(output, { status: 400 });
     }

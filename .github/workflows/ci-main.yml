@@ -4,14 +4,19 @@ name: CI (main -> production)
 on:
   push:
     branches: ["main"]
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened]
 
 concurrency:
   group: ci-main-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
   deployments: write
+  security-events: write
 
 env:
   CI: true
@@ -56,11 +61,23 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+  security:
+    name: Security
+    uses: ./.github/workflows/security-reusable.yml
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    with:
+      include_dev_dependencies: false
+
   build:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: quality
+    needs:
+      - quality
+      - security
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -95,6 +112,7 @@ jobs:
 
   deploy-production:
     name: Deploy Vercel (Production)
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10

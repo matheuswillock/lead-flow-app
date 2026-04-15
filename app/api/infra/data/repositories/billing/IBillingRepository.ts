@@ -1,0 +1,18 @@
+export interface BillingSnapshot {
+  hasPermanentSubscription: boolean;
+  teamCount: number;
+  distinctUserCount: number;
+  totalUsersIncludingMaster: number;
+}
+
+export interface IUpdateBillingProfileSubscriptionData {
+  asaasSubscriptionId: string;
+  subscriptionNextDueDate: Date;
+  subscriptionCycle: string;
+}
+
+export interface IBillingRepository {
+  getBillingSnapshot(masterId: string): Promise<BillingSnapshot | null>;
+  updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void>;
+  updateSubscriptionData(profileId: string, data: IUpdateBillingProfileSubscriptionData): Promise<void>;
+}

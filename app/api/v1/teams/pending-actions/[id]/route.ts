@@ -28,7 +28,7 @@ export async function DELETE(
 
     const profile = await prisma.profile.findUnique({
       where: { supabaseId },
-      select: { id: true },
+      select: { id: true, role: true, managerId: true, isMaster: true, canManageAccountTeams: true },
     });
 
     if (!profile) {
@@ -48,7 +48,11 @@ export async function DELETE(
       });
     }
 
-    if (action.masterId !== profile.id) {
+    const billingOwnerId = profile.isMaster ? profile.id : profile.managerId;
+    const canManagePendingAction =
+      profile.isMaster || (profile.role === "manager" && profile.canManageAccountTeams === true);
+
+    if (!canManagePendingAction || action.masterId !== billingOwnerId) {
       return NextResponse.json(new Output(false, [], ["Ação não pertence a este master"], null), {
         status: 403,
       });

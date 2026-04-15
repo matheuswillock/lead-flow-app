@@ -10,9 +10,7 @@ import {
 } from "react"
 import type { ReactNode } from "react"
 import type {
-  IBackofficeDashboardService,
-  BackofficeClientSummary,
-  BackofficePaymentSummary,
+  IBackofficeDashboardService
 } from "../services/IBackofficeDashboardService"
 
 interface DashboardState {

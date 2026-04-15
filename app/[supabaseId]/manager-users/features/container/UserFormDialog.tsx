@@ -43,6 +43,7 @@ import {
   ManagerUserTeamSummary,
 } from "../types";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useUserContext } from "@/app/context/UserContext";
 import { ManagerUsersService } from "../services/ManagerUsersService";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 import { isManagerLikeRole } from "@/lib/roles";
@@ -67,6 +68,7 @@ export function UserFormDialog({
   currentProfileId,
 }: UserFormDialogProps) {
   const { activeTeamId } = useTeamContext();
+  const { user: currentUser } = useUserContext();
   const isEditing = !!user;
   const schema = isEditing ? UpdateManagerUserSchema : CreateManagerUserSchema;
   const [otherTeams, setOtherTeams] = React.useState<ManagerUserTeamSummary[]>([]);
@@ -91,12 +93,16 @@ export function UserFormDialog({
           email: user?.email || "",
           role: user?.role || "operator",
           functions: user?.functions || [],
+          canCreateAccountUsers: user?.canCreateAccountUsers ?? false,
+          canManageAccountTeams: user?.canManageAccountTeams ?? false,
         }
       : {
           name: "",
           email: "",
           role: "operator",
           functions: [],
+          canCreateAccountUsers: false,
+          canManageAccountTeams: false,
         },
   });
 
@@ -109,6 +115,8 @@ export function UserFormDialog({
           email: user.email,
           role: user.role,
           functions: user.functions || [],
+          canCreateAccountUsers: user.canCreateAccountUsers ?? false,
+          canManageAccountTeams: user.canManageAccountTeams ?? false,
         });
       } else {
         form.reset({
@@ -116,6 +124,8 @@ export function UserFormDialog({
           email: "",
           role: "operator",
           functions: [],
+          canCreateAccountUsers: false,
+          canManageAccountTeams: false,
         });
       }
     }
@@ -214,7 +224,20 @@ export function UserFormDialog({
         }
       }
 
-      await onSubmit(data);
+      const selectedRole = (data as { role?: string }).role ?? user?.role ?? "operator";
+      const nextData = {
+        ...data,
+        canCreateAccountUsers:
+          currentUser?.isMaster && selectedRole === "manager"
+            ? (data as CreateManagerUserFormData | UpdateManagerUserFormData).canCreateAccountUsers === true
+            : false,
+        canManageAccountTeams:
+          currentUser?.isMaster && selectedRole === "manager"
+            ? (data as CreateManagerUserFormData | UpdateManagerUserFormData).canManageAccountTeams === true
+            : false,
+      };
+
+      await onSubmit(nextData);
       form.reset();
     } catch (error) {
       console.error("Erro ao salvar usuário:", error);
@@ -235,10 +258,13 @@ export function UserFormDialog({
   const isOwnProfile = isEditing && user?.id === currentProfileId;
   const isManagerLike = isManagerLikeRole(user?.role);
   const canEditRole = !isOwnProfile || !isManagerLike;
+  const selectedRole = form.watch("role");
+  const showDelegatedPermissions = currentUser?.isMaster && selectedRole === "manager";
+  const canEditDelegatedPermissions = showDelegatedPermissions && !isOwnProfile;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-130 max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Editar Usuário" : "Criar Novo Usuário"}
@@ -251,7 +277,8 @@ export function UserFormDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col flex-1 min-h-0">
+            <div className="overflow-y-auto flex-1 space-y-4 pr-6">
             <FormField
               control={form.control}
               name="name"
@@ -396,6 +423,67 @@ export function UserFormDialog({
               )}
             />
 
+            {showDelegatedPermissions ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Permissões delegadas</p>
+                  <p className="text-xs text-muted-foreground">
+                    Essas permissões adicionais só podem ser atribuídas pelo master da conta.
+                  </p>
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="canCreateAccountUsers"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                      <div className="space-y-1">
+                        <FormLabel className="m-0">Pode cadastrar novos usuários</FormLabel>
+                        <FormDescription className="m-0">
+                          Permite solicitar novos usuários da conta sujeitos à cobrança incremental.
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value === true}
+                          onCheckedChange={field.onChange}
+                          disabled={loading || !canEditDelegatedPermissions}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="canManageAccountTeams"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                      <div className="space-y-1">
+                        <FormLabel className="m-0">Pode gerenciar times</FormLabel>
+                        <FormDescription className="m-0">
+                          Permite criar, editar e deletar times da conta, sem transferir ownership.
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value === true}
+                          onCheckedChange={field.onChange}
+                          disabled={loading || !canEditDelegatedPermissions}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                {!canEditDelegatedPermissions ? (
+                  <p className="text-xs text-muted-foreground">
+                    Você não pode alterar as próprias permissões delegadas.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {isEditing && (
               <div className="space-y-2">
                 <div className="space-y-1">
@@ -446,8 +534,9 @@ export function UserFormDialog({
                 </div>
               </div>
             )}
+            </div>
 
-            <DialogFooter className="gap-2">
+            <DialogFooter className="gap-2 pt-4">
                 <Button
                     type="button"
                     variant="outline"

@@ -136,6 +136,60 @@ pending pending
 canceled canceled
         }
     
+
+
+        email_credit_plan {
+            starter starter
+plus plus
+pro pro
+business business
+        }
+    
+
+
+        email_credit_subscription_status {
+            active active
+suspended suspended
+canceled canceled
+        }
+    
+
+
+        email_campaign_status {
+            draft draft
+scheduled scheduled
+sending sending
+sent sent
+canceled canceled
+failed failed
+        }
+    
+
+
+        email_log_status {
+            queued queued
+sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+failed failed
+        }
+    
+
+
+        email_event_type {
+            sent sent
+delivered delivered
+opened opened
+clicked clicked
+bounced bounced
+complained complained
+delivery_delayed delivery_delayed
+unsubscribed unsubscribed
+        }
+    
   "profiles" {
     String id "🗝️"
     String email 
@@ -155,6 +209,8 @@ canceled canceled
     UserRole role 
     UserFunction functions 
     Boolean isMaster 
+    Boolean canCreateAccountUsers 
+    Boolean canManageAccountTeams 
     Boolean hasPermanentSubscription 
     Boolean googleCalendarConnected 
     String googleAccessToken "❓"
@@ -442,105 +498,193 @@ canceled canceled
     DateTime updatedAt 
     }
   
-    "profiles" o|--|| "UserRole" : "enum:role"
-    "profiles" o|--}o "UserFunction" : "enum:functions"
-    "profiles" o|--|o "SubscriptionStatus" : "enum:subscriptionStatus"
-    "profiles" o|--|o "SubscriptionPlan" : "enum:subscriptionPlan"
-    "profiles" o|--|o "profiles" : "manager"
-    "profiles" o{--}o "profiles" : "operators"
-    "profiles" o{--}o "leads" : "leadsAsManager"
-    "profiles" o{--}o "leads" : "leadsAsAssignee"
-    "profiles" o{--}o "leads" : "leadsAsCloser"
-    "profiles" o{--}o "leads" : "leadsAsCreator"
-    "profiles" o{--}o "leads" : "leadsAsUpdater"
-    "profiles" o{--}o "lead_activities" : "activities"
-    "profiles" o{--}o "lead_activity_reactions" : "activityReactions"
-    "profiles" o{--}o "lead_attachments" : "attachments"
-    "profiles" o{--}o "pending_operators" : "pendingOperators"
-    "profiles" o{--}o "pending_actions" : "pendingActions"
-    "profiles" o{--}o "teams" : "teamsOwned"
-    "profiles" o{--}o "team_members" : "teamMemberships"
-    "profiles" o{--}o "health_plan_options" : "createdHealthPlanOptions"
-    "profiles" o{--}o "backoffice_users" : "backofficeUser"
-    "profiles" o{--}o "backoffice_users" : "createdBackofficeUsers"
-    "profiles" o{--}o "backoffice_clients" : "createdBackofficeClients"
-    "profiles" o{--}o "backoffice_payments" : "createdBackofficePayments"
-    "profiles" o{--}o "notifications" : "receivedNotifications"
-    "profiles" o{--}o "notifications" : "sentNotifications"
-    "profiles" o{--}o "team_studio_webhook_configs" : "updatedStudioWebhookConfigs"
-    "profiles" o{--}o "team_filter_presets" : "createdTeamFilterPresets"
-    "profiles" o{--}o "team_status_rules" : "createdTeamStatusRules"
-    "health_plan_options" o|--|o "profiles" : "creator"
-    "backoffice_users" o|--|| "profiles" : "profile"
-    "backoffice_users" o|--|o "profiles" : "creator"
-    "backoffice_clients" o|--|o "profiles" : "creator"
-    "backoffice_clients" o{--}o "backoffice_payments" : "payments"
-    "backoffice_payments" o|--|| "backoffice_clients" : "client"
-    "backoffice_payments" o|--|o "profiles" : "creator"
-    "leads" o|--|| "LeadStatus" : "enum:status"
-    "leads" o|--|o "MeetingHeald" : "enum:meetingHeald"
-    "leads" o|--|o "LeadStatus" : "enum:followUpSourceStatus"
-    "leads" o|--|| "profiles" : "manager"
-    "leads" o|--|o "teams" : "team"
-    "leads" o|--|o "profiles" : "assignee"
-    "leads" o|--|o "profiles" : "closer"
-    "leads" o|--|o "profiles" : "creator"
-    "leads" o|--|o "profiles" : "updater"
-    "leads" o{--}o "lead_activities" : "activities"
-    "leads" o{--}o "leads_schedule" : "LeadsSchedule"
-    "leads" o{--}o "lead_finalized" : "LeadFinalized"
-    "leads" o{--}o "lead_portfolio" : "portfolio"
-    "leads" o{--}o "lead_attachments" : "attachments"
-    "lead_activities" o|--|| "ActivityType" : "enum:type"
-    "lead_activities" o|--|| "leads" : "lead"
-    "lead_activities" o|--|o "profiles" : "author"
-    "lead_activities" o{--}o "lead_activity_reactions" : "reactions"
-    "lead_activity_reactions" o|--|| "lead_activities" : "activity"
-    "lead_activity_reactions" o|--|| "profiles" : "profile"
-    "leads_schedule" o|--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
-    "leads_schedule" o|--|| "leads" : "lead"
-    "lead_finalized" o|--|| "leads" : "lead"
-    "lead_portfolio" o|--|| "PortfolioStatus" : "enum:portfolioStatus"
-    "lead_portfolio" o|--|| "leads" : "lead"
-    "lead_portfolio" o|--|| "teams" : "team"
-    "lead_attachments" o|--|| "leads" : "lead"
-    "lead_attachments" o|--|| "profiles" : "uploader"
-    "pending_operators" o|--}o "UserFunction" : "enum:functions"
-    "pending_operators" o|--|| "profiles" : "manager"
-    "pending_operators" o|--|o "teams" : "team"
-    "teams" o|--|| "profiles" : "master"
-    "teams" o{--}o "team_members" : "members"
-    "teams" o{--}o "leads" : "leads"
-    "teams" o{--}o "pending_operators" : "pendingOperators"
-    "teams" o{--}o "pending_actions" : "pendingActions"
-    "teams" o{--}o "notifications" : "notifications"
-    "teams" o{--}o "team_studio_webhook_configs" : "studioWebhookConfig"
-    "teams" o{--}o "team_studio_webhook_request_logs" : "studioWebhookRequestLogs"
-    "teams" o{--}o "team_filter_presets" : "filterPresets"
-    "teams" o{--}o "team_status_rules" : "statusRules"
-    "teams" o{--}o "lead_portfolio" : "portfolioEntries"
-    "team_filter_presets" o|--|| "teams" : "team"
-    "team_filter_presets" o|--|| "profiles" : "creator"
-    "team_status_rules" o|--|| "TeamStatusRuleType" : "enum:type"
-    "team_status_rules" o|--|| "LeadStatus" : "enum:targetStatus"
-    "team_status_rules" o|--|o "LeadStatus" : "enum:requiredStatus"
-    "team_status_rules" o|--|o "TeamLeadTimeUnit" : "enum:leadTimeUnit"
-    "team_status_rules" o|--|| "teams" : "team"
-    "team_status_rules" o|--|| "profiles" : "creator"
-    "team_studio_webhook_configs" o|--|| "StudioWebhookTokenExpiryMode" : "enum:expiryMode"
-    "team_studio_webhook_configs" o|--|| "teams" : "team"
-    "team_studio_webhook_configs" o|--|| "profiles" : "updatedBy"
-    "team_studio_webhook_request_logs" o|--|| "teams" : "team"
-    "notifications" o|--|| "NotificationType" : "enum:type"
-    "notifications" o|--|| "profiles" : "recipient"
-    "notifications" o|--|o "profiles" : "actor"
-    "notifications" o|--|| "teams" : "team"
-    "pending_actions" o|--|| "PendingActionType" : "enum:actionType"
-    "pending_actions" o|--|| "PendingActionStatus" : "enum:status"
-    "pending_actions" o|--|| "profiles" : "master"
-    "pending_actions" o|--|o "teams" : "team"
-    "team_members" o|--|| "UserRole" : "enum:role"
-    "team_members" o|--}o "UserFunction" : "enum:functions"
-    "team_members" o|--|| "teams" : "team"
-    "team_members" o|--|| "profiles" : "profile"
+
+  "email_credit_subscriptions" {
+    String id "🗝️"
+    EmailCreditPlan plan 
+    Int monthlyCredits 
+    EmailCreditSubscriptionStatus status 
+    DateTime currentPeriodStart 
+    DateTime currentPeriodEnd 
+    DateTime canceledAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_credit_usages" {
+    String id "🗝️"
+    DateTime periodStart 
+    DateTime periodEnd 
+    Int creditsUsed 
+    Int overageCount 
+    Decimal overageCharged 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_templates" {
+    String id "🗝️"
+    String name 
+    String subject 
+    String previewText "❓"
+    Json mailyJson "❓"
+    String html "❓"
+    Boolean isArchived 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_contact_lists" {
+    String id "🗝️"
+    String name 
+    String description "❓"
+    String csvStoragePath "❓"
+    Int totalContacts 
+    Boolean isArchived 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_contacts" {
+    String id "🗝️"
+    String email 
+    String name "❓"
+    Json customFields "❓"
+    Boolean isUnsubscribed 
+    Boolean isBounced 
+    Boolean isComplained 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_campaigns" {
+    String id "🗝️"
+    String name 
+    EmailCampaignStatus status 
+    DateTime scheduledAt "❓"
+    DateTime sentAt "❓"
+    Int totalRecipients 
+    Int totalSent 
+    Int totalDelivered 
+    Int totalOpened 
+    Int totalClicked 
+    Int totalBounced 
+    Int totalComplained 
+    String errorMessage "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_logs" {
+    String id "🗝️"
+    String resendEmailId "❓"
+    String recipientEmail 
+    String recipientName "❓"
+    String subject 
+    EmailLogStatus status 
+    DateTime sentAt "❓"
+    DateTime deliveredAt "❓"
+    DateTime openedAt "❓"
+    DateTime clickedAt "❓"
+    DateTime bouncedAt "❓"
+    DateTime complainedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_events" {
+    String id "🗝️"
+    EmailEventType type 
+    DateTime occurredAt 
+    Json metadata "❓"
+    DateTime createdAt 
+    }
+  
+    "profiles" |o--|| "UserRole" : "enum:role"
+    "profiles" |o--}o "UserFunction" : "enum:functions"
+    "profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
+    "profiles" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
+    "profiles" |o--|o profiles : "manager"
+    "health_plan_options" }o--|o profiles : "creator"
+    "backoffice_users" |o--|| profiles : "profile"
+    "backoffice_users" }o--|o profiles : "creator"
+    "backoffice_clients" }o--|o profiles : "creator"
+    "backoffice_payments" }o--|| backoffice_clients : "client"
+    "backoffice_payments" }o--|o profiles : "creator"
+    "leads" |o--|| "LeadStatus" : "enum:status"
+    "leads" |o--|o "MeetingHeald" : "enum:meetingHeald"
+    "leads" |o--|o "LeadStatus" : "enum:followUpSourceStatus"
+    "leads" }o--|| profiles : "manager"
+    "leads" }o--|o teams : "team"
+    "leads" }o--|o profiles : "assignee"
+    "leads" }o--|o profiles : "closer"
+    "leads" }o--|o profiles : "creator"
+    "leads" }o--|o profiles : "updater"
+    "lead_activities" |o--|| "ActivityType" : "enum:type"
+    "lead_activities" }o--|| leads : "lead"
+    "lead_activities" }o--|o profiles : "author"
+    "lead_activity_reactions" }o--|| lead_activities : "activity"
+    "lead_activity_reactions" }o--|| profiles : "profile"
+    "leads_schedule" |o--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
+    "leads_schedule" }o--|| leads : "lead"
+    "lead_finalized" }o--|| leads : "lead"
+    "lead_portfolio" |o--|| "PortfolioStatus" : "enum:portfolioStatus"
+    "lead_portfolio" |o--|| leads : "lead"
+    "lead_portfolio" }o--|| teams : "team"
+    "lead_attachments" }o--|| leads : "lead"
+    "lead_attachments" }o--|| profiles : "uploader"
+    "pending_operators" |o--}o "UserFunction" : "enum:functions"
+    "pending_operators" }o--|| profiles : "manager"
+    "pending_operators" }o--|o teams : "team"
+    "teams" }o--|| profiles : "master"
+    "team_filter_presets" }o--|| teams : "team"
+    "team_filter_presets" }o--|| profiles : "creator"
+    "team_status_rules" |o--|| "TeamStatusRuleType" : "enum:type"
+    "team_status_rules" |o--|| "LeadStatus" : "enum:targetStatus"
+    "team_status_rules" |o--|o "LeadStatus" : "enum:requiredStatus"
+    "team_status_rules" |o--|o "TeamLeadTimeUnit" : "enum:leadTimeUnit"
+    "team_status_rules" }o--|| teams : "team"
+    "team_status_rules" }o--|| profiles : "creator"
+    "team_studio_webhook_configs" |o--|| "StudioWebhookTokenExpiryMode" : "enum:expiryMode"
+    "team_studio_webhook_configs" |o--|| teams : "team"
+    "team_studio_webhook_configs" }o--|| profiles : "updatedBy"
+    "team_studio_webhook_request_logs" }o--|| teams : "team"
+    "notifications" |o--|| "NotificationType" : "enum:type"
+    "notifications" }o--|| profiles : "recipient"
+    "notifications" }o--|o profiles : "actor"
+    "notifications" }o--|| teams : "team"
+    "pending_actions" |o--|| "PendingActionType" : "enum:actionType"
+    "pending_actions" |o--|| "PendingActionStatus" : "enum:status"
+    "pending_actions" }o--|| profiles : "master"
+    "pending_actions" }o--|o teams : "team"
+    "team_members" |o--|| "UserRole" : "enum:role"
+    "team_members" |o--}o "UserFunction" : "enum:functions"
+    "team_members" }o--|| teams : "team"
+    "team_members" }o--|| profiles : "profile"
+    "email_credit_subscriptions" |o--|| "EmailCreditPlan" : "enum:plan"
+    "email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
+    "email_credit_subscriptions" |o--|| profiles : "profile"
+    "email_credit_usages" }o--|| email_credit_subscriptions : "subscription"
+    "email_templates" }o--|| teams : "team"
+    "email_templates" }o--|| profiles : "creator"
+    "email_contact_lists" }o--|| teams : "team"
+    "email_contact_lists" }o--|| profiles : "creator"
+    "email_contacts" }o--|| email_contact_lists : "list"
+    "email_campaigns" |o--|| "EmailCampaignStatus" : "enum:status"
+    "email_campaigns" }o--|| teams : "team"
+    "email_campaigns" }o--|| profiles : "creator"
+    "email_campaigns" }o--|| email_templates : "template"
+    "email_campaigns" }o--|| email_contact_lists : "contactList"
+    "email_logs" |o--|| "EmailLogStatus" : "enum:status"
+    "email_logs" }o--|| teams : "team"
+    "email_logs" }o--|o email_campaigns : "campaign"
+    "email_events" |o--|| "EmailEventType" : "enum:type"
+    "email_events" }o--|| email_logs : "log"
 ```

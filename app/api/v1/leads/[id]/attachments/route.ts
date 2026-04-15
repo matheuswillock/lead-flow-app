@@ -105,8 +105,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: leadId } = await params;
   try {
-    const { id: leadId } = await params;
 
     // Verificar autenticação
     const supabase = await createSupabaseServer();
@@ -195,7 +195,7 @@ export async function POST(
 
     return NextResponse.json(result, { status: result.isValid ? 201 : 400 });
   } catch (error) {
-    console.error("Error in POST /api/v1/leads/[id]/attachments:", error);
+    console.error("[LeadAttachmentsRoute][POST] Erro ao fazer upload de anexo:", { leadId, error });
     return NextResponse.json(
       {
         isValid: false,

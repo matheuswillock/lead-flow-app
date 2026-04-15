@@ -10,9 +10,11 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: write
   pull-requests: write
   deployments: write
+  security-events: write
 
 env:
   CI: true
@@ -21,7 +23,7 @@ env:
 jobs:
   quality:
     name: Lint & Typecheck
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -58,12 +60,25 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+  security:
+    name: Security
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
+    uses: ./.github/workflows/security-reusable.yml
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    with:
+      include_dev_dependencies: false
+
   build:
     name: Build
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: quality
+    needs:
+      - quality
+      - security
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -107,7 +122,7 @@ jobs:
 
   version-bump:
     name: Auto Version Bump (develop)
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     needs: build
@@ -122,59 +137,64 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Determine version bump (conventional commits)
+      - name: Determine version bump (main/release aware)
         id: bump
         run: |
-          LAST_BUMP_COMMIT=$(git log -1 --pretty=format:%H --grep="^chore: bump version to v" 2>/dev/null || true)
-          if [ -n "$LAST_BUMP_COMMIT" ]; then
-            RANGE="$LAST_BUMP_COMMIT..HEAD"
+          RELEASE_BRANCH="origin/release/develop-to-main"
+          MAIN_BRANCH="origin/main"
+
+          git fetch origin main --depth=1
+          git fetch origin release/develop-to-main --depth=1 2>/dev/null || true
+
+          if git show "${RELEASE_BRANCH}:package.json" > /dev/null 2>&1 && [ "$(git rev-list --count "${MAIN_BRANCH}..${RELEASE_BRANCH}")" -gt 0 ]; then
+            CURRENT_VERSION=$(node -e "
+              const { execSync } = require('child_process');
+              const pkg = JSON.parse(execSync('git show origin/release/develop-to-main:package.json', {
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+              }));
+              process.stdout.write(pkg.version);
+            ")
+            BUMP_TYPE="reused"
+            NEW_VERSION="$CURRENT_VERSION"
+          else
+            CURRENT_VERSION=$(node -e "
+              const { execSync } = require('child_process');
+              const pkg = JSON.parse(execSync('git show origin/main:package.json', {
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+              }));
+              process.stdout.write(pkg.version);
+            ")
+
+            RANGE="${MAIN_BRANCH}..HEAD"
             COMMITS=$(git log $RANGE --pretty=format:"%s")
             MERGES=$(git log $RANGE --merges --pretty=format:"%s")
-          else
-            COMMITS=$(git log -50 --pretty=format:"%s")
-            MERGES=$(git log -50 --merges --pretty=format:"%s")
-          fi
 
-          BUMP_TYPE="patch"
-          if echo "$MERGES" | grep -qiE "from .*\/(feature|feat)\/"; then
-            BUMP_TYPE="minor"
-          elif echo "$MERGES" | grep -qiE "from .*\/(bugfix|fix)\/"; then
             BUMP_TYPE="patch"
-          else
-            if echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
+            if echo "$MERGES" | grep -qiE "from .*\/(feature|feat)\/"; then
               BUMP_TYPE="minor"
-            elif echo "$COMMITS" | grep -qiE "^fix(\(.+\))?:"; then
+            elif echo "$MERGES" | grep -qiE "from .*\/(bugfix|fix)\/"; then
               BUMP_TYPE="patch"
+            else
+              if echo "$COMMITS" | grep -qiE "^feat(\(.+\))?:"; then
+                BUMP_TYPE="minor"
+              elif echo "$COMMITS" | grep -qiE "^fix(\(.+\))?:"; then
+                BUMP_TYPE="patch"
+              fi
             fi
+
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+            case $BUMP_TYPE in
+              minor) NEW_VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
+              patch) NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+            esac
           fi
-
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-
-          case $BUMP_TYPE in
-            minor) NEW_VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
-            patch) NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
-          esac
 
           echo "bumped=true" >> $GITHUB_OUTPUT
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "bump_type=$BUMP_TYPE" >> $GITHUB_OUTPUT
-
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
-            pkg.version='${NEW_VERSION}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');
-          "
-
-      - name: Commit version bump (skip ci)
-        if: steps.bump.outputs.bumped == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          git commit -m "chore: bump version to v${{ steps.bump.outputs.new_version }} [skip ci]"
-          git push
 
       - name: Version bump summary
         run: |
@@ -184,7 +204,7 @@ jobs:
 
   deploy-preview:
     name: Deploy Vercel (Preview) from develop
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: version-bump
@@ -218,82 +238,59 @@ jobs:
 
   auto-pr-develop-to-main:
     name: Open PR develop -> main
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: deploy-preview
+    needs:
+      - deploy-preview
+      - version-bump
     steps:
       - name: Checkout develop (latest)
         uses: actions/checkout@v4
         with:
           ref: develop
           fetch-depth: 0
+          token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Create PR (develop -> main) if needed
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
-          script: |
+      - name: Update release version file
+        run: |
+          node -e "
             const fs = require('fs');
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const head = 'develop';
-            const base = 'main';
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '${{ needs.version-bump.outputs.new_version }}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
 
-            let version = '0.0.0';
-            try {
-              const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-              version = pkg.version || version;
-            } catch {}
+      - name: Create or update release PR
+        id: release-pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump version to v${{ needs.version-bump.outputs.new_version }} [skip ci]"
+          branch: release/develop-to-main
+          base: main
+          title: "release: v${{ needs.version-bump.outputs.new_version }}"
+          body: |
+            ## Release (develop → main)
 
-            const existing = await github.rest.pulls.list({
-              owner, repo,
-              head: `${owner}:${head}`,
-              base,
-              state: 'open',
-              per_page: 1,
-            });
+            **Source branch:** `develop`
+            **Version:** `v${{ needs.version-bump.outputs.new_version }}`
+            **Bump type:** `${{ needs.version-bump.outputs.bump_type }}`
 
-            if (existing.data.length > 0) {
-              core.info(`PR já existe: #${existing.data[0].number} ${existing.data[0].html_url}`);
-              return;
-            }
+            - [ ] Seguiu `agents.md`?
+            - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
+            - [ ] Rodou typecheck/lint?
+            - [ ] Rodou governance check?
+            - [ ] Preview deploy OK
 
-            const cmp = await github.rest.repos.compareCommits({ owner, repo, base, head });
-            if ((cmp.data.ahead_by || 0) === 0) {
-              core.info('develop não está à frente do main. Sem PR.');
-              return;
-            }
+            *PR criado ou atualizado automaticamente pelo GitHub Actions.*
+          add-paths: |
+            package.json
+          delete-branch: true
 
-            const commits = (cmp.data.commits || []).map(c => {
-              const msg = c.commit.message.split('\n')[0];
-              return `- ${msg} (\`${c.sha.slice(0,7)}\`)`;
-            }).join('\n');
-
-            const title = `release: v${version}`;
-            const body = [
-              '## Release (develop → main)',
-              '',
-              `**Version:** \`v${version}\``,
-              `**Commits:** ${cmp.data.ahead_by}`,
-              '',
-              '## Changes',
-              commits || '*(sem commits)*',
-              '',
-              '- [ ] Seguiu `agents.md`?',
-              '- [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?',
-              '- [ ] Rodou typecheck/lint?',
-              '- [ ] Rodou governance check?',
-              '- [ ] Preview deploy OK',
-              '',
-              '*PR criado automaticamente.*'
-            ].join('\n');
-
-            const pr = await github.rest.pulls.create({
-              owner, repo,
-              head, base,
-              title, body,
-              maintainer_can_modify: true,
-            });
-
-            core.info(`PR criado: #${pr.data.number} ${pr.data.html_url}`);
+      - name: Release PR summary
+        run: |
+          echo "### Release PR (develop -> main)" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: v${{ needs.version-bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Operation: ${{ steps.release-pr.outputs.pull-request-operation || 'none' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- PR: ${{ steps.release-pr.outputs.pull-request-url || 'no changes / no PR' }}" >> $GITHUB_STEP_SUMMARY

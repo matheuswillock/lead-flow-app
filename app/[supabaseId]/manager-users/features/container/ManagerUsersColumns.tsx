@@ -168,6 +168,37 @@ export function createColumns({
       },
     },
     {
+      id: "delegatedPermissions",
+      meta: { label: "Delegações" },
+      header: () => <div className="text-center font-semibold">Delegações</div>,
+      cell: ({ row }) => {
+        const user = row.original;
+        const badges: string[] = [];
+
+        if (user.role === "manager" && user.canCreateAccountUsers) {
+          badges.push("Cadastrar usuários");
+        }
+
+        if (user.role === "manager" && user.canManageAccountTeams) {
+          badges.push("Gerenciar times");
+        }
+
+        if (!badges.length) {
+          return <div className="text-center text-muted-foreground">-</div>;
+        }
+
+        return (
+          <div className="flex flex-wrap justify-center gap-1">
+            {badges.map((badge) => (
+              <Badge key={badge} variant="outline" className="text-[11px]">
+                {badge}
+              </Badge>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
       accessorKey: "googleCalendarConnected",
       meta: { label: "Google conectado" },
       header: ({ column }) => {
@@ -280,6 +311,11 @@ export function createColumns({
             label: "Pagamento Falhou", 
             variant: "destructive" as const,
             className: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900 dark:text-red-200"
+          },
+          subscription_updated: {
+            label: "Assinatura Atualizada",
+            variant: "secondary" as const,
+            className: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900 dark:text-emerald-200"
           }
         };
 

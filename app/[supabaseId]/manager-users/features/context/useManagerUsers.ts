@@ -19,10 +19,19 @@ interface UseManagerUsersProps {
   supabaseId: string;
   currentUserRole: string;
   currentProfileId?: string;
+  currentUserIsMaster?: boolean;
+  currentUserCanCreateUsers?: boolean;
   hasPermanentSubscription?: boolean;
 }
 
-export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId, hasPermanentSubscription = false }: UseManagerUsersProps) {
+export function useManagerUsers({
+  supabaseId,
+  currentUserRole,
+  currentProfileId,
+  currentUserIsMaster = false,
+  currentUserCanCreateUsers = false,
+  hasPermanentSubscription = false
+}: UseManagerUsersProps) {
   const { activeTeamId, activeRole, isLoading: isTeamLoading, teams } = useTeamContext();
   const [state, setState] = useState<ManagerUsersState>({
     users: [],
@@ -47,11 +56,11 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
 
   const resolvedRole = activeRole ?? currentUserRole;
   const permissions = useMemo<UserPermissions>(() => ({
-    canCreateUser: isManagerLikeRole(resolvedRole),
+    canCreateUser: currentUserIsMaster || (resolvedRole === "manager" && currentUserCanCreateUsers),
     canEditUser: isManagerLikeRole(resolvedRole),
-    canDeleteUser: isManagerLikeRole(resolvedRole),
+    canDeleteUser: currentUserIsMaster,
     canManageOperators: isManagerLikeRole(resolvedRole),
-  }), [resolvedRole]);
+  }), [currentUserCanCreateUsers, currentUserIsMaster, resolvedRole]);
 
   // Criar instância do serviço com o supabaseId
   const managerUsersService = useMemo(() => {
@@ -148,7 +157,7 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
     return requestPromise;
   }, [managerUsersService, activeTeamId, errorContext, isTeamLoading, teams.length, supabaseId, resolvedRole]);
 
-  // Criar usuário - se tem assinatura permanente, cria direto; senão redireciona para checkout do Asaas
+  // Criar usuário - o backend decide se cria direto ou gera uma cobrança incremental pendente
   const createUser = useCallback(async (userData: CreateManagerUserFormData) => {
     try {
       setState(prev => ({ ...prev, loading: true }));
@@ -176,68 +185,55 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
         return;
       }
 
-      // Se tem assinatura permanente, criar diretamente sem passar pelo Asaas
-      if (hasPermanentSubscription) {
-        toast.loading("Criando usuário...");
+      toast.loading("Processando solicitação de usuário...");
 
-        console.info('🎯 [createUser] Criando usuário com assinatura permanente', {
-          supabaseId,
-          userData,
-        });
+      const response = await fetch(`/api/v1/manager/${supabaseId}/users`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-supabase-user-id': supabaseId,
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
+        },
+        body: JSON.stringify({
+          name: userData.name,
+          email: userData.email,
+          role: userData.role || 'operator',
+          functions: userData.functions,
+          hasPermanentSubscription,
+          canCreateAccountUsers: userData.canCreateAccountUsers,
+          canManageAccountTeams: userData.canManageAccountTeams,
+        }),
+      });
 
-        const response = await fetch(`/api/v1/manager/${supabaseId}/users`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-supabase-user-id': supabaseId,
-            ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
-          },
-          body: JSON.stringify({
-            name: userData.name,
-            email: userData.email,
-            role: userData.role || 'operator',
-            functions: userData.functions,
-            hasPermanentSubscription: true, // Herda assinatura permanente
-          }),
-        });
+      const result = await response.json();
+      toast.dismiss();
 
-        const result = await response.json();
-
-        toast.dismiss();
-
-        if (result.isValid) {
+      if (result.isValid) {
+        const pendingPayment = result?.result?.paymentId;
+        if (pendingPayment) {
+          const billingType = result?.result?.billingType;
+          toast.success("Solicitação criada com sucesso!", {
+            description:
+              billingType === "CREDIT_CARD"
+                ? "A cobrança adicional foi enviada ao cartão do master. O usuário será criado após a confirmação do pagamento."
+                : "A cobrança foi enviada ao master. O usuário será criado após a confirmação do pagamento.",
+            duration: 6000,
+          });
+        } else {
           toast.success("Usuário criado com sucesso!", {
             description: 'Um email de convite foi enviado para o novo usuário.',
             duration: 5000,
           });
-          setState(prev => ({ ...prev, isCreateModalOpen: false }));
-          setState(prev => ({ ...prev, loading: false }));
-          await loadUsers({ force: true }); // Recarregar lista
-        } else {
-          notifyManagerUsersError({
-            operation: "createUser",
-            errorMessages: result.errorMessages,
-            context: errorContext,
-          });
-          setState(prev => ({ ...prev, loading: false }));
         }
+        setState(prev => ({ ...prev, isCreateModalOpen: false, loading: false }));
+        await loadUsers({ force: true });
         return;
       }
-      // Fechar modal e abrir checkout
-      setState(prev => ({ ...prev, isCreateModalOpen: false }));
-      if (!activeTeamId) {
-        notifyManagerUsersError({
-          operation: "createUser",
-          errorMessages: ["Selecione um time para continuar"],
-          context: errorContext,
-        });
-        setState(prev => ({ ...prev, loading: false }));
-        return;
-      }
-      // Fluxo normal: abrir checkout interno para pagamento do operador
-      setOperatorCheckout({
-        isOpen: true,
-        operatorData: userData,
+
+      notifyManagerUsersError({
+        operation: "createUser",
+        errorMessages: result.errorMessages,
+        context: errorContext,
       });
       setState(prev => ({ ...prev, loading: false }));
     } catch (error) {
@@ -345,12 +341,17 @@ export function useManagerUsers({ supabaseId, currentUserRole, currentProfileId,
     
     if (user.isPending && user.pendingPayment) {
       const { paymentStatus, operatorCreated } = user.pendingPayment;
+      const isConfirmedPayment =
+        paymentStatus === 'CONFIRMED' ||
+        paymentStatus === 'RECEIVED' ||
+        paymentStatus === 'APPROVED' ||
+        paymentStatus === 'RECEIVED_IN_CASH';
       
       if (paymentStatus === 'PENDING') {
         status = 'pending_payment';
-      } else if (paymentStatus === 'CONFIRMED' && !operatorCreated) {
+      } else if (isConfirmedPayment && !operatorCreated) {
         status = 'pending_creation';
-      } else if (paymentStatus === 'CONFIRMED' && operatorCreated) {
+      } else if (isConfirmedPayment && operatorCreated) {
         status = 'payment_confirmed';
       } else if (paymentStatus === 'FAILED') {
         status = 'payment_failed';
