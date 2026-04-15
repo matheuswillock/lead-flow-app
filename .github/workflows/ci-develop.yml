@@ -23,7 +23,7 @@ env:
 jobs:
   quality:
     name: Lint & Typecheck
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -62,7 +62,7 @@ jobs:
 
   security:
     name: Security
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     uses: ./.github/workflows/security-reusable.yml
     permissions:
       contents: read
@@ -73,7 +73,7 @@ jobs:
 
   build:
     name: Build
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
@@ -122,7 +122,7 @@ jobs:
 
   version-bump:
     name: Auto Version Bump (develop)
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     needs: build
@@ -204,7 +204,7 @@ jobs:
 
   deploy-preview:
     name: Deploy Vercel (Preview) from develop
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: version-bump
@@ -238,7 +238,7 @@ jobs:
 
   auto-pr-develop-to-main:
     name: Open PR develop -> main
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
