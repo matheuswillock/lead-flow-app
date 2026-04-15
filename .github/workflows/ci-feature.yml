@@ -39,7 +39,7 @@ jobs:
           bun-version: latest
 
       - name: Cache Bun store
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
@@ -92,7 +92,7 @@ jobs:
           bun-version: latest
 
       - name: Cache Bun store
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.bun/install/cache
@@ -102,7 +102,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Cache Next.js build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .next/cache
           key: ${{ runner.os }}-next-${{ hashFiles('**/bun.lock', '**/bun.lockb') }}-${{ hashFiles('**/*.ts', '**/*.tsx', '!node_modules/**') }}
