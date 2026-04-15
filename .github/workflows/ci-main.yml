@@ -4,6 +4,9 @@ name: CI (main -> production)
 on:
   push:
     branches: ["main"]
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened]
 
 concurrency:
   group: ci-main-${{ github.ref }}
@@ -109,6 +112,7 @@ jobs:
 
   deploy-production:
     name: Deploy Vercel (Production)
+    if: github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
