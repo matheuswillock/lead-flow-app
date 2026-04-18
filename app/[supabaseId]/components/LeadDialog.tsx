@@ -114,7 +114,7 @@ const normalizeLeadPhoneDigits = (phone: string): string => {
   if (!phone) return "";
   const numbers = phone.replace(/\D/g, "");
   if (numbers.length <= 11) return numbers;
-  return numbers.slice(-11);
+  return numbers.slice(0, 11);
 };
 
 const SCHEDULE_TIMEZONE = "America/Sao_Paulo";

@@ -152,7 +152,7 @@ export default function HomePage() {
               {/* Subtitle */}
               <p className="mt-6 max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed">
                 Pipeline Kanban, gestão de times e métricas em tempo real em uma plataforma feita para corretores de planos de saúde. Campanhas de email chegam{" "}
-                <span className="font-semibold landing-primary-gradient">(em breve)</span>.
+                <span className="font-semibold landing-primary-gradient">em breve</span>.
               </p>
 
               {/* CTAs */}
