@@ -3,7 +3,7 @@ import { updateSession } from "@/lib/supabase/auth-sessions"
 import { isManagerLikeRole, isBackofficeRole } from "@/lib/roles"
 
 // Define protected route prefixes (actual URL paths)
-const protectedPrefixes = ["/dashboard", "/account", "/crm", "/board", "/pipeline", "/manager-users", "/notifications", "/integrations"]
+const protectedPrefixes = ["/dashboard", "/account", "/crm", "/board", "/pipeline", "/manager-users", "/notifications", "/integrations", "/docs"]
 
 // Public routes that don't require authentication
 const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe", "/checkout-return", "/operator-confirmed", "/pix-confirmed", "/set-password", "/forgot-password"]
