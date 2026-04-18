@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { leadFormData, leadFormSchema } from "@/lib/validations/validationForms";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import React from "react";
 import { UseFormReturn } from "react-hook-form";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form";
@@ -27,6 +27,11 @@ import { AttachmentList } from "../ui/attachment-list";
 import { Loader2, X } from "lucide-react";
 import { CopyIcon } from "@/components/animate-ui/icons/copy";
 import { toast } from "sonner";
+import { useIsInView } from "@/hooks/use-is-in-view";
+import {
+    getPendingRequiredFieldsFeedback,
+    LEAD_REQUIRED_FIELD_ORDER,
+} from "@/lib/validations/leadFormFeedback";
 
 const formatCurrencyNumber = (value: number): string =>
     `R$ ${value.toLocaleString('pt-BR', {
@@ -64,7 +69,7 @@ const normalizeLeadPhoneDigits = (value: string): string => {
     if (!value) return "";
     const digits = value.replace(/\D/g, "");
     if (digits.length <= 11) return digits;
-    return digits.slice(-11);
+    return digits.slice(0, 11);
 };
 
 export type LeadScheduleField = "meetingDate" | "closerId" | "meetingNotes" | "extraGuests";
@@ -144,6 +149,10 @@ export function LeadForm({
     const [currentValueError, setCurrentValueError] = useState<string | null>(null);
     const [ticketError, setTicketError] = useState<string | null>(null);
     const [extraGuestsDraft, setExtraGuestsDraft] = useState("");
+    const lastInvalidHashRef = useRef<string>("");
+    const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
+        threshold: 0.2,
+    });
     const closers = React.useMemo(
         () => closersToAssign ?? [],
         [closersToAssign]
@@ -224,12 +233,18 @@ export function LeadForm({
         if (entries.length === 0) return false;
 
         return entries.some(([key, error]) => {
-            if (!scheduleChangeWarning) return true;
-            const isChangedScheduleField = changedScheduleFieldSet.has(key as LeadScheduleField);
             const errorType = (error as { type?: string } | undefined)?.type;
-            if (isChangedScheduleField && errorType === "manual") {
+            if (errorType !== "manual") {
                 return false;
             }
+
+            if (!scheduleChangeWarning) return true;
+
+            const isChangedScheduleField = changedScheduleFieldSet.has(key as LeadScheduleField);
+            if (isChangedScheduleField) {
+                return false;
+            }
+
             return true;
         });
     }, [form.formState.errors, scheduleChangeWarning, changedScheduleFieldSet]);
@@ -340,10 +355,59 @@ export function LeadForm({
         }
     }, [form]);
 
+    useEffect(() => {
+        if (isSchemaValid) {
+            lastInvalidHashRef.current = "";
+        }
+    }, [isSchemaValid]);
+
+    const handleInvalidSubmit = useCallback(async () => {
+        if (isLoading || isUpdating) return;
+
+        await form.trigger();
+        const feedback = getPendingRequiredFieldsFeedback(
+            leadFormSchema,
+            form.getValues(),
+            LEAD_REQUIRED_FIELD_ORDER
+        );
+
+        if (!feedback.hasPendingFields) return;
+        if (feedback.hash === lastInvalidHashRef.current) return;
+
+        lastInvalidHashRef.current = feedback.hash;
+        toast.error(feedback.message);
+
+        if (feedback.firstPendingField) {
+            try {
+                form.setFocus(feedback.firstPendingField);
+            } catch {
+                // Some custom controls (e.g. Select) may not expose focus refs.
+            }
+        }
+    }, [form, isLoading, isUpdating]);
+
+    useEffect(() => {
+        if (!hasReachedFormEnd) return;
+        if (!hasChanges) return;
+        if (isSchemaValid) return;
+        if (isLoading || isUpdating) return;
+
+        void handleInvalidSubmit();
+    }, [
+        hasChanges,
+        hasReachedFormEnd,
+        isLoading,
+        isSchemaValid,
+        isUpdating,
+        handleInvalidSubmit,
+    ]);
+
     return (
       <Form {...form}>
         <form
-            onSubmit={form.handleSubmit(onSubmit)}
+            onSubmit={form.handleSubmit(onSubmit, () => {
+                void handleInvalidSubmit();
+            })}
             className={cn("grid gap-4 grid-cols-1 sm:grid-cols-2", className)}
         >            
             <FormField
@@ -361,6 +425,7 @@ export function LeadForm({
                             disabled={isLoading || isUpdating}
                         />
                     </FormControl>
+                    <FormMessage />
                   </FormItem>
                 )}
 
@@ -386,6 +451,7 @@ export function LeadForm({
                                 maxLength={20}
                             />
                         </FormControl>
+                        <FormMessage />
                     </FormItem>
                 )}
             />
@@ -405,6 +471,7 @@ export function LeadForm({
                                 disabled={isLoading || isUpdating}
                             />
                         </FormControl>
+                        <FormMessage />
                     </FormItem>
                 )}
             />
@@ -466,6 +533,7 @@ export function LeadForm({
                                 </p>
                             </div>
                         </FormControl>
+                        <FormMessage />
                     </FormItem>
                 )}
             />
@@ -497,6 +565,7 @@ export function LeadForm({
                                     </SelectContent>
                                 </Select>
                             </FormControl>
+                            <FormMessage />
                         </FormItem>
                     )}
                 />
@@ -558,6 +627,7 @@ export function LeadForm({
                                 disabled={isLoading || isUpdating}
                             />
                         </FormControl>
+                        <FormMessage />
                     </FormItem>
                 )}
             />
@@ -578,6 +648,7 @@ export function LeadForm({
                                 disabled={isLoading || isUpdating}
                             />
                         </FormControl>
+                        <FormMessage />
                     </FormItem>
                 )}
             />
@@ -1250,6 +1321,7 @@ export function LeadForm({
                                 {sdrsError && !hasResponsibleOptions && (
                                     <p className="mt-1 text-xs text-destructive">{sdrsError}</p>
                                 )}
+                                <FormMessage />
                             </FormItem>
                         );
                     }}
@@ -1267,15 +1339,29 @@ export function LeadForm({
                     Cancelar
                 </Button>
 
-                <Button 
-                    type="submit" 
-                    className="cursor-pointer" 
-                    disabled={isSubmitDisabled}
+                <div
+                    className="inline-flex"
+                    onClick={() => {
+                        if (isSubmitDisabled) {
+                            void handleInvalidSubmit();
+                        }
+                    }}
                 >
-                    {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {isUpdating ? "Salvando..." : "Salvar"}
-                </Button>
+                    <Button 
+                        type="submit" 
+                        className={cn("cursor-pointer", isSubmitDisabled && "pointer-events-none")} 
+                        disabled={isSubmitDisabled}
+                    >
+                        {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {isUpdating ? "Salvando..." : "Salvar"}
+                    </Button>
+                </div>
             </div>
+            <div
+                ref={formEndRef as React.RefObject<HTMLDivElement>}
+                className="sm:col-span-2 h-px w-full"
+                aria-hidden="true"
+            />
         </form>
       </Form>
     );
