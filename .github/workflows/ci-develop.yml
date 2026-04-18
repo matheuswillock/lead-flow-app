@@ -252,45 +252,68 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Update release version file
+      - name: Configure git
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Reset release branch to develop and apply version bump
+        run: |
+          git checkout -B release/develop-to-main origin/develop
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
             pkg.version = '${{ needs.version-bump.outputs.new_version }}';
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
+          git add package.json
+          git diff --cached --quiet || git commit -m "chore: bump version to v${{ needs.version-bump.outputs.new_version }} [skip ci]"
+          git push origin release/develop-to-main --force-with-lease 2>/dev/null || \
+            git push origin release/develop-to-main --force
 
-      - name: Create or update release PR
+      - name: Create or update PR
         id: release-pr
-        uses: peter-evans/create-pull-request@v7
-        with:
-          token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
-          commit-message: "chore: bump version to v${{ needs.version-bump.outputs.new_version }} [skip ci]"
-          branch: release/develop-to-main
-          base: main
-          title: "release: v${{ needs.version-bump.outputs.new_version }}"
-          body: |
-            ## Release (develop → main)
+        env:
+          GH_TOKEN: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          PR_BODY="## Release (develop → main)
 
-            **Source branch:** `develop`
-            **Version:** `v${{ needs.version-bump.outputs.new_version }}`
-            **Bump type:** `${{ needs.version-bump.outputs.bump_type }}`
+          **Source branch:** \`develop\`
+          **Version:** \`v${{ needs.version-bump.outputs.new_version }}\`
+          **Bump type:** \`${{ needs.version-bump.outputs.bump_type }}\`
 
-            - [ ] Seguiu `agents.md`?
-            - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
-            - [ ] Rodou typecheck/lint?
-            - [ ] Rodou governance check?
-            - [ ] Preview deploy OK
+          - [ ] Seguiu \`agents.md\`?
+          - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
+          - [ ] Rodou typecheck/lint?
+          - [ ] Rodou governance check?
+          - [ ] Preview deploy OK
 
-            *PR criado ou atualizado automaticamente pelo GitHub Actions.*
-          add-paths: |
-            package.json
-          delete-branch: true
+          *PR criado ou atualizado automaticamente pelo GitHub Actions.*"
+
+          EXISTING_PR=$(gh pr list --base main --head release/develop-to-main --json number,url --jq '.[0]' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
+            PR_NUMBER=$(echo "$EXISTING_PR" | jq -r '.number')
+            PR_URL=$(echo "$EXISTING_PR" | jq -r '.url')
+            gh pr edit "$PR_NUMBER" \
+              --title "release: v${{ needs.version-bump.outputs.new_version }}" \
+              --body "$PR_BODY"
+            echo "operation=updated" >> $GITHUB_OUTPUT
+            echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
+            echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          else
+            PR_URL=$(gh pr create \
+              --base main \
+              --head release/develop-to-main \
+              --title "release: v${{ needs.version-bump.outputs.new_version }}" \
+              --body "$PR_BODY")
+            echo "operation=created" >> $GITHUB_OUTPUT
+            echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
+          fi
 
       - name: Release PR summary
         run: |
           echo "### Release PR (develop -> main)" >> $GITHUB_STEP_SUMMARY
           echo "- Version: v${{ needs.version-bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Operation: ${{ steps.release-pr.outputs.pull-request-operation || 'none' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- PR: ${{ steps.release-pr.outputs.pull-request-url || 'no changes / no PR' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Operation: ${{ steps.release-pr.outputs.operation }}" >> $GITHUB_STEP_SUMMARY
+          echo "- PR: ${{ steps.release-pr.outputs.pr-url }}" >> $GITHUB_STEP_SUMMARY
