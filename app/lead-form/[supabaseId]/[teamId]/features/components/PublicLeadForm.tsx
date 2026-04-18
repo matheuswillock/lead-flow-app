@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
@@ -29,6 +29,11 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
 import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
+import { useIsInView } from "@/hooks/use-is-in-view";
+import {
+  getPendingRequiredFieldsFeedback,
+  LEAD_REQUIRED_FIELD_ORDER,
+} from "@/lib/validations/leadFormFeedback";
 
 const parseCurrencyValue = (value: string): number | null => {
   const digits = value.replace(/\D/g, "");
@@ -60,7 +65,7 @@ const normalizeLeadPhoneDigits = (value: string): string => {
   if (!value) return "";
   const digits = value.replace(/\D/g, "");
   if (digits.length <= 11) return digits;
-  return digits.slice(-11);
+  return digits.slice(0, 11);
 };
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -102,6 +107,10 @@ export function PublicLeadForm() {
   const [currentValueDisplay, setCurrentValueDisplay] = useState("");
   const [currentValueError, setCurrentValueError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const lastInvalidHashRef = useRef<string>("");
+  const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
+    threshold: 0.2,
+  });
 
   const [closerId, setCloserId] = useState("");
   const [meetingDate, setMeetingDate] = useState<Date | undefined>();
@@ -127,6 +136,7 @@ export function PublicLeadForm() {
     },
   });
 
+  const watchedValues = form.watch();
   const watchedName = form.watch("name");
   const watchedResponsible = form.watch("responsible");
   const watchedExtraGuests = form.watch("extraGuests") || "";
@@ -233,6 +243,31 @@ export function PublicLeadForm() {
     [submitting, isSubmitting, closerId, meetingDate, meetingTitle, meetingNotes, submitLead, form]
   );
 
+  const handleInvalidSubmit = useCallback(async () => {
+    if (submitting || isSubmitting) return;
+
+    await form.trigger();
+    const feedback = getPendingRequiredFieldsFeedback(
+      publicLeadFormSchema,
+      form.getValues(),
+      LEAD_REQUIRED_FIELD_ORDER
+    );
+
+    if (!feedback.hasPendingFields) return;
+    if (feedback.hash === lastInvalidHashRef.current) return;
+
+    lastInvalidHashRef.current = feedback.hash;
+    toast.error(feedback.message);
+
+    if (feedback.firstPendingField) {
+      try {
+        form.setFocus(feedback.firstPendingField);
+      } catch {
+        // Some custom controls (e.g. Select) may not expose focus refs.
+      }
+    }
+  }, [form, isSubmitting, submitting]);
+
   if (bootstrapStatus === "loading") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -291,7 +326,35 @@ export function PublicLeadForm() {
   }
 
   const isLoading = submitting || isSubmitting;
-  const isFormValid = form.formState.isValid;
+  const isSchemaValid = publicLeadFormSchema.safeParse(watchedValues).success;
+  const hasManualBlockingErrors = Object.values(form.formState.errors).some((error) => {
+    return (error as { type?: string } | undefined)?.type === "manual";
+  });
+  const isSubmitDisabled =
+    isLoading || sdrs.length === 0 || !isSchemaValid || hasManualBlockingErrors;
+
+  useEffect(() => {
+    if (isSchemaValid) {
+      lastInvalidHashRef.current = "";
+    }
+  }, [isSchemaValid]);
+
+  useEffect(() => {
+    if (!hasReachedFormEnd) return;
+    if (!form.formState.isDirty) return;
+    if (isSubmitted) return;
+    if (isSchemaValid) return;
+    if (isLoading) return;
+
+    void handleInvalidSubmit();
+  }, [
+    form.formState.isDirty,
+    handleInvalidSubmit,
+    hasReachedFormEnd,
+    isSchemaValid,
+    isLoading,
+    isSubmitted,
+  ]);
 
   return (
     <div className="flex min-h-screen items-start justify-center bg-background p-4 pt-8">
@@ -309,7 +372,12 @@ export function PublicLeadForm() {
         </div>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form
+            onSubmit={form.handleSubmit(onSubmit, () => {
+              void handleInvalidSubmit();
+            })}
+            className="space-y-6"
+          >
             <div className="space-y-6 rounded-lg border p-4">
               <div className="space-y-4">
                 <h3 className="text-sm font-medium">Dados do Lead</h3>
@@ -619,20 +687,35 @@ export function PublicLeadForm() {
               />
             </div>
 
-            <Button
-              type="submit"
+            <div
               className="w-full"
-              disabled={isLoading || sdrs.length === 0 || !isFormValid}
+              onClick={() => {
+                if (isLoading || sdrs.length === 0) return;
+                if (isSubmitDisabled) {
+                  void handleInvalidSubmit();
+                }
+              }}
             >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Cadastrando...
-                </>
-              ) : (
-                "Cadastrar Lead"
-              )}
-            </Button>
+              <Button
+                type="submit"
+                className={`w-full ${isSubmitDisabled ? "pointer-events-none" : ""}`}
+                disabled={isSubmitDisabled}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Cadastrando...
+                  </>
+                ) : (
+                  "Cadastrar Lead"
+                )}
+              </Button>
+            </div>
+            <div
+              ref={formEndRef as React.RefObject<HTMLDivElement>}
+              className="h-px w-full"
+              aria-hidden="true"
+            />
           </form>
         </Form>
       </div>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"  
 import Image from "next/image"
+import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   KanbanSquare,
@@ -54,10 +55,28 @@ type SidebarItem = {
   closerOrManager?: boolean
   requiresIntegrationsAccess?: boolean
   requiresEmailCampaignsAccess?: boolean
-  inDevelopment?: boolean
+  status?: "beta" | "comingSoon"
+}
+
+function getSidebarStatusBadge(status?: SidebarItem["status"]) {
+  switch (status) {
+    case "beta":
+      return {
+        label: "Beta",
+        className: "bg-orange-500/15 text-orange-500",
+      }
+    case "comingSoon":
+      return {
+        label: "Em breve",
+        className: "bg-orange-500/10 text-orange-500",
+      }
+    default:
+      return null
+  }
 }
 
 export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps<typeof Sidebar> & { supabaseId?: string }) {
+  const pathname = usePathname();
   const { user } = useUserContext();
   const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster } = useTeamContext();
   const isMaster = user?.isMaster === true;
@@ -72,28 +91,29 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     [supabaseId, activeTeamId]
   );
   const [isTeamActivityCollapsed, setIsTeamActivityCollapsed] = useState(false);
+  const docsUrl = `/${supabaseId}/docs`;
 
   const navigationItems: SidebarItem[] = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "CRM", url: `/${supabaseId}/crm`, icon: KanbanSquare },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays },
-    { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true, inDevelopment: true },
+    { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true, status: "comingSoon" },
     {
       title: "Integrações",
       url: `/${supabaseId}/integrations`,
       icon: Plug,
       managerOnly: true,
       requiresIntegrationsAccess: true,
-      inDevelopment: true,
+      status: "beta",
     },
   ];
 
   const emailItems: SidebarItem[] = [
-    { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
-    { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
-    { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
-    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
-    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, requiresEmailCampaignsAccess: true, inDevelopment: true },
+    { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, requiresEmailCampaignsAccess: true, status: "comingSoon" },
+    { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, requiresEmailCampaignsAccess: true, status: "comingSoon" },
+    { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, requiresEmailCampaignsAccess: true, status: "comingSoon" },
+    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, requiresEmailCampaignsAccess: true, status: "comingSoon" },
+    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, requiresEmailCampaignsAccess: true, status: "comingSoon" },
   ];
 
   const teamItems: SidebarItem[] = [
@@ -153,11 +173,13 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     if (item.requiresEmailCampaignsAccess && !canAccessEmailCampaigns) {
       return false;
     }
-    if (item.inDevelopment && !canAccessEmailModule) {
+    if (item.status && !canAccessEmailModule) {
       return false;
     }
     return true;
   };
+
+  const isItemActive = (url: string) => pathname === url || pathname.startsWith(`${url}/`);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -223,17 +245,19 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                             return null;
                           }
 
+                          const statusBadge = getSidebarStatusBadge(item.status);
+
                           return (
                             <SidebarMenuItem key={item.title}>
-                              <SidebarMenuButton asChild>
+                              <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
                                 <Link href={item.url} className="flex items-center justify-between gap-2">
                                   <span className="flex items-center gap-2">
                                     <item.icon className="size-4 shrink-0" />
                                     <span>{item.title}</span>
                                   </span>
-                                  {item.inDevelopment && (
-                                    <span className="shrink-0 rounded-sm bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-orange-500">
-                                      Beta
+                                  {statusBadge && (
+                                    <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
+                                      {statusBadge.label}
                                     </span>
                                   )}
                                 </Link>
@@ -256,17 +280,19 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                         return null;
                       }
 
-                      return (
+                      const statusBadge = getSidebarStatusBadge(item.status);
+
+                        return (
                         <SidebarMenuItem key={item.title}>
-                          <SidebarMenuButton asChild>
+                          <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
                             <Link href={item.url} className="flex items-center justify-between gap-2">
                               <span className="flex items-center gap-2">
                                 <item.icon className="size-4 shrink-0" />
                                 <span>{item.title}</span>
                               </span>
-                              {item.inDevelopment && (
-                                <span className="shrink-0 rounded-sm bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-orange-500">
-                                  Beta
+                              {statusBadge && (
+                                <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
+                                  {statusBadge.label}
                                 </span>
                               )}
                             </Link>
@@ -289,7 +315,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
 
                     return (
                       <SidebarMenuItem key={item.title}>
-                        <SidebarMenuButton asChild>
+                        <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
                           <Link href={item.url}>
                             <item.icon />
                             <span>{item.title}</span>
@@ -395,6 +421,14 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
         </SidebarContent>
         <SidebarFooter>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={isItemActive(docsUrl)}>
+                  <Link href={docsUrl}>
+                    <FileText />
+                    <span>Docs</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SupportRequestDialog
                   trigger={

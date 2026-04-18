@@ -160,14 +160,14 @@ app/
 components/               # UI reutilizavel e componentes de feature
 lib/                      # utilitarios, validacoes, clientes e servicos
 prisma/                   # schema, migracoes e seed
-docs/                     # documentacao tecnica complementar
+docs/                     # documentação tecnica complementar
 ```
 
 ## Time desenvolvedor
 
 - **Matheus Willock** - responsavel pelo desenvolvimento do projeto
 
-## Documentacao complementar
+## documentação complementar
 
 - [Guia rapido](./docs/QUICK_START.md)
 - [Guia de arquitetura](./docs/ARCHITECTURE_GUIDE.md)
