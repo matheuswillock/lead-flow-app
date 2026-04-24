@@ -2,27 +2,29 @@ import { Output } from '@/lib/output';
 import { performanceService } from '@/app/api/services/Performance/PerformanceService';
 import type { IPerformanceUseCase } from './IPerformanceUseCase';
 import type { PerformanceSalesFilters } from '@/app/api/services/Performance/IPerformanceService';
+import { addDaysInTz, endOfDayInTz, startOfDayInTz, DEFAULT_TZ } from '@/lib/dates';
 
 export class PerformanceUseCase implements IPerformanceUseCase {
-  static resolvePresetToDates(preset: string): { startDate: Date; endDate: Date } {
-    const endDate = new Date();
-    const startDate = new Date();
+  static resolvePresetToDates(preset: string, tz: string = DEFAULT_TZ): { startDate: Date; endDate: Date } {
+    const now = new Date();
+    const endDate = endOfDayInTz(now, tz);
+    let startDate: Date;
     switch (preset) {
       case '1d':
-        startDate.setDate(endDate.getDate() - 1);
+        startDate = startOfDayInTz(addDaysInTz(now, -1, tz), tz);
         break;
       case '7d':
-        startDate.setDate(endDate.getDate() - 7);
+        startDate = startOfDayInTz(addDaysInTz(now, -7, tz), tz);
         break;
       case '15d':
-        startDate.setDate(endDate.getDate() - 15);
+        startDate = startOfDayInTz(addDaysInTz(now, -15, tz), tz);
         break;
       case '3m':
-        startDate.setDate(endDate.getDate() - 90);
+        startDate = startOfDayInTz(addDaysInTz(now, -90, tz), tz);
         break;
       case '1m':
       default:
-        startDate.setDate(endDate.getDate() - 30);
+        startDate = startOfDayInTz(addDaysInTz(now, -30, tz), tz);
     }
     return { startDate, endDate };
   }

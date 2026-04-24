@@ -14,6 +14,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useTimezone } from "@/app/context/TimezoneContext";
+import { nowInTz } from "@/lib/dates";
 
 interface LeadsDateFilterProps {
   title: string;
@@ -22,6 +24,7 @@ interface LeadsDateFilterProps {
 }
 
 export function LeadsDateFilter({ title, value, onChange }: LeadsDateFilterProps) {
+  const { tz } = useTimezone();
   const handleClear = () => {
     onChange(undefined);
   };
@@ -59,7 +62,7 @@ export function LeadsDateFilter({ title, value, onChange }: LeadsDateFilterProps
           onSelect={onChange}
           locale={ptBR}
           numberOfMonths={2}
-          disabled={(date) => date > new Date()}
+          disabled={(date) => date > nowInTz(tz)}
         />
         {(value?.from || value?.to) && (
           <div className="border-t p-2">

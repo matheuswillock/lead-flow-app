@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { CampanhasService } from "../services/CampanhasService"
 import type { Campaign, CreditStatus, Template, ContactList } from "./CampanhasTypes"
+import { parseLocalToUtc } from "@/lib/dates"
+import { useTimezone } from "@/app/context/TimezoneContext"
 
 const PAGE_SIZE = 20
 const service = new CampanhasService()
@@ -48,6 +50,7 @@ export type CampanhasHookReturn = {
 } & CampanhasActions
 
 export function useCampanhas(supabaseId: string): CampanhasHookReturn {
+  const { tz } = useTimezone()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -204,9 +207,9 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
         name: wizardName.trim(),
         templateId: wizardTemplateId,
         contactListId: wizardContactListId,
-        // Converter horário local do browser para UTC antes de enviar
+        // Converter horário local (no TZ do usuário) para UTC antes de enviar
         scheduledAt: wizardScheduledAt
-          ? new Date(wizardScheduledAt).toISOString()
+          ? parseLocalToUtc(wizardScheduledAt, tz).toISOString()
           : undefined,
       })
       toast.success("Campanha criada com sucesso")
@@ -218,7 +221,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setWizardCreating(false)
     }
-  }, [wizardName, wizardTemplateId, wizardContactListId, wizardScheduledAt, fetchCampaigns, statusFilter])
+  }, [wizardName, wizardTemplateId, wizardContactListId, wizardScheduledAt, tz, fetchCampaigns, statusFilter])
 
   return {
     campaigns,

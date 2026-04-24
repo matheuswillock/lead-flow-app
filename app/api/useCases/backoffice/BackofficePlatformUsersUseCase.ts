@@ -5,6 +5,7 @@ import { createEmailService } from "@/lib/services/EmailService"
 import { getAppUrl } from "@/lib/utils/app-url"
 import type { IBackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficePlatformUsersRepository"
 import type { IBackofficePlatformUsersUseCase } from "./IBackofficePlatformUsersUseCase"
+import { startOfMonthInTz, addDaysInTz, startOfDayInTz, DEFAULT_TZ } from "@/lib/dates"
 
 interface PlanInfo {
   label: string
@@ -87,13 +88,11 @@ function getPeriodStartDate(period: InvoicePeriodFilter, now: Date): Date | null
   }
 
   if (period === "this_month") {
-    return new Date(now.getFullYear(), now.getMonth(), 1)
+    return startOfMonthInTz(now, DEFAULT_TZ)
   }
 
   const days = period === "7d" ? 7 : period === "30d" ? 30 : 90
-  const start = new Date(now)
-  start.setDate(start.getDate() - days)
-  return new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  return startOfDayInTz(addDaysInTz(now, -days, DEFAULT_TZ), DEFAULT_TZ)
 }
 
 function matchesPeriodFilter(

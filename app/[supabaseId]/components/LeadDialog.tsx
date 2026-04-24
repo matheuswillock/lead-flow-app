@@ -2356,7 +2356,7 @@ export default function LeadDialog({
                                 }
                               }}
                               className={cn(
-                                "rounded-lg border border-border/60 bg-background/60 p-3 w-[308px] max-w-full mr-auto transition-colors",
+                                "rounded-lg border border-border/60 bg-background/60 p-3 w-77 max-w-full mr-auto transition-colors",
                                 highlightedActivityId === activity.id
                                   ? "ring-2 ring-primary/50 bg-primary/5"
                                   : ""
@@ -2382,7 +2382,7 @@ export default function LeadDialog({
                                   </div>
                                 </div>
                         {activity.body && (
-                          <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line break-words">
+                          <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
                                     {renderActivityBodyWithMentions(activity.body)}
                           </p>
                         )}
@@ -2570,7 +2570,7 @@ export default function LeadDialog({
       </Dialog>
 
       <Dialog open={resendDialogOpen} onOpenChange={setResendDialogOpen}>
-        <DialogContent className="sm:max-w-[420px]">
+        <DialogContent className="sm:max-w-105">
           <DialogHeader>
             <DialogTitle>Reenviar convite</DialogTitle>
             <DialogDescription>
@@ -2646,7 +2646,7 @@ export default function LeadDialog({
                       }
                     }}
                     placeholder="ex: participante@email.com"
-                    className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                    className="min-w-35 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -2668,7 +2668,7 @@ export default function LeadDialog({
       </Dialog>
 
       <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
-        <DialogContent className="sm:max-w-[420px]">
+        <DialogContent className="sm:max-w-105">
           <DialogHeader>
             <DialogTitle>Alterar status</DialogTitle>
             <DialogDescription>
@@ -2742,7 +2742,7 @@ export default function LeadDialog({
       )}
 
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-130">
           <DialogHeader>
             <DialogTitle>Compartilhar</DialogTitle>
             <DialogDescription>

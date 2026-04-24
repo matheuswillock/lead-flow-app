@@ -71,6 +71,7 @@ export async function POST(request: NextRequest) {
           subscriptionStatus: true,
           subscriptionNextDueDate: true,
           subscriptionCycle: true,
+          timezone: true,
         },
       }),
     ]);

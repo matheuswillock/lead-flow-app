@@ -17,8 +17,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useCampanhasContext } from "../context/CampanhasContext"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatLocalInputValue } from "@/lib/dates"
 
 export function CampaignCreateWizard() {
+  const { tz } = useTimezone()
   const {
     wizardOpen,
     wizardStep,
@@ -38,12 +41,8 @@ export function CampaignCreateWizard() {
     handleCreateCampaign,
   } = useCampanhasContext()
 
-  // datetime-local precisa do mínimo em horário local — não em UTC
-  const now = new Date()
-  const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 16)
-  const minDateTime = localIso
+  // Mínimo para o input datetime-local expresso no TZ do usuário
+  const minDateTime = formatLocalInputValue(new Date(), tz)
 
   return (
     <Dialog open={wizardOpen} onOpenChange={(open) => { if (!open) closeWizard() }}>

@@ -5,6 +5,8 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { useTimezone } from "@/app/context/TimezoneContext";
+import { parseLocalToUtc, formatInTz } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -53,6 +55,7 @@ export function LeadStatusTriggerDialog({
   confirmationRuleId,
   onConfirm,
 }: LeadStatusTriggerDialogProps) {
+  const { tz } = useTimezone();
   const [followUpDate, setFollowUpDate] = React.useState<Date | undefined>(initialFollowUpDate);
   const [followUpTime, setFollowUpTime] = React.useState<string>(() => initialFollowUpTime(initialFollowUpDate()));
   const [followUpNotes, setFollowUpNotes] = React.useState("");
@@ -79,14 +82,14 @@ export function LeadStatusTriggerDialog({
         toast.error("Informe a data de contato.");
         return;
       }
-      const [hours, minutes] = followUpTime.split(":").map(Number);
-      const combined = new Date(followUpDate);
-      combined.setHours(hours, minutes, 0, 0);
+      const datePart = formatInTz(followUpDate, "yyyy-MM-dd", tz);
+      const localIso = `${datePart}T${followUpTime}:00`;
+      const followUpUtc = parseLocalToUtc(localIso, tz);
       setIsSubmitting(true);
       try {
         await onConfirm({
           kind: "future_sale",
-          followUpAt: combined.toISOString(),
+          followUpAt: followUpUtc.toISOString(),
           followUpNotes: followUpNotes.trim() || undefined,
           confirmRuleId: confirmationRuleId || undefined,
         });
@@ -116,7 +119,7 @@ export function LeadStatusTriggerDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !isSubmitting && onOpenChange(nextOpen)}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-130">
         <DialogHeader>
           <DialogTitle>{mode === "future_sale" ? "Configurar Venda Futura" : "Informar motivo da perda"}</DialogTitle>
           <DialogDescription>
@@ -162,7 +165,7 @@ export function LeadStatusTriggerDialog({
                   value={followUpTime}
                   onChange={(e) => setFollowUpTime(e.target.value)}
                   disabled={isSubmitting}
-                  className="w-[120px]"
+                  className="w-30"
                 />
               </div>
             </div>

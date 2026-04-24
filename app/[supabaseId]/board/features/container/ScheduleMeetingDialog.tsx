@@ -29,6 +29,7 @@ import {
 import { X } from "lucide-react";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
+import { useTimezone } from "@/app/context/TimezoneContext";
 
 export type ScheduleMeetingSuccessPayload = {
   leadId: string;
@@ -49,7 +50,7 @@ type ScheduleInviteDispatch = {
   error: string | null;
 };
 
-const SCHEDULE_TIMEZONE = "America/Sao_Paulo";
+// SCHEDULE_TIMEZONE now comes from useTimezone() inside the component
 
 interface ScheduleMeetingDialogProps {
   open: boolean;
@@ -73,6 +74,7 @@ export function ScheduleMeetingDialog({
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { activeTeamId } = useTeamContext();
+  const { tz: SCHEDULE_TIMEZONE } = useTimezone();
 
   const [meetingDate, setMeetingDate] = useState<Date>();
   const [meetingTitle, setMeetingTitle] = useState<string>("");
@@ -472,7 +474,7 @@ export function ScheduleMeetingDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-125">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Agendar Reunião</DialogTitle>
@@ -585,7 +587,7 @@ export function ScheduleMeetingDialog({
                     }
                   }}
                   placeholder="ex: convidado1@email.com, convidado2@email.com"
-                  className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  className="min-w-35 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

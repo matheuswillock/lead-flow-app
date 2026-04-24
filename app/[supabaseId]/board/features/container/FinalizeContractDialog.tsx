@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { format } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTimezone } from '@/app/context/TimezoneContext';
+import { startOfDayInTz } from '@/lib/dates';
 import {
   Dialog,
   DialogContent,
@@ -46,6 +48,7 @@ export function FinalizeContractDialog({
   leadName,
   onFinalize,
 }: FinalizeContractDialogProps) {
+  const { tz } = useTimezone();
   const [amount, setAmount] = useState<string>('');
   const [startDate, setStartDate] = useState<Date>();
   const [finalizedDate, setFinalizedDate] = useState<Date>();
@@ -135,8 +138,8 @@ export function FinalizeContractDialog({
     try {
       await onFinalize({
         amount: parseFormattedValue(amount),
-        startDateAt: startDate,
-        finalizedDateAt: finalizedDate,
+        startDateAt: startOfDayInTz(startDate, tz),
+        finalizedDateAt: startOfDayInTz(finalizedDate, tz),
         notes: notes.trim() || undefined,
       });
 
@@ -185,7 +188,7 @@ export function FinalizeContractDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-125">
         <DialogHeader>
           <DialogTitle>Fechar Contrato</DialogTitle>
           <DialogDescription>

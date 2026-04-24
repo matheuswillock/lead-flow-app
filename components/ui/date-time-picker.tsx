@@ -4,6 +4,7 @@ import * as React from "react"
 import { Calendar as CalendarIcon } from "lucide-react"
 import { format, isValid } from "date-fns"
 import { ptBR } from "date-fns/locale"
+import { startOfDayInTz, detectBrowserTimezone } from "@/lib/dates"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ interface DateTimePickerProps {
   timeLoading?: boolean
   timeLoadingText?: string
   invalid?: boolean
+  tz?: string
 }
 
 export function DateTimePicker({
@@ -53,7 +55,9 @@ export function DateTimePicker({
   timeLoading = false,
   timeLoadingText = "Carregando...",
   invalid = false,
+  tz,
 }: DateTimePickerProps) {
+  const resolvedTz = tz ?? detectBrowserTimezone()
   const timeSelectWidthClass = "w-full sm:w-[7.5rem]"
   const initialDate = date && isValid(date) ? date : undefined
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(initialDate)
@@ -139,7 +143,7 @@ export function DateTimePicker({
                 id="date-picker"
                 variant="outline"
                 className={cn(
-                  "h-9 w-full sm:w-[180px] justify-start text-left font-normal",
+                  "h-9 w-full sm:w-45 justify-start text-left font-normal",
                   !selectedDate && "text-muted-foreground",
                   invalid && "border-destructive focus-visible:ring-destructive"
                 )}
@@ -162,7 +166,7 @@ export function DateTimePicker({
                 disabled={
                   disablePastDates
                     ? (date: Date) =>
-                        date < new Date(new Date().setHours(0, 0, 0, 0))
+                        date < startOfDayInTz(new Date(), resolvedTz)
                     : undefined
                 }
                 initialFocus
@@ -199,7 +203,7 @@ export function DateTimePicker({
                     <SelectContent
                       className={cn(
                         timeSelectWidthClass,
-                        "dialog-scrollbar max-h-72 min-w-[var(--radix-select-trigger-width)] overscroll-contain"
+                        "dialog-scrollbar max-h-72 min-w-(--radix-select-trigger-width) overscroll-contain"
                       )}
                       sideOffset={4}
                     >

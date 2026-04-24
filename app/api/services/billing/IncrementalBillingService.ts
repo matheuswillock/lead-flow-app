@@ -1,6 +1,7 @@
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
 import { BILLING_PRICES, type BillingSummary } from "@/app/api/shared/billing/billingConfig";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
+import { addMonthsInTz, formatInTz, DEFAULT_TZ } from "@/lib/dates";
 import type {
   BillingOwnerProfile,
   CreateIncrementalChargeInput,
@@ -343,20 +344,22 @@ export class IncrementalBillingService implements IIncrementalBillingService {
 
   private resolveNextDueDate(master: BillingOwnerProfile, currentSubscription: AsaasSubscriptionDetails): string {
     const now = new Date();
+    const ownerTz = master.timezone ?? DEFAULT_TZ;
     const currentNextDueDate = master.subscriptionNextDueDate
       ? new Date(master.subscriptionNextDueDate)
       : currentSubscription.nextDueDate
         ? new Date(currentSubscription.nextDueDate)
         : null;
 
-    const nextDueDate =
+    let nextDueDate =
       currentNextDueDate && !Number.isNaN(currentNextDueDate.getTime()) ? currentNextDueDate : now;
 
     if (nextDueDate < now) {
-      nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+      nextDueDate = addMonthsInTz(nextDueDate, 1, ownerTz);
     }
 
-    return nextDueDate.toISOString().split("T")[0];
+    // Asaas espera yyyy-MM-dd no fuso do cliente (BRT), não em UTC
+    return formatInTz(nextDueDate, "yyyy-MM-dd", ownerTz);
   }
 }
 

@@ -26,14 +26,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useParams, useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { CircleCheckBig } from "@/components/animate-ui/icons/circle-check-big";
 import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth";
+import { PROFILE_TIMEZONE_OPTIONS, getTimezoneOption, type TimezoneOption } from "@/lib/dates";
+import { useTimezone } from "@/app/context/TimezoneContext";
 
 export default function AccountProfilePage() {
   const { user, isLoading, updateUser, updatePassword, uploadProfileIcon, deleteProfileIcon, refreshUser } =
     useUser();
+  const { tz, setTz, loading: isTimezoneLoading } = useTimezone();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -43,6 +54,7 @@ export default function AccountProfilePage() {
   const [functionSelections, setFunctionSelections] = useState<string[]>([]);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
+  const [isUpdatingTimezone, setIsUpdatingTimezone] = useState(false);
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
   
   // Estados para deletar conta
@@ -315,10 +327,41 @@ export default function AccountProfilePage() {
     return current !== next;
   }, [functionChangeKey]);
 
+  const timezoneOptions = useMemo<ReadonlyArray<TimezoneOption>>(() => {
+    const currentTimezoneOption = getTimezoneOption(tz);
+    if (currentTimezoneOption) {
+      return PROFILE_TIMEZONE_OPTIONS;
+    }
+
+    return [
+      {
+        value: tz,
+        label: tz,
+        description: "Fuso salvo atualmente na sua conta.",
+      },
+      ...PROFILE_TIMEZONE_OPTIONS,
+    ];
+  }, [tz]);
+
+  const selectedTimezoneOption = useMemo(() => {
+    return timezoneOptions.find((option) => option.value === tz) ?? timezoneOptions[0];
+  }, [timezoneOptions, tz]);
+
   function toggleFunction(value: string) {
     setFunctionSelections((prev) =>
       prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]
     );
+  }
+
+  async function handleTimezoneChange(nextTimezone: string) {
+    if (isUpdatingTimezone || nextTimezone === tz) return;
+
+    setIsUpdatingTimezone(true);
+    try {
+      await setTz(nextTimezone);
+    } finally {
+      setIsUpdatingTimezone(false);
+    }
   }
 
   async function handleConnectGoogle() {
@@ -762,6 +805,59 @@ export default function AccountProfilePage() {
                           {isConnectingGoogle ? "Conectando..." : "Conectar Google"}
                         </Button>
                       )}
+                    </div>
+                  </section>
+
+                  <Separator />
+
+                  <section className="space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-base font-medium">Fuso horário</h2>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Define o horário local usado em agendamentos, campanhas e relatórios.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
+                        {isUpdatingTimezone ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
+                        {isUpdatingTimezone ? "Salvando..." : selectedTimezoneOption?.label}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-4 rounded-lg border border-border/60 p-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">Timezone da conta</p>
+                        <p className="text-xs text-muted-foreground">
+                          Selecione o fuso local usado pelo sistema para agendamentos e comparações.
+                        </p>
+                      </div>
+
+                      <div className="w-full max-w-sm space-y-2">
+                        <Select
+                          value={tz}
+                          onValueChange={(value) => {
+                            void handleTimezoneChange(value);
+                          }}
+                          disabled={isTimezoneLoading || isUpdatingTimezone}
+                        >
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Selecione um fuso horário" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {timezoneOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+
+                        <p className="text-xs text-muted-foreground">
+                          {selectedTimezoneOption?.description}
+                        </p>
+                      </div>
                     </div>
                   </section>
                 </TabsContent>

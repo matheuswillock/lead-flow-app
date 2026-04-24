@@ -19,6 +19,7 @@ export interface BillingOwnerProfile {
   subscriptionNextDueDate: Date | null;
   subscriptionCycle: string | null;
   hasPermanentSubscription: boolean;
+  timezone: string | null;
 }
 
 export interface ProjectBillingInput {

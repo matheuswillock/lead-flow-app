@@ -692,7 +692,7 @@ export function LeadForm({
                                                 field.onChange(next);
                                                 onMeetingHealdChange?.(next);
                                             }}
-                                            className="mt-[1px]"
+                                            className="mt-px"
                                             disabled={
                                                 isLoading ||
                                                 isUpdating ||
@@ -727,7 +727,7 @@ export function LeadForm({
                     control={form.control}
                     name="meetingDate"
                     render={({ field }) => (
-                        <FormItem className="sm:flex-shrink-0">
+                        <FormItem className="sm:shrink-0">
                             <FormControl>
                                 <DateTimePicker
                                     date={field.value ? new Date(field.value) : undefined}
@@ -889,7 +889,7 @@ export function LeadForm({
                                 {...field}
                                 placeholder="Adicione observacoes sobre a reuniao"
                                 className={cn(
-                                    "min-h-[84px] resize-y",
+                                    "min-h-21 resize-y",
                                     isMeetingNotesChanged && "border-destructive focus-visible:ring-destructive"
                                 )}
                                 disabled={scheduleFieldsDisabled}
@@ -996,7 +996,7 @@ export function LeadForm({
                                                 }
                                             }}
                                             placeholder="ex: convidado1@email.com, convidado2@email.com"
-                                            className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                                            className="min-w-35 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                                             disabled={scheduleFieldsDisabled}
                                             aria-invalid={isExtraGuestsChanged || undefined}
                                         />
