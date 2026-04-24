@@ -19,6 +19,8 @@ import { createSupabaseAdmin } from "./server";
 export const STORAGE_BUCKETS = {
   LEAD_ATTACHMENTS: process.env.SUPABASE_LEAD_ATTACHMENTS_BUCKET || "lead-attachments",
   PROFILE_ICONS: process.env.SUPABASE_PROFILE_ICONS_BUCKET || "profile-icons",
+  EMAIL_TEMPLATE_ASSETS:
+    process.env.SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET || "email-template-assets",
 } as const;
 
 export type BucketName = typeof STORAGE_BUCKETS[keyof typeof STORAGE_BUCKETS];
@@ -62,6 +64,17 @@ const BUCKET_CONFIGS: Record<BucketName, BucketConfig> = {
       "image/gif",
     ],
     description: "Ícones de perfil de usuários",
+  },
+  [STORAGE_BUCKETS.EMAIL_TEMPLATE_ASSETS]: {
+    maxFileSize: 15 * 1024 * 1024, // 15MB
+    allowedTypes: [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "image/svg+xml",
+    ],
+    description: "Assets de templates de email (uploads e embeds)",
   },
 };
 

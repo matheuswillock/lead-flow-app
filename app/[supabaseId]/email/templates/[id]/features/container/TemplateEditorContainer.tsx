@@ -52,6 +52,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useTemplateEditorContext } from '../context/TemplateEditorContext'
+import { templatePickerService } from '../services/TemplatePickerService'
 import { MailyEditor } from '../components/MailyEditor'
 import { HtmlEditor } from '../components/HtmlEditor'
 import { FloatingInspector } from '../components/FloatingInspector'
@@ -150,6 +151,13 @@ export function TemplateEditorContainer() {
     setPreviewText,
     setMailyJson,
     setHtml,
+    setVisualEditorInstance,
+    isTemplatePickerOpen,
+    openTemplatePicker,
+    closeTemplatePicker,
+    applyTemplate,
+    uploadEditorImage,
+    generateTemplateXAsset,
     handleSave,
   } = useTemplateEditorContext()
 
@@ -569,8 +577,16 @@ export function TemplateEditorContainer() {
                   previewText={previewText}
                   pageStyle={pageStyle}
                   transitionDirection={transitionDirection}
+                  isTemplatePickerOpen={isTemplatePickerOpen}
+                  onOpenTemplatePicker={openTemplatePicker}
+                  onTemplatePickerOpenChange={(open) => (open ? openTemplatePicker() : closeTemplatePicker())}
+                  onApplyTemplate={applyTemplate}
+                  templatePickerService={templatePickerService}
                   onChangeSubject={setSubject}
                   onChangePreviewText={setPreviewText}
+                  onEditorInstanceChange={setVisualEditorInstance}
+                  onUploadImage={uploadEditorImage}
+                  onGenerateXAsset={generateTemplateXAsset}
                   onChange={handleMailyChange}
                 />
               ) : (

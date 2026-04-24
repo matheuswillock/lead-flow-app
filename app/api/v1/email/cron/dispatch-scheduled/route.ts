@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
             isUnsubscribed: false,
             isBounced: false,
           },
-          select: { email: true, name: true },
+          select: { email: true, name: true, customFields: true },
         })
 
         if (contacts.length === 0) {
@@ -81,7 +81,14 @@ export async function GET(request: NextRequest) {
           continue
         }
 
-        const recipientsList = contacts.map((c) => ({ email: c.email, name: c.name ?? undefined }))
+        const recipientsList = contacts.map((contact) => ({
+          email: contact.email,
+          name: contact.name ?? undefined,
+          customFields:
+            contact.customFields && typeof contact.customFields === "object"
+              ? (contact.customFields as Record<string, unknown>)
+              : null,
+        }))
 
         const result = await dispatchService.dispatchBatch({
           from: DEFAULT_FROM,

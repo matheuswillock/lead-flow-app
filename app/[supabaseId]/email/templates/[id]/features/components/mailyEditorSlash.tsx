@@ -2,46 +2,10 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { BlockGroupItem, BlockItem } from '@maily-to/core/blocks'
-import {
-  blockquote,
-  bulletList,
-  button,
-  columns,
-  divider,
-  heading1,
-  heading2,
-  heading3,
-  htmlCodeBlock,
-  image,
-  inlineImage,
-  linkCard,
-  logo,
-  orderedList,
-  repeat,
-  section,
-  spacer,
-  text,
-} from '@maily-to/core/blocks'
 import { getSlashCommandSuggestions, SlashCommandExtension } from '@maily-to/core/extensions'
 import { ReactRenderer } from '@tiptap/react'
 import type { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/suggestion'
-import {
-  AlignLeft,
-  Columns3,
-  Heading1 as Heading1Icon,
-  Heading2 as Heading2Icon,
-  Heading3 as Heading3Icon,
-  ImageIcon,
-  List,
-  ListOrdered,
-  MousePointer2,
-  Quote,
-  RectangleHorizontal,
-  SeparatorHorizontal,
-  Space,
-  SquareCode,
-  Type,
-} from 'lucide-react'
+import { Type } from 'lucide-react'
 import tippy from 'tippy.js'
 
 type SlashCommandListRef = {
@@ -52,169 +16,6 @@ type SlashCommandListProps = {
   items: BlockGroupItem[]
   command: (item: BlockItem) => void
 }
-
-function cloneCommand(command: BlockItem, overrides: Partial<BlockItem>): BlockItem {
-  return {
-    ...command,
-    ...overrides,
-    searchTerms: overrides.searchTerms ?? command.searchTerms,
-  } as BlockItem
-}
-
-function iconClassName(title: string): string {
-  if (title === 'Title' || title === 'Subtitle' || title === 'Heading') {
-    return 'h-3.5 w-3.5 text-zinc-300'
-  }
-
-  return 'h-4 w-4 text-zinc-400'
-}
-
-function renderCommandIcon(item: BlockItem) {
-  switch (item.title) {
-    case 'Text':
-      return <AlignLeft className={iconClassName(item.title)} />
-    case 'Title':
-      return <Heading1Icon className={iconClassName(item.title)} />
-    case 'Subtitle':
-      return <Heading2Icon className={iconClassName(item.title)} />
-    case 'Heading':
-      return <Heading3Icon className={iconClassName(item.title)} />
-    case 'Bullet list':
-      return <List className={iconClassName(item.title)} />
-    case 'Numbered list':
-      return <ListOrdered className={iconClassName(item.title)} />
-    case 'Quote':
-      return <Quote className={iconClassName(item.title)} />
-    case 'Code block':
-      return <SquareCode className={iconClassName(item.title)} />
-    case 'Image':
-      return <ImageIcon className={iconClassName(item.title)} />
-    case 'Logo':
-      return <Type className={iconClassName(item.title)} />
-    case 'Inline image':
-      return <ImageIcon className={iconClassName(item.title)} />
-    case 'Columns':
-      return <Columns3 className={iconClassName(item.title)} />
-    case 'Section':
-      return <RectangleHorizontal className={iconClassName(item.title)} />
-    case 'Repeat':
-      return <MousePointer2 className={iconClassName(item.title)} />
-    case 'Divider':
-      return <SeparatorHorizontal className={iconClassName(item.title)} />
-    case 'Spacer':
-      return <Space className={iconClassName(item.title)} />
-    case 'Button':
-      return <MousePointer2 className={iconClassName(item.title)} />
-    case 'Link card':
-      return <RectangleHorizontal className={iconClassName(item.title)} />
-    default:
-      return item.icon ?? <Type className={iconClassName(item.title)} />
-  }
-}
-
-const textCommands: BlockItem[] = [
-  cloneCommand(text, {
-    title: 'Text',
-    searchTerms: ['text', 'paragraph', 'copy'],
-  }),
-  cloneCommand(heading1, {
-    title: 'Title',
-    searchTerms: ['title', 'h1', 'heading 1'],
-  }),
-  cloneCommand(heading2, {
-    title: 'Subtitle',
-    searchTerms: ['subtitle', 'h2', 'heading 2'],
-  }),
-  cloneCommand(heading3, {
-    title: 'Heading',
-    searchTerms: ['heading', 'h3', 'title 3'],
-  }),
-  cloneCommand(bulletList, {
-    title: 'Bullet list',
-    searchTerms: ['bullet', 'list', 'unordered'],
-  }),
-  cloneCommand(orderedList, {
-    title: 'Numbered list',
-    searchTerms: ['numbered', 'ordered', 'list'],
-  }),
-  cloneCommand(blockquote, {
-    title: 'Quote',
-    searchTerms: ['quote', 'blockquote', 'citation'],
-  }),
-  cloneCommand(htmlCodeBlock, {
-    title: 'Code block',
-    description: 'Add a code block.',
-    searchTerms: ['code', 'code block', 'html', 'custom html'],
-  }),
-]
-
-const mediaCommands: BlockItem[] = [
-  cloneCommand(image, {
-    title: 'Image',
-    searchTerms: ['image', 'photo', 'media'],
-  }),
-  cloneCommand(logo, {
-    title: 'Logo',
-    searchTerms: ['logo', 'brand'],
-  }),
-  cloneCommand(inlineImage, {
-    title: 'Inline image',
-    searchTerms: ['inline image', 'inline photo'],
-  }),
-]
-
-const layoutCommands: BlockItem[] = [
-  cloneCommand(columns, {
-    title: 'Columns',
-    searchTerms: ['columns', 'layout', 'grid'],
-  }),
-  cloneCommand(section, {
-    title: 'Section',
-    searchTerms: ['section', 'container'],
-  }),
-  cloneCommand(repeat, {
-    title: 'Repeat',
-    searchTerms: ['repeat', 'loop'],
-  }),
-  cloneCommand(divider, {
-    title: 'Divider',
-    searchTerms: ['divider', 'separator', 'line'],
-  }),
-  cloneCommand(spacer, {
-    title: 'Spacer',
-    searchTerms: ['spacer', 'space', 'gap'],
-  }),
-]
-
-const actionCommands: BlockItem[] = [
-  cloneCommand(button, {
-    title: 'Button',
-    searchTerms: ['button', 'cta', 'action'],
-  }),
-  cloneCommand(linkCard, {
-    title: 'Link card',
-    searchTerms: ['link card', 'card', 'link'],
-  }),
-]
-
-export const resendMailyBlocks: BlockGroupItem[] = [
-  {
-    title: 'Text',
-    commands: textCommands,
-  },
-  {
-    title: 'Media',
-    commands: mediaCommands,
-  },
-  {
-    title: 'Layout',
-    commands: layoutCommands,
-  },
-  {
-    title: 'Actions',
-    commands: actionCommands,
-  },
-]
 
 const SlashCommandList = forwardRef<SlashCommandListRef, SlashCommandListProps>(function SlashCommandList(
   { command, items: groups },
@@ -340,7 +141,7 @@ const SlashCommandList = forwardRef<SlashCommandListRef, SlashCommandListProps>(
                     onMouseLeave={() => setHoveredKey(null)}
                     onClick={() => selectItem(groupIndex, commandIndex)}
                   >
-                    <span className="maily-slash-menu__icon">{renderCommandIcon(item)}</span>
+                    <span className="maily-slash-menu__icon">{item.icon ?? <Type className="h-4 w-4 text-zinc-400" />}</span>
                     <span className="maily-slash-menu__title">{item.title}</span>
                   </button>
                 )
@@ -367,7 +168,7 @@ const SlashCommandList = forwardRef<SlashCommandListRef, SlashCommandListProps>(
   )
 })
 
-export function createResendSlashCommandExtension(blocks: BlockGroupItem[] = resendMailyBlocks) {
+export function createResendSlashCommandExtension(blocks: BlockGroupItem[]) {
   const defaultSuggestion = getSlashCommandSuggestions(blocks)
 
   return SlashCommandExtension.configure({

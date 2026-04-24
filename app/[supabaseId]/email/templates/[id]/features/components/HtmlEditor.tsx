@@ -6,6 +6,7 @@ import type { editor as MonacoEditorNamespace } from 'monaco-editor'
 import { Check, Copy, Loader2, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { MonacoCodeEditor } from '@/components/editors/MonacoCodeEditor'
+import { buildPreviewDocument } from '@/lib/email-editor-embeds'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -24,31 +25,6 @@ interface HtmlEditorProps {
   onChangeSubject: (subject: string) => void
   onChangePreviewText: (previewText: string) => void
   onChange: (html: string) => void
-}
-
-function buildPreviewDocument(html: string, globalCss: string) {
-  const safeHtml = html.trim()
-  const styleTag = globalCss.trim().length > 0 ? `<style>${globalCss}</style>` : ''
-
-  if (/<html[\s>]/i.test(safeHtml) || /<!doctype/i.test(safeHtml)) {
-    if (/<head[\s>]/i.test(safeHtml)) {
-      return safeHtml.replace(/<\/head>/i, `${styleTag}</head>`)
-    }
-
-    return safeHtml.replace(/<html([^>]*)>/i, `<html$1><head>${styleTag}</head>`)
-  }
-
-  return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    ${styleTag}
-  </head>
-  <body style="margin:0;min-height:100vh;background:#ffffff;">
-    ${safeHtml}
-  </body>
-</html>`
 }
 
 export function HtmlEditor({
@@ -238,7 +214,7 @@ export function HtmlEditor({
             <iframe
               srcDoc={buildPreviewDocument(previewHtml, globalCss)}
               className="h-full w-full border-0 bg-white"
-              sandbox="allow-same-origin"
+              sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
               title="Visualização do email"
             />
           </div>

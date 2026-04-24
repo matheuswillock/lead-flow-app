@@ -1,12 +1,24 @@
 'use client'
 
+import type { Editor as TiptapEditor } from '@tiptap/core'
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Template, EditorMode, TemplateEditorState } from './TemplateEditorTypes'
 import { createTemplateEditorService } from '../services/TemplateEditorService'
+import { templatePickerService } from '../services/TemplatePickerService'
+import {
+  createTemplateEditorAssetService,
+} from '../services/TemplateEditorAssetService'
+import type {
+  GeneratedTemplateXAsset,
+  GenerateTemplateXAssetInput,
+  UploadedTemplateImageAsset,
+} from '../services/ITemplateEditorAssetService'
+import { applyHtmlToEditor } from '../utils/importHtml'
 
 const service = createTemplateEditorService()
+const assetService = createTemplateEditorAssetService()
 
 interface UseTemplateEditorReturn extends TemplateEditorState {
   setMode: (mode: EditorMode) => void
@@ -15,6 +27,13 @@ interface UseTemplateEditorReturn extends TemplateEditorState {
   setPreviewText: (previewText: string) => void
   setMailyJson: (json: unknown) => void
   setHtml: (html: string) => void
+  setVisualEditorInstance: (editor: TiptapEditor | null) => void
+  isTemplatePickerOpen: boolean
+  openTemplatePicker: () => void
+  closeTemplatePicker: () => void
+  applyTemplate: (templateId: string) => Promise<void>
+  uploadEditorImage: (file: File) => Promise<UploadedTemplateImageAsset>
+  generateTemplateXAsset: (input: GenerateTemplateXAssetInput) => Promise<GeneratedTemplateXAsset>
   handleSave: () => Promise<void>
 }
 
@@ -32,9 +51,11 @@ export function useTemplateEditor(
   const [previewText, setPreviewText] = useState('')
   const [mailyJson, setMailyJson] = useState<unknown | null>(null)
   const [html, setHtml] = useState('')
+  const [visualEditorInstance, setVisualEditorInstance] = useState<TiptapEditor | null>(null)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false)
 
   useEffect(() => {
     if (isNew) return
@@ -106,6 +127,54 @@ export function useTemplateEditor(
     }
   }, [isNew, templateId, supabaseId, name, subject, previewText, mode, mailyJson, html, router])
 
+  const uploadEditorImage = useCallback(async (file: File) => {
+    return assetService.uploadImage(file)
+  }, [])
+
+  const generateTemplateXAsset = useCallback(async (input: GenerateTemplateXAssetInput) => {
+    return assetService.generateXAsset(input)
+  }, [])
+
+  const openTemplatePicker = useCallback(() => {
+    setIsTemplatePickerOpen(true)
+  }, [])
+
+  const closeTemplatePicker = useCallback(() => {
+    setIsTemplatePickerOpen(false)
+  }, [])
+
+  const applyTemplate = useCallback(async (templateId: string) => {
+    try {
+      const content = await templatePickerService.getTemplateContent(templateId)
+
+      if (content.mailyJson) {
+        setMailyJson(content.mailyJson)
+        setMode('maily')
+        if (content.html) {
+          setHtml(content.html)
+        }
+      } else if (content.html && visualEditorInstance) {
+        setMode('maily')
+        applyHtmlToEditor(visualEditorInstance, content.html)
+      } else if (content.html) {
+        toast.info('HTML legacy — import em breve')
+      }
+
+      if (content.subject?.trim()) {
+        setSubject(content.subject)
+      }
+
+      if (content.previewText?.trim()) {
+        setPreviewText(content.previewText)
+      }
+
+      setIsTemplatePickerOpen(false)
+    } catch (applyError) {
+      const message = applyError instanceof Error ? applyError.message : 'Erro ao aplicar template'
+      toast.error('Erro ao aplicar template', { description: message })
+    }
+  }, [visualEditorInstance])
+
   return {
     template,
     mode,
@@ -123,6 +192,13 @@ export function useTemplateEditor(
     setPreviewText,
     setMailyJson,
     setHtml,
+    setVisualEditorInstance,
+    isTemplatePickerOpen,
+    openTemplatePicker,
+    closeTemplatePicker,
+    applyTemplate,
+    uploadEditorImage,
+    generateTemplateXAsset,
     handleSave,
   }
 }

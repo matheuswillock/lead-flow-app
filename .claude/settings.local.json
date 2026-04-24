@@ -57,7 +57,8 @@
       "Bash(xargs ls:*)",
       "Bash(grep -n \"AttachmentList\\\\|attachment\" /a/develop/lead-flow-app/app/[supabaseId]/components/LeadDialog.tsx)",
       "Bash(grep -n \"DialogContent\\\\|onOpenChange\\\\|Dialog\" /a/develop/lead-flow-app/app/[supabaseId]/components/LeadDialog.tsx)",
-      "Bash(grep -n \"LeadForm\\\\|leadForm\" /a/develop/lead-flow-app/app/[supabaseId]/components/LeadDialog.tsx)"
+      "Bash(grep -n \"LeadForm\\\\|leadForm\" /a/develop/lead-flow-app/app/[supabaseId]/components/LeadDialog.tsx)",
+      "Bash(find /a/develop/lead-flow-app/app/[supabaseId]/email/templates/[id] -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\))"
     ]
   }
 }

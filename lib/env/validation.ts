@@ -63,6 +63,7 @@ export const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: nonEmptyString.describe('Supabase service role key'),
   SUPABASE_LEAD_ATTACHMENTS_BUCKET: nonEmptyString.describe('Supabase bucket name for lead attachments'),
   SUPABASE_PROFILE_ICONS_BUCKET: nonEmptyString.describe('Supabase bucket name for profile icons'),
+  SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET: nonEmptyString.describe('Supabase bucket name for email template assets'),
 
   // Database PostgreSQL
   POSTGRES_USER: nonEmptyString.describe('PostgreSQL username'),
@@ -126,6 +127,7 @@ export const CRITICAL_ENV_VARS = [
   'NEXT_PUBLIC_SUPABASE_URL',
   'NEXT_PUBLIC_SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_EMAIL_TEMPLATE_ASSETS_BUCKET',
   'DATABASE_URL',
   'DIRECT_URL',
   'ASAAS_API_KEY',

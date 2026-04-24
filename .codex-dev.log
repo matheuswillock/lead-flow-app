@@ -1,0 +1,13 @@
+▲ Next.js 16.2.3 (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://192.168.15.10:3001
+- Environments: .env
+✓ Ready in 823ms
+
+🔍 Validating environment variables...
+
+[EnvService][validate] Starting environment validation...
+[EnvService][validate] ✅ Environment validation successful
+✅ Environment validation passed!
+
+[?25h

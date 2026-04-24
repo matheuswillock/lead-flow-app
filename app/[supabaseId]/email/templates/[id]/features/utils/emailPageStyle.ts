@@ -5,6 +5,14 @@ export type PageStyleSpacingMode = 'uniform' | 'per-side'
 export type PageStyleRadiusMode = 'uniform' | 'per-corner'
 export type BorderStyleKind = 'solid' | 'dashed' | 'dotted'
 export type PageStyleBorderMode = 'uniform' | 'per-side'
+export type PageStyleDimensionUnit = 'px' | '%'
+export type LeadFlowVariableType = 'string' | 'number'
+
+export interface LeadFlowVariableDefinition {
+  key: string
+  type: LeadFlowVariableType
+  fallbackValue?: string
+}
 
 export interface BoxSpacing {
   top: number
@@ -38,6 +46,8 @@ export interface LeadFlowPageStyleUi {
   bodyPaddingMode: PageStyleSpacingMode
   bodyRadiusMode: PageStyleRadiusMode
   bodyBorderMode: PageStyleBorderMode
+  bodyWidthUnit: PageStyleDimensionUnit
+  bodyHeightUnit: PageStyleDimensionUnit
 }
 
 export interface MailyPageStyle extends LeadFlowPageStyleUi {
@@ -57,6 +67,7 @@ export interface LeadFlowEditorMetadata {
   theme: Record<string, unknown>
   globalCss: string
   pageStyleUi: LeadFlowPageStyleUi
+  variables: LeadFlowVariableDefinition[]
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -90,6 +101,8 @@ const DEFAULT_PAGE_STYLE_UI: LeadFlowPageStyleUi = {
   bodyPaddingMode: 'uniform',
   bodyRadiusMode: 'uniform',
   bodyBorderMode: 'uniform',
+  bodyWidthUnit: 'px',
+  bodyHeightUnit: 'px',
 }
 
 function createSpacing(value = 0): BoxSpacing {
@@ -127,7 +140,9 @@ export const DEFAULT_PAGE_STYLE: MailyPageStyle = {
   bodyTextColor: '#000000',
   bodyBackground: '#ffffff',
   bodyWidth: 600,
+  bodyWidthUnit: 'px',
   bodyHeight: 'auto',
+  bodyHeightUnit: 'px',
   bodyPaddingMode: 'uniform',
   bodyPadding: createSpacing(0),
   bodyRadiusMode: 'uniform',
@@ -246,6 +261,7 @@ const DEFAULT_LEAD_FLOW_METADATA: LeadFlowEditorMetadata = {
   theme: {},
   globalCss: '',
   pageStyleUi: { ...DEFAULT_PAGE_STYLE_UI },
+  variables: [],
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -293,6 +309,53 @@ function toHeight(value: unknown): string {
 
 function toBorderStyle(value: unknown, fallback: BorderStyleKind): BorderStyleKind {
   return value === 'dashed' || value === 'dotted' || value === 'solid' ? value : fallback
+}
+
+function toDimensionUnit(value: unknown, fallback: PageStyleDimensionUnit): PageStyleDimensionUnit {
+  return value === 'px' || value === '%' ? value : fallback
+}
+
+function normalizeLeadFlowVariables(value: unknown): LeadFlowVariableDefinition[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const deduped = new Map<string, LeadFlowVariableDefinition>()
+
+  for (const item of value) {
+    if (!isRecord(item)) continue
+
+    const key = typeof item.key === 'string' ? item.key.trim() : ''
+    if (!key) continue
+
+    const normalizedKey = key.toLowerCase()
+    deduped.set(normalizedKey, {
+      key,
+      type: item.type === 'number' ? 'number' : 'string',
+      fallbackValue:
+        typeof item.fallbackValue === 'string' && item.fallbackValue.trim().length > 0
+          ? item.fallbackValue.trim()
+          : undefined,
+    })
+  }
+
+  return Array.from(deduped.values())
+}
+
+function ensurePageStyleUi(leadFlow: UnknownRecord, doc: UnknownRecord) {
+  if (isRecord(leadFlow.pageStyleUi)) {
+    return
+  }
+
+  const derivedStyle = derivePageStyleFromDoc(doc)
+  leadFlow.pageStyleUi = {
+    pagePaddingMode: derivedStyle.pagePaddingMode,
+    bodyPaddingMode: derivedStyle.bodyPaddingMode,
+    bodyRadiusMode: derivedStyle.bodyRadiusMode,
+    bodyBorderMode: derivedStyle.bodyBorderMode,
+    bodyWidthUnit: derivedStyle.bodyWidthUnit,
+    bodyHeightUnit: derivedStyle.bodyHeightUnit,
+  }
 }
 
 function createDefaultMailyJson(): UnknownRecord {
@@ -407,6 +470,7 @@ function ensureLeadFlowStore(doc: UnknownRecord): UnknownRecord {
   if (typeof leadFlow.globalCss !== 'string') {
     leadFlow.globalCss = ''
   }
+  leadFlow.variables = normalizeLeadFlowVariables(leadFlow.variables)
 
   return leadFlow
 }
@@ -438,6 +502,16 @@ function getInput(group: StyleGroup, prop: string, fallback: StyleInput): StyleI
 function readGroupValue(styles: StyleGroup[], defaults: StyleGroup, prop: string): unknown {
   const group = styles.find((style) => style.id === defaults.id || style.classReference === defaults.classReference)
   return group?.inputs.find((input) => input.prop === prop)?.value
+}
+
+function readGroupUnit(
+  styles: StyleGroup[],
+  defaults: StyleGroup,
+  prop: string,
+  fallback: PageStyleDimensionUnit
+): PageStyleDimensionUnit {
+  const group = styles.find((style) => style.id === defaults.id || style.classReference === defaults.classReference)
+  return toDimensionUnit(group?.inputs.find((input) => input.prop === prop)?.unit, fallback)
 }
 
 function isUniformSpacing(value: BoxSpacing) {
@@ -472,12 +546,16 @@ function inferPageStyleUi(values: {
   bodyPadding: BoxSpacing
   bodyRadius: BoxRadius
   bodyBorder: BorderValues
+  bodyWidthUnit: PageStyleDimensionUnit
+  bodyHeightUnit: PageStyleDimensionUnit
 }): LeadFlowPageStyleUi {
   return {
     pagePaddingMode: isUniformSpacing(values.pagePadding) ? 'uniform' : 'per-side',
     bodyPaddingMode: isUniformSpacing(values.bodyPadding) ? 'uniform' : 'per-side',
     bodyRadiusMode: isUniformRadius(values.bodyRadius) ? 'uniform' : 'per-corner',
     bodyBorderMode: isUniformBorder(values.bodyBorder) ? 'uniform' : 'per-side',
+    bodyWidthUnit: values.bodyWidthUnit,
+    bodyHeightUnit: values.bodyHeightUnit,
   }
 }
 
@@ -491,6 +569,8 @@ function normalizePageStyleUi(value: unknown, fallback: LeadFlowPageStyleUi): Le
     bodyPaddingMode: value.bodyPaddingMode === 'per-side' ? 'per-side' : fallback.bodyPaddingMode,
     bodyRadiusMode: value.bodyRadiusMode === 'per-corner' ? 'per-corner' : fallback.bodyRadiusMode,
     bodyBorderMode: value.bodyBorderMode === 'per-side' ? 'per-side' : fallback.bodyBorderMode,
+    bodyWidthUnit: toDimensionUnit(value.bodyWidthUnit, fallback.bodyWidthUnit),
+    bodyHeightUnit: toDimensionUnit(value.bodyHeightUnit, fallback.bodyHeightUnit),
   }
 }
 
@@ -552,7 +632,9 @@ function mergePageStyle(current: MailyPageStyle, patch: Partial<MailyPageStyle>)
     bodyTextColor: patch.bodyTextColor ?? current.bodyTextColor,
     bodyBackground: patch.bodyBackground ?? current.bodyBackground,
     bodyWidth: patch.bodyWidth ?? current.bodyWidth,
+    bodyWidthUnit: patch.bodyWidthUnit ?? current.bodyWidthUnit,
     bodyHeight: patch.bodyHeight !== undefined ? toHeight(patch.bodyHeight) : current.bodyHeight,
+    bodyHeightUnit: patch.bodyHeightUnit ?? current.bodyHeightUnit,
     bodyPaddingMode: patch.bodyPaddingMode ?? current.bodyPaddingMode,
     bodyPadding: patch.bodyPadding ? { ...current.bodyPadding, ...patch.bodyPadding } : { ...current.bodyPadding },
     bodyRadiusMode: patch.bodyRadiusMode ?? current.bodyRadiusMode,
@@ -675,12 +757,26 @@ function derivePageStyleFromDoc(doc: UnknownRecord): MailyPageStyle {
   const bodyPadding = readSpacingValue(styles, DEFAULT_CONTAINER_STYLE_GROUP, DEFAULT_PAGE_STYLE.bodyPadding)
   const bodyRadius = readRadiusValue(styles, DEFAULT_CONTAINER_STYLE_GROUP, DEFAULT_PAGE_STYLE.bodyRadius)
   const bodyBorder = readBorderValue(styles, DEFAULT_CONTAINER_STYLE_GROUP, DEFAULT_PAGE_STYLE.bodyBorder)
+  const bodyWidthUnit = readGroupUnit(
+    styles,
+    DEFAULT_CONTAINER_STYLE_GROUP,
+    'width',
+    DEFAULT_PAGE_STYLE.bodyWidthUnit
+  )
+  const bodyHeightUnit = readGroupUnit(
+    styles,
+    DEFAULT_CONTAINER_STYLE_GROUP,
+    'height',
+    DEFAULT_PAGE_STYLE.bodyHeightUnit
+  )
 
   const inferredUi = inferPageStyleUi({
     pagePadding,
     bodyPadding,
     bodyRadius,
     bodyBorder,
+    bodyWidthUnit,
+    bodyHeightUnit,
   })
   const pageStyleUi = normalizePageStyleUi(leadFlow.pageStyleUi, inferredUi)
   leadFlow.pageStyleUi = cloneValue(pageStyleUi)
@@ -705,7 +801,9 @@ function derivePageStyleFromDoc(doc: UnknownRecord): MailyPageStyle {
       readGroupValue(styles, DEFAULT_CONTAINER_STYLE_GROUP, 'width'),
       DEFAULT_PAGE_STYLE.bodyWidth
     ),
+    bodyWidthUnit: pageStyleUi.bodyWidthUnit,
     bodyHeight: toHeight(readGroupValue(styles, DEFAULT_CONTAINER_STYLE_GROUP, 'height')),
+    bodyHeightUnit: pageStyleUi.bodyHeightUnit,
     bodyPaddingMode: pageStyleUi.bodyPaddingMode,
     bodyPadding,
     bodyRadiusMode: pageStyleUi.bodyRadiusMode,
@@ -732,6 +830,8 @@ export function patchPageStyleInMailyJson(raw: unknown, patch: Partial<MailyPage
     bodyPaddingMode: nextStyle.bodyPaddingMode,
     bodyRadiusMode: nextStyle.bodyRadiusMode,
     bodyBorderMode: nextStyle.bodyBorderMode,
+    bodyWidthUnit: nextStyle.bodyWidthUnit,
+    bodyHeightUnit: nextStyle.bodyHeightUnit,
   }
 
   const bodyBackgroundFallback = DEFAULT_BODY_STYLE_GROUP.inputs.find((input) => input.prop === 'backgroundColor')
@@ -758,13 +858,16 @@ export function patchPageStyleInMailyJson(raw: unknown, patch: Partial<MailyPage
 
   const widthFallback = DEFAULT_CONTAINER_STYLE_GROUP.inputs.find((input) => input.prop === 'width')
   if (widthFallback) {
-    getInput(containerGroup, 'width', widthFallback).value = nextStyle.bodyWidth
+    const widthInput = getInput(containerGroup, 'width', widthFallback)
+    widthInput.value = nextStyle.bodyWidth
+    widthInput.unit = nextStyle.bodyWidthUnit
   }
 
   const heightFallback = DEFAULT_CONTAINER_STYLE_GROUP.inputs.find((input) => input.prop === 'height')
   if (heightFallback) {
-    getInput(containerGroup, 'height', heightFallback).value =
-      nextStyle.bodyHeight === 'auto' ? '' : Math.max(0, Math.floor(Number(nextStyle.bodyHeight)))
+    const heightInput = getInput(containerGroup, 'height', heightFallback)
+    heightInput.value = nextStyle.bodyHeight === 'auto' ? '' : Math.max(0, Math.floor(Number(nextStyle.bodyHeight)))
+    heightInput.unit = nextStyle.bodyHeightUnit
   }
 
   writeSpacing(bodyGroup, DEFAULT_BODY_STYLE_GROUP, nextStyle.pagePadding)
@@ -788,22 +891,17 @@ export function getLeadFlowMetadata(raw: unknown): LeadFlowEditorMetadata {
       bodyPaddingMode: pageStyle.bodyPaddingMode,
       bodyRadiusMode: pageStyle.bodyRadiusMode,
       bodyBorderMode: pageStyle.bodyBorderMode,
+      bodyWidthUnit: pageStyle.bodyWidthUnit,
+      bodyHeightUnit: pageStyle.bodyHeightUnit,
     },
+    variables: cloneValue(leadFlow.variables as LeadFlowVariableDefinition[]),
   }
 }
 
 export function setLeadFlowTheme(raw: unknown, theme: Record<string, unknown>): unknown {
   const doc = ensureDoc(raw)
   const leadFlow = ensureLeadFlowStore(doc)
-  if (!isRecord(leadFlow.pageStyleUi)) {
-    const derivedStyle = derivePageStyleFromDoc(doc)
-    leadFlow.pageStyleUi = {
-      pagePaddingMode: derivedStyle.pagePaddingMode,
-      bodyPaddingMode: derivedStyle.bodyPaddingMode,
-      bodyRadiusMode: derivedStyle.bodyRadiusMode,
-      bodyBorderMode: derivedStyle.bodyBorderMode,
-    }
-  }
+  ensurePageStyleUi(leadFlow, doc)
   leadFlow.theme = cloneValue(theme)
   return doc
 }
@@ -811,15 +909,21 @@ export function setLeadFlowTheme(raw: unknown, theme: Record<string, unknown>): 
 export function setLeadFlowGlobalCss(raw: unknown, globalCss: string): unknown {
   const doc = ensureDoc(raw)
   const leadFlow = ensureLeadFlowStore(doc)
-  if (!isRecord(leadFlow.pageStyleUi)) {
-    const derivedStyle = derivePageStyleFromDoc(doc)
-    leadFlow.pageStyleUi = {
-      pagePaddingMode: derivedStyle.pagePaddingMode,
-      bodyPaddingMode: derivedStyle.bodyPaddingMode,
-      bodyRadiusMode: derivedStyle.bodyRadiusMode,
-      bodyBorderMode: derivedStyle.bodyBorderMode,
-    }
-  }
+  ensurePageStyleUi(leadFlow, doc)
   leadFlow.globalCss = globalCss
+  return doc
+}
+
+export function getLeadFlowVariables(raw: unknown): LeadFlowVariableDefinition[] {
+  const doc = ensureDoc(raw)
+  const leadFlow = ensureLeadFlowStore(doc)
+  return cloneValue(leadFlow.variables as LeadFlowVariableDefinition[])
+}
+
+export function setLeadFlowVariables(raw: unknown, variables: LeadFlowVariableDefinition[]): unknown {
+  const doc = ensureDoc(raw)
+  const leadFlow = ensureLeadFlowStore(doc)
+  ensurePageStyleUi(leadFlow, doc)
+  leadFlow.variables = normalizeLeadFlowVariables(variables)
   return doc
 }

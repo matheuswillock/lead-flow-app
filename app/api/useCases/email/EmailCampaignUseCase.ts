@@ -197,7 +197,7 @@ export class EmailCampaignUseCase {
       // Buscar contatos ativos
       const contacts = await prisma.emailContact.findMany({
         where: { listId: campaign.contactListId, isUnsubscribed: false, isBounced: false },
-        select: { email: true, name: true },
+        select: { email: true, name: true, customFields: true },
       })
 
       if (contacts.length === 0) {
@@ -208,7 +208,14 @@ export class EmailCampaignUseCase {
         return new Output(false, [], ["Nenhum contato ativo na lista para envio"], null)
       }
 
-      const recipientsList = contacts.map((c) => ({ email: c.email, name: c.name ?? undefined }))
+      const recipientsList = contacts.map((contact) => ({
+        email: contact.email,
+        name: contact.name ?? undefined,
+        customFields:
+          contact.customFields && typeof contact.customFields === "object"
+            ? (contact.customFields as Record<string, unknown>)
+            : null,
+      }))
 
       // Dispatch
       const dispatchResult = await this.dispatchService.dispatchBatch({

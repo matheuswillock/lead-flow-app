@@ -23,7 +23,7 @@ function getAlignClass(bodyAlign: MailyPageStyle['bodyAlign']) {
   return 'justify-center'
 }
 
-function resolveBodyHeight(bodyHeight: string) {
+function resolveBodyHeight(bodyHeight: string, unit: MailyPageStyle['bodyHeightUnit']) {
   const normalized = bodyHeight.trim().toLowerCase()
   if (!normalized || normalized === 'auto') {
     return undefined
@@ -34,7 +34,7 @@ function resolveBodyHeight(bodyHeight: string) {
     return undefined
   }
 
-  return `${Math.floor(parsed)}px`
+  return `${Math.floor(parsed)}${unit}`
 }
 
 function spacingToStyleValue(value: MailyPageStyle['pagePadding']) {
@@ -80,12 +80,8 @@ export function EmailCanvasFrame({
   bodyClassName,
   surface = 'visual',
 }: EmailCanvasFrameProps) {
-  const resolvedBodyHeight = resolveBodyHeight(pageStyle.bodyHeight)
-  const contentMaxWidth = `${Math.max(0, Math.floor(pageStyle.bodyWidth))}px`
-  const headerInlinePadding: CSSProperties = {
-    paddingLeft: `${pageStyle.pagePadding.left}px`,
-    paddingRight: `${pageStyle.pagePadding.right}px`,
-  }
+  const resolvedBodyHeight = resolveBodyHeight(pageStyle.bodyHeight, pageStyle.bodyHeightUnit)
+  const contentMaxWidth = `${Math.max(0, Math.floor(pageStyle.bodyWidth))}${pageStyle.bodyWidthUnit}`
 
   const bodyStyles: CSSProperties = {
     width: '100%',
@@ -117,15 +113,15 @@ export function EmailCanvasFrame({
       )}
       style={style}
     >
-      <div className="shrink-0  pb-2 pt-7" style={headerInlinePadding}>
-        <div className={cn('flex w-full', getAlignClass(pageStyle.bodyAlign))}>
-          <div className="w-full" style={{ maxWidth: contentMaxWidth }}>
-            <div className="grid grid-cols-[84px_minmax(0,1fr)_120px] items-center gap-x-4 border-b border-[#d0d0d0] pb-2">
+      <div className="shrink-0 px-6 pb-2 pt-7">
+        <div className="flex w-full justify-center">
+          <div className="w-full max-w-[600px]">
+            <div className="grid grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-x-4 border-b border-zinc-200 pb-2">
               <span className="text-[13px] font-medium text-zinc-500">From</span>
               <span className="truncate text-[13px] text-zinc-400">Acme &lt;acme@example.com&gt;</span>
-              <span className="justify-self-end text-[13px] font-medium text-zinc-500">Reply-To</span>
+              <button type="button" className="text-[13px] text-zinc-500 hover:text-zinc-700">Reply-To</button>
             </div>
-            <div className="mt-1 grid grid-cols-[84px_minmax(0,1fr)_120px] items-center gap-x-4 border-b border-[#d0d0d0] pb-2">
+            <div className="mt-1 grid grid-cols-[80px_minmax(0,1fr)_auto] items-center gap-x-4 border-b border-zinc-200 pb-2">
               <span className="text-[13px] font-medium text-zinc-500">Subject</span>
               <input
                 value={subject}
@@ -137,7 +133,7 @@ export function EmailCanvasFrame({
                 value={previewText}
                 onChange={(event) => onChangePreviewText(event.target.value)}
                 placeholder="Preview text"
-                className="min-w-0 bg-white text-right text-[15px] text-zinc-600 outline-none placeholder:text-zinc-400"
+                className="w-[120px] min-w-0 bg-white text-right text-[13px] text-zinc-500 outline-none placeholder:text-zinc-400"
               />
             </div>
           </div>
@@ -154,7 +150,7 @@ export function EmailCanvasFrame({
         }}
       >
         <div className={cn('flex min-h-0 flex-1', getAlignClass(pageStyle.bodyAlign))}>
-          <div className={cn('flex min-h-0 flex-1 flex-col overflow-hidden', bodyClassName)} style={bodyStyles}>
+          <div className={cn('flex min-h-0 w-full max-w-full flex-col overflow-hidden', bodyClassName)} style={bodyStyles}>
             {children}
           </div>
         </div>
