@@ -197,7 +197,8 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     const customerId = await this.ensureCustomer(input.master);
     const subscription = await this.getCurrentSubscription(input.master);
     const billingType = normalizeBillingType(subscription.billingType);
-    const dueDate = new Date().toISOString().slice(0, 10);
+    const ownerTz = input.master.timezone ?? DEFAULT_TZ;
+    const dueDate = formatInTz(new Date(), "yyyy-MM-dd", ownerTz);
     const externalReference = `pending-action-${input.pendingActionId}`;
     const paymentPayload: Record<string, unknown> = {
       customer: customerId,

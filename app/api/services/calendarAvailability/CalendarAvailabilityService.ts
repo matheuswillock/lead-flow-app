@@ -9,30 +9,9 @@ import {
   calendarAvailabilityRepository,
 } from "@/app/api/infra/data/repositories/calendarAvailability/CalendarAvailabilityRepository";
 import type { ICalendarAvailabilityRepository } from "@/app/api/infra/data/repositories/calendarAvailability/ICalendarAvailabilityRepository";
+import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
 
 const SLOT_MINUTES = 30;
-const TIMEZONE = "America/Sao_Paulo";
-
-const dateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: TIMEZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
-const timeFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: TIMEZONE,
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-const getMinutesInDay = (date: Date) => {
-  const parts = timeFormatter.formatToParts(date);
-  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-  return hour * 60 + minute;
-};
 
 const formatTimeSlot = (minutes: number) => {
   const hour = Math.floor(minutes / 60);
@@ -51,6 +30,7 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
 
   async getAvailability(input: GetCalendarAvailabilityInput): Promise<CalendarAvailabilityResult> {
     const { teamId, requestedCloserIds, date, excludeLeadId } = input;
+    const timezone = resolveTimezone(input.userTimezone ?? DEFAULT_TZ);
 
     const memberProfileIds = await this.repository.findTeamMemberProfileIds(teamId, requestedCloserIds);
     if (memberProfileIds.length !== requestedCloserIds.length) {
@@ -71,19 +51,18 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
 
     const preservedSlotByCloser = new Map<string, string>();
     if (excludedLead?.closerId && excludedLead.meetingDate) {
-      const excludedDateKey = dateFormatter.format(excludedLead.meetingDate);
+      const excludedDateKey = formatLocalDateValue(excludedLead.meetingDate, timezone);
       if (excludedDateKey === date) {
         preservedSlotByCloser.set(
           excludedLead.closerId,
-          formatTimeSlot(getMinutesInDay(excludedLead.meetingDate))
+          formatTimeSlot(getMinutesInTz(excludedLead.meetingDate, timezone))
         );
       }
     }
 
-    const dayStart = new Date(`${date}T00:00:00-03:00`);
-    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
-    const timeMin = `${date}T00:00:00-03:00`;
-    const timeMax = `${date}T23:59:59-03:00`;
+    const { start: dayStart, end: dayEnd } = getDayRangeInTz(date, timezone);
+    const timeMin = dayStart.toISOString();
+    const timeMax = dayEnd.toISOString();
 
     const internalLeads = await this.repository.findScheduledLeadsForDay({
       teamId,
@@ -105,9 +84,9 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
     );
 
     const now = new Date();
-    const todayKey = dateFormatter.format(now);
+    const todayKey = formatLocalDateValue(now, timezone);
     const isToday = date === todayKey;
-    const nowMinutes = getMinutesInDay(now);
+    const nowMinutes = getMinutesInTz(now, timezone);
 
     const slots = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => index * SLOT_MINUTES);
 
@@ -129,8 +108,8 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
             const startClamp = startDate < dayStart ? dayStart : startDate;
             const endClamp = endDate > dayEnd ? dayEnd : endDate;
 
-            const busyStart = getMinutesInDay(startClamp);
-            const busyEnd = getMinutesInDay(endClamp);
+            const busyStart = getMinutesInTz(startClamp, timezone);
+            const busyEnd = getMinutesInTz(endClamp, timezone);
 
             return slotStart < busyEnd && slotEnd > busyStart;
           });

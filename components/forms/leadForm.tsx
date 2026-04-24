@@ -28,6 +28,7 @@ import { Loader2, X } from "lucide-react";
 import { CopyIcon } from "@/components/animate-ui/icons/copy";
 import { toast } from "sonner";
 import { useIsInView } from "@/hooks/use-is-in-view";
+import { useTimezone } from "@/app/context/TimezoneContext";
 import {
     getPendingRequiredFieldsFeedback,
     LEAD_REQUIRED_FIELD_ORDER,
@@ -143,6 +144,7 @@ export function LeadForm({
     currentProfileId,
     currentUserIsSdr = false,
 }: ILeadFormProps) {
+    const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
     const [ticketDisplay, setTicketDisplay] = useState("");
@@ -739,6 +741,7 @@ export function LeadForm({
                                     disablePastDates={true}
                                     availableTimes={availableTimes}
                                     invalid={isMeetingDateChanged}
+                                    tz={tz}
                                 />
                             </FormControl>
                         </FormItem>
@@ -1122,6 +1125,7 @@ export function LeadForm({
                                         disabled={isLoading || isUpdating}
                                         disablePastDates={false}
                                         showTime={false}
+                                        tz={tz}
                                     />
                                 </FormControl>
                             </FormItem>

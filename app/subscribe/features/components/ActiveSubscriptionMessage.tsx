@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AlertCircle, ArrowRight, LogOut } from 'lucide-react';
 import { createSupabaseBrowser } from '@/lib/supabase/browser';
 import { toast } from 'sonner';
+import { detectBrowserTimezone, formatInTz, parseDateKeyToUtc } from '@/lib/dates';
 
 interface ActiveSubscriptionMessageProps {
   userExists: boolean;
@@ -27,6 +28,7 @@ export function ActiveSubscriptionMessage({
   subscription,
 }: ActiveSubscriptionMessageProps) {
   const router = useRouter();
+  const browserTz = detectBrowserTimezone();
   
   const handleNotMe = async () => {
     try {
@@ -97,7 +99,7 @@ export function ActiveSubscriptionMessage({
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Próximo vencimento:</span>
                   <span className="font-semibold">
-                    {new Date(subscription.nextDueDate).toLocaleDateString('pt-BR')}
+                    {formatInTz(parseDateKeyToUtc(subscription.nextDueDate, browserTz), 'dd/MM/yyyy', browserTz)}
                   </span>
                 </div>
               )}

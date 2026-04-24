@@ -25,6 +25,7 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
       select: {
         id: true,
         email: true,
+        timezone: true,
         googleCalendarConnected: true,
         googleRefreshToken: true,
         googleAccessToken: true,

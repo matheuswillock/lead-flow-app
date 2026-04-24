@@ -13,6 +13,8 @@ import { CopyIcon } from "@/components/ui/copy";
 import { toast } from "sonner";
 import useBoardContext from "../context/BoardHook";
 import { cn } from "@/lib/utils";
+import { useTimezone } from "@/app/context/TimezoneContext";
+import { formatInTz } from "@/lib/dates";
 
 interface LeadCardProps {
     lead: LeadResponseDTO;
@@ -38,6 +40,7 @@ export function LeadCard({
     attachmentCount = 0,
 }: LeadCardProps) {
     const { leadCardDisplay } = useBoardContext();
+    const { tz } = useTimezone();
     const showName = leadCardDisplay.name;
     const showId = leadCardDisplay.id;
     const showEntryDate = leadCardDisplay.entryDate;
@@ -93,13 +96,7 @@ export function LeadCard({
         if (!value) return null;
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return value;
-        return date.toLocaleDateString("pt-BR", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-        });
+        return formatInTz(date, "dd/MM/yyyy HH:mm", tz);
     };
 
     const closerName = lead.closer?.fullName || lead.closer?.email;
@@ -151,7 +148,7 @@ export function LeadCard({
                     )}
                     {showEntryDate && (
                         <div className="mt-1 text-xs text-accent-foreground">
-                            Entrada: {formatDate(lead.createdAt)}
+                            Entrada: {formatDate(lead.createdAt, tz)}
                         </div>
                     )}
                 </CardHeader>

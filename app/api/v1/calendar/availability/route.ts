@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       requestedCloserIds,
       date,
       excludeLeadId,
+      userTimezone: teamAccess.access.userTimezone,
     });
 
     if (!output.isValid) {

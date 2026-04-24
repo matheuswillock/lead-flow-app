@@ -13,16 +13,27 @@ export {
   isPastInTz,
   isFutureInTz,
   differenceInDaysInTz,
+  getMinutesInTz,
+  getDayRangeInTz,
 } from "./core"
 
 export { formatInTz, formatRelativeInTz } from "./formatters"
 
-export { parseLocalToUtc, formatLocalInputValue } from "./parse"
+export {
+  parseLocalToUtc,
+  formatLocalInputValue,
+  formatLocalDateValue,
+  formatLocalTimeValue,
+  parseDateKeyToUtc,
+  parseDateKeyAndTimeToUtc,
+  combineDateAndTimeInTz,
+} from "./parse"
 
 export { isValidTimezone, resolveTimezone, detectBrowserTimezone } from "./validators"
 
 export {
   PROFILE_TIMEZONE_OPTIONS,
+  getProfileTimezoneOptions,
   getTimezoneOption,
   getTimezoneDisplayName,
   type TimezoneOption,

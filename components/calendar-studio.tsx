@@ -34,6 +34,8 @@ import { CalendarDayButton } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatInTz, formatLocalDateValue, getMinutesInTz, nowInTz, parseDateKeyToUtc } from "@/lib/dates"
 
 type AttendeeRole = "closer" | "sdr" | "lead" | "extra"
 
@@ -147,9 +149,14 @@ const ALL_TIME_SLOTS = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, inde
   return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`
 })
 
-const getNextSlotTime = () => {
-  const now = new Date()
-  const totalMinutes = now.getHours() * 60 + now.getMinutes()
+const getCalendarDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`
+
+const getNextSlotTime = (tz: string) => {
+  const now = nowInTz(tz)
+  const totalMinutes = getMinutesInTz(now, tz)
   const rounded = Math.ceil(totalMinutes / SLOT_MINUTES) * SLOT_MINUTES
   const clamped = Math.min(rounded, 24 * 60 - SLOT_MINUTES)
   const hour = Math.floor(clamped / 60)
@@ -157,46 +164,27 @@ const getNextSlotTime = () => {
   return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`
 }
 
-const formatTime = (date: Date) =>
-  date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+const formatTime = (date: Date, tz: string) => formatInTz(date, "HH:mm", tz)
 
 const timeToMinutes = (time: string) => {
   const [hours, minutes] = time.split(":").map((part) => Number(part))
   return hours * 60 + minutes
 }
 
-const dateToMinutes = (date: Date) =>
-  date.getHours() * 60 +
-  date.getMinutes() +
-  date.getSeconds() / 60 +
-  date.getMilliseconds() / 60000
+const dateToMinutes = (date: Date, tz: string) => getMinutesInTz(date, tz)
 
 const getSlotIndex = (minutes: number) => Math.floor(minutes / SLOT_MINUTES)
 
-const isWithinSlot = (meetingDate: Date, slotStart: string) => {
+const isWithinSlot = (meetingDate: Date, slotStart: string, tz: string) => {
   const startMinutes = timeToMinutes(slotStart)
-  const meetingMinutes = dateToMinutes(meetingDate)
+  const meetingMinutes = dateToMinutes(meetingDate, tz)
   return getSlotIndex(meetingMinutes) === getSlotIndex(startMinutes)
 }
 
-const formatDateRange = (from: Date, to: Date) => {
-  const day = from.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  })
-  return `${day} ${formatTime(from)} - ${formatTime(to)}`
+const formatDateRange = (from: Date, to: Date, tz: string) => {
+  const day = formatInTz(from, "dd/MM/yyyy", tz)
+  return `${day} ${formatTime(from, tz)} - ${formatTime(to, tz)}`
 }
-
-const toDateKey = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate()
-  ).padStart(2, "0")}`
-
-const isSameDay = (left: Date, right: Date) =>
-  left.getFullYear() === right.getFullYear() &&
-  left.getMonth() === right.getMonth() &&
-  left.getDate() === right.getDate()
 
 const getCloserLabel = (lead: Lead, closersById: Map<string, string>) =>
   lead.closer?.fullName ||
@@ -229,6 +217,7 @@ const getEventPriority = (type: CalendarEventType) => {
 }
 
 export default function CalendarStudio() {
+  const { tz } = useTimezone()
   const {
     data,
     isLoading,
@@ -244,7 +233,7 @@ export default function CalendarStudio() {
   } = useBoardContext()
 
   const [date, setDate] = React.useState<Date | undefined>(new Date())
-  const [selectedTime, setSelectedTime] = React.useState<string | null>(getNextSlotTime())
+  const [selectedTime, setSelectedTime] = React.useState<string | null>(() => getNextSlotTime(tz))
   const [leadNameFilter, setLeadNameFilter] = React.useState("")
   const [leadIdFilter, setLeadIdFilter] = React.useState("")
   const [closerFilter, setCloserFilter] = React.useState<string[]>([])
@@ -309,10 +298,7 @@ export default function CalendarStudio() {
     [supabaseId, activeTeamId, canToggleMeetingHeald, patchLead],
   )
 
-  const todayStart = React.useMemo(() => {
-    const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  }, [])
+  const todayKey = React.useMemo(() => formatLocalDateValue(nowInTz(tz), tz), [tz])
 
   const allLeads = React.useMemo(
     () => Object.values(data).flat(),
@@ -370,22 +356,27 @@ export default function CalendarStudio() {
   const dayEventCounts = React.useMemo(() => {
     const counts = new Map<string, number>()
     calendarEvents.forEach((event) => {
-      const key = toDateKey(event.date)
+      const key = formatLocalDateValue(event.date, tz)
       counts.set(key, (counts.get(key) ?? 0) + 1)
     })
     return counts
-  }, [calendarEvents])
+  }, [calendarEvents, tz])
+
+  const selectedDateKey = React.useMemo(
+    () => (date ? getCalendarDateKey(date) : null),
+    [date]
+  )
 
   const dayEvents = React.useMemo(() => {
-    if (!date) return [] as CalendarEventItem[]
+    if (!selectedDateKey) return [] as CalendarEventItem[]
     return calendarEvents
-      .filter((event) => isSameDay(date, event.date))
+      .filter((event) => formatLocalDateValue(event.date, tz) === selectedDateKey)
       .sort((left, right) => {
         const byTime = left.date.getTime() - right.date.getTime()
         if (byTime !== 0) return byTime
         return getEventPriority(left.type) - getEventPriority(right.type)
       })
-  }, [date, calendarEvents])
+  }, [selectedDateKey, calendarEvents, tz])
 
   const filteredEvents = React.useMemo(() => {
     const nameQuery = leadNameFilter.trim().toLowerCase()
@@ -393,7 +384,7 @@ export default function CalendarStudio() {
     return dayEvents.filter((event) => {
       const lead = event.lead
       const eventDate = event.date
-      const matchesTime = !selectedTime || isWithinSlot(eventDate, selectedTime)
+      const matchesTime = !selectedTime || isWithinSlot(eventDate, selectedTime, tz)
       const matchesName =
         !nameQuery || lead.name.toLowerCase().includes(nameQuery)
       const matchesId =
@@ -405,7 +396,7 @@ export default function CalendarStudio() {
         (lead.closerId ? closerFilter.includes(lead.closerId) : false)
       return matchesTime && matchesName && matchesId && matchesCloser
     })
-  }, [dayEvents, leadNameFilter, leadIdFilter, selectedTime, closerFilter])
+  }, [dayEvents, leadNameFilter, leadIdFilter, selectedTime, closerFilter, tz])
 
   const leadPickerCandidates = React.useMemo(() => {
     const query = leadPickerQuery.trim().toLowerCase()
@@ -497,9 +488,8 @@ export default function CalendarStudio() {
       .map((e) => e.lead.id)
       .sort()
       .join(",")
-    const dateKey = date ? `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}` : "none"
-    return `${dateKey}|${meetingIds}`
-  }, [date, dayEvents])
+    return `${selectedDateKey ?? "none"}|${meetingIds}`
+  }, [selectedDateKey, dayEvents])
 
   React.useEffect(() => {
     const meetingEvents = dayEvents.filter((e) => e.type === "meeting")
@@ -584,14 +574,14 @@ export default function CalendarStudio() {
               showOutsideDays={false}
               className="bg-transparent p-0 [--cell-size:2.25rem] sm:[--cell-size:2.5rem]"
               modifiers={{
-                past: (day) => day < todayStart,
+                past: (day) => getCalendarDateKey(day) < todayKey,
               }}
               modifiersClassNames={{
                 past: "opacity-50 line-through",
               }}
               components={{
                 DayButton: (props) => {
-                  const count = dayEventCounts.get(toDateKey(props.day.date)) ?? 0
+                  const count = dayEventCounts.get(getCalendarDateKey(props.day.date)) ?? 0
                   return (
                     <CalendarDayButton
                       {...props}
@@ -607,12 +597,12 @@ export default function CalendarStudio() {
               }}
               formatters={{
                 formatMonthCaption: (value) => {
-                  const raw = value.toLocaleString("pt-BR", { month: "short" })
+                  const raw = formatInTz(value, "MMM", tz)
                   const month = raw.endsWith(".") ? raw : `${raw}.`
-                  return `${month} ${value.getFullYear()}`
+                  return `${month} ${formatInTz(value, "yyyy", tz)}`
                 },
                 formatWeekdayName: (value) => {
-                  return value.toLocaleString("pt-BR", { weekday: "short" })
+                  return formatInTz(value, "EEE", tz)
                 },
               }}
             />
@@ -742,13 +732,12 @@ export default function CalendarStudio() {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium">
-                  {date
-                    ? date.toLocaleDateString("pt-BR", {
-                        weekday: "long",
-                        day: "2-digit",
-                        month: "long",
-                        year: "numeric",
-                      })
+                  {selectedDateKey
+                    ? formatInTz(
+                        parseDateKeyToUtc(selectedDateKey, tz),
+                        "EEEE, dd 'de' MMMM 'de' yyyy",
+                        tz
+                      )
                     : "Selecione um dia"}
                 </div>
                 <div className="text-xs text-muted-foreground">
@@ -848,14 +837,8 @@ export default function CalendarStudio() {
 
                         <div className={cn("text-xs text-muted-foreground", isCanceled && "line-through")}>
                           {isMeeting && meetingStart && meetingEnd
-                            ? formatDateRange(meetingStart, meetingEnd)
-                            : event.date.toLocaleString("pt-BR", {
-                                day: "2-digit",
-                                month: "2-digit",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                            ? formatDateRange(meetingStart, meetingEnd, tz)
+                            : formatInTz(event.date, "dd/MM/yyyy HH:mm", tz)}
                         </div>
                         <div className={cn("text-xs text-muted-foreground", isCanceled && "line-through")}>
                           Closer: {closerLabel}

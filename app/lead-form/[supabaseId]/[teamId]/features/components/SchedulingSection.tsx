@@ -25,6 +25,11 @@ import {
 } from "@/components/ui/select";
 import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
 import type { GuestCandidateOption } from "../services/IPublicLeadFormService";
+import {
+  formatLocalDateValue,
+  formatLocalTimeValue,
+  parseDateKeyAndTimeToUtc,
+} from "@/lib/dates";
 
 interface SchedulingSectionProps {
   leadName: string;
@@ -42,17 +47,6 @@ interface SchedulingSectionProps {
   guestCandidates: GuestCandidateOption[];
   disabled?: boolean;
 }
-
-const TIMEZONE = "America/Sao_Paulo";
-
-const toDateKey = (date: Date) => {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIMEZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-};
 
 const isValidDate = (value?: Date): value is Date =>
   value instanceof Date && !Number.isNaN(value.getTime());
@@ -99,6 +93,7 @@ export function SchedulingSection({
     availableTimes,
     availabilityLoading,
     fetchAvailability,
+    timezone,
   } = usePublicLeadFormContext();
 
   const [hasLoadedAvailability, setHasLoadedAvailability] = useState(false);
@@ -126,27 +121,27 @@ export function SchedulingSection({
       return;
     }
 
-    const dateKey = toDateKey(meetingDate);
+    const dateKey = formatLocalDateValue(meetingDate, timezone);
     setHasLoadedAvailability(true);
     void fetchAvailability(closerId, dateKey);
-  }, [closerId, meetingDate, fetchAvailability]);
+  }, [closerId, meetingDate, fetchAvailability, timezone]);
 
   useEffect(() => {
     if (!isValidDate(meetingDate) || availableTimes.length === 0) return;
 
-    const formatTime = (d: Date) =>
-      d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    const currentTime = formatTime(meetingDate);
+    const currentTime = formatLocalTimeValue(meetingDate, timezone);
 
     if (!availableTimes.includes(currentTime)) {
-      const [hours, minutes] = availableTimes[0].split(":").map(Number);
-      const nextDate = new Date(meetingDate);
-      nextDate.setHours(hours, minutes, 0, 0);
+      const nextDate = parseDateKeyAndTimeToUtc(
+        formatLocalDateValue(meetingDate, timezone),
+        availableTimes[0],
+        timezone
+      );
       if (isValidDate(nextDate)) {
         onMeetingDateChange(nextDate);
       }
     }
-  }, [availableTimes, meetingDate, onMeetingDateChange]);
+  }, [availableTimes, meetingDate, onMeetingDateChange, timezone]);
 
   const handleGuestDraftChange = (
     value: string,
@@ -218,6 +213,7 @@ export function SchedulingSection({
         availableTimes={availableTimes}
         timeLoading={availabilityLoading && !!closerId}
         timeLoadingText="Carregando agenda..."
+        tz={timezone}
       />
 
       {!closerId && (

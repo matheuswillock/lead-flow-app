@@ -17,6 +17,7 @@ import type {
   BackofficeClientDetailsFilters,
   BackofficePagination,
 } from "./BackofficeClientDetailsTypes"
+import { useTimezone } from "@/app/context/TimezoneContext"
 
 const DEFAULT_FILTERS: BackofficeClientDetailsFilters = {
   query: "",
@@ -98,6 +99,7 @@ interface Props {
 }
 
 export function BackofficeClientDetailsProvider({ children, masterId, service }: Props) {
+  const { tz } = useTimezone()
   const [details, setDetails] = useState<BackofficeClientDetails | null>(null)
   const [teamsPagination, setTeamsPagination] = useState<BackofficePagination>(
     DEFAULT_TEAMS_PAGINATION
@@ -201,6 +203,7 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
         pageSize: targetPageSize,
         status: targetFilters.status,
         period: targetFilters.period,
+        timezone: tz,
       })
 
       setInvoices(result.items)
@@ -221,7 +224,7 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
       setIsInvoicesLoading(false)
       invoicesInFlight.current = false
     }
-  }, [masterId, service])
+  }, [masterId, service, tz])
 
   const fetchDetails = useCallback(async (options?: {
     filters?: Partial<BackofficeClientDetailsFilters>

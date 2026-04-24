@@ -1,4 +1,5 @@
 import { DEFAULT_TZ } from "./DEFAULT_TZ"
+import { resolveTimezone } from "./validators"
 
 export interface TimezoneOption {
   value: string
@@ -30,4 +31,22 @@ export function getTimezoneOption(timezone: string): TimezoneOption | undefined 
 
 export function getTimezoneDisplayName(timezone: string): string {
   return getTimezoneOption(timezone)?.label ?? timezone
+}
+
+export function getProfileTimezoneOptions(timezone?: string | null): TimezoneOption[] {
+  const resolvedTimezone = resolveTimezone(timezone)
+  const currentOption = getTimezoneOption(resolvedTimezone)
+
+  if (currentOption) {
+    return [...PROFILE_TIMEZONE_OPTIONS]
+  }
+
+  return [
+    {
+      value: resolvedTimezone,
+      label: resolvedTimezone,
+      description: "Timezone atual salva na conta. Você pode trocar para uma das opções padrão abaixo.",
+    },
+    ...PROFILE_TIMEZONE_OPTIONS,
+  ]
 }

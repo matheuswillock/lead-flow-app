@@ -21,6 +21,7 @@ export interface IBackofficeClientDetailsService {
       pageSize?: number
       status?: BackofficeClientInvoiceFilters["status"]
       period?: BackofficeClientInvoiceFilters["period"]
+      timezone?: string
     }
   ): Promise<BackofficeClientInvoicesResult>
 }

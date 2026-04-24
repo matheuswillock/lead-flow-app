@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/table"
 import { useContatosContext } from "../context/ContatosContext"
 import type { Contact } from "../context/ContatosTypes"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatInTz } from "@/lib/dates"
 
 function ContactStatusBadge({ contact }: { contact: Contact }) {
   if (contact.isComplained) return <Badge variant="destructive">Reclamação</Badge>
@@ -84,6 +86,7 @@ function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfi
 }
 
 export function ContactsTable() {
+  const { tz } = useTimezone()
   const {
     contacts,
     totalContacts: total,
@@ -143,7 +146,7 @@ export function ContactsTable() {
                   <TableCell className="text-sm">{contact.name ?? "—"}</TableCell>
                   <TableCell><ContactStatusBadge contact={contact} /></TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {new Date(contact.createdAt).toLocaleDateString("pt-BR")}
+                    {formatInTz(new Date(contact.createdAt), "dd/MM/yyyy", tz)}
                   </TableCell>
                   <TableCell>
                     <DeleteContactDialog

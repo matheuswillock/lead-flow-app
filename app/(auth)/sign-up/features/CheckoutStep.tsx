@@ -22,6 +22,7 @@ import { useSignUp } from "./signUpContext";
 import { signUpCheckoutSchema, type SignUpCheckoutFormData } from "@/lib/validations/checkoutSchema";
 import { usePaymentPolling } from "@/hooks/usePaymentPolling";
 import { toast } from "sonner";
+import { addMonthsInTz, detectBrowserTimezone, formatInTz, parseDateKeyToUtc } from "@/lib/dates";
 
 const PLAN_PRICE = 59.9;
 
@@ -47,6 +48,7 @@ interface CheckoutStepProps {
 }
 
 export function CheckoutStep({ onBack }: CheckoutStepProps) {
+  const browserTz = detectBrowserTimezone();
   const router = useRouter();
   const { createdUserData, goBackToForm } = useSignUp();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,10 +78,9 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
   const billingType = form.watch("billingType");
   const [countdown, setCountdown] = useState<string | null>(null);
   const firstChargeDate = new Date();
-  const lastChargeDate = new Date();
-  lastChargeDate.setFullYear(lastChargeDate.getFullYear() + 1);
-  const formattedFirstCharge = firstChargeDate.toLocaleDateString("pt-BR");
-  const formattedLastCharge = lastChargeDate.toLocaleDateString("pt-BR");
+  const lastChargeDate = addMonthsInTz(firstChargeDate, 12, browserTz);
+  const formattedFirstCharge = formatInTz(firstChargeDate, "dd/MM/yyyy", browserTz);
+  const formattedLastCharge = formatInTz(lastChargeDate, "dd/MM/yyyy", browserTz);
 
   const handleError = (message: string) => {
     setError(message);
@@ -523,7 +524,7 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
                             <div>
                               <p className="text-sm font-medium">Boleto gerado</p>
                               <p className="text-xs text-muted-foreground">
-                                Vencimento: {new Date(boletoData.dueDate).toLocaleDateString("pt-BR")}
+                                Vencimento: {formatInTz(parseDateKeyToUtc(boletoData.dueDate, browserTz), "dd/MM/yyyy", browserTz)}
                               </p>
                             </div>
                           </div>

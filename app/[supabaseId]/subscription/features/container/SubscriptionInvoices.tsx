@@ -8,12 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FileText, Download, Search } from 'lucide-react';
 import type { SubscriptionInvoice } from '../types/subscription.types';
+import { useTimezone } from '@/app/context/TimezoneContext';
+import { formatInTz, parseDateKeyToUtc } from '@/lib/dates';
 
 interface SubscriptionInvoicesProps {
   invoices: SubscriptionInvoice[];
 }
 
 export function SubscriptionInvoices({ invoices }: SubscriptionInvoicesProps) {
+  const { tz } = useTimezone();
   const [query, setQuery] = useState('');
   const [selectedYear, setSelectedYear] = useState('all');
 
@@ -39,7 +42,7 @@ export function SubscriptionInvoices({ invoices }: SubscriptionInvoicesProps) {
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    return formatInTz(parseDateKeyToUtc(dateString, tz), 'dd/MM/yyyy', tz);
   };
 
   const formatCurrency = (value: number) => {
@@ -53,15 +56,15 @@ export function SubscriptionInvoices({ invoices }: SubscriptionInvoicesProps) {
     () =>
       invoices.map((invoice) => {
         const referenceDate = invoice.dueDate || invoice.paymentDate || '';
-        const parsed = referenceDate ? new Date(referenceDate) : null;
-        const year = parsed && !Number.isNaN(parsed.getTime()) ? String(parsed.getFullYear()) : 'Sem ano';
+        const parsed = referenceDate ? parseDateKeyToUtc(referenceDate, tz) : null;
+        const year = parsed ? formatInTz(parsed, 'yyyy', tz) : 'Sem ano';
 
         return {
           ...invoice,
           year,
         };
       }),
-    [invoices]
+    [invoices, tz]
   );
 
   const years = useMemo(() => {

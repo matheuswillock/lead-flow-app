@@ -4,6 +4,7 @@ import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createClient } from "@supabase/supabase-js";
 import { getFullUrl } from "@/lib/utils/app-url";
+import { addMonthsInTz, formatInTz, resolveTimezone, startOfDayInTz } from "@/lib/dates";
 
 // Helper para detectar ambiente de produção
 function getIsProduction() {
@@ -167,12 +168,11 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       // 2. Criar Asaas Checkout com assinatura recorrente
       // nextDueDate = data da PRIMEIRA cobrança (hoje, para cobrar no ato)
       // A segunda cobrança será automaticamente agendada para +1 mês (MONTHLY)
-      const now = new Date();
-      const nextDueDateStr = now.toISOString().slice(0, 19).replace('T', ' '); // "2026-01-18 12:00:00"
-      
-      const endDate = new Date();
-      endDate.setFullYear(endDate.getFullYear() + 1);
-      const endDateStr = endDate.toISOString().slice(0, 19).replace('T', ' '); // "2027-01-18 12:00:00"
+      const ownerTz = resolveTimezone(profile.timezone);
+      const periodStart = startOfDayInTz(new Date(), ownerTz);
+      const nextDueDateStr = formatInTz(periodStart, "yyyy-MM-dd HH:mm:ss", ownerTz);
+      const endDate = addMonthsInTz(periodStart, 12, ownerTz);
+      const endDateStr = formatInTz(endDate, "yyyy-MM-dd HH:mm:ss", ownerTz);
 
       console.info('📝 [createSubscriptionCheckout] Criando Asaas Checkout...');
       console.info('📅 [createSubscriptionCheckout] Datas da assinatura:', {
@@ -425,12 +425,11 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       // 4. Criar Asaas Checkout para licença adicional
       // Usar checkout hospedado do Asaas (permite escolher forma de pagamento)
-      const now = new Date();
-      const nextDueDateStr = now.toISOString().slice(0, 19).replace('T', ' ');
-      
-      const endDate = new Date();
-      endDate.setFullYear(endDate.getFullYear() + 1);
-      const endDateStr = endDate.toISOString().slice(0, 19).replace('T', ' ');
+      const ownerTz = resolveTimezone(manager.timezone);
+      const periodStart = startOfDayInTz(new Date(), ownerTz);
+      const nextDueDateStr = formatInTz(periodStart, "yyyy-MM-dd HH:mm:ss", ownerTz);
+      const endDate = addMonthsInTz(periodStart, 12, ownerTz);
+      const endDateStr = formatInTz(endDate, "yyyy-MM-dd HH:mm:ss", ownerTz);
 
       console.info('📝 [createOperatorCheckout] Criando Asaas Checkout...');
       console.info('📅 [createOperatorCheckout] Datas:', {

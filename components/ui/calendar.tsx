@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -37,7 +39,7 @@ function Calendar({
       captionLayout={captionLayout}
       formatters={{
         formatMonthDropdown: (date) => {
-          const raw = date.toLocaleString("pt-BR", { month: "short" })
+          const raw = format(date, "MMM", { locale: ptBR })
           return raw.endsWith(".") ? raw : `${raw}.`
         },
         ...formatters,

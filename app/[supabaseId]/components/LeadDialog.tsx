@@ -54,6 +54,14 @@ import {
 import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import { isManagerLikeRole } from "@/lib/roles";
+import { useTimezone } from "@/app/context/TimezoneContext";
+import {
+  formatInTz,
+  formatLocalDateValue,
+  formatLocalTimeValue,
+  parseDateKeyAndTimeToUtc,
+  parseLocalToUtc,
+} from "@/lib/dates";
 
 interface LeadDialogProps {
   open: boolean;
@@ -117,27 +125,15 @@ const normalizeLeadPhoneDigits = (phone: string): string => {
   return numbers.slice(0, 11);
 };
 
-const SCHEDULE_TIMEZONE = "America/Sao_Paulo";
-
 const isValidScheduleDate = (value?: Date): value is Date =>
   value instanceof Date && !Number.isNaN(value.getTime());
 
-const toScheduleDateKey = (date: Date) => {
+const toScheduleDateKey = (date: Date, tz: string) => {
   if (!isValidScheduleDate(date)) return null;
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: SCHEDULE_TIMEZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  return formatLocalDateValue(date, tz);
 };
 
-const formatScheduleTime = (date: Date) =>
-  date.toLocaleTimeString("pt-BR", {
-    timeZone: SCHEDULE_TIMEZONE,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+const formatScheduleTime = (date: Date, tz: string) => formatLocalTimeValue(date, tz);
 
 export default function LeadDialog({
   open,
@@ -149,6 +145,7 @@ export default function LeadDialog({
   patchLead,
   finalizeContract,
 }: LeadDialogProps) {
+  const { tz: scheduleTimezone } = useTimezone();
   const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
   const { lead: leadDetails, loading: leadDetailsLoading, error: leadDetailsError, fetchLead } = useLead(lead?.id ?? "");
@@ -904,15 +901,7 @@ export default function LeadDialog({
 
   const formatActivityDate = (value: string) => {
     try {
-      const date = new Date(value);
-      return date.toLocaleString("pt-BR", {
-        timeZone: "America/Sao_Paulo",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      return formatInTz(new Date(value), "dd/MM/yyyy HH:mm", scheduleTimezone);
     } catch {
       return value;
     }
@@ -1304,6 +1293,9 @@ export default function LeadDialog({
     try {
       if (date.includes("T") && date.includes("Z")) {
         return date;
+      }
+      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(date)) {
+        return parseLocalToUtc(date, scheduleTimezone).toISOString();
       }
       const parsedDate = new Date(date);
       if (isNaN(parsedDate.getTime())) {
@@ -1874,7 +1866,7 @@ export default function LeadDialog({
       return;
     }
 
-    const dateKey = toScheduleDateKey(parsedMeetingDate);
+    const dateKey = toScheduleDateKey(parsedMeetingDate, scheduleTimezone);
     if (!dateKey) {
       setAvailableTimes([]);
       setAvailabilityLoading(false);
@@ -1963,20 +1955,19 @@ export default function LeadDialog({
     const parsedMeetingDate = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
     if (!isValidScheduleDate(parsedMeetingDate)) return;
 
-    const currentTime = formatScheduleTime(parsedMeetingDate);
+    const currentTime = formatScheduleTime(parsedMeetingDate, scheduleTimezone);
     if (availableTimes.includes(currentTime)) return;
 
-    const [hours, minutes] = availableTimes[0].split(":").map(Number);
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) return;
+    const dateKey = toScheduleDateKey(parsedMeetingDate, scheduleTimezone);
+    if (!dateKey) return;
 
-    const nextDate = new Date(parsedMeetingDate);
-    nextDate.setHours(hours, minutes, 0, 0);
+    const nextDate = parseDateKeyAndTimeToUtc(dateKey, availableTimes[0], scheduleTimezone);
     if (!isValidScheduleDate(nextDate)) return;
 
     form.setValue("meetingDate", nextDate.toISOString(), {
       shouldDirty: form.getFieldState("meetingDate").isDirty,
     });
-  }, [open, watchedMeetingDate, availableTimes, form]);
+  }, [open, watchedMeetingDate, availableTimes, form, scheduleTimezone]);
 
   useEffect(() => {
     if (!open || !lead) return;

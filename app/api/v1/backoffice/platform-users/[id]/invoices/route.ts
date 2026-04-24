@@ -30,12 +30,14 @@ export async function GET(
     const pageSize = Math.max(parsePositiveInt(searchParams.get("pageSize"), 10), 5)
     const status = searchParams.get("status") ?? undefined
     const period = searchParams.get("period") ?? undefined
+    const timezone = searchParams.get("timezone") ?? undefined
 
     const output = await useCase.getMasterUserInvoices(id, {
       page,
       pageSize,
       status,
       period,
+      timezone,
     })
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 })

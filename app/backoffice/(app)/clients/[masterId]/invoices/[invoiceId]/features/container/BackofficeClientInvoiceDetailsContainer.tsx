@@ -37,6 +37,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useBackofficeClientInvoiceDetails } from "../context/BackofficeClientInvoiceDetailsContext"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatInTz, parseDateKeyToUtc } from "@/lib/dates"
 
 const STATUS_BADGES: Record<
   "paid" | "overdue" | "upcoming" | "other",
@@ -78,12 +80,17 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null, tz: string) {
   if (!value) return "—"
-  return new Date(value).toLocaleDateString("pt-BR")
+  const parsed =
+    /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? parseDateKeyToUtc(value, tz)
+      : new Date(value)
+  return formatInTz(parsed, "dd/MM/yyyy", tz)
 }
 
 export function BackofficeClientInvoiceDetailsContainer() {
+  const { tz } = useTimezone()
   const { invoice, isLoading, isSendingNotification, error, reload, sendStatusNotification } =
     useBackofficeClientInvoiceDetails()
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false)
@@ -274,19 +281,19 @@ export function BackofficeClientInvoiceDetailsContainer() {
                     <CalendarDays className="h-3.5 w-3.5" />
                     Data da fatura:
                   </span>{" "}
-                  <span className="font-medium">{formatDate(invoice.dateCreated)}</span>
+                  <span className="font-medium">{formatDate(invoice.dateCreated, tz)}</span>
                 </p>
                 <p>
                   <span className="text-muted-foreground">Vencimento: </span>
-                  <span className="font-medium">{formatDate(invoice.dueDate)}</span>
+                  <span className="font-medium">{formatDate(invoice.dueDate, tz)}</span>
                 </p>
                 <p>
                   <span className="text-muted-foreground">Pagamento: </span>
-                  <span className="font-medium">{formatDate(invoice.paymentDate)}</span>
+                  <span className="font-medium">{formatDate(invoice.paymentDate, tz)}</span>
                 </p>
                 <p>
                   <span className="text-muted-foreground">Confirmação: </span>
-                  <span className="font-medium">{formatDate(invoice.confirmedDate)}</span>
+                  <span className="font-medium">{formatDate(invoice.confirmedDate, tz)}</span>
                 </p>
               </div>
             </div>

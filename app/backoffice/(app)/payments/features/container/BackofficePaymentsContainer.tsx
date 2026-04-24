@@ -32,6 +32,8 @@ import {
 } from "@/components/ui/table"
 import { useBackofficePayments } from "../context/BackofficePaymentsContext"
 import type { CreatePaymentFormData } from "../services/IBackofficePaymentsService"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatInTz, parseDateKeyToUtc } from "@/lib/dates"
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   PENDING: { label: "Pendente", variant: "outline" },
@@ -56,9 +58,9 @@ function formatCurrency(value: string | number) {
   )
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null, tz: string) {
   if (!value) return "—"
-  return new Date(value).toLocaleDateString("pt-BR")
+  return formatInTz(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz)
 }
 
 interface PixDialogProps {
@@ -116,6 +118,7 @@ const initialForm: CreatePaymentFormData = {
 
 export function BackofficePaymentsContainer() {
   const { payments, clients, isLoading, isCreating, createPayment } = useBackofficePayments()
+  const { tz } = useTimezone()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<CreatePaymentFormData>(initialForm)
   const [pixDialog, setPixDialog] = useState<{
@@ -208,7 +211,7 @@ export function BackofficePaymentsContainer() {
                     <TableCell>
                       <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
                     </TableCell>
-                    <TableCell>{formatDate(payment.dueDate)}</TableCell>
+                    <TableCell>{formatDate(payment.dueDate, tz)}</TableCell>
                     <TableCell>
                       {payment.invoiceUrl ? (
                         <a

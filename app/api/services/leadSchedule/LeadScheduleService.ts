@@ -12,6 +12,7 @@ import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import type { ILeadScheduleService, CreateScheduleParams } from "./ILeadScheduleService";
 import { buildUniqueEmails, resolveParticipantDispatchGroups } from "./participantDispatch";
 import type { Attachment } from "resend";
+import { formatInTz, resolveTimezone } from "@/lib/dates";
 
 type InviteDispatchProvider = "google" | "resend";
 
@@ -49,15 +50,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 const LOG_PREFIX = "[LeadScheduleService]";
 
-const formatMeetingDate = (date: Date) =>
-  date.toLocaleString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+const formatMeetingDate = (date: Date, tz: string) => formatInTz(date, "dd/MM/yyyy HH:mm", tz);
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -390,6 +383,7 @@ export class LeadScheduleService implements ILeadScheduleService {
         organizerName,
         organizerEmail: closerEmail,
         eventUid: scheduleId,
+        timezone: closerProfile.timezone,
       });
 
       if (emailResult.success) {
@@ -481,6 +475,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           attendees: attendeeEmails,
           notes: meetingNotes ?? null,
           attachments: scheduleAttachments,
+          timezone: closerProfile.timezone,
         });
       } catch (closerNotificationError) {
         console.warn(
@@ -592,10 +587,11 @@ export class LeadScheduleService implements ILeadScheduleService {
         leadAssigneeEmail,
         ...(extraGuests ?? []),
       ]);
+      const meetingTimezone = resolveTimezone(closerProfile.timezone);
       const participantLines = participants.map((email) => `• ${email}`);
 
       const bodyLines = [
-        `${actionLabel} ${schedulerLabel} para ${formatMeetingDate(meetingDate)}.`,
+        `${actionLabel} ${schedulerLabel} para ${formatMeetingDate(meetingDate, meetingTimezone)}.`,
       ];
       if (participantLines.length > 0) {
         bodyLines.push("Participantes:", ...participantLines);

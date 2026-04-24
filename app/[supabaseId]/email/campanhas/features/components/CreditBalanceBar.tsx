@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useParams } from "next/navigation"
 import { useCampanhasContext } from "../context/CampanhasContext"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatInTz } from "@/lib/dates"
 
 const PLAN_LABELS: Record<string, string> = {
   starter: "Starter",
@@ -17,6 +19,7 @@ const PLAN_LABELS: Record<string, string> = {
 export function CreditBalanceBar() {
   const { credits, loadingCredits } = useCampanhasContext()
   const params = useParams<{ supabaseId: string }>()
+  const { tz } = useTimezone()
 
   if (loadingCredits) {
     return <Skeleton className="h-14 w-full rounded-lg" />
@@ -69,7 +72,7 @@ export function CreditBalanceBar() {
         </div>
         {credits.currentPeriodEnd && (
           <p className="shrink-0 text-xs text-muted-foreground">
-            Expira em {new Date(credits.currentPeriodEnd).toLocaleDateString("pt-BR")}
+            Expira em {formatInTz(new Date(credits.currentPeriodEnd), "dd/MM/yyyy", tz)}
           </p>
         )}
       </CardContent>

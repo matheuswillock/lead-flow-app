@@ -8,6 +8,7 @@ import {
   endOfMonth,
 } from "date-fns"
 import { TZDate } from "@date-fns/tz"
+import { formatLocalTimeValue, parseDateKeyToUtc } from "./parse"
 
 /** Returns current instant as a plain Date (UTC), semantically "now in that TZ". */
 export function nowInTz(tz: string): Date {
@@ -99,4 +100,15 @@ export function differenceInDaysInTz(later: Date, earlier: Date, tz: string): nu
   const sodLater = startOfDayInTz(later, tz)
   const sodEarlier = startOfDayInTz(earlier, tz)
   return differenceInDays(sodLater, sodEarlier)
+}
+
+export function getMinutesInTz(date: Date, tz: string): number {
+  const [hours, minutes] = formatLocalTimeValue(date, tz).split(":").map(Number)
+  return hours * 60 + minutes
+}
+
+export function getDayRangeInTz(dateKey: string, tz: string): { start: Date; end: Date } {
+  const start = parseDateKeyToUtc(dateKey, tz)
+  const end = addDaysInTz(start, 1, tz)
+  return { start, end }
 }

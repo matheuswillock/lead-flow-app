@@ -38,7 +38,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase/browser";
 import { CircleCheckBig } from "@/components/animate-ui/icons/circle-check-big";
 import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth";
-import { PROFILE_TIMEZONE_OPTIONS, getTimezoneOption, type TimezoneOption } from "@/lib/dates";
+import { getProfileTimezoneOptions, type TimezoneOption } from "@/lib/dates";
 import { useTimezone } from "@/app/context/TimezoneContext";
 
 export default function AccountProfilePage() {
@@ -327,21 +327,10 @@ export default function AccountProfilePage() {
     return current !== next;
   }, [functionChangeKey]);
 
-  const timezoneOptions = useMemo<ReadonlyArray<TimezoneOption>>(() => {
-    const currentTimezoneOption = getTimezoneOption(tz);
-    if (currentTimezoneOption) {
-      return PROFILE_TIMEZONE_OPTIONS;
-    }
-
-    return [
-      {
-        value: tz,
-        label: tz,
-        description: "Fuso salvo atualmente na sua conta.",
-      },
-      ...PROFILE_TIMEZONE_OPTIONS,
-    ];
-  }, [tz]);
+  const timezoneOptions = useMemo<ReadonlyArray<TimezoneOption>>(
+    () => getProfileTimezoneOptions(tz),
+    [tz]
+  );
 
   const selectedTimezoneOption = useMemo(() => {
     return timezoneOptions.find((option) => option.value === tz) ?? timezoneOptions[0];

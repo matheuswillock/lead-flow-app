@@ -28,6 +28,14 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { MetricsFilters } from '../services/IDashboardMetricsService';
+import { useTimezone } from '@/app/context/TimezoneContext';
+import {
+  addDaysInTz,
+  addMonthsInTz,
+  formatInTz,
+  parseDateKeyToUtc,
+  startOfDayInTz,
+} from '@/lib/dates';
 
 function InfoTooltip({ text }: { text: string }) {
   return (
@@ -48,14 +56,10 @@ function InfoTooltip({ text }: { text: string }) {
   );
 }
 
-function parseDateInput(value: string): Date | null {
+function parseDateInput(value: string, tz: string): Date | null {
   const ymdMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (ymdMatch) {
-    const year = Number(ymdMatch[1]);
-    const month = Number(ymdMatch[2]) - 1;
-    const day = Number(ymdMatch[3]);
-    const date = new Date(year, month, day);
-    date.setHours(0, 0, 0, 0);
+    const date = parseDateKeyToUtc(value, tz);
     return Number.isNaN(date.getTime()) ? null : date;
   }
 
@@ -64,44 +68,36 @@ function parseDateInput(value: string): Date | null {
     return null;
   }
 
-  date.setHours(0, 0, 0, 0);
-  return date;
+  return startOfDayInTz(date, tz);
 }
 
-function getStartDateFromPeriod(period?: MetricsFilters['period']): Date {
-  const startDate = new Date();
-  startDate.setHours(0, 0, 0, 0);
+function getStartDateFromPeriod(period: MetricsFilters['period'] | undefined, tz: string): Date {
+  const now = new Date();
+  const startDate = startOfDayInTz(now, tz);
 
   switch (period) {
     case '7d':
-      startDate.setDate(startDate.getDate() - 7);
-      break;
+      return startOfDayInTz(addDaysInTz(startDate, -7, tz), tz);
     case '30d':
-      startDate.setDate(startDate.getDate() - 30);
-      break;
+      return startOfDayInTz(addDaysInTz(startDate, -30, tz), tz);
     case '3m':
-      startDate.setMonth(startDate.getMonth() - 3);
-      break;
+      return startOfDayInTz(addMonthsInTz(startDate, -3, tz), tz);
     case '6m':
-      startDate.setMonth(startDate.getMonth() - 6);
-      break;
+      return startOfDayInTz(addMonthsInTz(startDate, -6, tz), tz);
     case '1y':
-      startDate.setFullYear(startDate.getFullYear() - 1);
-      break;
+      return startOfDayInTz(addMonthsInTz(startDate, -12, tz), tz);
     default:
-      startDate.setDate(startDate.getDate() - 30);
-      break;
+      return startOfDayInTz(addDaysInTz(startDate, -30, tz), tz);
   }
-
-  return startDate;
 }
 
-function formatDatePtBr(date: Date): string {
-  return new Intl.DateTimeFormat('pt-BR').format(date);
+function formatDatePtBr(date: Date, tz: string): string {
+  return formatInTz(date, 'dd/MM/yyyy', tz);
 }
 
 export function SectionCardsWithContext() {
   const { metrics, isLoading, error, filters, customDateRange, isBlurred, toggleBlur } = useDashboardContext();
+  const { tz } = useTimezone();
 
   if (isLoading) {
     return <DashboardCardsSkeleton />;
@@ -147,17 +143,16 @@ export function SectionCardsWithContext() {
     let endDate: Date | null = null;
 
     if (customDateRange?.startDate && customDateRange?.endDate) {
-      startDate = parseDateInput(customDateRange.startDate);
-      endDate = parseDateInput(customDateRange.endDate);
+      startDate = parseDateInput(customDateRange.startDate, tz);
+      endDate = parseDateInput(customDateRange.endDate, tz);
     }
 
     if (!startDate || !endDate) {
-      endDate = new Date();
-      endDate.setHours(0, 0, 0, 0);
-      startDate = getStartDateFromPeriod(filters.period);
+      endDate = startOfDayInTz(new Date(), tz);
+      startDate = getStartDateFromPeriod(filters.period, tz);
     }
 
-    return `${formatDatePtBr(startDate)} - ${formatDatePtBr(endDate)}`;
+    return `${formatDatePtBr(startDate, tz)} - ${formatDatePtBr(endDate, tz)}`;
   })();
 
   // const renderMeetingsHeldRanking = (

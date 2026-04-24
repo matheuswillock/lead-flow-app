@@ -5,6 +5,7 @@ import type {
   SubmitPublicLeadResult,
   AvailabilityResult,
 } from "./IPublicLeadFormService";
+import { DEFAULT_TZ } from "@/lib/dates";
 
 class PublicLeadFormService implements IPublicLeadFormService {
   private resolveTrackingPayload(): Pick<
@@ -63,6 +64,7 @@ class PublicLeadFormService implements IPublicLeadFormService {
       closers: result.result?.closers ?? [],
       sdrs: result.result?.sdrs ?? [],
       guestCandidates: result.result?.guestCandidates ?? [],
+      timezone: result.result?.timezone ?? DEFAULT_TZ,
     };
   }
 

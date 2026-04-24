@@ -20,6 +20,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { maskPhone } from "@/lib/masks";
 import { getHealthPlanLabel } from "@/lib/healthPlanLabels";
+import { formatInTz } from "@/lib/dates";
 
 const headerButtonClass = "h-8 px-2 hover:bg-accent w-full justify-center";
 const formatCurrency = (value: number | null | undefined) => {
@@ -85,18 +86,12 @@ function getStatusColor(status: string): string {
 }
 
 // Função para formatar data de reunião
-function formatMeetingDate(dateString: string | null): string {
+function formatMeetingDate(dateString: string | null, tz: string): string {
   if (!dateString) return "-";
   
   try {
     const date = new Date(dateString);
-    return date.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatInTz(date, "dd/MM/yyyy HH:mm", tz);
   } catch {
     return dateString;
   }
@@ -110,6 +105,7 @@ interface ColumnsProps {
   onDeleteLead: (lead: Lead) => void;
   onFinalizeContract: (lead: Lead) => void;
   onChangeStatus: (lead: Lead) => void;
+  tz: string;
 }
 
 export const createColumns = ({
@@ -120,6 +116,7 @@ export const createColumns = ({
   onDeleteLead,
   onFinalizeContract,
   onChangeStatus,
+  tz,
 }: ColumnsProps): ColumnDef<Lead>[] => [
   {
     id: "drag",
@@ -438,7 +435,7 @@ export const createColumns = ({
       )
     },
     cell: ({ row }) => {
-      return <div className="text-sm">{formatMeetingDate(row.getValue("meetingDate"))}</div>
+      return <div className="text-sm">{formatMeetingDate(row.getValue("meetingDate"), tz)}</div>
     },
   },
   {
@@ -459,7 +456,7 @@ export const createColumns = ({
       )
     },
     cell: ({ row }) => {
-      return <div className="text-sm">{formatDate(row.getValue("createdAt"))}</div>
+      return <div className="text-sm">{formatDate(row.getValue("createdAt"), tz)}</div>
     },
     filterFn: (row, id, value) => {
       if (!value || !Array.isArray(value)) return true

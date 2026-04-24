@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
+import { formatInTz, resolveTimezone } from "@/lib/dates"
 
 const DEFAULT_FROM = `Corretor Studio <no-reply@corretorstudio.com>`
 const MAX_CAMPAIGNS_PER_RUN = 5
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
       },
       include: {
         template: true,
-        team: { select: { master: { select: { id: true } } } },
+        team: { select: { master: { select: { id: true, timezone: true } } } },
       },
       take: MAX_CAMPAIGNS_PER_RUN,
     })
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
         }
 
         const masterId = campaign.team.master.id
+        const ownerTz = resolveTimezone(campaign.team.master.timezone)
         const hasCredits = await creditService.hasEnoughCredits(masterId)
         if (!hasCredits) {
           await prisma.emailCampaign.update({
@@ -123,7 +125,12 @@ export async function GET(request: NextRequest) {
         })
 
         dispatched++
-        console.info(`[EmailCronDispatch] Campanha ${campaign.id} disparada: ${result.sent} emails enviados`)
+        const scheduledLabel = campaign.scheduledAt
+          ? formatInTz(campaign.scheduledAt, "dd/MM/yyyy HH:mm", ownerTz)
+          : "sem data"
+        console.info(
+          `[EmailCronDispatch] Campanha ${campaign.id} disparada: ${result.sent} emails enviados (agendada para ${scheduledLabel} ${ownerTz})`
+        )
       } catch (campaignError) {
         console.error(`[EmailCronDispatch] Erro na campanha ${campaign.id}:`, campaignError)
         await prisma.emailCampaign.update({
