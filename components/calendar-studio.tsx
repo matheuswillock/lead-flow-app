@@ -572,6 +572,7 @@ export default function CalendarStudio() {
               defaultMonth={date}
               locale={ptBR}
               showOutsideDays={false}
+              weekdayLabelFormat="short"
               className="bg-transparent p-0 [--cell-size:2.25rem] sm:[--cell-size:2.5rem]"
               modifiers={{
                 past: (day) => getCalendarDateKey(day) < todayKey,
@@ -600,9 +601,6 @@ export default function CalendarStudio() {
                   const raw = formatInTz(value, "MMM", tz)
                   const month = raw.endsWith(".") ? raw : `${raw}.`
                   return `${month} ${formatInTz(value, "yyyy", tz)}`
-                },
-                formatWeekdayName: (value) => {
-                  return formatInTz(value, "EEE", tz)
                 },
               }}
             />

@@ -17,6 +17,7 @@ export default function Calendar21() {
       defaultMonth={range?.from}
       selected={range}
       onSelect={setRange}
+      weekdayLabelFormat="short"
       numberOfMonths={1}
       captionLayout="dropdown"
       className="rounded-lg border shadow-sm [--cell-size:2.75rem] md:[--cell-size:3rem]"

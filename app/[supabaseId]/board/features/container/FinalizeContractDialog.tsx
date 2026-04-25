@@ -240,6 +240,7 @@ export function FinalizeContractDialog({
                     mode="single"
                     selected={startDate}
                     onSelect={setStartDate}
+                    weekdayLabelFormat="short"
                     initialFocus
                   />
                 </PopoverContent>
@@ -268,6 +269,7 @@ export function FinalizeContractDialog({
                     mode="single"
                     selected={finalizedDate}
                     onSelect={setFinalizedDate}
+                    weekdayLabelFormat="short"
                     initialFocus
                     disabled={(date: Date) => startDate ? date < startDate : false}
                   />

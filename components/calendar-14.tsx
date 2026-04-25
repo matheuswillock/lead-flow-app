@@ -19,6 +19,7 @@ export default function Calendar14() {
       defaultMonth={date}
       selected={date}
       onSelect={setDate}
+      weekdayLabelFormat="short"
       disabled={bookedDates}
       modifiers={{
         booked: bookedDates,

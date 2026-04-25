@@ -34,6 +34,7 @@ export default function Calendar20() {
             selected={date}
             onSelect={setDate}
             defaultMonth={date}
+            weekdayLabelFormat="short"
             disabled={bookedDates}
             showOutsideDays={false}
             modifiers={{
@@ -43,11 +44,6 @@ export default function Calendar20() {
               booked: "[&>button]:line-through opacity-100",
             }}
             className="bg-transparent p-0 [--cell-size:2.5rem] md:[--cell-size:3rem]"
-            formatters={{
-              formatWeekdayName: (date) => {
-                return date.toLocaleString("en-US", { weekday: "short" })
-              },
-            }}
           />
         </div>
         <div className="no-scrollbar inset-y-0 right-0 flex max-h-72 w-full scroll-pb-6 flex-col gap-4 overflow-y-auto border-t p-6 md:absolute md:max-h-none md:w-48 md:border-l md:border-t-0">

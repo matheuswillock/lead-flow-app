@@ -192,6 +192,7 @@ export function DateTimePicker({
                 mode="single"
                 selected={selectedCalendarDate}
                 onSelect={handleDateSelect}
+                weekdayLabelFormat="short"
                 disabled={
                   disablePastDates
                     ? (candidate: Date) => toCalendarDateKey(candidate) < todayDateKey

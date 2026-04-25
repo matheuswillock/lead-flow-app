@@ -79,6 +79,7 @@ export function DataTableDateFilter<TData, TValue>({
           mode="range"
           selected={dateRange}
           onSelect={handleDateSelect}
+          weekdayLabelFormat="short"
           locale={ptBR}
           numberOfMonths={2}
           disabled={(date) => date > new Date()}

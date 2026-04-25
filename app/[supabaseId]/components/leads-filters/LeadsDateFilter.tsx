@@ -60,6 +60,7 @@ export function LeadsDateFilter({ title, value, onChange }: LeadsDateFilterProps
           mode="range"
           selected={value}
           onSelect={onChange}
+          weekdayLabelFormat="short"
           locale={ptBR}
           numberOfMonths={2}
           disabled={(date) => date > nowInTz(tz)}
