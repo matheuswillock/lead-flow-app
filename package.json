@@ -28,6 +28,7 @@
     "db:seed:app": "bunx tsx prisma/seed-app.ts",
     "db:seed:backoffice": "bunx tsx prisma/seed-backoffice.ts",
     "prisma:migrate": "bunx prisma migrate dev",
+    "prisma:migrate:resolve": "bunx prisma migrate resolve --rolled-back",
     "prisma:backfill-leadcode": "bunx tsx scripts/backfill-leadcode.ts",
     "prisma:generate-import-leads-sql": "bunx tsx scripts/generate-backfill-import-leads.ts",
     "prisma:backfill-import-leads": "bunx tsx scripts/backfill-import-leads.ts",
@@ -49,6 +50,7 @@
     "seed": "bunx tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@date-fns/tz": "^1.4.1",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/modifiers": "^7.0.0",
     "@dnd-kit/sortable": "^10.0.0",

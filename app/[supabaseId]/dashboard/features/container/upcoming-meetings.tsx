@@ -1,9 +1,11 @@
 "use client"
 
 import * as React from "react"
-import { format, formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Clock, Calendar } from "lucide-react"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { isPastInTz, formatInTz } from "@/lib/dates"
 
 import {
   Card,
@@ -94,6 +96,7 @@ async function getSchedulesWithDedupe(supabaseId: string, teamId: string): Promi
 }
 
 export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
+  const { tz } = useTimezone()
   const { activeTeamId, isLoading: isTeamLoading } = useTeamContext()
   const [schedules, setSchedules] = React.useState<ScheduleData[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -248,8 +251,7 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
             <TableBody>
               {schedules.map((schedule) => {
                 const meetingDate = new Date(schedule.date)
-                const now = new Date()
-                const isPast = meetingDate < now
+                const isPast = isPastInTz(meetingDate, tz)
 
                 return (
                   <TableRow key={schedule.id} className={isPast ? 'opacity-50' : ''}>
@@ -258,10 +260,10 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
                         <Clock className="text-muted-foreground h-4 w-4" />
                         <div className="flex flex-col">
                           <span className="font-medium">
-                            {format(meetingDate, "HH:mm", { locale: ptBR })}
+                            {formatInTz(meetingDate, "HH:mm", tz)}
                           </span>
                           <span className="text-muted-foreground text-xs">
-                            {format(meetingDate, "dd/MM/yyyy", { locale: ptBR })}
+                            {formatInTz(meetingDate, "dd/MM/yyyy", tz)}
                           </span>
                         </div>
                       </div>

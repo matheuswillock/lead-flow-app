@@ -26,11 +26,13 @@ import {
 } from "@/components/ui/table"
 import { useBackofficeClients } from "../context/BackofficeClientsContext"
 import type { BackofficeClientsFilters } from "../context/BackofficeClientsTypes"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatInTz } from "@/lib/dates"
 
 const CLIENTS_PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("pt-BR")
+function formatDate(value: string, tz: string) {
+  return formatInTz(new Date(value), "dd/MM/yyyy", tz)
 }
 
 function formatCurrency(value: number) {
@@ -46,6 +48,7 @@ function renderPlanLabel(plan: { label: string; amount: number | null }) {
 }
 
 export function BackofficeClientsContainer() {
+  const { tz } = useTimezone()
   const {
     clients,
     pagination,
@@ -185,7 +188,7 @@ export function BackofficeClientsContainer() {
                     className="grid w-full cursor-pointer grid-cols-[1.8fr_1fr_1.8fr_1.2fr_0.8fr_1.2fr_1fr_0.9fr] gap-3 px-4 py-3 text-sm pr-8 items-center hover:bg-muted/10"
                   >
                     <span className="font-medium truncate text-center">{client.fullName || "Sem nome"}</span>
-                    <span className="text-center">{formatDate(client.createdAt)}</span>
+                    <span className="text-center">{formatDate(client.createdAt, tz)}</span>
                     <span className="truncate text-center">{client.email}</span>
                     <span className="truncate text-center">{client.phone || "—"}</span>
                     <span className="inline-flex items-center justify-center gap-1">
@@ -236,7 +239,7 @@ export function BackofficeClientsContainer() {
                             {client.teams.map((team) => (
                               <TableRow key={team.id}>
                                 <TableCell className="font-medium">{team.name}</TableCell>
-                                <TableCell>{formatDate(team.createdAt)}</TableCell>
+                                <TableCell>{formatDate(team.createdAt, tz)}</TableCell>
                                 <TableCell>{team.membersCount}</TableCell>
                               </TableRow>
                             ))}

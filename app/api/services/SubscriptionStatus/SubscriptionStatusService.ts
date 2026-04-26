@@ -6,6 +6,7 @@ import {
 } from "./ISubscriptionStatusService";
 import { prisma } from "../../infra/data/prisma";
 import { asaasApi, asaasFetch } from '@/lib/asaas';
+import { differenceInDaysInTz, isPastInTz, resolveTimezone } from "@/lib/dates";
 
 export class SubscriptionStatusService implements ISubscriptionStatusService {
   
@@ -21,16 +22,41 @@ export class SubscriptionStatusService implements ISubscriptionStatusService {
         select: {
           id: true,
           email: true,
+          timezone: true,
           subscriptionStatus: true,
           subscriptionPlan: true,
           subscriptionStartDate: true,
           subscriptionEndDate: true,
+          trialEndDate: true,
         },
       });
 
       // 2. Se encontrou o profile, retornar status do banco
       if (profile) {
         const isPaid = profile.subscriptionStatus === 'active';
+        const timezone = resolveTimezone(profile.timezone);
+        let message = isPaid ? 'Assinatura ativa' : 'Assinatura pendente';
+
+        if (profile.subscriptionStatus === 'trial' && profile.trialEndDate) {
+          if (isPastInTz(profile.trialEndDate, timezone)) {
+            message = 'Período de teste expirado';
+          } else {
+            const remainingDays = Math.max(
+              0,
+              differenceInDaysInTz(profile.trialEndDate, new Date(), timezone)
+            );
+            message =
+              remainingDays > 0
+                ? `Período de teste ativo (${remainingDays} dia(s) restantes)`
+                : 'Período de teste ativo';
+          }
+        } else if (
+          profile.subscriptionEndDate &&
+          isPastInTz(profile.subscriptionEndDate, timezone) &&
+          profile.subscriptionStatus !== 'active'
+        ) {
+          message = 'Assinatura expirada';
+        }
 
         console.info('📊 [SubscriptionStatusService] Profile encontrado:', {
           profileId: profile.id,
@@ -41,7 +67,7 @@ export class SubscriptionStatusService implements ISubscriptionStatusService {
         return {
           isPaid,
           status: profile.subscriptionStatus || 'pending',
-          message: isPaid ? 'Assinatura ativa' : 'Assinatura pendente',
+          message,
           subscriptionStatus: profile.subscriptionStatus || undefined,
           subscriptionPlan: profile.subscriptionPlan || undefined,
           subscriptionStartDate: profile.subscriptionStartDate,

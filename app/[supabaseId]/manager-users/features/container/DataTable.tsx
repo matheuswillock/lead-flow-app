@@ -40,6 +40,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
+import { useTimezone } from "@/app/context/TimezoneContext";
+import { endOfDayInTz, startOfDayInTz } from "@/lib/dates";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
@@ -52,6 +54,7 @@ export function DataTable<TData, TValue>({
   data,
   loading = false,
 }: DataTableProps<TData, TValue>) {
+  const { tz } = useTimezone();
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
@@ -87,18 +90,14 @@ export function DataTable<TData, TValue>({
     }
 
     const startDate = createdAtRange.from ? new Date(createdAtRange.from) : undefined;
-    if (startDate) {
-      startDate.setHours(0, 0, 0, 0);
-    }
+    const normalizedStartDate = startDate ? startOfDayInTz(startDate, tz) : undefined;
 
     const endReference = createdAtRange.to ?? createdAtRange.from;
     const endDate = endReference ? new Date(endReference) : undefined;
-    if (endDate) {
-      endDate.setHours(23, 59, 59, 999);
-    }
+    const normalizedEndDate = endDate ? endOfDayInTz(endDate, tz) : undefined;
 
-    createdAtColumn.setFilterValue([startDate, endDate]);
-  }, [createdAtRange, table]);
+    createdAtColumn.setFilterValue([normalizedStartDate, normalizedEndDate]);
+  }, [createdAtRange, table, tz]);
 
   return (
     <div className="w-full">

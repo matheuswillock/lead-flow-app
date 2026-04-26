@@ -1,25 +1,26 @@
 import type { AnalyticsData, AnalyticsPeriod } from '../context/AnalyticsTypes'
+import { addDaysInTz, addMonthsInTz, startOfDayInTz } from '@/lib/dates'
 
-function periodToDateRange(period: AnalyticsPeriod): { from: string; to: string } {
+function periodToDateRange(period: AnalyticsPeriod, tz: string): { from: string; to: string } {
   const to = new Date()
-  const from = new Date()
-  if (period === '7d') from.setDate(from.getDate() - 7)
-  else if (period === '30d') from.setDate(from.getDate() - 30)
-  else if (period === '3m') from.setDate(from.getDate() - 90)
-  else from.setDate(from.getDate() - 180)
+  let from = startOfDayInTz(to, tz)
+  if (period === '7d') from = startOfDayInTz(addDaysInTz(from, -7, tz), tz)
+  else if (period === '30d') from = startOfDayInTz(addDaysInTz(from, -30, tz), tz)
+  else if (period === '3m') from = startOfDayInTz(addMonthsInTz(from, -3, tz), tz)
+  else from = startOfDayInTz(addMonthsInTz(from, -6, tz), tz)
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
 export interface IAnalyticsService {
-  getAnalytics(period: AnalyticsPeriod, campaignId?: string): Promise<AnalyticsData>
+  getAnalytics(period: AnalyticsPeriod, timezone: string, campaignId?: string): Promise<AnalyticsData>
   getCampaigns(): Promise<Array<{ id: string; name: string }>>
 }
 
 export class AnalyticsService implements IAnalyticsService {
   private readonly baseUrl = '/api/v1/email'
 
-  async getAnalytics(period: AnalyticsPeriod, campaignId?: string): Promise<AnalyticsData> {
-    const { from, to } = periodToDateRange(period)
+  async getAnalytics(period: AnalyticsPeriod, timezone: string, campaignId?: string): Promise<AnalyticsData> {
+    const { from, to } = periodToDateRange(period, timezone)
     const params = new URLSearchParams({ from, to })
     if (campaignId) params.set('campaignId', campaignId)
     const res = await fetch(`${this.baseUrl}/analytics?${params}`)

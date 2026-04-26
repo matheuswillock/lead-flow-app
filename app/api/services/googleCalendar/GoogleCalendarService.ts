@@ -1,9 +1,9 @@
 import type { Profile, Lead } from "@prisma/client";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { DEFAULT_TZ, resolveTimezone } from "@/lib/dates";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
-const DEFAULT_TIMEZONE = "America/Sao_Paulo";
 const GOOGLE_LOG_PREFIX = "[GoogleAPI]";
 
 type GoogleTokenResult = {
@@ -206,10 +206,11 @@ export async function getCalendarBusyIntervals({
 }): Promise<Array<{ start: string; end: string }>> {
   const accessToken = await getValidAccessToken(organizer);
   const url = `${GOOGLE_CALENDAR_API}/freeBusy`;
+  const organizerTimezone = resolveTimezone(organizer.timezone ?? DEFAULT_TZ);
   const body = {
     timeMin,
     timeMax,
-    timeZone: DEFAULT_TIMEZONE,
+    timeZone: organizerTimezone,
     items: [{ id: calendarId }],
   };
 
@@ -349,6 +350,7 @@ export async function upsertCalendarEvent({
   existingEventId?: string | null;
 }): Promise<CalendarEventResult> {
   const accessToken = await getValidAccessToken(organizer);
+  const organizerTimezone = resolveTimezone(organizer.timezone ?? DEFAULT_TZ);
 
   const calendarId = "primary";
   const requestId = `lead${lead.id.replace(/-/g, "")}`;
@@ -371,8 +373,8 @@ export async function upsertCalendarEvent({
   const body: Record<string, unknown> = {
     summary,
     description,
-    start: { dateTime: meetingDate.toISOString(), timeZone: DEFAULT_TIMEZONE },
-    end: { dateTime: endTime.toISOString(), timeZone: DEFAULT_TIMEZONE },
+    start: { dateTime: meetingDate.toISOString(), timeZone: organizerTimezone },
+    end: { dateTime: endTime.toISOString(), timeZone: organizerTimezone },
     attendees,
   };
 

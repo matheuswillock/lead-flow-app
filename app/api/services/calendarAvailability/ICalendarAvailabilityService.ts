@@ -9,6 +9,7 @@ export type GetCalendarAvailabilityInput = {
   requestedCloserIds: string[];
   date: string;
   excludeLeadId?: string;
+  userTimezone?: string;
 };
 
 export type CalendarAvailabilityServiceErrorCode = "CLOSERS_NOT_IN_TEAM" | "CLOSERS_NOT_FOUND";

@@ -19,6 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { formatInTz } from "@/lib/dates"
 
 interface CreateColumnsProps {
   onEdit: (user: ManagerUserTableRow) => void;
@@ -28,6 +29,7 @@ interface CreateColumnsProps {
   onTogglePermanentSubscription?: (userId: string, currentValue: boolean) => void;
   currentUserIsMaster?: boolean;
   canDelete?: boolean;
+  tz: string;
 }
 
 export function createColumns({ 
@@ -37,7 +39,8 @@ export function createColumns({
   onDeletePendingOperator,
   onTogglePermanentSubscription: _onTogglePermanentSubscription,
   currentUserIsMaster: _currentUserIsMaster = false,
-  canDelete = false
+  canDelete = false,
+  tz
 }: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
   return [
     {
@@ -407,7 +410,7 @@ export function createColumns({
         const date = new Date(row.getValue("createdAt"));
         return (
           <div className="text-center text-muted-foreground">
-            {date.toLocaleDateString("pt-BR")}
+            {formatInTz(date, "dd/MM/yyyy", tz)}
           </div>
         );
       },

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { addMonths } from "date-fns";
 import { detectSqlInjection } from "@/app/api/v1/utils/inputSecurity";
 
 export type StudioWebhookTokenExpiryModeValue = "hours_24" | "months_6" | "indeterminate";
@@ -142,9 +143,7 @@ export const computeStudioWebhookTokenExpiry = (
     return new Date(now.getTime() + 24 * 60 * 60 * 1000);
   }
 
-  const expiry = new Date(now);
-  expiry.setMonth(expiry.getMonth() + 6);
-  return expiry;
+  return addMonths(now, 6);
 };
 
 export const isStudioWebhookTokenExpired = (expiresAt?: Date | null, now: Date = new Date()): boolean => {

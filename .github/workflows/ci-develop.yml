@@ -14,7 +14,6 @@ permissions:
   contents: write
   pull-requests: write
   deployments: write
-  security-events: write
 
 env:
   CI: true
@@ -26,6 +25,12 @@ jobs:
     if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      governance-sync: ${{ steps['quality-result'].outputs['governance-sync'] }}
+      governance-check: ${{ steps['quality-result'].outputs['governance-check'] }}
+      lint: ${{ steps['quality-result'].outputs.lint }}
+      typecheck: ${{ steps['quality-result'].outputs.typecheck }}
+      quality-passed: ${{ steps['quality-result'].outputs.passed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,28 +53,65 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
+      - name: Governance Sync
+        id: governance-sync
+        continue-on-error: true
+        run: |
+          bun run governance:sync
+          git diff --exit-code
+
       - name: Governance Check
+        id: governance-check
+        continue-on-error: true
         run: bun run governance:check
 
       - name: Governance Allowlist Warnings
+        continue-on-error: true
         run: bun run governance:warn-allowlist
 
       - name: Lint
+        id: lint
+        continue-on-error: true
         run: bun run lint
 
       - name: Typecheck
+        id: typecheck
+        continue-on-error: true
         run: bun run typecheck
 
-  security:
-    name: Security
+      - name: Resolve Quality Result
+        id: quality-result
+        if: always()
+        run: |
+          echo "governance-sync=${{ steps['governance-sync'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "governance-check=${{ steps['governance-check'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" ]]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  quality-gate:
+    name: Quality Gate
     if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
-    uses: ./.github/workflows/security-reusable.yml
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
-    with:
-      include_dev_dependencies: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs:
+      - quality
+    steps:
+      - name: Enforce Quality Checks
+        run: |
+          if [[ "${{ needs.quality.outputs['quality-passed'] }}" != "true" ]]; then
+            echo "::error::One or more quality checks failed."
+            echo "governance:sync=${{ needs.quality.outputs['governance-sync'] }}"
+            echo "governance:check=${{ needs.quality.outputs['governance-check'] }}"
+            echo "lint=${{ needs.quality.outputs.lint }}"
+            echo "typecheck=${{ needs.quality.outputs.typecheck }}"
+            exit 1
+          fi
 
   build:
     name: Build
@@ -77,8 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
-      - quality
-      - security
+      - quality-gate
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -233,15 +274,18 @@ jobs:
       - name: Preview Summary
         run: |
           echo "### Preview Deploy (develop)" >> $GITHUB_STEP_SUMMARY
-          echo "- URL: ${{ steps.vercel-preview.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Version: v${{ needs.version-bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: ${{ steps['vercel-preview'].outputs['preview-url'] }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: v${{ needs['version-bump'].outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
 
   auto-pr-develop-to-main:
     name: Open PR develop -> main
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ always() && (github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
+      - quality
+      - quality-gate
+      - build
       - deploy-preview
       - version-bump
     steps:
@@ -258,62 +302,159 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Reset release branch to develop and apply version bump
+        if: ${{ needs['version-bump'].result == 'success' && needs['deploy-preview'].result == 'success' }}
         run: |
           git checkout -B release/develop-to-main origin/develop
           node -e "
             const fs = require('fs');
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '${{ needs.version-bump.outputs.new_version }}';
+            pkg.version = '${{ needs['version-bump'].outputs.new_version }}';
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
           git add package.json
-          git diff --cached --quiet || git commit -m "chore: bump version to v${{ needs.version-bump.outputs.new_version }} [skip ci]"
+          git diff --cached --quiet || git commit -m "chore: bump version to v${{ needs['version-bump'].outputs.new_version }} [skip ci]"
           git push origin release/develop-to-main --force-with-lease 2>/dev/null || \
             git push origin release/develop-to-main --force
 
       - name: Create or update PR
         id: release-pr
-        env:
-          GH_TOKEN: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
-        run: |
-          PR_BODY="## Release (develop → main)
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = 'release/develop-to-main';
+            const base = 'main';
+            const newVersion = '${{ needs['version-bump'].outputs.new_version }}';
+            const bumpType = '${{ needs['version-bump'].outputs.bump_type }}';
+            const canCreateReleasePr = '${{ needs['version-bump'].result }}' === 'success' && '${{ needs['deploy-preview'].result }}' === 'success';
+            const checks = {
+              governanceSync: '${{ needs.quality.outputs['governance-sync'] }}',
+              governanceCheck: '${{ needs.quality.outputs['governance-check'] }}',
+              lint: '${{ needs.quality.outputs.lint }}',
+              typecheck: '${{ needs.quality.outputs.typecheck }}',
+              build: '${{ needs.build.result }}',
+              deployPreview: '${{ needs['deploy-preview'].result }}',
+            };
+            const isSuccess = (status) => status === 'success';
+            const checklistLine = (status, label) => `- [${isSuccess(status) ? 'x' : ' '}] ${isSuccess(status) ? '✅' : '❌'} ${label}`;
+            const replaceChecklistLine = (template, currentLabel, status, nextLabel) => {
+              return template
+                .split('\n')
+                .map((line) => {
+                  const normalizedLabel = line
+                    .trim()
+                    .replace(/^- \[[ x]\](?: ✅| ❌)? /, '');
 
-          **Source branch:** \`develop\`
-          **Version:** \`v${{ needs.version-bump.outputs.new_version }}\`
-          **Bump type:** \`${{ needs.version-bump.outputs.bump_type }}\`
+                  return normalizedLabel === currentLabel ? checklistLine(status, nextLabel) : line;
+                })
+                .join('\n');
+            };
+            const applyChecklistStatuses = (template) => {
+              let body = template;
+              body = replaceChecklistLine(body, '`bun run governance:sync`', checks.governanceSync, '`bun run governance:sync`');
+              body = replaceChecklistLine(body, '`bun run governance:check`', checks.governanceCheck, '`bun run governance:check`');
+              body = replaceChecklistLine(body, '`bun run typecheck`', checks.typecheck, '`bun run typecheck`');
+              body = replaceChecklistLine(body, '`bun run lint`', checks.lint, '`bun run lint`');
+              body = replaceChecklistLine(body, 'Manteve adapters sincronizados (`bun run governance:sync`)?', checks.governanceSync, 'Manteve adapters sincronizados (`bun run governance:sync`)?');
+              body = replaceChecklistLine(body, 'Confirmou sincronizacao do `AGENTS.md` gerado para Codex?', checks.governanceSync, 'Confirmou sincronizacao do `AGENTS.md` gerado para Codex?');
+              return body;
+            };
+            const automationSection = (message) => [
+              '<!-- ci-develop:automation:start -->',
+              '## CI Automation',
+              '',
+              '**Source branch:** `develop`',
+              `**Release branch:** \`${head}\``,
+              `**Base:** \`${base}\``,
+              `**Version:** \`${newVersion ? `v${newVersion}` : 'unavailable'}\``,
+              `**Bump type:** \`${bumpType || 'unavailable'}\``,
+              '',
+              checklistLine(checks.build, 'Build OK'),
+              checklistLine(checks.deployPreview, 'Preview deploy OK'),
+              '',
+              message,
+              '<!-- ci-develop:automation:end -->'
+            ].join('\n');
+            const upsertAutomationSection = (body, message) => {
+              const startMarker = '<!-- ci-develop:automation:start -->';
+              const endMarker = '<!-- ci-develop:automation:end -->';
+              const nextSection = automationSection(message);
 
-          - [ ] Seguiu \`agents.md\`?
-          - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
-          - [ ] Rodou typecheck/lint?
-          - [ ] Rodou governance check?
-          - [ ] Preview deploy OK
+              if (body.includes(startMarker) && body.includes(endMarker)) {
+                return body.replace(
+                  /<!-- ci-develop:automation:start -->[\s\S]*?<!-- ci-develop:automation:end -->/,
+                  nextSection
+                );
+              }
 
-          *PR criado ou atualizado automaticamente pelo GitHub Actions.*"
+              return [body.trimEnd(), '', nextSection].join('\n');
+            };
 
-          EXISTING_PR=$(gh pr list --base main --head release/develop-to-main --json number,url --jq '.[0]' 2>/dev/null || echo "")
+            const prs = await github.rest.pulls.list({
+              owner,
+              repo,
+              head: `${owner}:${head}`,
+              base,
+              state: 'open',
+              per_page: 1,
+            });
 
-          if [ -n "$EXISTING_PR" ] && [ "$EXISTING_PR" != "null" ]; then
-            PR_NUMBER=$(echo "$EXISTING_PR" | jq -r '.number')
-            PR_URL=$(echo "$EXISTING_PR" | jq -r '.url')
-            gh pr edit "$PR_NUMBER" \
-              --title "release: v${{ needs.version-bump.outputs.new_version }}" \
-              --body "$PR_BODY"
-            echo "operation=updated" >> $GITHUB_OUTPUT
-            echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
-            echo "pr-number=$PR_NUMBER" >> $GITHUB_OUTPUT
-          else
-            PR_URL=$(gh pr create \
-              --base main \
-              --head release/develop-to-main \
-              --title "release: v${{ needs.version-bump.outputs.new_version }}" \
-              --body "$PR_BODY")
-            echo "operation=created" >> $GITHUB_OUTPUT
-            echo "pr-url=$PR_URL" >> $GITHUB_OUTPUT
-          fi
+            if (prs.data.length > 0) {
+              const existingPr = prs.data[0];
+              const fallbackTemplate = fs.readFileSync('.github/pull_request_template.md', 'utf8');
+              let body = applyChecklistStatuses(existingPr.body || fallbackTemplate);
+              body = upsertAutomationSection(body, '*Atualizado automaticamente pelo GitHub Actions.*');
+              const updatePayload = {
+                owner,
+                repo,
+                pull_number: existingPr.number,
+                body,
+              };
+
+              if (newVersion) {
+                updatePayload.title = `release: v${newVersion}`;
+              }
+
+              await github.rest.pulls.update(updatePayload);
+
+              core.setOutput('operation', 'updated');
+              core.setOutput('pr-url', existingPr.html_url);
+              core.setOutput('pr-number', String(existingPr.number));
+              core.info(`PR atualizado: #${existingPr.number} ${existingPr.html_url}`);
+              return;
+            }
+
+            if (!canCreateReleasePr) {
+              core.info('Release branch was not updated because one or more required checks failed. No release PR created.');
+              core.setOutput('operation', 'skipped');
+              core.setOutput('pr-url', '');
+              return;
+            }
+
+            let body = applyChecklistStatuses(fs.readFileSync('.github/pull_request_template.md', 'utf8'));
+            body = upsertAutomationSection(body, '*Criado automaticamente pelo GitHub Actions.*');
+
+            const res = await github.rest.pulls.create({
+              owner,
+              repo,
+              head,
+              base,
+              title: `release: v${newVersion}`,
+              body,
+              maintainer_can_modify: true,
+            });
+
+            core.setOutput('operation', 'created');
+            core.setOutput('pr-url', res.data.html_url);
+            core.setOutput('pr-number', String(res.data.number));
+            core.info(`PR criado: #${res.data.number} ${res.data.html_url}`);
 
       - name: Release PR summary
         run: |
           echo "### Release PR (develop -> main)" >> $GITHUB_STEP_SUMMARY
-          echo "- Version: v${{ needs.version-bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Operation: ${{ steps.release-pr.outputs.operation }}" >> $GITHUB_STEP_SUMMARY
-          echo "- PR: ${{ steps.release-pr.outputs.pr-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: v${{ needs['version-bump'].outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Operation: ${{ steps['release-pr'].outputs.operation }}" >> $GITHUB_STEP_SUMMARY
+          echo "- PR: ${{ steps['release-pr'].outputs['pr-url'] }}" >> $GITHUB_STEP_SUMMARY

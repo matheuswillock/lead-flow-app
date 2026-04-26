@@ -4,6 +4,7 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { PLAN_CREDITS } from "@/app/api/services/EmailCredit/EmailCreditService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { addMonthsInTz, startOfMonthInTz } from "@/lib/dates"
 
 const PLAN_PRICES: Record<EmailCreditPlan, number> = {
   starter: 25.0,
@@ -43,12 +44,10 @@ export class EmailCreditUseCase {
         )
       }
 
-      // Criar nova assinatura
+      // Criar nova assinatura — período termina na meia-noite do 1º do mês seguinte no TZ do usuário
       const now = new Date()
-      const periodEnd = new Date(now)
-      periodEnd.setDate(1)
-      periodEnd.setMonth(periodEnd.getMonth() + 1)
-      periodEnd.setHours(3, 0, 0, 0)
+      const tz = ctx.userTimezone
+      const periodEnd = startOfMonthInTz(addMonthsInTz(now, 1, tz), tz)
 
       const subscription = await prisma.emailCreditSubscription.create({
         data: {

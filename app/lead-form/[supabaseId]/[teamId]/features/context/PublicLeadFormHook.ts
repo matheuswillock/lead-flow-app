@@ -9,6 +9,7 @@ import type {
   GuestCandidateOption,
 } from "../services/IPublicLeadFormService";
 import type { PublicLeadFormState, PublicLeadFormActions, BootstrapStatus } from "./PublicLeadFormTypes";
+import { DEFAULT_TZ } from "@/lib/dates";
 
 export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): PublicLeadFormState & PublicLeadFormActions {
   const [healthPlans, setHealthPlans] = useState<HealthPlanOption[]>([]);
@@ -17,6 +18,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
   const [closersLoading, setClosersLoading] = useState(true);
   const [sdrs, setSdrs] = useState<SdrOption[]>([]);
   const [guestCandidates, setGuestCandidates] = useState<GuestCandidateOption[]>([]);
+  const [timezone, setTimezone] = useState(DEFAULT_TZ);
   const [bootstrapStatus, setBootstrapStatus] = useState<BootstrapStatus>("loading");
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
@@ -59,6 +61,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
         setClosers(bootstrapData.closers);
         setSdrs(bootstrapData.sdrs);
         setGuestCandidates(bootstrapData.guestCandidates);
+        setTimezone(bootstrapData.timezone);
         setBootstrapStatus("ready");
       } catch (error) {
         if (bootstrapInFlightKeyRef.current !== requestKey) {
@@ -69,6 +72,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
         setClosers([]);
         setSdrs([]);
         setGuestCandidates([]);
+        setTimezone(DEFAULT_TZ);
         setBootstrapStatus("error");
         setBootstrapError(
           error instanceof Error ? error.message : "Erro ao carregar dados iniciais do formulário."
@@ -169,6 +173,7 @@ export function usePublicLeadForm(teamId: string, legacySupabaseId?: string): Pu
     closersLoading,
     sdrs,
     guestCandidates,
+    timezone,
     availableTimes,
     availabilityLoading,
     isSubmitting,

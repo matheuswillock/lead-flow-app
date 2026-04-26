@@ -21,6 +21,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils";
 import { useIntegrationsContext } from "../context/IntegrationsContext";
 import type { StudioWebhookLogItem } from "../services/IIntegrationsService";
+import { useTimezone } from "@/app/context/TimezoneContext";
+import { formatInTz } from "@/lib/dates";
 
 const expiryModeLabel: Record<"hours_24" | "months_6" | "indeterminate", string> = {
   hours_24: "24 horas",
@@ -123,20 +125,13 @@ const formatTimeUntilExpiration = (expiresAtIso: string | null): string | null =
   return hours > 0 ? `Expira em ${totalDays}d ${hours}h` : `Expira em ${totalDays}d`;
 };
 
-const formatWebhookLogDateTime = (value: string): string => {
+const formatWebhookLogDateTime = (value: string, tz: string): string => {
   const parsedDate = new Date(value);
   if (Number.isNaN(parsedDate.getTime())) {
     return "-";
   }
 
-  return parsedDate.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return formatInTz(parsedDate, "dd/MM/yyyy HH:mm:ss", tz);
 };
 
 const formatPayloadForDetails = (payload: unknown): string => {
@@ -178,6 +173,7 @@ const getWebhookLogStatusBadgeVariant = (statusCode: number): "default" | "secon
 };
 
 export function StudioWebhookIntegration() {
+  const { tz } = useTimezone();
   const {
     activeTeamId,
     studioWebhookConfig,
@@ -594,7 +590,7 @@ export function StudioWebhookIntegration() {
                                 <TableCell>
                                   <div className="flex flex-col gap-1">
                                     <p className="truncate font-medium">{log.endpoint}</p>
-                                    <p className="text-xs text-muted-foreground">{formatWebhookLogDateTime(log.createdAt)}</p>
+                                    <p className="text-xs text-muted-foreground">{formatWebhookLogDateTime(log.createdAt, tz)}</p>
                                   </div>
                                 </TableCell>
                                 <TableCell className="text-right">
@@ -624,7 +620,7 @@ export function StudioWebhookIntegration() {
                         <div className="flex flex-col gap-3 text-sm">
                           <div className="flex flex-col gap-1">
                             <p className="font-semibold text-foreground">Data da requisição</p>
-                            <p className="text-muted-foreground">{formatWebhookLogDateTime(selectedStudioWebhookLog.createdAt)}</p>
+                            <p className="text-muted-foreground">{formatWebhookLogDateTime(selectedStudioWebhookLog.createdAt, tz)}</p>
                           </div>
                           <div className="flex flex-col gap-1">
                             <p className="font-semibold text-foreground">Status</p>

@@ -67,6 +67,7 @@ export interface PublicLeadFormBootstrapData {
   closers: CloserOption[];
   sdrs: SdrOption[];
   guestCandidates: GuestCandidateOption[];
+  timezone: string;
 }
 
 export interface IPublicLeadFormService {

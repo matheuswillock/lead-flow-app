@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
 import {
   ChevronDownIcon,
   ChevronLeftIcon,
@@ -11,17 +13,29 @@ import { DayButton, DayPicker, getDefaultClassNames } from "react-day-picker"
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
 
+type WeekdayLabelFormat = "short" | "long"
+
+const formatWeekdayLabel = (date: Date, weekdayLabelFormat: WeekdayLabelFormat) => {
+  const weekday = new Intl.DateTimeFormat("pt-BR", {
+    weekday: weekdayLabelFormat,
+  }).format(date)
+
+  return weekdayLabelFormat === "short" ? weekday.replace(/\.$/, "") : weekday
+}
+
 function Calendar({
   className,
   classNames,
   showOutsideDays = true,
   captionLayout = "label",
   buttonVariant = "ghost",
+  weekdayLabelFormat = "short",
   formatters,
   components,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
+  weekdayLabelFormat?: WeekdayLabelFormat
 }) {
   const defaultClassNames = getDefaultClassNames()
 
@@ -37,9 +51,10 @@ function Calendar({
       captionLayout={captionLayout}
       formatters={{
         formatMonthDropdown: (date) => {
-          const raw = date.toLocaleString("pt-BR", { month: "short" })
+          const raw = format(date, "MMM", { locale: ptBR })
           return raw.endsWith(".") ? raw : `${raw}.`
         },
+        formatWeekdayName: (date) => formatWeekdayLabel(date, weekdayLabelFormat),
         ...formatters,
       }}
       classNames={{
@@ -86,7 +101,7 @@ function Calendar({
         table: "w-full border-collapse",
         weekdays: cn("flex", defaultClassNames.weekdays),
         weekday: cn(
-          "text-muted-foreground flex-1 select-none rounded-md text-sm font-medium",
+          "text-muted-foreground flex flex-1 items-center justify-center text-center select-none rounded-md text-sm font-medium",
           defaultClassNames.weekday
         ),
         week: cn("mt-2 flex w-full", defaultClassNames.week),

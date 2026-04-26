@@ -4,6 +4,7 @@ import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
 import { isManagerLikeRole } from '@/lib/roles';
 import { performanceSalesRequestSchema } from './DTO/performanceSalesRequestDTO';
 import { performanceUseCase, PerformanceUseCase } from '@/app/api/useCases/performance/PerformanceUseCase';
+import { endOfDayInTz, parseDateKeyToUtc } from '@/lib/dates';
 
 export async function GET(request: NextRequest) {
   console.info('[PerformanceSalesRoute][GET] Received request');
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(teamAccess.error, { status: teamAccess.status });
   }
 
-  const { profileId, teamId, teamMember } = teamAccess.access;
+  const { profileId, teamId, teamMember, userTimezone } = teamAccess.access;
   const isManager = isManagerLikeRole(teamMember.role);
   const isCloser = teamMember.functions.includes('CLOSER');
 
@@ -41,11 +42,10 @@ export async function GET(request: NextRequest) {
   let resolvedEndDate: Date;
 
   if (startDate && endDate) {
-    resolvedStartDate = new Date(startDate);
-    resolvedEndDate = new Date(endDate);
-    resolvedEndDate.setHours(23, 59, 59, 999);
+    resolvedStartDate = parseDateKeyToUtc(startDate, userTimezone);
+    resolvedEndDate = endOfDayInTz(parseDateKeyToUtc(endDate, userTimezone), userTimezone);
   } else {
-    const dates = PerformanceUseCase.resolvePresetToDates(preset ?? '1m');
+    const dates = PerformanceUseCase.resolvePresetToDates(preset ?? '1m', userTimezone);
     resolvedStartDate = dates.startDate;
     resolvedEndDate = dates.endDate;
   }

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { randomUUID } from "crypto"
 import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { addMonthsInTz, resolveTimezone } from "@/lib/dates"
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
         currentPeriodEnd: { lte: now },
       },
       include: {
+        profile: { select: { timezone: true } },
         usages: {
           where: {
             periodStart: { lte: now },
@@ -35,10 +37,10 @@ export async function GET(request: NextRequest) {
     for (const subscription of expiredSubscriptions) {
       const usage = subscription.usages[0]
 
-      // Calcular novo período
+      // Calcular novo período respeitando o TZ do owner
+      const ownerTz = resolveTimezone(subscription.profile?.timezone)
       const newPeriodStart = new Date(subscription.currentPeriodEnd)
-      const newPeriodEnd = new Date(newPeriodStart)
-      newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1)
+      const newPeriodEnd = addMonthsInTz(newPeriodStart, 1, ownerTz)
 
       await prisma.$transaction([
         // Atualizar período da assinatura

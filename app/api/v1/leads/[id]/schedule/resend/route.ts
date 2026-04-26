@@ -391,16 +391,17 @@ export async function POST(
 
       if ((!canUseGoogleCalendar || inviteDispatchStatus !== "failed") && resendRecipients.length > 0) {
         const organizerName = closerProfile.fullName || closerProfile.email;
-        const emailResult = await emailService.sendMeetingInviteEmail({
-          to: resendRecipients,
-          leadName: lead.name,
-          meetingTitle: schedule.meetingTitle || undefined,
-          meetingDate: schedule.date,
-          meetingLink: schedule.meetingLink,
-          organizerName,
-          organizerEmail: closerProfile.email,
-          eventUid: schedule.id,
-        });
+          const emailResult = await emailService.sendMeetingInviteEmail({
+            to: resendRecipients,
+            leadName: lead.name,
+            meetingTitle: schedule.meetingTitle || undefined,
+            meetingDate: schedule.date,
+            meetingLink: schedule.meetingLink,
+            organizerName,
+            organizerEmail: closerProfile.email,
+            eventUid: schedule.id,
+            timezone: closerProfile.timezone,
+          });
 
         if (emailResult.success) {
           const resendMessageId = extractResendMessageId(emailResult.data);
@@ -490,16 +491,17 @@ export async function POST(
       }
 
       const organizerName = closerProfile.fullName || closerProfile.email;
-      const emailResult = await emailService.sendMeetingInviteEmail({
-        to: emails,
-        leadName: lead.name,
-        meetingTitle: schedule.meetingTitle || undefined,
-        meetingDate: schedule.date,
-        meetingLink: schedule.meetingLink,
-        organizerName,
-        organizerEmail: closerProfile.email,
-        eventUid: schedule.id,
-      });
+        const emailResult = await emailService.sendMeetingInviteEmail({
+          to: emails,
+          leadName: lead.name,
+          meetingTitle: schedule.meetingTitle || undefined,
+          meetingDate: schedule.date,
+          meetingLink: schedule.meetingLink,
+          organizerName,
+          organizerEmail: closerProfile.email,
+          eventUid: schedule.id,
+          timezone: closerProfile.timezone,
+        });
 
       if (emailResult.success) {
         const resendMessageId = extractResendMessageId(emailResult.data);
@@ -571,17 +573,18 @@ export async function POST(
 
       const organizerName = closerProfile.fullName || closerProfile.email;
       const closerName = closerProfile.fullName || closerProfile.email || null;
-      const emailResult = await emailService.sendMeetingInviteEmail({
-        to: [email],
-        leadName: lead.name,
-        meetingTitle: schedule.meetingTitle || undefined,
-        meetingDate: schedule.date,
-        meetingLink: schedule.meetingLink,
-        organizerName,
-        closerName,
-        organizerEmail: closerProfile.email,
-        eventUid: schedule.id,
-      });
+        const emailResult = await emailService.sendMeetingInviteEmail({
+          to: [email],
+          leadName: lead.name,
+          meetingTitle: schedule.meetingTitle || undefined,
+          meetingDate: schedule.date,
+          meetingLink: schedule.meetingLink,
+          organizerName,
+          closerName,
+          organizerEmail: closerProfile.email,
+          eventUid: schedule.id,
+          timezone: closerProfile.timezone,
+        });
 
       if (emailResult.success) {
         const resendMessageId = extractResendMessageId(emailResult.data);

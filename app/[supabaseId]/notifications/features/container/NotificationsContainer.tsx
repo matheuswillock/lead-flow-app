@@ -10,17 +10,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { NotificationItem } from "../types/notification.types";
 import { useNotifications } from "../context/NotificationsHook";
+import { useTimezone } from "@/app/context/TimezoneContext";
+import { formatInTz } from "@/lib/dates";
 
-function formatCreatedAt(value: string) {
+function formatCreatedAt(value: string, tz: string) {
   try {
-    return new Date(value).toLocaleString("pt-BR", {
-      timeZone: "America/Sao_Paulo",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatInTz(new Date(value), "dd/MM/yyyy HH:mm", tz);
   } catch {
     return value;
   }
@@ -79,6 +74,7 @@ function getGoogleNotificationBadge(notification: NotificationItem) {
 export function NotificationsContainer() {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
+  const { tz } = useTimezone();
   const {
     notifications,
     total,
@@ -205,7 +201,7 @@ export function NotificationsContainer() {
                   ) : null}
                   <p className="text-sm font-medium">{notification.message}</p>
                   <p className="text-xs text-muted-foreground">
-                    {actorName} • {formatCreatedAt(notification.createdAt)}
+                    {actorName} • {formatCreatedAt(notification.createdAt, tz)}
                   </p>
                 </div>
                 {canOpenLead ? (

@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { useHistoricoContext } from "../context/HistoricoContext"
 import { EventsTimeline } from "./EventsTimeline"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatInTz } from "@/lib/dates"
 
 const STATUS_LABELS: Record<string, string> = {
   queued: "Na fila",
@@ -24,18 +26,19 @@ const STATUS_LABELS: Record<string, string> = {
   failed: "Falhou",
 }
 
-function Timestamp({ label, value }: { label: string; value: string | null }) {
+function Timestamp({ label, value, tz }: { label: string; value: string | null; tz: string }) {
   if (!value) return null
   return (
     <div className="flex justify-between text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span>{new Date(value).toLocaleString("pt-BR")}</span>
+      <span>{formatInTz(new Date(value), "dd/MM/yyyy HH:mm", tz)}</span>
     </div>
   )
 }
 
 export function LogDetailSheet() {
   const { selectedLogId, selectedLog, loadingDetail, handleCloseDetail } = useHistoricoContext()
+  const { tz } = useTimezone()
 
   return (
     <Sheet open={Boolean(selectedLogId)} onOpenChange={(open) => { if (!open) handleCloseDetail() }}>
@@ -79,12 +82,12 @@ export function LogDetailSheet() {
 
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Timestamps</p>
-                <Timestamp label="Enviado em" value={selectedLog.sentAt} />
-                <Timestamp label="Entregue em" value={selectedLog.deliveredAt} />
-                <Timestamp label="Aberto em" value={selectedLog.openedAt} />
-                <Timestamp label="Clicado em" value={selectedLog.clickedAt} />
-                <Timestamp label="Bounce em" value={selectedLog.bouncedAt} />
-                <Timestamp label="Reclamação em" value={selectedLog.complainedAt} />
+                <Timestamp label="Enviado em" value={selectedLog.sentAt} tz={tz} />
+                <Timestamp label="Entregue em" value={selectedLog.deliveredAt} tz={tz} />
+                <Timestamp label="Aberto em" value={selectedLog.openedAt} tz={tz} />
+                <Timestamp label="Clicado em" value={selectedLog.clickedAt} tz={tz} />
+                <Timestamp label="Bounce em" value={selectedLog.bouncedAt} tz={tz} />
+                <Timestamp label="Reclamação em" value={selectedLog.complainedAt} tz={tz} />
               </div>
 
               <Separator />

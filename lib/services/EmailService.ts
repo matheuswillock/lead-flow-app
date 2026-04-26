@@ -1,6 +1,7 @@
 import { assertResend } from "@/lib/email";
 import { getAppUrl, getFullUrl } from '@/lib/utils/app-url';
 import type { Attachment } from "resend";
+import { DEFAULT_TZ, formatInTz, parseDateKeyToUtc, resolveTimezone } from "@/lib/dates";
 
 export interface EmailOptions {
   to: string[];
@@ -48,6 +49,7 @@ export interface SubscriptionConfirmationData {
   value?: number; // BRL
   nextDueDate?: string; // ISO
   manageUrl?: string; // URL para gerenciar assinatura
+  timezone?: string | null;
 }
 
 export interface OperatorInviteEmailData {
@@ -98,6 +100,7 @@ export interface MeetingInviteEmailData {
   closerName?: string | null;
   notes?: string | null;
   eventUid?: string | null;
+  timezone?: string | null;
 }
 
 export interface CloserScheduleNotificationEmailData {
@@ -112,6 +115,7 @@ export interface CloserScheduleNotificationEmailData {
   attendees: string[];
   notes?: string | null;
   attachments?: Attachment[];
+  timezone?: string | null;
 }
 
 export class EmailService {
@@ -142,6 +146,19 @@ export class EmailService {
       .replace(/\n/g, "\\n")
       .replace(/;/g, "\\;")
       .replace(/,/g, "\\,");
+  }
+
+  private formatDateOnlyString(value?: string | null, timezone?: string | null) {
+    if (!value) return undefined;
+
+    const tz = resolveTimezone(timezone ?? DEFAULT_TZ);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return formatInTz(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz);
+    }
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    return formatInTz(parsed, "dd/MM/yyyy", tz);
   }
 
   private buildMeetingInviteIcs(data: MeetingInviteEmailData) {
@@ -406,7 +423,7 @@ export class EmailService {
         : undefined;
 
     const price = fmtCurrency(data.value);
-    const nextDue = data.nextDueDate ? new Date(data.nextDueDate).toLocaleDateString('pt-BR') : undefined;
+    const nextDue = this.formatDateOnlyString(data.nextDueDate, data.timezone);
     const appUrl = getAppUrl({ removeTrailingSlash: true });
     const manageUrl = data.manageUrl || `${appUrl}/sign-in`;
 
@@ -1046,15 +1063,9 @@ export class EmailService {
   }
 
   async sendMeetingInviteEmail(data: MeetingInviteEmailData) {
-    const formattedDate = data.meetingDate.toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-    const formattedTime = data.meetingDate.toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
+    const formattedDate = formatInTz(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
+    const formattedTime = formatInTz(data.meetingDate, "HH:mm", timezone);
     const title = data.meetingTitle || `Estudo Plano de Saúde: ${data.leadName}`;
     const linkMarkup = data.meetingLink
       ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
@@ -1125,15 +1136,9 @@ export class EmailService {
   }
 
   async sendCloserScheduleNotificationEmail(data: CloserScheduleNotificationEmailData) {
-    const formattedDate = data.meetingDate.toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-    });
-    const formattedTime = data.meetingDate.toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
+    const formattedDate = formatInTz(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
+    const formattedTime = formatInTz(data.meetingDate, "HH:mm", timezone);
     const subjectPrefix = data.isReschedule ? "Reunião reagendada" : "Reunião agendada";
     const subject = `${subjectPrefix}: ${data.meetingTitle}`;
     const scheduleIntroText = data.isReschedule

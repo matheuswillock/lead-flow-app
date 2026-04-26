@@ -240,16 +240,17 @@ export class PaymentValidationService implements IPaymentValidationService {
           const manageUrl = profile?.supabaseId ? `${appUrl}/${profile.supabaseId}/account` : `${appUrl}/sign-in`;
 
           const emailService = createEmailService();
-          emailService
-            .sendSubscriptionConfirmationEmail({
-              userName,
-              userEmail,
-              subscriptionId: payment.subscription,
-              planName: profile?.subscriptionPlan || 'manager_base',
-              value: payment.value,
-              nextDueDate: payment.dueDate,
-              manageUrl,
-            })
+            emailService
+              .sendSubscriptionConfirmationEmail({
+                userName,
+                userEmail,
+                subscriptionId: payment.subscription,
+                planName: profile?.subscriptionPlan || 'manager_base',
+                value: payment.value,
+                nextDueDate: payment.dueDate,
+                manageUrl,
+                timezone: profile?.timezone,
+              })
             .then((res) => {
               if (res.success) {
                 console.info('📧 [PaymentValidationService] Email de confirmação de assinatura enviado');

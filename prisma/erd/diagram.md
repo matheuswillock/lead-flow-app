@@ -229,6 +229,7 @@ unsubscribed unsubscribed
     DateTime subscriptionNextDueDate "❓"
     String subscriptionCycle "❓"
     String activeTeamId "❓"
+    String timezone 
     DateTime createdAt 
     DateTime updatedAt 
     }

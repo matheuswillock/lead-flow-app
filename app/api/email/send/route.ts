@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
           value: data.value,
           nextDueDate: data.nextDueDate,
           manageUrl: data.manageUrl,
+          timezone: data.timezone,
         });
         break;
 

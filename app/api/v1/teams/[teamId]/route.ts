@@ -168,6 +168,7 @@ export async function DELETE(
           subscriptionNextDueDate: true,
           subscriptionCycle: true,
           hasPermanentSubscription: true,
+          timezone: true,
         },
       }),
     ]);

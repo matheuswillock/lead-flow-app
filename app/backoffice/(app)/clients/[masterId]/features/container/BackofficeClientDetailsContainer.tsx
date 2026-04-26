@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useBackofficeClientDetails } from "../context/BackofficeClientDetailsContext"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatInTz, parseDateKeyToUtc } from "@/lib/dates"
 
 const INVOICE_STATUS_BADGES: Record<
   "paid" | "overdue" | "upcoming" | "other",
@@ -76,13 +78,13 @@ const INVOICE_PERIOD_OPTIONS = [
   { value: "this_month", label: "Mês atual" },
 ] as const
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("pt-BR")
+function formatDate(value: string, tz: string) {
+  return formatInTz(new Date(value), "dd/MM/yyyy", tz)
 }
 
-function formatNullableDate(value: string | null) {
+function formatNullableDate(value: string | null, tz: string) {
   if (!value) return "—"
-  return formatDate(value)
+  return formatInTz(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz)
 }
 
 function formatCurrency(value: number) {
@@ -101,6 +103,7 @@ function getInitials(name: string | null, email: string) {
 }
 
 export function BackofficeClientDetailsContainer() {
+  const { tz } = useTimezone()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -231,7 +234,7 @@ export function BackofficeClientDetailsContainer() {
                 Telefone: {details.phone || "Não informado"}
               </p>
               <p className="text-sm text-muted-foreground">
-                Entrou na plataforma em {formatDate(details.createdAt)}
+                Entrou na plataforma em {formatDate(details.createdAt, tz)}
               </p>
             </div>
           </div>
@@ -290,7 +293,7 @@ export function BackofficeClientDetailsContainer() {
                           <div className="grid w-full grid-cols-[2fr_1fr_1fr] gap-3 text-sm pr-4 items-center">
                             <span className="font-medium text-center">{team.name}</span>
                             <span className="text-center">{team.membersCount}</span>
-                            <span className="text-center">{formatDate(team.createdAt)}</span>
+                            <span className="text-center">{formatDate(team.createdAt, tz)}</span>
                           </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-4 pb-4">
@@ -318,7 +321,7 @@ export function BackofficeClientDetailsContainer() {
                                     <TableCell>
                                       {member.functions.length > 0 ? member.functions.join(", ") : "—"}
                                     </TableCell>
-                                    <TableCell>{formatDate(member.addedAt)}</TableCell>
+                                    <TableCell>{formatDate(member.addedAt, tz)}</TableCell>
                                   </TableRow>
                                 ))}
                               </TableBody>
@@ -518,10 +521,10 @@ export function BackofficeClientDetailsContainer() {
                               return (
                                 <TableRow key={invoice.id} className="h-12">
                                   <TableCell className="px-4 align-middle">
-                                    {formatNullableDate(invoice.dateCreated)}
+                                    {formatNullableDate(invoice.dateCreated, tz)}
                                   </TableCell>
                                   <TableCell className="px-4 align-middle">
-                                    {formatNullableDate(invoice.dueDate)}
+                                    {formatNullableDate(invoice.dueDate, tz)}
                                   </TableCell>
                                   <TableCell className="px-4 text-right align-middle font-medium tabular-nums">
                                     {formatCurrency(invoice.value)}

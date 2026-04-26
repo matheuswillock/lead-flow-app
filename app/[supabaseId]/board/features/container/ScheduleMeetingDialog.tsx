@@ -29,6 +29,13 @@ import {
 import { X } from "lucide-react";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
+import { useTimezone } from "@/app/context/TimezoneContext";
+import {
+  formatInTz,
+  formatLocalDateValue,
+  formatLocalTimeValue,
+  parseDateKeyAndTimeToUtc,
+} from "@/lib/dates";
 
 export type ScheduleMeetingSuccessPayload = {
   leadId: string;
@@ -49,7 +56,7 @@ type ScheduleInviteDispatch = {
   error: string | null;
 };
 
-const SCHEDULE_TIMEZONE = "America/Sao_Paulo";
+// SCHEDULE_TIMEZONE now comes from useTimezone() inside the component
 
 interface ScheduleMeetingDialogProps {
   open: boolean;
@@ -73,6 +80,7 @@ export function ScheduleMeetingDialog({
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const { activeTeamId } = useTeamContext();
+  const { tz: SCHEDULE_TIMEZONE } = useTimezone();
 
   const [meetingDate, setMeetingDate] = useState<Date>();
   const [meetingTitle, setMeetingTitle] = useState<string>("");
@@ -204,22 +212,9 @@ export function ScheduleMeetingDialog({
     }
   }, [open, closerId, availableClosers]);
 
-  const toDateKey = (date: Date) => {
-    if (!isValidDate(date)) return null;
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: SCHEDULE_TIMEZONE,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(date);
-  };
+  const toDateKey = (date: Date) => (isValidDate(date) ? formatLocalDateValue(date, SCHEDULE_TIMEZONE) : null);
 
-  const formatTime = (date: Date) =>
-    date.toLocaleTimeString("pt-BR", {
-      timeZone: SCHEDULE_TIMEZONE,
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const formatTime = (date: Date) => formatLocalTimeValue(date, SCHEDULE_TIMEZONE);
 
   useEffect(() => {
     if (!open || !isValidDate(meetingDate) || !closerId || !supabaseId) {
@@ -266,10 +261,7 @@ export function ScheduleMeetingDialog({
 
         const currentTime = formatTime(currentMeetingDate);
         if (times.length > 0 && !times.includes(currentTime)) {
-          const [hours, minutes] = times[0].split(":").map(Number);
-          const nextDate = new Date(currentMeetingDate);
-          nextDate.setHours(hours, minutes, 0, 0);
-          setMeetingDate(isValidDate(nextDate) ? nextDate : undefined);
+          setMeetingDate(parseDateKeyAndTimeToUtc(dateKey, times[0], SCHEDULE_TIMEZONE));
         }
       } catch (error) {
         if (!isMounted) return;
@@ -396,16 +388,17 @@ export function ScheduleMeetingDialog({
       const inviteDispatch = scheduleResult.inviteDispatch;
 
       // ✅ Sucesso - Fechar dialog e atualizar UI
-      toast.success(`Reunião agendada para ${scheduledMeetingDate.toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit"
-      })}`, {
-        id: loadingToast,
-        duration: 4000,
-      });
+      toast.success(
+        `Reunião agendada para ${formatInTz(
+          scheduledMeetingDate,
+          "dd 'de' MMMM 'de' yyyy 'às' HH:mm",
+          SCHEDULE_TIMEZONE
+        )}`,
+        {
+          id: loadingToast,
+          duration: 4000,
+        }
+      );
 
       if (inviteDispatch?.status === "failed") {
         const errorText = inviteDispatch.error
@@ -472,7 +465,7 @@ export function ScheduleMeetingDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-125">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Agendar Reunião</DialogTitle>
@@ -490,6 +483,7 @@ export function ScheduleMeetingDialog({
               required
               disablePastDates
               availableTimes={availableTimes}
+              tz={SCHEDULE_TIMEZONE}
             />
             {!isValidDate(meetingDate) && (
               <p className="text-xs text-muted-foreground">Selecione uma data para carregar horários disponíveis.</p>
@@ -585,7 +579,7 @@ export function ScheduleMeetingDialog({
                     }
                   }}
                   placeholder="ex: convidado1@email.com, convidado2@email.com"
-                  className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  className="min-w-35 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

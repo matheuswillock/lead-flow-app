@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { AnalyticsService } from "../services/AnalyticsService"
 import type { AnalyticsData, AnalyticsPeriod } from "./AnalyticsTypes"
+import { useTimezone } from "@/app/context/TimezoneContext"
 
 const service = new AnalyticsService()
 
@@ -21,6 +22,7 @@ export type AnalyticsHookReturn = {
 } & AnalyticsActions
 
 export function useAnalytics(supabaseId: string): AnalyticsHookReturn {
+  const { tz } = useTimezone()
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(false)
   const [period, setPeriod] = useState<AnalyticsPeriod>('30d')
@@ -32,10 +34,10 @@ export function useAnalytics(supabaseId: string): AnalyticsHookReturn {
     if (fetchingRef.current) return
     fetchingRef.current = true
     setLoading(true)
-    console.info("[useAnalytics] fetchData", { p, cId })
-    try {
-      const result = await service.getAnalytics(p, cId || undefined)
-      setData(result)
+      console.info("[useAnalytics] fetchData", { p, cId })
+      try {
+        const result = await service.getAnalytics(p, tz, cId || undefined)
+        setData(result)
     } catch (err) {
       console.error("[useAnalytics] fetchData error", err)
       toast.error("Erro ao carregar analytics")
@@ -43,14 +45,14 @@ export function useAnalytics(supabaseId: string): AnalyticsHookReturn {
       setLoading(false)
       fetchingRef.current = false
     }
-  }, [])
+  }, [tz])
 
   useEffect(() => {
     void fetchData('30d', "")
     service.getCampaigns().then(setCampaigns).catch((err) => {
       console.error("[useAnalytics] getCampaigns error", err)
     })
-  }, [supabaseId])
+  }, [supabaseId, fetchData])
 
   const handlePeriodChange = useCallback((p: AnalyticsPeriod) => {
     setPeriod(p)

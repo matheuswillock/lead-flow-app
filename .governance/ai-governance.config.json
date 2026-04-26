@@ -59,6 +59,7 @@
       "app/api/v1/operators/resend-invite/route.ts",
       "app/api/v1/payments/create-card/route.ts",
       "app/api/v1/profiles/[supabaseId]/route.ts",
+      "app/api/v1/profiles/[supabaseId]/timezone/route.ts",
       "app/api/v1/subscriptions/sync/[supabaseId]/route.ts",
       "app/api/v1/subscriptions/[subscriptionId]/notify-payment/route.ts",
       "app/api/v1/teams/active/route.ts",

@@ -123,7 +123,7 @@ function CarteiraTableRow({ row }: { row: CarteiraRow }) {
       </TableCell>
 
       {/* Note inline */}
-      <TableCell className="max-w-[160px]">
+      <TableCell className="max-w-40">
         <NoteCell
           row={row}
           onSave={(note) => updateEntry(row.leadId, { note })}

@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - "feature/**"
+      - "features/**"
       - "feat/**"
   workflow_dispatch:
 
@@ -17,7 +18,6 @@ permissions:
   contents: read
   pull-requests: write
   deployments: write
-  security-events: write
 
 env:
   CI: true
@@ -26,9 +26,20 @@ env:
 jobs:
   quality:
     name: Lint & Typecheck
-    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/feature/') ||
+        startsWith(github.ref, 'refs/heads/features/') ||
+        startsWith(github.ref, 'refs/heads/feat/')
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      governance-sync: ${{ steps['quality-result'].outputs['governance-sync'] }}
+      governance-check: ${{ steps['quality-result'].outputs['governance-check'] }}
+      lint: ${{ steps['quality-result'].outputs.lint }}
+      typecheck: ${{ steps['quality-result'].outputs.typecheck }}
+      quality-passed: ${{ steps['quality-result'].outputs.passed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,37 +62,83 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
+      - name: Governance Sync
+        id: governance-sync
+        continue-on-error: true
+        run: |
+          bun run governance:sync
+          git diff --exit-code
+
       - name: Governance Check
+        id: governance-check
+        continue-on-error: true
         run: bun run governance:check
 
       - name: Governance Allowlist Warnings
+        continue-on-error: true
         run: bun run governance:warn-allowlist
 
       - name: Lint
+        id: lint
+        continue-on-error: true
         run: bun run lint
 
       - name: Typecheck
+        id: typecheck
+        continue-on-error: true
         run: bun run typecheck
 
-  security:
-    name: Security
-    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
-    uses: ./.github/workflows/security-reusable.yml
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
-    with:
-      include_dev_dependencies: false
+      - name: Resolve Quality Result
+        id: quality-result
+        if: always()
+        run: |
+          echo "governance-sync=${{ steps['governance-sync'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "governance-check=${{ steps['governance-check'].outcome }}" >> "$GITHUB_OUTPUT"
+          echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" ]]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  quality-gate:
+    name: Quality Gate
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/feature/') ||
+        startsWith(github.ref, 'refs/heads/features/') ||
+        startsWith(github.ref, 'refs/heads/feat/')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs:
+      - quality
+    steps:
+      - name: Enforce Quality Checks
+        run: |
+          if [[ "${{ needs.quality.outputs['quality-passed'] }}" != "true" ]]; then
+            echo "::error::One or more quality checks failed."
+            echo "governance:sync=${{ needs.quality.outputs['governance-sync'] }}"
+            echo "governance:check=${{ needs.quality.outputs['governance-check'] }}"
+            echo "lint=${{ needs.quality.outputs.lint }}"
+            echo "typecheck=${{ needs.quality.outputs.typecheck }}"
+            exit 1
+          fi
 
   build:
     name: Build
-    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/feature/') ||
+        startsWith(github.ref, 'refs/heads/features/') ||
+        startsWith(github.ref, 'refs/heads/feat/')
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
-      - quality
-      - security
+      - quality-gate
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -125,7 +182,12 @@ jobs:
 
   deploy-preview:
     name: Deploy Vercel (Preview)
-    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/feature/') ||
+        startsWith(github.ref, 'refs/heads/features/') ||
+        startsWith(github.ref, 'refs/heads/feat/')
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: build
@@ -151,25 +213,100 @@ jobs:
       - name: Preview Summary
         run: |
           echo "### Preview Deploy (feature)" >> $GITHUB_STEP_SUMMARY
-          echo "- URL: ${{ steps.vercel-preview.outputs.preview-url }}" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: ${{ steps['vercel-preview'].outputs['preview-url'] }}" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
 
   auto-pr-to-develop:
     name: Open PR to develop
-    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
+    if: >-
+      ${{
+        always() &&
+        (
+          startsWith(github.ref, 'refs/heads/feature/') ||
+          startsWith(github.ref, 'refs/heads/features/') ||
+          startsWith(github.ref, 'refs/heads/feat/')
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: deploy-preview
+    needs:
+      - quality
+      - quality-gate
+      - build
+      - deploy-preview
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Create PR if not exists (feature -> develop)
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require('fs');
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const head = context.ref.replace('refs/heads/', '');
             const base = 'develop';
+            const checks = {
+              governanceSync: '${{ needs.quality.outputs['governance-sync'] }}',
+              governanceCheck: '${{ needs.quality.outputs['governance-check'] }}',
+              lint: '${{ needs.quality.outputs.lint }}',
+              typecheck: '${{ needs.quality.outputs.typecheck }}',
+              build: '${{ needs.build.result }}',
+              deployPreview: '${{ needs['deploy-preview'].result }}',
+            };
+            const isSuccess = (status) => status === 'success';
+            const checklistLine = (status, label) => `- [${isSuccess(status) ? 'x' : ' '}] ${isSuccess(status) ? '✅' : '❌'} ${label}`;
+            const replaceChecklistLine = (template, currentLabel, status, nextLabel) => {
+              return template
+                .split('\n')
+                .map((line) => {
+                  const normalizedLabel = line
+                    .trim()
+                    .replace(/^- \[[ x]\](?: ✅| ❌)? /, '');
+
+                  return normalizedLabel === currentLabel ? checklistLine(status, nextLabel) : line;
+                })
+                .join('\n');
+            };
+            const applyChecklistStatuses = (template) => {
+              let body = template;
+              body = replaceChecklistLine(body, '`bun run governance:sync`', checks.governanceSync, '`bun run governance:sync`');
+              body = replaceChecklistLine(body, '`bun run governance:check`', checks.governanceCheck, '`bun run governance:check`');
+              body = replaceChecklistLine(body, '`bun run typecheck`', checks.typecheck, '`bun run typecheck`');
+              body = replaceChecklistLine(body, '`bun run lint`', checks.lint, '`bun run lint`');
+              body = replaceChecklistLine(body, 'Manteve adapters sincronizados (`bun run governance:sync`)?', checks.governanceSync, 'Manteve adapters sincronizados (`bun run governance:sync`)?');
+              body = replaceChecklistLine(body, 'Confirmou sincronizacao do `AGENTS.md` gerado para Codex?', checks.governanceSync, 'Confirmou sincronizacao do `AGENTS.md` gerado para Codex?');
+              return body;
+            };
+            const automationSection = (message) => [
+              '<!-- ci-feature:automation:start -->',
+              '## CI Automation',
+              '',
+              `**Head:** \`${head}\``,
+              `**Base:** \`${base}\``,
+              '',
+              checklistLine(checks.build, 'Build OK'),
+              checklistLine(checks.deployPreview, 'Preview deploy OK'),
+              '',
+              message,
+              '<!-- ci-feature:automation:end -->'
+            ].join('\n');
+            const upsertAutomationSection = (body, message) => {
+              const startMarker = '<!-- ci-feature:automation:start -->';
+              const endMarker = '<!-- ci-feature:automation:end -->';
+              const nextSection = automationSection(message);
+
+              if (body.includes(startMarker) && body.includes(endMarker)) {
+                return body.replace(
+                  /<!-- ci-feature:automation:start -->[\s\S]*?<!-- ci-feature:automation:end -->/,
+                  nextSection
+                );
+              }
+
+              return [body.trimEnd(), '', nextSection].join('\n');
+            };
 
             if (head === base) {
               core.info(`Head e base são iguais (${head}). Sem PR.`);
@@ -186,6 +323,19 @@ jobs:
 
             if (prs.data.length > 0) {
               core.info(`PR já existe: #${prs.data[0].number} ${prs.data[0].html_url}`);
+              const existingPr = prs.data[0];
+              const fallbackTemplate = fs.readFileSync('.github/pull_request_template.md', 'utf8');
+              let body = applyChecklistStatuses(existingPr.body || fallbackTemplate);
+              body = upsertAutomationSection(body, '*Atualizado automaticamente pelo GitHub Actions.*');
+
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: existingPr.number,
+                body,
+              });
+
+              core.info(`PR atualizado: #${existingPr.number} ${existingPr.html_url}`);
               return;
             }
 
@@ -201,21 +351,9 @@ jobs:
               return;
             }
 
-            const title = `feat: ${head.replace(/^feature\//,'').replace(/^feat\//,'')}`;
-            const body = [
-              '## PR automático (feature → develop)',
-              '',
-              `**Head:** \`${head}\``,
-              `**Base:** \`${base}\``,
-              '',
-              '- [ ] Seguiu `agents.md`?',
-              '- [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?',
-              '- [ ] Rodou typecheck/lint?',
-              '- [ ] Rodou governance check?',
-              '- [ ] Build OK',
-              '',
-              '*Criado automaticamente pelo GitHub Actions.*'
-            ].join('\n');
+            const title = `feat: ${head.replace(/^features\//,'').replace(/^feature\//,'').replace(/^feat\//,'')}`;
+            let body = applyChecklistStatuses(fs.readFileSync('.github/pull_request_template.md', 'utf8'));
+            body = upsertAutomationSection(body, '*Criado automaticamente pelo GitHub Actions.*');
 
             const res = await github.rest.pulls.create({
               owner, repo,

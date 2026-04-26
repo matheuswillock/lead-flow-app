@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { access } = teamAccess;
-    const ctx: TeamContext = { profileId: access.profileId, teamMember: access.teamMember };
+    const ctx: TeamContext = { profileId: access.profileId, userTimezone: access.userTimezone, teamMember: access.teamMember };
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') as '7d' | '30d' | '3m' | '6m' | '1y' || '30d';

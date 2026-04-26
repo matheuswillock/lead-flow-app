@@ -8,6 +8,7 @@ import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO
 import { FinalizeContractData } from "../container/FinalizeContractDialog";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
+import { useTimezone } from "@/app/context/TimezoneContext";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
 import {
@@ -16,6 +17,7 @@ import {
   resolveLeadTimeState,
   type TeamStatusRulesResponse,
 } from "@/lib/teamStatusRules";
+import { formatInTz, formatLocalDateValue } from "@/lib/dates";
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -123,24 +125,17 @@ const COLUMNS: { key: ColumnKey; title: string }[] = [
   { key: "contract_finalized", title: "Negócio fechado" },
 ];
 
-function formatDate(iso: string) {
+function formatDate(iso: string, tz: string) {
   try {
-    const date = new Date(iso);
-    return date.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    return formatInTz(new Date(iso), "dd/MM/yyyy", tz);
   } catch {
     return iso;
   }
 }
 
-function formatDateKey(iso: string) {
+function formatDateKey(iso: string, tz: string) {
   try {
-    const date = new Date(iso);
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Sao_Paulo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(date);
+    return formatLocalDateValue(new Date(iso), tz);
   } catch {
     return "";
   }
@@ -161,6 +156,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const supabaseId = params.supabaseId as string;
   const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
   const { user: contextUser, isLoading: userLoading } = useUserContext();
+  const { tz } = useTimezone();
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
   const searchParams = useSearchParams();
   const sharedLeadCode = searchParams.get("leadCode");
@@ -449,13 +445,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
                 
                 // 🎉 Notificar usuário sobre mudanças específicas
                 if (updatedLead.meetingDate !== currentSelected.meetingDate && updatedLead.meetingDate) {
-                  const meetingDateFormatted = new Date(updatedLead.meetingDate).toLocaleDateString('pt-BR', {
-                    day: '2-digit',
-                    month: 'long',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  });
+                  const meetingDateFormatted = formatInTz(
+                    new Date(updatedLead.meetingDate),
+                    "dd 'de' MMMM 'de' yyyy HH:mm",
+                    tz
+                  );
                   toast.info(`📅 Data de reunião atualizada: ${meetingDateFormatted}`, {
                     duration: 3000,
                   });
@@ -854,14 +848,14 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       !q ||
       l.name.toLowerCase().includes(q) ||
       l.leadCode.toLowerCase().includes(q) ||
-      formatDate(l.createdAt).includes(q);
+      formatDate(l.createdAt, tz).includes(q);
     const inResponsible = (l: Lead) =>
       assignedUsers.length === 0 || (l.assignedTo ? assignedUsers.includes(l.assignedTo) : false);
     const inCloser = (l: Lead) =>
       closerFilter.length === 0 || (l.closerId ? closerFilter.includes(l.closerId) : false);
     const inMeetingsHeld = (l: Lead) => !onlyMeetingsHeld || l.meetingHeald === "yes";
     const inPeriod = (l: Lead) => {
-      const createdKey = formatDateKey(l.createdAt);
+      const createdKey = formatDateKey(l.createdAt, tz);
       if (!createdKey) return false;
       const afterStart = !periodStart || createdKey >= periodStart;
       const beforeEnd = !periodEnd || createdKey <= periodEnd;

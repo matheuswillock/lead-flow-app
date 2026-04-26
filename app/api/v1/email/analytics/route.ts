@@ -2,11 +2,10 @@ import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { prisma } from "@/app/api/infra/data/prisma"
+import { addDaysInTz, startOfDayInTz } from "@/lib/dates"
 
-function getDefaultFrom(): Date {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return d
+function getDefaultFrom(tz: string): Date {
+  return startOfDayInTz(addDaysInTz(new Date(), -30, tz), tz)
 }
 
 export async function GET(request: NextRequest) {
@@ -21,7 +20,7 @@ export async function GET(request: NextRequest) {
     const toParam = searchParams.get("to")
     const campaignId = searchParams.get("campaignId") ?? undefined
 
-    const from = fromParam ? new Date(fromParam) : getDefaultFrom()
+    const from = fromParam ? new Date(fromParam) : getDefaultFrom(teamAccess.access.userTimezone)
     const to = toParam ? new Date(toParam) : new Date()
 
     const where = {
