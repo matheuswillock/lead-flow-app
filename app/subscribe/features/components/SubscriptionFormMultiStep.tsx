@@ -27,6 +27,7 @@ import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from '@/lib/masks';
 // Legacy payment-first flow removed: no pendingSignUp/session storage
 import { createSupabaseBrowser } from '@/lib/supabase/browser';
 import { useWebhookListener } from '@/hooks/useWebhookListener';
+import { detectBrowserTimezone, formatInTz, parseDateKeyToUtc } from '@/lib/dates';
 
 interface SubscriptionFormMultiStepProps {
   onSuccess: (
@@ -54,6 +55,7 @@ export function SubscriptionFormMultiStep({
   onSuccess,
   onError,
 }: SubscriptionFormMultiStepProps) {
+  const browserTz = detectBrowserTimezone();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingNext, setLoadingNext] = useState(false);
@@ -776,7 +778,7 @@ export function SubscriptionFormMultiStep({
                         </div>
 
                         <p className="text-xs text-muted-foreground">
-                          Expira em: {new Date(pixData.expirationDate).toLocaleString('pt-BR')}
+                          Expira em: {formatInTz(new Date(pixData.expirationDate), 'dd/MM/yyyy HH:mm', browserTz)}
                         </p>
 
                         {/* Indicador de aguardando confirmação via webhook */}
@@ -914,7 +916,7 @@ export function SubscriptionFormMultiStep({
                             Boleto Bancário Gerado
                           </h3>
                           <p className="text-sm text-muted-foreground">
-                            Vencimento: {new Date(boletoData.dueDate).toLocaleDateString('pt-BR')}
+                            Vencimento: {formatInTz(parseDateKeyToUtc(boletoData.dueDate, browserTz), 'dd/MM/yyyy', browserTz)}
                           </p>
                         </div>
 

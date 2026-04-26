@@ -3,6 +3,7 @@ import { UserFunction, UserRole } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { isManagerLikeRole } from "@/lib/roles";
+import { resolveTimezone } from "@/lib/dates";
 
 export type TeamAccess = {
   supabaseId: string;
@@ -12,6 +13,7 @@ export type TeamAccess = {
   managerId: string;
   canCreateAccountUsers: boolean;
   canManageAccountTeams: boolean;
+  userTimezone: string;
   teamMember: {
     role: UserRole;
     functions: UserFunction[];
@@ -40,6 +42,7 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       managerId: true,
       canCreateAccountUsers: true,
       canManageAccountTeams: true,
+      timezone: true,
     },
   });
 
@@ -99,6 +102,7 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
         teamMember.role === "manager" && profile.canCreateAccountUsers === true,
       canManageAccountTeams:
         teamMember.role === "manager" && profile.canManageAccountTeams === true,
+      userTimezone: resolveTimezone(profile.timezone),
       teamMember,
     },
   };

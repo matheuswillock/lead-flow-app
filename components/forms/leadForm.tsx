@@ -28,6 +28,7 @@ import { Loader2, X } from "lucide-react";
 import { CopyIcon } from "@/components/animate-ui/icons/copy";
 import { toast } from "sonner";
 import { useIsInView } from "@/hooks/use-is-in-view";
+import { useTimezone } from "@/app/context/TimezoneContext";
 import {
     getPendingRequiredFieldsFeedback,
     LEAD_REQUIRED_FIELD_ORDER,
@@ -143,6 +144,7 @@ export function LeadForm({
     currentProfileId,
     currentUserIsSdr = false,
 }: ILeadFormProps) {
+    const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
     const [ticketDisplay, setTicketDisplay] = useState("");
@@ -692,7 +694,7 @@ export function LeadForm({
                                                 field.onChange(next);
                                                 onMeetingHealdChange?.(next);
                                             }}
-                                            className="mt-[1px]"
+                                            className="mt-px"
                                             disabled={
                                                 isLoading ||
                                                 isUpdating ||
@@ -727,7 +729,7 @@ export function LeadForm({
                     control={form.control}
                     name="meetingDate"
                     render={({ field }) => (
-                        <FormItem className="sm:flex-shrink-0">
+                        <FormItem className="sm:shrink-0">
                             <FormControl>
                                 <DateTimePicker
                                     date={field.value ? new Date(field.value) : undefined}
@@ -739,6 +741,7 @@ export function LeadForm({
                                     disablePastDates={true}
                                     availableTimes={availableTimes}
                                     invalid={isMeetingDateChanged}
+                                    tz={tz}
                                 />
                             </FormControl>
                         </FormItem>
@@ -889,7 +892,7 @@ export function LeadForm({
                                 {...field}
                                 placeholder="Adicione observacoes sobre a reuniao"
                                 className={cn(
-                                    "min-h-[84px] resize-y",
+                                    "min-h-21 resize-y",
                                     isMeetingNotesChanged && "border-destructive focus-visible:ring-destructive"
                                 )}
                                 disabled={scheduleFieldsDisabled}
@@ -996,7 +999,7 @@ export function LeadForm({
                                                 }
                                             }}
                                             placeholder="ex: convidado1@email.com, convidado2@email.com"
-                                            className="min-w-[140px] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                                            className="min-w-35 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                                             disabled={scheduleFieldsDisabled}
                                             aria-invalid={isExtraGuestsChanged || undefined}
                                         />
@@ -1122,6 +1125,7 @@ export function LeadForm({
                                         disabled={isLoading || isUpdating}
                                         disablePastDates={false}
                                         showTime={false}
+                                        tz={tz}
                                     />
                                 </FormControl>
                             </FormItem>

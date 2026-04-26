@@ -18,6 +18,7 @@ export interface PublicLeadFormState {
   closersLoading: boolean;
   sdrs: SdrOption[];
   guestCandidates: GuestCandidateOption[];
+  timezone: string;
   availableTimes: string[];
   availabilityLoading: boolean;
   isSubmitting: boolean;

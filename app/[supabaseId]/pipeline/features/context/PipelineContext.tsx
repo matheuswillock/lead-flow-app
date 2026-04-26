@@ -11,6 +11,7 @@ import { ProfileResponseDTO } from "@/app/api/v1/profiles/DTO/profileResponseDTO
 import { FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
+import { useTimezone } from "@/app/context/TimezoneContext";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
 import {
@@ -19,6 +20,7 @@ import {
   resolveLeadTimeState,
   type TeamStatusRulesResponse,
 } from "@/lib/teamStatusRules";
+import { formatInTz } from "@/lib/dates";
 
 interface IPipelineProviderProps {
   children: ReactNode;
@@ -132,10 +134,9 @@ const COLUMNS: { key: ColumnKey; title: string }[] = [
   { key: "contract_finalized", title: "Negócio fechado" },
 ];
 
-function formatDate(iso: string) {
+function formatDate(iso: string, tz: string) {
   try {
-    const date = new Date(iso);
-    return date.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    return formatInTz(new Date(iso), "dd/MM/yyyy", tz);
   } catch {
     return iso;
   }
@@ -156,6 +157,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const supabaseId = params.supabaseId as string;
   const { activeTeamId, activeRole, activeFunctions, isLoading: teamLoading } = useTeamContext();
   const { user: contextUser, isLoading: userLoading } = useUserContext();
+  const { tz } = useTimezone();
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
   const searchParams = useSearchParams();
   const sharedLeadCode = searchParams.get("leadCode");
@@ -434,13 +436,11 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
                 
                 // Notificar usuário sobre mudanças específicas
                 if (updatedLead.meetingDate !== currentSelected.meetingDate && updatedLead.meetingDate) {
-                  const meetingDateFormatted = new Date(updatedLead.meetingDate).toLocaleDateString('pt-BR', {
-                    day: '2-digit',
-                    month: 'long',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  });
+                  const meetingDateFormatted = formatInTz(
+                    new Date(updatedLead.meetingDate),
+                    "dd 'de' MMMM 'de' yyyy HH:mm",
+                    tz
+                  );
                   toast.info(`📅 Data de reunião atualizada: ${meetingDateFormatted}`, {
                     duration: 3000,
                   });
@@ -570,7 +570,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       const matchesQuery = !q || 
         lead.name.toLowerCase().includes(q) || 
         lead.leadCode.toLowerCase().includes(q) ||
-        formatDate(lead.createdAt).includes(q);
+        formatDate(lead.createdAt, tz).includes(q);
       
       // Filtro por status
       const matchesStatus =

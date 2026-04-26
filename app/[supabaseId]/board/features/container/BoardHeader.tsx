@@ -172,7 +172,7 @@ export default function BoardHeader({
                 <TooltipContent>Configuração dos cards</TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <SheetContent side="right" className="w-[420px] sm:w-[460px]">
+            <SheetContent side="right" className="w-105 sm:w-115">
               <SheetHeader>
                 <SheetTitle>Configuração dos cards</SheetTitle>
                 <SheetDescription>
@@ -221,7 +221,7 @@ export default function BoardHeader({
             placeholder="Filtrar por nome..."
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="h-8 w-[150px] lg:w-[250px]"
+            className="h-8 w-37.5 lg:w-62.5"
           />
           <LeadsStatusFilter
             statusOptions={statusOptions}

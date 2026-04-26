@@ -5,6 +5,15 @@ import { createEmailService } from "@/lib/services/EmailService"
 import { getAppUrl } from "@/lib/utils/app-url"
 import type { IBackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficePlatformUsersRepository"
 import type { IBackofficePlatformUsersUseCase } from "./IBackofficePlatformUsersUseCase"
+import {
+  startOfMonthInTz,
+  addDaysInTz,
+  startOfDayInTz,
+  DEFAULT_TZ,
+  formatInTz,
+  parseDateKeyToUtc,
+  resolveTimezone,
+} from "@/lib/dates"
 
 interface PlanInfo {
   label: string
@@ -81,32 +90,30 @@ function matchesStatusFilter(status: string | undefined, filter: InvoiceStatusFi
   return getStatusGroup(status) === filter
 }
 
-function getPeriodStartDate(period: InvoicePeriodFilter, now: Date): Date | null {
+function getPeriodStartDate(period: InvoicePeriodFilter, now: Date, timezone: string): Date | null {
   if (period === "all") {
     return null
   }
 
   if (period === "this_month") {
-    return new Date(now.getFullYear(), now.getMonth(), 1)
+    return startOfMonthInTz(now, timezone)
   }
 
   const days = period === "7d" ? 7 : period === "30d" ? 30 : 90
-  const start = new Date(now)
-  start.setDate(start.getDate() - days)
-  return new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  return startOfDayInTz(addDaysInTz(now, -days, timezone), timezone)
 }
 
 function matchesPeriodFilter(
   dueDate: string | undefined,
   period: InvoicePeriodFilter,
-  now: Date
+  now: Date,
+  timezone: string
 ): boolean {
-  const start = getPeriodStartDate(period, now)
+  const start = getPeriodStartDate(period, now, timezone)
   if (!start) return true
   if (!dueDate) return false
 
-  const due = new Date(`${dueDate}T00:00:00`)
-  if (Number.isNaN(due.getTime())) return false
+  const due = parseDateKeyToUtc(dueDate, timezone)
 
   return due >= start
 }
@@ -118,15 +125,9 @@ function getSortableInvoiceDate(payment: AsaasPaymentItem): number {
   return Number.isNaN(date.getTime()) ? 0 : date.getTime()
 }
 
-function formatInvoiceDate(value?: string): string {
+function formatInvoiceDate(value: string | undefined, timezone: string): string {
   if (!value) return "não informada"
-
-  const parsed = new Date(`${value}T00:00:00`)
-  if (Number.isNaN(parsed.getTime())) {
-    return "não informada"
-  }
-
-  return parsed.toLocaleDateString("pt-BR")
+  return formatInTz(parseDateKeyToUtc(value, timezone), "dd/MM/yyyy", timezone)
 }
 
 function formatInvoiceCurrency(value?: number): string {
@@ -337,6 +338,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       pageSize: number
       status?: string
       period?: string
+      timezone?: string
     }
   ): Promise<Output> {
     try {
@@ -344,6 +346,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       const pageSize = Math.max(options.pageSize || 10, 5)
       const statusFilter = normalizeStatusFilter(options.status)
       const periodFilter = normalizePeriodFilter(options.period)
+      const timezone = resolveTimezone(options.timezone ?? DEFAULT_TZ)
 
       const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
       if (!master) {
@@ -382,7 +385,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
             return false
           }
 
-          return matchesPeriodFilter(payment.dueDate, periodFilter, now)
+          return matchesPeriodFilter(payment.dueDate, periodFilter, now, timezone)
         })
         .sort((a, b) => getSortableInvoiceDate(b) - getSortableInvoiceDate(a))
 
@@ -547,7 +550,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       const manageUrl = `${appUrl}/sign-in`
       const invoiceUrl = payment.invoiceUrl ?? manageUrl
       const invoiceNumber = payment.invoiceNumber ? `#${payment.invoiceNumber}` : payment.id
-      const dueDate = formatInvoiceDate(payment.dueDate)
+      const dueDate = formatInvoiceDate(payment.dueDate, DEFAULT_TZ)
       const value = formatInvoiceCurrency(payment.value)
       const customerName = master.fullName ?? master.email
 

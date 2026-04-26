@@ -252,6 +252,7 @@ model Profile {
   subscriptionNextDueDate  DateTime?           @db.Timestamptz(6) // Próxima data de vencimento
   subscriptionCycle        String?             @db.Text // MONTHLY, QUARTERLY, etc
   activeTeamId             String?             @db.Uuid
+  timezone                 String              @default("America/Sao_Paulo") @db.Text
 
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)

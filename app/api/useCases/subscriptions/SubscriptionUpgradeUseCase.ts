@@ -6,6 +6,7 @@ import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/A
 import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { getEmailService } from "@/lib/services/EmailService";
 import { getFullUrl } from '@/lib/utils/app-url';
+import { addMonthsInTz, formatInTz, resolveTimezone, startOfDayInTz } from "@/lib/dates";
 import type { 
   ISubscriptionUpgradeUseCase, 
   AddOperatorPaymentData,
@@ -14,6 +15,23 @@ import type {
 } from "./ISubscriptionUpgradeUseCase";
 
 export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
+  private resolveAsaasNextDueDate(referenceDate: Date | null | undefined, timezone?: string | null) {
+    const ownerTz = resolveTimezone(timezone);
+    const now = new Date();
+    let nextDueDate =
+      referenceDate && !Number.isNaN(referenceDate.getTime())
+        ? new Date(referenceDate)
+        : startOfDayInTz(now, ownerTz);
+
+    if (nextDueDate < now) {
+      nextDueDate = addMonthsInTz(nextDueDate, 1, ownerTz);
+    }
+
+    return {
+      nextDueDate,
+      nextDueDateStr: formatInTz(nextDueDate, "yyyy-MM-dd", ownerTz),
+    };
+  }
   
   /**
    * Cria pagamento para adicionar novo operador
@@ -151,6 +169,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         description: `Licença adicional de operador - ${data.operatorData.name} (${data.operatorData.email}) - Acesso completo à plataforma Corretor Studio com gestão de leads, pipeline de vendas e métricas em tempo real`,
         pendingOperatorId: pendingOperator.id,
         managerId: manager.supabaseId || manager.id,
+        managerTimezone: manager.timezone,
         operatorName: data.operatorData.name,
         operatorEmail: data.operatorData.email,
       });
@@ -688,6 +707,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     description: string;
     pendingOperatorId: string;
     managerId: string;
+    managerTimezone?: string | null;
     operatorName: string;
     operatorEmail: string;
   }): Promise<any> {
@@ -699,15 +719,15 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // Criar checkout HOSPEDADO (permite escolher forma de pagamento)
-      const nextDueDate = new Date();
-      nextDueDate.setMonth(nextDueDate.getMonth() + 1); // 1 mês de prazo
+      const ownerTz = resolveTimezone(data.managerTimezone);
+      const nextDueDate = addMonthsInTz(startOfDayInTz(new Date(), ownerTz), 1, ownerTz);
       
       // Primeiro cria o payment como PIX (default)
       const paymentPayload = {
         customer: data.customer,
         billingType: 'PIX', // PIX como padrão, mas checkout permite alterar
         value: data.value,
-        dueDate: nextDueDate.toISOString().split('T')[0],
+        dueDate: formatInTz(nextDueDate, "yyyy-MM-dd", ownerTz),
         description: data.description,
         externalReference: `pending-operator-${data.pendingOperatorId}`,
       };
@@ -1101,25 +1121,18 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       throw new Error('Manager sem customer Asaas para recriar assinatura');
     }
 
-    const now = new Date();
     const currentNextDueDate = manager.subscriptionNextDueDate
       ? new Date(manager.subscriptionNextDueDate)
       : (currentSubscription.nextDueDate ? new Date(currentSubscription.nextDueDate) : null);
 
-    const nextDueDate = currentNextDueDate && !Number.isNaN(currentNextDueDate.getTime())
-      ? currentNextDueDate
-      : now;
-
-    if (nextDueDate < now) {
-      nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-    }
+    const { nextDueDateStr } = this.resolveAsaasNextDueDate(currentNextDueDate, manager.timezone);
 
     const payload: any = {
       customer: manager.asaasCustomerId,
       billingType: 'CREDIT_CARD',
       value: newValue,
       cycle: currentSubscription.cycle || 'MONTHLY',
-      nextDueDate: nextDueDate.toISOString().split('T')[0],
+      nextDueDate: nextDueDateStr,
       description: currentSubscription.description || 'Assinatura Manager atualizada',
       externalReference: `manager-${manager.id}-${Date.now()}`
     };
@@ -1215,12 +1228,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       // 5. Criar nova assinatura com valor atualizado
       // Mantém a mesma data de vencimento da assinatura anterior
-      const nextDueDate = manager.subscriptionNextDueDate || new Date();
-      
-      // Se a data já passou, ajustar para próximo mês
-      if (nextDueDate < new Date()) {
-        nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-      }
+      const { nextDueDate, nextDueDateStr } = this.resolveAsaasNextDueDate(
+        manager.subscriptionNextDueDate,
+        manager.timezone
+      );
 
       console.info('📝 [updateManagerSubscription] Criando nova assinatura...', {
         originalNextDueDate: manager.subscriptionNextDueDate,
@@ -1232,7 +1243,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         billingType: 'CREDIT_CARD' as const, // Assumindo cartão, pode ser ajustado
         value,
         cycle: 'MONTHLY' as const,
-        nextDueDate: nextDueDate.toISOString().split('T')[0],
+        nextDueDate: nextDueDateStr,
         description,
         externalReference: `manager-${manager.id}-${Date.now()}`
       };
@@ -1409,14 +1420,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('💰 [reactivateSubscription] Novo valor calculado:', { value, description, operatorCount: data.operatorCount });
 
       // 4. Preparar nextDueDate (manter data antiga ou usar nova)
-      const nextDueDate = manager.subscriptionNextDueDate || new Date();
-      
-      // Se a data já passou, adicionar 1 mês
-      if (nextDueDate < new Date()) {
-        nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-      }
-
-      const nextDueDateStr = nextDueDate.toISOString().split('T')[0];
+      const { nextDueDate, nextDueDateStr } = this.resolveAsaasNextDueDate(
+        manager.subscriptionNextDueDate,
+        manager.timezone
+      );
 
       // 5. Criar nova assinatura com cartão de crédito ou PIX
       console.info('📝 [reactivateSubscription] Criando nova assinatura...');

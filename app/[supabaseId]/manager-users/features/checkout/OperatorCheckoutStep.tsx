@@ -21,6 +21,7 @@ import { signUpCheckoutSchema, type SignUpCheckoutFormData } from "@/lib/validat
 import { toast } from "sonner";
 import type { CreateManagerUserFormData } from "../types";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
+import { detectBrowserTimezone, formatInTz, parseDateKeyToUtc } from "@/lib/dates";
 
 const OPERATOR_PRICE = 19.9;
 
@@ -60,6 +61,7 @@ export function OperatorCheckoutStep({
   onCancel,
   onComplete,
 }: OperatorCheckoutStepProps) {
+  const browserTz = detectBrowserTimezone();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
@@ -546,7 +548,7 @@ export function OperatorCheckoutStep({
                             <div>
                               <p className="text-sm font-medium">Boleto gerado</p>
                               <p className="text-xs text-muted-foreground">
-                                Vencimento: {new Date(boletoData.dueDate).toLocaleDateString("pt-BR")}
+                                Vencimento: {formatInTz(parseDateKeyToUtc(boletoData.dueDate, browserTz), "dd/MM/yyyy", browserTz)}
                               </p>
                             </div>
                           </div>

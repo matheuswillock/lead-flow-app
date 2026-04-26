@@ -52,6 +52,7 @@ export default function Calendar31() {
           mode="single"
           selected={date}
           onSelect={setDate}
+          weekdayLabelFormat="short"
           className="bg-transparent p-0"
           required
         />

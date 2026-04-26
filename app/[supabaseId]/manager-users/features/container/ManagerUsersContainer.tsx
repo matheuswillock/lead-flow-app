@@ -22,6 +22,7 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 import { isManagerLikeRole } from "@/lib/roles";
+import { useTimezone } from "@/app/context/TimezoneContext";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;
@@ -37,6 +38,7 @@ export function ManagerUsersContainer({
   hasPermanentSubscription = false,
 }: ManagerUsersContainerProps) {
   const { user } = useUserContext();
+  const { tz } = useTimezone();
   const { activeRole, isTeamMaster, activeTeamId } = useTeamContext();
   const resolvedRole = activeRole ?? currentUserRole;
   const resolvedIsMaster = isTeamMaster ?? currentUserIsMaster;
@@ -166,6 +168,7 @@ export function ManagerUsersContainer({
     onTogglePermanentSubscription: togglePermanentSubscription,
     currentUserIsMaster: resolvedIsMaster,
     canDelete: canDeleteUser,
+    tz,
   });
 
   // O usuário logado não deve se ver na tabela de gerenciamento.

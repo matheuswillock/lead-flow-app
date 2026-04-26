@@ -25,6 +25,8 @@ import {
 import { CampaignStatusBadge } from "./CampaignStatusBadge"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import type { Campaign } from "../context/CampanhasTypes"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatInTz } from "@/lib/dates"
 
 function SendConfirmDialog({ campaign, onConfirm }: { campaign: Campaign; onConfirm: () => Promise<void> }) {
   const [open, setOpen] = useState(false)
@@ -75,6 +77,7 @@ function SendConfirmDialog({ campaign, onConfirm }: { campaign: Campaign; onConf
 }
 
 export function CampaignList() {
+  const { tz } = useTimezone()
   const {
     campaigns,
     total,
@@ -134,10 +137,10 @@ export function CampaignList() {
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {campaign.sentAt
-                      ? new Date(campaign.sentAt).toLocaleDateString("pt-BR")
+                      ? formatInTz(new Date(campaign.sentAt), "dd/MM/yyyy", tz)
                       : campaign.scheduledAt
-                      ? new Date(campaign.scheduledAt).toLocaleDateString("pt-BR")
-                      : new Date(campaign.createdAt).toLocaleDateString("pt-BR")}
+                      ? formatInTz(new Date(campaign.scheduledAt), "dd/MM/yyyy", tz)
+                      : formatInTz(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">

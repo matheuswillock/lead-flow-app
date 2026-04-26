@@ -18,6 +18,7 @@ export interface IBackofficePlatformUsersUseCase {
       pageSize: number
       status?: string
       period?: string
+      timezone?: string
     }
   ): Promise<Output>
 

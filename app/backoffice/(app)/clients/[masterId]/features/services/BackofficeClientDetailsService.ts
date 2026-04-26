@@ -44,6 +44,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       pageSize?: number
       status?: BackofficeClientInvoiceFilters["status"]
       period?: BackofficeClientInvoiceFilters["period"]
+      timezone?: string
     }
   ): Promise<BackofficeClientInvoicesResult> {
     const page = Math.max(options?.page ?? 1, 1)
@@ -60,6 +61,10 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
 
     if (options?.period && options.period !== "all") {
       search.set("period", options.period)
+    }
+
+    if (options?.timezone?.trim()) {
+      search.set("timezone", options.timezone.trim())
     }
 
     const res = await fetch(

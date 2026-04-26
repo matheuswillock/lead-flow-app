@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/table"
 import { useHistoricoContext } from "../context/HistoricoContext"
 import type { EmailLog, EmailLogStatus } from "../context/HistoricoTypes"
+import { useTimezone } from "@/app/context/TimezoneContext"
+import { formatInTz } from "@/lib/dates"
 
 const STATUS_CONFIG: Record<EmailLogStatus, { label: string; className: string }> = {
   queued: { label: "Na fila", className: "border bg-transparent text-muted-foreground" },
@@ -32,6 +34,7 @@ function LogStatusBadge({ status }: { status: EmailLogStatus }) {
 
 function LogRow({ log }: { log: EmailLog }) {
   const { handleOpenDetail } = useHistoricoContext()
+  const { tz } = useTimezone()
 
   return (
     <TableRow>
@@ -47,7 +50,7 @@ function LogRow({ log }: { log: EmailLog }) {
         {log.campaign?.name ?? "—"}
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
-        {log.sentAt ? new Date(log.sentAt).toLocaleString("pt-BR") : "—"}
+        {log.sentAt ? formatInTz(new Date(log.sentAt), "dd/MM/yyyy HH:mm", tz) : "—"}
       </TableCell>
       <TableCell>
         <Button

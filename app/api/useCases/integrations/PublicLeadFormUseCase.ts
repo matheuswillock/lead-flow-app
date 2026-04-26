@@ -10,30 +10,9 @@ import { healthPlanService } from "../../services/healthPlans/HealthPlanService"
 import type { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import type { PublicLeadFormRequest } from "../../v1/integrations/lead-form/DTO/requestPublicLeadForm";
 import type { IPublicLeadFormUseCase, PublicLeadFormOriginContext } from "./IPublicLeadFormUseCase";
+import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
 
 const SLOT_MINUTES = 30;
-const TIMEZONE = "America/Sao_Paulo";
-
-const dateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: TIMEZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
-const timeFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: TIMEZONE,
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-const getMinutesInDay = (date: Date) => {
-  const parts = timeFormatter.formatToParts(date);
-  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-  return hour * 60 + minute;
-};
 
 const formatTimeSlot = (minutes: number) => {
   const hour = Math.floor(minutes / 60);
@@ -50,6 +29,7 @@ type PublicIntegrationAccess = {
   profileId: string;
   managerId: string;
   teamId: string;
+  timezone: string;
 };
 
 type TeamMemberSnapshot = {
@@ -115,6 +95,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
           select: {
             id: true,
             supabaseId: true,
+            timezone: true,
           },
         },
       },
@@ -166,13 +147,14 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
     }
 
     return {
-      access: {
-        supabaseId: actorSupabaseId,
-        profileId: actorProfileId,
-        managerId: team.masterId,
-        teamId: team.id,
-      },
-    };
+        access: {
+          supabaseId: actorSupabaseId,
+          profileId: actorProfileId,
+          managerId: team.masterId,
+          teamId: team.id,
+          timezone: resolveTimezone(team.master.timezone),
+        },
+      };
   }
 
   private async listTeamMembersSnapshot(teamId: string): Promise<TeamMemberSnapshot[]> {
@@ -394,7 +376,13 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
       );
       const guestCandidates = this.mapMembersToGuestCandidates(teamMembers);
 
-      return new Output(true, [], [], { healthPlans, closers, sdrs, guestCandidates });
+      return new Output(true, [], [], {
+        healthPlans,
+        closers,
+        sdrs,
+        guestCandidates,
+        timezone: access.timezone,
+      });
     } catch (error) {
       console.error("[PublicLeadFormUseCase] Erro ao carregar bootstrap do formulário público:", error);
       return new Output(false, [], ["Erro ao carregar dados iniciais do formulário"], null);
@@ -460,10 +448,10 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         return new Output(false, [], ["Closer não encontrado."], null);
       }
 
-      const dayStart = new Date(`${date}T00:00:00-03:00`);
-      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
-      const timeMin = `${date}T00:00:00-03:00`;
-      const timeMax = `${date}T23:59:59-03:00`;
+      const timezone = access.timezone || DEFAULT_TZ;
+      const { start: dayStart, end: dayEnd } = getDayRangeInTz(date, timezone);
+      const timeMin = dayStart.toISOString();
+      const timeMax = dayEnd.toISOString();
 
       const internalLeads = await prisma.lead.findMany({
         where: {
@@ -487,9 +475,9 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         });
 
       const now = new Date();
-      const todayKey = dateFormatter.format(now);
+      const todayKey = formatLocalDateValue(now, timezone);
       const isToday = date === todayKey;
-      const nowMinutes = getMinutesInDay(now);
+      const nowMinutes = getMinutesInTz(now, timezone);
 
       const slots = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => index * SLOT_MINUTES);
 
@@ -534,8 +522,8 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
 
             const startClamp = startDate < dayStart ? dayStart : startDate;
             const endClamp = endDate > dayEnd ? dayEnd : endDate;
-            const busyStart = getMinutesInDay(startClamp);
-            const busyEnd = getMinutesInDay(endClamp);
+            const busyStart = getMinutesInTz(startClamp, timezone);
+            const busyEnd = getMinutesInTz(endClamp, timezone);
 
             return slotStart < busyEnd && slotEnd > busyStart;
           });

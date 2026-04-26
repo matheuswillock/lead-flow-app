@@ -62,6 +62,7 @@ import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/L
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import { useTimezone } from "@/app/context/TimezoneContext";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -84,6 +85,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   const params = useParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
+  const { tz } = useTimezone();
   const { 
     filtered, 
     handleRowClick, 
@@ -302,8 +304,18 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
         onDeleteLead: handleDeleteLead,
         onFinalizeContract: handleFinalizeContract,
         onChangeStatus: handleChangeStatus,
+        tz,
       }),
-    [statusLabels]
+    [
+      handleChangeStatus,
+      handleDeleteLead,
+      handleFinalizeContract,
+      handleRescheduleMeeting,
+      handleRowClick,
+      handleScheduleMeeting,
+      statusLabels,
+      tz,
+    ]
   );
 
   const table = useReactTable({

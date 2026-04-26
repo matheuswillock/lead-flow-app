@@ -3,6 +3,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Analytics } from "@vercel/analytics/next"
 import { AuthProvider } from "./context/AuthContext"
+import { TimezoneProvider } from "./context/TimezoneContext"
 import { Toaster } from "sonner";
 import {
   getAbsoluteUrl,
@@ -62,10 +63,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           disableTransitionOnChange
         >
           <AuthProvider>
+            <TimezoneProvider>
             {children}
-            <Toaster 
-              position="top-center" 
-              richColors 
+            <Toaster
+              position="top-center"
+              richColors
               closeButton
               expand={true}
               toastOptions={{
@@ -74,6 +76,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 },
               }}
             />
+            </TimezoneProvider>
           </AuthProvider>
         </ThemeProvider>
         <Analytics />

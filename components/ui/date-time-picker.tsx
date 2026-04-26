@@ -4,6 +4,12 @@ import * as React from "react"
 import { Calendar as CalendarIcon } from "lucide-react"
 import { format, isValid } from "date-fns"
 import { ptBR } from "date-fns/locale"
+import {
+  detectBrowserTimezone,
+  formatLocalDateValue,
+  formatLocalTimeValue,
+  parseDateKeyAndTimeToUtc,
+} from "@/lib/dates"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -38,6 +44,7 @@ interface DateTimePickerProps {
   timeLoading?: boolean
   timeLoadingText?: string
   invalid?: boolean
+  tz?: string
 }
 
 export function DateTimePicker({
@@ -53,32 +60,56 @@ export function DateTimePicker({
   timeLoading = false,
   timeLoadingText = "Carregando...",
   invalid = false,
+  tz,
 }: DateTimePickerProps) {
+  const resolvedTz = tz ?? detectBrowserTimezone()
   const timeSelectWidthClass = "w-full sm:w-[7.5rem]"
   const initialDate = date && isValid(date) ? date : undefined
+  const toCalendarDate = React.useCallback(
+    (value: Date) => {
+      const [year, month, day] = formatLocalDateValue(value, resolvedTz).split("-").map(Number)
+      return new Date(year, month - 1, day, 12, 0, 0, 0)
+    },
+    [resolvedTz]
+  )
+  const toCalendarDateKey = React.useCallback((value: Date) => {
+    const year = value.getFullYear()
+    const month = String(value.getMonth() + 1).padStart(2, "0")
+    const day = String(value.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }, [])
   const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(initialDate)
+  const [selectedCalendarDate, setSelectedCalendarDate] = React.useState<Date | undefined>(
+    initialDate ? toCalendarDate(initialDate) : undefined
+  )
   const [time, setTime] = React.useState<string>(
-    initialDate && showTime ? format(initialDate, "HH:mm") : showTime ? "10:00" : "00:00"
+    initialDate && showTime ? formatLocalTimeValue(initialDate, resolvedTz) : showTime ? "10:00" : "00:00"
   )
 
   React.useEffect(() => {
     if (date && isValid(date)) {
       const nextDate = new Date(date)
-      if (!showTime) {
-        nextDate.setHours(0, 0, 0, 0)
-        setTime("00:00")
-      } else {
-        setTime(format(nextDate, "HH:mm"))
-      }
+      setTime(showTime ? formatLocalTimeValue(nextDate, resolvedTz) : "00:00")
       setSelectedDate(nextDate)
+      setSelectedCalendarDate(toCalendarDate(nextDate))
       return
     }
 
     if (!date) {
       setSelectedDate(undefined)
+      setSelectedCalendarDate(undefined)
       setTime(showTime ? "10:00" : "00:00")
     }
-  }, [date, showTime])
+  }, [date, resolvedTz, showTime, toCalendarDate])
+
+  const updateSelectedDate = React.useCallback(
+    (dateKey: string, timeValue: string) => {
+      const nextDate = parseDateKeyAndTimeToUtc(dateKey, showTime ? timeValue : "00:00", resolvedTz)
+      setSelectedDate(nextDate)
+      onDateChange(nextDate)
+    },
+    [onDateChange, resolvedTz, showTime]
+  )
 
   React.useEffect(() => {
     if (!showTime) return
@@ -86,41 +117,43 @@ export function DateTimePicker({
     if (!availableTimes.includes(time)) {
       const nextTime = availableTimes[0]
       setTime(nextTime)
-      if (selectedDate) {
-        const [hours, minutes] = nextTime.split(":").map(Number)
-        const newDate = new Date(selectedDate)
-        newDate.setHours(hours, minutes, 0, 0)
-        setSelectedDate(newDate)
-        onDateChange(newDate)
+      if (selectedCalendarDate) {
+        updateSelectedDate(toCalendarDateKey(selectedCalendarDate), nextTime)
       }
     }
-  }, [availableTimes, time, selectedDate, onDateChange])
+  }, [availableTimes, selectedCalendarDate, time, toCalendarDateKey, updateSelectedDate, showTime])
 
   const handleDateSelect = (newDate: Date | undefined) => {
     if (!newDate) {
       setSelectedDate(undefined)
+      setSelectedCalendarDate(undefined)
       onDateChange(undefined)
       return
     }
 
-    const [hours, minutes] = (showTime ? time : "00:00").split(":").map(Number)
-    newDate.setHours(hours, minutes, 0, 0)
-    setSelectedDate(newDate)
-    onDateChange(newDate)
+    const normalizedCalendarDate = new Date(
+      newDate.getFullYear(),
+      newDate.getMonth(),
+      newDate.getDate(),
+      12,
+      0,
+      0,
+      0
+    )
+    setSelectedCalendarDate(normalizedCalendarDate)
+    updateSelectedDate(toCalendarDateKey(normalizedCalendarDate), time)
   }
 
   const handleTimeChange = (newTime: string) => {
     if (!showTime) return
     setTime(newTime)
 
-    if (selectedDate) {
-      const [hours, minutes] = newTime.split(":").map(Number)
-      const newDate = new Date(selectedDate)
-      newDate.setHours(hours, minutes, 0, 0)
-      setSelectedDate(newDate)
-      onDateChange(newDate)
+    if (selectedCalendarDate) {
+      updateSelectedDate(toCalendarDateKey(selectedCalendarDate), newTime)
     }
   }
+
+  const todayDateKey = formatLocalDateValue(new Date(), resolvedTz)
 
   return (
     <div className={cn("grid gap-1", className)}>
@@ -139,7 +172,7 @@ export function DateTimePicker({
                 id="date-picker"
                 variant="outline"
                 className={cn(
-                  "h-9 w-full sm:w-[180px] justify-start text-left font-normal",
+                  "h-9 w-full sm:w-45 justify-start text-left font-normal",
                   !selectedDate && "text-muted-foreground",
                   invalid && "border-destructive focus-visible:ring-destructive"
                 )}
@@ -147,8 +180,8 @@ export function DateTimePicker({
                 aria-invalid={invalid || undefined}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {selectedDate && isValid(selectedDate) ? (
-                  format(selectedDate, "dd/MM/yyyy", { locale: ptBR })
+                {selectedCalendarDate && isValid(selectedCalendarDate) ? (
+                  format(selectedCalendarDate, "dd/MM/yyyy", { locale: ptBR })
                 ) : (
                   <span>Selecione</span>
                 )}
@@ -157,12 +190,12 @@ export function DateTimePicker({
             <PopoverContent className="w-auto overflow-hidden p-0" align="start">
               <Calendar
                 mode="single"
-                selected={selectedDate}
+                selected={selectedCalendarDate}
                 onSelect={handleDateSelect}
+                weekdayLabelFormat="short"
                 disabled={
                   disablePastDates
-                    ? (date: Date) =>
-                        date < new Date(new Date().setHours(0, 0, 0, 0))
+                    ? (candidate: Date) => toCalendarDateKey(candidate) < todayDateKey
                     : undefined
                 }
                 initialFocus
@@ -199,7 +232,7 @@ export function DateTimePicker({
                     <SelectContent
                       className={cn(
                         timeSelectWidthClass,
-                        "dialog-scrollbar max-h-72 min-w-[var(--radix-select-trigger-width)] overscroll-contain"
+                        "dialog-scrollbar max-h-72 min-w-(--radix-select-trigger-width) overscroll-contain"
                       )}
                       sideOffset={4}
                     >

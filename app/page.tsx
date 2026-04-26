@@ -159,7 +159,7 @@ export default function HomePage() {
               <div className="mt-8 flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
                 <Link
                   href="#demo"
-                  className="cursor-pointer group inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-base font-semibold shadow-xl w-full sm:w-auto focus:outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-2 transition-all hover:scale-[1.02] landing-primary-cta"
+                  className="cursor-pointer group inline-flex items-center justify-center rounded-2xl px-6 py-3.5 text-base font-semibold shadow-xl w-full sm:w-auto focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-all hover:scale-[1.02] landing-primary-cta"
                 >
                   Agendar demonstração
                   <ArrowRight className="ml-2 h-5 w-5 transition-transform group-hover:translate-x-0.5" />

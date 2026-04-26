@@ -63,6 +63,7 @@ export interface SaleMetricsData {
 
 export interface TeamContext {
   profileId: string;
+  userTimezone?: string;
   teamMember: {
     role: string;
     functions: string[];

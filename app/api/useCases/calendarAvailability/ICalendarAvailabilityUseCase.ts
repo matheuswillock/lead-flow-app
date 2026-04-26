@@ -5,6 +5,7 @@ export type GetCalendarAvailabilityUseCaseInput = {
   requestedCloserIds: string[];
   date: string;
   excludeLeadId?: string;
+  userTimezone?: string;
 };
 
 export interface ICalendarAvailabilityUseCase {

@@ -1,18 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { useTimezone } from "@/app/context/TimezoneContext";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
 
 export type LeadStatusTriggerPayload =
   | {
@@ -40,8 +36,6 @@ type LeadStatusTriggerDialogProps = {
 };
 
 const initialFollowUpDate = () => new Date(Date.now() + 60 * 60 * 1000);
-const initialFollowUpTime = (date: Date) =>
-  `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 
 export function LeadStatusTriggerDialog({
   open,
@@ -53,8 +47,8 @@ export function LeadStatusTriggerDialog({
   confirmationRuleId,
   onConfirm,
 }: LeadStatusTriggerDialogProps) {
+  const { tz } = useTimezone();
   const [followUpDate, setFollowUpDate] = React.useState<Date | undefined>(initialFollowUpDate);
-  const [followUpTime, setFollowUpTime] = React.useState<string>(() => initialFollowUpTime(initialFollowUpDate()));
   const [followUpNotes, setFollowUpNotes] = React.useState("");
   const [reason, setReason] = React.useState("");
   const [reasonDetails, setReasonDetails] = React.useState("");
@@ -63,9 +57,7 @@ export function LeadStatusTriggerDialog({
   React.useEffect(() => {
     if (!open) return;
     if (mode === "future_sale") {
-      const next = initialFollowUpDate();
-      setFollowUpDate(next);
-      setFollowUpTime(initialFollowUpTime(next));
+      setFollowUpDate(initialFollowUpDate());
       setFollowUpNotes("");
     } else {
       setReason("");
@@ -79,14 +71,11 @@ export function LeadStatusTriggerDialog({
         toast.error("Informe a data de contato.");
         return;
       }
-      const [hours, minutes] = followUpTime.split(":").map(Number);
-      const combined = new Date(followUpDate);
-      combined.setHours(hours, minutes, 0, 0);
       setIsSubmitting(true);
       try {
         await onConfirm({
           kind: "future_sale",
-          followUpAt: combined.toISOString(),
+          followUpAt: followUpDate.toISOString(),
           followUpNotes: followUpNotes.trim() || undefined,
           confirmRuleId: confirmationRuleId || undefined,
         });
@@ -116,7 +105,7 @@ export function LeadStatusTriggerDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !isSubmitting && onOpenChange(nextOpen)}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-130">
         <DialogHeader>
           <DialogTitle>{mode === "future_sale" ? "Configurar Venda Futura" : "Informar motivo da perda"}</DialogTitle>
           <DialogDescription>
@@ -134,37 +123,14 @@ export function LeadStatusTriggerDialog({
           <div className="grid gap-3">
             <div className="grid gap-2">
               <Label>Data para entrar em contato</Label>
-              <div className="flex gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn("flex-1 justify-start text-left font-normal", !followUpDate && "text-muted-foreground")}
-                      disabled={isSubmitting}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {followUpDate ? format(followUpDate, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar data"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={followUpDate}
-                      onSelect={setFollowUpDate}
-                      locale={ptBR}
-                      disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <Input
-                  type="time"
-                  value={followUpTime}
-                  onChange={(e) => setFollowUpTime(e.target.value)}
-                  disabled={isSubmitting}
-                  className="w-[120px]"
-                />
-              </div>
+              <DateTimePicker
+                date={followUpDate}
+                onDateChange={setFollowUpDate}
+                label=""
+                disabled={isSubmitting}
+                disablePastDates
+                tz={tz}
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="future-sale-notes">Comentários</Label>
@@ -185,7 +151,7 @@ export function LeadStatusTriggerDialog({
               <Input
                 id="loss-reason"
                 value={reason}
-                onChange={(event) => setReason(event.target.value)}
+                onChange={(event: React.ChangeEvent<HTMLInputElement>) => setReason(event.target.value)}
                 placeholder="Ex: Cliente desistiu, proposta recusada..."
                 disabled={isSubmitting}
               />

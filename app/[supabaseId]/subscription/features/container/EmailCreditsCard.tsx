@@ -23,6 +23,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { useTimezone } from '@/app/context/TimezoneContext'
+import { formatInTz } from '@/lib/dates'
 
 type CreditPlan = 'starter' | 'plus' | 'pro' | 'business'
 
@@ -75,6 +77,7 @@ async function cancelPlan(): Promise<boolean> {
 }
 
 export function EmailCreditsCard() {
+  const { tz } = useTimezone()
   const [status, setStatus] = useState<CreditStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [subscribing, setSubscribing] = useState<CreditPlan | null>(null)
@@ -180,7 +183,7 @@ export function EmailCreditsCard() {
             </div>
             {status.currentPeriodEnd && (
               <p className="text-xs text-muted-foreground">
-                Renova em {new Date(status.currentPeriodEnd).toLocaleDateString('pt-BR')}
+                Renova em {formatInTz(new Date(status.currentPeriodEnd), 'dd/MM/yyyy', tz)}
               </p>
             )}
             <Button

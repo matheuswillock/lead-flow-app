@@ -1,6 +1,7 @@
 export type CalendarAvailabilityCloserProfile = {
   id: string;
   email: string | null;
+  timezone: string | null;
   googleCalendarConnected: boolean;
   googleRefreshToken: string | null;
   googleAccessToken: string | null;
