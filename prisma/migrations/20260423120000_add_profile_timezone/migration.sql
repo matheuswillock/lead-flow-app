@@ -1,2 +1,2 @@
-ALTER TABLE "Profile"
-ADD COLUMN "timezone" TEXT NOT NULL DEFAULT 'America/Sao_Paulo';
+ALTER TABLE "profiles"
+ADD COLUMN IF NOT EXISTS "timezone" TEXT NOT NULL DEFAULT 'America/Sao_Paulo';
