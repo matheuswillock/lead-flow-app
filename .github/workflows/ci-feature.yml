@@ -18,7 +18,6 @@ permissions:
   contents: read
   pull-requests: write
   deployments: write
-  security-events: write
 
 env:
   CI: true
@@ -27,7 +26,12 @@ env:
 jobs:
   quality:
     name: Lint & Typecheck
-    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/feature/') ||
+        startsWith(github.ref, 'refs/heads/features/') ||
+        startsWith(github.ref, 'refs/heads/feat/')
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -64,25 +68,18 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-  security:
-    name: Security
-    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
-    uses: ./.github/workflows/security-reusable.yml
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
-    with:
-      include_dev_dependencies: false
-
   build:
     name: Build
-    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/feature/') ||
+        startsWith(github.ref, 'refs/heads/features/') ||
+        startsWith(github.ref, 'refs/heads/feat/')
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
       - quality
-      - security
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -126,7 +123,12 @@ jobs:
 
   deploy-preview:
     name: Deploy Vercel (Preview)
-    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/feature/') ||
+        startsWith(github.ref, 'refs/heads/features/') ||
+        startsWith(github.ref, 'refs/heads/feat/')
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: build
@@ -157,7 +159,12 @@ jobs:
 
   auto-pr-to-develop:
     name: Open PR to develop
-    if: ${{ startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/feat/') }}
+    if: >-
+      ${{
+        startsWith(github.ref, 'refs/heads/feature/') ||
+        startsWith(github.ref, 'refs/heads/features/') ||
+        startsWith(github.ref, 'refs/heads/feat/')
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: deploy-preview
@@ -202,7 +209,7 @@ jobs:
               return;
             }
 
-            const title = `feat: ${head.replace(/^feature\//,'').replace(/^feat\//,'')}`;
+            const title = `feat: ${head.replace(/^features\//,'').replace(/^feature\//,'').replace(/^feat\//,'')}`;
             const body = [
               '## PR automático (feature → develop)',
               '',

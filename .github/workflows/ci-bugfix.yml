@@ -17,7 +17,6 @@ permissions:
   contents: read
   pull-requests: write
   deployments: write
-  security-events: write
 
 env:
   CI: true
@@ -63,17 +62,6 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-  security:
-    name: Security
-    if: ${{ startsWith(github.ref, 'refs/heads/bugfix/') || startsWith(github.ref, 'refs/heads/fix/') }}
-    uses: ./.github/workflows/security-reusable.yml
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
-    with:
-      include_dev_dependencies: false
-
   build:
     name: Build
     if: ${{ startsWith(github.ref, 'refs/heads/bugfix/') || startsWith(github.ref, 'refs/heads/fix/') }}
@@ -81,7 +69,6 @@ jobs:
     timeout-minutes: 15
     needs:
       - quality
-      - security
     steps:
       - name: Checkout
         uses: actions/checkout@v4

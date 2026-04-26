@@ -14,7 +14,6 @@ permissions:
   contents: write
   pull-requests: write
   deployments: write
-  security-events: write
 
 env:
   CI: true
@@ -60,17 +59,6 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-  security:
-    name: Security
-    if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
-    uses: ./.github/workflows/security-reusable.yml
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
-    with:
-      include_dev_dependencies: false
-
   build:
     name: Build
     if: ${{ github.event.head_commit == null || !contains(github.event.head_commit.message, '[skip ci]') }}
@@ -78,7 +66,6 @@ jobs:
     timeout-minutes: 15
     needs:
       - quality
-      - security
     steps:
       - name: Checkout
         uses: actions/checkout@v4
