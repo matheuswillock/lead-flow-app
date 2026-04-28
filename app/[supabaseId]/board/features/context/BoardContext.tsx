@@ -579,7 +579,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         const [movedLead] = fromArr.splice(idx, 1);
         const merged = { ...movedLead, ...patch, status: to } as Lead;
         const statusEnteredAt =
-          merged.statusEnteredAt || merged.updatedAt || merged.createdAt;
+          patch?.statusEnteredAt || patch?.updatedAt || new Date().toISOString();
         const leadTimeState = resolveLeadTimeState(
           to,
           statusEnteredAt,
@@ -611,6 +611,74 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     },
     []
   );
+
+  const patchLead = useCallback((leadId: string, patch: Partial<Lead>) => {
+    let reconciledLead: Lead | null = null;
+
+    setData((prev) => {
+      let fromColumn: ColumnKey | null = null;
+      let currentLead: Lead | null = null;
+
+      for (const { key } of COLUMNS) {
+        const match = (prev[key] || []).find((lead) => lead.id === leadId);
+        if (match) {
+          fromColumn = key;
+          currentLead = match;
+          break;
+        }
+      }
+
+      if (!fromColumn || !currentLead) {
+        return prev;
+      }
+
+      const requestedStatus = patch.status ?? currentLead.status;
+      const toColumn = COLUMNS.some(({ key }) => key === requestedStatus)
+        ? (requestedStatus as ColumnKey)
+        : fromColumn;
+      const merged = { ...currentLead, ...patch, status: toColumn } as Lead;
+      const statusEnteredAt =
+        patch.statusEnteredAt ||
+        (toColumn !== currentLead.status
+          ? patch.updatedAt || new Date().toISOString()
+          : merged.statusEnteredAt || merged.updatedAt || merged.createdAt);
+      const leadTimeState = resolveLeadTimeState(
+        toColumn,
+        statusEnteredAt,
+        teamStatusRulesRef.current.leadTimeRules
+      );
+
+      reconciledLead = {
+        ...merged,
+        statusEnteredAt,
+        leadTimeDueAt: leadTimeState.dueAt,
+        isLeadTimeBreached: leadTimeState.isBreached,
+      } as Lead;
+
+      if (fromColumn === toColumn) {
+        return {
+          ...prev,
+          [fromColumn]: (prev[fromColumn] || []).map((lead) =>
+            lead.id === leadId ? reconciledLead! : lead
+          ),
+        };
+      }
+
+      const fromArr = (prev[fromColumn] || []).filter((lead) => lead.id !== leadId);
+      const toArr = (prev[toColumn] || []).filter((lead) => lead.id !== leadId);
+
+      return {
+        ...prev,
+        [fromColumn]: fromArr,
+        [toColumn]: [reconciledLead!, ...toArr],
+      };
+    });
+
+    if (reconciledLead) {
+      const next = reconciledLead;
+      setSelected((prev) => (prev?.id === leadId ? next : prev));
+    }
+  }, []);
 
   const updateLeadStatusInAPI = useCallback(
     async (
@@ -775,10 +843,20 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           body: JSON.stringify(contractData)
         });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.errorMessages?.[0] || 'Erro ao finalizar contrato');
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok || !result?.isValid) {
+          throw new Error(result?.errorMessages?.[0] || 'Erro ao finalizar contrato');
         }
+
+        const leadPatch =
+          result?.result && typeof result.result === "object" && result.result.lead
+            ? (result.result.lead as Partial<Lead>)
+            : {};
+        const finalizedPatch: Partial<Lead> = {
+          ...leadPatch,
+          status: "contract_finalized",
+        };
 
         const currentData = dataRef.current;
         const fromColumn = (Object.keys(currentData) as ColumnKey[]).find((key) =>
@@ -786,31 +864,21 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         );
 
         if (fromColumn && fromColumn !== "contract_finalized") {
-          moveLeadBetweenColumns(leadId, fromColumn, "contract_finalized");
+          moveLeadBetweenColumns(leadId, fromColumn, "contract_finalized", finalizedPatch);
+        } else {
+          patchLead(leadId, finalizedPatch);
         }
       } catch (error) {
         console.error('Erro ao finalizar contrato:', error);
         throw error;
       }
     },
-    [moveLeadBetweenColumns, supabaseId]
+    [moveLeadBetweenColumns, patchLead, supabaseId]
   );
 
 
   const clearErrors = useCallback(() => {
     setErrors({});
-  }, []);
-
-  const patchLead = useCallback((leadId: string, patch: Partial<Lead>) => {
-    setData((prev) => {
-      const next: Record<ColumnKey, Lead[]> = { ...prev } as Record<ColumnKey, Lead[]>;
-      COLUMNS.forEach(({ key }) => {
-        const column = prev[key] || [];
-        next[key] = column.map((l) => (l.id === leadId ? ({ ...l, ...patch } as Lead) : l));
-      });
-      return next;
-    });
-    setSelected((prev) => (prev?.id === leadId ? ({ ...prev, ...patch } as Lead) : prev));
   }, []);
 
   const clearPendingScheduledDrop = useCallback(() => {

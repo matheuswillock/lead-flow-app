@@ -5,7 +5,7 @@ import BoardHeader from "./BoardHeader";
 import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog";
-import { FinalizeContractDialog } from "./FinalizeContractDialog";
+import { FinalizeContractDialog, type FinalizeContractData } from "./FinalizeContractDialog";
 import { ScheduleMeetingDialog, type ScheduleMeetingSuccessPayload } from "./ScheduleMeetingDialog";
 import { LeadStatusTriggerDialog, type LeadStatusTriggerPayload } from "./LeadStatusTriggerDialog";
 import {
@@ -128,20 +128,26 @@ export function BoardContainer({
           body: JSON.stringify({ status: "no_show" }),
         });
 
-        if (!response.ok) {
-          throw new Error("Erro ao marcar no-show");
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok || !result?.isValid) {
+          throw new Error(result?.errorMessages?.join(", ") || "Erro ao marcar no-show");
         }
 
+        const payload =
+          result.result && typeof result.result === "object"
+            ? (result.result as Partial<Lead>)
+            : {};
+        patchLead(lead.id, { ...payload, status: "no_show" });
         toast.success("Lead marcado como no-show");
-        await refreshLeads();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show");
       }
     },
-    [activeTeamId, refreshLeads, supabaseId]
+    [activeTeamId, patchLead, supabaseId]
   );
 
-  const handleFinalizeSubmit = async (data: any) => {
+  const handleFinalizeSubmit = async (data: FinalizeContractData) => {
     if (!selectedLead) return;
 
     try {
@@ -169,7 +175,6 @@ export function BoardContainer({
         closerId: payload.closerId,
       });
     }
-    await refreshLeads();
     setSelectedLead(null);
   };
 

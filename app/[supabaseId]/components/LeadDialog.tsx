@@ -566,6 +566,32 @@ export default function LeadDialog({
     };
   }, [lead?.id, open, clearSilentLeadSyncTimer]);
 
+  const applyLocalLeadPatch = useCallback(
+    async (leadId: string, patch: Partial<Lead>) => {
+      if (patchLead) {
+        patchLead(leadId, patch);
+        return;
+      }
+
+      await refreshLeads();
+    },
+    [patchLead, refreshLeads]
+  );
+
+  const applySchedulePayload = useCallback(
+    async (payload: ScheduleMeetingSuccessPayload) => {
+      await applyLocalLeadPatch(payload.leadId, {
+        status: payload.status,
+        meetingDate: payload.meetingDate,
+        meetingTitle: payload.meetingTitle,
+        meetingNotes: payload.meetingNotes,
+        meetingLink: payload.meetingLink,
+        closerId: payload.closerId,
+      });
+    },
+    [applyLocalLeadPatch]
+  );
+
   const resolveActivityAuthor = useCallback((profileId: string | null | undefined) => {
     if (!profileId) return null;
 
@@ -1492,8 +1518,12 @@ export default function LeadDialog({
               id: loadingToast,
               duration: 3000,
             });
+            if (result.lead) {
+              await applyLocalLeadPatch(lead.id, result.lead);
+            } else {
+              await refreshLeads();
+            }
             setOpen(false);
-            await refreshLeads();
           } else {
             toast.error(result.message || "Erro ao atualizar lead", {
               id: loadingToast,
@@ -1580,6 +1610,11 @@ export default function LeadDialog({
     }
 
     toast.success(`Lead "${data.name}" atualizado com sucesso!`, { id: loadingToast, duration: 3000 });
+    if (result.lead) {
+      await applyLocalLeadPatch(lead.id, result.lead);
+    } else {
+      await refreshLeads();
+    }
 
     const extraGuests = parseExtraGuests(data.extraGuests);
     const normalizedGuests = Array.from(
@@ -1594,7 +1629,6 @@ export default function LeadDialog({
     if (!meetingDateValue || !closerIdValue) {
       toast.info("Lead salvo, mas o reagendamento não foi executado por falta de data/hora ou closer.");
       setOpen(false);
-      await refreshLeads();
       return;
     }
 
@@ -1632,6 +1666,32 @@ export default function LeadDialog({
           : undefined;
       const inviteDispatch = (scheduleResult?.result as { inviteDispatch?: InviteDispatchResult } | null)
         ?.inviteDispatch;
+      const schedulePayload = scheduleResult?.result
+        ? {
+            leadId: lead.id,
+            status: (scheduleResult.result.status ?? "scheduled") as Lead["status"],
+            meetingDate:
+              typeof scheduleResult.result.date === "string"
+                ? scheduleResult.result.date
+                : meetingDateValue,
+            meetingTitle:
+              typeof scheduleResult.result.meetingTitle === "string"
+                ? scheduleResult.result.meetingTitle
+                : data.meetingTitle || null,
+            meetingNotes:
+              typeof scheduleResult.result.notes === "string"
+                ? scheduleResult.result.notes
+                : data.meetingNotes || null,
+            meetingLink:
+              typeof scheduleResult.result.meetingLink === "string"
+                ? scheduleResult.result.meetingLink
+                : data.meetingLink || null,
+            closerId: closerIdValue,
+            extraGuests: Array.isArray(scheduleResult.result.extraGuests)
+              ? scheduleResult.result.extraGuests
+              : normalizedGuests,
+          }
+        : null;
       if (inviteDispatch?.status === "failed") {
         console.error("[LeadDialog][handleSaveWithReschedule] Falha no disparo do convite", {
           leadId: lead.id,
@@ -1648,6 +1708,9 @@ export default function LeadDialog({
         toast.info(warningMessage, { duration: 5000 });
       }
       setScheduleGuests(normalizedGuests);
+      if (schedulePayload) {
+        await applySchedulePayload(schedulePayload);
+      }
     } catch (error) {
       console.error("[LeadDialog][handleSaveWithReschedule] Erro ao reagendar convite:", error);
       const message = error instanceof Error ? error.message : "Erro ao reagendar convite.";
@@ -1655,7 +1718,6 @@ export default function LeadDialog({
     }
 
     setOpen(false);
-    await refreshLeads();
   };
 
   const handleCancelReschedule = () => {
@@ -1683,7 +1745,6 @@ export default function LeadDialog({
       setFinalizeCompleted(true);
       setShowFinalizeDialog(false);
       setOpen(false);
-      await refreshLeads();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao finalizar contrato");
       throw error;
@@ -1708,13 +1769,18 @@ export default function LeadDialog({
         body: JSON.stringify({ status: "no_show" }),
       });
 
-      if (!response.ok) {
-        throw new Error("Erro ao marcar no-show");
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Erro ao marcar no-show");
       }
 
+      const payload =
+        result.result && typeof result.result === "object"
+          ? (result.result as Partial<Lead>)
+          : {};
+      await applyLocalLeadPatch(lead.id, { ...payload, status: "no_show" });
       toast.success("Lead marcado como no-show");
       setOpen(false);
-      await refreshLeads();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show");
     }
@@ -1747,10 +1813,16 @@ export default function LeadDialog({
       if (!response.ok || !result?.isValid) {
         throw new Error(result?.errorMessages?.join(", ") || "Erro ao atualizar status");
       }
-      patchLead?.(lead.id, { status: nextStatus as Lead["status"] });
+      const payload =
+        result.result && typeof result.result === "object"
+          ? (result.result as Partial<Lead>)
+          : {};
+      await applyLocalLeadPatch(lead.id, {
+        ...payload,
+        status: nextStatus as Lead["status"],
+      });
       toast.success("Status atualizado");
       setStatusDialogOpen(false);
-      await refreshLeads();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao atualizar status");
     } finally {
@@ -1762,18 +1834,8 @@ export default function LeadDialog({
     if (!lead) return;
 
     if (payload) {
-      patchLead?.(lead.id, {
-        status: payload.status,
-        meetingDate: payload.meetingDate,
-        meetingTitle: payload.meetingTitle,
-        meetingNotes: payload.meetingNotes,
-        meetingLink: payload.meetingLink,
-        closerId: payload.closerId,
-      });
+      await applySchedulePayload(payload);
     }
-
-    await refreshLeads();
-    void fetchLead({ silent: true });
   };
 
   useEffect(() => {
