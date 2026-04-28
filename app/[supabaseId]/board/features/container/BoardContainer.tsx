@@ -1,6 +1,6 @@
 "use client"
 
-import React, { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BoardHeader from "./BoardHeader";
 import BoardColumns from "./BoardColumns";
 import BoardFooter from "./BoardFooter";
@@ -82,17 +82,17 @@ export function BoardContainer({
     [pendingStatusTriggerDrop]
   );
 
-  const handleFinalizeContract = (lead: Lead) => {
+  const handleFinalizeContract = useCallback((lead: Lead) => {
     setSelectedLead(lead);
     setShowFinalizeDialog(true);
-  };
+  }, []);
 
-  const handleScheduleMeeting = (lead: Lead) => {
+  const handleScheduleMeeting = useCallback((lead: Lead) => {
     scheduleSucceededRef.current = false;
     setSelectedLead(lead);
     setScheduleDialogMode(lead.status === "no_show" ? "reschedule" : "create");
     setShowScheduleDialog(true);
-  };
+  }, []);
 
   useEffect(() => {
     if (!pendingScheduledDrop || !pendingDropLead) return;
@@ -110,33 +110,36 @@ export function BoardContainer({
     }
   }, [pendingNeedsTriggerDialog, pendingStatusTriggerDrop, pendingStatusTriggerLead]);
 
-  const handleNoShow = async (lead: Lead) => {
-    if (!supabaseId) {
-      toast.error("Usuario nao identificado");
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId || "",
-        },
-        body: JSON.stringify({ status: "no_show" }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Erro ao marcar no-show");
+  const handleNoShow = useCallback(
+    async (lead: Lead) => {
+      if (!supabaseId) {
+        toast.error("Usuario nao identificado");
+        return;
       }
 
-      toast.success("Lead marcado como no-show");
-      await refreshLeads();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show");
-    }
-  };
+      try {
+        const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId || "",
+          },
+          body: JSON.stringify({ status: "no_show" }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Erro ao marcar no-show");
+        }
+
+        toast.success("Lead marcado como no-show");
+        await refreshLeads();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show");
+      }
+    },
+    [activeTeamId, refreshLeads, supabaseId]
+  );
 
   const handleFinalizeSubmit = async (data: any) => {
     if (!selectedLead) return;
