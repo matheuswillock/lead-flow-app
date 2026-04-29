@@ -30,4 +30,11 @@ export class BackofficeUsersService implements IBackofficeUsersService {
     })
     return res.json()
   }
+
+  async delete(id: string) {
+    const res = await fetch(`/api/v1/backoffice/users/${id}`, {
+      method: "DELETE",
+    })
+    return res.json()
+  }
 }

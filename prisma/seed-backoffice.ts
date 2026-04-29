@@ -14,6 +14,18 @@ const BACKOFFICE_USERS = [
     fullName: "Matheus Willock",
     fullAccess: true,
   },
+  {
+    email: "brunomarcelino@corretorstudio.com",
+    password: "Backoffice@2025",
+    fullName: "Bruno Marcelino",
+    fullAccess: true,
+  },
+  {
+    email: "nathielewillock@corretorstudio.com",
+    password: "Backoffice@2025",
+    fullName: "Nathiele Willock",
+    fullAccess: true,
+  },
 ]
 
 async function ensureBackofficeUser(supabaseId: string, email: string, fullAccess: boolean) {

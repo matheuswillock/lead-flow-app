@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 import { validateEnv } from "./lib/env";
 
 // Validate environment variables at build time
@@ -21,8 +22,9 @@ if (process.env.CI !== 'true') {
 }
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['@supabase/supabase-js', 'unzipper'],
+  serverExternalPackages: ['unzipper'],
   turbopack: {
+    root: path.resolve(__dirname),
     resolveAlias: {
       '@aws-sdk/client-s3': { browser: './empty-module.js', default: './empty-module.js' },
     },

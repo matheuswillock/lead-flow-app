@@ -93,6 +93,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     isLoading,
     refreshLeads,
     patchLead,
+    finalizeContract,
     errors,
     onlyMeetingsHeld,
     setOnlyMeetingsHeld,
@@ -233,23 +234,9 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   const handleFinalizeSubmit = async (data: FinalizeContractData) => {
     if (!selectedLead) return;
 
-    const response = await fetch(`/api/v1/leads/${selectedLead.id}/finalize`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(supabaseId ? { "x-supabase-user-id": supabaseId } : {}),
-        ...(activeTeamId ? { "x-team-id": activeTeamId } : {}),
-      },
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      throw new Error("Erro ao finalizar contrato");
-    }
-
+    await finalizeContract(selectedLead.id, data);
     setShowFinalizeDialog(false);
     setSelectedLead(null);
-    await refreshLeads();
   };
 
   const handleChangeStatus = (lead: Lead) => {
@@ -289,9 +276,18 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
       if (payload) {
         applyScheduledPatch(payload);
       }
-      await refreshLeads();
     },
-    [applyScheduledPatch, refreshLeads]
+    [applyScheduledPatch]
+  );
+
+  const handleStatusChanged = React.useCallback(
+    async (leadId: string, patch: Partial<Lead>) => {
+      patchLead(leadId, patch);
+      setSelectedLead((prev) =>
+        prev?.id === leadId ? ({ ...prev, ...patch } as Lead) : prev
+      );
+    },
+    [patchLead]
   );
 
   const columns = React.useMemo<ColumnDef<Lead>[]>(
@@ -700,7 +696,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
           onOpenChange={setShowChangeStatusDialog}
           lead={selectedLead}
           statusLabels={statusLabels}
-          onStatusChanged={refreshLeads}
+          onStatusChanged={handleStatusChanged}
           closers={closers}
           teamMembers={[]}
           onSchedulePatched={applyScheduledPatch}

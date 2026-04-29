@@ -7014,7 +7014,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"isActive\": true,\n  \"fullAccess\": false\n}"
+              "raw": "{\n  \"email\": \"novo@corretorstudio.com\",\n  \"fullName\": \"Novo Nome\",\n  \"isActive\": true,\n  \"fullAccess\": false\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/users/:id",
@@ -7035,7 +7035,325 @@
                 }
               ]
             },
-            "description": "Atualiza isActive ou fullAccess de usuário backoffice. Requer fullAccess=true."
+            "description": "Atualiza email, nome, isActive ou fullAccess de usuário backoffice. Requer fullAccess=true."
+          }
+        },
+        {
+          "name": "DELETE Backoffice User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/users/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "backoffice",
+                "users",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{backofficeUserId}}"
+                }
+              ]
+            },
+            "description": "Exclui usuário backoffice. Requer fullAccess=true e não permite excluir o próprio usuário autenticado."
+          }
+        },
+        {
+          "name": "GET Backoffice Leads",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "leads"],
+              "query": [
+                { "key": "status", "value": "new_opportunity", "disabled": true }
+              ]
+            },
+            "description": "Lista leads do CRM do backoffice (opcionalmente filtrado por status)."
+          }
+        },
+        {
+          "name": "POST Create Backoffice Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Lead Exemplo\",\n  \"email\": \"lead@exemplo.com\",\n  \"phone\": \"11999999999\",\n  \"notes\": \"Observações iniciais\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "leads"]
+            },
+            "description": "Cria um novo lead no CRM do backoffice."
+          }
+        },
+        {
+          "name": "GET Backoffice Lead by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "leads", ":id"],
+              "variable": [
+                { "key": "id", "value": "{{backofficeLeadId}}" }
+              ]
+            },
+            "description": "Detalhe de um lead do backoffice."
+          }
+        },
+        {
+          "name": "PUT Update Backoffice Lead",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Lead Atualizado\",\n  \"notes\": \"Observação atualizada\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "leads", ":id"],
+              "variable": [
+                { "key": "id", "value": "{{backofficeLeadId}}" }
+              ]
+            },
+            "description": "Atualiza nome/email/telefone/observações de um lead do backoffice."
+          }
+        },
+        {
+          "name": "PUT Update Backoffice Lead Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"scheduled\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "leads", ":id", "status"],
+              "variable": [
+                { "key": "id", "value": "{{backofficeLeadId}}" }
+              ]
+            },
+            "description": "Move o lead entre colunas do kanban. Status válidos: new_opportunity, scheduled, no_show, lost, implementation, finalized."
+          }
+        },
+        {
+          "name": "DELETE Backoffice Lead",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "leads", ":id"],
+              "variable": [
+                { "key": "id", "value": "{{backofficeLeadId}}" }
+              ]
+            },
+            "description": "Remove um lead do backoffice."
+          }
+        },
+        {
+          "name": "GET Meta Integration Config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/integrations/meta",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "integrations", "meta"]
+            },
+            "description": "Retorna a configuração ativa do webhook Meta do backoffice, incluindo URL com token ativo, preview, expiração, responsável e timestamps."
+          }
+        },
+        {
+          "name": "POST Generate Meta Webhook Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expiryMode\": \"indeterminate\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/integrations/meta",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "integrations", "meta"]
+            },
+            "description": "Gera um novo token automático para o webhook Meta. O token ativo anterior é marcado como replaced e o retorno contém o novo token/URL."
+          }
+        },
+        {
+          "name": "GET Meta Integration Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/integrations/meta?view=logs&limit=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "integrations", "meta"],
+              "query": [
+                { "key": "view", "value": "logs" },
+                { "key": "limit", "value": "15" }
+              ]
+            },
+            "description": "Lista tentativas HTTP recebidas no webhook Meta do backoffice, incluindo autenticação inválida, JSON inválido, status e payload/resposta."
+          }
+        },
+        {
+          "name": "GET Meta Token Creation Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/integrations/meta?view=tokens&limit=15",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "integrations", "meta"],
+              "query": [
+                { "key": "view", "value": "tokens" },
+                { "key": "limit", "value": "15" }
+              ]
+            },
+            "description": "Lista os logs de criação dos tokens do webhook Meta, incluindo status ativo/substituído/expirado, responsável e data de geração."
+          }
+        },
+        {
+          "name": "GET Meta Integration Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/integrations/meta?view=events&limit=25",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "integrations", "meta"],
+              "query": [
+                { "key": "view", "value": "events" },
+                { "key": "limit", "value": "25" }
+              ]
+            },
+            "description": "Lista os últimos eventos recebidos do webhook Meta backoffice."
+          }
+        },
+        {
+          "name": "POST Backoffice Meta Lead Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"page\",\n  \"entry\": [\n    {\n      \"id\": \"PAGE_ID\",\n      \"time\": 1700000000,\n      \"changes\": [\n        {\n          \"field\": \"leadgen\",\n          \"value\": {\n            \"leadgen_id\": \"LEAD_ID\",\n            \"page_id\": \"PAGE_ID\",\n            \"form_id\": \"FORM_ID\",\n            \"created_time\": 1700000000\n          }\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/backoffice/meta/{{backofficeMetaActiveToken}}/lead",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "api",
+                "webhooks",
+                "backoffice",
+                "meta",
+                "{{backofficeMetaActiveToken}}",
+                "lead"
+              ]
+            },
+            "description": "Endpoint público que recebe leads do Make (cenário Meta Lead Ads). O token vai no path e deve bater com o token active salvo em backoffice_webhook_tokens. Token inválido ou expirado → 401. Payload aceito é armazenado bruto em backoffice_webhook_events e a tentativa HTTP é registrada em backoffice_webhook_request_logs."
           }
         }
       ]
@@ -7085,7 +7403,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"subject\": \"Novidades do mes\",\n  \"previewText\": \"Confira as novidades\",\n  \"html\": \"<h1>Ola!</h1>\"\n}",
+                  "raw": "{\n  \"name\": \"Newsletter Maio\",\n  \"subject\": \"Novidades do mes\",\n  \"previewText\": \"Confira as novidades\",\n  \"sourceMode\": \"visual\",\n  \"editorJson\": {\n    \"type\": \"doc\",\n    \"content\": []\n  },\n  \"html\": \"<h1>Ola!</h1>\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -7136,7 +7454,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Newsletter Maio v2\",\n  \"subject\": \"Novidades atualizadas\"\n}",
+                  "raw": "{\n  \"name\": \"Newsletter Maio v2\",\n  \"subject\": \"Novidades atualizadas\",\n  \"sourceMode\": \"html\",\n  \"html\": \"<h1>Novidades atualizadas</h1>\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"

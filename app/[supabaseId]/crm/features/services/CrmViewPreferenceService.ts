@@ -19,10 +19,16 @@ class CrmViewPreferenceService implements ICrmViewPreferenceService {
     }
 
     try {
-      const rawValue = window.sessionStorage.getItem(this.getStorageKey(scope));
+      const storageKey = this.getStorageKey(scope);
+      const rawValue =
+        window.localStorage.getItem(storageKey) ??
+        window.sessionStorage.getItem(storageKey);
+      if (rawValue && !window.localStorage.getItem(storageKey)) {
+        window.localStorage.setItem(storageKey, rawValue);
+      }
       return normalizeCrmViewMode(rawValue);
     } catch (error) {
-      console.error("[CrmViewPreferenceService] Error reading session storage:", error);
+      console.error("[CrmViewPreferenceService] Error reading local storage:", error);
       return null;
     }
   }
@@ -33,9 +39,9 @@ class CrmViewPreferenceService implements ICrmViewPreferenceService {
     }
 
     try {
-      window.sessionStorage.setItem(this.getStorageKey(scope), viewMode);
+      window.localStorage.setItem(this.getStorageKey(scope), viewMode);
     } catch (error) {
-      console.error("[CrmViewPreferenceService] Error writing session storage:", error);
+      console.error("[CrmViewPreferenceService] Error writing local storage:", error);
     }
   }
 }

@@ -3,6 +3,20 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 
+const templateDetailSelect = {
+  id: true,
+  teamId: true,
+  createdBy: true,
+  name: true,
+  subject: true,
+  previewText: true,
+  mailyJson: true,
+  html: true,
+  isArchived: true,
+  createdAt: true,
+  updatedAt: true,
+} as const
+
 export interface CreateTemplateInput {
   name: string
   subject: string
@@ -29,6 +43,8 @@ export class EmailTemplateUseCase {
           name: true,
           subject: true,
           previewText: true,
+          mailyJson: true,
+          html: true,
           createdAt: true,
           updatedAt: true,
           creator: { select: { id: true, fullName: true } },
@@ -47,6 +63,7 @@ export class EmailTemplateUseCase {
     try {
       const template = await prisma.emailTemplate.findFirst({
         where: { id, teamId: ctx.teamId, isArchived: false },
+        select: templateDetailSelect,
       })
 
       if (!template) {
@@ -70,6 +87,7 @@ export class EmailTemplateUseCase {
       }
 
       const template = await prisma.emailTemplate.create({
+        select: templateDetailSelect,
         data: {
           id: randomUUID(),
           teamId: ctx.teamId,
@@ -93,6 +111,7 @@ export class EmailTemplateUseCase {
     try {
       const existing = await prisma.emailTemplate.findFirst({
         where: { id, teamId: ctx.teamId, isArchived: false },
+        select: { id: true },
       })
 
       if (!existing) {
@@ -101,6 +120,7 @@ export class EmailTemplateUseCase {
 
       const template = await prisma.emailTemplate.update({
         where: { id },
+        select: templateDetailSelect,
         data: {
           ...(data.name !== undefined && { name: data.name.trim() }),
           ...(data.subject !== undefined && { subject: data.subject.trim() }),
@@ -121,6 +141,7 @@ export class EmailTemplateUseCase {
     try {
       const existing = await prisma.emailTemplate.findFirst({
         where: { id, teamId: ctx.teamId, isArchived: false },
+        select: { id: true },
       })
 
       if (!existing) {
@@ -129,6 +150,7 @@ export class EmailTemplateUseCase {
 
       await prisma.emailTemplate.update({
         where: { id },
+        select: { id: true },
         data: { isArchived: true },
       })
 

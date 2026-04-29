@@ -92,7 +92,10 @@ export class EmailCampaignUseCase {
       }
 
       const [template, contactList] = await Promise.all([
-        prisma.emailTemplate.findFirst({ where: { id: data.templateId, teamId: ctx.teamId, isArchived: false } }),
+        prisma.emailTemplate.findFirst({
+          where: { id: data.templateId, teamId: ctx.teamId, isArchived: false },
+          select: { id: true },
+        }),
         prisma.emailContactList.findFirst({ where: { id: data.contactListId, teamId: ctx.teamId, isArchived: false } }),
       ])
 
@@ -164,7 +167,7 @@ export class EmailCampaignUseCase {
       const campaign = await prisma.emailCampaign.findFirst({
         where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
         include: {
-          template: true,
+          template: { select: { id: true, subject: true, html: true } },
           contactList: { select: { id: true, name: true, totalContacts: true } },
           team: { select: { master: { select: { id: true } } } },
         },

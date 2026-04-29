@@ -211,6 +211,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
   const selectedRef = useRef<Lead | null>(null);
+  const dataRef = useRef<Record<ColumnKey, Lead[]>>({} as Record<ColumnKey, Lead[]>);
+  const teamStatusRulesRef = useRef<TeamStatusRulesResponse>(EMPTY_TEAM_STATUS_RULES);
+  const dragStartedRef = useRef(false);
   const user = contextUser as ProfileResponseDTO | null;
   const userRef = useRef<ProfileResponseDTO | null>(null);
   const accessDeniedShownRef = useRef(false);
@@ -494,6 +497,14 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   }, [selected]);
 
   useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
+
+  useEffect(() => {
+    teamStatusRulesRef.current = teamStatusRules;
+  }, [teamStatusRules]);
+
+  useEffect(() => {
     if (userLoading) return;
     if (teamLoading) return;
     void loadLeads();
@@ -521,317 +532,410 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     lastHandledShareKeyRef.current = shareKey;
   }, [data, sharedLeadCode, isLoading, searchParams]);
 
-  let dragStarted = false
-    const handleCardMouseDown = () => { dragStarted = false }
+  const onDragStart = useCallback((e: React.DragEvent, leadId: string, from: ColumnKey) => {
+    e.dataTransfer.setData("text/plain", JSON.stringify({ leadId, from }));
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
 
-    const handleCardDragStart = (e: React.DragEvent, leadId: string, from: ColumnKey) => {
-      dragStarted = true
-      onDragStart(e, leadId, from)
-    }
+  const handleCardMouseDown = useCallback(() => {
+    dragStartedRef.current = false;
+  }, []);
 
-    const handleCardClick = (lead: Lead) => {
-      if (dragStarted) return
-      setSelected(lead)
-      setOpen(true)
-    }
+  const handleCardDragStart = useCallback(
+    (e: React.DragEvent, leadId: string, from: ColumnKey) => {
+      dragStartedRef.current = true;
+      onDragStart(e, leadId, from);
+    },
+    [onDragStart]
+  );
 
-    const openNewLeadDialog = () => {
-      setSelected(null) // Limpa a seleção para indicar que é um novo lead
-      setOpen(true)
-    }
+  const handleCardClick = useCallback((lead: Lead) => {
+    if (dragStartedRef.current) return;
+    setSelected(lead);
+    setOpen(true);
+  }, []);
 
-    const onDragOver = (e: React.DragEvent) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-    };
+  const openNewLeadDialog = useCallback(() => {
+    setSelected(null);
+    setOpen(true);
+  }, []);
 
-      const onDragStart = (e: React.DragEvent, leadId: string, from: ColumnKey) => {
-        e.dataTransfer.setData("text/plain", JSON.stringify({ leadId, from }));
-        e.dataTransfer.effectAllowed = "move";
-      };
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
     
-      const moveLeadBetweenColumns = (
-        leadId: string,
-        from: ColumnKey,
-        to: ColumnKey,
-        patch?: Partial<Lead>
-      ): boolean => {
-        let moved = false;
+  const moveLeadBetweenColumns = useCallback(
+    (leadId: string, from: ColumnKey, to: ColumnKey, patch?: Partial<Lead>): boolean => {
+      let moved = false;
+      let reconciledLead: Lead | null = null;
 
-        setData((prev) => {
-          const fromArr = [...(prev[from] || [])];
-          const toArr = [...(prev[to] || [])];
-          const idx = fromArr.findIndex((l) => l.id === leadId);
-          if (idx === -1) return prev;
+      setData((prev) => {
+        const fromArr = [...(prev[from] || [])];
+        const toArr = [...(prev[to] || [])];
+        const idx = fromArr.findIndex((l) => l.id === leadId);
+        if (idx === -1) return prev;
 
-          const [movedLead] = fromArr.splice(idx, 1);
-          const updatedLead = { ...movedLead, ...patch, status: to } as Lead;
-          const existingIdx = toArr.findIndex((l) => l.id === leadId);
-          if (existingIdx !== -1) {
-            toArr.splice(existingIdx, 1);
-          }
-          toArr.unshift(updatedLead);
+        const [movedLead] = fromArr.splice(idx, 1);
+        const merged = { ...movedLead, ...patch, status: to } as Lead;
+        const statusEnteredAt =
+          patch?.statusEnteredAt || patch?.updatedAt || new Date().toISOString();
+        const leadTimeState = resolveLeadTimeState(
+          to,
+          statusEnteredAt,
+          teamStatusRulesRef.current.leadTimeRules
+        );
+        reconciledLead = {
+          ...merged,
+          statusEnteredAt,
+          leadTimeDueAt: leadTimeState.dueAt,
+          isLeadTimeBreached: leadTimeState.isBreached,
+        } as Lead;
 
-          moved = true;
-          return { ...prev, [from]: fromArr, [to]: toArr };
+        const existingIdx = toArr.findIndex((l) => l.id === leadId);
+        if (existingIdx !== -1) {
+          toArr.splice(existingIdx, 1);
+        }
+        toArr.unshift(reconciledLead);
+
+        moved = true;
+        return { ...prev, [from]: fromArr, [to]: toArr };
+      });
+
+      if (moved && reconciledLead) {
+        const next = reconciledLead;
+        setSelected((prev) => (prev?.id === leadId ? next : prev));
+      }
+
+      return moved;
+    },
+    []
+  );
+
+  const patchLead = useCallback((leadId: string, patch: Partial<Lead>) => {
+    let reconciledLead: Lead | null = null;
+
+    setData((prev) => {
+      let fromColumn: ColumnKey | null = null;
+      let currentLead: Lead | null = null;
+
+      for (const { key } of COLUMNS) {
+        const match = (prev[key] || []).find((lead) => lead.id === leadId);
+        if (match) {
+          fromColumn = key;
+          currentLead = match;
+          break;
+        }
+      }
+
+      if (!fromColumn || !currentLead) {
+        return prev;
+      }
+
+      const requestedStatus = patch.status ?? currentLead.status;
+      const toColumn = COLUMNS.some(({ key }) => key === requestedStatus)
+        ? (requestedStatus as ColumnKey)
+        : fromColumn;
+      const merged = { ...currentLead, ...patch, status: toColumn } as Lead;
+      const statusEnteredAt =
+        patch.statusEnteredAt ||
+        (toColumn !== currentLead.status
+          ? patch.updatedAt || new Date().toISOString()
+          : merged.statusEnteredAt || merged.updatedAt || merged.createdAt);
+      const leadTimeState = resolveLeadTimeState(
+        toColumn,
+        statusEnteredAt,
+        teamStatusRulesRef.current.leadTimeRules
+      );
+
+      reconciledLead = {
+        ...merged,
+        statusEnteredAt,
+        leadTimeDueAt: leadTimeState.dueAt,
+        isLeadTimeBreached: leadTimeState.isBreached,
+      } as Lead;
+
+      if (fromColumn === toColumn) {
+        return {
+          ...prev,
+          [fromColumn]: (prev[fromColumn] || []).map((lead) =>
+            lead.id === leadId ? reconciledLead! : lead
+          ),
+        };
+      }
+
+      const fromArr = (prev[fromColumn] || []).filter((lead) => lead.id !== leadId);
+      const toArr = (prev[toColumn] || []).filter((lead) => lead.id !== leadId);
+
+      return {
+        ...prev,
+        [fromColumn]: fromArr,
+        [toColumn]: [reconciledLead!, ...toArr],
+      };
+    });
+
+    if (reconciledLead) {
+      const next = reconciledLead;
+      setSelected((prev) => (prev?.id === leadId ? next : prev));
+    }
+  }, []);
+
+  const updateLeadStatusInAPI = useCallback(
+    async (
+      leadId: string,
+      newStatus: ColumnKey,
+      trigger?: {
+        followUpAt?: string;
+        followUpNotes?: string;
+        reason?: string;
+        reasonDetails?: string;
+        confirmRuleId?: string;
+      },
+      pendingDropContext?: { from: ColumnKey; to: ColumnKey }
+    ) => {
+      const loadingToast = toast.loading('Atualizando status do lead...');
+
+      try {
+        const response = await fetch(`/api/v1/leads/${leadId}/status`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-supabase-user-id': supabaseId,
+            'x-team-id': activeTeamId || ''
+          },
+          body: JSON.stringify({
+            status: newStatus,
+            ...(trigger ? { trigger } : {}),
+          })
         });
 
-        if (moved) {
-          setSelected((prev) => {
-            if (prev?.id !== leadId) return prev;
-            return { ...prev, ...patch, status: to } as Lead;
-          });
-        }
+        const result = await response.json().catch(() => null);
 
-        return moved;
-      };
+        if (!response.ok || !result?.isValid) {
+          const requiresConfirmation =
+            !!result?.result &&
+            typeof result.result === "object" &&
+            !!result.result.requiresConfirmation;
 
-      const onDrop = (e: React.DragEvent, to: ColumnKey) => {
-        e.preventDefault();
-        const raw = e.dataTransfer.getData("text/plain");
-        if (!raw) return;
-        const { leadId, from } = JSON.parse(raw) as { leadId: string; from: ColumnKey };
-        if (from === to) return;
+          if (requiresConfirmation) {
+            const confirmationMessage =
+              result?.errorMessages?.[0] ||
+              "Confirmação adicional é necessária para concluir esta transição.";
+            const confirmationRuleId =
+              typeof result?.result?.confirmationRuleId === "string"
+                ? result.result.confirmationRuleId
+                : null;
 
-        if (to === "scheduled") {
-          setPendingScheduledDrop({ leadId, from });
-          return;
-        }
-
-        if (to === "future_sale" || to === "opportunityLost" || to === "operator_denied") {
-          setPendingStatusTriggerDrop({
-            leadId,
-            from,
-            to,
-            confirmationRuleId: null,
-            confirmationMessage: null,
-          });
-          return;
-        }
-
-        void (async () => {
-          const result = await updateLeadStatusInAPI(leadId, to, undefined, { from, to });
-          if (!result?.isValid) return;
-
-          const payload =
-            result.result && typeof result.result === "object"
-              ? (result.result as Partial<Lead>)
-              : {};
-
-          moveLeadBetweenColumns(leadId, from, to, payload);
-          await loadLeads({ force: true });
-        })();
-      };
-
-      // Função para atualizar status na API
-      const updateLeadStatusInAPI = async (
-        leadId: string,
-        newStatus: ColumnKey,
-        trigger?: {
-          followUpAt?: string;
-          followUpNotes?: string;
-          reason?: string;
-          reasonDetails?: string;
-          confirmRuleId?: string;
-        },
-        pendingDropContext?: { from: ColumnKey; to: ColumnKey }
-      ) => {
-        // 🚀 Toast de loading para feedback imediato
-        const loadingToast = toast.loading('Atualizando status do lead...');
-        
-        try {
-          const response = await fetch(`/api/v1/leads/${leadId}/status`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-supabase-user-id': supabaseId,
-              'x-team-id': activeTeamId || ''
-            },
-            body: JSON.stringify({
-              status: newStatus,
-              ...(trigger ? { trigger } : {}),
-            })
-          });
-
-          const result = await response.json().catch(() => null);
-
-          if (!response.ok || !result?.isValid) {
-            const requiresConfirmation =
-              !!result?.result &&
-              typeof result.result === "object" &&
-              !!result.result.requiresConfirmation;
-
-            if (requiresConfirmation) {
-              const confirmationMessage =
-                result?.errorMessages?.[0] ||
-                "Confirmação adicional é necessária para concluir esta transição.";
-              const confirmationRuleId =
-                typeof result?.result?.confirmationRuleId === "string"
-                  ? result.result.confirmationRuleId
-                  : null;
-
-              setPendingStatusTriggerDrop((prev) => {
-                if (prev && prev.leadId === leadId && prev.to === newStatus) {
-                  return {
-                    ...prev,
-                    confirmationRuleId,
-                    confirmationMessage,
-                  };
-                }
-
-                if (!pendingDropContext) {
-                  return prev;
-                }
-
+            setPendingStatusTriggerDrop((prev) => {
+              if (prev && prev.leadId === leadId && prev.to === newStatus) {
                 return {
-                  leadId,
-                  from: pendingDropContext.from,
-                  to: pendingDropContext.to,
+                  ...prev,
                   confirmationRuleId,
                   confirmationMessage,
                 };
-              });
+              }
 
-              toast.info(confirmationMessage, { id: loadingToast, duration: 5000 });
-              return result;
-            }
+              if (!pendingDropContext) {
+                return prev;
+              }
 
-            throw new Error(result?.errorMessages?.[0] || 'Erro ao atualizar status do lead');
-          }
-          
-          // ✅ Sucesso
-          const statusLabels: Record<ColumnKey, string> = {
-             'new_opportunity': 'Nova Oportunidade',
-             'scheduled': 'Agendado',
-             'no_show': 'Não Compareceu',
-             'pricingRequest': 'Solicitação de Preço',
-             'future_sale': 'Venda Futura',
-             'offerNegotiation': 'Negociação de Proposta',
-             'pending_documents': 'Documentos Pendentes',
-             'offerSubmission': 'Proposta Enviada',
-             'dps_agreement': 'Acordo DPS',
-             'invoicePayment': 'Pagamento de Fatura',
-             'disqualified': 'Desqualificado',
-             'opportunityLost': 'Oportunidade Perdida',
-             'operator_denied': 'Operadora Negou',
-             'contract_finalized': 'Contrato Finalizado'
-           };
-          
-          toast.success(`Status atualizado para: ${statusLabels[newStatus] || newStatus}`, {
-            id: loadingToast,
-            duration: 3000,
-          });
-          return result;
-        } catch (error) {
-          console.error('Erro ao atualizar status do lead:', error);
-          
-          // ❌ Erro - Reverter mudança visual
-          toast.error(error instanceof Error ? error.message : 'Erro ao atualizar status. Recarregando...', {
-            id: loadingToast,
-            duration: 4000,
-          });
-          
-          // Recarregar dados para reverter UI
-          await loadLeads({ force: true });
-          return null;
-        }
-      };
+              return {
+                leadId,
+                from: pendingDropContext.from,
+                to: pendingDropContext.to,
+                confirmationRuleId,
+                confirmationMessage,
+              };
+            });
 
-      // Função para finalizar contrato
-      const finalizeContract = async (leadId: string, contractData: FinalizeContractData) => {
-        try {
-          const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-supabase-user-id': supabaseId
-            },
-            body: JSON.stringify(contractData)
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.errorMessages?.[0] || 'Erro ao finalizar contrato');
+            toast.info(confirmationMessage, { id: loadingToast, duration: 5000 });
+            return result;
           }
 
-          // Atualizar o lead para a coluna de contrato finalizado
-          await loadLeads({ force: true }); // Recarrega todos os leads para garantir consistência
-        } catch (error) {
-          console.error('Erro ao finalizar contrato:', error);
-          throw error;
+          throw new Error(result?.errorMessages?.[0] || 'Erro ao atualizar status do lead');
         }
-      };
-    
 
-  const clearErrors = () => {
-    setErrors({});
-  };
+        const statusLabels: Record<ColumnKey, string> = {
+          'new_opportunity': 'Nova Oportunidade',
+          'scheduled': 'Agendado',
+          'no_show': 'Não Compareceu',
+          'pricingRequest': 'Solicitação de Preço',
+          'future_sale': 'Venda Futura',
+          'offerNegotiation': 'Negociação de Proposta',
+          'pending_documents': 'Documentos Pendentes',
+          'offerSubmission': 'Proposta Enviada',
+          'dps_agreement': 'Acordo DPS',
+          'invoicePayment': 'Pagamento de Fatura',
+          'disqualified': 'Desqualificado',
+          'opportunityLost': 'Oportunidade Perdida',
+          'operator_denied': 'Operadora Negou',
+          'contract_finalized': 'Contrato Finalizado'
+        };
 
-      const patchLead = (leadId: string, patch: Partial<Lead>) => {
-    setData((prev) => {
-      const next: Record<ColumnKey, Lead[]> = { ...prev } as Record<ColumnKey, Lead[]>;
-      COLUMNS.forEach(({ key }) => {
-        const column = prev[key] || [];
-        next[key] = column.map((l) => (l.id === leadId ? ({ ...l, ...patch } as Lead) : l));
-      });
-      return next;
-    });
-    setSelected((prev) => (prev?.id === leadId ? ({ ...prev, ...patch } as Lead) : prev));
-  };
+        toast.success(`Status atualizado para: ${statusLabels[newStatus] || newStatus}`, {
+          id: loadingToast,
+          duration: 3000,
+        });
+        return result;
+      } catch (error) {
+        // O optimistic update só é aplicado após sucesso, então em caso de erro o
+        // estado local permanece inalterado. Não há necessidade de refetch.
+        console.error('Erro ao atualizar status do lead:', error);
 
-  const clearPendingScheduledDrop = () => {
-    setPendingScheduledDrop(null);
-  };
-
-  const clearPendingStatusTriggerDrop = () => {
-    setPendingStatusTriggerDrop(null);
-  };
-
-  const applyPendingStatusTriggerTransition = async (trigger: {
-    followUpAt?: string;
-    followUpNotes?: string;
-    reason?: string;
-    reasonDetails?: string;
-    confirmRuleId?: string;
-  }) => {
-    if (!pendingStatusTriggerDrop) return;
-
-    const result = await updateLeadStatusInAPI(
-      pendingStatusTriggerDrop.leadId,
-      pendingStatusTriggerDrop.to,
-      {
-        ...trigger,
-        confirmRuleId:
-          trigger.confirmRuleId ||
-          pendingStatusTriggerDrop.confirmationRuleId ||
-          undefined,
+        toast.error(error instanceof Error ? error.message : 'Erro ao atualizar status do lead.', {
+          id: loadingToast,
+          duration: 4000,
+        });
+        return null;
       }
-    );
+    },
+    [activeTeamId, supabaseId]
+  );
 
-    if (!result?.isValid) return;
+  const onDrop = useCallback(
+    (e: React.DragEvent, to: ColumnKey) => {
+      e.preventDefault();
+      const raw = e.dataTransfer.getData("text/plain");
+      if (!raw) return;
+      const { leadId, from } = JSON.parse(raw) as { leadId: string; from: ColumnKey };
+      if (from === to) return;
 
-    const payload =
-      result.result && typeof result.result === "object"
-        ? (result.result as Partial<Lead>)
-        : {};
+      if (to === "scheduled") {
+        setPendingScheduledDrop({ leadId, from });
+        return;
+      }
 
-    moveLeadBetweenColumns(
-      pendingStatusTriggerDrop.leadId,
-      pendingStatusTriggerDrop.from,
-      pendingStatusTriggerDrop.to,
-      payload
-    );
-    setPendingStatusTriggerDrop(null);
-    await loadLeads({ force: true });
-  };
+      if (to === "future_sale" || to === "opportunityLost" || to === "operator_denied") {
+        setPendingStatusTriggerDrop({
+          leadId,
+          from,
+          to,
+          confirmationRuleId: null,
+          confirmationMessage: null,
+        });
+        return;
+      }
 
-  const applyScheduledTransition = (
-    from: ColumnKey,
-    payload: Partial<Lead> & Pick<Lead, "id" | "status">
-  ) => {
-    moveLeadBetweenColumns(payload.id, from, "scheduled", payload);
+      void (async () => {
+        const result = await updateLeadStatusInAPI(leadId, to, undefined, { from, to });
+        if (!result?.isValid) return;
+
+        const payload =
+          result.result && typeof result.result === "object"
+            ? (result.result as Partial<Lead>)
+            : {};
+
+        moveLeadBetweenColumns(leadId, from, to, payload);
+      })();
+    },
+    [moveLeadBetweenColumns, updateLeadStatusInAPI]
+  );
+
+  const finalizeContract = useCallback(
+    async (leadId: string, contractData: FinalizeContractData) => {
+      try {
+        const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-supabase-user-id': supabaseId
+          },
+          body: JSON.stringify(contractData)
+        });
+
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok || !result?.isValid) {
+          throw new Error(result?.errorMessages?.[0] || 'Erro ao finalizar contrato');
+        }
+
+        const leadPatch =
+          result?.result && typeof result.result === "object" && result.result.lead
+            ? (result.result.lead as Partial<Lead>)
+            : {};
+        const finalizedPatch: Partial<Lead> = {
+          ...leadPatch,
+          status: "contract_finalized",
+        };
+
+        const currentData = dataRef.current;
+        const fromColumn = (Object.keys(currentData) as ColumnKey[]).find((key) =>
+          (currentData[key] || []).some((l) => l.id === leadId)
+        );
+
+        if (fromColumn && fromColumn !== "contract_finalized") {
+          moveLeadBetweenColumns(leadId, fromColumn, "contract_finalized", finalizedPatch);
+        } else {
+          patchLead(leadId, finalizedPatch);
+        }
+      } catch (error) {
+        console.error('Erro ao finalizar contrato:', error);
+        throw error;
+      }
+    },
+    [moveLeadBetweenColumns, patchLead, supabaseId]
+  );
+
+
+  const clearErrors = useCallback(() => {
+    setErrors({});
+  }, []);
+
+  const clearPendingScheduledDrop = useCallback(() => {
     setPendingScheduledDrop(null);
-  };
+  }, []);
+
+  const clearPendingStatusTriggerDrop = useCallback(() => {
+    setPendingStatusTriggerDrop(null);
+  }, []);
+
+  const applyPendingStatusTriggerTransition = useCallback(
+    async (trigger: {
+      followUpAt?: string;
+      followUpNotes?: string;
+      reason?: string;
+      reasonDetails?: string;
+      confirmRuleId?: string;
+    }) => {
+      if (!pendingStatusTriggerDrop) return;
+
+      const result = await updateLeadStatusInAPI(
+        pendingStatusTriggerDrop.leadId,
+        pendingStatusTriggerDrop.to,
+        {
+          ...trigger,
+          confirmRuleId:
+            trigger.confirmRuleId ||
+            pendingStatusTriggerDrop.confirmationRuleId ||
+            undefined,
+        }
+      );
+
+      if (!result?.isValid) return;
+
+      const payload =
+        result.result && typeof result.result === "object"
+          ? (result.result as Partial<Lead>)
+          : {};
+
+      moveLeadBetweenColumns(
+        pendingStatusTriggerDrop.leadId,
+        pendingStatusTriggerDrop.from,
+        pendingStatusTriggerDrop.to,
+        payload
+      );
+      setPendingStatusTriggerDrop(null);
+    },
+    [moveLeadBetweenColumns, pendingStatusTriggerDrop, updateLeadStatusInAPI]
+  );
+
+  const applyScheduledTransition = useCallback(
+    (from: ColumnKey, payload: Partial<Lead> & Pick<Lead, "id" | "status">) => {
+      moveLeadBetweenColumns(payload.id, from, "scheduled", payload);
+      setPendingScheduledDrop(null);
+    },
+    [moveLeadBetweenColumns]
+  );
 
   // Mapeamento de status para labels legíveis
   const statusLabels: Record<ColumnKey, string> = useMemo(() => {
@@ -888,7 +992,12 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [sdrMembers]);
 
-    const value: IBoardContextState = {
+  const refreshLeads = useCallback(async () => {
+    await loadLeads({ force: true });
+  }, [loadLeads]);
+
+  const value = useMemo<IBoardContextState>(
+    () => ({
       isLoading,
       query,
       setQuery,
@@ -924,7 +1033,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       openNewLeadDialog,
       onDrop,
       onDragStart,
-      refreshLeads: () => loadLeads({ force: true }),
+      refreshLeads,
       patchLead,
       pendingScheduledDrop,
       clearPendingScheduledDrop,
@@ -932,8 +1041,46 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingStatusTriggerDrop,
       clearPendingStatusTriggerDrop,
       applyPendingStatusTriggerTransition,
-      finalizeContract
-    };
+      finalizeContract,
+    }),
+    [
+      isLoading,
+      query,
+      onlyMeetingsHeld,
+      leadCardDisplay,
+      data,
+      filtered,
+      periodStart,
+      periodEnd,
+      assignedUsers,
+      statusFilter,
+      closerFilter,
+      responsaveis,
+      statusLabels,
+      errors,
+      open,
+      user,
+      userLoading,
+      selected,
+      onDragOver,
+      clearErrors,
+      handleCardClick,
+      handleCardMouseDown,
+      handleCardDragStart,
+      openNewLeadDialog,
+      onDrop,
+      onDragStart,
+      refreshLeads,
+      patchLead,
+      pendingScheduledDrop,
+      clearPendingScheduledDrop,
+      applyScheduledTransition,
+      pendingStatusTriggerDrop,
+      clearPendingStatusTriggerDrop,
+      applyPendingStatusTriggerTransition,
+      finalizeContract,
+    ]
+  );
   
   return (
     <BoardContext.Provider value={value}>

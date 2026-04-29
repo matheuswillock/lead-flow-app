@@ -9,17 +9,27 @@ export interface CreateTemplateData {
 }
 
 export interface ITemplatesService {
-  list(supabaseId: string): Promise<Template[]>
-  create(supabaseId: string, data: CreateTemplateData): Promise<Template>
-  delete(supabaseId: string, id: string): Promise<void>
+  list(supabaseId: string, teamId?: string | null): Promise<Template[]>
+  create(supabaseId: string, data: CreateTemplateData, teamId?: string | null): Promise<Template>
+  delete(supabaseId: string, id: string, teamId?: string | null): Promise<void>
 }
 
 export class TemplatesService implements ITemplatesService {
   private readonly baseUrl = '/api/v1/email/templates'
 
-  async list(_supabaseId: string): Promise<Template[]> {
+  private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
+    return {
+      'x-supabase-user-id': supabaseId,
+      ...(teamId ? { 'x-team-id': teamId } : {}),
+    }
+  }
+
+  async list(supabaseId: string, teamId?: string | null): Promise<Template[]> {
     console.info('[TemplatesService] Fetching templates list')
-    const response = await fetch(this.baseUrl, { cache: 'no-store' })
+    const response = await fetch(this.baseUrl, {
+      cache: 'no-store',
+      headers: this.buildHeaders(supabaseId, teamId),
+    })
 
     if (!response.ok) {
       const message = `Erro ao buscar templates: ${response.status}`
@@ -38,11 +48,14 @@ export class TemplatesService implements ITemplatesService {
     return body.result
   }
 
-  async create(_supabaseId: string, data: CreateTemplateData): Promise<Template> {
+  async create(supabaseId: string, data: CreateTemplateData, teamId?: string | null): Promise<Template> {
     console.info('[TemplatesService] Creating template', data.name)
     const response = await fetch(this.baseUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...this.buildHeaders(supabaseId, teamId),
+      },
       body: JSON.stringify(data),
     })
 
@@ -63,10 +76,11 @@ export class TemplatesService implements ITemplatesService {
     return body.result
   }
 
-  async delete(_supabaseId: string, id: string): Promise<void> {
+  async delete(supabaseId: string, id: string, teamId?: string | null): Promise<void> {
     console.info('[TemplatesService] Deleting template', id)
     const response = await fetch(`${this.baseUrl}/${id}`, {
       method: 'DELETE',
+      headers: this.buildHeaders(supabaseId, teamId),
     })
 
     if (!response.ok) {

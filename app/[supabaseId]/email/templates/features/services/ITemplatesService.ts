@@ -9,7 +9,7 @@ export type CreateTemplateData = {
 }
 
 export interface ITemplatesService {
-  list(): Promise<Template[]>
-  create(data: CreateTemplateData): Promise<Template>
-  delete(id: string): Promise<void>
+  list(supabaseId: string, teamId?: string | null): Promise<Template[]>
+  create(supabaseId: string, data: CreateTemplateData, teamId?: string | null): Promise<Template>
+  delete(supabaseId: string, id: string, teamId?: string | null): Promise<void>
 }

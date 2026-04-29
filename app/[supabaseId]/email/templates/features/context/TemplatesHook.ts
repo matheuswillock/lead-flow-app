@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Template, TemplatesState } from './TemplatesTypes'
 import { createTemplatesService } from '../services/TemplatesService'
+import { useTeamContext } from '@/app/context/TeamContext'
 
 const service = createTemplatesService()
 
@@ -13,6 +14,7 @@ interface UseTemplatesReturn extends TemplatesState {
 }
 
 export function useTemplates(supabaseId: string): UseTemplatesReturn {
+  const { activeTeamId, isLoading: teamLoading } = useTeamContext()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -21,6 +23,14 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
   const isFetchingRef = useRef(false)
 
   const fetchTemplates = useCallback(async () => {
+    if (teamLoading) return
+    if (!activeTeamId) {
+      setTemplates([])
+      setLoading(false)
+      setError('Selecione um time para visualizar templates')
+      return
+    }
+
     if (isFetchingRef.current) {
       console.info('[useTemplates] Fetch already in-flight, skipping')
       return
@@ -32,7 +42,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
 
     try {
       console.info('[useTemplates] Fetching templates')
-      const data = await service.list(supabaseId)
+      const data = await service.list(supabaseId, activeTeamId)
       setTemplates(data)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao carregar templates'
@@ -43,14 +53,14 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
       setLoading(false)
       isFetchingRef.current = false
     }
-  }, [supabaseId])
+  }, [activeTeamId, supabaseId, teamLoading])
 
   const handleDelete = useCallback(
     async (id: string) => {
       setDeleting(id)
       try {
         console.info('[useTemplates] Deleting template', id)
-        await service.delete(supabaseId, id)
+        await service.delete(supabaseId, id, activeTeamId)
         setTemplates((prev) => prev.filter((t) => t.id !== id))
         toast.success('Template excluído com sucesso')
       } catch (err) {
@@ -61,7 +71,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
         setDeleting(null)
       }
     },
-    [supabaseId]
+    [activeTeamId, supabaseId]
   )
 
   useEffect(() => {
