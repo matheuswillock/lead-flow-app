@@ -14,7 +14,7 @@ const managerOnlyRoutes = ["/manager-users", "/integrations"]
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   
-  // Skip middleware completely for webhook routes
+  // Skip Proxy completely for webhook routes
   if (pathname.startsWith('/api/webhooks')) {
     return NextResponse.next();
   }
@@ -63,7 +63,7 @@ export async function proxy(request: NextRequest) {
         return NextResponse.redirect(new URL(`/${user.id}/crm`, request.url))
       }
     } catch (error) {
-      console.error('[middleware] Error verifying backoffice role:', error)
+      console.error('[Proxy] Error verifying backoffice role:', error)
       return NextResponse.redirect(new URL('/backoffice/sign-in', request.url))
     }
     return response
@@ -154,7 +154,7 @@ export async function proxy(request: NextRequest) {
   // Additional check for manager-only routes (ONLY for page routes, not API)
   if (isManagerOnlyRoute && user) {
     try {
-      console.info('[middleware] Checking manager role for user:', user.id)
+      console.info('[Proxy] Checking manager role for user:', user.id)
       
       // Buscar role diretamente do banco de dados (sem fetch interno)
       const { prisma } = await import('@/app/api/infra/data/prisma')
@@ -164,21 +164,21 @@ export async function proxy(request: NextRequest) {
       })
       
       if (!profile) {
-        console.warn(`[middleware] Profile not found for user ${user.id}, redirecting to dashboard`)
+        console.warn(`[Proxy] Profile not found for user ${user.id}, redirecting to dashboard`)
         return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
       }
       
       // Se não for manager, redirecionar para dashboard
       if (!isManagerLikeRole(profile.role)) {
-        console.info(`[middleware] User ${user.id} is ${profile.role}, not a manager, redirecting to dashboard`)
+        console.info(`[Proxy] User ${user.id} is ${profile.role}, not a manager, redirecting to dashboard`)
         return NextResponse.redirect(new URL(`/${user.id}/dashboard`, request.url))
       }
       
-      console.info(`[middleware] User ${user.id} is a manager, allowing access to ${pathname}`)
+      console.info(`[Proxy] User ${user.id} is a manager, allowing access to ${pathname}`)
     } catch (error) {
-      console.error('[middleware] Error verifying user role:', error)
+      console.error('[Proxy] Error verifying user role:', error)
       // Em caso de erro, permitir acesso (fail-open para não bloquear usuários legítimos)
-      console.warn('[middleware] Failed to verify role, allowing access (fail-open)')
+      console.warn('[Proxy] Failed to verify role, allowing access (fail-open)')
     }
   }
 
