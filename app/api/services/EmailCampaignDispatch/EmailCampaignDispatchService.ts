@@ -73,6 +73,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
     recipient: { email: string; name?: string }
   ): string {
     return template
+      .replace(/\{\{nome_do_lead\}\}/gi, recipient.name ?? "")
       .replace(/\{\{nome\}\}/gi, recipient.name ?? "")
       .replace(/\{\{name\}\}/gi, recipient.name ?? "")
       .replace(/\{\{email\}\}/gi, recipient.email)

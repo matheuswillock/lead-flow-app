@@ -21,11 +21,14 @@ interface UsersContextValue {
   users: BackofficeUserItem[]
   isLoading: boolean
   isCreating: boolean
+  isUpdating: boolean
+  isDeleting: boolean
   canManageUsers: boolean
   error: string | null
   fetchUsers: () => Promise<void>
   createUser: (data: CreateUserFormData) => Promise<{ isValid: boolean; errorMessages: string[] }>
   updateUser: (id: string, data: UpdateUserFormData) => Promise<{ isValid: boolean; errorMessages: string[] }>
+  deleteUser: (id: string) => Promise<{ isValid: boolean; errorMessages: string[] }>
 }
 
 const BackofficeUsersContext = createContext<UsersContextValue | undefined>(undefined)
@@ -40,6 +43,8 @@ export function BackofficeUsersProvider({ children, usersService }: Props) {
   const [users, setUsers] = useState<BackofficeUserItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inFlight = useRef(false)
 
@@ -84,18 +89,51 @@ export function BackofficeUsersProvider({ children, usersService }: Props) {
 
   const updateUser = useCallback(
     async (id: string, data: UpdateUserFormData) => {
-      const result = await usersService.update(id, data)
-      if (result.isValid) {
-        await fetchUsers()
+      setIsUpdating(true)
+      try {
+        const result = await usersService.update(id, data)
+        if (result.isValid) {
+          await fetchUsers()
+        }
+        return result
+      } finally {
+        setIsUpdating(false)
       }
-      return result
+    },
+    [usersService, fetchUsers]
+  )
+
+  const deleteUser = useCallback(
+    async (id: string) => {
+      setIsDeleting(true)
+      try {
+        const result = await usersService.delete(id)
+        if (result.isValid) {
+          await fetchUsers()
+        }
+        return result
+      } finally {
+        setIsDeleting(false)
+      }
     },
     [usersService, fetchUsers]
   )
 
   return (
     <BackofficeUsersContext.Provider
-      value={{ users, isLoading, isCreating, canManageUsers, error, fetchUsers, createUser, updateUser }}
+      value={{
+        users,
+        isLoading,
+        isCreating,
+        isUpdating,
+        isDeleting,
+        canManageUsers,
+        error,
+        fetchUsers,
+        createUser,
+        updateUser,
+        deleteUser,
+      }}
     >
       {children}
     </BackofficeUsersContext.Provider>

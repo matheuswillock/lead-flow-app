@@ -42,6 +42,47 @@ contract_finalized contract_finalized
     
 
 
+        backoffice_lead_status {
+            new_opportunity new_opportunity
+scheduled scheduled
+no_show no_show
+lost lost
+implementation implementation
+finalized finalized
+        }
+    
+
+
+        backoffice_webhook_source {
+            meta meta
+        }
+    
+
+
+        backoffice_webhook_event_status {
+            received received
+processed processed
+failed failed
+        }
+    
+
+
+        backoffice_webhook_token_status {
+            active active
+replaced replaced
+expired expired
+        }
+    
+
+
+        backoffice_webhook_token_expiry_mode {
+            hours_24 hours_24
+months_6 months_6
+indeterminate indeterminate
+        }
+    
+
+
         TeamStatusRuleType {
             disabled_status disabled_status
 lead_time lead_time
@@ -284,6 +325,62 @@ unsubscribed unsubscribed
     String pixPayload "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    }
+  
+
+  "backoffice_leads" {
+    String id "🗝️"
+    String name 
+    String email "❓"
+    String phone "❓"
+    String notes "❓"
+    BackofficeLeadStatus status 
+    DateTime statusEnteredAt 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_webhook_events" {
+    String id "🗝️"
+    BackofficeWebhookSource source 
+    String eventType "❓"
+    Json payload 
+    String signature "❓"
+    BackofficeWebhookEventStatus status 
+    String errorMessage "❓"
+    DateTime receivedAt 
+    DateTime processedAt "❓"
+    }
+  
+
+  "backoffice_webhook_tokens" {
+    String id "🗝️"
+    BackofficeWebhookSource source 
+    String tokenHash 
+    String tokenCipher 
+    String tokenPreview 
+    BackofficeWebhookTokenStatus status 
+    BackofficeWebhookTokenExpiryMode expiryMode 
+    DateTime expiresAt "❓"
+    DateTime lastUsedAt "❓"
+    String generatedByEmailSnapshot 
+    DateTime generatedAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_webhook_request_logs" {
+    String id "🗝️"
+    BackofficeWebhookSource source 
+    String method 
+    String endpoint 
+    Int statusCode 
+    String resultType 
+    Json requestPayload "❓"
+    Json responsePayload "❓"
+    String errorMessage "❓"
+    DateTime createdAt 
     }
   
 
@@ -619,6 +716,15 @@ unsubscribed unsubscribed
     "backoffice_clients" }o--|o profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"
     "backoffice_payments" }o--|o profiles : "creator"
+    "backoffice_leads" |o--|| "BackofficeLeadStatus" : "enum:status"
+    "backoffice_leads" }o--|o profiles : "creator"
+    "backoffice_webhook_events" |o--|| "BackofficeWebhookSource" : "enum:source"
+    "backoffice_webhook_events" |o--|| "BackofficeWebhookEventStatus" : "enum:status"
+    "backoffice_webhook_tokens" |o--|| "BackofficeWebhookSource" : "enum:source"
+    "backoffice_webhook_tokens" |o--|| "BackofficeWebhookTokenStatus" : "enum:status"
+    "backoffice_webhook_tokens" |o--|| "BackofficeWebhookTokenExpiryMode" : "enum:expiryMode"
+    "backoffice_webhook_tokens" }o--|| backoffice_users : "generatedBy"
+    "backoffice_webhook_request_logs" |o--|| "BackofficeWebhookSource" : "enum:source"
     "leads" |o--|| "LeadStatus" : "enum:status"
     "leads" |o--|o "MeetingHeald" : "enum:meetingHeald"
     "leads" |o--|o "LeadStatus" : "enum:followUpSourceStatus"

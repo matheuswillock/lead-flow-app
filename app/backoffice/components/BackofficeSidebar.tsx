@@ -8,6 +8,8 @@ import {
   Users,
   CreditCard,
   UserPlus,
+  Kanban,
+  Plug,
   EllipsisVertical,
   LogOut,
 } from "lucide-react"
@@ -38,8 +40,10 @@ import { createSupabaseBrowser } from "@/lib/supabase/browser"
 
 const navigationItems = [
   { title: "Dashboard", url: "/backoffice", icon: LayoutDashboard },
+  { title: "CRM", url: "/backoffice/crm", icon: Kanban },
   { title: "Clientes", url: "/backoffice/clients", icon: Users },
   { title: "Pagamentos", url: "/backoffice/payments", icon: CreditCard },
+  { title: "Integrações", url: "/backoffice/integracoes", icon: Plug },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
 ]
 

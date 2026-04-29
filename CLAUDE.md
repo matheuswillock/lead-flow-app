@@ -36,6 +36,19 @@ This document defines the implementation governance for AI agents in this reposi
 - `.github/agents.md` is intentionally not generated to avoid confusion with the canonical file name.
 - Regenerate adapters: `bun run governance:sync` — Validate: `bun run governance:check`
 
+## Backoffice Module Isolation (FOR NEW FEATURES)
+
+The backoffice (`app/backoffice/**` + `app/api/v1/backoffice/**` + `app/api/webhooks/backoffice/**`) is treated as an **independent module** that is a candidate to be extracted into its own service in the future. To keep this option open, AI agents working on backoffice features **MUST**:
+
+- Use **dedicated database tables** prefixed with `Backoffice*` (existing examples: `BackofficeUser`, `BackofficeClient`, `BackofficePayment`). New backoffice domain entities **MUST NOT** be added to existing product tables (`Lead`, `LeadActivity`, `Profile` etc.) — even when columns look similar, the data must live in a separate `Backoffice*` table.
+- Use **dedicated enums** prefixed with `Backoffice*` (e.g. `BackofficeLeadStatus`) rather than reusing product enums like `LeadStatus`.
+- Place backoffice-only API routes under `app/api/v1/backoffice/**` and webhooks under `app/api/webhooks/backoffice/**` (e.g. `app/api/webhooks/backoffice/meta/route.ts`). Backoffice routes **MUST NOT** be co-located with product routes.
+- Place backoffice-only services, use cases and repositories under `app/api/services/backoffice*/`, `app/api/useCases/backoffice*/` and `app/api/infra/data/repositories/backoffice*/`. Backoffice code **MUST NOT** import product use cases, services or repositories that are not also part of the backoffice module — and vice-versa.
+- Authorize backoffice routes with `getBackofficeAccess()` (`app/api/v1/backoffice/utils/getBackofficeAccess.ts`). Backoffice routes **MUST NOT** call `getTeamAccess()` (which is the product authorization helper).
+- Use environment variables prefixed with `BACKOFFICE_` for backoffice-specific secrets (e.g. `BACKOFFICE_META_VERIFY_TOKEN`) so they do not collide with product variables.
+
+The single allowed cross-module coupling is `Profile` (Supabase identity) and the `BackofficeUser.profileId` link. Anything else **MUST** be duplicated rather than shared.
+
 ## Core Architecture
 
 ### Backend (FOR NEW FEATURES)
