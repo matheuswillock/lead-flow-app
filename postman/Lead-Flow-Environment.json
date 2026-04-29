@@ -183,6 +183,34 @@
       "type": "default",
       "enabled": true,
       "description": "Email de destino para os pedidos de suporte (variavel do backend)"
+    },
+    {
+      "key": "backofficeSupabaseId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "supabaseId de um usuário com role=backoffice (header x-supabase-user-id)"
+    },
+    {
+      "key": "backofficeUserId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de um BackofficeUser para os endpoints /api/v1/backoffice/users/:id"
+    },
+    {
+      "key": "backofficeLeadId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de um BackofficeLead para os endpoints /api/v1/backoffice/leads/:id"
+    },
+    {
+      "key": "backofficeMetaActiveToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Token ativo retornado pelo endpoint POST /api/v1/backoffice/integrations/meta. Usado no path do webhook Meta backoffice."
     }
   ],
   "_postman_variable_scope": "environment"

@@ -31,3 +31,27 @@ export async function PATCH(
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const result = await getBackofficeAccess(request)
+    if (result.error) {
+      return NextResponse.json(result.error, { status: result.status })
+    }
+
+    const { id } = await params
+    const useCase = new BackofficeUserUseCase(
+      new BackofficeUserRepository(),
+      profileRepository,
+      noopMailboxProvisioningService
+    )
+    const output = await useCase.deleteUser(id, result.access)
+    return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+  } catch (error) {
+    console.error("[BackofficeUserByIdRoute][DELETE]", error)
+    return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
+  }
+}

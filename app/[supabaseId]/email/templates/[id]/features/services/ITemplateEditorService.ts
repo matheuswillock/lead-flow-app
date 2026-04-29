@@ -1,17 +1,20 @@
-import type { Template } from '../context/TemplateEditorTypes'
-
-export type CreateTemplateData = {
-  name: string
-  subject: string
-  previewText?: string
-  mailyJson?: unknown
-  html?: string
-}
-
-export type UpdateTemplateData = Partial<CreateTemplateData>
+import type { Template, TemplateEditorDraft } from "../context/TemplateEditorTypes";
 
 export interface ITemplateEditorService {
-  getById(id: string): Promise<Template>
-  create(data: CreateTemplateData): Promise<Template>
-  update(id: string, data: UpdateTemplateData): Promise<Template>
+  getTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template>;
+  createTemplate(
+    supabaseId: string,
+    draft: TemplateEditorDraft,
+    teamId?: string | null
+  ): Promise<Template>;
+  updateTemplate(
+    supabaseId: string,
+    templateId: string,
+    draft: TemplateEditorDraft,
+    teamId?: string | null
+  ): Promise<Template>;
 }

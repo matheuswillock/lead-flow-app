@@ -1,5 +1,6 @@
 /* Import Google Fonts */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
+@import "@react-email/editor/themes/default.css";
 
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
@@ -267,6 +268,68 @@ h1, h2, h3, h4, h5, h6 {
 
 
 @layer components {
+  .tiptap .lead-flow-email-node {
+    border: 1px solid color-mix(in oklab, var(--primary) 34%, var(--border));
+    border-radius: 8px;
+    background: color-mix(in oklab, var(--primary) 6%, white);
+    color: #111827;
+    margin: 10px 0;
+    padding: 12px;
+    user-select: none;
+  }
+
+  .tiptap .lead-flow-email-node.ProseMirror-selectednode {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  .tiptap .lead-flow-proposal-card {
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .tiptap .lead-flow-proposal-card__header {
+    align-items: center;
+    color: #ffffff;
+    display: flex;
+    font-size: 12px;
+    justify-content: space-between;
+    padding: 10px 14px;
+    text-transform: uppercase;
+  }
+
+  .tiptap .lead-flow-proposal-card__grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 12px 14px;
+  }
+
+  .tiptap .lead-flow-proposal-card__grid span,
+  .tiptap .lead-flow-lgpd-footer span {
+    color: #64748b;
+    display: block;
+    font-size: 11px;
+  }
+
+  .tiptap .lead-flow-proposal-card__grid strong,
+  .tiptap .lead-flow-broker-data strong,
+  .tiptap .lead-flow-broker-signature strong,
+  .tiptap .lead-flow-whatsapp-link strong {
+    color: #111827;
+    display: block;
+    font-size: 13px;
+  }
+
+  .tiptap .lead-flow-broker-data,
+  .tiptap .lead-flow-broker-signature,
+  .tiptap .lead-flow-whatsapp-link,
+  .tiptap .lead-flow-lgpd-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   .landing-hero-dot-grid {
     background-image: radial-gradient(circle, color-mix(in oklab, var(--border) 80%, transparent) 1px, transparent 1px);
     background-size: 28px 28px;

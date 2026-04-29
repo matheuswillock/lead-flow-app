@@ -36,6 +36,10 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
     return prisma.backofficeUser.findUnique({ where: { id } })
   }
 
+  async findByEmail(email: string): Promise<BackofficeUser | null> {
+    return prisma.backofficeUser.findUnique({ where: { email } })
+  }
+
   async findByProfileId(profileId: string): Promise<BackofficeUser | null> {
     return prisma.backofficeUser.findUnique({ where: { profileId } })
   }
@@ -44,6 +48,7 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
     return prisma.backofficeUser.update({
       where: { id },
       data: {
+        ...(data.email !== undefined ? { email: data.email } : {}),
         ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
         ...(data.fullAccess !== undefined ? { fullAccess: data.fullAccess } : {}),
         ...(data.mailboxStatus !== undefined ? { mailboxStatus: data.mailboxStatus } : {}),

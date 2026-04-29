@@ -6,6 +6,8 @@ import { isBackofficeRole } from "@/lib/roles"
 export type BackofficeAccess = {
   supabaseId: string
   profileId: string
+  backofficeUserId: string | null
+  backofficeEmail: string
   fullAccess: boolean
 }
 
@@ -29,9 +31,10 @@ export async function getBackofficeAccess(
     where: { supabaseId },
     select: {
       id: true,
+      email: true,
       role: true,
       backofficeUser: {
-        select: { fullAccess: true, isActive: true },
+        select: { id: true, email: true, fullAccess: true, isActive: true },
       },
     },
   })
@@ -54,6 +57,8 @@ export async function getBackofficeAccess(
     access: {
       supabaseId,
       profileId: profile.id,
+      backofficeUserId: profile.backofficeUser?.id ?? null,
+      backofficeEmail: profile.backofficeUser?.email ?? profile.email,
       fullAccess: profile.backofficeUser?.fullAccess ?? false,
     },
   }

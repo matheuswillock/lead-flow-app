@@ -43,7 +43,7 @@ interface ChangeStatusDialogProps {
   onOpenChange: (open: boolean) => void;
   lead: Lead | null;
   statusLabels: Record<string, string>;
-  onStatusChanged: () => Promise<void>;
+  onStatusChanged: (leadId: string, patch: Partial<Lead>) => void | Promise<void>;
   closers: UserAssociated[];
   teamMembers?: UserAssociated[];
   onSchedulePatched?: (payload: ScheduleMeetingSuccessPayload) => void;
@@ -142,9 +142,16 @@ export function ChangeStatusDialog({
         throw new Error(result?.errorMessages?.[0] || 'Erro ao atualizar status');
       }
 
+      const payload =
+        result.result && typeof result.result === 'object'
+          ? (result.result as Partial<Lead>)
+          : {};
+      await onStatusChanged(lead.id, {
+        ...payload,
+        status: newStatus as Lead['status'],
+      });
       toast.success('Status atualizado com sucesso!', { id: loadingToast });
       onOpenChange(false);
-      await onStatusChanged();
       return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao atualizar status', {
@@ -185,7 +192,6 @@ export function ChangeStatusDialog({
       onSchedulePatched?.(payload);
     }
     setShowScheduleDialog(false);
-    await onStatusChanged();
   };
 
   const handleFinalizeContract = async (data: FinalizeContractData) => {
@@ -201,12 +207,21 @@ export function ChangeStatusDialog({
       body: JSON.stringify(data),
     });
 
-    if (!response.ok) {
-      throw new Error('Erro ao finalizar contrato');
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.isValid) {
+      throw new Error(result?.errorMessages?.[0] || 'Erro ao finalizar contrato');
     }
 
+    const leadPatch =
+      result?.result && typeof result.result === 'object' && result.result.lead
+        ? (result.result.lead as Partial<Lead>)
+        : {};
+    await onStatusChanged(lead.id, {
+      ...leadPatch,
+      status: 'contract_finalized',
+    });
     setShowFinalizeDialog(false);
-    await onStatusChanged();
   };
 
   const handleStatusTriggerConfirm = async (payload: LeadStatusTriggerPayload) => {

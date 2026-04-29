@@ -503,8 +503,59 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     lastHandledShareKeyRef.current = shareKey;
   }, [allLeads, sharedLeadCode, isLoading, searchParams]);
 
+  const patchLead = useCallback((leadId: string, patch: Partial<Lead>) => {
+    setAllLeads((prev) =>
+      prev.map((lead) => {
+        if (lead.id !== leadId) return lead;
+
+        const nextStatus = patch.status ?? lead.status;
+        const merged = { ...lead, ...patch, status: nextStatus } as Lead;
+        const statusEnteredAt =
+          patch.statusEnteredAt ||
+          (nextStatus !== lead.status
+            ? patch.updatedAt || new Date().toISOString()
+            : merged.statusEnteredAt || merged.updatedAt || merged.createdAt);
+        const leadTimeState = resolveLeadTimeState(
+          nextStatus,
+          statusEnteredAt,
+          teamStatusRules.leadTimeRules
+        );
+
+        return {
+          ...merged,
+          statusEnteredAt,
+          leadTimeDueAt: leadTimeState.dueAt,
+          isLeadTimeBreached: leadTimeState.isBreached,
+        } as Lead;
+      })
+    );
+    setSelected((prev) => {
+      if (prev?.id !== leadId) return prev;
+
+      const nextStatus = patch.status ?? prev.status;
+      const merged = { ...prev, ...patch, status: nextStatus } as Lead;
+      const statusEnteredAt =
+        patch.statusEnteredAt ||
+        (nextStatus !== prev.status
+          ? patch.updatedAt || new Date().toISOString()
+          : merged.statusEnteredAt || merged.updatedAt || merged.createdAt);
+      const leadTimeState = resolveLeadTimeState(
+        nextStatus,
+        statusEnteredAt,
+        teamStatusRules.leadTimeRules
+      );
+
+      return {
+        ...merged,
+        statusEnteredAt,
+        leadTimeDueAt: leadTimeState.dueAt,
+        isLeadTimeBreached: leadTimeState.isBreached,
+      } as Lead;
+    });
+  }, [teamStatusRules.leadTimeRules]);
+
   // Função para finalizar contrato
-  const finalizeContract = async (leadId: string, contractData: FinalizeContractData) => {
+  const finalizeContract = useCallback(async (leadId: string, contractData: FinalizeContractData) => {
     try {
       const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
         method: 'POST',
@@ -516,17 +567,25 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         body: JSON.stringify(contractData)
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.errorMessages?.[0] || 'Erro ao finalizar contrato');
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.[0] || 'Erro ao finalizar contrato');
       }
 
-      await loadLeads({ force: true });
+      const leadPatch =
+        result?.result && typeof result.result === "object" && result.result.lead
+          ? (result.result.lead as Partial<Lead>)
+          : {};
+      patchLead(leadId, {
+        ...leadPatch,
+        status: "contract_finalized",
+      });
     } catch (error) {
       console.error('Erro ao finalizar contrato:', error);
       throw error;
     }
-  };
+  }, [activeTeamId, patchLead, supabaseId]);
 
   const clearErrors = () => {
     setErrors({});
@@ -540,11 +599,6 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   const openNewLeadDialog = () => {
     setSelected(null);
     setOpen(true);
-  };
-
-  const patchLead = (leadId: string, patch: Partial<Lead>) => {
-    setAllLeads((prev) => prev.map((l) => (l.id === leadId ? ({ ...l, ...patch } as Lead) : l)));
-    setSelected((prev) => (prev?.id === leadId ? ({ ...prev, ...patch } as Lead) : prev));
   };
 
   // Filtrar leads

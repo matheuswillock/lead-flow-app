@@ -1,128 +1,162 @@
-'use client'
+"use client";
 
-import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { toast } from 'sonner'
-import { Template, EditorMode, TemplateEditorState } from './TemplateEditorTypes'
-import { createTemplateEditorService } from '../services/TemplateEditorService'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { useTeamContext } from "@/app/context/TeamContext";
+import type {
+  Template,
+  TemplateEditorDraft,
+  TemplateEditorState,
+} from "./TemplateEditorTypes";
+import { createTemplateEditorService } from "../services/TemplateEditorService";
 
-const service = createTemplateEditorService()
+const service = createTemplateEditorService();
+
+const EMPTY_DRAFT: TemplateEditorDraft = {
+  name: "",
+  subject: "",
+  previewText: "",
+  html: "",
+  mailyJson: null,
+};
 
 interface UseTemplateEditorReturn extends TemplateEditorState {
-  setMode: (mode: EditorMode) => void
-  setName: (name: string) => void
-  setSubject: (subject: string) => void
-  setPreviewText: (previewText: string) => void
-  setMailyJson: (json: unknown) => void
-  setHtml: (html: string) => void
-  handleSave: () => Promise<void>
+  reloadTemplate: () => Promise<void>;
+  saveTemplate: (patch?: Partial<TemplateEditorDraft>) => Promise<Template | null>;
+  updateDraft: (patch: Partial<TemplateEditorDraft>) => void;
+  setMailyJson: (json: unknown) => void;
+  setHtml: (html: string) => void;
+}
+
+function createDraftFromTemplate(template: Template): TemplateEditorDraft {
+  return {
+    name: template.name,
+    subject: template.subject,
+    previewText: template.previewText ?? "",
+    html: template.html ?? "",
+    mailyJson: template.mailyJson ?? null,
+  };
 }
 
 export function useTemplateEditor(
   supabaseId: string,
   templateId: string
 ): UseTemplateEditorReturn {
-  const router = useRouter()
-  const isNew = templateId === 'new'
+  const { activeTeamId, isLoading: teamLoading } = useTeamContext();
+  const isNewTemplate = templateId === "new";
+  const [template, setTemplate] = useState<Template | null>(null);
+  const [draft, setDraft] = useState<TemplateEditorDraft>(EMPTY_DRAFT);
+  const [loading, setLoading] = useState(!isNewTemplate);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const initialDraftRef = useRef<TemplateEditorDraft>(EMPTY_DRAFT);
 
-  const [template, setTemplate] = useState<Template | null>(null)
-  const [mode, setMode] = useState<EditorMode>('maily')
-  const [name, setName] = useState('')
-  const [subject, setSubject] = useState('')
-  const [previewText, setPreviewText] = useState('')
-  const [mailyJson, setMailyJson] = useState<unknown | null>(null)
-  const [html, setHtml] = useState('')
-  const [loading, setLoading] = useState(!isNew)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const isDirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(initialDraftRef.current),
+    [draft]
+  );
+
+  const reloadTemplate = useCallback(async () => {
+    if (teamLoading) return;
+
+    if (!activeTeamId) {
+      setLoading(false);
+      setError("Selecione um time para editar templates.");
+      return;
+    }
+
+    if (isNewTemplate) {
+      setTemplate(null);
+      setDraft(EMPTY_DRAFT);
+      initialDraftRef.current = EMPTY_DRAFT;
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const nextTemplate = await service.getTemplate(supabaseId, templateId, activeTeamId);
+      const nextDraft = createDraftFromTemplate(nextTemplate);
+      setTemplate(nextTemplate);
+      setDraft(nextDraft);
+      initialDraftRef.current = nextDraft;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erro ao carregar template";
+      console.error("[useTemplateEditor] Failed to load template", err);
+      setError(message);
+      toast.error("Erro ao carregar template", { description: message });
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTeamId, isNewTemplate, supabaseId, teamLoading, templateId]);
 
   useEffect(() => {
-    if (isNew) return
+    void reloadTemplate();
+  }, [reloadTemplate]);
 
-    const load = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        console.info('[useTemplateEditor] Loading template', templateId)
-        const data = await service.getById(templateId)
-        setTemplate(data)
-        setName(data.name)
-        setSubject(data.subject)
-        setPreviewText(data.previewText ?? '')
-        setMailyJson(data.mailyJson)
-        setHtml(data.html ?? '')
-        setMode(data.mailyJson ? 'maily' : 'html')
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erro ao carregar template'
-        console.error('[useTemplateEditor] Failed to load template', err)
-        setError(message)
-        toast.error('Erro ao carregar template', { description: message })
-      } finally {
-        setLoading(false)
-      }
+  const updateDraft = useCallback((patch: Partial<TemplateEditorDraft>) => {
+    setDraft((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const setMailyJson = useCallback(
+    (json: unknown) => updateDraft({ mailyJson: json }),
+    [updateDraft]
+  );
+
+  const setHtml = useCallback(
+    (html: string) => updateDraft({ html }),
+    [updateDraft]
+  );
+
+  const saveTemplate = useCallback(async (patch: Partial<TemplateEditorDraft> = {}) => {
+    if (saving) return null;
+    if (!activeTeamId) {
+      toast.error("Selecione um time para salvar templates.");
+      return null;
+    }
+    const draftToSave = { ...draft, ...patch };
+    if (!draftToSave.name.trim() || !draftToSave.subject.trim()) {
+      toast.error("Informe nome e assunto do template.");
+      return null;
     }
 
-    load()
-  }, [templateId, isNew])
-
-  const handleSave = useCallback(async () => {
-    if (!name.trim()) {
-      toast.error('Nome obrigatório', { description: 'Informe um nome para o template.' })
-      return
-    }
-    if (!subject.trim()) {
-      toast.error('Assunto obrigatório', { description: 'Informe o assunto do email.' })
-      return
-    }
-
-    setSaving(true)
+    setSaving(true);
+    setError(null);
     try {
-      const payload = {
-        name: name.trim(),
-        subject: subject.trim(),
-        previewText: previewText.trim() || undefined,
-        mailyJson: mode === 'maily' ? mailyJson ?? undefined : undefined,
-        html: mode === 'html' ? html || undefined : undefined,
-      }
-
-      if (isNew) {
-        console.info('[useTemplateEditor] Creating new template')
-        await service.create(payload)
-        toast.success('Template criado com sucesso')
-      } else {
-        console.info('[useTemplateEditor] Updating template', templateId)
-        const updated = await service.update(templateId, payload)
-        setTemplate(updated)
-        toast.success('Template salvo com sucesso')
-      }
-
-      router.push(`/${supabaseId}/email/templates`)
+      const saved = isNewTemplate
+        ? await service.createTemplate(supabaseId, draftToSave, activeTeamId)
+        : await service.updateTemplate(supabaseId, templateId, draftToSave, activeTeamId);
+      const savedDraft = createDraftFromTemplate(saved);
+      setTemplate(saved);
+      setDraft(savedDraft);
+      initialDraftRef.current = savedDraft;
+      toast.success("Template publicado com sucesso");
+      return saved;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Erro ao salvar template'
-      console.error('[useTemplateEditor] Failed to save template', err)
-      toast.error('Erro ao salvar template', { description: message })
+      const message = err instanceof Error ? err.message : "Erro ao publicar template";
+      console.error("[useTemplateEditor] Failed to save template", err);
+      setError(message);
+      toast.error("Erro ao publicar template", { description: message });
+      return null;
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }, [isNew, templateId, supabaseId, name, subject, previewText, mode, mailyJson, html, router])
+  }, [activeTeamId, draft, isNewTemplate, saving, supabaseId, templateId]);
 
   return {
     template,
-    mode,
-    name,
-    subject,
-    previewText,
-    mailyJson,
-    html,
+    draft,
     loading,
     saving,
     error,
-    setMode,
-    setName,
-    setSubject,
-    setPreviewText,
+    isDirty,
+    isNewTemplate,
+    reloadTemplate,
+    saveTemplate,
+    updateDraft,
     setMailyJson,
     setHtml,
-    handleSave,
-  }
+  };
 }

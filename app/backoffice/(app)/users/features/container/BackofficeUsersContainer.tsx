@@ -2,20 +2,17 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
-import { Plus } from "lucide-react"
+import { Check, Copy, MoreHorizontal, Pencil, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Table,
   TableBody,
@@ -25,7 +22,14 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useBackofficeUsers } from "../context/BackofficeUsersContext"
-import type { CreateUserFormData } from "../services/IBackofficeUsersService"
+import type {
+  BackofficeUserItem,
+  CreateUserFormData,
+  UpdateUserFormData,
+} from "../services/IBackofficeUsersService"
+import { NewUserDialog } from "../components/NewUserDialog"
+import { EditUserDialog } from "../components/EditUserDialog"
+import { isBackofficeEmail } from "../components/BackofficeEmailInput"
 
 const MAILBOX_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
   provisioned: { label: "Ativo", variant: "default" },
@@ -40,13 +44,24 @@ const initialForm: CreateUserFormData = {
 }
 
 function validateEmail(email: string) {
-  return email.trim().toLowerCase().endsWith("@corretorstudio.com")
+  return isBackofficeEmail(email)
 }
 
 export function BackofficeUsersContainer() {
-  const { users, isLoading, isCreating, canManageUsers, createUser, updateUser } =
-    useBackofficeUsers()
+  const {
+    users,
+    isLoading,
+    isCreating,
+    isUpdating,
+    isDeleting,
+    canManageUsers,
+    createUser,
+    updateUser,
+    deleteUser,
+  } = useBackofficeUsers()
   const [open, setOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<BackofficeUserItem | null>(null)
   const [form, setForm] = useState<CreateUserFormData>(initialForm)
   const [emailError, setEmailError] = useState<string | null>(null)
 
@@ -58,7 +73,7 @@ export function BackofficeUsersContainer() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!validateEmail(form.email)) {
-      setEmailError("E-mail deve ser @corretorstudio.com")
+      setEmailError("Informe o prefixo do e-mail @corretorstudio.com")
       return
     }
 
@@ -72,12 +87,53 @@ export function BackofficeUsersContainer() {
     }
   }
 
-  async function handleToggleActive(id: string, currentActive: boolean) {
-    const result = await updateUser(id, { isActive: !currentActive })
+  function handleEditUser(user: BackofficeUserItem) {
+    setSelectedUser(user)
+    setEditOpen(true)
+  }
+
+  function handleEditOpenChange(nextOpen: boolean) {
+    setEditOpen(nextOpen)
+    if (!nextOpen) setSelectedUser(null)
+  }
+
+  async function handleUpdateUser(id: string, data: UpdateUserFormData) {
+    const result = await updateUser(id, data)
     if (result.isValid) {
-      toast.success(currentActive ? "Usuário desativado" : "Usuário ativado")
-    } else {
-      toast.error(result.errorMessages?.[0] ?? "Erro ao atualizar usuário")
+      if (data.isActive !== undefined && Object.keys(data).length === 1) {
+        toast.success(data.isActive ? "Usuário ativado" : "Usuário desativado")
+      } else {
+        toast.success("Usuário atualizado com sucesso")
+      }
+      return
+    }
+
+    const message = result.errorMessages?.[0] ?? "Erro ao atualizar usuário"
+    toast.error(message)
+    throw new Error(message)
+  }
+
+  async function handleDeleteUser(id: string) {
+    const result = await deleteUser(id)
+    if (result.isValid) {
+      toast.success("Usuário excluído com sucesso")
+      setEditOpen(false)
+      setSelectedUser(null)
+      return
+    }
+
+    const message = result.errorMessages?.[0] ?? "Erro ao excluir usuário"
+    toast.error(message)
+    throw new Error(message)
+  }
+
+  async function handleCopyEmail(email: string) {
+    try {
+      await navigator.clipboard.writeText(email)
+      toast.success(`O e-mail ${email} foi copiado`)
+    } catch (error) {
+      console.error("[BackofficeUsersContainer][copyEmail]", error)
+      toast.error("Não foi possível copiar o e-mail")
     }
   }
 
@@ -87,7 +143,7 @@ export function BackofficeUsersContainer() {
         <h1 className="text-lg font-semibold">Usuários Backoffice</h1>
         {canManageUsers && (
           <Button size="sm" onClick={() => setOpen(true)}>
-            <Plus className="h-4 w-4 mr-1" />
+            <Plus data-icon="inline-start" />
             Criar Usuário
           </Button>
         )}
@@ -102,13 +158,14 @@ export function BackofficeUsersContainer() {
               <TableHead>Acesso Total</TableHead>
               <TableHead>Mailbox</TableHead>
               <TableHead>Ativo</TableHead>
+              <TableHead>Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 5 }).map((__, j) => (
+                  {Array.from({ length: 6 }).map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-4 w-full" />
                     </TableCell>
@@ -117,7 +174,7 @@ export function BackofficeUsersContainer() {
               ))
             ) : users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                   Nenhum usuário backoffice cadastrado
                 </TableCell>
               </TableRow>
@@ -127,10 +184,25 @@ export function BackofficeUsersContainer() {
                   label: u.mailboxStatus,
                   variant: "secondary" as const,
                 }
+
                 return (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.profile.fullName ?? "—"}</TableCell>
-                    <TableCell>{u.email}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span>{u.email}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-7"
+                          onClick={() => void handleCopyEmail(u.email)}
+                          aria-label={`Copiar e-mail ${u.email}`}
+                        >
+                          <Copy />
+                        </Button>
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={u.fullAccess ? "default" : "secondary"}>
                         {u.fullAccess ? "Sim" : "Não"}
@@ -140,15 +212,35 @@ export function BackofficeUsersContainer() {
                       <Badge variant={mailboxInfo.variant}>{mailboxInfo.label}</Badge>
                     </TableCell>
                     <TableCell>
-                      {canManageUsers ? (
-                        <Switch
-                          checked={u.isActive}
-                          onCheckedChange={() => handleToggleActive(u.id, u.isActive)}
-                        />
+                      {u.isActive ? (
+                        <div className="flex items-center gap-2">
+                          <Check className="size-4 text-primary" />
+                          <span className="sr-only">Ativo</span>
+                        </div>
                       ) : (
-                        <Badge variant={u.isActive ? "default" : "secondary"}>
-                          {u.isActive ? "Ativo" : "Inativo"}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <X className="size-4 text-muted-foreground" />
+                          <span className="sr-only">Inativo</span>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {canManageUsers && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" aria-label={`Ações de ${u.email}`}>
+                              <MoreHorizontal />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem onClick={() => handleEditUser(u)}>
+                                <Pencil />
+                                Editar
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       )}
                     </TableCell>
                   </TableRow>
@@ -159,65 +251,24 @@ export function BackofficeUsersContainer() {
         </Table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Criar Usuário Backoffice</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">E-mail * (@corretorstudio.com)</Label>
-              <Input
-                id="email"
-                type="email"
-                value={form.email}
-                onChange={(e) => handleChange("email", e.target.value)}
-                placeholder="nome@corretorstudio.com"
-                required
-              />
-              {emailError && <p className="text-xs text-destructive">{emailError}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Nome completo *</Label>
-              <Input
-                id="fullName"
-                value={form.fullName}
-                onChange={(e) => handleChange("fullName", e.target.value)}
-                placeholder="Nome do usuário"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="temporaryPassword">Senha temporária *</Label>
-              <Input
-                id="temporaryPassword"
-                type="password"
-                value={form.temporaryPassword}
-                onChange={(e) => handleChange("temporaryPassword", e.target.value)}
-                placeholder="Mínimo 8 caracteres"
-                required
-                minLength={8}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                id="fullAccess"
-                checked={form.fullAccess}
-                onCheckedChange={(v) => handleChange("fullAccess", v)}
-              />
-              <Label htmlFor="fullAccess">Acesso total</Label>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={isCreating}>
-                {isCreating ? "Criando..." : "Criar Usuário"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <NewUserDialog
+        open={open}
+        onOpenChange={setOpen}
+        form={form}
+        emailError={emailError}
+        isCreating={isCreating}
+        onSubmit={handleSubmit}
+        onChange={handleChange}
+      />
+      <EditUserDialog
+        open={editOpen}
+        user={selectedUser}
+        isUpdating={isUpdating}
+        isDeleting={isDeleting}
+        onOpenChange={handleEditOpenChange}
+        onUpdate={handleUpdateUser}
+        onDelete={handleDeleteUser}
+      />
     </div>
   )
 }

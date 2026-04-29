@@ -62,6 +62,47 @@ enum LeadStatus {
   contract_finalized
 }
 
+enum BackofficeLeadStatus {
+  new_opportunity
+  scheduled
+  no_show
+  lost
+  implementation
+  finalized
+
+  @@map("backoffice_lead_status")
+}
+
+enum BackofficeWebhookSource {
+  meta
+
+  @@map("backoffice_webhook_source")
+}
+
+enum BackofficeWebhookEventStatus {
+  received
+  processed
+  failed
+
+  @@map("backoffice_webhook_event_status")
+}
+
+enum BackofficeWebhookTokenStatus {
+  active
+  replaced
+  expired
+
+  @@map("backoffice_webhook_token_status")
+}
+
+enum BackofficeWebhookTokenExpiryMode {
+  hours_24
+  months_6
+  indeterminate
+
+  @@map("backoffice_webhook_token_expiry_mode")
+}
+
 enum TeamStatusRuleType {
   disabled_status
   lead_time
@@ -272,26 +313,27 @@ model Profile {
   attachments       LeadAttachment[]       @relation("AttachmentUploader")
 
   // Pending Operators relations
-  pendingOperators         PendingOperator[]  @relation("PendingOperatorManager")
-  pendingActions           PendingAction[]    @relation("PendingActionMaster")
-  teamsOwned               Team[]             @relation("TeamMaster")
-  teamMemberships          TeamMember[]
-  createdHealthPlanOptions HealthPlanOption[] @relation("HealthPlanOptionCreator")
-  backofficeUser           BackofficeUser?    @relation("BackofficeUserProfile")
-  createdBackofficeUsers   BackofficeUser[]   @relation("BackofficeUserCreator")
-  createdBackofficeClients BackofficeClient[] @relation("BackofficeClientCreator")
-  createdBackofficePayments BackofficePayment[] @relation("BackofficePaymentCreator")
-  receivedNotifications    Notification[]     @relation("NotificationRecipient")
-  sentNotifications        Notification[]     @relation("NotificationActor")
+  pendingOperators            PendingOperator[]         @relation("PendingOperatorManager")
+  pendingActions              PendingAction[]           @relation("PendingActionMaster")
+  teamsOwned                  Team[]                    @relation("TeamMaster")
+  teamMemberships             TeamMember[]
+  createdHealthPlanOptions    HealthPlanOption[]        @relation("HealthPlanOptionCreator")
+  backofficeUser              BackofficeUser?           @relation("BackofficeUserProfile")
+  createdBackofficeUsers      BackofficeUser[]          @relation("BackofficeUserCreator")
+  createdBackofficeClients    BackofficeClient[]        @relation("BackofficeClientCreator")
+  createdBackofficePayments   BackofficePayment[]       @relation("BackofficePaymentCreator")
+  createdBackofficeLeads      BackofficeLead[]          @relation("BackofficeLeadCreator")
+  receivedNotifications       Notification[]            @relation("NotificationRecipient")
+  sentNotifications           Notification[]            @relation("NotificationActor")
   updatedStudioWebhookConfigs TeamStudioWebhookConfig[] @relation("StudioWebhookConfigUpdater")
-  createdTeamFilterPresets TeamFilterPreset[] @relation("TeamFilterPresetCreator")
-  createdTeamStatusRules TeamStatusRule[] @relation("TeamStatusRuleCreator")
+  createdTeamFilterPresets    TeamFilterPreset[]        @relation("TeamFilterPresetCreator")
+  createdTeamStatusRules      TeamStatusRule[]          @relation("TeamStatusRuleCreator")
 
   // Email campaigns relations
-  emailCreditSubscription   EmailCreditSubscription?  @relation("EmailCreditSubscriptionOwner")
-  emailTemplatesCreated     EmailTemplate[]           @relation("EmailTemplateCreator")
-  emailContactListsCreated  EmailContactList[]        @relation("EmailContactListCreator")
-  emailCampaignsCreated     EmailCampaign[]           @relation("EmailCampaignCreator")
+  emailCreditSubscription  EmailCreditSubscription? @relation("EmailCreditSubscriptionOwner")
+  emailTemplatesCreated    EmailTemplate[]          @relation("EmailTemplateCreator")
+  emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
+  emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
 
   @@index([role])
   @@index([managerId])
@@ -319,20 +361,21 @@ model HealthPlanOption {
 // -----------------------------
 
 model BackofficeUser {
-  id                 String   @id @db.Uuid
-  profileId          String   @unique @map("profileId") @db.Uuid
-  email              String   @unique @db.Text
-  fullAccess         Boolean  @default(false) @map("fullAccess")
-  isActive           Boolean  @default(true) @map("isActive")
-  mailboxStatus      String   @default("pending_manual_action") @map("mailboxStatus") @db.Text
-  mailboxAddress     String?  @map("mailboxAddress") @db.Text
+  id                   String    @id @db.Uuid
+  profileId            String    @unique @map("profileId") @db.Uuid
+  email                String    @unique @db.Text
+  fullAccess           Boolean   @default(false) @map("fullAccess")
+  isActive             Boolean   @default(true) @map("isActive")
+  mailboxStatus        String    @default("pending_manual_action") @map("mailboxStatus") @db.Text
+  mailboxAddress       String?   @map("mailboxAddress") @db.Text
   mailboxProvisionedAt DateTime? @map("mailboxProvisionedAt") @db.Timestamptz(6)
-  createdByProfileId String?  @map("createdByProfileId") @db.Uuid
-  createdAt          DateTime @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt          DateTime @default(now()) @map("updatedAt") @db.Timestamptz(6)
+  createdByProfileId   String?   @map("createdByProfileId") @db.Uuid
+  createdAt            DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt            DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
 
-  profile   Profile  @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
-  creator   Profile? @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  profile                 Profile                  @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  creator                 Profile?                 @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  generatedWebhookTokens  BackofficeWebhookToken[] @relation("BackofficeWebhookTokenGenerator")
 
   @@index([isActive], map: "backoffice_users_is_active_idx")
   @@index([createdByProfileId], map: "backoffice_users_created_by_profile_id_idx")
@@ -352,7 +395,7 @@ model BackofficeClient {
   createdAt          DateTime @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt          DateTime @default(now()) @map("updatedAt") @db.Timestamptz(6)
 
-  creator  Profile?           @relation("BackofficeClientCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  creator  Profile?            @relation("BackofficeClientCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
   payments BackofficePayment[]
 
   @@index([email], map: "backoffice_clients_email_idx")
@@ -362,20 +405,20 @@ model BackofficeClient {
 }
 
 model BackofficePayment {
-  id                 String   @id @db.Uuid
-  clientId           String   @map("clientId") @db.Uuid
-  asaasPaymentId     String?  @unique @map("asaasPaymentId") @db.Text
-  billingType        String   @default("PIX") @map("billingType") @db.Text
-  status             String   @default("PENDING") @db.Text
-  amount             Decimal  @db.Decimal(12, 2)
+  id                 String    @id @db.Uuid
+  clientId           String    @map("clientId") @db.Uuid
+  asaasPaymentId     String?   @unique @map("asaasPaymentId") @db.Text
+  billingType        String    @default("PIX") @map("billingType") @db.Text
+  status             String    @default("PENDING") @db.Text
+  amount             Decimal   @db.Decimal(12, 2)
   dueDate            DateTime? @map("dueDate") @db.Timestamptz(6)
-  description        String?  @db.Text
-  invoiceUrl         String?  @map("invoiceUrl") @db.Text
-  pixQrCode          String?  @map("pixQrCode") @db.Text
-  pixPayload         String?  @map("pixPayload") @db.Text
-  createdByProfileId String?  @map("createdByProfileId") @db.Uuid
-  createdAt          DateTime @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt          DateTime @default(now()) @map("updatedAt") @db.Timestamptz(6)
+  description        String?   @db.Text
+  invoiceUrl         String?   @map("invoiceUrl") @db.Text
+  pixQrCode          String?   @map("pixQrCode") @db.Text
+  pixPayload         String?   @map("pixPayload") @db.Text
+  createdByProfileId String?   @map("createdByProfileId") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
 
   client  BackofficeClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
   creator Profile?         @relation("BackofficePaymentCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
@@ -386,6 +429,83 @@ model BackofficePayment {
   @@map("backoffice_payments")
 }
 
+model BackofficeLead {
+  id                 String               @id @default(uuid()) @db.Uuid
+  name               String               @db.Text
+  email              String?              @db.Text
+  phone              String?              @db.Text
+  notes              String?              @db.Text
+  status             BackofficeLeadStatus @default(new_opportunity)
+  statusEnteredAt    DateTime             @default(now()) @map("statusEnteredAt") @db.Timestamptz(6)
+  createdByProfileId String?              @map("createdByProfileId") @db.Uuid
+  createdAt          DateTime             @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt          DateTime             @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  creator Profile? @relation("BackofficeLeadCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+
+  @@index([status], map: "backoffice_leads_status_idx")
+  @@index([createdByProfileId], map: "backoffice_leads_created_by_profile_id_idx")
+  @@index([email], map: "backoffice_leads_email_idx")
+  @@map("backoffice_leads")
+}
+
+model BackofficeWebhookEvent {
+  id           String                       @id @default(uuid()) @db.Uuid
+  source       BackofficeWebhookSource
+  eventType    String?                      @map("eventType") @db.Text
+  payload      Json
+  signature    String?                      @db.Text
+  status       BackofficeWebhookEventStatus @default(received)
+  errorMessage String?                      @map("errorMessage") @db.Text
+  receivedAt   DateTime                     @default(now()) @map("receivedAt") @db.Timestamptz(6)
+  processedAt  DateTime?                    @map("processedAt") @db.Timestamptz(6)
+
+  @@index([source, receivedAt(sort: Desc)], map: "backoffice_webhook_events_source_received_at_idx")
+  @@index([status], map: "backoffice_webhook_events_status_idx")
+  @@map("backoffice_webhook_events")
+}
+
+model BackofficeWebhookToken {
+  id                          String                             @id @default(uuid()) @db.Uuid
+  source                      BackofficeWebhookSource
+  tokenHash                   String                             @map("tokenHash") @db.Text
+  tokenCipher                 String                             @map("tokenCipher") @db.Text
+  tokenPreview                String                             @map("tokenPreview") @db.Text
+  status                      BackofficeWebhookTokenStatus       @default(active)
+  expiryMode                  BackofficeWebhookTokenExpiryMode   @default(indeterminate) @map("expiryMode")
+  expiresAt                   DateTime?                          @map("expiresAt") @db.Timestamptz(6)
+  lastUsedAt                  DateTime?                          @map("lastUsedAt") @db.Timestamptz(6)
+  generatedByBackofficeUserId String                             @map("generatedByBackofficeUserId") @db.Uuid
+  generatedByEmailSnapshot    String                             @map("generatedByEmailSnapshot") @db.Text
+  generatedAt                 DateTime                           @default(now()) @map("generatedAt") @db.Timestamptz(6)
+  updatedAt                   DateTime                           @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  generatedBy BackofficeUser @relation("BackofficeWebhookTokenGenerator", fields: [generatedByBackofficeUserId], references: [id], onDelete: Restrict)
+
+  @@index([source, status], map: "backoffice_webhook_tokens_source_status_idx")
+  @@index([generatedAt(sort: Desc)], map: "backoffice_webhook_tokens_generated_at_idx")
+  @@index([expiresAt], map: "backoffice_webhook_tokens_expires_at_idx")
+  @@index([generatedByBackofficeUserId], map: "backoffice_webhook_tokens_generated_by_idx")
+  @@map("backoffice_webhook_tokens")
+}
+
+model BackofficeWebhookRequestLog {
+  id              String                  @id @default(uuid()) @db.Uuid
+  source          BackofficeWebhookSource
+  method          String                  @db.Text
+  endpoint        String                  @db.Text
+  statusCode      Int                     @map("statusCode")
+  resultType      String                  @map("resultType") @db.Text
+  requestPayload  Json?                   @map("requestPayload")
+  responsePayload Json?                   @map("responsePayload")
+  errorMessage    String?                 @map("errorMessage") @db.Text
+  createdAt       DateTime                @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  @@index([source, createdAt(sort: Desc)], map: "backoffice_webhook_request_logs_source_created_at_idx")
+  @@index([statusCode], map: "backoffice_webhook_request_logs_status_code_idx")
+  @@map("backoffice_webhook_request_logs")
+}
+
 // -----------------------------
 // LEADS (public.leads)
 // - tenant fence by managerId (uuid of manager profile)
@@ -393,34 +513,34 @@ model BackofficePayment {
 // -----------------------------
 
 model Lead {
-  id                String        @id @unique @default(uuid()) @db.Uuid
-  leadCode          String        @unique @db.Text
-  managerId         String        @db.Uuid
-  teamId            String?       @db.Uuid
-  assignedTo        String?       @db.Uuid
-  closerId          String?       @db.Uuid
-  status            LeadStatus    @default(new_opportunity)
-  name              String        @db.Text
-  email             String?       @db.Text
-  phone             String?       @db.Text
-  cnpj              String?       @db.Text
-  age               String?       @db.Text
-  currentHealthPlan String?       @db.Text
-  currentValue      Decimal?      @db.Decimal(12, 2)
-  referenceHospital String?       @db.Text
-  currentTreatment  String?       @db.Text
-  meetingDate       DateTime?     @db.Timestamptz(6)
-  meetingTitle      String?       @db.Text
-  meetingNotes      String?       @db.Text
-  meetingLink       String?       @db.Text
-  meetingHeald      MeetingHeald?
-  followUpAt        DateTime?     @db.Timestamptz(6)
-  followUpNotes     String?       @db.Text
+  id                   String        @id @unique @default(uuid()) @db.Uuid
+  leadCode             String        @unique @db.Text
+  managerId            String        @db.Uuid
+  teamId               String?       @db.Uuid
+  assignedTo           String?       @db.Uuid
+  closerId             String?       @db.Uuid
+  status               LeadStatus    @default(new_opportunity)
+  name                 String        @db.Text
+  email                String?       @db.Text
+  phone                String?       @db.Text
+  cnpj                 String?       @db.Text
+  age                  String?       @db.Text
+  currentHealthPlan    String?       @db.Text
+  currentValue         Decimal?      @db.Decimal(12, 2)
+  referenceHospital    String?       @db.Text
+  currentTreatment     String?       @db.Text
+  meetingDate          DateTime?     @db.Timestamptz(6)
+  meetingTitle         String?       @db.Text
+  meetingNotes         String?       @db.Text
+  meetingLink          String?       @db.Text
+  meetingHeald         MeetingHeald?
+  followUpAt           DateTime?     @db.Timestamptz(6)
+  followUpNotes        String?       @db.Text
   followUpSourceStatus LeadStatus?
-  lossReason        String?       @db.Text
-  lossReasonDetails String?       @db.Text
-  statusEnteredAt   DateTime      @default(now()) @db.Timestamptz(6)
-  notes             String?       @db.Text
+  lossReason           String?       @db.Text
+  lossReasonDetails    String?       @db.Text
+  statusEnteredAt      DateTime      @default(now()) @db.Timestamptz(6)
+  notes                String?       @db.Text
 
   // Novos campos para leads finalizados (apenas em edição)
   ticket          Decimal?  @db.Decimal(12, 2) // Valor que foi vendido
@@ -499,22 +619,22 @@ model LeadActivityReaction {
 }
 
 model LeadsSchedule {
-  id               String   @id @default(uuid()) @db.Uuid
-  leadId           String   @db.Uuid
-  date             DateTime @db.Timestamptz(6)
-  meetingTitle     String?  @db.Text
-  notes            String?  @db.Text
-  meetingLink      String?  @db.Text
-  extraGuests      String[] @default([])
-  googleEventId    String?  @db.Text
-  googleCalendarId String?  @db.Text
+  id                          String                @id @default(uuid()) @db.Uuid
+  leadId                      String                @db.Uuid
+  date                        DateTime              @db.Timestamptz(6)
+  meetingTitle                String?               @db.Text
+  notes                       String?               @db.Text
+  meetingLink                 String?               @db.Text
+  extraGuests                 String[]              @default([])
+  googleEventId               String?               @db.Text
+  googleCalendarId            String?               @db.Text
   inviteDispatchStatus        InviteDispatchStatus?
-  inviteDispatchFallbackUsed  Boolean              @default(false)
-  inviteDispatchLastAttemptAt DateTime?            @db.Timestamptz(6)
-  inviteDispatchLastError     String?              @db.Text
+  inviteDispatchFallbackUsed  Boolean               @default(false)
+  inviteDispatchLastAttemptAt DateTime?             @db.Timestamptz(6)
+  inviteDispatchLastError     String?               @db.Text
   inviteDispatchLastPayload   Json?
-  createdAt        DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
+  createdAt                   DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt                   DateTime              @updatedAt @db.Timestamptz(6)
 
   // Relations
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -625,17 +745,17 @@ model Team {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
-  master           Profile           @relation("TeamMaster", fields: [masterId], references: [id], onDelete: Cascade)
-  members          TeamMember[]
-  leads            Lead[]
-  pendingOperators PendingOperator[]
-  pendingActions   PendingAction[]
-  notifications    Notification[]
-  studioWebhookConfig TeamStudioWebhookConfig?
+  master                   Profile                       @relation("TeamMaster", fields: [masterId], references: [id], onDelete: Cascade)
+  members                  TeamMember[]
+  leads                    Lead[]
+  pendingOperators         PendingOperator[]
+  pendingActions           PendingAction[]
+  notifications            Notification[]
+  studioWebhookConfig      TeamStudioWebhookConfig?
   studioWebhookRequestLogs TeamStudioWebhookRequestLog[]
-  filterPresets    TeamFilterPreset[]
-  statusRules      TeamStatusRule[]
-  portfolioEntries LeadPortfolio[]
+  filterPresets            TeamFilterPreset[]
+  statusRules              TeamStatusRule[]
+  portfolioEntries         LeadPortfolio[]
 
   // Email campaigns relations
   emailTemplates    EmailTemplate[]    @relation("TeamEmailTemplates")
@@ -648,15 +768,15 @@ model Team {
 }
 
 model TeamFilterPreset {
-  id          String   @id @default(uuid()) @db.Uuid
-  teamId      String   @db.Uuid
-  createdBy   String   @db.Uuid
-  name        String   @db.Text
-  description String?  @db.Text
+  id          String    @id @default(uuid()) @db.Uuid
+  teamId      String    @db.Uuid
+  createdBy   String    @db.Uuid
+  name        String    @db.Text
+  description String?   @db.Text
   queryJson   Json
   lastUsedAt  DateTime? @db.Timestamptz(6)
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
 
   team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   creator Profile @relation("TeamFilterPresetCreator", fields: [createdBy], references: [id], onDelete: Cascade)
@@ -813,7 +933,7 @@ model EmailCreditSubscription {
   createdAt          DateTime                      @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime                      @updatedAt @db.Timestamptz(6)
 
-  profile Profile           @relation("EmailCreditSubscriptionOwner", fields: [profileId], references: [id], onDelete: Cascade)
+  profile Profile            @relation("EmailCreditSubscriptionOwner", fields: [profileId], references: [id], onDelete: Cascade)
   usages  EmailCreditUsage[]
 
   @@index([currentPeriodEnd])
@@ -821,15 +941,15 @@ model EmailCreditSubscription {
 }
 
 model EmailCreditUsage {
-  id             String                  @id @default(uuid()) @db.Uuid
-  subscriptionId String                  @db.Uuid
-  periodStart    DateTime                @db.Timestamptz(6)
-  periodEnd      DateTime                @db.Timestamptz(6)
-  creditsUsed    Int                     @default(0)
-  overageCount   Int                     @default(0)
-  overageCharged Decimal                 @default(0) @db.Decimal(12, 2)
-  createdAt      DateTime                @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime                @updatedAt @db.Timestamptz(6)
+  id             String   @id @default(uuid()) @db.Uuid
+  subscriptionId String   @db.Uuid
+  periodStart    DateTime @db.Timestamptz(6)
+  periodEnd      DateTime @db.Timestamptz(6)
+  creditsUsed    Int      @default(0)
+  overageCount   Int      @default(0)
+  overageCharged Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
 
   subscription EmailCreditSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
@@ -882,16 +1002,16 @@ model EmailContactList {
 }
 
 model EmailContact {
-  id             String          @id @default(uuid()) @db.Uuid
-  listId         String          @db.Uuid
-  email          String          @db.Text
-  name           String?         @db.Text
+  id             String   @id @default(uuid()) @db.Uuid
+  listId         String   @db.Uuid
+  email          String   @db.Text
+  name           String?  @db.Text
   customFields   Json?
-  isUnsubscribed Boolean         @default(false)
-  isBounced      Boolean         @default(false)
-  isComplained   Boolean         @default(false)
-  createdAt      DateTime        @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime        @updatedAt @db.Timestamptz(6)
+  isUnsubscribed Boolean  @default(false)
+  isBounced      Boolean  @default(false)
+  isComplained   Boolean  @default(false)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
 
   list EmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
 

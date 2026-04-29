@@ -1,0 +1,656 @@
+"use client";
+
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { EmailEditor, type EmailEditorRef } from "@react-email/editor";
+import { composeReactEmail, editorEventBus } from "@react-email/editor/core";
+import { Inspector, getNodeMeta } from "@react-email/editor/ui";
+import {
+  Code2,
+  Copy,
+  ImagePlus,
+  Link2,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
+import { useTemplateEditorContext } from "../context/TemplateEditorContext";
+import type { TemplateEditorDraft } from "../context/TemplateEditorTypes";
+
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+
+const TEXT_MARKS = [
+  { value: "bold", label: "B" },
+  { value: "italic", label: "I" },
+  { value: "underline", label: "U" },
+  { value: "strike", label: "S" },
+  { value: "code", label: "{}" },
+] as const;
+
+const ALIGNMENTS = [
+  { value: "left", label: "Esq." },
+  { value: "center", label: "Centro" },
+  { value: "right", label: "Dir." },
+] as const;
+
+type EditorSnapshot = Pick<TemplateEditorDraft, "html" | "mailyJson" | "previewText">;
+type ImageUploadCommand = { commands: { uploadImage: () => boolean } };
+
+export interface EmailEditorStudioRef {
+  publish: () => Promise<void>;
+}
+
+function normalizeColor(value: unknown, fallback: string): string {
+  const raw = String(value ?? "").trim();
+  return /^#[0-9a-f]{6}$/i.test(raw) ? raw : fallback;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Não foi possível ler a imagem."));
+    };
+    reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+    reader.readAsDataURL(file);
+  });
+}
+
+export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function EmailEditorStudio(
+  _props,
+  ref
+) {
+  const {
+    draft,
+    isDirty,
+    saving,
+    saveTemplate,
+    setHtml,
+    setMailyJson,
+  } = useTemplateEditorContext();
+  const editorRef = useRef<EmailEditorRef>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportedHtml, setExportedHtml] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [eventStatus, setEventStatus] = useState("Pronto");
+
+  useEffect(() => {
+    const subscription = editorEventBus.on("bubble-menu:add-link", () => {
+      setEventStatus("Link acionado");
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const uploadImage = useCallback(async (file: File) => {
+    setUploadingImage(true);
+    try {
+      if (!file.type.startsWith("image/")) {
+        throw new Error("Selecione um arquivo de imagem.");
+      }
+      if (file.size > MAX_IMAGE_SIZE) {
+        throw new Error("A imagem deve ter no máximo 5MB.");
+      }
+
+      const url = await fileToDataUrl(file);
+      toast.success("Imagem importada");
+      return { url };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao importar imagem";
+      toast.error("Erro ao importar imagem", { description: message });
+      throw error;
+    } finally {
+      setUploadingImage(false);
+    }
+  }, []);
+
+  const handleEditorUpdate = useCallback(
+    (ref: EmailEditorRef) => {
+      setMailyJson(ref.getJSON());
+    },
+    [setMailyJson]
+  );
+
+  const syncEditorDraft = useCallback(async (): Promise<EditorSnapshot | null> => {
+    const ref = editorRef.current;
+    const editor = ref?.editor;
+    if (!ref || !editor) {
+      toast.error("Editor ainda não está pronto.");
+      return null;
+    }
+
+    const { html } = await composeReactEmail({ editor });
+    const mailyJson = ref.getJSON();
+
+    setHtml(html);
+    setMailyJson(mailyJson);
+    return { html, mailyJson, previewText: "" };
+  }, [setHtml, setMailyJson]);
+
+  const handleExportHtml = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const snapshot = await syncEditorDraft();
+      if (!snapshot) return;
+
+      setExportedHtml(snapshot.html);
+      setExportOpen(true);
+      setEventStatus(`HTML exportado com ${snapshot.html.length} caracteres`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao exportar HTML";
+      toast.error("Erro ao exportar HTML", { description: message });
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, syncEditorDraft]);
+
+  const handleCopyHtml = useCallback(async () => {
+    if (!exportedHtml || copying) return;
+    setCopying(true);
+    try {
+      await navigator.clipboard.writeText(exportedHtml);
+      toast.success("HTML copiado");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível copiar o HTML";
+      toast.error("Erro ao copiar", { description: message });
+    } finally {
+      setCopying(false);
+    }
+  }, [copying, exportedHtml]);
+
+  const handlePublish = useCallback(async () => {
+    if (saving) return;
+    const snapshot = await syncEditorDraft();
+    if (!snapshot) return;
+    await saveTemplate(snapshot);
+  }, [saveTemplate, saving, syncEditorDraft]);
+
+  useImperativeHandle(ref, () => ({ publish: handlePublish }), [handlePublish]);
+
+  const handleImportImage = useCallback(() => {
+    const editor = editorRef.current?.editor;
+    if (!editor) {
+      toast.error("Editor ainda não está pronto.");
+      return;
+    }
+
+    editor.chain().focus().run();
+    (editor as typeof editor & ImageUploadCommand).commands.uploadImage();
+    setEventStatus("Upload de imagem acionado");
+  }, []);
+
+  const handleAddLink = useCallback(() => {
+    const editor = editorRef.current?.editor;
+    if (!editor) {
+      toast.error("Editor ainda não está pronto.");
+      return;
+    }
+
+    editor.chain().focus().run();
+    editorEventBus.dispatch("bubble-menu:add-link", undefined);
+  }, []);
+
+  return (
+    <div className="flex min-h-[720px] flex-col overflow-hidden rounded-lg border bg-background">
+      <div className="flex min-h-0 flex-1">
+        <EditorBlocksPanel
+          isDirty={isDirty}
+          eventStatus={eventStatus}
+          exporting={exporting}
+          uploadingImage={uploadingImage}
+          onExportHtml={handleExportHtml}
+          onImportImage={handleImportImage}
+          onAddLink={handleAddLink}
+        />
+        <EmailEditor
+          ref={editorRef}
+          onUpdate={handleEditorUpdate}
+          onUploadImage={uploadImage}
+          bubbleMenu={{
+            hideWhenActiveNodes: ["image", "button"],
+            hideWhenActiveMarks: ["link"],
+          }}
+          className={cn(
+            "min-w-0 flex-1 overflow-y-auto bg-muted/20 p-6",
+            "[&_.ProseMirror]:mx-auto [&_.ProseMirror]:min-h-[600px]",
+            "[&_.ProseMirror]:max-w-2xl [&_.ProseMirror]:rounded-lg",
+            "[&_.ProseMirror]:border [&_.ProseMirror]:bg-background",
+            "[&_.ProseMirror]:p-8 [&_.ProseMirror]:shadow-sm",
+            "[&_.ProseMirror]:outline-none"
+          )}
+          placeholder="Pressione '/&#39; para usar comandos rápidos"
+          theme="basic"
+        >
+          <CustomInspector />
+        </EmailEditor>
+      </div>
+
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="max-h-[90vh] max-w-5xl flex flex-col">
+          <DialogHeader>
+            <DialogTitle>HTML exportado</DialogTitle>
+            <DialogDescription>
+              Conteúdo pronto para envio pelo módulo de campanhas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <Textarea
+              readOnly
+              value={exportedHtml}
+              className="min-h-[55vh] resize-none font-mono text-xs"
+              aria-label="HTML exportado"
+            />
+          </div>
+
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <Button variant="outline" onClick={handleCopyHtml} disabled={!exportedHtml || copying}>
+              {copying ? <Spinner data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
+              {copying ? "Copiando..." : "Copiar"}
+            </Button>
+            <DialogClose asChild>
+              <Button variant="secondary">Voltar</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+});
+
+function EditorBlocksPanel({
+  isDirty,
+  eventStatus,
+  exporting,
+  uploadingImage,
+  onExportHtml,
+  onImportImage,
+  onAddLink,
+}: {
+  isDirty: boolean;
+  eventStatus: string;
+  exporting: boolean;
+  uploadingImage: boolean;
+  onExportHtml: () => void;
+  onImportImage: () => void;
+  onAddLink: () => void;
+}) {
+  return (
+    <aside className="w-72 shrink-0 overflow-y-auto border-r bg-background p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">Blocos</h2>
+        <Badge variant="secondary">Editor</Badge>
+      </div>
+
+      <Separator className="my-4" />
+
+      <div className="flex flex-col gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="justify-start"
+          onClick={onImportImage}
+          disabled={uploadingImage}
+        >
+          {uploadingImage ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <ImagePlus data-icon="inline-start" />
+          )}
+          {uploadingImage ? "Importando..." : "Importar imagem"}
+        </Button>
+        <Button type="button" variant="outline" className="justify-start" onClick={onAddLink}>
+          <Link2 data-icon="inline-start" />
+          Link
+        </Button>
+      </div>
+
+      <Separator className="my-4" />
+
+      <div className="flex flex-col gap-2">
+        <h3 className="text-xs font-medium text-muted-foreground">Exportação</h3>
+        <Button
+          type="button"
+          variant="outline"
+          className="justify-start"
+          onClick={onExportHtml}
+          disabled={exporting}
+        >
+          {exporting ? <Spinner data-icon="inline-start" /> : <Code2 data-icon="inline-start" />}
+          {exporting ? "Exportando..." : "Exportar HTML"}
+        </Button>
+      </div>
+
+      <Separator className="my-4" />
+
+      <div className="flex flex-wrap gap-2">
+        <Badge variant={isDirty ? "default" : "secondary"}>
+          {isDirty ? "Alterado" : "Sincronizado"}
+        </Badge>
+        <Badge variant="outline">{eventStatus}</Badge>
+      </div>
+    </aside>
+  );
+}
+
+function CustomInspector() {
+  return (
+    <Inspector.Root className="w-80 shrink-0 overflow-y-auto border-l bg-background p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">Ajustes</h2>
+        <Badge variant="secondary">Editor</Badge>
+      </div>
+
+      <div className="mt-3">
+        <Inspector.Breadcrumb>
+          {(segments) => (
+            <div className="flex flex-wrap items-center gap-1">
+              {segments.map((segment, index) => {
+                const meta = getNodeMeta(segment.node.nodeType);
+                return (
+                  <Button
+                    key={`${segment.node.nodeType}-${index}`}
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={segment.focus}
+                    className="h-7 px-2 text-xs"
+                  >
+                    {meta.label}
+                  </Button>
+                );
+              })}
+            </div>
+          )}
+        </Inspector.Breadcrumb>
+      </div>
+
+      <Separator className="my-4" />
+
+      <Inspector.Document>
+        {({ findStyleValue, setGlobalStyle }) => (
+          <div className="flex flex-col gap-4">
+            <PanelTitle title="Documento" description="Tema global" />
+            <ColorField
+              label="Fundo"
+              value={normalizeColor(findStyleValue("body", "backgroundColor"), "#ffffff")}
+              onChange={(value) => setGlobalStyle("body", "backgroundColor", value)}
+            />
+            <ColorField
+              label="Container"
+              value={normalizeColor(findStyleValue("container", "backgroundColor"), "#ffffff")}
+              onChange={(value) => setGlobalStyle("container", "backgroundColor", value)}
+            />
+            <ColorField
+              label="Links"
+              value={normalizeColor(findStyleValue("link", "color"), "#ff6900")}
+              onChange={(value) => setGlobalStyle("link", "color", value)}
+            />
+            <ColorField
+              label="Botões"
+              value={normalizeColor(findStyleValue("button", "backgroundColor"), "#ff6900")}
+              onChange={(value) => setGlobalStyle("button", "backgroundColor", value)}
+            />
+          </div>
+        )}
+      </Inspector.Document>
+
+      <Inspector.Node>
+        {({ nodeType, getAttr, setAttr, getStyle, setStyle }) => (
+          <div className="flex flex-col gap-4">
+            <PanelTitle title="Elemento" description={getNodeMeta(nodeType).label} />
+            <TextField
+              label="Link"
+              value={String(getAttr("href") ?? "")}
+              placeholder="https://..."
+              onChange={(value) => setAttr("href", value || null)}
+            />
+            <TextField
+              label="Alt"
+              value={String(getAttr("alt") ?? "")}
+              placeholder="Texto alternativo"
+              onChange={(value) => setAttr("alt", value)}
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <TextField
+                label="Largura"
+                value={String(getAttr("width") ?? getStyle("width") ?? "")}
+                placeholder="600"
+                onChange={(value) => setAttr("width", value)}
+              />
+              <TextField
+                label="Altura"
+                value={String(getAttr("height") ?? getStyle("height") ?? "")}
+                placeholder="auto"
+                onChange={(value) => setAttr("height", value)}
+              />
+            </div>
+            <ColorField
+              label="Cor"
+              value={normalizeColor(getStyle("color"), "#111111")}
+              onChange={(value) => setStyle("color", value)}
+            />
+            <ColorField
+              label="Fundo"
+              value={normalizeColor(getStyle("backgroundColor"), "#ffffff")}
+              onChange={(value) => setStyle("backgroundColor", value)}
+            />
+            <TextField
+              label="Padding"
+              value={String(getStyle("padding") ?? "")}
+              placeholder="16px"
+              onChange={(value) => setStyle("padding", value)}
+            />
+            <TextField
+              label="Raio"
+              value={String(getStyle("borderRadius") ?? "")}
+              placeholder="8px"
+              onChange={(value) => setStyle("borderRadius", value)}
+            />
+            <AlignmentControl
+              value={String(getAttr("alignment") ?? "left")}
+              onChange={(value) => setAttr("alignment", value)}
+            />
+          </div>
+        )}
+      </Inspector.Node>
+
+      <Inspector.Text>
+        {({
+          marks,
+          toggleMark,
+          alignment,
+          setAlignment,
+          isLinkActive,
+          linkHref,
+          linkColor,
+          setLinkColor,
+          getStyle,
+          setStyle,
+        }) => (
+          <div className="flex flex-col gap-4">
+            <PanelTitle title="Texto" description="Seleção atual" />
+            <MarkControl marks={marks} onToggle={toggleMark} />
+            <AlignmentControl value={alignment} onChange={setAlignment} />
+            <ColorField
+              label="Cor"
+              value={normalizeColor(getStyle("color"), "#111111")}
+              onChange={(value) => setStyle("color", value)}
+            />
+            <TextField
+              label="Tamanho"
+              value={String(getStyle("fontSize") ?? "")}
+              placeholder="16px"
+              onChange={(value) => setStyle("fontSize", value)}
+            />
+            {isLinkActive ? (
+              <>
+                <TextField label="URL" value={linkHref} readOnly />
+                <ColorField
+                  label="Cor do link"
+                  value={normalizeColor(linkColor, "#ff6900")}
+                  onChange={setLinkColor}
+                />
+              </>
+            ) : null}
+          </div>
+        )}
+      </Inspector.Text>
+    </Inspector.Root>
+  );
+}
+
+function PanelTitle({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0">
+        <h3 className="text-sm font-medium">{title}</h3>
+        <p className="truncate text-xs text-muted-foreground">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  placeholder,
+  readOnly,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  readOnly?: boolean;
+  onChange?: (value: string) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1.5 text-xs font-medium">
+      {label}
+      <Input
+        value={value}
+        placeholder={placeholder}
+        readOnly={readOnly}
+        onChange={(event) => onChange?.(event.target.value)}
+        className="h-8 text-xs"
+      />
+    </label>
+  );
+}
+
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 text-xs font-medium">
+      {label}
+      <span className="flex items-center gap-2">
+        <input
+          type="color"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="size-8 rounded-md border bg-background"
+          aria-label={label}
+        />
+        <span className="w-16 font-mono text-xs text-muted-foreground">{value}</span>
+      </span>
+    </label>
+  );
+}
+
+function AlignmentControl({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium">Alinhamento</span>
+      <ToggleGroup
+        type="single"
+        value={value || "left"}
+        onValueChange={(next) => {
+          if (next) onChange(next);
+        }}
+        className="justify-start"
+      >
+        {ALIGNMENTS.map((item) => (
+          <ToggleGroupItem key={item.value} value={item.value} className="h-8 px-2 text-xs">
+            {item.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </div>
+  );
+}
+
+function MarkControl({
+  marks,
+  onToggle,
+}: {
+  marks: Record<string, boolean>;
+  onToggle: (mark: string) => void;
+}) {
+  const activeMarks = TEXT_MARKS.filter((mark) => marks[mark.value]).map((mark) => mark.value);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs font-medium">Formatação</span>
+      <ToggleGroup
+        type="multiple"
+        value={activeMarks}
+        onValueChange={(nextMarks) => {
+          TEXT_MARKS.forEach((mark) => {
+            const wasActive = activeMarks.includes(mark.value);
+            const isActive = nextMarks.includes(mark.value);
+            if (wasActive !== isActive) onToggle(mark.value);
+          });
+        }}
+        className="justify-start"
+      >
+        {TEXT_MARKS.map((mark) => (
+          <ToggleGroupItem key={mark.value} value={mark.value} className="h-8 min-w-8 px-2 text-xs">
+            {mark.value === "bold" ? <strong>{mark.label}</strong> : mark.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </div>
+  );
+}
