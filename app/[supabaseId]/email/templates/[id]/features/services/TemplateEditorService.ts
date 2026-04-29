@@ -1,102 +1,90 @@
-import { Template } from '../context/TemplateEditorTypes'
+import type { Template, TemplateEditorDraft } from "../context/TemplateEditorTypes";
+import type { ITemplateEditorService } from "./ITemplateEditorService";
 
-export interface CreateTemplateData {
-  name: string
-  subject: string
-  previewText?: string
-  mailyJson?: unknown
-  html?: string
-}
+type ApiOutput<T> = {
+  isValid: boolean;
+  successMessages?: string[];
+  errorMessages?: string[];
+  result: T;
+};
 
-export interface UpdateTemplateData {
-  name?: string
-  subject?: string
-  previewText?: string
-  mailyJson?: unknown
-  html?: string
-}
+class TemplateEditorService implements ITemplateEditorService {
+  private readonly baseUrl = "/api/v1/email/templates";
 
-export interface ITemplateEditorService {
-  getById(id: string): Promise<Template>
-  create(data: CreateTemplateData): Promise<Template>
-  update(id: string, data: UpdateTemplateData): Promise<Template>
-}
-
-export class TemplateEditorService implements ITemplateEditorService {
-  private readonly baseUrl = '/api/v1/email/templates'
-
-  async getById(id: string): Promise<Template> {
-    console.info('[TemplateEditorService] Fetching template', id)
-    const response = await fetch(`${this.baseUrl}/${id}`, { cache: 'no-store' })
-
-    if (!response.ok) {
-      const message = `Erro ao buscar template: ${response.status}`
-      console.error('[TemplateEditorService]', message)
-      throw new Error(message)
-    }
-
-    const body = await response.json() as { isValid: boolean; result: Template }
-
-    if (!body.isValid) {
-      const message = 'Resposta inválida ao buscar template'
-      console.error('[TemplateEditorService]', message)
-      throw new Error(message)
-    }
-
-    return body.result
+  private buildHeaders(supabaseId: string, teamId?: string | null): HeadersInit {
+    return {
+      "Content-Type": "application/json",
+      "x-supabase-user-id": supabaseId,
+      ...(teamId ? { "x-team-id": teamId } : {}),
+    };
   }
 
-  async create(data: CreateTemplateData): Promise<Template> {
-    console.info('[TemplateEditorService] Creating template', data.name)
+  private async parseResponse<T>(response: Response, fallbackMessage: string): Promise<T> {
+    const body = (await response.json().catch(() => null)) as ApiOutput<T> | null;
+    if (!response.ok || !body?.isValid) {
+      const message = body?.errorMessages?.join(", ") || fallbackMessage;
+      throw new Error(message);
+    }
+
+    return body.result;
+  }
+
+  async getTemplate(
+    supabaseId: string,
+    templateId: string,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Fetching template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}`, {
+      cache: "no-store",
+      headers: this.buildHeaders(supabaseId, teamId),
+    });
+
+    return this.parseResponse<Template>(response, "Erro ao buscar template");
+  }
+
+  async createTemplate(
+    supabaseId: string,
+    draft: TemplateEditorDraft,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Creating template", draft.name);
     const response = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
+      method: "POST",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify(this.toPayload(draft)),
+    });
 
-    if (!response.ok) {
-      const message = `Erro ao criar template: ${response.status}`
-      console.error('[TemplateEditorService]', message)
-      throw new Error(message)
-    }
-
-    const body = await response.json() as { isValid: boolean; result: Template }
-
-    if (!body.isValid) {
-      const message = 'Resposta inválida ao criar template'
-      console.error('[TemplateEditorService]', message)
-      throw new Error(message)
-    }
-
-    return body.result
+    return this.parseResponse<Template>(response, "Erro ao criar template");
   }
 
-  async update(id: string, data: UpdateTemplateData): Promise<Template> {
-    console.info('[TemplateEditorService] Updating template', id)
-    const response = await fetch(`${this.baseUrl}/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
+  async updateTemplate(
+    supabaseId: string,
+    templateId: string,
+    draft: TemplateEditorDraft,
+    teamId?: string | null
+  ): Promise<Template> {
+    console.info("[TemplateEditorService] Updating template", templateId);
+    const response = await fetch(`${this.baseUrl}/${templateId}`, {
+      method: "PATCH",
+      headers: this.buildHeaders(supabaseId, teamId),
+      body: JSON.stringify(this.toPayload(draft)),
+    });
 
-    if (!response.ok) {
-      const message = `Erro ao atualizar template: ${response.status}`
-      console.error('[TemplateEditorService]', message)
-      throw new Error(message)
-    }
+    return this.parseResponse<Template>(response, "Erro ao atualizar template");
+  }
 
-    const body = await response.json() as { isValid: boolean; result: Template }
-
-    if (!body.isValid) {
-      const message = 'Resposta inválida ao atualizar template'
-      console.error('[TemplateEditorService]', message)
-      throw new Error(message)
-    }
-
-    return body.result
+  private toPayload(draft: TemplateEditorDraft) {
+    return {
+      name: draft.name,
+      subject: draft.subject,
+      previewText: draft.previewText,
+      html: draft.html,
+      mailyJson: draft.mailyJson,
+    };
   }
 }
 
 export function createTemplateEditorService(): ITemplateEditorService {
-  return new TemplateEditorService()
+  return new TemplateEditorService();
 }

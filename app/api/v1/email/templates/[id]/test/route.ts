@@ -11,6 +11,15 @@ const bodySchema = z.object({
 
 const FROM = "Corretor Studio <no-reply@corretorstudio.com>"
 
+function interpolateTestVariables(template: string, to: string): string {
+  const fallbackName = to.split("@")[0] ?? ""
+  return template
+    .replace(/\{\{nome_do_lead\}\}/gi, fallbackName)
+    .replace(/\{\{nome\}\}/gi, fallbackName)
+    .replace(/\{\{name\}\}/gi, fallbackName)
+    .replace(/\{\{email\}\}/gi, to)
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -52,8 +61,8 @@ export async function POST(
     const { error } = await resend.emails.send({
       from: FROM,
       to: validation.data.to,
-      subject: `[Teste] ${template.subject}`,
-      html: template.html,
+      subject: `[Teste] ${interpolateTestVariables(template.subject, validation.data.to)}`,
+      html: interpolateTestVariables(template.html, validation.data.to),
     })
 
     if (error) {

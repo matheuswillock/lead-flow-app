@@ -87,7 +87,7 @@ export function TemplateCard({ template, deleting, onDelete }: TemplateCardProps
 
           <div className="flex shrink-0 items-center gap-1.5">
             <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-              {template.mailyJson ? 'Maily' : 'HTML'}
+              Template
             </Badge>
 
             <DropdownMenu>
