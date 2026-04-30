@@ -40,7 +40,6 @@ import { cn } from "@/lib/utils"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { useBackofficeCrm } from "../context/BackofficeCrmHook"
 import {
-  BACKOFFICE_CRM_COLUMNS,
   BACKOFFICE_CRM_STATUS_LABELS,
   isBackofficeLeadStatusKey,
   type BackofficeLeadItem,
@@ -74,6 +73,14 @@ const leadFormSchema = z
     meetingLink: z.string().trim(),
   })
   .superRefine((data, ctx) => {
+    if (!data.sdrBackofficeUserId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sdrBackofficeUserId"],
+        message: "SDR é obrigatório para salvar o lead.",
+      })
+    }
+
     if (data.status !== "scheduled") return
 
     if (!data.meetingDate) {
@@ -186,6 +193,7 @@ export function BackofficeLeadFormDialog() {
   const isSubmitting = form.formState.isSubmitting
   const canSubmit =
     watchedValues.name.trim().length >= 2 &&
+    Boolean(watchedValues.sdrBackofficeUserId) &&
     (!isScheduled || Boolean(watchedValues.meetingDate && watchedValues.closerBackofficeUserId))
 
   useEffect(() => {
@@ -278,13 +286,21 @@ export function BackofficeLeadFormDialog() {
         <DialogContent className="max-h-[90vh] flex flex-col border-none bg-transparent p-0 shadow-none sm:max-w-4xl">
           <div className="flex max-h-[90vh] min-h-0 flex-col rounded-xl border bg-background shadow-lg">
             <DialogHeader className="border-b px-6 py-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3 pr-8">
+                <div className="flex size-10 items-center justify-center rounded-lg border bg-muted">
+                  <UserRound data-icon="inline-start" />
+                </div>
                 <div className="flex min-w-0 items-start gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-lg border bg-muted">
-                    <UserRound data-icon="inline-start" />
-                  </div>
                   <div className="min-w-0">
-                    <DialogTitle>{isEdit ? "Editar lead" : "Novo lead"}</DialogTitle>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <DialogTitle>{isEdit ? "Editar lead" : "Novo lead"}</DialogTitle>
+                      <Badge
+                        variant="outline"
+                        className={cn("font-medium", getStatusBadgeClass(watchedValues.status))}
+                      >
+                        {BACKOFFICE_CRM_STATUS_LABELS[watchedValues.status]}
+                      </Badge>
+                    </div>
                     <DialogDescription className="mt-1">
                       {isEdit
                         ? "Atualize os dados operacionais do lead do backoffice."
@@ -292,12 +308,6 @@ export function BackofficeLeadFormDialog() {
                     </DialogDescription>
                   </div>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={cn("font-medium", getStatusBadgeClass(watchedValues.status))}
-                >
-                  {BACKOFFICE_CRM_STATUS_LABELS[watchedValues.status]}
-                </Badge>
               </div>
             </DialogHeader>
 
@@ -369,43 +379,6 @@ export function BackofficeLeadFormDialog() {
                           </FormItem>
                         )}
                       />
-                      <FormField
-                        control={form.control}
-                        name="status"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Status</FormLabel>
-                            <Select
-                              value={field.value}
-                              onValueChange={(value) => {
-                                const nextStatus = value as BackofficeLeadStatusKey
-                                if (nextStatus === "scheduled" && field.value !== "scheduled") {
-                                  setScheduleDialogOpen(true)
-                                  return
-                                }
-                                field.onChange(nextStatus)
-                              }}
-                              disabled={isSubmitting}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecione o status" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {BACKOFFICE_CRM_COLUMNS.map((status) => (
-                                    <SelectItem key={status.key} value={status.key}>
-                                      {status.title}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
                     </div>
                     <FormField
                       control={form.control}
@@ -440,9 +413,9 @@ export function BackofficeLeadFormDialog() {
                       <FormField
                         control={form.control}
                         name="sdrBackofficeUserId"
-                        render={({ field }) => (
+                        render={({ field, fieldState }) => (
                           <FormItem>
-                            <FormLabel>SDR</FormLabel>
+                            <FormLabel>SDR *</FormLabel>
                             <Select
                               value={field.value || NO_SELECTION_VALUE}
                               onValueChange={(value) =>
@@ -451,13 +424,15 @@ export function BackofficeLeadFormDialog() {
                               disabled={isSubmitting}
                             >
                               <FormControl>
-                                <SelectTrigger>
+                                <SelectTrigger aria-invalid={Boolean(fieldState.error || !field.value)}>
                                   <SelectValue placeholder="Selecione o SDR" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
                                 <SelectGroup>
-                                  <SelectItem value={NO_SELECTION_VALUE}>Sem SDR</SelectItem>
+                                  <SelectItem value={NO_SELECTION_VALUE}>
+                                    Selecione o SDR
+                                  </SelectItem>
                                   {sdrOptions.map((option) => (
                                     <SelectItem key={option.id} value={option.id}>
                                       {option.name}
@@ -467,6 +442,11 @@ export function BackofficeLeadFormDialog() {
                               </SelectContent>
                             </Select>
                             <FormMessage />
+                            {!field.value && !fieldState.error ? (
+                              <p className="text-xs font-medium text-destructive">
+                                Selecione um SDR para salvar o lead.
+                              </p>
+                            ) : null}
                           </FormItem>
                         )}
                       />

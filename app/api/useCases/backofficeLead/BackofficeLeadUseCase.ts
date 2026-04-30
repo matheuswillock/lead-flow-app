@@ -165,6 +165,10 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         sdrBackofficeUserId = await this.getDefaultSdrId(createdByProfileId)
       }
 
+      if (origin === BackofficeLeadOrigin.manual && !sdrBackofficeUserId) {
+        return new Output(false, [], ["SDR é obrigatório para salvar o lead"], null)
+      }
+
       const closerBackofficeUserId = trimOrNull(data.closerBackofficeUserId)
       const roleValidation = await this.validateAssignees({
         sdrBackofficeUserId,
@@ -237,6 +241,10 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
           ? trimOrNull(data.closerBackofficeUserId)
           : existing.closerBackofficeUserId
 
+      if (!sdrBackofficeUserId) {
+        return new Output(false, [], ["SDR é obrigatório para salvar o lead"], null)
+      }
+
       const roleValidation = await this.validateAssignees({
         sdrBackofficeUserId:
           data.sdrBackofficeUserId !== undefined ? sdrBackofficeUserId : undefined,
@@ -307,6 +315,10 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         data?.closerBackofficeUserId !== undefined
           ? trimOrNull(data.closerBackofficeUserId)
           : existing.closerBackofficeUserId
+
+      if (!existing.sdrBackofficeUserId) {
+        return new Output(false, [], ["SDR é obrigatório para salvar o lead"], null)
+      }
 
       const roleValidation = await this.validateAssignees({
         closerBackofficeUserId:

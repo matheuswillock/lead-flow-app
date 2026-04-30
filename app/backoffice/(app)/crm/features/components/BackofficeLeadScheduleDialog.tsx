@@ -153,6 +153,11 @@ export function BackofficeLeadScheduleDialog({
                 </SelectGroup>
               </SelectContent>
             </Select>
+            {!closerId ? (
+              <p className="text-xs font-medium text-destructive">
+                Selecione um closer para confirmar o agendamento.
+              </p>
+            ) : null}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
