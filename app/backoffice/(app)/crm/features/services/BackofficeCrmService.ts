@@ -1,6 +1,8 @@
 import type {
+  BackofficeCrmUserOption,
   BackofficeLeadCreateInput,
   BackofficeLeadItem,
+  BackofficeLeadScheduleInput,
   BackofficeLeadStatusKey,
   BackofficeLeadUpdateInput,
 } from "../context/BackofficeCrmTypes"
@@ -32,6 +34,32 @@ export class BackofficeCrmService implements IBackofficeCrmService {
     return data.result ?? []
   }
 
+  async listUsers(): Promise<BackofficeCrmUserOption[]> {
+    const response = await fetch(`/api/v1/backoffice/users`, {
+      method: "GET",
+      cache: "no-store",
+    })
+    const data = await parseOutput<
+      {
+        id: string
+        email: string
+        isActive: boolean
+        isSdr: boolean
+        isCloser: boolean
+        profile?: { fullName?: string | null; email?: string | null }
+      }[]
+    >(response)
+
+    return (data.result ?? []).map((user) => ({
+      id: user.id,
+      name: user.profile?.fullName ?? user.email,
+      email: user.email || user.profile?.email || "",
+      isActive: user.isActive,
+      isSdr: user.isSdr,
+      isCloser: user.isCloser,
+    }))
+  }
+
   async create(data: BackofficeLeadCreateInput): Promise<BackofficeLeadItem> {
     const response = await fetch(`/api/v1/backoffice/leads`, {
       method: "POST",
@@ -54,12 +82,13 @@ export class BackofficeCrmService implements IBackofficeCrmService {
 
   async updateStatus(
     id: string,
-    status: BackofficeLeadStatusKey
+    status: BackofficeLeadStatusKey,
+    schedule?: BackofficeLeadScheduleInput
   ): Promise<BackofficeLeadItem> {
     const response = await fetch(`/api/v1/backoffice/leads/${id}/status`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status, ...(schedule ?? {}) }),
     })
     const out = await parseOutput<BackofficeLeadItem>(response)
     return out.result

@@ -3,6 +3,8 @@ export interface BackofficeUserItem {
   email: string
   fullAccess: boolean
   isActive: boolean
+  isSdr: boolean
+  isCloser: boolean
   mailboxStatus: string
   mailboxAddress: string | null
   createdAt: string
@@ -17,6 +19,8 @@ export interface CreateUserFormData {
   fullName: string
   temporaryPassword: string
   fullAccess: boolean
+  isSdr?: boolean
+  isCloser?: boolean
 }
 
 export interface UpdateUserFormData {
@@ -24,6 +28,8 @@ export interface UpdateUserFormData {
   fullName?: string
   isActive?: boolean
   fullAccess?: boolean
+  isSdr?: boolean
+  isCloser?: boolean
 }
 
 export interface IBackofficeUsersService {

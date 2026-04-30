@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client"
+import { BackofficeLeadOrigin, BackofficeLeadStatus, Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { getFullUrl } from "@/lib/utils/app-url"
 import {
@@ -6,6 +6,8 @@ import {
   isBackofficeWebhookTokenExpired,
   sanitizeBackofficeWebhookEndpointForLogs,
 } from "@/lib/webhooks/backofficeWebhookSecurity"
+import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backofficeLead/BackofficeLeadRepository"
+import type { IBackofficeLeadRepository } from "@/app/api/infra/data/repositories/backofficeLead/IBackofficeLeadRepository"
 import { BackofficeWebhookEventRepository } from "@/app/api/infra/data/repositories/backofficeWebhookEvent/BackofficeWebhookEventRepository"
 import type { IBackofficeWebhookEventRepository } from "@/app/api/infra/data/repositories/backofficeWebhookEvent/IBackofficeWebhookEventRepository"
 import { backofficeMetaWebhookService } from "@/app/api/services/backofficeMetaWebhook/BackofficeMetaWebhookService"
@@ -23,6 +25,18 @@ type JsonParseResult = {
   isValidJson: boolean
 }
 
+type NormalizedBackofficeMetaLeadPayload = {
+  name: string
+  email: string | null
+  phone: string | null
+  notes: string | null
+  sourceExternalId: string | null
+}
+
+type LeadPayloadParseResult =
+  | { isValid: true; lead: NormalizedBackofficeMetaLeadPayload }
+  | { isValid: false; errorMessage: string }
+
 function parseWebhookRequestBody(rawBody: string): JsonParseResult {
   if (!rawBody.trim()) {
     return { payload: { rawBody }, isValidJson: false }
@@ -32,6 +46,66 @@ function parseWebhookRequestBody(rawBody: string): JsonParseResult {
     return { payload: JSON.parse(rawBody), isValidJson: true }
   } catch {
     return { payload: { rawBody }, isValidJson: false }
+  }
+}
+
+function toPrismaJsonPayload(value: unknown): Prisma.InputJsonValue {
+  if (value === null || typeof value === "undefined") {
+    return { value: null }
+  }
+
+  try {
+    const serialized = JSON.stringify(value)
+    if (!serialized) return { value: null }
+    return JSON.parse(serialized) as Prisma.InputJsonValue
+  } catch {
+    return {
+      serializationError: "unserializable_payload",
+    } satisfies Prisma.InputJsonObject
+  }
+}
+
+function normalizeTextValue(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value)
+  }
+
+  return null
+}
+
+function parseDirectMetaLeadPayload(payload: unknown): LeadPayloadParseResult {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { isValid: false, errorMessage: "Payload deve ser um objeto JSON" }
+  }
+
+  const record = payload as Record<string, unknown>
+  const name = normalizeTextValue(record.name)
+  if (!name || name.length < 2) {
+    return { isValid: false, errorMessage: "Campo name é obrigatório" }
+  }
+
+  if (
+    record.metadata !== undefined &&
+    record.metadata !== null &&
+    (typeof record.metadata !== "object" || Array.isArray(record.metadata))
+  ) {
+    return { isValid: false, errorMessage: "Campo metadata deve ser um objeto" }
+  }
+
+  return {
+    isValid: true,
+    lead: {
+      name,
+      email: normalizeTextValue(record.email),
+      phone: normalizeTextValue(record.phone),
+      notes: normalizeTextValue(record.notes),
+      sourceExternalId: normalizeTextValue(record.external_id),
+    },
   }
 }
 
@@ -56,7 +130,8 @@ function getOutputStatusCode(output: Output): number {
 export class BackofficeMetaWebhookUseCase implements IBackofficeMetaWebhookUseCase {
   constructor(
     private readonly webhookService: IBackofficeMetaWebhookService,
-    private readonly eventRepo: IBackofficeWebhookEventRepository
+    private readonly eventRepo: IBackofficeWebhookEventRepository,
+    private readonly leadRepo: IBackofficeLeadRepository
   ) {}
 
   async ingest(payload: BackofficeMetaWebhookPayload): Promise<Output> {
@@ -81,6 +156,35 @@ export class BackofficeMetaWebhookUseCase implements IBackofficeMetaWebhookUseCa
       return output
     }
 
+    const createFailedEventAndReturn = async (
+      errorMessage: string,
+      statusCode = 400
+    ): Promise<Output> => {
+      try {
+        const event = await this.eventRepo.create({
+          source: "meta",
+          eventType: "lead",
+          payload: toPrismaJsonPayload(parsedBody.payload),
+          signature: null,
+          status: "failed",
+          errorMessage,
+        })
+        const output = new Output(false, [], [errorMessage], {
+          eventId: event.id,
+          status: "failed",
+          statusCode,
+        })
+        return logAndReturn(output, "error", errorMessage)
+      } catch (error) {
+        console.error("[BackofficeMetaWebhookUseCase][createFailedEvent]", error)
+        const output = new Output(false, [], ["Erro ao registrar evento"], {
+          status: "failed",
+          statusCode: 500,
+        })
+        return logAndReturn(output, "error", "Erro ao registrar evento")
+      }
+    }
+
     const tokenValidation = await this.webhookService.validateProvidedToken(
       payload.providedToken
     )
@@ -94,27 +198,101 @@ export class BackofficeMetaWebhookUseCase implements IBackofficeMetaWebhookUseCa
     await this.webhookService.touchTokenLastUsed(tokenValidation.tokenRecord.id)
 
     if (!parsedBody.isValidJson || !parsedBody.payload || typeof parsedBody.payload !== "object") {
-      const output = new Output(false, [], ["Payload não é JSON válido"], {
-        statusCode: 400,
-      })
-      return logAndReturn(output, "error", "Payload não é JSON válido")
+      return createFailedEventAndReturn("Payload não é JSON válido")
     }
 
-    const eventType = this.extractEventType(parsedBody.payload as Record<string, unknown>)
+    const leadPayload = parseDirectMetaLeadPayload(parsedBody.payload)
+    if (!leadPayload.isValid) {
+      return createFailedEventAndReturn(leadPayload.errorMessage)
+    }
+
+    const eventType =
+      this.extractEventType(parsedBody.payload as Record<string, unknown>) ?? "lead"
 
     try {
       const event = await this.eventRepo.create({
         source: "meta",
         eventType,
-        payload: parsedBody.payload as Prisma.InputJsonValue,
+        payload: toPrismaJsonPayload(parsedBody.payload),
         signature: null,
         status: "received",
       })
-      const output = new Output(true, ["Evento recebido"], [], {
-        id: event.id,
-        statusCode: 200,
-      })
-      return logAndReturn(output, "success", null)
+
+      if (leadPayload.lead.sourceExternalId) {
+        const existingLead = await this.leadRepo.findBySourceExternalId(
+          leadPayload.lead.sourceExternalId
+        )
+        if (existingLead) {
+          await this.eventRepo.markProcessed(event.id)
+          const output = new Output(true, ["Lead já processado anteriormente"], [], {
+            eventId: event.id,
+            leadId: existingLead.id,
+            status: "processed",
+            duplicate: true,
+            sourceExternalId: leadPayload.lead.sourceExternalId,
+            statusCode: 200,
+          })
+          return logAndReturn(output, "success", null)
+        }
+      }
+
+      try {
+        const lead = await this.leadRepo.create({
+          name: leadPayload.lead.name,
+          email: leadPayload.lead.email,
+          phone: leadPayload.lead.phone,
+          notes: leadPayload.lead.notes,
+          status: BackofficeLeadStatus.new_opportunity,
+          origin: BackofficeLeadOrigin.webhook_meta,
+          sourceExternalId: leadPayload.lead.sourceExternalId,
+          sourceWebhookEventId: event.id,
+          createdByProfileId: null,
+        })
+
+        await this.eventRepo.markProcessed(event.id)
+        const output = new Output(true, ["Lead criado via webhook Meta"], [], {
+          eventId: event.id,
+          leadId: lead.id,
+          status: "processed",
+          duplicate: false,
+          origin: BackofficeLeadOrigin.webhook_meta,
+          sourceExternalId: lead.sourceExternalId,
+          statusCode: 201,
+        })
+        return logAndReturn(output, "success", null)
+      } catch (error) {
+        if (
+          leadPayload.lead.sourceExternalId &&
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        ) {
+          const existingLead = await this.leadRepo.findBySourceExternalId(
+            leadPayload.lead.sourceExternalId
+          )
+          if (existingLead) {
+            await this.eventRepo.markProcessed(event.id)
+            const output = new Output(true, ["Lead já processado anteriormente"], [], {
+              eventId: event.id,
+              leadId: existingLead.id,
+              status: "processed",
+              duplicate: true,
+              sourceExternalId: leadPayload.lead.sourceExternalId,
+              statusCode: 200,
+            })
+            return logAndReturn(output, "success", null)
+          }
+        }
+
+        console.error("[BackofficeMetaWebhookUseCase][createLead]", error)
+        const errorMessage = "Erro ao criar lead via webhook Meta"
+        await this.eventRepo.markFailed(event.id, errorMessage)
+        const output = new Output(false, [], [errorMessage], {
+          eventId: event.id,
+          status: "failed",
+          statusCode: 500,
+        })
+        return logAndReturn(output, "error", errorMessage)
+      }
     } catch (error) {
       console.error("[BackofficeMetaWebhookUseCase][ingest]", error)
       const output = new Output(false, [], ["Erro ao registrar evento"], {
@@ -283,5 +461,6 @@ export class BackofficeMetaWebhookUseCase implements IBackofficeMetaWebhookUseCa
 
 export const backofficeMetaWebhookUseCase = new BackofficeMetaWebhookUseCase(
   backofficeMetaWebhookService,
-  new BackofficeWebhookEventRepository()
+  new BackofficeWebhookEventRepository(),
+  new BackofficeLeadRepository()
 )

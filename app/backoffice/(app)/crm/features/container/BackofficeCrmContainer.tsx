@@ -1,29 +1,70 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
+import { Plus, Table2 } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useBackofficeCrm } from "../context/BackofficeCrmHook"
-import { BackofficeCrmKanban } from "../components/BackofficeCrmKanban"
+import { BackofficeCrmColumnSettingsButton, BackofficeCrmTable } from "../components/BackofficeCrmTable"
+import { BackofficeCrmFiltersBar } from "../components/BackofficeCrmFiltersBar"
 import { BackofficeLeadFormDialog } from "../components/BackofficeLeadFormDialog"
 
 export function BackofficeCrmContainer() {
-  const { isLoading, error } = useBackofficeCrm()
+  const { isLoading, error, leads, filteredLeads, openCreateDialog } = useBackofficeCrm()
+  const leadCountLabel = isLoading
+    ? "Carregando..."
+    : filteredLeads.length === leads.length
+      ? `${leads.length} leads`
+      : `${filteredLeads.length} de ${leads.length} leads`
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-3 p-4">
-      {isLoading && (
-        <div className="flex flex-1 items-center justify-center text-muted-foreground">
-          <Loader2 className="mr-2 size-4 animate-spin" />
-          Carregando leads...
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col gap-6 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-4">
+          <Table2 className="size-6" />
+          <div>
+            <h1 className="text-2xl font-semibold">CRM</h1>
+            <p className="text-sm text-muted-foreground">
+              Pipeline operacional do backoffice em tabela. {leadCountLabel}
+            </p>
+          </div>
         </div>
-      )}
-
-      {!isLoading && error && (
-        <div className="flex flex-1 items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-          {error}
+        <div className="flex items-center gap-2">
+          <Button onClick={openCreateDialog}>
+            <Plus data-icon="inline-start" />
+            Adicionar novo lead
+          </Button>
+          <BackofficeCrmColumnSettingsButton />
         </div>
-      )}
+      </div>
 
-      {!isLoading && !error && <BackofficeCrmKanban />}
+      {isLoading ? (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-8 w-[250px]" />
+            <Skeleton className="h-8 w-[110px]" />
+            <Skeleton className="h-8 w-[160px]" />
+          </div>
+          <div className="rounded-md border p-2">
+            <Skeleton className="h-10 w-full" />
+            <div className="mt-2 flex flex-col gap-2">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <Skeleton key={index} className="h-12 w-full" />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : error ? (
+        <Alert variant="destructive">
+          <AlertTitle>Erro ao carregar leads</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : (
+        <>
+          <BackofficeCrmFiltersBar />
+          <BackofficeCrmTable />
+        </>
+      )}
 
       <BackofficeLeadFormDialog />
     </div>

@@ -15,6 +15,8 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
         profileId: data.profileId,
         email: data.email,
         fullAccess: data.fullAccess ?? false,
+        isSdr: data.isSdr ?? true,
+        isCloser: data.isCloser ?? true,
         createdByProfileId: data.createdByProfileId,
       },
     })
@@ -51,6 +53,8 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
         ...(data.email !== undefined ? { email: data.email } : {}),
         ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
         ...(data.fullAccess !== undefined ? { fullAccess: data.fullAccess } : {}),
+        ...(data.isSdr !== undefined ? { isSdr: data.isSdr } : {}),
+        ...(data.isCloser !== undefined ? { isCloser: data.isCloser } : {}),
         ...(data.mailboxStatus !== undefined ? { mailboxStatus: data.mailboxStatus } : {}),
         ...(data.mailboxAddress !== undefined ? { mailboxAddress: data.mailboxAddress } : {}),
         ...(data.mailboxProvisionedAt !== undefined
