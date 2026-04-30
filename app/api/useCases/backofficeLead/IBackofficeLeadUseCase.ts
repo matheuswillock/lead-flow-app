@@ -1,4 +1,4 @@
-import type { BackofficeLeadStatus } from "@prisma/client"
+import type { BackofficeLeadOrigin, BackofficeLeadStatus } from "@prisma/client"
 import type { Output } from "@/lib/output"
 
 export interface CreateBackofficeLeadDTO {
@@ -7,6 +7,15 @@ export interface CreateBackofficeLeadDTO {
   phone?: string | null
   notes?: string | null
   status?: BackofficeLeadStatus
+  origin?: BackofficeLeadOrigin
+  sourceExternalId?: string | null
+  sourceWebhookEventId?: string | null
+  sdrBackofficeUserId?: string | null
+  closerBackofficeUserId?: string | null
+  meetingDate?: string | null
+  meetingTitle?: string | null
+  meetingNotes?: string | null
+  meetingLink?: string | null
 }
 
 export interface UpdateBackofficeLeadDTO {
@@ -14,6 +23,20 @@ export interface UpdateBackofficeLeadDTO {
   email?: string | null
   phone?: string | null
   notes?: string | null
+  sdrBackofficeUserId?: string | null
+  closerBackofficeUserId?: string | null
+  meetingDate?: string | null
+  meetingTitle?: string | null
+  meetingNotes?: string | null
+  meetingLink?: string | null
+}
+
+export interface UpdateBackofficeLeadStatusDTO {
+  closerBackofficeUserId?: string | null
+  meetingDate?: string | null
+  meetingTitle?: string | null
+  meetingNotes?: string | null
+  meetingLink?: string | null
 }
 
 export interface IBackofficeLeadUseCase {
@@ -21,6 +44,10 @@ export interface IBackofficeLeadUseCase {
   getLeadById(id: string): Promise<Output>
   createLead(data: CreateBackofficeLeadDTO, createdByProfileId: string): Promise<Output>
   updateLead(id: string, data: UpdateBackofficeLeadDTO): Promise<Output>
-  updateLeadStatus(id: string, status: BackofficeLeadStatus): Promise<Output>
+  updateLeadStatus(
+    id: string,
+    status: BackofficeLeadStatus,
+    data?: UpdateBackofficeLeadStatusDTO
+  ): Promise<Output>
   deleteLead(id: string): Promise<Output>
 }

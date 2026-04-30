@@ -10,6 +10,8 @@ export interface CreateBackofficeUserInput {
   fullName: string
   temporaryPassword: string
   fullAccess?: boolean
+  isSdr?: boolean
+  isCloser?: boolean
 }
 
 export interface UpdateBackofficeUserInput {
@@ -17,6 +19,8 @@ export interface UpdateBackofficeUserInput {
   fullName?: string
   isActive?: boolean
   fullAccess?: boolean
+  isSdr?: boolean
+  isCloser?: boolean
 }
 
 const BACKOFFICE_EMAIL_DOMAIN = "@corretorstudio.com"
@@ -106,6 +110,8 @@ export class BackofficeUserUseCase {
         profileId,
         email,
         fullAccess: data.fullAccess ?? false,
+        isSdr: data.isSdr ?? true,
+        isCloser: data.isCloser ?? true,
         createdByProfileId: actorAccess.profileId,
       })
 
@@ -191,12 +197,18 @@ export class BackofficeUserUseCase {
       }
 
       const hasBackofficeChanges =
-        email !== undefined || data.isActive !== undefined || data.fullAccess !== undefined
+        email !== undefined ||
+        data.isActive !== undefined ||
+        data.fullAccess !== undefined ||
+        data.isSdr !== undefined ||
+        data.isCloser !== undefined
       const updated = hasBackofficeChanges
         ? await this.userRepo.update(id, {
             email,
             isActive: data.isActive,
             fullAccess: data.fullAccess,
+            isSdr: data.isSdr,
+            isCloser: data.isCloser,
           })
         : existing
 

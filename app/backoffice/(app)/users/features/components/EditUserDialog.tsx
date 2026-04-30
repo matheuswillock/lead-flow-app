@@ -36,6 +36,8 @@ interface EditUserFormState {
   fullName: string
   fullAccess: boolean
   isActive: boolean
+  isSdr: boolean
+  isCloser: boolean
 }
 
 interface EditUserDialogProps {
@@ -53,6 +55,8 @@ const initialForm: EditUserFormState = {
   fullName: "",
   fullAccess: false,
   isActive: false,
+  isSdr: true,
+  isCloser: true,
 }
 
 export function EditUserDialog({
@@ -85,6 +89,8 @@ export function EditUserDialog({
       fullName: user.profile.fullName ?? "",
       fullAccess: user.fullAccess,
       isActive: user.isActive,
+      isSdr: user.isSdr,
+      isCloser: user.isCloser,
     })
     setEmailError(null)
     setNameError(null)
@@ -114,6 +120,8 @@ export function EditUserDialog({
         fullName,
         fullAccess: form.fullAccess,
         isActive: form.isActive,
+        isSdr: form.isSdr,
+        isCloser: form.isCloser,
       })
       onOpenChange(false)
     } catch {
@@ -206,6 +214,40 @@ export function EditUserDialog({
                     checked={form.isActive}
                     onCheckedChange={(value) =>
                       setForm((current) => ({ ...current, isActive: value }))
+                    }
+                    disabled={isPending}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="editIsSdr">SDR</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Usuários SDR aparecem nos filtros e campos de atendimento inicial do CRM.
+                    </p>
+                  </div>
+                  <Switch
+                    id="editIsSdr"
+                    checked={form.isSdr}
+                    onCheckedChange={(value) =>
+                      setForm((current) => ({ ...current, isSdr: value }))
+                    }
+                    disabled={isPending}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="editIsCloser">Closer</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Usuários Closer aparecem nos filtros e no agendamento obrigatório.
+                    </p>
+                  </div>
+                  <Switch
+                    id="editIsCloser"
+                    checked={form.isCloser}
+                    onCheckedChange={(value) =>
+                      setForm((current) => ({ ...current, isCloser: value }))
                     }
                     disabled={isPending}
                   />

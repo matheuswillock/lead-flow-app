@@ -46,6 +46,18 @@ const expiryModeLabel: Record<BackofficeWebhookTokenExpiryMode, string> = {
   indeterminate: "Indeterminado",
 }
 
+const metaLeadPayloadExample = `{
+  "name": "Maria Silva",
+  "email": "maria@email.com",
+  "phone": "(11) 99999-9999",
+  "notes": "Interesse em plano empresarial",
+  "external_id": "meta-lead-123",
+  "metadata": {
+    "campaign": "Meta Ads",
+    "form_id": "abc"
+  }
+}`
+
 function formatDateTime(value: string | null): string {
   if (!value) return "-"
 
@@ -268,6 +280,27 @@ export function BackofficeMetaIntegrationCard() {
                     . Apenas o token ativo autentica novas requisições.
                   </p>
                 </div>
+
+                <section className="flex flex-col gap-3 rounded-md border p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <FileText className="size-4 text-primary" />
+                      <h4 className="text-sm font-semibold">Contrato do payload</h4>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="default">name obrigatório</Badge>
+                      <Badge variant="secondary">email, phone, notes opcionais</Badge>
+                      <Badge variant="secondary">external_id para idempotência</Badge>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Envie JSON direto pelo Make. O backoffice cria o lead com origem
+                    Webhook Meta e salva o payload completo nos eventos.
+                  </p>
+                  <pre className="overflow-x-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed">
+                    {metaLeadPayloadExample}
+                  </pre>
+                </section>
 
                 <div className="grid gap-5 lg:grid-cols-2">
                   <section className="flex min-w-0 flex-col gap-3">

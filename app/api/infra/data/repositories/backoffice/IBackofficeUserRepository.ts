@@ -5,6 +5,8 @@ export interface CreateBackofficeUserInput {
   profileId: string
   email: string
   fullAccess?: boolean
+  isSdr?: boolean
+  isCloser?: boolean
   createdByProfileId?: string
 }
 
@@ -12,6 +14,8 @@ export interface UpdateBackofficeUserInput {
   email?: string
   isActive?: boolean
   fullAccess?: boolean
+  isSdr?: boolean
+  isCloser?: boolean
   mailboxStatus?: string
   mailboxAddress?: string
   mailboxProvisionedAt?: Date

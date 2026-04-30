@@ -156,6 +156,7 @@ export function BackofficeUsersContainer() {
               <TableHead>Nome</TableHead>
               <TableHead>E-mail</TableHead>
               <TableHead>Acesso Total</TableHead>
+              <TableHead>Funções</TableHead>
               <TableHead>Mailbox</TableHead>
               <TableHead>Ativo</TableHead>
               <TableHead>Ações</TableHead>
@@ -165,7 +166,7 @@ export function BackofficeUsersContainer() {
             {isLoading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 6 }).map((__, j) => (
+                  {Array.from({ length: 7 }).map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-4 w-full" />
                     </TableCell>
@@ -174,7 +175,7 @@ export function BackofficeUsersContainer() {
               ))
             ) : users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                   Nenhum usuário backoffice cadastrado
                 </TableCell>
               </TableRow>
@@ -207,6 +208,15 @@ export function BackofficeUsersContainer() {
                       <Badge variant={u.fullAccess ? "default" : "secondary"}>
                         {u.fullAccess ? "Sim" : "Não"}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {u.isSdr ? <Badge variant="outline">SDR</Badge> : null}
+                        {u.isCloser ? <Badge variant="outline">Closer</Badge> : null}
+                        {!u.isSdr && !u.isCloser ? (
+                          <Badge variant="secondary">Sem função</Badge>
+                        ) : null}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant={mailboxInfo.variant}>{mailboxInfo.label}</Badge>
