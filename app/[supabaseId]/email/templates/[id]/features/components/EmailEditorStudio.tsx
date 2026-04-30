@@ -17,8 +17,10 @@ import {
   Copy,
   ImagePlus,
   Link2,
+  Send,
 } from "lucide-react";
 import { toast } from "sonner";
+import { MonacoCodeEditor } from "@/components/editors/MonacoCodeEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -60,6 +62,11 @@ type ImageUploadCommand = { commands: { uploadImage: () => boolean } };
 
 export interface EmailEditorStudioRef {
   publish: () => Promise<void>;
+  openHtmlEditor: () => Promise<void>;
+}
+
+function getFallbackPreviewHtml() {
+  return '<div style="display:flex;align-items:center;justify-content:center;height:100%;min-height:360px;color:#8a8a8a;font-family:sans-serif;font-size:14px;">Sem HTML para renderizar</div>';
 }
 
 function normalizeColor(value: unknown, fallback: string): string {
@@ -99,8 +106,24 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
   const [exportedHtml, setExportedHtml] = useState("");
   const [exporting, setExporting] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [htmlEditorOpen, setHtmlEditorOpen] = useState(false);
+  const [htmlEditorValue, setHtmlEditorValue] = useState("");
+  const [htmlEditorOpening, setHtmlEditorOpening] = useState(false);
+  const [visualEditorTouched, setVisualEditorTouched] = useState(false);
+  const [htmlSourceActive, setHtmlSourceActive] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [eventStatus, setEventStatus] = useState("Pronto");
+  const htmlPreviewContent = htmlEditorValue.trim() ? htmlEditorValue : getFallbackPreviewHtml();
+  const htmlEditorOptions = useMemo(
+    () => ({
+      formatOnPaste: true,
+      formatOnType: true,
+      minimap: { enabled: false },
+      tabSize: 2,
+      wordWrap: "on" as const,
+    }),
+    []
+  );
 
   useEffect(() => {
     const subscription = editorEventBus.on("bubble-menu:add-link", () => {
@@ -134,6 +157,8 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
 
   const handleEditorUpdate = useCallback(
     (ref: EmailEditorRef) => {
+      setVisualEditorTouched(true);
+      setHtmlSourceActive(false);
       setMailyJson(ref.getJSON());
     },
     [setMailyJson]
@@ -159,6 +184,13 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
     if (exporting) return;
     setExporting(true);
     try {
+      if (htmlSourceActive && !visualEditorTouched) {
+        setExportedHtml(draft.html);
+        setExportOpen(true);
+        setEventStatus(`HTML exportado com ${draft.html.length} caracteres`);
+        return;
+      }
+
       const snapshot = await syncEditorDraft();
       if (!snapshot) return;
 
@@ -171,7 +203,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
     } finally {
       setExporting(false);
     }
-  }, [exporting, syncEditorDraft]);
+  }, [draft.html, exporting, htmlSourceActive, syncEditorDraft, visualEditorTouched]);
 
   const handleCopyHtml = useCallback(async () => {
     if (!exportedHtml || copying) return;
@@ -189,12 +221,74 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
 
   const handlePublish = useCallback(async () => {
     if (saving) return;
+    if (htmlSourceActive && !visualEditorTouched) {
+      await saveTemplate({ html: draft.html });
+      return;
+    }
+
     const snapshot = await syncEditorDraft();
     if (!snapshot) return;
     await saveTemplate(snapshot);
-  }, [saveTemplate, saving, syncEditorDraft]);
+  }, [draft.html, htmlSourceActive, saveTemplate, saving, syncEditorDraft, visualEditorTouched]);
 
-  useImperativeHandle(ref, () => ({ publish: handlePublish }), [handlePublish]);
+  const handleOpenHtmlEditor = useCallback(async () => {
+    if (htmlEditorOpening) return;
+
+    setHtmlEditorOpening(true);
+    try {
+      let nextHtml = draft.html;
+
+      if (visualEditorTouched) {
+        const snapshot = await syncEditorDraft();
+        if (!snapshot) return;
+        nextHtml = snapshot.html;
+      }
+
+      setHtmlEditorValue(nextHtml);
+      setHtml(nextHtml);
+      setHtmlSourceActive(true);
+      setVisualEditorTouched(false);
+      setHtmlEditorOpen(true);
+      setEventStatus(`HTML pronto com ${nextHtml.length} caracteres`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao abrir editor HTML";
+      toast.error("Erro ao abrir editor HTML", { description: message });
+    } finally {
+      setHtmlEditorOpening(false);
+    }
+  }, [draft.html, htmlEditorOpening, setHtml, syncEditorDraft, visualEditorTouched]);
+
+  const handleHtmlEditorChange = useCallback(
+    (value: string) => {
+      setHtmlEditorValue(value);
+      setHtml(value);
+      setHtmlSourceActive(true);
+      setVisualEditorTouched(false);
+    },
+    [setHtml]
+  );
+
+  const handlePublishHtml = useCallback(async () => {
+    if (saving) return;
+
+    setHtml(htmlEditorValue);
+    const saved = await saveTemplate({ html: htmlEditorValue });
+    if (saved) {
+      setHtmlSourceActive(true);
+      setVisualEditorTouched(false);
+      setHtmlEditorOpen(false);
+      setEventStatus(`HTML publicado com ${htmlEditorValue.length} caracteres`);
+    }
+  }, [htmlEditorValue, saveTemplate, saving, setHtml]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      publish: handlePublish,
+      openHtmlEditor: handleOpenHtmlEditor,
+    }),
+    [handleOpenHtmlEditor, handlePublish]
+  );
 
   const handleImportImage = useCallback(() => {
     const editor = editorRef.current?.editor;
@@ -220,7 +314,7 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
   }, []);
 
   return (
-    <div className="flex min-h-[720px] flex-col overflow-hidden rounded-lg border bg-background">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background">
       <div className="flex min-h-0 flex-1">
         <EditorBlocksPanel
           isDirty={isDirty}
@@ -279,6 +373,80 @@ export const EmailEditorStudio = forwardRef<EmailEditorStudioRef>(function Email
             </Button>
             <DialogClose asChild>
               <Button variant="secondary">Voltar</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={htmlEditorOpen} onOpenChange={setHtmlEditorOpen}>
+        <DialogContent className="max-h-[90vh] w-[96vw] max-w-7xl flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Editor HTML</DialogTitle>
+            <DialogDescription>
+              Edite o código do e-mail e acompanhe a renderização ao lado.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="grid min-h-[64vh] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
+              <section className="flex min-h-[52vh] flex-col overflow-hidden rounded-md border bg-background">
+                <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-medium">Código HTML</h3>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {htmlEditorOpening ? "Sincronizando editor visual" : "Fonte manual do template"}
+                    </p>
+                  </div>
+                  <Badge variant="secondary">HTML</Badge>
+                </div>
+                <div className="min-h-0 flex-1">
+                  <MonacoCodeEditor
+                    value={htmlEditorValue}
+                    onChange={handleHtmlEditorChange}
+                    language="html"
+                    height="100%"
+                    themeVariant="resend-dark"
+                    placeholder="Cole ou edite o HTML do e-mail..."
+                    options={htmlEditorOptions}
+                  />
+                </div>
+              </section>
+
+              <section className="flex min-h-[52vh] flex-col overflow-hidden rounded-md border bg-background">
+                <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-medium">Prévia do e-mail</h3>
+                    <p className="truncate text-xs text-muted-foreground">
+                      Atualizada em tempo real
+                    </p>
+                  </div>
+                  <Badge variant="outline">Preview</Badge>
+                </div>
+                <div className="min-h-0 flex-1 bg-white">
+                  <iframe
+                    srcDoc={htmlPreviewContent}
+                    title="Prévia do HTML do e-mail"
+                    sandbox="allow-same-origin"
+                    className="h-full w-full border-0 bg-white"
+                  />
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:space-x-0">
+            <Button
+              type="button"
+              onClick={handlePublishHtml}
+              disabled={saving || htmlEditorOpening}
+            >
+              {saving ? <Spinner data-icon="inline-start" /> : <Send data-icon="inline-start" />}
+              {saving ? "Publicando..." : "Publicar HTML"}
+            </Button>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">
+                Voltar
+              </Button>
             </DialogClose>
           </DialogFooter>
         </DialogContent>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { AlertCircle, Send } from "lucide-react";
+import { AlertCircle, Code2, Send } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,17 +22,17 @@ export function EditorContainer() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen flex-col gap-4 bg-background p-6">
+      <div className="flex h-full min-h-0 flex-1 flex-col gap-4 bg-background p-6">
         <Skeleton className="h-10 w-72" />
         <Skeleton className="h-10 w-full max-w-3xl" />
         <Skeleton className="h-32 w-full max-w-3xl" />
-        <Skeleton className="min-h-96 w-full" />
+        <Skeleton className="min-h-0 flex-1 w-full" />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col gap-4 bg-background p-6">
+    <div className="flex h-full min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-background p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Editor de template</h1>
@@ -40,10 +40,21 @@ export function EditorContainer() {
             Configure os metadados e o conteúdo visual do e-mail.
           </p>
         </div>
-        <Button onClick={() => void editorRef.current?.publish()} disabled={saving}>
-          {saving ? <Spinner data-icon="inline-start" /> : <Send data-icon="inline-start" />}
-          {saving ? "Publicando..." : "Publicar"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => void editorRef.current?.publish()} disabled={saving}>
+            {saving ? <Spinner data-icon="inline-start" /> : <Send data-icon="inline-start" />}
+            {saving ? "Publicando..." : "Publicar"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void editorRef.current?.openHtmlEditor()}
+            disabled={saving}
+          >
+            <Code2 data-icon="inline-start" />
+            HTML
+          </Button>
+        </div>
       </div>
       {error ? (
         <Alert variant="destructive">
