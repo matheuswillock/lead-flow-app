@@ -19,9 +19,11 @@ export type BackofficeLeadWithRelations = BackofficeLead & {
 }
 
 export interface CreateBackofficeLeadInput {
+  id?: string
   name: string
   email?: string | null
   phone?: string | null
+  cnpj?: string | null
   notes?: string | null
   status?: BackofficeLeadStatus
   origin?: BackofficeLeadOrigin
@@ -33,6 +35,7 @@ export interface CreateBackofficeLeadInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingExtraGuests?: string[]
   createdByProfileId?: string | null
 }
 
@@ -40,6 +43,7 @@ export interface UpdateBackofficeLeadInput {
   name?: string
   email?: string | null
   phone?: string | null
+  cnpj?: string | null
   notes?: string | null
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
@@ -47,6 +51,7 @@ export interface UpdateBackofficeLeadInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingExtraGuests?: string[]
 }
 
 export interface UpdateBackofficeLeadStatusInput {
@@ -56,6 +61,7 @@ export interface UpdateBackofficeLeadStatusInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingExtraGuests?: string[]
 }
 
 export interface ListBackofficeLeadsParams {

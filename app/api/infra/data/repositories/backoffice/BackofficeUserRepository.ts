@@ -55,6 +55,20 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
         ...(data.fullAccess !== undefined ? { fullAccess: data.fullAccess } : {}),
         ...(data.isSdr !== undefined ? { isSdr: data.isSdr } : {}),
         ...(data.isCloser !== undefined ? { isCloser: data.isCloser } : {}),
+        ...(data.googleCalendarConnected !== undefined
+          ? { googleCalendarConnected: data.googleCalendarConnected }
+          : {}),
+        ...(data.googleAccessToken !== undefined
+          ? { googleAccessToken: data.googleAccessToken }
+          : {}),
+        ...(data.googleRefreshToken !== undefined
+          ? { googleRefreshToken: data.googleRefreshToken }
+          : {}),
+        ...(data.googleTokenExpiresAt !== undefined
+          ? { googleTokenExpiresAt: data.googleTokenExpiresAt }
+          : {}),
+        ...(data.googleEmail !== undefined ? { googleEmail: data.googleEmail } : {}),
+        ...(data.timezone !== undefined ? { timezone: data.timezone } : {}),
         ...(data.mailboxStatus !== undefined ? { mailboxStatus: data.mailboxStatus } : {}),
         ...(data.mailboxAddress !== undefined ? { mailboxAddress: data.mailboxAddress } : {}),
         ...(data.mailboxProvisionedAt !== undefined

@@ -46,6 +46,9 @@ export class BackofficeCrmService implements IBackofficeCrmService {
         isActive: boolean
         isSdr: boolean
         isCloser: boolean
+        googleCalendarConnected?: boolean
+        googleEmail?: string | null
+        timezone?: string | null
         profile?: { fullName?: string | null; email?: string | null }
       }[]
     >(response)
@@ -57,6 +60,9 @@ export class BackofficeCrmService implements IBackofficeCrmService {
       isActive: user.isActive,
       isSdr: user.isSdr,
       isCloser: user.isCloser,
+      googleCalendarConnected: user.googleCalendarConnected ?? false,
+      googleEmail: user.googleEmail ?? null,
+      timezone: user.timezone ?? "America/Sao_Paulo",
     }))
   }
 

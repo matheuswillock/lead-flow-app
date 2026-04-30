@@ -10,8 +10,10 @@ import {
   UserPlus,
   Kanban,
   Plug,
+  CalendarDays,
   EllipsisVertical,
   LogOut,
+  UserRound,
 } from "lucide-react"
 import {
   Sidebar,
@@ -26,7 +28,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,6 +43,7 @@ import { createSupabaseBrowser } from "@/lib/supabase/browser"
 const navigationItems = [
   { title: "Dashboard", url: "/backoffice", icon: LayoutDashboard },
   { title: "CRM", url: "/backoffice/crm", icon: Kanban },
+  { title: "Calendário", url: "/backoffice/calendar", icon: CalendarDays },
   { title: "Clientes", url: "/backoffice/clients", icon: Users },
   { title: "Pagamentos", url: "/backoffice/payments", icon: CreditCard },
   { title: "Integrações", url: "/backoffice/integracoes", icon: Plug },
@@ -130,6 +133,7 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                 >
                   <Avatar className="h-8 w-8 rounded-lg">
+                    <AvatarImage src={user?.profileIconUrl ?? undefined} alt={user?.fullName ?? "Backoffice"} />
                     <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
@@ -148,6 +152,7 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 <DropdownMenuLabel className="p-0 font-normal">
                   <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                     <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarImage src={user?.profileIconUrl ?? undefined} alt={user?.fullName ?? "Backoffice"} />
                       <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
                     </Avatar>
                     <div className="grid flex-1 text-left text-sm leading-tight">
@@ -157,6 +162,12 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/backoffice/account" className="cursor-pointer">
+                    <UserRound className="size-4" />
+                    Minha conta
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem className="cursor-pointer" onClick={handleSignOut}>
                   <LogOut className="size-4" />
                   Sair

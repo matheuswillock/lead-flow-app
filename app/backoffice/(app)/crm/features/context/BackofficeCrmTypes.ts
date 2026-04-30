@@ -15,6 +15,9 @@ export interface BackofficeCrmUserOption {
   isActive: boolean
   isSdr: boolean
   isCloser: boolean
+  googleCalendarConnected: boolean
+  googleEmail: string | null
+  timezone: string
 }
 
 export interface BackofficeLeadCompactUser {
@@ -28,6 +31,7 @@ export interface BackofficeLeadItem {
   name: string
   email: string | null
   phone: string | null
+  cnpj: string | null
   notes: string | null
   status: BackofficeLeadStatusKey
   origin: BackofficeLeadOriginKey
@@ -41,6 +45,7 @@ export interface BackofficeLeadItem {
   meetingTitle: string | null
   meetingNotes: string | null
   meetingLink: string | null
+  meetingExtraGuests: string[]
   statusEnteredAt: string
   createdAt: string
   updatedAt: string
@@ -50,6 +55,7 @@ export interface BackofficeLeadCreateInput {
   name: string
   email?: string | null
   phone?: string | null
+  cnpj?: string | null
   notes?: string | null
   status?: BackofficeLeadStatusKey
   sdrBackofficeUserId?: string | null
@@ -58,12 +64,14 @@ export interface BackofficeLeadCreateInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingExtraGuests?: string[] | null
 }
 
 export interface BackofficeLeadUpdateInput {
   name?: string
   email?: string | null
   phone?: string | null
+  cnpj?: string | null
   notes?: string | null
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
@@ -71,6 +79,7 @@ export interface BackofficeLeadUpdateInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingExtraGuests?: string[] | null
 }
 
 export interface BackofficeLeadScheduleInput {
@@ -79,6 +88,7 @@ export interface BackofficeLeadScheduleInput {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  extraGuests?: string[]
 }
 
 export interface BackofficeCrmFiltersState {
@@ -94,6 +104,7 @@ export type BackofficeCrmTableColumnKey =
   | "name"
   | "email"
   | "phone"
+  | "cnpj"
   | "status"
   | "origin"
   | "sdr"
@@ -140,6 +151,7 @@ export const DEFAULT_BACKOFFICE_CRM_TABLE_COLUMN_VISIBILITY: BackofficeCrmTableC
     name: true,
     email: true,
     phone: true,
+    cnpj: true,
     status: true,
     origin: true,
     sdr: true,
@@ -155,6 +167,7 @@ export const DEFAULT_BACKOFFICE_CRM_TABLE_COLUMN_ORDER = [
   "name",
   "email",
   "phone",
+  "cnpj",
   "status",
   "origin",
   "sdr",

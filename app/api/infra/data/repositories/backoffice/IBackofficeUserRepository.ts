@@ -16,6 +16,12 @@ export interface UpdateBackofficeUserInput {
   fullAccess?: boolean
   isSdr?: boolean
   isCloser?: boolean
+  googleCalendarConnected?: boolean
+  googleAccessToken?: string | null
+  googleRefreshToken?: string | null
+  googleTokenExpiresAt?: Date | null
+  googleEmail?: string | null
+  timezone?: string
   mailboxStatus?: string
   mailboxAddress?: string
   mailboxProvisionedAt?: Date

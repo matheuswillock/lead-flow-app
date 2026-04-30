@@ -39,9 +39,11 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
   async create(data: CreateBackofficeLeadInput): Promise<BackofficeLeadWithRelations> {
     return prisma.backofficeLead.create({
       data: {
+        id: data.id,
         name: data.name,
         email: data.email ?? null,
         phone: data.phone ?? null,
+        cnpj: data.cnpj ?? null,
         notes: data.notes ?? null,
         status: data.status,
         origin: data.origin ?? BackofficeLeadOrigin.manual,
@@ -53,6 +55,7 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
         meetingTitle: data.meetingTitle ?? null,
         meetingNotes: data.meetingNotes ?? null,
         meetingLink: data.meetingLink ?? null,
+        meetingExtraGuests: data.meetingExtraGuests ?? [],
         createdByProfileId: data.createdByProfileId ?? null,
       },
       include: backofficeLeadInclude,
@@ -93,6 +96,7 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.email !== undefined ? { email: data.email } : {}),
         ...(data.phone !== undefined ? { phone: data.phone } : {}),
+        ...(data.cnpj !== undefined ? { cnpj: data.cnpj } : {}),
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
         ...(data.sdrBackofficeUserId !== undefined
           ? { sdrBackofficeUserId: data.sdrBackofficeUserId }
@@ -104,6 +108,9 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
         ...(data.meetingTitle !== undefined ? { meetingTitle: data.meetingTitle } : {}),
         ...(data.meetingNotes !== undefined ? { meetingNotes: data.meetingNotes } : {}),
         ...(data.meetingLink !== undefined ? { meetingLink: data.meetingLink } : {}),
+        ...(data.meetingExtraGuests !== undefined
+          ? { meetingExtraGuests: data.meetingExtraGuests }
+          : {}),
       },
       include: backofficeLeadInclude,
     })
@@ -125,6 +132,9 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
         ...(data.meetingTitle !== undefined ? { meetingTitle: data.meetingTitle } : {}),
         ...(data.meetingNotes !== undefined ? { meetingNotes: data.meetingNotes } : {}),
         ...(data.meetingLink !== undefined ? { meetingLink: data.meetingLink } : {}),
+        ...(data.meetingExtraGuests !== undefined
+          ? { meetingExtraGuests: data.meetingExtraGuests }
+          : {}),
       },
       include: backofficeLeadInclude,
     })

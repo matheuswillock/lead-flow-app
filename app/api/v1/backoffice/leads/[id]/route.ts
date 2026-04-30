@@ -3,6 +3,14 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeLeadUseCase } from "@/app/api/useCases/backofficeLead/BackofficeLeadUseCase"
 
+function optionalStringArray(data: Record<string, unknown>, key: string): string[] | undefined {
+  const value = data[key]
+  if (value === undefined || value === null) return undefined
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : undefined
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -43,6 +51,7 @@ export async function PUT(
       name: typeof data.name === "string" ? data.name : undefined,
       email: typeof data.email === "string" || data.email === null ? data.email : undefined,
       phone: typeof data.phone === "string" || data.phone === null ? data.phone : undefined,
+      cnpj: typeof data.cnpj === "string" || data.cnpj === null ? data.cnpj : undefined,
       notes: typeof data.notes === "string" || data.notes === null ? data.notes : undefined,
       sdrBackofficeUserId:
         typeof data.sdrBackofficeUserId === "string" || data.sdrBackofficeUserId === null
@@ -69,6 +78,8 @@ export async function PUT(
         typeof data.meetingLink === "string" || data.meetingLink === null
           ? data.meetingLink
           : undefined,
+      meetingExtraGuests:
+        optionalStringArray(data, "meetingExtraGuests") ?? optionalStringArray(data, "extraGuests"),
     })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {

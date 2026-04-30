@@ -135,6 +135,12 @@ enum InviteDispatchStatus {
   failed
 }
 
+enum BackofficeInviteDispatchStatus {
+  sent_google
+  sent_resend
+  failed
+}
+
 // AgeRange foi alterado para String - formato livre: "36, 32, 13"
 
 enum SubscriptionStatus {
@@ -375,6 +381,12 @@ model BackofficeUser {
   isActive             Boolean   @default(true) @map("isActive")
   isSdr                Boolean   @default(true) @map("isSdr")
   isCloser             Boolean   @default(true) @map("isCloser")
+  googleCalendarConnected Boolean @default(false) @map("googleCalendarConnected")
+  googleAccessToken    String?   @map("googleAccessToken") @db.Text
+  googleRefreshToken   String?   @map("googleRefreshToken") @db.Text
+  googleTokenExpiresAt DateTime? @map("googleTokenExpiresAt") @db.Timestamptz(6)
+  googleEmail          String?   @map("googleEmail") @db.Text
+  timezone             String    @default("America/Sao_Paulo") @db.Text
   mailboxStatus        String    @default("pending_manual_action") @map("mailboxStatus") @db.Text
   mailboxAddress       String?   @map("mailboxAddress") @db.Text
   mailboxProvisionedAt DateTime? @map("mailboxProvisionedAt") @db.Timestamptz(6)
@@ -387,10 +399,12 @@ model BackofficeUser {
   generatedWebhookTokens BackofficeWebhookToken[] @relation("BackofficeWebhookTokenGenerator")
   sdrLeads               BackofficeLead[]         @relation("BackofficeLeadSdr")
   closerLeads            BackofficeLead[]         @relation("BackofficeLeadCloser")
+  schedulesAsCloser      BackofficeLeadSchedule[] @relation("BackofficeLeadScheduleCloser")
 
   @@index([isActive], map: "backoffice_users_is_active_idx")
   @@index([isSdr], map: "backoffice_users_is_sdr_idx")
   @@index([isCloser], map: "backoffice_users_is_closer_idx")
+  @@index([googleCalendarConnected], map: "backoffice_users_google_connected_idx")
   @@index([createdByProfileId], map: "backoffice_users_created_by_profile_id_idx")
   @@map("backoffice_users")
 }
@@ -447,6 +461,7 @@ model BackofficeLead {
   name                   String               @db.Text
   email                  String?              @db.Text
   phone                  String?              @db.Text
+  cnpj                   String?              @db.Text
   notes                  String?              @db.Text
   status                 BackofficeLeadStatus @default(new_opportunity)
   origin                 BackofficeLeadOrigin @default(manual)
@@ -458,6 +473,7 @@ model BackofficeLead {
   meetingTitle           String?              @map("meetingTitle") @db.Text
   meetingNotes           String?              @map("meetingNotes") @db.Text
   meetingLink            String?              @map("meetingLink") @db.Text
+  meetingExtraGuests     String[]             @default([]) @map("meetingExtraGuests")
   statusEnteredAt        DateTime             @default(now()) @map("statusEnteredAt") @db.Timestamptz(6)
   createdByProfileId     String?              @map("createdByProfileId") @db.Uuid
   createdAt              DateTime             @default(now()) @map("createdAt") @db.Timestamptz(6)
@@ -467,6 +483,7 @@ model BackofficeLead {
   sourceWebhookEvent   BackofficeWebhookEvent? @relation("BackofficeLeadSourceWebhookEvent", fields: [sourceWebhookEventId], references: [id], onDelete: SetNull, map: "backoffice_leads_source_webhook_event_id_fkey")
   sdrBackofficeUser    BackofficeUser?         @relation("BackofficeLeadSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_sdr_backoffice_user_id_fkey")
   closerBackofficeUser BackofficeUser?         @relation("BackofficeLeadCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_closer_backoffice_user_id_fkey")
+  schedules            BackofficeLeadSchedule[]
 
   @@index([status], map: "backoffice_leads_status_idx")
   @@index([origin], map: "backoffice_leads_origin_idx")
@@ -475,7 +492,43 @@ model BackofficeLead {
   @@index([meetingDate], map: "backoffice_leads_meeting_date_idx")
   @@index([createdByProfileId], map: "backoffice_leads_created_by_profile_id_idx")
   @@index([email], map: "backoffice_leads_email_idx")
+  @@index([cnpj], map: "backoffice_leads_cnpj_idx")
   @@map("backoffice_leads")
+}
+
+model BackofficeLeadSchedule {
+  id                          String                          @id @default(uuid()) @db.Uuid
+  leadId                      String                          @map("leadId") @db.Uuid
+  closerBackofficeUserId      String?                         @map("closerBackofficeUserId") @db.Uuid
+  date                        DateTime                        @db.Timestamptz(6)
+  meetingTitle                String?                         @map("meetingTitle") @db.Text
+  notes                       String?                         @db.Text
+  meetingLink                 String?                         @map("meetingLink") @db.Text
+  extraGuests                 String[]                        @default([]) @map("extraGuests")
+  googleEventId               String?                         @map("googleEventId") @db.Text
+  googleCalendarId            String?                         @map("googleCalendarId") @db.Text
+  inviteDispatchStatus        BackofficeInviteDispatchStatus? @map("inviteDispatchStatus")
+  inviteDispatchProvider      String?                         @map("inviteDispatchProvider") @db.Text
+  inviteDispatchFallbackUsed  Boolean                         @default(false) @map("inviteDispatchFallbackUsed")
+  inviteDispatchLastAttemptAt DateTime?                       @map("inviteDispatchLastAttemptAt") @db.Timestamptz(6)
+  inviteDispatchLastError     String?                         @map("inviteDispatchLastError") @db.Text
+  inviteDispatchLastPayload   Json?                           @map("inviteDispatchLastPayload")
+  isCanceled                  Boolean                         @default(false) @map("isCanceled")
+  canceledAt                  DateTime?                       @map("canceledAt") @db.Timestamptz(6)
+  canceledByProfileId         String?                         @map("canceledByProfileId") @db.Uuid
+  cancelReason                String?                         @map("cancelReason") @db.Text
+  createdByProfileId          String?                         @map("createdByProfileId") @db.Uuid
+  createdAt                   DateTime                        @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                   DateTime                        @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  lead   BackofficeLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  closer BackofficeUser? @relation("BackofficeLeadScheduleCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_schedule_closer_backoffice_user_id_fkey")
+
+  @@index([leadId], map: "backoffice_leads_schedule_lead_id_idx")
+  @@index([closerBackofficeUserId], map: "backoffice_leads_schedule_closer_user_id_idx")
+  @@index([date], map: "backoffice_leads_schedule_date_idx")
+  @@index([isCanceled], map: "backoffice_leads_schedule_is_canceled_idx")
+  @@map("backoffice_leads_schedule")
 }
 
 model BackofficeWebhookEvent {

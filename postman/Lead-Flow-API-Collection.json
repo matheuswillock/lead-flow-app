@@ -7071,6 +7071,172 @@
           }
         },
         {
+          "name": "GET Backoffice Account",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/account",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "account"]
+            },
+            "description": "Retorna dados de Minha conta do backoffice, incluindo perfil, Google Calendar e timezone próprios do BackofficeUser."
+          }
+        },
+        {
+          "name": "PATCH Backoffice Account",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Bruno Marcelino\",\n  \"email\": \"bruno@corretorstudio.com\",\n  \"phone\": \"11999999999\",\n  \"cpfCnpj\": \"35484566851\",\n  \"postalCode\": \"06440260\",\n  \"address\": \"Rua Exemplo\",\n  \"addressNumber\": \"123\",\n  \"neighborhood\": \"Centro\",\n  \"complement\": \"Sala 1\",\n  \"city\": \"Barueri\",\n  \"state\": \"SP\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/account",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "account"]
+            },
+            "description": "Atualiza dados cadastrais da Minha conta do backoffice. Email deve ser @corretorstudio.com."
+          }
+        },
+        {
+          "name": "PATCH Backoffice Account Password",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"NovaSenha@2026\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/account/password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "account", "password"]
+            },
+            "description": "Atualiza a senha do usuário backoffice autenticado."
+          }
+        },
+        {
+          "name": "PATCH Backoffice Account Timezone",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timezone\": \"America/Sao_Paulo\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/account/timezone",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "account", "timezone"]
+            },
+            "description": "Atualiza o timezone próprio do BackofficeUser."
+          }
+        },
+        {
+          "name": "POST Backoffice Google Connect",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accessToken\": \"google-access-token\",\n  \"refreshToken\": \"google-refresh-token\",\n  \"expiresAt\": \"2026-05-01T12:00:00.000Z\",\n  \"email\": \"bruno@gmail.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/google/connect",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "google", "connect"]
+            },
+            "description": "Salva tokens Google Calendar separados para o módulo Backoffice."
+          }
+        },
+        {
+          "name": "POST Backoffice Google Disconnect",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/google/disconnect",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "google", "disconnect"]
+            },
+            "description": "Remove os tokens Google Calendar do BackofficeUser."
+          }
+        },
+        {
+          "name": "POST Backoffice Calendar Availability",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"closerIds\": [\"{{backofficeUserId}}\"],\n  \"date\": \"2026-05-05\",\n  \"timezone\": \"America/Sao_Paulo\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/calendar/availability",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "calendar", "availability"]
+            },
+            "description": "Consulta horários disponíveis de closers backoffice usando Google quando conectado e fallback interno."
+          }
+        },
+        {
           "name": "GET Backoffice Leads",
           "request": {
             "method": "GET",
@@ -7107,7 +7273,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Lead Exemplo\",\n  \"email\": \"lead@exemplo.com\",\n  \"phone\": \"11999999999\",\n  \"notes\": \"Observações iniciais\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\"\n}"
+              "raw": "{\n  \"name\": \"Lead Exemplo\",\n  \"email\": \"lead@exemplo.com\",\n  \"phone\": \"11999999999\",\n  \"cnpj\": \"12.345.678/0001-95\",\n  \"notes\": \"Observações iniciais\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/leads",
@@ -7154,7 +7320,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Lead Atualizado\",\n  \"notes\": \"Observação atualizada\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"meetingDate\": \"2026-05-05T14:00:00.000Z\",\n  \"meetingTitle\": \"Reunião inicial\",\n  \"meetingNotes\": \"Alinhar próximos passos\",\n  \"meetingLink\": \"https://meet.google.com/abc-defg-hij\"\n}"
+              "raw": "{\n  \"name\": \"Lead Atualizado\",\n  \"cnpj\": \"12.345.678/0001-95\",\n  \"notes\": \"Observação atualizada\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"meetingDate\": \"2026-05-05T14:00:00.000Z\",\n  \"meetingTitle\": \"Reunião inicial\",\n  \"meetingNotes\": \"Alinhar próximos passos\",\n  \"meetingLink\": \"https://meet.google.com/abc-defg-hij\",\n  \"meetingExtraGuests\": [\"convidado@example.com\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id",
@@ -7183,7 +7349,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"scheduled\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"meetingDate\": \"2026-05-05T14:00:00.000Z\",\n  \"meetingTitle\": \"Reunião inicial\",\n  \"meetingNotes\": \"Alinhar próximos passos\",\n  \"meetingLink\": \"https://meet.google.com/abc-defg-hij\"\n}"
+              "raw": "{\n  \"status\": \"scheduled\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"meetingDate\": \"2026-05-05T14:00:00.000Z\",\n  \"meetingTitle\": \"Reunião inicial\",\n  \"meetingNotes\": \"Alinhar próximos passos\",\n  \"meetingLink\": \"https://meet.google.com/abc-defg-hij\",\n  \"extraGuests\": [\"convidado@example.com\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/status",
@@ -7193,7 +7359,107 @@
                 { "key": "id", "value": "{{backofficeLeadId}}" }
               ]
             },
-            "description": "Atualiza o status do lead no pipeline/tabela. Para status=scheduled, closerBackofficeUserId e meetingDate são obrigatórios. Status válidos: new_opportunity, scheduled, no_show, lost, implementation, finalized."
+            "description": "Atualiza o status do lead no pipeline/tabela. Para status=scheduled, closerBackofficeUserId e meetingDate são obrigatórios. meetingLink é obrigatório apenas quando o closer não tem Google conectado. Status válidos: new_opportunity, scheduled, no_show, lost, implementation, finalized."
+          }
+        },
+        {
+          "name": "GET Backoffice Lead Schedules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/schedule",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "leads", ":id", "schedule"],
+              "variable": [
+                { "key": "id", "value": "{{backofficeLeadId}}" }
+              ]
+            },
+            "description": "Lista o histórico de agendamentos BackofficeLeadSchedule do lead."
+          }
+        },
+        {
+          "name": "POST Backoffice Lead Schedule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"meetingDate\": \"2026-05-05T14:00:00.000Z\",\n  \"meetingTitle\": \"Demonstração Corretor Studio\",\n  \"meetingNotes\": \"Alinhar próximos passos\",\n  \"meetingLink\": \"https://meet.google.com/abc-defg-hij\",\n  \"extraGuests\": [\"convidado@example.com\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/schedule",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "leads", ":id", "schedule"],
+              "variable": [
+                { "key": "id", "value": "{{backofficeLeadId}}" }
+              ]
+            },
+            "description": "Agenda ou reagenda o lead no backoffice, criando/atualizando BackofficeLeadSchedule e usando Google Calendar ou Resend/ICS."
+          }
+        },
+        {
+          "name": "POST Backoffice Lead Schedule Cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Cliente solicitou remarcação\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/schedule/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "leads", ":id", "schedule", "cancel"],
+              "variable": [
+                { "key": "id", "value": "{{backofficeLeadId}}" }
+              ]
+            },
+            "description": "Cancela o agendamento ativo do lead e limpa o snapshot de reunião no BackofficeLead."
+          }
+        },
+        {
+          "name": "GET Backoffice Lead Schedule Attendees",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{backofficeSupabaseId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/schedule/attendees",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "backoffice", "leads", ":id", "schedule", "attendees"],
+              "variable": [
+                { "key": "id", "value": "{{backofficeLeadId}}" }
+              ]
+            },
+            "description": "Retorna participantes/RSPV do Google quando houver evento conectado, ou fallback local do lead/closer/convidados."
           }
         },
         {

@@ -6,21 +6,21 @@ erDiagram
 backoffice backoffice
 operator operator
         }
-    
+
 
 
         UserFunction {
             SDR SDR
 CLOSER CLOSER
         }
-    
+
 
 
         MeetingHeald {
             yes yes
 no no
         }
-    
+
 
 
         LeadStatus {
@@ -39,7 +39,7 @@ opportunityLost opportunityLost
 operator_denied operator_denied
 contract_finalized contract_finalized
         }
-    
+
 
 
         backoffice_lead_status {
@@ -50,20 +50,20 @@ lost lost
 implementation implementation
 finalized finalized
         }
-    
+
 
 
         backoffice_lead_origin {
             manual manual
 webhook_meta webhook_meta
         }
-    
+
 
 
         backoffice_webhook_source {
             meta meta
         }
-    
+
 
 
         backoffice_webhook_event_status {
@@ -71,7 +71,7 @@ webhook_meta webhook_meta
 processed processed
 failed failed
         }
-    
+
 
 
         backoffice_webhook_token_status {
@@ -79,7 +79,7 @@ failed failed
 replaced replaced
 expired expired
         }
-    
+
 
 
         backoffice_webhook_token_expiry_mode {
@@ -87,7 +87,7 @@ expired expired
 months_6 months_6
 indeterminate indeterminate
         }
-    
+
 
 
         TeamStatusRuleType {
@@ -95,14 +95,14 @@ indeterminate indeterminate
 lead_time lead_time
 combined_transition combined_transition
         }
-    
+
 
 
         TeamLeadTimeUnit {
             hours hours
 days days
         }
-    
+
 
 
         ActivityType {
@@ -112,7 +112,7 @@ whatsapp whatsapp
 email email
 status_change status_change
         }
-    
+
 
 
         InviteDispatchStatus {
@@ -120,7 +120,15 @@ status_change status_change
 sent_resend sent_resend
 failed failed
         }
-    
+
+
+
+        BackofficeInviteDispatchStatus {
+            sent_google sent_google
+sent_resend sent_resend
+failed failed
+        }
+
 
 
         subscription_status {
@@ -130,7 +138,7 @@ past_due past_due
 suspended suspended
 canceled canceled
         }
-    
+
 
 
         subscription_plan {
@@ -138,7 +146,7 @@ canceled canceled
 manager_base manager_base
 with_operators with_operators
         }
-    
+
 
 
         pending_action_type {
@@ -147,7 +155,7 @@ add_member add_member
 add_user add_user
 transfer_team transfer_team
         }
-    
+
 
 
         pending_action_status {
@@ -156,7 +164,7 @@ applied applied
 failed failed
 canceled canceled
         }
-    
+
 
 
         notification_type {
@@ -167,7 +175,7 @@ TEAM_MEMBER_REMOVED TEAM_MEMBER_REMOVED
 LEAD_SCHEDULE_CREATED LEAD_SCHEDULE_CREATED
 LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
         }
-    
+
 
 
         studio_webhook_token_expiry_mode {
@@ -175,7 +183,7 @@ LEAD_PROPOSAL_PENDING LEAD_PROPOSAL_PENDING
 months_6 months_6
 indeterminate indeterminate
         }
-    
+
 
 
         portfolio_status {
@@ -183,7 +191,7 @@ indeterminate indeterminate
 pending pending
 canceled canceled
         }
-    
+
 
 
         email_credit_plan {
@@ -192,7 +200,7 @@ plus plus
 pro pro
 business business
         }
-    
+
 
 
         email_credit_subscription_status {
@@ -200,7 +208,7 @@ business business
 suspended suspended
 canceled canceled
         }
-    
+
 
 
         email_campaign_status {
@@ -211,7 +219,7 @@ sent sent
 canceled canceled
 failed failed
         }
-    
+
 
 
         email_log_status {
@@ -224,7 +232,7 @@ bounced bounced
 complained complained
 failed failed
         }
-    
+
 
 
         email_event_type {
@@ -237,10 +245,10 @@ complained complained
 delivery_delayed delivery_delayed
 unsubscribed unsubscribed
         }
-    
+
   "profiles" {
     String id "🗝️"
-    String email 
+    String email
     String supabaseId "❓"
     String fullName "❓"
     String phone "❓"
@@ -254,13 +262,13 @@ unsubscribed unsubscribed
     String state "❓"
     String profileIconId "❓"
     String profileIconUrl "❓"
-    UserRole role 
-    UserFunction functions 
-    Boolean isMaster 
-    Boolean canCreateAccountUsers 
-    Boolean canManageAccountTeams 
-    Boolean hasPermanentSubscription 
-    Boolean googleCalendarConnected 
+    UserRole role
+    UserFunction functions
+    Boolean isMaster
+    Boolean canCreateAccountUsers
+    Boolean canManageAccountTeams
+    Boolean hasPermanentSubscription
+    Boolean googleCalendarConnected
     String googleAccessToken "❓"
     String googleRefreshToken "❓"
     DateTime googleTokenExpiresAt "❓"
@@ -269,7 +277,7 @@ unsubscribed unsubscribed
     String subscriptionId "❓"
     SubscriptionStatus subscriptionStatus "❓"
     SubscriptionPlan subscriptionPlan "❓"
-    Int operatorCount 
+    Int operatorCount
     DateTime subscriptionStartDate "❓"
     DateTime subscriptionEndDate "❓"
     DateTime trialEndDate "❓"
@@ -277,133 +285,166 @@ unsubscribed unsubscribed
     DateTime subscriptionNextDueDate "❓"
     String subscriptionCycle "❓"
     String activeTeamId "❓"
-    String timezone 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String timezone
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "health_plan_options" {
     String id "🗝️"
-    String name 
-    String normalizedName 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String name
+    String normalizedName
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_users" {
     String id "🗝️"
-    String email 
-    Boolean fullAccess 
-    Boolean isActive 
-    Boolean isSdr 
-    Boolean isCloser 
-    String mailboxStatus 
+    String email
+    Boolean fullAccess
+    Boolean isActive
+    Boolean isSdr
+    Boolean isCloser
+    Boolean googleCalendarConnected
+    String googleAccessToken "❓"
+    String googleRefreshToken "❓"
+    DateTime googleTokenExpiresAt "❓"
+    String googleEmail "❓"
+    String timezone
+    String mailboxStatus
     String mailboxAddress "❓"
     DateTime mailboxProvisionedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_clients" {
     String id "🗝️"
-    String fullName 
+    String fullName
     String email "❓"
     String phone "❓"
     String cpfCnpj "❓"
     String notes "❓"
     String asaasCustomerId "❓"
-    Boolean isActive 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isActive
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_payments" {
     String id "🗝️"
     String asaasPaymentId "❓"
-    String billingType 
-    String status 
-    Decimal amount 
+    String billingType
+    String status
+    Decimal amount
     DateTime dueDate "❓"
     String description "❓"
     String invoiceUrl "❓"
     String pixQrCode "❓"
     String pixPayload "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_leads" {
     String id "🗝️"
-    String name 
+    String name
     String email "❓"
     String phone "❓"
+    String cnpj "❓"
     String notes "❓"
-    BackofficeLeadStatus status 
-    BackofficeLeadOrigin origin 
+    BackofficeLeadStatus status
+    BackofficeLeadOrigin origin
     String sourceExternalId "❓"
     DateTime meetingDate "❓"
     String meetingTitle "❓"
     String meetingNotes "❓"
     String meetingLink "❓"
-    DateTime statusEnteredAt 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String meetingExtraGuests
+    DateTime statusEnteredAt
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
+
+  "backoffice_leads_schedule" {
+    String id "🗝️"
+    DateTime date
+    String meetingTitle "❓"
+    String notes "❓"
+    String meetingLink "❓"
+    String extraGuests
+    String googleEventId "❓"
+    String googleCalendarId "❓"
+    BackofficeInviteDispatchStatus inviteDispatchStatus "❓"
+    String inviteDispatchProvider "❓"
+    Boolean inviteDispatchFallbackUsed
+    DateTime inviteDispatchLastAttemptAt "❓"
+    String inviteDispatchLastError "❓"
+    Json inviteDispatchLastPayload "❓"
+    Boolean isCanceled
+    DateTime canceledAt "❓"
+    String canceledByProfileId "❓"
+    String cancelReason "❓"
+    String createdByProfileId "❓"
+    DateTime createdAt
+    DateTime updatedAt
+    }
+
 
   "backoffice_webhook_events" {
     String id "🗝️"
-    BackofficeWebhookSource source 
+    BackofficeWebhookSource source
     String eventType "❓"
-    Json payload 
+    Json payload
     String signature "❓"
-    BackofficeWebhookEventStatus status 
+    BackofficeWebhookEventStatus status
     String errorMessage "❓"
-    DateTime receivedAt 
+    DateTime receivedAt
     DateTime processedAt "❓"
     }
-  
+
 
   "backoffice_webhook_tokens" {
     String id "🗝️"
-    BackofficeWebhookSource source 
-    String tokenHash 
-    String tokenCipher 
-    String tokenPreview 
-    BackofficeWebhookTokenStatus status 
-    BackofficeWebhookTokenExpiryMode expiryMode 
+    BackofficeWebhookSource source
+    String tokenHash
+    String tokenCipher
+    String tokenPreview
+    BackofficeWebhookTokenStatus status
+    BackofficeWebhookTokenExpiryMode expiryMode
     DateTime expiresAt "❓"
     DateTime lastUsedAt "❓"
-    String generatedByEmailSnapshot 
-    DateTime generatedAt 
-    DateTime updatedAt 
+    String generatedByEmailSnapshot
+    DateTime generatedAt
+    DateTime updatedAt
     }
-  
+
 
   "backoffice_webhook_request_logs" {
     String id "🗝️"
-    BackofficeWebhookSource source 
-    String method 
-    String endpoint 
-    Int statusCode 
-    String resultType 
+    BackofficeWebhookSource source
+    String method
+    String endpoint
+    Int statusCode
+    String resultType
     Json requestPayload "❓"
     Json responsePayload "❓"
     String errorMessage "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "leads" {
     String id "🗝️"
-    String leadCode 
-    LeadStatus status 
-    String name 
+    String leadCode
+    LeadStatus status
+    String name
     String email "❓"
     String phone "❓"
     String cnpj "❓"
@@ -422,304 +463,304 @@ unsubscribed unsubscribed
     LeadStatus followUpSourceStatus "❓"
     String lossReason "❓"
     String lossReasonDetails "❓"
-    DateTime statusEnteredAt 
+    DateTime statusEnteredAt
     String notes "❓"
     Decimal ticket "❓"
     DateTime contractDueDate "❓"
     String soldPlan "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "lead_activities" {
     String id "🗝️"
-    ActivityType type 
+    ActivityType type
     String body "❓"
     Json payload "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "lead_activity_reactions" {
     String id "🗝️"
-    String emoji 
-    String emojiUnified 
-    DateTime createdAt 
+    String emoji
+    String emojiUnified
+    DateTime createdAt
     }
-  
+
 
   "leads_schedule" {
     String id "🗝️"
-    DateTime date 
+    DateTime date
     String meetingTitle "❓"
     String notes "❓"
     String meetingLink "❓"
-    String extraGuests 
+    String extraGuests
     String googleEventId "❓"
     String googleCalendarId "❓"
     InviteDispatchStatus inviteDispatchStatus "❓"
-    Boolean inviteDispatchFallbackUsed 
+    Boolean inviteDispatchFallbackUsed
     DateTime inviteDispatchLastAttemptAt "❓"
     String inviteDispatchLastError "❓"
     Json inviteDispatchLastPayload "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "lead_finalized" {
     String id "🗝️"
-    DateTime finalizedDateAt 
-    DateTime startDateAt 
-    Int duration 
-    Decimal amount 
+    DateTime finalizedDateAt
+    DateTime startDateAt
+    Int duration
+    Decimal amount
     String notes "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "lead_portfolio" {
     String id "🗝️"
-    PortfolioStatus portfolioStatus 
+    PortfolioStatus portfolioStatus
     String note "❓"
     DateTime lastContactAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "lead_attachments" {
     String id "🗝️"
-    String fileName 
-    String fileUrl 
-    String storagePath 
-    String fileType 
-    Int fileSize 
-    DateTime uploadedAt 
+    String fileName
+    String fileUrl
+    String storagePath
+    String fileType
+    Int fileSize
+    DateTime uploadedAt
     }
-  
+
 
   "pending_operators" {
     String id "🗝️"
-    String name 
-    String email 
-    String role 
-    UserFunction functions 
+    String name
+    String email
+    String role
+    UserFunction functions
     String paymentId "❓"
     String subscriptionId "❓"
-    String paymentStatus 
-    String paymentMethod 
-    Boolean operatorCreated 
+    String paymentStatus
+    String paymentMethod
+    Boolean operatorCreated
     String operatorId "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "teams" {
     String id "🗝️"
-    String name 
-    Boolean isDefault 
-    DateTime createdAt 
-    DateTime updatedAt 
+    String name
+    Boolean isDefault
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "team_filter_presets" {
     String id "🗝️"
-    String name 
+    String name
     String description "❓"
-    Json queryJson 
+    Json queryJson
     DateTime lastUsedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "team_status_rules" {
     String id "🗝️"
-    TeamStatusRuleType type 
-    LeadStatus targetStatus 
+    TeamStatusRuleType type
+    LeadStatus targetStatus
     LeadStatus requiredStatus "❓"
     Int leadTimeValue "❓"
     TeamLeadTimeUnit leadTimeUnit "❓"
-    Boolean requireConfirmation 
+    Boolean requireConfirmation
     String confirmationMessage "❓"
-    Boolean isEnabled 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isEnabled
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "team_studio_webhook_configs" {
     String id "🗝️"
-    String tokenHash 
+    String tokenHash
     String tokenCipher "❓"
-    String tokenPreview 
-    StudioWebhookTokenExpiryMode expiryMode 
+    String tokenPreview
+    StudioWebhookTokenExpiryMode expiryMode
     DateTime expiresAt "❓"
     DateTime lastUsedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "team_studio_webhook_request_logs" {
     String id "🗝️"
-    String method 
-    String endpoint 
-    Int statusCode 
-    String resultType 
+    String method
+    String endpoint
+    Int statusCode
+    String resultType
     Json requestPayload "❓"
     Json responsePayload "❓"
     String errorMessage "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
 
   "notifications" {
     String id "🗝️"
-    NotificationType type 
-    String message 
+    NotificationType type
+    String message
     Json metadata "❓"
-    Boolean isRead 
+    Boolean isRead
     DateTime readAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "pending_actions" {
     String id "🗝️"
-    PendingActionType actionType 
-    PendingActionStatus status 
-    Json payload 
+    PendingActionType actionType
+    PendingActionStatus status
+    Json payload
     String checkoutId "❓"
     String paymentId "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "team_members" {
     String id "🗝️"
-    UserRole role 
-    UserFunction functions 
-    DateTime createdAt 
-    DateTime updatedAt 
+    UserRole role
+    UserFunction functions
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_credit_subscriptions" {
     String id "🗝️"
-    EmailCreditPlan plan 
-    Int monthlyCredits 
-    EmailCreditSubscriptionStatus status 
-    DateTime currentPeriodStart 
-    DateTime currentPeriodEnd 
+    EmailCreditPlan plan
+    Int monthlyCredits
+    EmailCreditSubscriptionStatus status
+    DateTime currentPeriodStart
+    DateTime currentPeriodEnd
     DateTime canceledAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_credit_usages" {
     String id "🗝️"
-    DateTime periodStart 
-    DateTime periodEnd 
-    Int creditsUsed 
-    Int overageCount 
-    Decimal overageCharged 
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime periodStart
+    DateTime periodEnd
+    Int creditsUsed
+    Int overageCount
+    Decimal overageCharged
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_templates" {
     String id "🗝️"
-    String name 
-    String subject 
+    String name
+    String subject
     String previewText "❓"
     Json mailyJson "❓"
     String html "❓"
-    Boolean isArchived 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isArchived
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_contact_lists" {
     String id "🗝️"
-    String name 
+    String name
     String description "❓"
     String csvStoragePath "❓"
-    Int totalContacts 
-    Boolean isArchived 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Int totalContacts
+    Boolean isArchived
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_contacts" {
     String id "🗝️"
-    String email 
+    String email
     String name "❓"
     Json customFields "❓"
-    Boolean isUnsubscribed 
-    Boolean isBounced 
-    Boolean isComplained 
-    DateTime createdAt 
-    DateTime updatedAt 
+    Boolean isUnsubscribed
+    Boolean isBounced
+    Boolean isComplained
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_campaigns" {
     String id "🗝️"
-    String name 
-    EmailCampaignStatus status 
+    String name
+    EmailCampaignStatus status
     DateTime scheduledAt "❓"
     DateTime sentAt "❓"
-    Int totalRecipients 
-    Int totalSent 
-    Int totalDelivered 
-    Int totalOpened 
-    Int totalClicked 
-    Int totalBounced 
-    Int totalComplained 
+    Int totalRecipients
+    Int totalSent
+    Int totalDelivered
+    Int totalOpened
+    Int totalClicked
+    Int totalBounced
+    Int totalComplained
     String errorMessage "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_logs" {
     String id "🗝️"
     String resendEmailId "❓"
-    String recipientEmail 
+    String recipientEmail
     String recipientName "❓"
-    String subject 
-    EmailLogStatus status 
+    String subject
+    EmailLogStatus status
     DateTime sentAt "❓"
     DateTime deliveredAt "❓"
     DateTime openedAt "❓"
     DateTime clickedAt "❓"
     DateTime bouncedAt "❓"
     DateTime complainedAt "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
+    DateTime createdAt
+    DateTime updatedAt
     }
-  
+
 
   "email_events" {
     String id "🗝️"
-    EmailEventType type 
-    DateTime occurredAt 
+    EmailEventType type
+    DateTime occurredAt
     Json metadata "❓"
-    DateTime createdAt 
+    DateTime createdAt
     }
-  
+
     "profiles" |o--|| "UserRole" : "enum:role"
     "profiles" |o--}o "UserFunction" : "enum:functions"
     "profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -737,6 +778,9 @@ unsubscribed unsubscribed
     "backoffice_leads" |o--|o backoffice_webhook_events : "sourceWebhookEvent"
     "backoffice_leads" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_leads" }o--|o backoffice_users : "closerBackofficeUser"
+    "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
+    "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
+    "backoffice_leads_schedule" }o--|o backoffice_users : "closer"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookSource" : "enum:source"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookEventStatus" : "enum:status"
     "backoffice_webhook_tokens" |o--|| "BackofficeWebhookSource" : "enum:source"
