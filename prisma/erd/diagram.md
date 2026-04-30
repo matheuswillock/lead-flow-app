@@ -53,6 +53,13 @@ finalized finalized
     
 
 
+        backoffice_lead_origin {
+            manual manual
+webhook_meta webhook_meta
+        }
+    
+
+
         backoffice_webhook_source {
             meta meta
         }
@@ -290,6 +297,8 @@ unsubscribed unsubscribed
     String email 
     Boolean fullAccess 
     Boolean isActive 
+    Boolean isSdr 
+    Boolean isCloser 
     String mailboxStatus 
     String mailboxAddress "❓"
     DateTime mailboxProvisionedAt "❓"
@@ -335,6 +344,12 @@ unsubscribed unsubscribed
     String phone "❓"
     String notes "❓"
     BackofficeLeadStatus status 
+    BackofficeLeadOrigin origin 
+    String sourceExternalId "❓"
+    DateTime meetingDate "❓"
+    String meetingTitle "❓"
+    String meetingNotes "❓"
+    String meetingLink "❓"
     DateTime statusEnteredAt 
     DateTime createdAt 
     DateTime updatedAt 
@@ -717,7 +732,11 @@ unsubscribed unsubscribed
     "backoffice_payments" }o--|| backoffice_clients : "client"
     "backoffice_payments" }o--|o profiles : "creator"
     "backoffice_leads" |o--|| "BackofficeLeadStatus" : "enum:status"
+    "backoffice_leads" |o--|| "BackofficeLeadOrigin" : "enum:origin"
     "backoffice_leads" }o--|o profiles : "creator"
+    "backoffice_leads" |o--|o backoffice_webhook_events : "sourceWebhookEvent"
+    "backoffice_leads" }o--|o backoffice_users : "sdrBackofficeUser"
+    "backoffice_leads" }o--|o backoffice_users : "closerBackofficeUser"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookSource" : "enum:source"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookEventStatus" : "enum:status"
     "backoffice_webhook_tokens" |o--|| "BackofficeWebhookSource" : "enum:source"

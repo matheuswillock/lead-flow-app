@@ -6981,7 +6981,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"novo@corretorstudio.com\",\n  \"fullName\": \"Novo Usuário\",\n  \"temporaryPassword\": \"Backoffice@2025\",\n  \"fullAccess\": false\n}"
+              "raw": "{\n  \"email\": \"novo@corretorstudio.com\",\n  \"fullName\": \"Novo Usuário\",\n  \"temporaryPassword\": \"Backoffice@2025\",\n  \"fullAccess\": false,\n  \"isSdr\": true,\n  \"isCloser\": true\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/users",
@@ -7014,7 +7014,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"novo@corretorstudio.com\",\n  \"fullName\": \"Novo Nome\",\n  \"isActive\": true,\n  \"fullAccess\": false\n}"
+              "raw": "{\n  \"email\": \"novo@corretorstudio.com\",\n  \"fullName\": \"Novo Nome\",\n  \"isActive\": true,\n  \"fullAccess\": false,\n  \"isSdr\": true,\n  \"isCloser\": true\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/users/:id",
@@ -7035,7 +7035,7 @@
                 }
               ]
             },
-            "description": "Atualiza email, nome, isActive ou fullAccess de usuário backoffice. Requer fullAccess=true."
+            "description": "Atualiza email, nome, isActive, fullAccess, isSdr ou isCloser de usuário backoffice. Requer fullAccess=true."
           }
         },
         {
@@ -7107,7 +7107,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Lead Exemplo\",\n  \"email\": \"lead@exemplo.com\",\n  \"phone\": \"11999999999\",\n  \"notes\": \"Observações iniciais\"\n}"
+              "raw": "{\n  \"name\": \"Lead Exemplo\",\n  \"email\": \"lead@exemplo.com\",\n  \"phone\": \"11999999999\",\n  \"notes\": \"Observações iniciais\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/leads",
@@ -7154,7 +7154,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Lead Atualizado\",\n  \"notes\": \"Observação atualizada\"\n}"
+              "raw": "{\n  \"name\": \"Lead Atualizado\",\n  \"notes\": \"Observação atualizada\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"meetingDate\": \"2026-05-05T14:00:00.000Z\",\n  \"meetingTitle\": \"Reunião inicial\",\n  \"meetingNotes\": \"Alinhar próximos passos\",\n  \"meetingLink\": \"https://meet.google.com/abc-defg-hij\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id",
@@ -7164,7 +7164,7 @@
                 { "key": "id", "value": "{{backofficeLeadId}}" }
               ]
             },
-            "description": "Atualiza nome/email/telefone/observações de um lead do backoffice."
+            "description": "Atualiza nome/email/telefone/observações, SDR, Closer e dados locais de agendamento de um lead do backoffice."
           }
         },
         {
@@ -7183,7 +7183,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"status\": \"scheduled\"\n}"
+              "raw": "{\n  \"status\": \"scheduled\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"meetingDate\": \"2026-05-05T14:00:00.000Z\",\n  \"meetingTitle\": \"Reunião inicial\",\n  \"meetingNotes\": \"Alinhar próximos passos\",\n  \"meetingLink\": \"https://meet.google.com/abc-defg-hij\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/backoffice/leads/:id/status",
@@ -7193,7 +7193,7 @@
                 { "key": "id", "value": "{{backofficeLeadId}}" }
               ]
             },
-            "description": "Move o lead entre colunas do kanban. Status válidos: new_opportunity, scheduled, no_show, lost, implementation, finalized."
+            "description": "Atualiza o status do lead no pipeline/tabela. Para status=scheduled, closerBackofficeUserId e meetingDate são obrigatórios. Status válidos: new_opportunity, scheduled, no_show, lost, implementation, finalized."
           }
         },
         {

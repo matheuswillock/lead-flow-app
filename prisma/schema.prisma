@@ -73,6 +73,13 @@ enum BackofficeLeadStatus {
   @@map("backoffice_lead_status")
 }
 
+enum BackofficeLeadOrigin {
+  manual
+  webhook_meta
+
+  @@map("backoffice_lead_origin")
+}
+
 enum BackofficeWebhookSource {
   meta
 
@@ -366,6 +373,8 @@ model BackofficeUser {
   email                String    @unique @db.Text
   fullAccess           Boolean   @default(false) @map("fullAccess")
   isActive             Boolean   @default(true) @map("isActive")
+  isSdr                Boolean   @default(true) @map("isSdr")
+  isCloser             Boolean   @default(true) @map("isCloser")
   mailboxStatus        String    @default("pending_manual_action") @map("mailboxStatus") @db.Text
   mailboxAddress       String?   @map("mailboxAddress") @db.Text
   mailboxProvisionedAt DateTime? @map("mailboxProvisionedAt") @db.Timestamptz(6)
@@ -373,11 +382,15 @@ model BackofficeUser {
   createdAt            DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt            DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
 
-  profile                 Profile                  @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
-  creator                 Profile?                 @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
-  generatedWebhookTokens  BackofficeWebhookToken[] @relation("BackofficeWebhookTokenGenerator")
+  profile                Profile                  @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  creator                Profile?                 @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  generatedWebhookTokens BackofficeWebhookToken[] @relation("BackofficeWebhookTokenGenerator")
+  sdrLeads               BackofficeLead[]         @relation("BackofficeLeadSdr")
+  closerLeads            BackofficeLead[]         @relation("BackofficeLeadCloser")
 
   @@index([isActive], map: "backoffice_users_is_active_idx")
+  @@index([isSdr], map: "backoffice_users_is_sdr_idx")
+  @@index([isCloser], map: "backoffice_users_is_closer_idx")
   @@index([createdByProfileId], map: "backoffice_users_created_by_profile_id_idx")
   @@map("backoffice_users")
 }
@@ -430,20 +443,36 @@ model BackofficePayment {
 }
 
 model BackofficeLead {
-  id                 String               @id @default(uuid()) @db.Uuid
-  name               String               @db.Text
-  email              String?              @db.Text
-  phone              String?              @db.Text
-  notes              String?              @db.Text
-  status             BackofficeLeadStatus @default(new_opportunity)
-  statusEnteredAt    DateTime             @default(now()) @map("statusEnteredAt") @db.Timestamptz(6)
-  createdByProfileId String?              @map("createdByProfileId") @db.Uuid
-  createdAt          DateTime             @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt          DateTime             @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  id                     String               @id @default(uuid()) @db.Uuid
+  name                   String               @db.Text
+  email                  String?              @db.Text
+  phone                  String?              @db.Text
+  notes                  String?              @db.Text
+  status                 BackofficeLeadStatus @default(new_opportunity)
+  origin                 BackofficeLeadOrigin @default(manual)
+  sourceExternalId       String?              @unique(map: "backoffice_leads_source_external_id_key") @map("sourceExternalId") @db.Text
+  sourceWebhookEventId   String?              @unique(map: "backoffice_leads_source_webhook_event_id_key") @map("sourceWebhookEventId") @db.Uuid
+  sdrBackofficeUserId    String?              @map("sdrBackofficeUserId") @db.Uuid
+  closerBackofficeUserId String?              @map("closerBackofficeUserId") @db.Uuid
+  meetingDate            DateTime?            @map("meetingDate") @db.Timestamptz(6)
+  meetingTitle           String?              @map("meetingTitle") @db.Text
+  meetingNotes           String?              @map("meetingNotes") @db.Text
+  meetingLink            String?              @map("meetingLink") @db.Text
+  statusEnteredAt        DateTime             @default(now()) @map("statusEnteredAt") @db.Timestamptz(6)
+  createdByProfileId     String?              @map("createdByProfileId") @db.Uuid
+  createdAt              DateTime             @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt              DateTime             @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
-  creator Profile? @relation("BackofficeLeadCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  creator              Profile?                @relation("BackofficeLeadCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  sourceWebhookEvent   BackofficeWebhookEvent? @relation("BackofficeLeadSourceWebhookEvent", fields: [sourceWebhookEventId], references: [id], onDelete: SetNull, map: "backoffice_leads_source_webhook_event_id_fkey")
+  sdrBackofficeUser    BackofficeUser?         @relation("BackofficeLeadSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_sdr_backoffice_user_id_fkey")
+  closerBackofficeUser BackofficeUser?         @relation("BackofficeLeadCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_closer_backoffice_user_id_fkey")
 
   @@index([status], map: "backoffice_leads_status_idx")
+  @@index([origin], map: "backoffice_leads_origin_idx")
+  @@index([sdrBackofficeUserId], map: "backoffice_leads_sdr_user_id_idx")
+  @@index([closerBackofficeUserId], map: "backoffice_leads_closer_user_id_idx")
+  @@index([meetingDate], map: "backoffice_leads_meeting_date_idx")
   @@index([createdByProfileId], map: "backoffice_leads_created_by_profile_id_idx")
   @@index([email], map: "backoffice_leads_email_idx")
   @@map("backoffice_leads")
@@ -460,25 +489,27 @@ model BackofficeWebhookEvent {
   receivedAt   DateTime                     @default(now()) @map("receivedAt") @db.Timestamptz(6)
   processedAt  DateTime?                    @map("processedAt") @db.Timestamptz(6)
 
+  createdLead BackofficeLead? @relation("BackofficeLeadSourceWebhookEvent")
+
   @@index([source, receivedAt(sort: Desc)], map: "backoffice_webhook_events_source_received_at_idx")
   @@index([status], map: "backoffice_webhook_events_status_idx")
   @@map("backoffice_webhook_events")
 }
 
 model BackofficeWebhookToken {
-  id                          String                             @id @default(uuid()) @db.Uuid
+  id                          String                           @id @default(uuid()) @db.Uuid
   source                      BackofficeWebhookSource
-  tokenHash                   String                             @map("tokenHash") @db.Text
-  tokenCipher                 String                             @map("tokenCipher") @db.Text
-  tokenPreview                String                             @map("tokenPreview") @db.Text
-  status                      BackofficeWebhookTokenStatus       @default(active)
-  expiryMode                  BackofficeWebhookTokenExpiryMode   @default(indeterminate) @map("expiryMode")
-  expiresAt                   DateTime?                          @map("expiresAt") @db.Timestamptz(6)
-  lastUsedAt                  DateTime?                          @map("lastUsedAt") @db.Timestamptz(6)
-  generatedByBackofficeUserId String                             @map("generatedByBackofficeUserId") @db.Uuid
-  generatedByEmailSnapshot    String                             @map("generatedByEmailSnapshot") @db.Text
-  generatedAt                 DateTime                           @default(now()) @map("generatedAt") @db.Timestamptz(6)
-  updatedAt                   DateTime                           @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  tokenHash                   String                           @map("tokenHash") @db.Text
+  tokenCipher                 String                           @map("tokenCipher") @db.Text
+  tokenPreview                String                           @map("tokenPreview") @db.Text
+  status                      BackofficeWebhookTokenStatus     @default(active)
+  expiryMode                  BackofficeWebhookTokenExpiryMode @default(indeterminate) @map("expiryMode")
+  expiresAt                   DateTime?                        @map("expiresAt") @db.Timestamptz(6)
+  lastUsedAt                  DateTime?                        @map("lastUsedAt") @db.Timestamptz(6)
+  generatedByBackofficeUserId String                           @map("generatedByBackofficeUserId") @db.Uuid
+  generatedByEmailSnapshot    String                           @map("generatedByEmailSnapshot") @db.Text
+  generatedAt                 DateTime                         @default(now()) @map("generatedAt") @db.Timestamptz(6)
+  updatedAt                   DateTime                         @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
   generatedBy BackofficeUser @relation("BackofficeWebhookTokenGenerator", fields: [generatedByBackofficeUserId], references: [id], onDelete: Restrict)
 
