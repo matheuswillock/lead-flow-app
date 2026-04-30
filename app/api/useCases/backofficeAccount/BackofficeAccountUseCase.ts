@@ -134,6 +134,9 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
         state: data.state !== undefined ? trimString(data.state) : undefined,
       }
 
+      if (!profile.supabaseId) {
+        return new Output(false, [], ["Conta sem supabaseId — não é possível atualizar o perfil"], null)
+      }
       const updatedProfile = await this.profileRepo.updateProfile(profile.supabaseId, profileUpdate)
       if (!updatedProfile) {
         return new Output(false, [], ["Erro ao atualizar perfil backoffice"], null)

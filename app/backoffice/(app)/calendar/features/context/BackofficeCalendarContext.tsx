@@ -148,10 +148,3 @@ export function BackofficeCalendarProvider({
   )
 }
 
-export function useBackofficeCalendar() {
-  const context = useContext(BackofficeCalendarContext)
-  if (!context) {
-    throw new Error("useBackofficeCalendar must be used within BackofficeCalendarProvider")
-  }
-  return context
-}

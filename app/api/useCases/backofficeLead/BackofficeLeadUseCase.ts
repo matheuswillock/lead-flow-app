@@ -298,7 +298,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
       }
 
       const closerBackofficeUserId = trimOrNull(data.closerBackofficeUserId)
-      let normalizedMeetingLink = trimOrNull(data.meetingLink)
+      const normalizedMeetingLink = trimOrNull(data.meetingLink)
       const roleValidation = await this.validateAssignees({
         sdrBackofficeUserId,
         closerBackofficeUserId,

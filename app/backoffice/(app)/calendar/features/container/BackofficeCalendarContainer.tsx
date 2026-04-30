@@ -41,7 +41,7 @@ import type {
   BackofficeLeadItem,
   BackofficeLeadScheduleInput,
 } from "@/app/backoffice/(app)/crm/features/context/BackofficeCrmTypes"
-import { useBackofficeCalendar } from "../context/BackofficeCalendarContext"
+import { useBackofficeCalendar } from "../context/BackofficeCalendarHook"
 
 const SLOT_MINUTES = 30
 const ALL_TIME_SLOTS = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => {

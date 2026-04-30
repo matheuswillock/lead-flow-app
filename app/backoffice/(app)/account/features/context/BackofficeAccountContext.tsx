@@ -174,10 +174,3 @@ export function BackofficeAccountProvider({
   )
 }
 
-export function useBackofficeAccount() {
-  const context = useContext(BackofficeAccountContext)
-  if (!context) {
-    throw new Error("useBackofficeAccount must be used within BackofficeAccountProvider")
-  }
-  return context
-}
