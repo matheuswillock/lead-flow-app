@@ -6736,7 +6736,7 @@
       "description": "Endpoints do módulo backoffice Corretor Studio",
       "item": [
         {
-          "name": "GET Me",
+          "name": "GET Current User",
           "request": {
             "method": "GET",
             "header": [
@@ -6746,7 +6746,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/backoffice/me",
+              "raw": "{{baseUrl}}/api/v1/backoffice/current-user",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -6754,7 +6754,7 @@
                 "api",
                 "v1",
                 "backoffice",
-                "me"
+                "current-user"
               ]
             },
             "description": "Retorna dados do usuário backoffice autenticado."

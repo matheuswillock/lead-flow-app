@@ -48,7 +48,7 @@ export function BackofficeUserProvider({ children }: { children: ReactNode }) {
     inFlight.current = true
     setError(null)
 
-    await fetch("/api/v1/backoffice/me", { cache: "no-store" })
+    await fetch("/api/v1/backoffice/current-user", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
         if (data.isValid && data.result) {

@@ -3,7 +3,6 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeAccountUseCase } from "@/app/api/useCases/backofficeAccount/BackofficeAccountUseCase"
 
-// Deprecated: prefer GET /api/v1/backoffice/current-user
 export async function GET(request: NextRequest) {
   try {
     const result = await getBackofficeAccess(request)
@@ -25,8 +24,9 @@ export async function GET(request: NextRequest) {
     })
     return NextResponse.json(output, { status: 200 })
   } catch (error) {
-    console.error("[BackofficeMeRoute][GET]", error)
+    console.error("[BackofficeCurrentUserRoute][GET]", error)
     const output = new Output(false, [], ["Erro interno"], null)
     return NextResponse.json(output, { status: 500 })
   }
 }
+

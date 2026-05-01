@@ -116,16 +116,20 @@ export default function HomePage() {
 
       {/* Hero Section */}
       <section className="relative overflow-hidden min-h-[calc(100dvh-4rem)]">
-        <div aria-hidden className="pointer-events-none absolute inset-0 opacity-40 landing-hero-dot-grid" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-40 landing-hero-dot-grid"
+        />
         <div aria-hidden className="pointer-events-none absolute inset-0 landing-hero-orbs" />
-        <div aria-hidden className="pointer-events-none absolute bottom-0 left-0 right-0 h-32 landing-hero-fade" />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute bottom-0 left-0 right-0 h-32 landing-hero-fade"
+        />
 
         <div className="relative z-10 mx-auto max-w-7xl px-6 sm:px-8 lg:px-10 py-16 md:py-20 min-h-[calc(100dvh-4rem)] flex items-center">
           <div className="w-full lg:grid lg:grid-cols-12 lg:gap-12 lg:items-center">
-
             {/* Left: Text content */}
             <div className="lg:col-span-7 flex flex-col items-center lg:items-start text-center lg:text-left">
-
               {/* Announcement badge */}
               <Link
                 href="#email-campaigns"
@@ -139,20 +143,30 @@ export default function HomePage() {
 
               {/* Headline */}
               <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[3.75rem] xl:text-7xl font-extrabold leading-[1.1] tracking-tight text-foreground">
-                <span className="block">Feche mais planos</span>
-                <span className="block">de saúde com o</span>
-                <span className="block">
-                  <span className="landing-primary-gradient">
-                    CRM certo
+                <span className="block text-md sm:text-lg md:text-xl xl:text-2xl font-semibold text-muted-foreground mb-2">
+                  Corretores comuns mandam cotações.
+                </span>
+                <span className="block text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-extrabold text-foreground">
+                  Os de{" "}
+                  <span className="inline leading-[0.95] landing-primary-gradient">
+                    ALTA PERFORMANCE
                   </span>
-                  {" "}para o seu time.
+                </span>
+
+                <span className="block text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-extrabold text-foreground">
+                  usam Corretor Studio.
                 </span>
               </h1>
 
               {/* Subtitle */}
               <p className="mt-6 max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed">
-                Pipeline Kanban, gestão de times e métricas em tempo real em uma plataforma feita para corretores de planos de saúde. Campanhas de email chegam{" "}
-                <span className="font-semibold landing-primary-gradient">em breve</span>.
+                Enquanto outros perdem leads no WhatsApp e em planilhas, seu time opera com{" "}
+                <span className="text-white font-semibold">pipeline</span>
+                {", "}
+                <span className="text-white font-semibold">agenda</span>
+                {" e "}
+                <span className="text-white font-semibold">indicadores</span>{" "}
+                tudo em um só lugar para não ficar para trás.
               </p>
 
               {/* CTAs */}
@@ -172,24 +186,19 @@ export default function HomePage() {
                   Ver como funciona
                 </Link>
               </div>
-
             </div>
 
             {/* Right: Product visual */}
             <div className="hidden lg:flex lg:col-span-5 items-center justify-center mt-12 lg:mt-0">
               <div className="relative w-full max-w-lg">
                 {/* Floating badge top-left */}
-                <div
-                  className="absolute -top-4 -left-4 z-10 flex items-center gap-2 rounded-2xl px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold landing-hero-floating"
-                >
+                <div className="absolute -top-4 -left-4 z-10 flex items-center gap-2 rounded-2xl px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold landing-hero-floating">
                   <TrendingUp className="h-4 w-4 text-primary" />
                   <span>+40% conversão média</span>
                 </div>
 
                 {/* Product image */}
-                <div
-                  className="rounded-3xl overflow-hidden shadow-2xl landing-hero-floating"
-                >
+                <div className="rounded-3xl overflow-hidden shadow-2xl landing-hero-floating">
                   <Image
                     src="/images/product-banner.svg"
                     alt="Corretor Studio — pipeline e gestão de leads"
@@ -201,15 +210,12 @@ export default function HomePage() {
                 </div>
 
                 {/* Floating badge bottom-right */}
-                <div
-                  className="absolute -bottom-4 -right-4 z-10 flex items-center gap-2 rounded-2xl px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold landing-hero-floating"
-                >
+                <div className="absolute -bottom-4 -right-4 z-10 flex items-center gap-2 rounded-2xl px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold landing-hero-floating">
                   <Users className="h-4 w-4 text-primary" />
                   <span>500+ corretores ativos</span>
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       </section>
