@@ -3,7 +3,6 @@ import { Output } from "@/lib/output"
 import { asaasApi, asaasFetch } from "@/lib/asaas"
 import { createEmailService } from "@/lib/services/EmailService"
 import { getAppUrl } from "@/lib/utils/app-url"
-import type { IBackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficePlatformUsersRepository"
 import type { IBackofficePlatformUsersUseCase } from "./IBackofficePlatformUsersUseCase"
 import {
   startOfMonthInTz,
@@ -14,6 +13,7 @@ import {
   parseDateKeyToUtc,
   resolveTimezone,
 } from "@/lib/dates"
+import { IBackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
 
 interface PlanInfo {
   label: string

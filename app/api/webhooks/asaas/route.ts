@@ -362,8 +362,8 @@ export async function POST(request: NextRequest) {
     ) {
       try {
         const { BackofficePaymentRepository } = await import(
-          '@/app/api/infra/data/repositories/backoffice/BackofficePaymentRepository'
-        )
+          '@/app/api/infra/data/repositories/backoffice/PaymentRepository/BackofficePaymentRepository'
+        );
         const backofficePaymentRepo = new BackofficePaymentRepository()
         const existing = await backofficePaymentRepo.findByAsaasPaymentId(body.payment.id)
         if (existing) {

@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { BackofficePaymentRepository } from "@/app/api/infra/data/repositories/backoffice/BackofficePaymentRepository"
-import { BackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/BackofficeClientRepository"
 import { BackofficePaymentUseCase } from "@/app/api/useCases/backoffice/BackofficePaymentUseCase"
+import { BackofficePaymentRepository } from "@/app/api/infra/data/repositories/backoffice/PaymentRepository/BackofficePaymentRepository"
+import { BackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/ClientRepository/BackofficeClientRepository"
 
 export async function GET(
   request: NextRequest,

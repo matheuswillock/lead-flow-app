@@ -3,7 +3,6 @@
 import {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -31,7 +30,9 @@ interface BackofficeAccountContextValue {
   disconnectGoogle: () => Promise<void>
 }
 
-const BackofficeAccountContext = createContext<BackofficeAccountContextValue | undefined>(
+export const BackofficeAccountContext = createContext<
+  BackofficeAccountContextValue | undefined
+>(
   undefined
 )
 
@@ -173,4 +174,3 @@ export function BackofficeAccountProvider({
     </BackofficeAccountContext.Provider>
   )
 }
-

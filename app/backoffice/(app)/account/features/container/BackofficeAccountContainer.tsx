@@ -25,7 +25,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth"
 import { getProfileTimezoneOptions } from "@/lib/dates"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
-import { useBackofficeAccount } from "../context/BackofficeAccountContext"
 import type { BackofficeAccountUpdateInput } from "../context/BackofficeAccountTypes"
 
 const EMPTY_FORM: BackofficeAccountUpdateInput = {
@@ -523,3 +522,7 @@ export function BackofficeAccountContainer() {
     </main>
   )
 }
+function useBackofficeAccount(): { account: any; isLoading: any; error: any; updateAccount: any; updatePassword: any; uploadIcon: any; removeIcon: any; updateTimezone: any; disconnectGoogle: any } {
+  throw new Error("Function not implemented.")
+}
+

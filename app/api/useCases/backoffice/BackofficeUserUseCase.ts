@@ -1,9 +1,9 @@
 import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
-import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficeUserRepository"
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository"
 import type { IMailboxProvisioningService } from "@/app/api/services/mailbox/IMailboxProvisioningService"
 import type { BackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { IBackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
 
 export interface CreateBackofficeUserInput {
   email: string

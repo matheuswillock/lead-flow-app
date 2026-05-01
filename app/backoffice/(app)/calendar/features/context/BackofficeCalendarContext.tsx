@@ -3,7 +3,6 @@
 import {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -33,7 +32,9 @@ interface BackofficeCalendarContextValue {
   getAttendees: IBackofficeCalendarService["getAttendees"]
 }
 
-const BackofficeCalendarContext = createContext<BackofficeCalendarContextValue | undefined>(
+export const BackofficeCalendarContext = createContext<
+  BackofficeCalendarContextValue | undefined
+>(
   undefined
 )
 
@@ -147,4 +148,3 @@ export function BackofficeCalendarProvider({
     </BackofficeCalendarContext.Provider>
   )
 }
-

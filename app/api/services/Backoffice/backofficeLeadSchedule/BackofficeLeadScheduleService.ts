@@ -1,7 +1,6 @@
 import { BackofficeInviteDispatchStatus, type Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink"
-import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficeUserRepository"
 import type { IBackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadSchedule/IBackofficeLeadScheduleRepository"
 import type { IBackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/IBackofficeLeadRepository"
 import type { IBackofficeGoogleCalendarService } from "../backofficeGoogleCalendar/IBackofficeGoogleCalendarService"
@@ -12,6 +11,7 @@ import type {
   UpsertBackofficeLeadScheduleInput,
 } from "./IBackofficeLeadScheduleService"
 import type { IBackofficeLeadScheduleInviteService } from "./IBackofficeLeadScheduleInviteService"
+import { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback

@@ -1,8 +1,6 @@
 import { Output } from "@/lib/output"
 import type { BackofficeUser, Profile } from "@prisma/client"
 import { isValidTimezone } from "@/lib/dates"
-import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficeUserRepository"
-import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/BackofficeUserRepository"
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository"
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository"
 import { validateUpdatePasswordRequest } from "@/app/api/v1/profiles/DTO/requestToUpdatePassword"
@@ -11,6 +9,8 @@ import type {
   UpdateBackofficeAccountDTO,
   UpdateBackofficeGoogleConnectionDTO,
 } from "./IBackofficeAccountUseCase"
+import { IBackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
+import { BackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
 
 const BACKOFFICE_EMAIL_DOMAIN = "@corretorstudio.com"
 
