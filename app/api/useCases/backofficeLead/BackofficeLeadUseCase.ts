@@ -27,6 +27,7 @@ export const BACKOFFICE_LEAD_STATUS_VALUES = [
   "new_opportunity",
   "scheduled",
   "no_show",
+  "new_adhesion",
   "lost",
   "implementation",
   "finalized",
@@ -212,6 +213,14 @@ function mapLead(lead: BackofficeLeadWithRelations) {
     meetingNotes: lead.meetingNotes,
     meetingLink: lead.meetingLink,
     meetingExtraGuests: lead.meetingExtraGuests,
+    adhesion: lead.adhesion
+      ? {
+          id: lead.adhesion.id,
+          status: lead.adhesion.status,
+          expiresAt: lead.adhesion.expiresAt.toISOString(),
+          paidAt: lead.adhesion.paidAt?.toISOString() ?? null,
+        }
+      : null,
     statusEnteredAt: lead.statusEnteredAt.toISOString(),
     createdAt: lead.createdAt.toISOString(),
     updatedAt: lead.updatedAt.toISOString(),

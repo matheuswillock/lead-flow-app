@@ -33,6 +33,14 @@ const backofficeLeadInclude = {
   closerBackofficeUser: {
     select: backofficeLeadUserSelect,
   },
+  adhesion: {
+    select: {
+      id: true,
+      status: true,
+      expiresAt: true,
+      paidAt: true,
+    },
+  },
 } satisfies Prisma.BackofficeLeadInclude
 
 export class BackofficeLeadRepository implements IBackofficeLeadRepository {

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, ChevronDown, Search, Users } from "lucide-react"
+import { AlertCircle, ChevronDown, Plus, Search, Users } from "lucide-react"
 import { Accordion, AccordionContent, AccordionItem } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -28,8 +28,11 @@ import { useBackofficeClients } from "../context/BackofficeClientsContext"
 import type { BackofficeClientsFilters } from "../context/BackofficeClientsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatInTz } from "@/lib/dates"
+import { BackofficeAdhesionDialog } from "../../adhesions/features/components/BackofficeAdhesionDialog"
+import { BackofficeAdhesionsService } from "../../adhesions/features/services/BackofficeAdhesionsService"
 
 const CLIENTS_PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
+const adhesionsService = new BackofficeAdhesionsService()
 
 function formatDate(value: string, tz: string) {
   return formatInTz(new Date(value), "dd/MM/yyyy", tz)
@@ -64,6 +67,7 @@ export function BackofficeClientsContainer() {
 
   const [localFilters, setLocalFilters] = useState<BackofficeClientsFilters>(filters)
   const [openClientId, setOpenClientId] = useState<string>("")
+  const [newAdhesionDialogOpen, setNewAdhesionDialogOpen] = useState(false)
 
   const totalTeams = useMemo(
     () => clients.reduce((acc, client) => acc + client.teamsCount, 0),
@@ -105,6 +109,14 @@ export function BackofficeClientsContainer() {
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Clientes</h1>
         <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setNewAdhesionDialogOpen(true)}
+          >
+            <Plus data-icon="inline-start" />
+            Nova adesão
+          </Button>
           <Badge variant="outline" className="font-normal">
             {pagination.totalItems} usuários master
           </Badge>
@@ -305,6 +317,13 @@ export function BackofficeClientsContainer() {
           </div>
         )}
       </div>
+
+      <BackofficeAdhesionDialog
+        open={newAdhesionDialogOpen}
+        mode="create"
+        service={adhesionsService}
+        onOpenChange={setNewAdhesionDialogOpen}
+      />
     </div>
   )
 }

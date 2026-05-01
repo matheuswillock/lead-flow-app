@@ -7359,7 +7359,7 @@
                 { "key": "id", "value": "{{backofficeLeadId}}" }
               ]
             },
-            "description": "Atualiza o status do lead no pipeline/tabela. Para status=scheduled, closerBackofficeUserId e meetingDate são obrigatórios. meetingLink é obrigatório apenas quando o closer não tem Google conectado. Status válidos: new_opportunity, scheduled, no_show, lost, implementation, finalized."
+            "description": "Atualiza o status do lead no pipeline/tabela. Para status=scheduled, closerBackofficeUserId e meetingDate são obrigatórios. meetingLink é obrigatório apenas quando o closer não tem Google conectado. Status válidos: new_opportunity, scheduled, no_show, new_adhesion, lost, implementation, finalized."
           }
         },
         {
@@ -7482,6 +7482,194 @@
             },
             "description": "Remove um lead do backoffice."
           }
+        },
+        {
+          "name": "Backoffice Adhesions",
+          "item": [
+            {
+              "name": "GET Backoffice Adhesions",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions?page=1&pageSize=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "adhesions"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "pageSize", "value": "10" },
+                    { "key": "status", "value": "pending", "disabled": true },
+                    { "key": "q", "value": "Cliente", "disabled": true }
+                  ]
+                },
+                "description": "Lista novas adesões do backoffice."
+              }
+            },
+            {
+              "name": "GET Backoffice Adhesion Options",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/options",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "adhesions", "options"]
+                },
+                "description": "Retorna leads elegíveis e usuários SDR/Closer para gerar nova adesão."
+              }
+            },
+            {
+              "name": "POST Create Backoffice Adhesion",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 0,\n  \"extraUsers\": 0,\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "adhesions"]
+                },
+                "description": "Cria uma nova adesão, move o lead para new_adhesion e retorna o link público válido por 24h."
+              }
+            },
+            {
+              "name": "PATCH Backoffice Adhesion",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Cliente Atualizado\",\n  \"phone\": \"11999999999\",\n  \"cycle\": \"quarterly\",\n  \"extraTeams\": 1,\n  \"extraUsers\": 2\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/:id",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "adhesions", ":id"],
+                  "variable": [
+                    { "key": "id", "value": "{{backofficeAdhesionId}}" }
+                  ]
+                },
+                "description": "Edita uma adesão pendente/expirada/atrasada. Adesões pagas não podem ser editadas."
+              }
+            },
+            {
+              "name": "POST Resend Backoffice Adhesion",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/:id/resend",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "adhesions", ":id", "resend"],
+                  "variable": [
+                    { "key": "id", "value": "{{backofficeAdhesionId}}" }
+                  ]
+                },
+                "description": "Regenera o token/link público da adesão por mais 24h."
+              }
+            },
+            {
+              "name": "GET Public Adhesion",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-adhesions/{{backofficeAdhesionToken}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-adhesions",
+                    "{{backofficeAdhesionToken}}"
+                  ]
+                },
+                "description": "Retorna detalhes públicos da adesão para montar o checkout travado."
+              }
+            },
+            {
+              "name": "POST Public Adhesion Checkout",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"phone\": \"11999999999\",\n  \"cpfCnpj\": \"12345678901\",\n  \"postalCode\": \"06440260\",\n  \"address\": \"Rua Exemplo\",\n  \"addressNumber\": \"123\",\n  \"neighborhood\": \"Centro\",\n  \"city\": \"Barueri\",\n  \"state\": \"SP\",\n  \"billingType\": \"PIX\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-adhesions/{{backofficeAdhesionToken}}/checkout",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-adhesions",
+                    "{{backofficeAdhesionToken}}",
+                    "checkout"
+                  ]
+                },
+                "description": "Cria a cobrança Asaas da adesão pública. Cartão aceita parcelas conforme ciclo; PIX/Boleto cobram valor total."
+              }
+            },
+            {
+              "name": "GET Public Adhesion Payment Status",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/public-adhesions/{{backofficeAdhesionToken}}/payment-status",
+                  "host": ["{{baseUrl}}"],
+                  "path": [
+                    "api",
+                    "v1",
+                    "public-adhesions",
+                    "{{backofficeAdhesionToken}}",
+                    "payment-status"
+                  ]
+                },
+                "description": "Consulta o status de pagamento da adesão pública."
+              }
+            }
+          ]
         },
         {
           "name": "GET Meta Integration Config",

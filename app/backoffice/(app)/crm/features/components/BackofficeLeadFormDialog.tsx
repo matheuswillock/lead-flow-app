@@ -42,6 +42,7 @@ import { useBackofficeCrm } from "../context/BackofficeCrmHook"
 import {
   BACKOFFICE_CRM_STATUS_LABELS,
   isBackofficeLeadStatusKey,
+  type BackofficeAdhesionStatusKey,
   type BackofficeLeadItem,
   type BackofficeLeadScheduleInput,
   type BackofficeLeadStatusKey,
@@ -252,9 +253,29 @@ function getStatusBadgeClass(status: BackofficeLeadStatusKey): string {
     new_opportunity: "border-primary/30 bg-primary/10 text-primary",
     scheduled: "border-primary/30 bg-primary text-primary-foreground",
     no_show: "border-muted bg-muted text-muted-foreground",
+    new_adhesion: "border-primary/30 bg-primary/15 text-primary",
     lost: "border-destructive/30 bg-destructive/10 text-destructive",
     implementation: "border-border bg-secondary text-secondary-foreground",
     finalized: "border-primary/30 bg-primary/15 text-primary",
+  }
+  return classes[status]
+}
+
+const ADHESION_STATUS_LABELS: Record<BackofficeAdhesionStatusKey, string> = {
+  pending: "Pendente",
+  paid: "Pago",
+  overdue: "Atrasado",
+  expired: "Expirado",
+  canceled: "Cancelado",
+}
+
+function getAdhesionStatusBadgeClass(status: BackofficeAdhesionStatusKey): string {
+  const classes: Record<BackofficeAdhesionStatusKey, string> = {
+    pending: "border-primary/30 bg-primary/10 text-primary",
+    paid: "border-primary/30 bg-primary/15 text-primary",
+    overdue: "border-destructive/30 bg-destructive/10 text-destructive",
+    expired: "border-muted bg-muted text-muted-foreground",
+    canceled: "border-muted bg-muted text-muted-foreground",
   }
   return classes[status]
 }
@@ -403,6 +424,17 @@ export function BackofficeLeadFormDialog() {
                       >
                         {BACKOFFICE_CRM_STATUS_LABELS[watchedValues.status]}
                       </Badge>
+                      {selectedLead?.adhesion ? (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "font-medium",
+                            getAdhesionStatusBadgeClass(selectedLead.adhesion.status)
+                          )}
+                        >
+                          Adesão {ADHESION_STATUS_LABELS[selectedLead.adhesion.status]}
+                        </Badge>
+                      ) : null}
                     </div>
                     <DialogDescription className="mt-1">
                       {isEdit

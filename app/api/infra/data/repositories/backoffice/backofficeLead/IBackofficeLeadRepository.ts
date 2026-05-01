@@ -1,5 +1,6 @@
 import type {
   BackofficeLead,
+  BackofficeAdhesion,
   BackofficeLeadOrigin,
   BackofficeLeadStatus,
   BackofficeUser,
@@ -16,6 +17,7 @@ export type BackofficeLeadUserRelation = Pick<
 export type BackofficeLeadWithRelations = BackofficeLead & {
   sdrBackofficeUser: BackofficeLeadUserRelation | null
   closerBackofficeUser: BackofficeLeadUserRelation | null
+  adhesion: Pick<BackofficeAdhesion, "id" | "status" | "expiresAt" | "paidAt"> | null
 }
 
 export interface CreateBackofficeLeadInput {

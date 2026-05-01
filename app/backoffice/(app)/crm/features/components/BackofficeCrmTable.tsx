@@ -145,6 +145,7 @@ function getStatusBadgeClass(status: BackofficeLeadStatusKey): string {
     new_opportunity: "border-primary/30 bg-primary/10 text-primary",
     scheduled: "border-primary/30 bg-primary text-primary-foreground",
     no_show: "border-muted bg-muted text-muted-foreground",
+    new_adhesion: "border-primary/30 bg-primary/15 text-primary",
     lost: "border-destructive/30 bg-destructive/10 text-destructive",
     implementation: "border-border bg-secondary text-secondary-foreground",
     finalized: "border-primary/30 bg-primary/15 text-primary",

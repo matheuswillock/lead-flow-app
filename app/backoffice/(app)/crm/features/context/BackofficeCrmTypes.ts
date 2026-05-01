@@ -2,9 +2,17 @@ export type BackofficeLeadStatusKey =
   | "new_opportunity"
   | "scheduled"
   | "no_show"
+  | "new_adhesion"
   | "lost"
   | "implementation"
   | "finalized"
+
+export type BackofficeAdhesionStatusKey =
+  | "pending"
+  | "paid"
+  | "overdue"
+  | "expired"
+  | "canceled"
 
 export type BackofficeLeadOriginKey = "manual" | "webhook_meta"
 
@@ -46,6 +54,12 @@ export interface BackofficeLeadItem {
   meetingNotes: string | null
   meetingLink: string | null
   meetingExtraGuests: string[]
+  adhesion: {
+    id: string
+    status: BackofficeAdhesionStatusKey
+    expiresAt: string
+    paidAt: string | null
+  } | null
   statusEnteredAt: string
   createdAt: string
   updatedAt: string
@@ -123,6 +137,7 @@ export const BACKOFFICE_CRM_COLUMNS: { key: BackofficeLeadStatusKey; title: stri
   { key: "new_opportunity", title: "Nova oportunidade" },
   { key: "scheduled", title: "Agendado" },
   { key: "no_show", title: "No-show" },
+  { key: "new_adhesion", title: "Nova adesão" },
   { key: "lost", title: "Perdido" },
   { key: "implementation", title: "Implementação" },
   { key: "finalized", title: "Finalizado" },

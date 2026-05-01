@@ -1,0 +1,192 @@
+import type {
+  BackofficeAdhesionBillingCycle,
+  BackofficeAdhesionStatus,
+} from "@prisma/client"
+import type { BackofficeAdhesionTokenValidationStatus } from "@/lib/backoffice-adhesions/adhesion-token-validation"
+
+export interface BackofficeAdhesionCreateInput {
+  leadId: string
+  fullName: string
+  phone: string
+  cycle: BackofficeAdhesionBillingCycle
+  extraTeams: number
+  extraUsers: number
+  sdrBackofficeUserId?: string | null
+  closerBackofficeUserId?: string | null
+}
+
+export interface BackofficeAdhesionUpdateInput {
+  fullName?: string
+  phone?: string
+  cycle?: BackofficeAdhesionBillingCycle
+  extraTeams?: number
+  extraUsers?: number
+  sdrBackofficeUserId?: string | null
+  closerBackofficeUserId?: string | null
+}
+
+export interface BackofficeAdhesionCheckoutInput {
+  fullName: string
+  email: string
+  phone: string
+  cpfCnpj: string
+  postalCode: string
+  address: string
+  addressNumber: string
+  neighborhood: string
+  complement?: string | null
+  city: string
+  state: string
+  billingType: "PIX" | "BOLETO" | "CREDIT_CARD"
+  installments?: number
+  creditCard?: {
+    holderName: string
+    number: string
+    expiryMonth: string
+    expiryYear: string
+    ccv: string
+  }
+  remoteIp?: string
+}
+
+export interface BackofficeAdhesionDTO {
+  id: string
+  leadId: string
+  leadName: string
+  fullName: string
+  phone: string
+  email: string | null
+  sdrBackofficeUserId: string | null
+  closerBackofficeUserId: string | null
+  status: BackofficeAdhesionStatus
+  cycle: BackofficeAdhesionBillingCycle
+  modules: string[]
+  extraTeams: number
+  extraUsers: number
+  monthlyBaseAmount: number
+  monthlyExtraTeamsAmount: number
+  monthlyExtraUsersAmount: number
+  monthlyTotalAmount: number
+  totalAmount: number
+  expiresAt: string
+  createdAt: string
+  paidAt: string | null
+  billingType: string | null
+  asaasPaymentId: string | null
+}
+
+export interface BackofficeAdhesionPublicDTO {
+  id: string
+  fullName: string
+  phone: string
+  email: string | null
+  status: BackofficeAdhesionStatus
+  cycle: BackofficeAdhesionBillingCycle
+  cycleLabel: string
+  cycleMonths: number
+  modules: string[]
+  extraTeams: number
+  extraUsers: number
+  monthlyTotalAmount: number
+  totalAmount: number
+  maxInstallments: number
+  expiresAt: string
+}
+
+export interface BackofficeAdhesionPaymentDTO {
+  adhesionId: string
+  paymentId: string | null
+  status: BackofficeAdhesionStatus
+  billingType: string | null
+  amount: number
+  invoiceUrl: string | null
+  bankSlipUrl: string | null
+  pix?: {
+    encodedImage: string
+    payload: string
+    expirationDate: string | null
+  }
+  boleto?: {
+    bankSlipUrl: string | null
+    identificationField: string
+    barCode: string
+    dueDate: string | null
+  }
+}
+
+export interface BackofficeAdhesionOptionsDTO {
+  leads: Array<{
+    id: string
+    name: string
+    email: string | null
+    phone: string | null
+    status: string
+    sdrBackofficeUserId: string | null
+    closerBackofficeUserId: string | null
+  }>
+  sdrOptions: Array<{ id: string; name: string; email: string }>
+  closerOptions: Array<{ id: string; name: string; email: string }>
+}
+
+export interface BackofficeAdhesionListDTO {
+  items: BackofficeAdhesionDTO[]
+  pagination: {
+    page: number
+    pageSize: number
+    totalItems: number
+    totalPages: number
+    hasNextPage: boolean
+    hasPreviousPage: boolean
+  }
+}
+
+export interface BackofficeAdhesionCreationResult {
+  adhesion: BackofficeAdhesionDTO
+  publicUrl: string
+  expiresAt: string
+}
+
+export interface BackofficeAdhesionTokenError {
+  tokenStatus: Exclude<BackofficeAdhesionTokenValidationStatus, "valid">
+}
+
+export interface BackofficeAdhesionPaymentWebhookInput {
+  id?: string
+  status?: string
+  billingType?: string
+  customer?: string
+  externalReference?: string
+  invoiceUrl?: string
+  bankSlipUrl?: string
+  dueDate?: string
+  paymentDate?: string
+  clientPaymentDate?: string
+  confirmedDate?: string
+  value?: number
+}
+
+export interface IBackofficeAdhesionService {
+  list(input: {
+    page: number
+    pageSize: number
+    status?: BackofficeAdhesionStatus
+    query?: string
+  }): Promise<BackofficeAdhesionListDTO>
+  getOptions(): Promise<BackofficeAdhesionOptionsDTO>
+  create(
+    input: BackofficeAdhesionCreateInput,
+    createdByBackofficeUserId: string | null
+  ): Promise<BackofficeAdhesionCreationResult>
+  update(id: string, input: BackofficeAdhesionUpdateInput): Promise<BackofficeAdhesionDTO>
+  resend(id: string): Promise<BackofficeAdhesionCreationResult>
+  getPublicDetails(token: string): Promise<BackofficeAdhesionPublicDTO | BackofficeAdhesionTokenError>
+  createCheckout(
+    token: string,
+    input: BackofficeAdhesionCheckoutInput
+  ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
+  getPaymentStatus(token: string): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
+  processPaymentWebhook(
+    event: string,
+    payment: BackofficeAdhesionPaymentWebhookInput
+  ): Promise<{ processed: boolean; adhesionId?: string }>
+}

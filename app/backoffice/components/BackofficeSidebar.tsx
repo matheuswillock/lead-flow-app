@@ -11,6 +11,7 @@ import {
   Kanban,
   Plug,
   CalendarDays,
+  Tag,
   EllipsisVertical,
   LogOut,
   UserRound,
@@ -26,6 +27,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -46,6 +50,7 @@ const navigationItems = [
   { title: "Calendário", url: "/backoffice/calendar", icon: CalendarDays },
   { title: "Clientes", url: "/backoffice/clients", icon: Users },
   { title: "Pagamentos", url: "/backoffice/payments", icon: CreditCard },
+  { title: "Precificação", url: "/backoffice/pricing", icon: Tag },
   { title: "Integrações", url: "/backoffice/integracoes", icon: Plug },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
 ]
@@ -115,6 +120,26 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                         <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
+                    {item.url === "/backoffice/clients" ? (
+                      <SidebarMenuSub>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname === "/backoffice/clients"}
+                          >
+                            <Link href="/backoffice/clients">Clientes</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname.startsWith("/backoffice/clients/adhesions")}
+                          >
+                            <Link href="/backoffice/clients/adhesions">Nova adesão</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      </SidebarMenuSub>
+                    ) : null}
                   </SidebarMenuItem>
                 )
               })}
