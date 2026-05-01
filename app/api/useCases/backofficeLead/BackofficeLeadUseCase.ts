@@ -1,24 +1,33 @@
+import { randomUUID } from "node:crypto"
 import { BackofficeLeadOrigin, BackofficeLeadStatus } from "@prisma/client"
 import { Output } from "@/lib/output"
-import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/BackofficeUserRepository"
-import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficeUserRepository"
-import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backofficeLead/BackofficeLeadRepository"
+import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/BackofficeLeadRepository"
+import {
+  backofficeLeadScheduleService,
+} from "@/app/api/useCases/backofficeLeadSchedule/backofficeLeadScheduleService"
+import type {
+  BackofficeLeadScheduleResult,
+  IBackofficeLeadScheduleService,
+} from "@/app/api/services/Backoffice/backofficeLeadSchedule/IBackofficeLeadScheduleService"
 import type {
   BackofficeLeadUserRelation,
   BackofficeLeadWithRelations,
   IBackofficeLeadRepository,
-} from "@/app/api/infra/data/repositories/backofficeLead/IBackofficeLeadRepository"
+} from "@/app/api/infra/data/repositories/backoffice/backofficeLead/IBackofficeLeadRepository"
 import type {
   CreateBackofficeLeadDTO,
   IBackofficeLeadUseCase,
   UpdateBackofficeLeadDTO,
   UpdateBackofficeLeadStatusDTO,
 } from "./IBackofficeLeadUseCase"
+import { IBackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
+import { BackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
 
 export const BACKOFFICE_LEAD_STATUS_VALUES = [
   "new_opportunity",
   "scheduled",
   "no_show",
+  "new_adhesion",
   "lost",
   "implementation",
   "finalized",
@@ -34,6 +43,14 @@ type ParsedDate =
   | { isValid: true; isProvided: true; value: Date | null }
   | { isValid: false; errorMessage: string }
 
+type NormalizedText =
+  | { isValid: true; value: string | null }
+  | { isValid: false; errorMessage: string }
+
+type NormalizedEmails =
+  | { isValid: true; value: string[] }
+  | { isValid: false; errorMessage: string }
+
 function isValidStatus(value: unknown): value is BackofficeLeadStatus {
   return typeof value === "string" && VALID_STATUSES.has(value)
 }
@@ -43,6 +60,100 @@ function trimOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function normalizePhone(value: unknown): NormalizedText {
+  const raw = trimOrNull(value)
+  if (!raw) return { isValid: true, value: null }
+
+  const digits = raw.replace(/\D/g, "").slice(0, 11)
+  if (!/^\d{10,11}$/.test(digits)) {
+    return {
+      isValid: false,
+      errorMessage: "Telefone deve conter 10 ou 11 dígitos",
+    }
+  }
+
+  return { isValid: true, value: digits }
+}
+
+function isValidCnpj(value: string): boolean {
+  const cnpj = value.replace(/\D/g, "")
+  if (cnpj.length !== 14) return false
+  if (/^(\d)\1+$/.test(cnpj)) return false
+
+  const calculateDigit = (base: string, weights: number[]) => {
+    const sum = base
+      .split("")
+      .reduce((acc, digit, index) => acc + Number.parseInt(digit, 10) * weights[index], 0)
+    const remainder = sum % 11
+    return remainder < 2 ? 0 : 11 - remainder
+  }
+
+  const firstDigit = calculateDigit(
+    cnpj.slice(0, 12),
+    [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  )
+  const secondDigit = calculateDigit(
+    cnpj.slice(0, 13),
+    [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  )
+
+  return (
+    firstDigit === Number.parseInt(cnpj[12], 10) &&
+    secondDigit === Number.parseInt(cnpj[13], 10)
+  )
+}
+
+function normalizeCnpj(value: unknown): NormalizedText {
+  const raw = trimOrNull(value)
+  if (!raw) return { isValid: true, value: null }
+
+  const digits = raw.replace(/\D/g, "").slice(0, 14)
+  if (!isValidCnpj(digits)) {
+    return { isValid: false, errorMessage: "CNPJ inválido" }
+  }
+
+  return { isValid: true, value: digits }
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
+function normalizeExtraGuests(value: unknown): NormalizedEmails {
+  if (value === undefined || value === null) return { isValid: true, value: [] }
+  if (!Array.isArray(value)) {
+    return { isValid: false, errorMessage: "Convidados extras inválidos" }
+  }
+
+  const unique = new Set<string>()
+  for (const item of value) {
+    if (typeof item !== "string") {
+      return { isValid: false, errorMessage: "Convidados extras inválidos" }
+    }
+
+    const email = item.trim().toLowerCase()
+    if (!email) continue
+    if (!isValidEmail(email)) {
+      return { isValid: false, errorMessage: `E-mail de convidado inválido: ${item}` }
+    }
+
+    unique.add(email)
+  }
+
+  return { isValid: true, value: Array.from(unique) }
+}
+
+function areStringArraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const setA = new Set(a)
+  return b.every((item) => setA.has(item))
+}
+
+function getScheduleResult(output: Output): BackofficeLeadScheduleResult | null {
+  if (!output.result || typeof output.result !== "object") return null
+  return output.result as BackofficeLeadScheduleResult
 }
 
 function parseOptionalDate(value: unknown): ParsedDate {
@@ -87,6 +198,7 @@ function mapLead(lead: BackofficeLeadWithRelations) {
     name: lead.name,
     email: lead.email,
     phone: lead.phone,
+    cnpj: lead.cnpj,
     notes: lead.notes,
     status: lead.status,
     origin: lead.origin,
@@ -100,6 +212,15 @@ function mapLead(lead: BackofficeLeadWithRelations) {
     meetingTitle: lead.meetingTitle,
     meetingNotes: lead.meetingNotes,
     meetingLink: lead.meetingLink,
+    meetingExtraGuests: lead.meetingExtraGuests,
+    adhesion: lead.adhesion
+      ? {
+          id: lead.adhesion.id,
+          status: lead.adhesion.status,
+          expiresAt: lead.adhesion.expiresAt.toISOString(),
+          paidAt: lead.adhesion.paidAt?.toISOString() ?? null,
+        }
+      : null,
     statusEnteredAt: lead.statusEnteredAt.toISOString(),
     createdAt: lead.createdAt.toISOString(),
     updatedAt: lead.updatedAt.toISOString(),
@@ -109,7 +230,8 @@ function mapLead(lead: BackofficeLeadWithRelations) {
 export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
   constructor(
     private readonly repo: IBackofficeLeadRepository,
-    private readonly userRepo: IBackofficeUserRepository
+    private readonly userRepo: IBackofficeUserRepository,
+    private readonly scheduleService: IBackofficeLeadScheduleService
   ) {}
 
   async listLeads(params?: { status?: BackofficeLeadStatus }): Promise<Output> {
@@ -160,6 +282,21 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         return new Output(false, [], [parsedMeetingDate.errorMessage], null)
       }
 
+      const phone = normalizePhone(data.phone)
+      if (!phone.isValid) {
+        return new Output(false, [], [phone.errorMessage], null)
+      }
+
+      const cnpj = normalizeCnpj(data.cnpj)
+      if (!cnpj.isValid) {
+        return new Output(false, [], [cnpj.errorMessage], null)
+      }
+
+      const meetingExtraGuests = normalizeExtraGuests(data.meetingExtraGuests)
+      if (!meetingExtraGuests.isValid) {
+        return new Output(false, [], [meetingExtraGuests.errorMessage], null)
+      }
+
       let sdrBackofficeUserId = trimOrNull(data.sdrBackofficeUserId)
       if (!sdrBackofficeUserId && origin === BackofficeLeadOrigin.manual) {
         sdrBackofficeUserId = await this.getDefaultSdrId(createdByProfileId)
@@ -170,12 +307,14 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
       }
 
       const closerBackofficeUserId = trimOrNull(data.closerBackofficeUserId)
+      const normalizedMeetingLink = trimOrNull(data.meetingLink)
       const roleValidation = await this.validateAssignees({
         sdrBackofficeUserId,
         closerBackofficeUserId,
       })
       if (!roleValidation.isValid) return roleValidation
 
+      let scheduledMeetingDate: Date | null = null
       if (status === BackofficeLeadStatus.scheduled) {
         const meetingDate = parsedMeetingDate.isProvided ? parsedMeetingDate.value : null
         if (!meetingDate) {
@@ -184,12 +323,16 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         if (!closerBackofficeUserId) {
           return new Output(false, [], ["Closer é obrigatório para leads agendados"], null)
         }
+        scheduledMeetingDate = meetingDate
       }
 
-      const lead = await this.repo.create({
+      const leadId = randomUUID()
+      let lead = await this.repo.create({
+        id: leadId,
         name,
         email: trimOrNull(data.email),
-        phone: trimOrNull(data.phone),
+        phone: phone.value,
+        cnpj: cnpj.value,
         notes: trimOrNull(data.notes),
         status,
         origin,
@@ -200,9 +343,41 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         meetingDate: parsedMeetingDate.isProvided ? parsedMeetingDate.value : null,
         meetingTitle: trimOrNull(data.meetingTitle),
         meetingNotes: trimOrNull(data.meetingNotes),
-        meetingLink: trimOrNull(data.meetingLink),
+        meetingLink: normalizedMeetingLink,
+        meetingExtraGuests: meetingExtraGuests.value,
         createdByProfileId,
       })
+
+      if (status === BackofficeLeadStatus.scheduled) {
+        const scheduleOutput = await this.scheduleService.upsertSchedule({
+          leadId,
+          leadName: name,
+          leadEmail: trimOrNull(data.email),
+          closerBackofficeUserId: closerBackofficeUserId ?? "",
+          meetingDate: scheduledMeetingDate ?? new Date(),
+          meetingTitle: trimOrNull(data.meetingTitle) ?? `Demonstração Corretor Studio - ${name}`,
+          meetingNotes: trimOrNull(data.meetingNotes),
+          meetingLink: normalizedMeetingLink,
+          extraGuests: meetingExtraGuests.value,
+          createdByProfileId,
+        })
+
+        if (!scheduleOutput.isValid) {
+          await this.repo.delete(leadId).catch((deleteError) =>
+            console.error("[BackofficeLeadUseCase][createLead][rollback]", deleteError)
+          )
+          return scheduleOutput
+        }
+
+        const scheduleResult = getScheduleResult(scheduleOutput)
+        if (scheduleResult) {
+          lead = await this.repo.update(leadId, {
+            meetingTitle: scheduleResult.schedule.meetingTitle,
+            meetingNotes: scheduleResult.schedule.notes,
+            meetingLink: scheduleResult.meetingLink ?? null,
+          })
+        }
+      }
 
       return new Output(true, ["Lead criado com sucesso"], [], mapLead(lead))
     } catch (error) {
@@ -232,6 +407,33 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         return new Output(false, [], [parsedMeetingDate.errorMessage], null)
       }
 
+      let phoneValue: string | null | undefined
+      if (data.phone !== undefined) {
+        const phone = normalizePhone(data.phone)
+        if (!phone.isValid) {
+          return new Output(false, [], [phone.errorMessage], null)
+        }
+        phoneValue = phone.value
+      }
+
+      let cnpjValue: string | null | undefined
+      if (data.cnpj !== undefined) {
+        const cnpj = normalizeCnpj(data.cnpj)
+        if (!cnpj.isValid) {
+          return new Output(false, [], [cnpj.errorMessage], null)
+        }
+        cnpjValue = cnpj.value
+      }
+
+      let meetingExtraGuestsValue: string[] | undefined
+      if (data.meetingExtraGuests !== undefined) {
+        const meetingExtraGuests = normalizeExtraGuests(data.meetingExtraGuests)
+        if (!meetingExtraGuests.isValid) {
+          return new Output(false, [], [meetingExtraGuests.errorMessage], null)
+        }
+        meetingExtraGuestsValue = meetingExtraGuests.value
+      }
+
       const sdrBackofficeUserId =
         data.sdrBackofficeUserId !== undefined
           ? trimOrNull(data.sdrBackofficeUserId)
@@ -256,6 +458,22 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
       const finalMeetingDate = parsedMeetingDate.isProvided
         ? parsedMeetingDate.value
         : existing.meetingDate
+      const finalMeetingLink =
+        data.meetingLink !== undefined ? trimOrNull(data.meetingLink) : existing.meetingLink
+      let normalizedMeetingLinkForUpdate =
+        data.meetingLink !== undefined ? trimOrNull(data.meetingLink) : undefined
+      const finalMeetingTitle =
+        data.meetingTitle !== undefined
+          ? trimOrNull(data.meetingTitle)
+          : existing.meetingTitle
+      const finalMeetingNotes =
+        data.meetingNotes !== undefined
+          ? trimOrNull(data.meetingNotes)
+          : existing.meetingNotes
+      const finalMeetingExtraGuests =
+        data.meetingExtraGuests !== undefined
+          ? meetingExtraGuestsValue
+          : existing.meetingExtraGuests
 
       if (existing.status === BackofficeLeadStatus.scheduled) {
         if (!finalMeetingDate) {
@@ -264,12 +482,47 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         if (!closerBackofficeUserId) {
           return new Output(false, [], ["Closer é obrigatório para leads agendados"], null)
         }
+
+        const scheduleChanged =
+          (parsedMeetingDate.isProvided &&
+            finalMeetingDate?.toISOString() !== existing.meetingDate?.toISOString()) ||
+          (data.closerBackofficeUserId !== undefined &&
+            closerBackofficeUserId !== existing.closerBackofficeUserId) ||
+          (data.meetingTitle !== undefined && finalMeetingTitle !== existing.meetingTitle) ||
+          (data.meetingNotes !== undefined && finalMeetingNotes !== existing.meetingNotes) ||
+          (data.meetingLink !== undefined && finalMeetingLink !== existing.meetingLink) ||
+          (data.meetingExtraGuests !== undefined &&
+            !areStringArraysEqual(finalMeetingExtraGuests ?? [], existing.meetingExtraGuests))
+
+        if (scheduleChanged) {
+          const scheduleOutput = await this.scheduleService.upsertSchedule({
+            leadId: id,
+            leadName: nextName ?? existing.name,
+            leadEmail: data.email !== undefined ? trimOrNull(data.email) : existing.email,
+            closerBackofficeUserId,
+            meetingDate: finalMeetingDate,
+            meetingTitle:
+              finalMeetingTitle ??
+              `Demonstração Corretor Studio - ${nextName ?? existing.name}`,
+            meetingNotes: finalMeetingNotes,
+            meetingLink: finalMeetingLink,
+            extraGuests: finalMeetingExtraGuests ?? [],
+            createdByProfileId: existing.createdByProfileId,
+          })
+          if (!scheduleOutput.isValid) return scheduleOutput
+
+          const scheduleResult = getScheduleResult(scheduleOutput)
+          if (scheduleResult) {
+            normalizedMeetingLinkForUpdate = scheduleResult.meetingLink
+          }
+        }
       }
 
       const lead = await this.repo.update(id, {
         name: nextName,
         email: data.email !== undefined ? trimOrNull(data.email) : undefined,
-        phone: data.phone !== undefined ? trimOrNull(data.phone) : undefined,
+        phone: data.phone !== undefined ? phoneValue : undefined,
+        cnpj: data.cnpj !== undefined ? cnpjValue : undefined,
         notes: data.notes !== undefined ? trimOrNull(data.notes) : undefined,
         sdrBackofficeUserId:
           data.sdrBackofficeUserId !== undefined ? sdrBackofficeUserId : undefined,
@@ -280,8 +533,9 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
           data.meetingTitle !== undefined ? trimOrNull(data.meetingTitle) : undefined,
         meetingNotes:
           data.meetingNotes !== undefined ? trimOrNull(data.meetingNotes) : undefined,
-        meetingLink:
-          data.meetingLink !== undefined ? trimOrNull(data.meetingLink) : undefined,
+        meetingLink: normalizedMeetingLinkForUpdate,
+        meetingExtraGuests:
+          data.meetingExtraGuests !== undefined ? meetingExtraGuestsValue : undefined,
       })
 
       return new Output(true, ["Lead atualizado com sucesso"], [], mapLead(lead))
@@ -311,6 +565,15 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         return new Output(false, [], [parsedMeetingDate.errorMessage], null)
       }
 
+      let meetingExtraGuestsValue: string[] | undefined
+      if (data?.meetingExtraGuests !== undefined) {
+        const meetingExtraGuests = normalizeExtraGuests(data.meetingExtraGuests)
+        if (!meetingExtraGuests.isValid) {
+          return new Output(false, [], [meetingExtraGuests.errorMessage], null)
+        }
+        meetingExtraGuestsValue = meetingExtraGuests.value
+      }
+
       const closerBackofficeUserId =
         data?.closerBackofficeUserId !== undefined
           ? trimOrNull(data.closerBackofficeUserId)
@@ -331,6 +594,22 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
       const finalMeetingDate = parsedMeetingDate.isProvided
         ? parsedMeetingDate.value
         : existing.meetingDate
+      const finalMeetingTitle =
+        data?.meetingTitle !== undefined
+          ? trimOrNull(data.meetingTitle)
+          : existing.meetingTitle
+      const finalMeetingNotes =
+        data?.meetingNotes !== undefined
+          ? trimOrNull(data.meetingNotes)
+          : existing.meetingNotes
+      const finalMeetingLink =
+        data?.meetingLink !== undefined ? trimOrNull(data.meetingLink) : existing.meetingLink
+      let normalizedMeetingLinkForStatus =
+        data?.meetingLink !== undefined ? trimOrNull(data.meetingLink) : undefined
+      const finalMeetingExtraGuests =
+        data?.meetingExtraGuests !== undefined
+          ? meetingExtraGuestsValue
+          : existing.meetingExtraGuests
 
       if (status === BackofficeLeadStatus.scheduled) {
         if (!finalMeetingDate) {
@@ -339,6 +618,40 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         if (!closerBackofficeUserId) {
           return new Output(false, [], ["Closer é obrigatório para leads agendados"], null)
         }
+
+        const scheduleChanged =
+          existing.status !== BackofficeLeadStatus.scheduled ||
+          (parsedMeetingDate.isProvided &&
+            finalMeetingDate.toISOString() !== existing.meetingDate?.toISOString()) ||
+          (data?.closerBackofficeUserId !== undefined &&
+            closerBackofficeUserId !== existing.closerBackofficeUserId) ||
+          (data?.meetingTitle !== undefined && finalMeetingTitle !== existing.meetingTitle) ||
+          (data?.meetingNotes !== undefined && finalMeetingNotes !== existing.meetingNotes) ||
+          (data?.meetingLink !== undefined && finalMeetingLink !== existing.meetingLink) ||
+          (data?.meetingExtraGuests !== undefined &&
+            !areStringArraysEqual(finalMeetingExtraGuests ?? [], existing.meetingExtraGuests))
+
+        if (scheduleChanged) {
+          const scheduleOutput = await this.scheduleService.upsertSchedule({
+            leadId: id,
+            leadName: existing.name,
+            leadEmail: existing.email,
+            closerBackofficeUserId,
+            meetingDate: finalMeetingDate,
+            meetingTitle:
+              finalMeetingTitle ?? `Demonstração Corretor Studio - ${existing.name}`,
+            meetingNotes: finalMeetingNotes,
+            meetingLink: finalMeetingLink,
+            extraGuests: finalMeetingExtraGuests ?? [],
+            createdByProfileId: existing.createdByProfileId,
+          })
+          if (!scheduleOutput.isValid) return scheduleOutput
+
+          const scheduleResult = getScheduleResult(scheduleOutput)
+          if (scheduleResult) {
+            normalizedMeetingLinkForStatus = scheduleResult.meetingLink
+          }
+        }
       }
 
       const hasSchedulePayload =
@@ -346,7 +659,8 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         data?.closerBackofficeUserId !== undefined ||
         data?.meetingTitle !== undefined ||
         data?.meetingNotes !== undefined ||
-        data?.meetingLink !== undefined
+        data?.meetingLink !== undefined ||
+        data?.meetingExtraGuests !== undefined
 
       if (existing.status === status && !hasSchedulePayload) {
         return new Output(true, [], [], mapLead(existing))
@@ -363,8 +677,9 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
           data?.meetingTitle !== undefined ? trimOrNull(data.meetingTitle) : undefined,
         meetingNotes:
           data?.meetingNotes !== undefined ? trimOrNull(data.meetingNotes) : undefined,
-        meetingLink:
-          data?.meetingLink !== undefined ? trimOrNull(data.meetingLink) : undefined,
+        meetingLink: normalizedMeetingLinkForStatus,
+        meetingExtraGuests:
+          data?.meetingExtraGuests !== undefined ? meetingExtraGuestsValue : undefined,
       })
       return new Output(true, ["Status atualizado com sucesso"], [], mapLead(lead))
     } catch (error) {
@@ -420,9 +735,11 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
 
     return new Output(true, [], [], null)
   }
+
 }
 
 export const backofficeLeadUseCase = new BackofficeLeadUseCase(
   new BackofficeLeadRepository(),
-  new BackofficeUserRepository()
+  new BackofficeUserRepository(),
+  backofficeLeadScheduleService
 )

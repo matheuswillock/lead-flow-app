@@ -339,7 +339,7 @@ export function BackofficeCrmFiltersBar() {
     <div className="flex items-center justify-between gap-2">
       <div className="flex flex-1 flex-wrap items-center gap-2">
         <Input
-          placeholder="Filtrar por nome..."
+          placeholder="Filtrar por nome, e-mail, telefone ou CNPJ..."
           value={filters.query}
           onChange={(event) => setFilter("query", event.target.value)}
           className="h-8 w-[150px] lg:w-[250px]"

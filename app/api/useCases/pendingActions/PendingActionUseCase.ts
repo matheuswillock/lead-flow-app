@@ -2,6 +2,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getFullUrl } from "@/lib/utils/app-url";
+import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getEmailService } from "@/lib/services/EmailService";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
@@ -590,7 +591,7 @@ export class PendingActionUseCase {
         operatorEmail: createdUser.email,
         operatorRole: createdUser.role,
         managerName: action.master.fullName || action.master.email,
-        inviteUrl: data.properties.action_link,
+        inviteUrl: buildSetPasswordEmailAuthLink(data, "invite"),
       });
     } catch (inviteError) {
       console.warn("Erro ao enviar convite do usuário pendente:", inviteError);

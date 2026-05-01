@@ -112,6 +112,7 @@ const TABLE_COLUMN_OPTIONS: { key: BackofficeCrmTableColumnKey; label: string }[
   { key: "name", label: "Nome" },
   { key: "email", label: "Email" },
   { key: "phone", label: "Telefone" },
+  { key: "cnpj", label: "CNPJ" },
   { key: "status", label: "Status" },
   { key: "origin", label: "Origem" },
   { key: "sdr", label: "SDR" },
@@ -132,11 +133,19 @@ function formatDateTime(value: string, tz: string): string {
   }
 }
 
+function formatCnpj(value: string | null): string {
+  if (!value) return "-"
+  const digits = value.replace(/\D/g, "")
+  if (digits.length !== 14) return value
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`
+}
+
 function getStatusBadgeClass(status: BackofficeLeadStatusKey): string {
   const classes: Record<BackofficeLeadStatusKey, string> = {
     new_opportunity: "border-primary/30 bg-primary/10 text-primary",
     scheduled: "border-primary/30 bg-primary text-primary-foreground",
     no_show: "border-muted bg-muted text-muted-foreground",
+    new_adhesion: "border-primary/30 bg-primary/15 text-primary",
     lost: "border-destructive/30 bg-destructive/10 text-destructive",
     implementation: "border-border bg-secondary text-secondary-foreground",
     finalized: "border-primary/30 bg-primary/15 text-primary",
@@ -370,6 +379,7 @@ export function BackofficeCrmColumnSettingsButton() {
 export function BackofficeCrmTable() {
   const {
     filteredLeads,
+    users,
     closerOptions,
     openEditDialog,
     updateLeadStatus,
@@ -483,6 +493,12 @@ export function BackofficeCrmTable() {
         meta: { label: "Telefone" },
         header: ({ column }) => <SortableHeader column={column} label="Telefone" />,
         cell: ({ row }) => row.original.phone || "-",
+      },
+      {
+        accessorKey: "cnpj",
+        meta: { label: "CNPJ" },
+        header: ({ column }) => <SortableHeader column={column} label="CNPJ" />,
+        cell: ({ row }) => formatCnpj(row.original.cnpj),
       },
       {
         accessorKey: "status",
@@ -794,6 +810,7 @@ export function BackofficeCrmTable() {
         open={scheduleDialogOpen}
         lead={leadToSchedule}
         closerOptions={closerOptions}
+        guestOptions={users}
         onOpenChange={(open) => {
           setScheduleDialogOpen(open)
           if (!open) setLeadToSchedule(null)

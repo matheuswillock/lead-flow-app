@@ -27,6 +27,7 @@
     "prisma:seed": "bunx prisma db seed",
     "db:seed:app": "bunx tsx prisma/seed-app.ts",
     "db:seed:backoffice": "bunx tsx prisma/seed-backoffice.ts",
+    "db:seed:backoffice-products": "bunx tsx prisma/seed-backoffice-products.ts",
     "prisma:migrate": "bunx prisma migrate dev",
     "prisma:migrate:resolve": "bunx prisma migrate resolve --rolled-back",
     "prisma:backfill-leadcode": "bunx tsx scripts/backfill-leadcode.ts",

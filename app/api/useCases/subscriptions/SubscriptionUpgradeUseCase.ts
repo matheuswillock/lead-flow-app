@@ -5,6 +5,7 @@ import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { getEmailService } from "@/lib/services/EmailService";
+import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getFullUrl } from '@/lib/utils/app-url';
 import { addMonthsInTz, formatInTz, resolveTimezone, startOfDayInTz } from "@/lib/dates";
 import type { 
@@ -920,7 +921,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         };
       }
 
-      const inviteLink = data.properties.action_link;
+      const inviteLink = buildSetPasswordEmailAuthLink(data, 'invite');
       const userId = data.user.id;
 
       console.info('✅ [createSupabaseUser] Link de convite gerado com sucesso:', {
@@ -936,7 +937,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           operatorEmail: email,
           operatorRole: role,
           managerName: managerName,
-          inviteUrl: inviteLink, // Usar o link gerado pelo Supabase
+          inviteUrl: inviteLink,
         });
         console.info('✅ [createSupabaseUser] E-mail enviado via Resend com sucesso');
       } catch (emailError) {

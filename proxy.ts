@@ -6,7 +6,7 @@ import { isManagerLikeRole, isBackofficeRole } from "@/lib/roles"
 const protectedPrefixes = ["/dashboard", "/account", "/crm", "/board", "/pipeline", "/manager-users", "/notifications", "/integrations", "/docs"]
 
 // Public routes that don't require authentication
-const publicRoutes = ["/", "/sign-in", "/sign-up", "/subscribe", "/checkout-return", "/operator-confirmed", "/pix-confirmed", "/set-password", "/forgot-password"]
+const publicRoutes = ["/", "/sign-in", "/sign-up", "/checkout-return", "/operator-confirmed", "/pix-confirmed", "/set-password", "/forgot-password", "/adesao/expirado"]
 
 // Routes that require manager role
 const managerOnlyRoutes = ["/manager-users", "/integrations"]
@@ -21,6 +21,24 @@ export async function proxy(request: NextRequest) {
   
   // Always refresh Supabase session cookies via helper
   const { user, response } = await updateSession(request)
+
+  if (pathname === "/subscribe") {
+    return NextResponse.redirect(new URL("/", request.url))
+  }
+
+  if (pathname.startsWith("/adesao/") && pathname !== "/adesao/expirado") {
+    const token = pathname.split("/").filter(Boolean)[1]
+    const { validateBackofficeAdhesionToken } = await import(
+      "@/lib/backoffice-adhesions/adhesion-token-validation"
+    )
+    const validation = await validateBackofficeAdhesionToken(token)
+
+    if (validation.status !== "valid") {
+      return NextResponse.redirect(new URL("/adesao/expirado", request.url))
+    }
+
+    return response
+  }
 
   // Check if it's a public route - let it pass
   if (publicRoutes.includes(pathname)) {

@@ -99,6 +99,23 @@ export async function POST(request: NextRequest) {
       const externalReference = body.payment.externalReference || body.subscription?.externalReference;
       const paymentStatus = body.payment.status;
       const checkoutSessionId = body.payment.checkoutSession;
+
+      try {
+        const { backofficeAdhesionUseCase } = await import(
+          '@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase'
+        );
+        const adhesionOutput = await backofficeAdhesionUseCase.processPaymentWebhook(
+          body.event,
+          body.payment
+        );
+
+        console.info('[Webhook][BackofficeAdhesion] sync output:', {
+          isValid: adhesionOutput.isValid,
+          result: adhesionOutput.result,
+        });
+      } catch (error) {
+        console.error('[Webhook][BackofficeAdhesion] sync error:', error);
+      }
       
         console.info('💳 [Webhook Asaas] Detalhes do pagamento:', {
           event: body.event,
@@ -362,8 +379,8 @@ export async function POST(request: NextRequest) {
     ) {
       try {
         const { BackofficePaymentRepository } = await import(
-          '@/app/api/infra/data/repositories/backoffice/BackofficePaymentRepository'
-        )
+          '@/app/api/infra/data/repositories/backoffice/PaymentRepository/BackofficePaymentRepository'
+        );
         const backofficePaymentRepo = new BackofficePaymentRepository()
         const existing = await backofficePaymentRepo.findByAsaasPaymentId(body.payment.id)
         if (existing) {

@@ -4,9 +4,8 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { asaasApi, asaasFetch, asaasHeaders } from "@/lib/asaas";
 import { asaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
+import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { isManagerLikeRole } from "@/lib/roles";
-
-const OPERATOR_PRICE = 19.9;
 
 export async function POST(request: NextRequest) {
   try {
@@ -107,6 +106,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const projectedBilling = await incrementalBillingService.projectBilling(manager.id, {
+      additionalUsers: 1,
+    });
+    const amount = projectedBilling.billingDelta;
+
+    if (amount <= 0) {
+      return NextResponse.json(
+        new Output(false, [], ["Nenhuma cobrança adicional é necessária."], null),
+        { status: 400 }
+      );
+    }
+
     const pendingOperator = await prisma.pendingOperator.create({
       data: {
         managerId: manager.id,
@@ -185,7 +196,7 @@ export async function POST(request: NextRequest) {
     const paymentPayload: any = {
       customer: customerId,
       billingType,
-      value: OPERATOR_PRICE,
+      value: amount,
       dueDate,
       description: `Licenca Operador - ${operatorData.email}`,
       externalReference: `pending-operator-${pendingOperator.id}`,

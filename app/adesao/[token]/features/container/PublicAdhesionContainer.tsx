@@ -1,0 +1,542 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import { CheckCircle2, CreditCard, Loader2, QrCode, ReceiptText } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { usePublicAdhesion } from "../context/PublicAdhesionHook"
+import type {
+  PublicAdhesionBillingType,
+  PublicAdhesionCheckoutInput,
+} from "../context/PublicAdhesionTypes"
+
+function onlyDigits(value: string, maxLength: number): string {
+  return value.replace(/\D/g, "").slice(0, maxLength)
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value)
+}
+
+function initialForm(detailsFullName = "", detailsPhone = "", detailsEmail = "") {
+  return {
+    fullName: detailsFullName,
+    email: detailsEmail,
+    phone: detailsPhone,
+    cpfCnpj: "",
+    postalCode: "",
+    address: "",
+    addressNumber: "",
+    neighborhood: "",
+    complement: "",
+    city: "",
+    state: "",
+    billingType: "PIX" as PublicAdhesionBillingType,
+    installments: 1,
+    cardHolderName: "",
+    cardNumber: "",
+    cardExpiryMonth: "",
+    cardExpiryYear: "",
+    cardCcv: "",
+  }
+}
+
+export function PublicAdhesionContainer() {
+  const {
+    details,
+    payment,
+    isLoading,
+    isSubmitting,
+    error,
+    submitCheckout,
+    refreshPaymentStatus,
+  } = usePublicAdhesion()
+  const [form, setForm] = useState(initialForm())
+
+  useEffect(() => {
+    if (!details) return
+    setForm((current) => ({
+      ...current,
+      fullName: current.fullName || details.fullName,
+      phone: current.phone || details.phone,
+      email: current.email || details.email || "",
+      installments: Math.min(current.installments, details.maxInstallments),
+    }))
+  }, [details])
+
+  useEffect(() => {
+    if (!payment?.paymentId || payment.status === "paid") return
+    const timer = window.setInterval(() => {
+      void refreshPaymentStatus()
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [payment?.paymentId, payment?.status, refreshPaymentStatus])
+
+  const installmentOptions = useMemo(() => {
+    const max = details?.maxInstallments ?? 1
+    return Array.from({ length: max }, (_, index) => index + 1)
+  }, [details?.maxInstallments])
+
+  const canSubmit =
+    Boolean(details) &&
+    form.fullName.trim().length >= 2 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) &&
+    /^\d{10,11}$/.test(onlyDigits(form.phone, 11)) &&
+    (/^\d{11}$/.test(onlyDigits(form.cpfCnpj, 14)) ||
+      /^\d{14}$/.test(onlyDigits(form.cpfCnpj, 14))) &&
+    /^\d{8}$/.test(onlyDigits(form.postalCode, 8)) &&
+    Boolean(form.address.trim()) &&
+    Boolean(form.addressNumber.trim()) &&
+    Boolean(form.neighborhood.trim()) &&
+    Boolean(form.city.trim()) &&
+    /^[A-Za-z]{2}$/.test(form.state.trim()) &&
+    (form.billingType !== "CREDIT_CARD" ||
+      (form.cardHolderName.trim().length >= 2 &&
+        onlyDigits(form.cardNumber, 19).length >= 13 &&
+        onlyDigits(form.cardExpiryMonth, 2).length === 2 &&
+        onlyDigits(form.cardExpiryYear, 4).length >= 2 &&
+        onlyDigits(form.cardCcv, 4).length >= 3))
+
+  function updateField<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
+    setForm((current) => ({ ...current, [key]: value }))
+  }
+
+  async function handleSubmit() {
+    if (!details || !canSubmit || isSubmitting) return
+
+    const payload: PublicAdhesionCheckoutInput = {
+      fullName: form.fullName.trim(),
+      email: form.email.trim().toLowerCase(),
+      phone: onlyDigits(form.phone, 11),
+      cpfCnpj: onlyDigits(form.cpfCnpj, 14),
+      postalCode: onlyDigits(form.postalCode, 8),
+      address: form.address.trim(),
+      addressNumber: form.addressNumber.trim(),
+      neighborhood: form.neighborhood.trim(),
+      complement: form.complement.trim() || null,
+      city: form.city.trim(),
+      state: form.state.trim().toUpperCase(),
+      billingType: form.billingType,
+      installments: form.billingType === "CREDIT_CARD" ? form.installments : 1,
+      creditCard:
+        form.billingType === "CREDIT_CARD"
+          ? {
+              holderName: form.cardHolderName.trim(),
+              number: onlyDigits(form.cardNumber, 19),
+              expiryMonth: onlyDigits(form.cardExpiryMonth, 2),
+              expiryYear: onlyDigits(form.cardExpiryYear, 4),
+              ccv: onlyDigits(form.cardCcv, 4),
+            }
+          : undefined,
+    }
+
+    await submitCheckout(payload)
+  }
+
+  if (isLoading) {
+    return (
+      <main className="min-h-screen bg-background p-6">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4">
+          <Skeleton className="h-10 w-72" />
+          <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+            <Skeleton className="h-[560px]" />
+            <Skeleton className="h-[360px]" />
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  if (!details) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background p-6">
+        <Alert className="max-w-md">
+          <AlertTitle>Adesão indisponível</AlertTitle>
+          <AlertDescription>{error ?? "Não foi possível carregar este link."}</AlertDescription>
+        </Alert>
+      </main>
+    )
+  }
+
+  return (
+    <main className="min-h-screen bg-background p-4 md:p-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Checkout Corretor Studio</h1>
+            <p className="text-sm text-muted-foreground">
+              Revise sua adesão e conclua o pagamento.
+            </p>
+          </div>
+          <Badge variant="outline">Plano CRM</Badge>
+        </div>
+
+        {error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Não foi possível concluir</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        {payment?.status === "paid" ? (
+          <Alert>
+            <CheckCircle2 data-icon="inline-start" />
+            <AlertTitle>Pagamento confirmado</AlertTitle>
+            <AlertDescription>
+              Sua conta será enviada para o e-mail informado nesta adesão.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+          <Card>
+            <CardHeader>
+              <CardTitle>Dados de cobrança</CardTitle>
+              <CardDescription>
+                O plano foi definido pelo time comercial e não pode ser alterado neste checkout.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="fullName">Nome completo</Label>
+                  <Input
+                    id="fullName"
+                    value={form.fullName}
+                    onChange={(event) => updateField("fullName", event.target.value)}
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="email">E-mail</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={form.email}
+                    onChange={(event) => updateField("email", event.target.value)}
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="phone">Celular</Label>
+                  <Input
+                    id="phone"
+                    value={form.phone}
+                    onChange={(event) => updateField("phone", onlyDigits(event.target.value, 11))}
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="cpfCnpj">CPF/CNPJ</Label>
+                  <Input
+                    id="cpfCnpj"
+                    value={form.cpfCnpj}
+                    onChange={(event) =>
+                      updateField("cpfCnpj", onlyDigits(event.target.value, 14))
+                    }
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="postalCode">CEP</Label>
+                  <Input
+                    id="postalCode"
+                    value={form.postalCode}
+                    onChange={(event) =>
+                      updateField("postalCode", onlyDigits(event.target.value, 8))
+                    }
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="address">Endereço</Label>
+                  <Input
+                    id="address"
+                    value={form.address}
+                    onChange={(event) => updateField("address", event.target.value)}
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="addressNumber">Número</Label>
+                  <Input
+                    id="addressNumber"
+                    value={form.addressNumber}
+                    onChange={(event) => updateField("addressNumber", event.target.value)}
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="neighborhood">Bairro</Label>
+                  <Input
+                    id="neighborhood"
+                    value={form.neighborhood}
+                    onChange={(event) => updateField("neighborhood", event.target.value)}
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="city">Cidade</Label>
+                  <Input
+                    id="city"
+                    value={form.city}
+                    onChange={(event) => updateField("city", event.target.value)}
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="state">UF</Label>
+                  <Input
+                    id="state"
+                    value={form.state}
+                    onChange={(event) =>
+                      updateField("state", event.target.value.toUpperCase().slice(0, 2))
+                    }
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+                <div className="flex flex-col gap-2 md:col-span-2">
+                  <Label htmlFor="complement">Complemento</Label>
+                  <Input
+                    id="complement"
+                    value={form.complement}
+                    onChange={(event) => updateField("complement", event.target.value)}
+                    disabled={isSubmitting || payment?.status === "paid"}
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="flex flex-col gap-4">
+                <div>
+                  <Label>Forma de pagamento</Label>
+                  <Tabs
+                    value={form.billingType}
+                    onValueChange={(value) =>
+                      updateField("billingType", value as PublicAdhesionBillingType)
+                    }
+                    className="mt-2"
+                  >
+                    <TabsList>
+                      <TabsTrigger value="PIX">
+                        <QrCode data-icon="inline-start" />
+                        PIX
+                      </TabsTrigger>
+                      <TabsTrigger value="BOLETO">
+                        <ReceiptText data-icon="inline-start" />
+                        Boleto
+                      </TabsTrigger>
+                      <TabsTrigger value="CREDIT_CARD">
+                        <CreditCard data-icon="inline-start" />
+                        Cartão
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+
+                {form.billingType === "CREDIT_CARD" ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="flex flex-col gap-2 md:col-span-2">
+                      <Label htmlFor="cardHolderName">Nome impresso no cartão</Label>
+                      <Input
+                        id="cardHolderName"
+                        value={form.cardHolderName}
+                        onChange={(event) => updateField("cardHolderName", event.target.value)}
+                        disabled={isSubmitting || payment?.status === "paid"}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2 md:col-span-2">
+                      <Label htmlFor="cardNumber">Número do cartão</Label>
+                      <Input
+                        id="cardNumber"
+                        value={form.cardNumber}
+                        onChange={(event) =>
+                          updateField("cardNumber", onlyDigits(event.target.value, 19))
+                        }
+                        disabled={isSubmitting || payment?.status === "paid"}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="cardExpiryMonth">Mês</Label>
+                      <Input
+                        id="cardExpiryMonth"
+                        value={form.cardExpiryMonth}
+                        onChange={(event) =>
+                          updateField("cardExpiryMonth", onlyDigits(event.target.value, 2))
+                        }
+                        disabled={isSubmitting || payment?.status === "paid"}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="cardExpiryYear">Ano</Label>
+                      <Input
+                        id="cardExpiryYear"
+                        value={form.cardExpiryYear}
+                        onChange={(event) =>
+                          updateField("cardExpiryYear", onlyDigits(event.target.value, 4))
+                        }
+                        disabled={isSubmitting || payment?.status === "paid"}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="cardCcv">CVV</Label>
+                      <Input
+                        id="cardCcv"
+                        value={form.cardCcv}
+                        onChange={(event) =>
+                          updateField("cardCcv", onlyDigits(event.target.value, 4))
+                        }
+                        disabled={isSubmitting || payment?.status === "paid"}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Label>Parcelas</Label>
+                      <Select
+                        value={String(form.installments)}
+                        onValueChange={(value) =>
+                          updateField("installments", Number.parseInt(value, 10))
+                        }
+                        disabled={isSubmitting || payment?.status === "paid"}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {installmentOptions.map((installment) => (
+                              <SelectItem key={installment} value={String(installment)}>
+                                {installment}x de{" "}
+                                {formatCurrency(details.totalAmount / installment)}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <Button
+                type="button"
+                size="lg"
+                disabled={!canSubmit || isSubmitting || payment?.status === "paid"}
+                onClick={handleSubmit}
+              >
+                {isSubmitting ? (
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                ) : null}
+                Gerar pagamento
+              </Button>
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-col gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Resumo</CardTitle>
+                <CardDescription>Plano CRM bloqueado para esta adesão.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Ciclo</span>
+                  <span className="font-medium">{details.cycleLabel}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Mensalidade</span>
+                  <span className="font-medium">{formatCurrency(details.monthlyTotalAmount)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Times adicionais</span>
+                  <span className="font-medium">{details.extraTeams}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Usuários adicionais</span>
+                  <span className="font-medium">{details.extraUsers}</span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Total antecipado</span>
+                  <span className="text-lg font-semibold">
+                    {formatCurrency(details.totalAmount)}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {payment ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Pagamento</CardTitle>
+                  <CardDescription>
+                    {payment.status === "paid"
+                      ? "Pagamento confirmado."
+                      : "Aguardando confirmação do Asaas."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3">
+                  {payment.pix ? (
+                    <>
+                      {payment.pix.encodedImage ? (
+                        <img
+                          src={`data:image/png;base64,${payment.pix.encodedImage}`}
+                          alt="QR Code PIX"
+                          className="mx-auto size-48 rounded-md border"
+                        />
+                      ) : null}
+                      <Input value={payment.pix.payload} readOnly />
+                    </>
+                  ) : null}
+                  {payment.boleto?.bankSlipUrl ? (
+                    <Button asChild>
+                      <a href={payment.boleto.bankSlipUrl} target="_blank" rel="noreferrer">
+                        Abrir boleto
+                      </a>
+                    </Button>
+                  ) : null}
+                  {payment.invoiceUrl ? (
+                    <Button asChild variant="outline">
+                      <a href={payment.invoiceUrl} target="_blank" rel="noreferrer">
+                        Abrir fatura
+                      </a>
+                    </Button>
+                  ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </main>
+  )
+}

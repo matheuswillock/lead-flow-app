@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/BackofficeUserRepository"
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository"
 import { noopMailboxProvisioningService } from "@/app/api/services/mailbox/NoopMailboxProvisioningService"
 import { BackofficeUserUseCase } from "@/app/api/useCases/backoffice/BackofficeUserUseCase"
+import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
 
 function makeUseCase() {
   return new BackofficeUserUseCase(

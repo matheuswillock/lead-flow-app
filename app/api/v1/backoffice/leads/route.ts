@@ -15,6 +15,14 @@ function parseStatus(value: string | null): BackofficeLeadStatusValue | undefine
   return undefined
 }
 
+function optionalStringArray(data: Record<string, unknown>, key: string): string[] | undefined {
+  const value = data[key]
+  if (value === undefined || value === null) return undefined
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : undefined
+}
+
 export async function GET(request: NextRequest) {
   try {
     const result = await getBackofficeAccess(request)
@@ -51,6 +59,7 @@ export async function POST(request: NextRequest) {
         name: typeof data.name === "string" ? data.name : "",
         email: typeof data.email === "string" || data.email === null ? data.email : null,
         phone: typeof data.phone === "string" || data.phone === null ? data.phone : null,
+        cnpj: typeof data.cnpj === "string" || data.cnpj === null ? data.cnpj : null,
         notes: typeof data.notes === "string" || data.notes === null ? data.notes : null,
         status:
           typeof data.status === "string"
@@ -81,6 +90,8 @@ export async function POST(request: NextRequest) {
           typeof data.meetingLink === "string" || data.meetingLink === null
             ? data.meetingLink
             : undefined,
+        meetingExtraGuests: optionalStringArray(data, "meetingExtraGuests") ??
+          optionalStringArray(data, "extraGuests"),
       },
       result.access.profileId
     )

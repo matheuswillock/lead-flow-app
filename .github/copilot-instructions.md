@@ -121,6 +121,7 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 - Create implementation summary docs (`*_IMPLEMENTATION_SUMMARY.md`, `*_FIX_SUMMARY.md`, similar).
 - Use npm or yarn (project standard is Bun).
 - Hardcode URLs when `NEXT_PUBLIC_APP_URL` or `getFullUrl()` should be used.
+- Create routes/folders/files with ambiguous or generic names that don't describe intent (e.g. `me`, `data`, `misc`, `temp`, `utils2`).
 - Use browser-native dialogs (`window.alert`, `window.confirm`, `window.prompt`, or global equivalents). Use shadcn `AlertDialog`/`Dialog` and `sonner` instead.
 - Create `DialogContent` without scroll support when the content may overflow the viewport. Every `DialogContent` with non-trivial content **MUST** use `max-h-[90vh] flex flex-col` on the `DialogContent`, a scrollable inner `div` with `overflow-y-auto flex-1` wrapping the form fields, and a fixed `DialogFooter` outside the scrollable area.
 
@@ -130,9 +131,17 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 - Use strict TypeScript typing.
 - Use `console.info` for flow logs and `console.error` for errors.
 - In route-level error logs, identify routes by stable name + HTTP method (e.g. `[SubscriptionBySupabaseRoute][GET]`).
+- Name routes/folders/files with a descriptive domain or action that matches the payload/intent (e.g. `current-user`, `account`, `users`, `leads`) and keep naming consistent across frontend, backend and Postman.
+- When renaming a route or API contract, update all callers in the same change (frontend fetch/services, Postman collection, docs).
 - Services (frontend and backend) **MUST** follow interface + concrete implementation.
 - When creating a new backend endpoint, update `postman/Lead-Flow-API-Collection.json` and `postman/Lead-Flow-Environment.json` when applicable.
 - Keep behavioral consistency in legacy paths unless the task explicitly includes refactor.
+
+### Landing Page Copy Contract
+
+- The landing page hero headline is a product contract and **MUST** remain exactly:
+  `Corretores comuns mandam cotações. Os de ALTA PERFORMANCE usam Corretor Studio.`
+- Landing page hero copy **MUST** reinforce FOMO (Fear of Missing Out) and performance/advantage positioning.
 
 ### FOR NEW FEATURES
 

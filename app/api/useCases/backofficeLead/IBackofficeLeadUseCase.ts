@@ -5,6 +5,7 @@ export interface CreateBackofficeLeadDTO {
   name: string
   email?: string | null
   phone?: string | null
+  cnpj?: string | null
   notes?: string | null
   status?: BackofficeLeadStatus
   origin?: BackofficeLeadOrigin
@@ -16,12 +17,14 @@ export interface CreateBackofficeLeadDTO {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingExtraGuests?: string[] | null
 }
 
 export interface UpdateBackofficeLeadDTO {
   name?: string
   email?: string | null
   phone?: string | null
+  cnpj?: string | null
   notes?: string | null
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
@@ -29,6 +32,7 @@ export interface UpdateBackofficeLeadDTO {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingExtraGuests?: string[] | null
 }
 
 export interface UpdateBackofficeLeadStatusDTO {
@@ -37,6 +41,7 @@ export interface UpdateBackofficeLeadStatusDTO {
   meetingTitle?: string | null
   meetingNotes?: string | null
   meetingLink?: string | null
+  meetingExtraGuests?: string[] | null
 }
 
 export interface IBackofficeLeadUseCase {

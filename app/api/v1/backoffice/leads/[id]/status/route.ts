@@ -12,6 +12,14 @@ function optionalStringOrNull(data: Record<string, unknown> | null, key: string)
   return typeof value === "string" || value === null ? value : undefined
 }
 
+function optionalStringArray(data: Record<string, unknown> | null, key: string): string[] | undefined {
+  const value = data?.[key]
+  if (value === undefined || value === null) return undefined
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : undefined
+}
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -43,6 +51,8 @@ export async function PUT(
         meetingTitle: optionalStringOrNull(data, "meetingTitle"),
         meetingNotes: optionalStringOrNull(data, "meetingNotes"),
         meetingLink: optionalStringOrNull(data, "meetingLink"),
+        meetingExtraGuests:
+          optionalStringArray(data, "meetingExtraGuests") ?? optionalStringArray(data, "extraGuests"),
       }
     )
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })

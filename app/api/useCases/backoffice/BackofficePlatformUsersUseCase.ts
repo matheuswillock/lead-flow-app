@@ -1,9 +1,9 @@
 import type { SubscriptionPlan } from "@prisma/client"
+import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
 import { asaasApi, asaasFetch } from "@/lib/asaas"
 import { createEmailService } from "@/lib/services/EmailService"
 import { getAppUrl } from "@/lib/utils/app-url"
-import type { IBackofficePlatformUsersRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficePlatformUsersRepository"
 import type { IBackofficePlatformUsersUseCase } from "./IBackofficePlatformUsersUseCase"
 import {
   startOfMonthInTz,
@@ -14,6 +14,7 @@ import {
   parseDateKeyToUtc,
   resolveTimezone,
 } from "@/lib/dates"
+import { IBackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
 
 interface PlanInfo {
   label: string
@@ -46,6 +47,13 @@ interface AsaasPaymentItem {
   pixTransaction?: {
     transactionReceiptUrl?: string
   }
+}
+
+function createSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceKey) throw new Error("Supabase admin credentials não configuradas")
+  return createClient(url, serviceKey)
 }
 
 const CHARGED_STATUSES = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"])
@@ -311,6 +319,15 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         fullName: master.fullName,
         email: master.email,
         phone: master.phone,
+        cpfCnpj: master.cpfCnpj,
+        postalCode: master.postalCode,
+        address: master.address,
+        addressNumber: master.addressNumber,
+        neighborhood: master.neighborhood,
+        complement: master.complement,
+        city: master.city,
+        state: master.state,
+        functions: master.functions,
         profileIconUrl: master.profileIconUrl,
         createdAt: master.createdAt,
         linkedUsersCount: master.linkedUsersCount,
@@ -636,6 +653,101 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][notifyMasterUserInvoiceStatusEmail]", error)
       return new Output(false, [], ["Erro ao disparar notificação por e-mail"], null)
+    }
+  }
+
+  async updateMasterUser(
+    masterProfileId: string,
+    data: {
+      fullName?: string
+      phone?: string | null
+      cpfCnpj?: string | null
+      postalCode?: string | null
+      address?: string | null
+      addressNumber?: string | null
+      neighborhood?: string | null
+      complement?: string | null
+      city?: string | null
+      state?: string | null
+      functions?: string[]
+      hasPermanentSubscription?: boolean
+    }
+  ): Promise<Output> {
+    try {
+      if (data.fullName !== undefined) {
+        const name = data.fullName.trim()
+        if (name.length < 2) {
+          return new Output(false, [], ["Nome completo deve ter pelo menos 2 caracteres"], null)
+        }
+        data = { ...data, fullName: name }
+      }
+
+      if (data.state !== undefined && data.state !== null) {
+        data = { ...data, state: data.state.toUpperCase().slice(0, 2) }
+      }
+
+      const updated = await this.platformUsersRepository.updateMasterUserProfile(masterProfileId, data)
+      if (!updated) {
+        return new Output(false, [], ["Usuário master não encontrado ou não foi possível atualizar"], null)
+      }
+
+      return new Output(true, ["Dados atualizados com sucesso"], [], { id: updated.id })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][updateMasterUser]", error)
+      return new Output(false, [], ["Erro ao atualizar dados do cliente"], null)
+    }
+  }
+
+  async deleteMasterUser(masterProfileId: string): Promise<Output> {
+    try {
+      const master = await this.platformUsersRepository.findMasterUserForDeletion(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      const emailService = createEmailService()
+      const recipients = [
+        { fullName: master.fullName, email: master.email },
+        ...master.managers,
+      ]
+
+      await Promise.all(
+        recipients.map(async (recipient) => {
+          try {
+            await emailService.sendAccountDeletionFarewellEmail({
+              userName: recipient.fullName ?? recipient.email,
+              userEmail: recipient.email,
+            })
+          } catch (emailError) {
+            console.error("[BackofficePlatformUsersUseCase][deleteMasterUser] Erro ao enviar e-mail para", recipient.email, emailError)
+          }
+        })
+      )
+
+      const { masterSupabaseId, memberSupabaseIds } =
+        await this.platformUsersRepository.deleteMasterUserWithAllMembers(masterProfileId)
+
+      const supabaseAdmin = createSupabaseAdmin()
+      const allSupabaseIds = [
+        ...(masterSupabaseId ? [masterSupabaseId] : []),
+        ...memberSupabaseIds,
+      ]
+
+      await Promise.all(
+        allSupabaseIds.map(async (supabaseId) => {
+          try {
+            await supabaseAdmin.auth.admin.deleteUser(supabaseId)
+          } catch (authError) {
+            console.error("[BackofficePlatformUsersUseCase][deleteMasterUser] Erro ao excluir supabaseId", supabaseId, authError)
+          }
+        })
+      )
+
+      console.info("[BackofficePlatformUsersUseCase][deleteMasterUser] Conta excluída:", master.email)
+      return new Output(true, ["Conta excluída com sucesso"], [], { id: masterProfileId })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][deleteMasterUser]", error)
+      return new Output(false, [], ["Erro ao excluir conta do cliente"], null)
     }
   }
 }

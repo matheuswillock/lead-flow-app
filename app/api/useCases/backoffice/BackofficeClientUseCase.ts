@@ -1,11 +1,8 @@
 import { randomUUID } from "crypto"
 import { Output } from "@/lib/output"
-import type {
-  IBackofficeClientRepository,
-  CreateBackofficeClientInput,
-} from "@/app/api/infra/data/repositories/backoffice/IBackofficeClientRepository"
 import type { IAsaasCustomerService } from "@/app/api/services/AsaasCustomer/IAsaasCustomerService"
 import type { AsaasCustomer } from "@/app/api/services/AsaasCustomer/AsaasCustomerService"
+import { CreateBackofficeClientInput, IBackofficeClientRepository } from "../../infra/data/repositories/backoffice/ClientRepository/IBackofficeClientRepository"
 
 export interface CreateClientInput {
   fullName: string

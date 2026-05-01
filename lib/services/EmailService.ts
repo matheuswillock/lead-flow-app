@@ -103,6 +103,11 @@ export interface MeetingInviteEmailData {
   timezone?: string | null;
 }
 
+export interface AccountDeletionFarewellEmailData {
+  userName: string;
+  userEmail: string;
+}
+
 export interface CloserScheduleNotificationEmailData {
   to: string;
   closerName: string;
@@ -1228,6 +1233,95 @@ export class EmailService {
       subject,
       html,
       attachments: data.attachments,
+    });
+  }
+
+  async sendAccountDeletionFarewellEmail(data: AccountDeletionFarewellEmailData) {
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+
+                <!-- Header -->
+                <tr>
+                  <td style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); padding: 40px 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
+                    <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Notificação de Conta</p>
+                  </td>
+                </tr>
+
+                <!-- Conteúdo -->
+                <tr>
+                  <td style="padding: 48px 32px;">
+                    <div style="text-align: center; margin-bottom: 32px;">
+                      <div style="display: inline-block; width: 72px; height: 72px; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-radius: 50%; border: 2px solid #dc2626; text-align: center; line-height: 72px; margin-bottom: 16px;">
+                        <span style="font-size: 32px;">⚠️</span>
+                      </div>
+                    </div>
+
+                    <h2 style="margin: 0 0 24px 0; color: #171717; font-size: 24px; font-weight: 600; text-align: center;">Sua conta foi encerrada</h2>
+
+                    <p style="margin: 0 0 16px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
+                      Olá <strong>${data.userName}</strong>,
+                    </p>
+
+                    <p style="margin: 0 0 24px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
+                      Informamos que sua conta na plataforma <strong>Corretor Studio</strong> foi encerrada. Todos os seus dados, times e acessos foram removidos permanentemente.
+                    </p>
+
+                    <div style="background-color: #fef2f2; border-left: 4px solid #dc2626; padding: 16px; border-radius: 8px; margin: 24px 0;">
+                      <p style="margin: 0; color: #991b1b; font-size: 15px; line-height: 1.6;">
+                        <strong>O que isso significa?</strong><br>
+                        • Seu acesso à plataforma foi encerrado<br>
+                        • Todos os times e dados foram removidos<br>
+                        • Os demais usuários da conta perderam o acesso
+                      </p>
+                    </div>
+
+                    <p style="margin: 24px 0 0 0; color: #737373; font-size: 14px; line-height: 1.6; text-align: center;">
+                      Se você acredita que isso foi um erro, entre em contato com nossa equipe de suporte.
+                    </p>
+
+                    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 32px 0;" />
+
+                    <p style="margin: 0; color: #737373; font-size: 14px; line-height: 1.6; text-align: center;">
+                      Agradecemos por ter utilizado o Corretor Studio.
+                    </p>
+                  </td>
+                </tr>
+
+                <!-- Footer -->
+                <tr>
+                  <td style="background-color: #f9fafb; padding: 24px 32px; text-align: center; border-top: 1px solid #e5e5e5;">
+                    <p style="margin: 0; color: #737373; font-size: 12px;">
+                      Este é um e-mail automático do Corretor Studio
+                    </p>
+                    <p style="margin: 8px 0 0 0; color: #a3a3a3; font-size: 11px;">
+                      © ${new Date().getFullYear()} Corretor Studio. Todos os direitos reservados.
+                    </p>
+                  </td>
+                </tr>
+
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    return this.sendEmail({
+      to: [data.userEmail],
+      subject: "Conta encerrada — Corretor Studio",
+      html,
     });
   }
 }
