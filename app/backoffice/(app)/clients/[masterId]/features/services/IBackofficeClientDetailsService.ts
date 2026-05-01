@@ -39,6 +39,7 @@ export interface IBackofficeClientDetailsService {
       city?: string | null
       state?: string | null
       functions?: string[]
+      hasPermanentSubscription?: boolean
     }
   ): Promise<void>
 

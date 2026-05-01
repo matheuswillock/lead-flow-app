@@ -115,6 +115,7 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       city?: string | null
       state?: string | null
       functions?: string[]
+      hasPermanentSubscription?: boolean
     }
   ): Promise<void> {
     const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}`, {

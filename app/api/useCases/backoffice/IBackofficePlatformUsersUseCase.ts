@@ -46,6 +46,7 @@ export interface IBackofficePlatformUsersUseCase {
       city?: string | null
       state?: string | null
       functions?: string[]
+      hasPermanentSubscription?: boolean
     }
   ): Promise<Output>
 

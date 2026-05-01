@@ -71,6 +71,9 @@ export async function PATCH(
       city: nullableString(body.city),
       state: nullableString(body.state),
       functions: optionalStringArray(body.functions),
+      hasPermanentSubscription: typeof body.hasPermanentSubscription === "boolean"
+        ? body.hasPermanentSubscription
+        : undefined,
     }
 
     const useCase = new BackofficePlatformUsersUseCase(new BackofficePlatformUsersRepository())

@@ -125,6 +125,7 @@ export interface IBackofficePlatformUsersRepository {
       city?: string | null
       state?: string | null
       functions?: string[]
+      hasPermanentSubscription?: boolean
     }
   ): Promise<{ id: string } | null>
 

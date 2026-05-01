@@ -404,6 +404,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       city?: string | null
       state?: string | null
       functions?: string[]
+      hasPermanentSubscription?: boolean
     }
   ): Promise<{ id: string } | null> {
     try {
@@ -419,6 +420,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       if (data.city !== undefined) updateData.city = data.city
       if (data.state !== undefined) updateData.state = data.state
       if (data.functions !== undefined) updateData.functions = data.functions
+      if (data.hasPermanentSubscription !== undefined) updateData.hasPermanentSubscription = data.hasPermanentSubscription
 
       if (Object.keys(updateData).length === 0) return null
 

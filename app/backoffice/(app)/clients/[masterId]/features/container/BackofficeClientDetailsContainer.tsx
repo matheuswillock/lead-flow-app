@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
-import { CalendarDays, DollarSign, Eye, Pencil, Search, Tag } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { CalendarDays, Crown, DollarSign, Eye, Pencil, Search, Tag, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Accordion,
@@ -33,6 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { toast } from "sonner"
 import { useBackofficeClientDetails } from "../context/BackofficeClientDetailsContext"
 import { BackofficeClientEditDialog } from "../components/BackofficeClientEditDialog"
 import { BackofficeClientDeleteDialog } from "../components/BackofficeClientDeleteDialog"
@@ -142,6 +143,8 @@ export function BackofficeClientDetailsContainer() {
   const [localFilters, setLocalFilters] = useState(filters)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [isTogglingLifetime, setIsTogglingLifetime] = useState(false)
+  const lifetimeInFlight = useRef(false)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -201,6 +204,23 @@ export function BackofficeClientDetailsContainer() {
   async function handleClearFilters() {
     setLocalFilters({ query: "" })
     await clearFilters()
+  }
+
+  async function handleToggleLifetime() {
+    if (!details || lifetimeInFlight.current) return
+    lifetimeInFlight.current = true
+    setIsTogglingLifetime(true)
+    const nextValue = details.plan.kind !== "lifetime"
+    try {
+      await service.updateClient(masterId, { hasPermanentSubscription: nextValue })
+      toast.success(nextValue ? "Cliente tornado vitalício com sucesso" : "Plano vitalício removido com sucesso")
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar plano")
+    } finally {
+      setIsTogglingLifetime(false)
+      lifetimeInFlight.current = false
+    }
   }
 
   return (
@@ -405,6 +425,29 @@ export function BackofficeClientDetailsContainer() {
             <TabsContent value="invoices" className="mt-4">
               <Card>
                 <CardHeader className="space-y-4">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-sm font-medium">Plano do cliente</span>
+                    <Button
+                      variant={details.plan.kind === "lifetime" ? "outline" : "default"}
+                      size="sm"
+                      onClick={() => void handleToggleLifetime()}
+                      disabled={isTogglingLifetime}
+                      className={details.plan.kind === "lifetime" ? "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive" : ""}
+                    >
+                      {details.plan.kind === "lifetime" ? (
+                        <>
+                          <X className="mr-2 h-4 w-4" />
+                          {isTogglingLifetime ? "Removendo..." : "Remover plano vitalício"}
+                        </>
+                      ) : (
+                        <>
+                          <Crown className="mr-2 h-4 w-4" />
+                          {isTogglingLifetime ? "Aplicando..." : "Tornar cliente vitalício"}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
                   <div className="flex flex-wrap items-center gap-2">
                     <Select
                       value={invoiceFilters.status}

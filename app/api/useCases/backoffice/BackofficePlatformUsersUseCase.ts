@@ -670,6 +670,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       city?: string | null
       state?: string | null
       functions?: string[]
+      hasPermanentSubscription?: boolean
     }
   ): Promise<Output> {
     try {
@@ -704,10 +705,6 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
-      if (!master.supabaseId) {
-        return new Output(false, [], ["Usuário não possui vínculo com autenticação"], null)
-      }
-
       const emailService = createEmailService()
       const recipients = [
         { fullName: master.fullName, email: master.email },
@@ -727,14 +724,24 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         })
       )
 
-      const supabaseAdmin = createSupabaseAdmin()
-      const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(master.supabaseId)
-      if (authError) {
-        console.error("[BackofficePlatformUsersUseCase][deleteMasterUser] Erro ao excluir no Supabase Auth:", authError)
-        return new Output(false, [], ["Erro ao excluir usuário na autenticação"], null)
-      }
+      const { masterSupabaseId, memberSupabaseIds } =
+        await this.platformUsersRepository.deleteMasterUserWithAllMembers(masterProfileId)
 
-      await this.platformUsersRepository.deleteMasterUserProfile(master.supabaseId)
+      const supabaseAdmin = createSupabaseAdmin()
+      const allSupabaseIds = [
+        ...(masterSupabaseId ? [masterSupabaseId] : []),
+        ...memberSupabaseIds,
+      ]
+
+      await Promise.all(
+        allSupabaseIds.map(async (supabaseId) => {
+          try {
+            await supabaseAdmin.auth.admin.deleteUser(supabaseId)
+          } catch (authError) {
+            console.error("[BackofficePlatformUsersUseCase][deleteMasterUser] Erro ao excluir supabaseId", supabaseId, authError)
+          }
+        })
+      )
 
       console.info("[BackofficePlatformUsersUseCase][deleteMasterUser] Conta excluída:", master.email)
       return new Output(true, ["Conta excluída com sucesso"], [], { id: masterProfileId })
