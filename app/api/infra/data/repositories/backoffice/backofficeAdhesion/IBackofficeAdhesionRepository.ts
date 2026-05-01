@@ -96,6 +96,14 @@ export interface UpdateBackofficeAdhesionCheckoutInput {
   pixPayload?: string | null
 }
 
+export interface MarkBackofficeAdhesionExternalPaidInput {
+  fullName: string
+  phone: string
+  email: string
+  cpfCnpj?: string | null
+  paidAt: Date
+}
+
 export interface CreateBackofficeAdhesionManagerProfileInput {
   supabaseId: string
   fullName: string
@@ -103,7 +111,7 @@ export interface CreateBackofficeAdhesionManagerProfileInput {
   email: string
   asaasCustomerId?: string | null
   subscriptionId: string
-  cpfCnpj: string
+  cpfCnpj?: string | null
   operatorCount: number
   subscriptionStartDate: Date
   postalCode?: string | null
@@ -148,6 +156,10 @@ export interface IBackofficeAdhesionRepository {
   updateCheckoutData(
     id: string,
     data: UpdateBackofficeAdhesionCheckoutInput
+  ): Promise<BackofficeAdhesionWithRelations>
+  markExternalPaid(
+    id: string,
+    data: MarkBackofficeAdhesionExternalPaidInput
   ): Promise<BackofficeAdhesionWithRelations>
   updateStatus(
     id: string,

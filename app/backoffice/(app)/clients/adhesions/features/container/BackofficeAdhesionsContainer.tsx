@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Copy, Edit, MoreHorizontal, RefreshCw, Search } from "lucide-react"
+import { Copy, Edit, MailCheck, MoreHorizontal, RefreshCw, Search } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -100,6 +100,7 @@ export function BackofficeAdhesionsContainer() {
   const [editingAdhesion, setEditingAdhesion] = useState<BackofficeAdhesionItem | null>(null)
   const [resendResult, setResendResult] = useState<BackofficeAdhesionCreationResult | null>(null)
   const [resendingId, setResendingId] = useState<string | null>(null)
+  const [resendingInviteId, setResendingInviteId] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -129,6 +130,20 @@ export function BackofficeAdhesionsContainer() {
       toast.error(err instanceof Error ? err.message : "Erro ao reenviar adesão")
     } finally {
       setResendingId(null)
+    }
+  }
+
+  async function handleResendInvite(adhesion: BackofficeAdhesionItem) {
+    if (resendingInviteId) return
+    setResendingInviteId(adhesion.id)
+    try {
+      await service.resendInvite(adhesion.id)
+      toast.success("Convite reenviado")
+    } catch (err) {
+      console.error("[BackofficeAdhesionsContainer][resendInvite]", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao reenviar convite")
+    } finally {
+      setResendingInviteId(null)
     }
   }
 
@@ -287,6 +302,15 @@ export function BackofficeAdhesionsContainer() {
                             <RefreshCw data-icon="inline-start" />
                             Reenviar adesão
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={
+                              resendingInviteId === adhesion.id || adhesion.status !== "paid"
+                            }
+                            onSelect={() => void handleResendInvite(adhesion)}
+                          >
+                            <MailCheck data-icon="inline-start" />
+                            Reenviar convite
+                          </DropdownMenuItem>
                         </DropdownMenuGroup>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -363,11 +387,11 @@ export function BackofficeAdhesionsContainer() {
             <DialogTitle>Link de adesão</DialogTitle>
             <DialogDescription>Envie este link para o cliente concluir o checkout.</DialogDescription>
           </DialogHeader>
-          {resendResult ? (
+          {resendResult?.publicUrl ? (
             <div className="flex flex-1 flex-col gap-2 overflow-y-auto">
               <div className="flex gap-2">
                 <Input value={resendResult.publicUrl} readOnly />
-                <Button type="button" size="icon" onClick={() => copyLink(resendResult.publicUrl)}>
+                <Button type="button" size="icon" onClick={() => copyLink(resendResult.publicUrl!)}>
                   <Copy data-icon="inline-start" />
                   <span className="sr-only">Copiar link</span>
                 </Button>

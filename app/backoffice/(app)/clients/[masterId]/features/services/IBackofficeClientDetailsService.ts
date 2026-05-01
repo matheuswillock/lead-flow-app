@@ -24,4 +24,23 @@ export interface IBackofficeClientDetailsService {
       timezone?: string
     }
   ): Promise<BackofficeClientInvoicesResult>
+
+  updateClient(
+    masterId: string,
+    data: {
+      fullName?: string
+      phone?: string | null
+      cpfCnpj?: string | null
+      postalCode?: string | null
+      address?: string | null
+      addressNumber?: string | null
+      neighborhood?: string | null
+      complement?: string | null
+      city?: string | null
+      state?: string | null
+      functions?: string[]
+    }
+  ): Promise<void>
+
+  deleteClient(masterId: string): Promise<void>
 }

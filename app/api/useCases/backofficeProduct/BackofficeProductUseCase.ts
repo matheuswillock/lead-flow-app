@@ -1,9 +1,27 @@
 import { Output } from "@/lib/output"
+import { BackofficeProductRepository } from "../../infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository"
 import type { IBackofficeProductRepository } from "../../infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository"
 import type {
+  BackofficeProduct,
   BackofficeProductBillingMode,
   BackofficeProductType,
 } from "@prisma/client"
+
+export interface BackofficeProductDTO {
+  id: string
+  name: string
+  slug: string
+  description: string | null
+  type: BackofficeProductType
+  billingMode: BackofficeProductBillingMode
+  priceMonthly: number | null
+  priceQuarterly: number | null
+  priceSemiannual: number | null
+  priceLifetime: number | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
 
 export interface CreateBackofficeProductUseCaseInput {
   name: string
@@ -37,7 +55,7 @@ export class BackofficeProductUseCase {
   async list(): Promise<Output> {
     try {
       const products = await this.productRepo.findAll()
-      return new Output(true, [], [], products)
+      return new Output(true, [], [], products.map(mapProductDTO))
     } catch (error) {
       console.error("[BackofficeProductUseCase][list]", error)
       return new Output(false, [], ["Erro ao listar produtos"], null)
@@ -64,7 +82,7 @@ export class BackofficeProductUseCase {
       }
 
       const product = await this.productRepo.create(input)
-      return new Output(true, ["Produto criado com sucesso"], [], product)
+      return new Output(true, ["Produto criado com sucesso"], [], mapProductDTO(product))
     } catch (error) {
       console.error("[BackofficeProductUseCase][create]", error)
       return new Output(false, [], ["Erro ao criar produto"], null)
@@ -87,7 +105,6 @@ export class BackofficeProductUseCase {
 
       const billingMode = input.billingMode ?? existing.billingMode
       const validationError = this.validatePrices(billingMode, {
-        billingMode,
         priceMonthly: Object.prototype.hasOwnProperty.call(input, "priceMonthly")
           ? input.priceMonthly
           : existing.priceMonthly !== null
@@ -114,7 +131,7 @@ export class BackofficeProductUseCase {
       }
 
       const product = await this.productRepo.update(id, input)
-      return new Output(true, ["Produto atualizado com sucesso"], [], product)
+      return new Output(true, ["Produto atualizado com sucesso"], [], mapProductDTO(product))
     } catch (error) {
       console.error("[BackofficeProductUseCase][update]", error)
       return new Output(false, [], ["Erro ao atualizar produto"], null)
@@ -166,10 +183,36 @@ export class BackofficeProductUseCase {
         return "Preço semestral é obrigatório para produtos recorrentes"
       }
     } else if (billingMode === "LIFETIME") {
-      if (!prices.priceLifetime || prices.priceLifetime <= 0) {
-        return "Preço vitalício é obrigatório para produtos com pagamento único"
+      if (prices.priceLifetime != null && prices.priceLifetime <= 0) {
+        return "Preço vitalício deve ser maior que zero"
       }
     }
     return null
   }
 }
+
+function decimalToNumber(value: { toString(): string } | null): number | null {
+  return value == null ? null : Number(value.toString())
+}
+
+export function mapProductDTO(product: BackofficeProduct): BackofficeProductDTO {
+  return {
+    id: product.id,
+    name: product.name,
+    slug: product.slug,
+    description: product.description,
+    type: product.type,
+    billingMode: product.billingMode,
+    priceMonthly: decimalToNumber(product.priceMonthly),
+    priceQuarterly: decimalToNumber(product.priceQuarterly),
+    priceSemiannual: decimalToNumber(product.priceSemiannual),
+    priceLifetime: decimalToNumber(product.priceLifetime),
+    isActive: product.isActive,
+    createdAt: product.createdAt.toISOString(),
+    updatedAt: product.updatedAt.toISOString(),
+  }
+}
+
+export const backofficeProductUseCase = new BackofficeProductUseCase(
+  new BackofficeProductRepository()
+)

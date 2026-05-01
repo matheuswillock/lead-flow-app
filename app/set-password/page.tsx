@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import type { EmailOtpType } from '@supabase/supabase-js'
 import { createSupabaseBrowser } from '@/lib/supabase/browser'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +25,7 @@ function SetPasswordContent() {
   const [email, setEmail] = useState<string | null>(null)
   const [passwordStrength, setPasswordStrength] = useState<'weak' | 'medium' | 'strong' | null>(null)
   const [isTokenError, setIsTokenError] = useState(false)
+  const verifiedTokenRef = useRef<string | null>(null)
 
   const calculatePasswordStrength = (pwd: string): 'weak' | 'medium' | 'strong' => {
     let strength = 0
@@ -43,11 +45,86 @@ function SetPasswordContent() {
     // Verificar e estabelecer sessão com o token da URL
     const initializeSession = async () => {
       if (typeof window === 'undefined') return;
+
+      const supabase = createSupabaseBrowser()
+
+      if (!supabase) {
+        setError('Erro ao conectar com o sistema de autenticação')
+        setIsTokenError(true)
+        setIsInitializing(false)
+        return
+      }
+
+      const resumeExistingSession = async (): Promise<boolean> => {
+        const { data, error: sessionError } = await supabase.auth.getSession()
+
+        if (sessionError) {
+          console.info('❌ Erro ao recuperar sessão existente:', sessionError.message)
+          return false
+        }
+
+        if (!data.session) {
+          return false
+        }
+
+        setEmail(data.session.user?.email ?? null)
+        setError(null)
+        setIsTokenError(false)
+        setIsInitializing(false)
+
+        if (window.location.search || window.location.hash) {
+          window.history.replaceState(null, '', '/set-password')
+        }
+
+        return true
+      }
+
+      const tokenHash = searchParams.get('token_hash')
+      const queryType = searchParams.get('type')
+
+      if (tokenHash && (queryType === 'invite' || queryType === 'recovery')) {
+        if (verifiedTokenRef.current === tokenHash) return
+        verifiedTokenRef.current = tokenHash
+
+        try {
+          const { data, error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: queryType as EmailOtpType,
+          })
+
+          if (verifyError || !data.session) {
+            console.error('❌ Erro ao validar token do e-mail:', verifyError)
+
+            if (await resumeExistingSession()) {
+              return
+            }
+
+            setError('Este link já foi usado ou expirou. Solicite um novo link de acesso.')
+            setIsTokenError(true)
+            setIsInitializing(false)
+            return
+          }
+
+          setEmail(data.session.user?.email ?? null)
+          window.history.replaceState(null, '', '/set-password')
+          setIsInitializing(false)
+        } catch (err) {
+          console.error('❌ Erro ao validar token do e-mail:', err)
+          setError('Erro inesperado ao processar o link. Tente novamente.')
+          setIsTokenError(true)
+          setIsInitializing(false)
+        }
+        return
+      }
       
       const hash = window.location.hash;
       console.info('🔍 Hash completo:', hash);
       
       if (!hash) {
+        if (await resumeExistingSession()) {
+          return
+        }
+
         console.info('❌ Sem hash na URL, redirecionando para login');
         router.push('/sign-in');
         return;
@@ -57,24 +134,43 @@ function SetPasswordContent() {
       const accessToken = hashParams.get('access_token');
       const refreshToken = hashParams.get('refresh_token');
       const type = hashParams.get('type');
+      const hashError = hashParams.get('error');
+      const hashErrorCode = hashParams.get('error_code');
+      const hashErrorDescription = hashParams.get('error_description');
+
+      if (hashError) {
+        console.info('❌ Erro retornado pelo provedor de autenticação:', {
+          error: hashError,
+          code: hashErrorCode,
+        });
+
+        if (await resumeExistingSession()) {
+          return
+        }
+
+        setError(
+          hashErrorCode === 'otp_expired'
+            ? 'Este link já foi usado ou expirou. Solicite um novo link de acesso.'
+            : hashErrorDescription?.replace(/\+/g, ' ') || 'Link inválido. Solicite um novo link.'
+        );
+        setIsTokenError(true);
+        setIsInitializing(false);
+        return;
+      }
       
       console.info('🔐 Token encontrado:', { accessToken: !!accessToken, type });
 
       if (!accessToken || (type !== 'invite' && type !== 'recovery')) {
+        if (await resumeExistingSession()) {
+          return
+        }
+
         console.info('❌ Token inválido ou tipo incorreto, redirecionando para login');
         router.push('/sign-in');
         return;
       }
 
       try {
-        const supabase = createSupabaseBrowser();
-        
-        if (!supabase) {
-          setError('Erro ao conectar com o sistema de autenticação');
-          setIsInitializing(false);
-          return;
-        }
-
         // Estabelecer a sessão usando o access token
         console.info('🔄 Estabelecendo sessão com o token...');
         const { data, error: sessionError } = await supabase.auth.setSession({

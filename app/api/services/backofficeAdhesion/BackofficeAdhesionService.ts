@@ -1,8 +1,11 @@
-import type { BackofficeAdhesionBillingCycle } from "@prisma/client"
+import type { BackofficeAdhesionBillingCycle, BackofficeProduct } from "@prisma/client"
 import { asaasApi, asaasFetch } from "@/lib/asaas"
 import {
   BACKOFFICE_ADHESION_CYCLE_LABELS,
+  BACKOFFICE_ADHESION_CYCLE_MONTHS,
+  type BackofficeAdhesionPrices,
   calculateBackofficeAdhesionPricing,
+  resolveProductPriceForCycle,
 } from "@/lib/backoffice-adhesions/adhesion-pricing"
 import {
   generateBackofficeAdhesionToken,
@@ -12,6 +15,7 @@ import {
 } from "@/lib/backoffice-adhesions/adhesion-token-validation"
 import { addMonthsInTz, DEFAULT_TZ, formatInTz } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
+import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
 import { getFullUrl } from "@/lib/utils/app-url"
 import type {
@@ -19,6 +23,10 @@ import type {
   IBackofficeAdhesionRepository,
 } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/IBackofficeAdhesionRepository"
 import { BackofficeAdhesionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/BackofficeAdhesionRepository"
+import type { IBackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository"
+import { BackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository"
+import type { IBackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/IBackofficeUserSubscriptionRepository"
+import { BackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/BackofficeUserSubscriptionRepository"
 import type {
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
@@ -35,6 +43,9 @@ import type {
 } from "./IBackofficeAdhesionService"
 
 const CRM_MODULES = ["crm"]
+const CRM_PRODUCT_SLUG = "crm"
+const EXTRA_TEAM_PRODUCT_SLUG = "extra-team"
+const EXTRA_USER_PRODUCT_SLUG = "extra-user"
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000
 const PAID_ASAAS_STATUSES = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "APPROVED"])
 const OVERDUE_ASAAS_STATUSES = new Set(["OVERDUE"])
@@ -101,11 +112,7 @@ function mapAdhesion(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhes
 function mapPublicAdhesion(
   adhesion: BackofficeAdhesionWithRelations
 ): BackofficeAdhesionPublicDTO {
-  const pricing = calculateBackofficeAdhesionPricing({
-    cycle: adhesion.cycle,
-    extraTeams: adhesion.extraTeams,
-    extraUsers: adhesion.extraUsers,
-  })
+  const cycleMonths = BACKOFFICE_ADHESION_CYCLE_MONTHS[adhesion.cycle] ?? 1
 
   return {
     id: adhesion.id,
@@ -115,13 +122,13 @@ function mapPublicAdhesion(
     status: adhesion.status,
     cycle: adhesion.cycle,
     cycleLabel: BACKOFFICE_ADHESION_CYCLE_LABELS[adhesion.cycle],
-    cycleMonths: pricing.cycleMonths,
+    cycleMonths,
     modules: adhesion.modules,
     extraTeams: adhesion.extraTeams,
     extraUsers: adhesion.extraUsers,
     monthlyTotalAmount: decimalToNumber(adhesion.monthlyTotalAmount),
     totalAmount: decimalToNumber(adhesion.totalAmount),
-    maxInstallments: pricing.maxInstallments,
+    maxInstallments: cycleMonths,
     expiresAt: adhesion.expiresAt.toISOString(),
   }
 }
@@ -162,7 +169,11 @@ function tokenError(status: BackofficeAdhesionTokenError["tokenStatus"]): Backof
 }
 
 export class BackofficeAdhesionService implements IBackofficeAdhesionService {
-  constructor(private readonly repo: IBackofficeAdhesionRepository = new BackofficeAdhesionRepository()) {}
+  constructor(
+    private readonly repo: IBackofficeAdhesionRepository = new BackofficeAdhesionRepository(),
+    private readonly productRepo: IBackofficeProductRepository = new BackofficeProductRepository(),
+    private readonly userSubscriptionRepo: IBackofficeUserSubscriptionRepository = new BackofficeUserSubscriptionRepository()
+  ) {}
 
   async list(input: {
     page: number
@@ -198,6 +209,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       isCloser: user.isCloser,
     }))
 
+    const pricingCycles = await this.resolvePricingOptions()
+
     return {
       leads: options.leads.map((lead) => ({
         id: lead.id,
@@ -214,6 +227,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       closerOptions: users
         .filter((user) => user.isCloser)
         .map((user) => ({ id: user.id, name: user.name, email: user.email })),
+      pricing: {
+        cycles: pricingCycles,
+      },
     }
   }
 
@@ -234,7 +250,15 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error("Lead já possui uma adesão vinculada")
     }
 
-    const pricing = calculateBackofficeAdhesionPricing(normalized)
+    if (normalized.activationMode === "external_paid" && normalized.email) {
+      const existingProfileId = await this.repo.findProfileIdByEmail(normalized.email)
+      if (existingProfileId) {
+        throw new Error("Já existe uma conta cadastrada com este e-mail")
+      }
+    }
+
+    const prices = await this.resolvePrices(normalized.cycle)
+    const pricing = calculateBackofficeAdhesionPricing(normalized, prices)
     const token = generateBackofficeAdhesionToken()
     const adhesion = await this.repo.createAndMoveLeadToAdhesion({
       leadId: normalized.leadId,
@@ -255,10 +279,35 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       createdByBackofficeUserId,
     })
 
+    if (normalized.activationMode === "external_paid") {
+      const externalEmail = normalized.email
+      const externalCpfCnpj = normalized.cpfCnpj
+      if (!externalEmail) {
+        throw new Error("E-mail é obrigatório para pagamento por fora")
+      }
+      const paidAt = new Date()
+      const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
+        fullName: normalized.fullName,
+        phone: normalized.phone,
+        email: externalEmail,
+        cpfCnpj: externalCpfCnpj,
+        paidAt,
+      })
+      await this.ensureAccountForPaidAdhesion(paidAdhesion)
+
+      return {
+        adhesion: mapAdhesion(paidAdhesion),
+        publicUrl: null,
+        expiresAt: paidAdhesion.expiresAt.toISOString(),
+        activationMode: "external_paid",
+      }
+    }
+
     return {
       adhesion: mapAdhesion(adhesion),
       publicUrl: getPublicUrl(token),
       expiresAt: adhesion.expiresAt.toISOString(),
+      activationMode: "checkout",
     }
   }
 
@@ -287,7 +336,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           ? input.closerBackofficeUserId
           : existing.closerBackofficeUserId,
     })
-    const pricing = calculateBackofficeAdhesionPricing(next)
+    const prices = await this.resolvePrices(next.cycle)
+    const pricing = calculateBackofficeAdhesionPricing(next, prices)
     const updated = await this.repo.update(id, {
       fullName: next.fullName,
       phone: next.phone,
@@ -325,6 +375,27 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       publicUrl: getPublicUrl(token),
       expiresAt: updated.expiresAt.toISOString(),
     }
+  }
+
+  async resendInvite(id: string): Promise<{ email: string }> {
+    const existing = await this.repo.findById(id)
+    if (!existing) {
+      throw new Error("Adesão não encontrada")
+    }
+    if (existing.status !== "paid") {
+      throw new Error("Convite só pode ser reenviado para adesões pagas")
+    }
+    if (!existing.email) {
+      throw new Error("Adesão paga sem e-mail para reenvio de convite")
+    }
+
+    if (!existing.createdSupabaseId && !existing.createdProfileId) {
+      await this.ensureAccountForPaidAdhesion(existing)
+      return { email: existing.email }
+    }
+
+    await this.sendSetPasswordEmail(existing, "recovery")
+    return { email: existing.email }
   }
 
   async getPublicDetails(
@@ -489,16 +560,32 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     const extraTeams = Math.max(0, Math.trunc(input.extraTeams || 0))
     const extraUsers = Math.max(0, Math.trunc(input.extraUsers || 0))
+    const activationMode = input.activationMode ?? "checkout"
+    const email = normalizeText(input.email)?.toLowerCase() ?? null
+    const cpfCnpj = normalizeDigits(input.cpfCnpj, 14)
+
+    if (activationMode === "external_paid") {
+      if (!email || !isValidEmail(email)) {
+        throw new Error("E-mail inválido")
+      }
+    }
+
+    if (cpfCnpj && !/^\d{11}$|^\d{14}$/.test(cpfCnpj)) {
+      throw new Error("CPF/CNPJ inválido")
+    }
 
     return {
       leadId: input.leadId,
       fullName,
       phone,
+      email,
+      cpfCnpj: cpfCnpj || null,
       cycle: input.cycle,
       extraTeams,
       extraUsers,
       sdrBackofficeUserId: normalizeText(input.sdrBackofficeUserId),
       closerBackofficeUserId: normalizeText(input.closerBackofficeUserId),
+      activationMode,
     }
   }
 
@@ -530,11 +617,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error("Dados do cartão são obrigatórios")
     }
 
-    const maxInstallments = calculateBackofficeAdhesionPricing({
-      cycle,
-      extraTeams: 0,
-      extraUsers: 0,
-    }).maxInstallments
+    const maxInstallments = BACKOFFICE_ADHESION_CYCLE_MONTHS[cycle] ?? 1
     const installments = Math.min(
       Math.max(1, Math.trunc(input.installments || maxInstallments)),
       maxInstallments
@@ -688,9 +771,12 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     adhesion: BackofficeAdhesionWithRelations
   ): Promise<void> {
     if (adhesion.createdSupabaseId || adhesion.createdProfileId) {
+      if (adhesion.createdProfileId) {
+        await this.ensureUserSubscriptionForPaidAdhesion(adhesion, adhesion.createdProfileId)
+      }
       return
     }
-    if (!adhesion.email || !adhesion.cpfCnpj) {
+    if (!adhesion.email) {
       throw new Error("Adesão paga sem dados suficientes para criar conta")
     }
 
@@ -723,11 +809,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     try {
-      const cycleMonths = calculateBackofficeAdhesionPricing({
-        cycle: adhesion.cycle,
-        extraTeams: adhesion.extraTeams,
-        extraUsers: adhesion.extraUsers,
-      }).cycleMonths
+      const cycleMonths = BACKOFFICE_ADHESION_CYCLE_MONTHS[adhesion.cycle] ?? 1
       const subscriptionStartDate = adhesion.paidAt ?? new Date()
       const subscriptionEndDate = addMonthsInTz(subscriptionStartDate, cycleMonths, DEFAULT_TZ)
 
@@ -763,20 +845,127 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         createdSupabaseId: createdProfile.supabaseId,
       })
 
-      const emailService = createEmailService()
-      await emailService.sendOperatorInviteEmail({
-        operatorName: adhesion.fullName,
-        operatorEmail: adhesion.email,
-        operatorRole: "manager",
-        managerName: "Corretor Studio",
-        inviteUrl: data.properties.action_link,
-      })
+      await this.ensureUserSubscriptionForPaidAdhesion(adhesion, createdProfile.profileId)
+
+      await this.sendSetPasswordEmail(adhesion, "invite", data)
     } catch (accountError) {
       await supabaseAdmin.auth.admin.deleteUser(supabaseId).catch((deleteError) => {
         console.error("[BackofficeAdhesionService][ensureAccountForPaidAdhesion][rollback]", deleteError)
       })
       throw accountError
     }
+  }
+
+  private async resolvePricingOptions(): Promise<
+    BackofficeAdhesionOptionsDTO["pricing"]["cycles"]
+  > {
+    const cycles = Object.keys(
+      BACKOFFICE_ADHESION_CYCLE_MONTHS
+    ) as BackofficeAdhesionBillingCycle[]
+    const entries = await Promise.all(
+      cycles.map(async (cycle) => [cycle, await this.resolvePrices(cycle)] as const)
+    )
+
+    return Object.fromEntries(entries) as BackofficeAdhesionOptionsDTO["pricing"]["cycles"]
+  }
+
+  private async resolvePrices(
+    cycle: BackofficeAdhesionBillingCycle
+  ): Promise<BackofficeAdhesionPrices> {
+    const [crmProduct, extraTeamProduct, extraUserProduct] = await Promise.all([
+      this.getActiveProductBySlug(CRM_PRODUCT_SLUG),
+      this.getActiveProductBySlug(EXTRA_TEAM_PRODUCT_SLUG),
+      this.getActiveProductBySlug(EXTRA_USER_PRODUCT_SLUG),
+    ])
+
+    return {
+      baseMonthlyPrice: resolveProductPriceForCycle(crmProduct, cycle),
+      extraTeamPrice: resolveProductPriceForCycle(extraTeamProduct, cycle),
+      extraUserPrice: resolveProductPriceForCycle(extraUserProduct, cycle),
+    }
+  }
+
+  private async getActiveProductBySlug(slug: string): Promise<BackofficeProduct> {
+    const product = await this.productRepo.findBySlug(slug)
+    if (!product || !product.isActive) {
+      throw new Error(`Produto obrigatório indisponível: ${slug}`)
+    }
+    return product
+  }
+
+  private async ensureUserSubscriptionForPaidAdhesion(
+    adhesion: BackofficeAdhesionWithRelations,
+    profileId: string
+  ): Promise<void> {
+    const crmProduct = await this.getActiveProductBySlug(CRM_PRODUCT_SLUG)
+    const startDate = adhesion.paidAt ?? new Date()
+    const cycleMonths = BACKOFFICE_ADHESION_CYCLE_MONTHS[adhesion.cycle] ?? 1
+    const endDate = addMonthsInTz(startDate, cycleMonths, DEFAULT_TZ)
+
+    await this.userSubscriptionRepo.upsertForAdhesion({
+      profileId,
+      productId: crmProduct.id,
+      status: "active",
+      cycle: adhesion.cycle,
+      startDate,
+      endDate,
+      adhesionId: adhesion.id,
+    })
+  }
+
+  private async sendSetPasswordEmail(
+    adhesion: BackofficeAdhesionWithRelations,
+    type: "invite" | "recovery",
+    generatedLinkData?: { properties?: { action_link?: string; hashed_token?: string } }
+  ): Promise<void> {
+    if (!adhesion.email) {
+      throw new Error("Adesão paga sem e-mail para envio de convite")
+    }
+
+    let linkData = generatedLinkData
+    if (!linkData) {
+      const supabaseAdmin = createSupabaseAdmin()
+      if (!supabaseAdmin) {
+        throw new Error("Supabase Admin não configurado")
+      }
+
+      const { data, error } =
+        type === "invite"
+          ? await supabaseAdmin.auth.admin.generateLink({
+              type: "invite",
+              email: adhesion.email,
+              options: {
+                redirectTo: getFullUrl("/set-password"),
+                data: {
+                  name: adhesion.fullName,
+                  invited: true,
+                  first_access: true,
+                },
+              },
+            })
+          : await supabaseAdmin.auth.admin.generateLink({
+              type: "recovery",
+              email: adhesion.email,
+              options: {
+                redirectTo: getFullUrl("/set-password"),
+              },
+            })
+
+      if (error || !data?.properties?.action_link) {
+        throw new Error("Erro ao gerar link de convite")
+      }
+
+      linkData = data
+    }
+
+    const emailService = createEmailService()
+    await emailService.sendOperatorInviteEmail({
+      operatorName: adhesion.fullName,
+      operatorEmail: adhesion.email,
+      operatorRole: "manager",
+      managerName: "Corretor Studio",
+      inviteUrl: buildSetPasswordEmailAuthLink(linkData, type),
+    })
   }
 }
 

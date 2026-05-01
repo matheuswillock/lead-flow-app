@@ -8,11 +8,14 @@ export interface BackofficeAdhesionCreateInput {
   leadId: string
   fullName: string
   phone: string
+  email?: string | null
+  cpfCnpj?: string | null
   cycle: BackofficeAdhesionBillingCycle
   extraTeams: number
   extraUsers: number
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
+  activationMode?: "checkout" | "external_paid"
 }
 
 export interface BackofficeAdhesionUpdateInput {
@@ -126,6 +129,16 @@ export interface BackofficeAdhesionOptionsDTO {
   }>
   sdrOptions: Array<{ id: string; name: string; email: string }>
   closerOptions: Array<{ id: string; name: string; email: string }>
+  pricing: {
+    cycles: Record<
+      BackofficeAdhesionBillingCycle,
+      {
+        baseMonthlyPrice: number
+        extraTeamPrice: number
+        extraUserPrice: number
+      }
+    >
+  }
 }
 
 export interface BackofficeAdhesionListDTO {
@@ -142,8 +155,9 @@ export interface BackofficeAdhesionListDTO {
 
 export interface BackofficeAdhesionCreationResult {
   adhesion: BackofficeAdhesionDTO
-  publicUrl: string
+  publicUrl: string | null
   expiresAt: string
+  activationMode?: "checkout" | "external_paid"
 }
 
 export interface BackofficeAdhesionTokenError {
@@ -179,6 +193,7 @@ export interface IBackofficeAdhesionService {
   ): Promise<BackofficeAdhesionCreationResult>
   update(id: string, input: BackofficeAdhesionUpdateInput): Promise<BackofficeAdhesionDTO>
   resend(id: string): Promise<BackofficeAdhesionCreationResult>
+  resendInvite(id: string): Promise<{ email: string }>
   getPublicDetails(token: string): Promise<BackofficeAdhesionPublicDTO | BackofficeAdhesionTokenError>
   createCheckout(
     token: string,

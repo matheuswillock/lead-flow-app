@@ -8,6 +8,7 @@ import type {
   IBackofficeAdhesionRepository,
   ListBackofficeAdhesionsInput,
   ListBackofficeAdhesionsResult,
+  MarkBackofficeAdhesionExternalPaidInput,
   UpdateBackofficeAdhesionCheckoutInput,
   UpdateBackofficeAdhesionInput,
 } from "./IBackofficeAdhesionRepository"
@@ -210,6 +211,25 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     })
   }
 
+  async markExternalPaid(
+    id: string,
+    data: MarkBackofficeAdhesionExternalPaidInput
+  ): Promise<BackofficeAdhesionWithRelations> {
+    return prisma.backofficeAdhesion.update({
+      where: { id },
+      data: {
+        fullName: data.fullName,
+        phone: data.phone,
+        email: data.email,
+        cpfCnpj: data.cpfCnpj ?? null,
+        billingType: "EXTERNAL",
+        status: "paid",
+        paidAt: data.paidAt,
+      },
+      include: backofficeAdhesionInclude,
+    })
+  }
+
   async updateStatus(
     id: string,
     status: BackofficeAdhesionStatus,
@@ -258,7 +278,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       role: UserRole.manager,
       isMaster: true,
       functions: ["SDR", "CLOSER"],
-      cpfCnpj: data.cpfCnpj,
+      cpfCnpj: data.cpfCnpj ?? undefined,
       asaasCustomerId: data.asaasCustomerId ?? undefined,
       subscriptionId: data.subscriptionId,
       subscriptionStatus: "active",

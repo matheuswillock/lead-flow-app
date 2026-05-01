@@ -5,6 +5,7 @@ import type {
   MasterPlatformUserBillingRecord,
   MasterPlatformUserRecord,
   MasterPlatformUserDetailsRecord,
+  MasterUserForDeletionRecord,
   PlatformUsersFilters,
   RepositoryPaginatedResult,
   RepositoryPaginationParams,
@@ -213,6 +214,15 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         fullName: true,
         email: true,
         phone: true,
+        cpfCnpj: true,
+        postalCode: true,
+        address: true,
+        addressNumber: true,
+        neighborhood: true,
+        complement: true,
+        city: true,
+        state: true,
+        functions: true,
         profileIconUrl: true,
         createdAt: true,
         hasPermanentSubscription: true,
@@ -327,6 +337,15 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       fullName: master.fullName,
       email: master.email,
       phone: master.phone,
+      cpfCnpj: master.cpfCnpj,
+      postalCode: master.postalCode,
+      address: master.address,
+      addressNumber: master.addressNumber,
+      neighborhood: master.neighborhood,
+      complement: master.complement,
+      city: master.city,
+      state: master.state,
+      functions: master.functions,
       profileIconUrl: master.profileIconUrl,
       createdAt: master.createdAt,
       hasPermanentSubscription: master.hasPermanentSubscription,
@@ -369,5 +388,161 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         hasPermanentSubscription: true,
       },
     })
+  }
+
+  async updateMasterUserProfile(
+    masterProfileId: string,
+    data: {
+      fullName?: string
+      phone?: string | null
+      cpfCnpj?: string | null
+      postalCode?: string | null
+      address?: string | null
+      addressNumber?: string | null
+      neighborhood?: string | null
+      complement?: string | null
+      city?: string | null
+      state?: string | null
+      functions?: string[]
+    }
+  ): Promise<{ id: string } | null> {
+    try {
+      const updateData: Record<string, unknown> = {}
+      if (data.fullName !== undefined) updateData.fullName = data.fullName
+      if (data.phone !== undefined) updateData.phone = data.phone
+      if (data.cpfCnpj !== undefined) updateData.cpfCnpj = data.cpfCnpj
+      if (data.postalCode !== undefined) updateData.postalCode = data.postalCode
+      if (data.address !== undefined) updateData.address = data.address
+      if (data.addressNumber !== undefined) updateData.addressNumber = data.addressNumber
+      if (data.neighborhood !== undefined) updateData.neighborhood = data.neighborhood
+      if (data.complement !== undefined) updateData.complement = data.complement
+      if (data.city !== undefined) updateData.city = data.city
+      if (data.state !== undefined) updateData.state = data.state
+      if (data.functions !== undefined) updateData.functions = data.functions
+
+      if (Object.keys(updateData).length === 0) return null
+
+      return await prisma.profile.update({
+        where: {
+          id: masterProfileId,
+          isMaster: true,
+          role: "manager",
+        },
+        data: updateData,
+        select: { id: true },
+      })
+    } catch {
+      return null
+    }
+  }
+
+  async findMasterUserForDeletion(masterProfileId: string): Promise<MasterUserForDeletionRecord | null> {
+    const master = await prisma.profile.findFirst({
+      where: {
+        id: masterProfileId,
+        isMaster: true,
+        role: "manager",
+      },
+      select: {
+        id: true,
+        supabaseId: true,
+        fullName: true,
+        email: true,
+      },
+    })
+
+    if (!master) return null
+
+    const managerMemberships = await prisma.teamMember.findMany({
+      where: {
+        team: { masterId: masterProfileId },
+        role: "manager",
+        profileId: { not: masterProfileId },
+      },
+      select: {
+        profileId: true,
+        profile: {
+          select: {
+            fullName: true,
+            email: true,
+          },
+        },
+      },
+      distinct: ["profileId"],
+    })
+
+    return {
+      id: master.id,
+      supabaseId: master.supabaseId,
+      fullName: master.fullName,
+      email: master.email,
+      managers: managerMemberships.map((m) => ({
+        fullName: m.profile.fullName,
+        email: m.profile.email,
+      })),
+    }
+  }
+
+  async deleteMasterUserWithAllMembers(masterProfileId: string): Promise<{
+    masterSupabaseId: string | null
+    memberSupabaseIds: string[]
+  }> {
+    const result: { masterSupabaseId: string | null; memberSupabaseIds: string[] } = {
+      masterSupabaseId: null,
+      memberSupabaseIds: [],
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const master = await tx.profile.findFirst({
+        where: { id: masterProfileId, isMaster: true, role: "manager" },
+        select: { id: true, supabaseId: true },
+      })
+
+      if (!master) return
+
+      result.masterSupabaseId = master.supabaseId
+
+      const memberships = await tx.teamMember.findMany({
+        where: {
+          team: { masterId: masterProfileId },
+          profileId: { not: masterProfileId },
+        },
+        select: {
+          profileId: true,
+          profile: { select: { supabaseId: true } },
+        },
+        distinct: ["profileId"],
+      })
+
+      const memberProfileIds = memberships.map((m) => m.profileId)
+      result.memberSupabaseIds = memberships
+        .map((m) => m.profile.supabaseId)
+        .filter((id): id is string => id !== null)
+
+      const allProfileIds = [masterProfileId, ...memberProfileIds]
+
+      await tx.profile.updateMany({
+        where: { managerId: { in: allProfileIds } },
+        data: { managerId: null },
+      })
+
+      await tx.teamMember.deleteMany({
+        where: { team: { masterId: masterProfileId } },
+      })
+
+      if (memberProfileIds.length > 0) {
+        await tx.profile.deleteMany({
+          where: { id: { in: memberProfileIds } },
+        })
+      }
+
+      if (master.supabaseId) {
+        await tx.profile.delete({ where: { supabaseId: master.supabaseId } })
+      } else {
+        await tx.profile.delete({ where: { id: masterProfileId } })
+      }
+    })
+
+    return result
   }
 }

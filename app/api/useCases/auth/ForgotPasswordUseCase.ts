@@ -1,6 +1,7 @@
 import { profileRepository } from '@/app/api/infra/data/repositories/profile/ProfileRepository';
 import { Output } from '@/lib/output';
 import { getEmailService } from '@/lib/services/EmailService';
+import { buildSetPasswordEmailAuthLink } from '@/lib/supabase/email-auth-link';
 import { createSupabaseAdmin } from '@/lib/supabase/server';
 import { getFullUrl } from '@/lib/utils/app-url';
 import type {
@@ -121,7 +122,7 @@ export class ForgotPasswordUseCase implements IForgotPasswordUseCase {
       const emailResult = await emailService.sendPasswordResetEmail(
         user.email,
         user.fullName || user.email,
-        data.properties.action_link,
+        buildSetPasswordEmailAuthLink(data, 'recovery'),
       );
 
       if (!emailResult.success) {

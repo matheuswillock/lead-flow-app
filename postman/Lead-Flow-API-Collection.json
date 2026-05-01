@@ -7484,6 +7484,105 @@
           }
         },
         {
+          "name": "Precificação",
+          "item": [
+            {
+              "name": "GET Backoffice Pricing",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/pricing",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "pricing"]
+                },
+                "description": "Lista produtos e preços do backoffice."
+              }
+            },
+            {
+              "name": "POST Create Backoffice Product",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Produto Exemplo\",\n  \"slug\": \"produto-exemplo\",\n  \"description\": \"Produto de teste\",\n  \"type\": \"ADDON\",\n  \"billingMode\": \"RECURRING\",\n  \"priceMonthly\": 29.9,\n  \"priceQuarterly\": 29.9,\n  \"priceSemiannual\": 29.9,\n  \"priceLifetime\": null,\n  \"isActive\": true\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/pricing",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "pricing"]
+                },
+                "description": "Cria um produto de precificação do backoffice."
+              }
+            },
+            {
+              "name": "PUT Update Backoffice Product",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Produto Exemplo Atualizado\",\n  \"priceMonthly\": 39.9,\n  \"priceQuarterly\": 34.9,\n  \"priceSemiannual\": 29.9,\n  \"isActive\": true\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/pricing/:id",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "pricing", ":id"],
+                  "variable": [
+                    { "key": "id", "value": "{{backofficeProductId}}" }
+                  ]
+                },
+                "description": "Atualiza um produto de precificação do backoffice."
+              }
+            },
+            {
+              "name": "DELETE Backoffice Product",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/pricing/:id",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "pricing", ":id"],
+                  "variable": [
+                    { "key": "id", "value": "{{backofficeProductId}}" }
+                  ]
+                },
+                "description": "Remove um produto sem assinaturas ativas."
+              }
+            }
+          ]
+        },
+        {
           "name": "Backoffice Adhesions",
           "item": [
             {
@@ -7544,14 +7643,14 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 0,\n  \"extraUsers\": 0,\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\"\n}"
+                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 0,\n  \"extraUsers\": 0,\n  \"activationMode\": \"external_paid\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\"\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/adhesions",
                   "host": ["{{baseUrl}}"],
                   "path": ["api", "v1", "backoffice", "adhesions"]
                 },
-                "description": "Cria uma nova adesão, move o lead para new_adhesion e retorna o link público válido por 24h."
+                "description": "Cria uma nova adesão. Use activationMode=checkout para retornar link público ou external_paid para ativar conta paga por fora sem Asaas."
               }
             },
             {
@@ -7602,6 +7701,27 @@
                   ]
                 },
                 "description": "Regenera o token/link público da adesão por mais 24h."
+              }
+            },
+            {
+              "name": "POST Resend Backoffice Adhesion Invite",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/adhesions/:id/invite",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "adhesions", ":id", "invite"],
+                  "variable": [
+                    { "key": "id", "value": "{{backofficeAdhesionId}}" }
+                  ]
+                },
+                "description": "Reenvia o convite de acesso para adesões já pagas, sem gerar novo checkout."
               }
             },
             {
@@ -7667,6 +7787,87 @@
                   ]
                 },
                 "description": "Consulta o status de pagamento da adesão pública."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backoffice Platform Users",
+          "item": [
+            {
+              "name": "GET Platform User Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId?page=1&pageSize=10",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "platform-users", ":masterId"],
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "pageSize", "value": "10" },
+                    { "key": "q", "value": "", "disabled": true }
+                  ],
+                  "variable": [
+                    { "key": "masterId", "value": "{{masterProfileId}}" }
+                  ]
+                },
+                "description": "Retorna detalhes do usuário master da plataforma, incluindo times e membros."
+              }
+            },
+            {
+              "name": "PATCH Update Platform User",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Nome Atualizado\",\n  \"phone\": \"11999990000\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "platform-users", ":masterId"],
+                  "variable": [
+                    { "key": "masterId", "value": "{{masterProfileId}}" }
+                  ]
+                },
+                "description": "Atualiza nome e/ou telefone do usuário master. E-mail não pode ser alterado por aqui (vinculado ao Supabase Auth)."
+              }
+            },
+            {
+              "name": "DELETE Platform User Account",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v1", "backoffice", "platform-users", ":masterId"],
+                  "variable": [
+                    { "key": "masterId", "value": "{{masterProfileId}}" }
+                  ]
+                },
+                "description": "Exclui permanentemente a conta do usuário master: remove do Supabase Auth, deleta Profile (cascade para times/membros/leads) e envia e-mail de encerramento ao master e managers."
               }
             }
           ]

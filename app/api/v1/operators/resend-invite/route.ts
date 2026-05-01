@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseAdmin } from '@/lib/supabase/server';
 import { Output } from '@/lib/output';
 import { getEmailService } from '@/lib/services/EmailService';
+import { buildSetPasswordEmailAuthLink } from '@/lib/supabase/email-auth-link';
 import { getFullUrl } from '@/lib/utils/app-url';
 
 /**
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
     const emailResult = await emailService.sendPasswordResetEmail(
       user.email,
       user.fullName || user.email,
-      data.properties.action_link
+      buildSetPasswordEmailAuthLink(data, 'recovery')
     );
 
     if (!emailResult.success) {

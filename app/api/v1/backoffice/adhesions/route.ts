@@ -7,7 +7,9 @@ import {
 } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
 
 const ADHESION_CYCLES = ["monthly", "quarterly", "semiannual"] as const
+const ACTIVATION_MODES = ["checkout", "external_paid"] as const
 type BackofficeAdhesionBillingCycleValue = (typeof ADHESION_CYCLES)[number]
+type BackofficeAdhesionActivationMode = (typeof ACTIVATION_MODES)[number]
 
 function parsePositiveInt(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10)
@@ -18,6 +20,12 @@ function parseCycle(value: unknown): BackofficeAdhesionBillingCycleValue | null 
   return typeof value === "string" && (ADHESION_CYCLES as readonly string[]).includes(value)
     ? (value as BackofficeAdhesionBillingCycleValue)
     : null
+}
+
+function parseActivationMode(value: unknown): BackofficeAdhesionActivationMode {
+  return typeof value === "string" && (ACTIVATION_MODES as readonly string[]).includes(value)
+    ? (value as BackofficeAdhesionActivationMode)
+    : "checkout"
 }
 
 function optionalString(data: Record<string, unknown>, key: string): string | null | undefined {
@@ -82,11 +90,14 @@ export async function POST(request: NextRequest) {
         leadId: typeof data.leadId === "string" ? data.leadId : "",
         fullName: typeof data.fullName === "string" ? data.fullName : "",
         phone: typeof data.phone === "string" ? data.phone : "",
+        email: optionalString(data, "email"),
+        cpfCnpj: optionalString(data, "cpfCnpj"),
         cycle,
         extraTeams: optionalInteger(data, "extraTeams") ?? 0,
         extraUsers: optionalInteger(data, "extraUsers") ?? 0,
         sdrBackofficeUserId: optionalString(data, "sdrBackofficeUserId"),
         closerBackofficeUserId: optionalString(data, "closerBackofficeUserId"),
+        activationMode: parseActivationMode(data.activationMode),
       },
       access.access.backofficeUserId
     )

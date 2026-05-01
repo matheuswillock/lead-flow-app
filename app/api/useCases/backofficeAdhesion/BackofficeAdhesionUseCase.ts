@@ -32,6 +32,28 @@ export function isBackofficeAdhesionStatusValue(
   )
 }
 
+const EXPECTED_CREATE_ERROR_MESSAGES = new Set([
+  "Lead não está elegível para nova adesão",
+  "Lead já possui uma adesão vinculada",
+  "Já existe uma conta cadastrada com este e-mail",
+  "Nome completo deve ter pelo menos 2 caracteres",
+  "Celular deve conter 10 ou 11 dígitos",
+  "E-mail inválido",
+  "CPF/CNPJ inválido",
+  "E-mail é obrigatório para pagamento por fora",
+  "Convite só pode ser reenviado para adesões pagas",
+  "Adesão paga sem e-mail para reenvio de convite",
+  "Adesão paga sem e-mail para envio de convite",
+])
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback
+}
+
+function isExpectedCreateError(error: unknown): boolean {
+  return error instanceof Error && EXPECTED_CREATE_ERROR_MESSAGES.has(error.message)
+}
+
 export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
   constructor(
     private readonly service: IBackofficeAdhesionService = new BackofficeAdhesionService()
@@ -70,11 +92,13 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
       const result = await this.service.create(input, createdByBackofficeUserId)
       return new Output(true, ["Nova adesão gerada com sucesso"], [], result)
     } catch (error) {
-      console.error("[BackofficeAdhesionUseCase][create]", error)
+      if (!isExpectedCreateError(error)) {
+        console.error("[BackofficeAdhesionUseCase][create]", error)
+      }
       return new Output(
         false,
         [],
-        [error instanceof Error ? error.message : "Erro ao gerar adesão"],
+        [getErrorMessage(error, "Erro ao gerar adesão")],
         null
       )
     }
@@ -105,6 +129,23 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
         false,
         [],
         [error instanceof Error ? error.message : "Erro ao reenviar adesão"],
+        null
+      )
+    }
+  }
+
+  async resendInvite(id: string): Promise<Output> {
+    try {
+      const result = await this.service.resendInvite(id)
+      return new Output(true, ["Convite reenviado com sucesso"], [], result)
+    } catch (error) {
+      if (!isExpectedCreateError(error)) {
+        console.error("[BackofficeAdhesionUseCase][resendInvite]", error)
+      }
+      return new Output(
+        false,
+        [],
+        [error instanceof Error ? error.message : "Erro ao reenviar convite"],
         null
       )
     }

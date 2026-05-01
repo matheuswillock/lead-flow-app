@@ -21,6 +21,15 @@ export interface BackofficeClientDetails {
   fullName: string | null
   email: string
   phone: string | null
+  cpfCnpj: string | null
+  postalCode: string | null
+  address: string | null
+  addressNumber: string | null
+  neighborhood: string | null
+  complement: string | null
+  city: string | null
+  state: string | null
+  functions: string[]
   profileIconUrl: string | null
   createdAt: string
   linkedUsersCount: number

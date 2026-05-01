@@ -31,4 +31,23 @@ export interface IBackofficePlatformUsersUseCase {
     masterProfileId: string,
     invoiceId: string
   ): Promise<Output>
+
+  updateMasterUser(
+    masterProfileId: string,
+    data: {
+      fullName?: string
+      phone?: string | null
+      cpfCnpj?: string | null
+      postalCode?: string | null
+      address?: string | null
+      addressNumber?: string | null
+      neighborhood?: string | null
+      complement?: string | null
+      city?: string | null
+      state?: string | null
+      functions?: string[]
+    }
+  ): Promise<Output>
+
+  deleteMasterUser(masterProfileId: string): Promise<Output>
 }

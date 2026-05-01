@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
-import { getBillingSummary, BILLING_PRICES } from "@/app/api/services/billing/TeamBillingService";
+import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { z } from "zod";
 import {
   getTeamAccess,
@@ -189,14 +189,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const currentSummary = await getBillingSummary(managerId);
-    const nextTeams = currentSummary.teamCount + 1;
-    const nextBillableTeams = Math.max(0, nextTeams - 1);
-    const nextTotal = currentSummary.basePrice +
-      nextBillableTeams * BILLING_PRICES.extraTeam +
-      currentSummary.billableUsers * BILLING_PRICES.extraUser;
-
-    const delta = Number((nextTotal - currentSummary.totalPrice).toFixed(2));
+    const projectedBilling = await incrementalBillingService.projectBilling(managerId, {
+      additionalTeams: 1,
+    });
+    const delta = projectedBilling.billingDelta;
 
     if (delta <= 0) {
       const team = await createTeamForAccount({

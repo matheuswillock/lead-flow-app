@@ -53,17 +53,30 @@ export interface BackofficeAdhesionOptions {
   leads: BackofficeAdhesionLeadOption[]
   sdrOptions: BackofficeAdhesionUserOption[]
   closerOptions: BackofficeAdhesionUserOption[]
+  pricing: {
+    cycles: Record<
+      BackofficeAdhesionBillingCycleKey,
+      {
+        baseMonthlyPrice: number
+        extraTeamPrice: number
+        extraUserPrice: number
+      }
+    >
+  }
 }
 
 export interface BackofficeAdhesionFormValues {
   leadId: string
   fullName: string
   phone: string
+  email: string
+  cpfCnpj: string
   cycle: BackofficeAdhesionBillingCycleKey
   extraTeams: number
   extraUsers: number
   sdrBackofficeUserId: string | null
   closerBackofficeUserId: string | null
+  activationMode: "checkout" | "external_paid"
 }
 
 export interface BackofficeAdhesionFilters {
@@ -87,8 +100,9 @@ export interface BackofficeAdhesionListResult {
 
 export interface BackofficeAdhesionCreationResult {
   adhesion: BackofficeAdhesionItem
-  publicUrl: string
+  publicUrl: string | null
   expiresAt: string
+  activationMode?: "checkout" | "external_paid"
 }
 
 export const BACKOFFICE_ADHESION_STATUS_LABELS: Record<

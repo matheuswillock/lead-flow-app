@@ -37,6 +37,15 @@ export interface MasterPlatformUserDetailsRecord {
   fullName: string | null
   email: string
   phone: string | null
+  cpfCnpj: string | null
+  postalCode: string | null
+  address: string | null
+  addressNumber: string | null
+  neighborhood: string | null
+  complement: string | null
+  city: string | null
+  state: string | null
+  functions: string[]
   profileIconUrl: string | null
   createdAt: Date
   hasPermanentSubscription: boolean
@@ -77,6 +86,14 @@ export interface RepositoryPaginatedResult<T> {
   totalItems: number
 }
 
+export interface MasterUserForDeletionRecord {
+  id: string
+  supabaseId: string | null
+  fullName: string | null
+  email: string
+  managers: Array<{ fullName: string | null; email: string }>
+}
+
 export interface IBackofficePlatformUsersRepository {
   findMasterUsersWithFilters(
     filters: PlatformUsersFilters | undefined,
@@ -93,4 +110,28 @@ export interface IBackofficePlatformUsersRepository {
   ): Promise<MasterPlatformUserDetailsRecord | null>
 
   findMasterUserBillingById(masterProfileId: string): Promise<MasterPlatformUserBillingRecord | null>
+
+  updateMasterUserProfile(
+    masterProfileId: string,
+    data: {
+      fullName?: string
+      phone?: string | null
+      cpfCnpj?: string | null
+      postalCode?: string | null
+      address?: string | null
+      addressNumber?: string | null
+      neighborhood?: string | null
+      complement?: string | null
+      city?: string | null
+      state?: string | null
+      functions?: string[]
+    }
+  ): Promise<{ id: string } | null>
+
+  findMasterUserForDeletion(masterProfileId: string): Promise<MasterUserForDeletionRecord | null>
+
+  deleteMasterUserWithAllMembers(masterProfileId: string): Promise<{
+    masterSupabaseId: string | null
+    memberSupabaseIds: string[]
+  }>
 }

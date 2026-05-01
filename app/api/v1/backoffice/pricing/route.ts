@@ -1,12 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { BackofficeProductUseCase } from "@/app/api/useCases/backofficeProduct/BackofficeProductUseCase"
-import { BackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository"
-
-function makeUseCase() {
-  return new BackofficeProductUseCase(new BackofficeProductRepository())
-}
+import { backofficeProductUseCase } from "@/app/api/useCases/backofficeProduct/BackofficeProductUseCase"
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,8 +10,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(result.error, { status: result.status })
     }
 
-    const useCase = makeUseCase()
-    const output = await useCase.list()
+    const output = await backofficeProductUseCase.list()
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     console.error("[BackofficePricingRoute][GET]", error)
@@ -32,8 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const useCase = makeUseCase()
-    const output = await useCase.create(body)
+    const output = await backofficeProductUseCase.create(body)
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })
   } catch (error) {
     console.error("[BackofficePricingRoute][POST]", error)

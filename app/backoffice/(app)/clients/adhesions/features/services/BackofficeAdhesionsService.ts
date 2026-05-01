@@ -14,10 +14,25 @@ interface OutputResponse<T> {
   result?: T
 }
 
+export class BackofficeAdhesionsRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly isValidationError: boolean
+  ) {
+    super(message)
+    this.name = "BackofficeAdhesionsRequestError"
+  }
+}
+
 async function parseOutput<T>(response: Response): Promise<T> {
   const data = (await response.json()) as OutputResponse<T>
   if (!response.ok || !data.isValid || data.result === undefined) {
-    throw new Error(data.errorMessages?.[0] ?? "Erro ao processar adesão")
+    throw new BackofficeAdhesionsRequestError(
+      data.errorMessages?.[0] ?? "Erro ao processar adesão",
+      response.status,
+      response.status >= 400 && response.status < 500
+    )
   }
   return data.result
 }
@@ -64,7 +79,10 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
     )
   }
 
-  async update(id: string, values: Omit<BackofficeAdhesionFormValues, "leadId">): Promise<void> {
+  async update(
+    id: string,
+    values: Partial<Omit<BackofficeAdhesionFormValues, "leadId">>
+  ): Promise<void> {
     await parseOutput(
       await fetch(`/api/v1/backoffice/adhesions/${id}`, {
         method: "PATCH",
@@ -77,6 +95,14 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
   async resend(id: string): Promise<BackofficeAdhesionCreationResult> {
     return parseOutput<BackofficeAdhesionCreationResult>(
       await fetch(`/api/v1/backoffice/adhesions/${id}/resend`, {
+        method: "POST",
+      })
+    )
+  }
+
+  async resendInvite(id: string): Promise<void> {
+    await parseOutput(
+      await fetch(`/api/v1/backoffice/adhesions/${id}/invite`, {
         method: "POST",
       })
     )

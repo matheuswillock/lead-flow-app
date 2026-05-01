@@ -20,15 +20,29 @@ export class BackofficeUserSubscriptionRepository
   async upsertForAdhesion(
     data: UpsertBackofficeUserSubscriptionInput
   ): Promise<BackofficeUserSubscription> {
-    return prisma.backofficeUserSubscription.upsert({
+    const existing = await prisma.backofficeUserSubscription.findFirst({
       where: {
-        // Use profileId + productId as the unique key for upsert
-        // We identify by adhesionId if provided, otherwise fallback to create
-        id: data.adhesionId
-          ? await this.findIdByAdhesionId(data.adhesionId)
-          : "non-existent-id-force-create",
+        profileId: data.profileId,
+        productId: data.productId,
       },
-      create: {
+      select: { id: true },
+    })
+
+    if (existing) {
+      return prisma.backofficeUserSubscription.update({
+        where: { id: existing.id },
+        data: {
+          status: data.status,
+          cycle: data.cycle ?? null,
+          startDate: data.startDate,
+          endDate: data.endDate ?? null,
+          adhesionId: data.adhesionId ?? null,
+        },
+      })
+    }
+
+    return prisma.backofficeUserSubscription.create({
+      data: {
         profileId: data.profileId,
         productId: data.productId,
         status: data.status,
@@ -36,12 +50,6 @@ export class BackofficeUserSubscriptionRepository
         startDate: data.startDate,
         endDate: data.endDate ?? null,
         adhesionId: data.adhesionId ?? null,
-      },
-      update: {
-        status: data.status,
-        cycle: data.cycle ?? null,
-        startDate: data.startDate,
-        endDate: data.endDate ?? null,
       },
     })
   }
@@ -54,13 +62,5 @@ export class BackofficeUserSubscriptionRepository
       where: { id },
       data: { status },
     })
-  }
-
-  private async findIdByAdhesionId(adhesionId: string): Promise<string> {
-    const record = await prisma.backofficeUserSubscription.findFirst({
-      where: { adhesionId },
-      select: { id: true },
-    })
-    return record?.id ?? "non-existent-id-force-create"
   }
 }

@@ -1,12 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { BackofficeProductUseCase } from "@/app/api/useCases/backofficeProduct/BackofficeProductUseCase"
-import { BackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository"
-
-function makeUseCase() {
-  return new BackofficeProductUseCase(new BackofficeProductRepository())
-}
+import { backofficeProductUseCase } from "@/app/api/useCases/backofficeProduct/BackofficeProductUseCase"
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -17,8 +12,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     const { id } = await params
     const body = await request.json()
-    const useCase = makeUseCase()
-    const output = await useCase.update(id, body)
+    const output = await backofficeProductUseCase.update(id, body)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     console.error("[BackofficePricingByIdRoute][PUT]", error)
@@ -37,8 +31,7 @@ export async function DELETE(
     }
 
     const { id } = await params
-    const useCase = makeUseCase()
-    const output = await useCase.delete(id)
+    const output = await backofficeProductUseCase.delete(id)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     console.error("[BackofficePricingByIdRoute][DELETE]", error)

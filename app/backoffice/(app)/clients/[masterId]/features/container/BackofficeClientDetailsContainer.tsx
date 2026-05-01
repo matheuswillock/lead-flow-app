@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useState } from "react"
-import { CalendarDays, DollarSign, Eye, Search, Tag } from "lucide-react"
+import { CalendarDays, DollarSign, Eye, Pencil, Search, Tag } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Accordion,
@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useBackofficeClientDetails } from "../context/BackofficeClientDetailsContext"
+import { BackofficeClientEditDialog } from "../components/BackofficeClientEditDialog"
+import { BackofficeClientDeleteDialog } from "../components/BackofficeClientDeleteDialog"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatInTz, parseDateKeyToUtc } from "@/lib/dates"
 
@@ -109,6 +111,8 @@ export function BackofficeClientDetailsContainer() {
   const searchParams = useSearchParams()
 
   const {
+    masterId,
+    service,
     details,
     teams,
     teamsPagination,
@@ -136,6 +140,8 @@ export function BackofficeClientDetailsContainer() {
   } = useBackofficeClientDetails()
 
   const [localFilters, setLocalFilters] = useState(filters)
+  const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -216,27 +222,37 @@ export function BackofficeClientDetailsContainer() {
         </Card>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-start gap-4 py-1 mb-2
-          ">
-            <Avatar className="h-16 w-16 rounded-full">
-              <AvatarImage src={details.profileIconUrl || undefined} alt={details.fullName || details.email} />
-              <AvatarFallback>{getInitials(details.fullName, details.email)}</AvatarFallback>
-            </Avatar>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold">{details.fullName || "Sem nome"}</h1>
-                {details.plan.kind === "lifetime" && <Badge>Vitalício</Badge>}
+          <div className="flex flex-wrap items-start justify-between gap-4 py-1 mb-2">
+            <div className="flex flex-wrap items-center gap-4">
+              <Avatar className="h-16 w-16 rounded-full">
+                <AvatarImage src={details.profileIconUrl || undefined} alt={details.fullName || details.email} />
+                <AvatarFallback>{getInitials(details.fullName, details.email)}</AvatarFallback>
+              </Avatar>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-semibold">{details.fullName || "Sem nome"}</h1>
+                  {details.plan.kind === "lifetime" && <Badge>Vitalício</Badge>}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  E-mail: {details.email}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Telefone: {details.phone || "Não informado"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Entrou na plataforma em {formatDate(details.createdAt, tz)}
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground">
-                E-mail: {details.email}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Telefone: {details.phone || "Não informado"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Entrou na plataforma em {formatDate(details.createdAt, tz)}
-              </p>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditOpen(true)}
+              className="shrink-0"
+            >
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar
+            </Button>
           </div>
 
           <LeadsFiltersLayout>
@@ -583,6 +599,31 @@ export function BackofficeClientDetailsContainer() {
               </Card>
             </TabsContent>
           </Tabs>
+        </>
+      )}
+
+      {details && (
+        <>
+          <BackofficeClientEditDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            masterId={masterId}
+            details={details}
+            service={service}
+            onSuccess={reload}
+            onDeleteRequest={() => {
+              setEditOpen(false)
+              setDeleteOpen(true)
+            }}
+          />
+          <BackofficeClientDeleteDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            masterId={masterId}
+            details={details}
+            teams={teams}
+            service={service}
+          />
         </>
       )}
     </div>
