@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
-import { CalendarDays, DollarSign, Eye, Search, Tag } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { CalendarDays, Crown, DollarSign, Eye, Pencil, Search, Tag, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import {
   Accordion,
@@ -33,7 +33,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { toast } from "sonner"
 import { useBackofficeClientDetails } from "../context/BackofficeClientDetailsContext"
+import { BackofficeClientEditDialog } from "../components/BackofficeClientEditDialog"
+import { BackofficeClientDeleteDialog } from "../components/BackofficeClientDeleteDialog"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatInTz, parseDateKeyToUtc } from "@/lib/dates"
 
@@ -109,6 +112,8 @@ export function BackofficeClientDetailsContainer() {
   const searchParams = useSearchParams()
 
   const {
+    masterId,
+    service,
     details,
     teams,
     teamsPagination,
@@ -136,6 +141,10 @@ export function BackofficeClientDetailsContainer() {
   } = useBackofficeClientDetails()
 
   const [localFilters, setLocalFilters] = useState(filters)
+  const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [isTogglingLifetime, setIsTogglingLifetime] = useState(false)
+  const lifetimeInFlight = useRef(false)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -197,6 +206,23 @@ export function BackofficeClientDetailsContainer() {
     await clearFilters()
   }
 
+  async function handleToggleLifetime() {
+    if (!details || lifetimeInFlight.current) return
+    lifetimeInFlight.current = true
+    setIsTogglingLifetime(true)
+    const nextValue = details.plan.kind !== "lifetime"
+    try {
+      await service.updateClient(masterId, { hasPermanentSubscription: nextValue })
+      toast.success(nextValue ? "Cliente tornado vitalício com sucesso" : "Plano vitalício removido com sucesso")
+      await reload()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar plano")
+    } finally {
+      setIsTogglingLifetime(false)
+      lifetimeInFlight.current = false
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
       {isLoading ? (
@@ -216,27 +242,37 @@ export function BackofficeClientDetailsContainer() {
         </Card>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-start gap-4 py-1 mb-2
-          ">
-            <Avatar className="h-16 w-16 rounded-full">
-              <AvatarImage src={details.profileIconUrl || undefined} alt={details.fullName || details.email} />
-              <AvatarFallback>{getInitials(details.fullName, details.email)}</AvatarFallback>
-            </Avatar>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold">{details.fullName || "Sem nome"}</h1>
-                {details.plan.kind === "lifetime" && <Badge>Vitalício</Badge>}
+          <div className="flex flex-wrap items-start justify-between gap-4 py-1 mb-2">
+            <div className="flex flex-wrap items-center gap-4">
+              <Avatar className="h-16 w-16 rounded-full">
+                <AvatarImage src={details.profileIconUrl || undefined} alt={details.fullName || details.email} />
+                <AvatarFallback>{getInitials(details.fullName, details.email)}</AvatarFallback>
+              </Avatar>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-semibold">{details.fullName || "Sem nome"}</h1>
+                  {details.plan.kind === "lifetime" && <Badge>Vitalício</Badge>}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  E-mail: {details.email}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Telefone: {details.phone || "Não informado"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Entrou na plataforma em {formatDate(details.createdAt, tz)}
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground">
-                E-mail: {details.email}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Telefone: {details.phone || "Não informado"}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Entrou na plataforma em {formatDate(details.createdAt, tz)}
-              </p>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setEditOpen(true)}
+              className="shrink-0"
+            >
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar
+            </Button>
           </div>
 
           <LeadsFiltersLayout>
@@ -389,6 +425,29 @@ export function BackofficeClientDetailsContainer() {
             <TabsContent value="invoices" className="mt-4">
               <Card>
                 <CardHeader className="space-y-4">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-sm font-medium">Plano do cliente</span>
+                    <Button
+                      variant={details.plan.kind === "lifetime" ? "outline" : "default"}
+                      size="sm"
+                      onClick={() => void handleToggleLifetime()}
+                      disabled={isTogglingLifetime}
+                      className={details.plan.kind === "lifetime" ? "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive" : ""}
+                    >
+                      {details.plan.kind === "lifetime" ? (
+                        <>
+                          <X className="mr-2 h-4 w-4" />
+                          {isTogglingLifetime ? "Removendo..." : "Remover plano vitalício"}
+                        </>
+                      ) : (
+                        <>
+                          <Crown className="mr-2 h-4 w-4" />
+                          {isTogglingLifetime ? "Aplicando..." : "Tornar cliente vitalício"}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
                   <div className="flex flex-wrap items-center gap-2">
                     <Select
                       value={invoiceFilters.status}
@@ -583,6 +642,31 @@ export function BackofficeClientDetailsContainer() {
               </Card>
             </TabsContent>
           </Tabs>
+        </>
+      )}
+
+      {details && (
+        <>
+          <BackofficeClientEditDialog
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            masterId={masterId}
+            details={details}
+            service={service}
+            onSuccess={reload}
+            onDeleteRequest={() => {
+              setEditOpen(false)
+              setDeleteOpen(true)
+            }}
+          />
+          <BackofficeClientDeleteDialog
+            open={deleteOpen}
+            onOpenChange={setDeleteOpen}
+            masterId={masterId}
+            details={details}
+            teams={teams}
+            service={service}
+          />
         </>
       )}
     </div>

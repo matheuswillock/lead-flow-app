@@ -96,10 +96,14 @@ function AuthCallbackContent() {
           sessionStorage.removeItem("googleConnectContext");
         }
       }
-      const isAccountReconnectFlow = next === "/account" || connectContext?.source === "account";
+      const isBackofficeAccountConnectFlow =
+        next === "/backoffice/account" || connectContext?.source === "backoffice-account";
+      const isAccountReconnectFlow =
+        !isBackofficeAccountConnectFlow &&
+        (next === "/account" || connectContext?.source === "account");
 
       if (
-        isAccountReconnectFlow &&
+        (isAccountReconnectFlow || isBackofficeAccountConnectFlow) &&
         connectContext?.expectedSupabaseId &&
         connectContext.expectedSupabaseId !== supabaseId
       ) {
@@ -124,7 +128,7 @@ function AuthCallbackContent() {
       });
 
       if (profileResponse.status === 404) {
-        if (isAccountReconnectFlow) {
+        if (isAccountReconnectFlow || isBackofficeAccountConnectFlow) {
           sessionStorage.removeItem("googleConnectContext");
           setError(
             "Nao foi possivel vincular a conta Google ao usuario atual. Tente novamente na tela de conta."
@@ -179,6 +183,34 @@ function AuthCallbackContent() {
 
       if (!providerToken) {
         setError("Token do Google não encontrado. Tente novamente.");
+        return;
+      }
+
+      if (isBackofficeAccountConnectFlow) {
+        const response = await fetch("/api/v1/backoffice/google/connect", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+          },
+          body: JSON.stringify({
+            accessToken: providerToken,
+            refreshToken: refreshToken || undefined,
+            expiresAt: session.expires_at
+              ? new Date(session.expires_at * 1000).toISOString()
+              : undefined,
+            email: googleEmail,
+          }),
+        });
+
+        if (!response.ok) {
+          sessionStorage.removeItem("googleConnectContext");
+          setError("Falha ao salvar integração Google do backoffice.");
+          return;
+        }
+
+        sessionStorage.removeItem("googleConnectContext");
+        router.replace("/backoffice/account");
         return;
       }
 

@@ -46,9 +46,34 @@ contract_finalized contract_finalized
             new_opportunity new_opportunity
 scheduled scheduled
 no_show no_show
+new_adhesion new_adhesion
 lost lost
 implementation implementation
 finalized finalized
+        }
+    
+
+
+        backoffice_adhesion_status {
+            pending pending
+paid paid
+overdue overdue
+expired expired
+canceled canceled
+        }
+    
+
+
+        backoffice_adhesion_plan {
+            crm crm
+        }
+    
+
+
+        backoffice_adhesion_billing_cycle {
+            monthly monthly
+quarterly quarterly
+semiannual semiannual
         }
     
 
@@ -119,6 +144,37 @@ status_change status_change
             sent_google sent_google
 sent_resend sent_resend
 failed failed
+        }
+    
+
+
+        BackofficeInviteDispatchStatus {
+            sent_google sent_google
+sent_resend sent_resend
+failed failed
+        }
+    
+
+
+        backoffice_product_type {
+            PLAN PLAN
+ADDON ADDON
+        }
+    
+
+
+        backoffice_product_billing_mode {
+            RECURRING RECURRING
+LIFETIME LIFETIME
+        }
+    
+
+
+        backoffice_subscription_status {
+            active active
+suspended suspended
+canceled canceled
+expired expired
         }
     
 
@@ -299,6 +355,12 @@ unsubscribed unsubscribed
     Boolean isActive 
     Boolean isSdr 
     Boolean isCloser 
+    Boolean googleCalendarConnected 
+    String googleAccessToken "❓"
+    String googleRefreshToken "❓"
+    DateTime googleTokenExpiresAt "❓"
+    String googleEmail "❓"
+    String timezone 
     String mailboxStatus 
     String mailboxAddress "❓"
     DateTime mailboxProvisionedAt "❓"
@@ -342,6 +404,7 @@ unsubscribed unsubscribed
     String name 
     String email "❓"
     String phone "❓"
+    String cnpj "❓"
     String notes "❓"
     BackofficeLeadStatus status 
     BackofficeLeadOrigin origin 
@@ -350,7 +413,78 @@ unsubscribed unsubscribed
     String meetingTitle "❓"
     String meetingNotes "❓"
     String meetingLink "❓"
+    String meetingExtraGuests 
     DateTime statusEnteredAt 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_adhesions" {
+    String id "🗝️"
+    String fullName 
+    String phone 
+    String email "❓"
+    String cpfCnpj "❓"
+    String postalCode "❓"
+    String address "❓"
+    String addressNumber "❓"
+    String neighborhood "❓"
+    String complement "❓"
+    String city "❓"
+    String state "❓"
+    BackofficeAdhesionPlan plan 
+    BackofficeAdhesionBillingCycle cycle 
+    String modules 
+    Int extraTeams 
+    Int extraUsers 
+    Decimal monthlyBaseAmount 
+    Decimal monthlyExtraTeamsAmount 
+    Decimal monthlyExtraUsersAmount 
+    Decimal monthlyTotalAmount 
+    Decimal totalAmount 
+    String tokenHash 
+    String tokenPreview 
+    DateTime expiresAt 
+    BackofficeAdhesionStatus status 
+    String asaasCustomerId "❓"
+    String asaasPaymentId "❓"
+    String billingType "❓"
+    DateTime paymentDueDate "❓"
+    String invoiceUrl "❓"
+    String bankSlipUrl "❓"
+    String pixQrCode "❓"
+    String pixPayload "❓"
+    DateTime paidAt "❓"
+    DateTime overdueAt "❓"
+    DateTime canceledAt "❓"
+    String createdProfileId "❓"
+    String createdSupabaseId "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_leads_schedule" {
+    String id "🗝️"
+    DateTime date 
+    String meetingTitle "❓"
+    String notes "❓"
+    String meetingLink "❓"
+    String extraGuests 
+    String googleEventId "❓"
+    String googleCalendarId "❓"
+    BackofficeInviteDispatchStatus inviteDispatchStatus "❓"
+    String inviteDispatchProvider "❓"
+    Boolean inviteDispatchFallbackUsed 
+    DateTime inviteDispatchLastAttemptAt "❓"
+    String inviteDispatchLastError "❓"
+    Json inviteDispatchLastPayload "❓"
+    Boolean isCanceled 
+    DateTime canceledAt "❓"
+    String canceledByProfileId "❓"
+    String cancelReason "❓"
+    String createdByProfileId "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -720,6 +854,35 @@ unsubscribed unsubscribed
     DateTime createdAt 
     }
   
+
+  "backoffice_products" {
+    String id "🗝️"
+    String name 
+    String slug 
+    String description "❓"
+    BackofficeProductType type 
+    BackofficeProductBillingMode billingMode 
+    Decimal priceMonthly "❓"
+    Decimal priceQuarterly "❓"
+    Decimal priceSemiannual "❓"
+    Decimal priceLifetime "❓"
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_user_subscriptions" {
+    String id "🗝️"
+    BackofficeSubscriptionStatus status 
+    BackofficeAdhesionBillingCycle cycle "❓"
+    DateTime startDate 
+    DateTime endDate "❓"
+    String adhesionId "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "profiles" |o--|| "UserRole" : "enum:role"
     "profiles" |o--}o "UserFunction" : "enum:functions"
     "profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -737,6 +900,16 @@ unsubscribed unsubscribed
     "backoffice_leads" |o--|o backoffice_webhook_events : "sourceWebhookEvent"
     "backoffice_leads" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_leads" }o--|o backoffice_users : "closerBackofficeUser"
+    "backoffice_adhesions" |o--|| "BackofficeAdhesionPlan" : "enum:plan"
+    "backoffice_adhesions" |o--|| "BackofficeAdhesionBillingCycle" : "enum:cycle"
+    "backoffice_adhesions" |o--|| "BackofficeAdhesionStatus" : "enum:status"
+    "backoffice_adhesions" |o--|| backoffice_leads : "lead"
+    "backoffice_adhesions" }o--|o backoffice_users : "sdrBackofficeUser"
+    "backoffice_adhesions" }o--|o backoffice_users : "closerBackofficeUser"
+    "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
+    "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
+    "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
+    "backoffice_leads_schedule" }o--|o backoffice_users : "closer"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookSource" : "enum:source"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookEventStatus" : "enum:status"
     "backoffice_webhook_tokens" |o--|| "BackofficeWebhookSource" : "enum:source"
@@ -813,4 +986,10 @@ unsubscribed unsubscribed
     "email_logs" }o--|o email_campaigns : "campaign"
     "email_events" |o--|| "EmailEventType" : "enum:type"
     "email_events" }o--|| email_logs : "log"
+    "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
+    "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
+    "backoffice_user_subscriptions" |o--|| "BackofficeSubscriptionStatus" : "enum:status"
+    "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
+    "backoffice_user_subscriptions" }o--|| profiles : "profile"
+    "backoffice_user_subscriptions" }o--|| backoffice_products : "product"
 ```

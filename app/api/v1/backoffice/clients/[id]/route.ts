@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { BackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/BackofficeClientRepository"
 import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService"
 import { BackofficeClientUseCase } from "@/app/api/useCases/backoffice/BackofficeClientUseCase"
+import { BackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/ClientRepository/BackofficeClientRepository"
 
 export async function GET(
   request: NextRequest,

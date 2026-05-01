@@ -9,6 +9,7 @@ import {
 } from "./types";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
+import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { prisma } from "@/app/api/infra/data/prisma";
 import {
@@ -190,7 +191,7 @@ async function createUserAndInvite(args: {
     }
 
     const supabaseUserId = (data as any)?.user?.id as string | undefined;
-    const inviteLink = data.properties.action_link;
+    const inviteLink = buildSetPasswordEmailAuthLink(data, "invite");
 
     if (supabaseUserId) {
       await prisma.profile.update({

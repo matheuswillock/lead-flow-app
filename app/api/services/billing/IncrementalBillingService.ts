@@ -2,6 +2,7 @@ import { billingRepository } from "@/app/api/infra/data/repositories/billing/Bil
 import { BILLING_PRICES, type BillingSummary } from "@/app/api/shared/billing/billingConfig";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { addMonthsInTz, formatInTz, DEFAULT_TZ } from "@/lib/dates";
+import { buildBillingSummary } from "./TeamBillingService";
 import type {
   BillingOwnerProfile,
   CreateIncrementalChargeInput,
@@ -144,33 +145,16 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       throw new Error("Master não encontrado");
     }
 
-    const currentBillableTeams = Math.max(0, snapshot.teamCount - 1);
-    const currentBillableUsers = Math.max(0, snapshot.totalUsersIncludingMaster - 1);
-    const basePrice = BILLING_PRICES.base;
-    const extraTeamsPrice = currentBillableTeams * BILLING_PRICES.extraTeam;
-    const extraUsersPrice = currentBillableUsers * BILLING_PRICES.extraUser;
-    const currentSummary: BillingSummary = {
-      masterId,
-      teamCount: snapshot.teamCount,
-      distinctUserCount: snapshot.distinctUserCount,
-      totalUsersIncludingMaster: snapshot.totalUsersIncludingMaster,
-      billableTeams: currentBillableTeams,
-      billableUsers: currentBillableUsers,
-      basePrice,
-      extraTeamsPrice,
-      extraUsersPrice,
-      totalPrice: snapshot.hasPermanentSubscription
-        ? 0
-        : roundCurrency(basePrice + extraTeamsPrice + extraUsersPrice),
-      hasPermanentSubscription: snapshot.hasPermanentSubscription,
-    };
+    const currentSummary: BillingSummary = buildBillingSummary(masterId, snapshot);
 
     const additionalTeams = Math.max(0, input.additionalTeams ?? 0);
     const additionalUsers = Math.max(0, input.additionalUsers ?? 0);
     const nextTeamCount = currentSummary.teamCount + additionalTeams;
     const nextTotalUsersIncludingMaster = currentSummary.totalUsersIncludingMaster + additionalUsers;
-    const nextBillableTeams = Math.max(0, nextTeamCount - 1);
-    const nextBillableUsers = Math.max(0, nextTotalUsersIncludingMaster - 1);
+    const nextRawExtraTeams = Math.max(0, nextTeamCount - 1);
+    const nextRawExtraUsers = Math.max(0, nextTotalUsersIncludingMaster - 1);
+    const nextBillableTeams = Math.max(0, nextRawExtraTeams - currentSummary.includedExtraTeams);
+    const nextBillableUsers = Math.max(0, nextRawExtraUsers - currentSummary.includedExtraUsers);
     const targetRecurringTotal = currentSummary.hasPermanentSubscription
       ? 0
       : roundCurrency(

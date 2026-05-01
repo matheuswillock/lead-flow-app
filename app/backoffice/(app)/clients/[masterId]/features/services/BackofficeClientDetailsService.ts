@@ -100,4 +100,42 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       },
     }
   }
+
+  async updateClient(
+    masterId: string,
+    data: {
+      fullName?: string
+      phone?: string | null
+      cpfCnpj?: string | null
+      postalCode?: string | null
+      address?: string | null
+      addressNumber?: string | null
+      neighborhood?: string | null
+      complement?: string | null
+      city?: string | null
+      state?: string | null
+      functions?: string[]
+      hasPermanentSubscription?: boolean
+    }
+  ): Promise<void> {
+    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao atualizar dados do cliente")
+    }
+  }
+
+  async deleteClient(masterId: string): Promise<void> {
+    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}`, {
+      method: "DELETE",
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao excluir conta do cliente")
+    }
+  }
 }

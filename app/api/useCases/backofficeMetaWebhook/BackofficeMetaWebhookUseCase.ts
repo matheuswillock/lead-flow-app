@@ -6,12 +6,12 @@ import {
   isBackofficeWebhookTokenExpired,
   sanitizeBackofficeWebhookEndpointForLogs,
 } from "@/lib/webhooks/backofficeWebhookSecurity"
-import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backofficeLead/BackofficeLeadRepository"
-import type { IBackofficeLeadRepository } from "@/app/api/infra/data/repositories/backofficeLead/IBackofficeLeadRepository"
-import { BackofficeWebhookEventRepository } from "@/app/api/infra/data/repositories/backofficeWebhookEvent/BackofficeWebhookEventRepository"
-import type { IBackofficeWebhookEventRepository } from "@/app/api/infra/data/repositories/backofficeWebhookEvent/IBackofficeWebhookEventRepository"
-import { backofficeMetaWebhookService } from "@/app/api/services/backofficeMetaWebhook/BackofficeMetaWebhookService"
-import type { IBackofficeMetaWebhookService } from "@/app/api/services/backofficeMetaWebhook/IBackofficeMetaWebhookService"
+import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/BackofficeLeadRepository"
+import type { IBackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/IBackofficeLeadRepository"
+import { BackofficeWebhookEventRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeWebhookEvent/BackofficeWebhookEventRepository"
+import type { IBackofficeWebhookEventRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeWebhookEvent/IBackofficeWebhookEventRepository"
+import { backofficeMetaWebhookService } from "@/app/api/services/Backoffice/backofficeMetaWebhook/BackofficeMetaWebhookService"
+import type { IBackofficeMetaWebhookService } from "@/app/api/services/Backoffice/backofficeMetaWebhook/IBackofficeMetaWebhookService"
 import type {
   BackofficeMetaWebhookPayload,
   GenerateBackofficeMetaWebhookTokenInput,

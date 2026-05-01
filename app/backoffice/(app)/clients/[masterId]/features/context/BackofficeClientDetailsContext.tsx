@@ -49,6 +49,8 @@ const DEFAULT_INVOICE_FILTERS: BackofficeClientInvoiceFilters = {
 type ClientDetailsSection = "teams" | "invoices"
 
 interface BackofficeClientDetailsContextValue {
+  masterId: string
+  service: IBackofficeClientDetailsService
   details: BackofficeClientDetails | null
   teams: BackofficeClientDetails["teams"]
   teamsPagination: BackofficePagination
@@ -315,6 +317,8 @@ export function BackofficeClientDetailsProvider({ children, masterId, service }:
   return (
     <BackofficeClientDetailsContext.Provider
       value={{
+        masterId,
+        service,
         details,
         teams,
         teamsPagination,

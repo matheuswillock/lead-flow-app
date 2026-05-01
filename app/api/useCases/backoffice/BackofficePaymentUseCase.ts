@@ -1,8 +1,8 @@
 import { randomUUID } from "crypto"
 import { Output } from "@/lib/output"
 import { asaasFetch, asaasApi } from "@/lib/asaas"
-import type { IBackofficePaymentRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficePaymentRepository"
-import type { IBackofficeClientRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficeClientRepository"
+import { IBackofficePaymentRepository } from "../../infra/data/repositories/backoffice/PaymentRepository/IBackofficePaymentRepository"
+import { IBackofficeClientRepository } from "../../infra/data/repositories/backoffice/ClientRepository/IBackofficeClientRepository"
 
 export interface CreatePaymentInput {
   clientId: string

@@ -206,6 +206,20 @@
       "description": "ID de um BackofficeLead para os endpoints /api/v1/backoffice/leads/:id"
     },
     {
+      "key": "backofficeAdhesionId",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "ID de uma BackofficeAdhesion para os endpoints /api/v1/backoffice/adhesions/:id"
+    },
+    {
+      "key": "backofficeAdhesionToken",
+      "value": "",
+      "type": "default",
+      "enabled": true,
+      "description": "Token público retornado no link de nova adesão para endpoints /api/v1/public-adhesions/:token"
+    },
+    {
       "key": "backofficeMetaActiveToken",
       "value": "",
       "type": "default",

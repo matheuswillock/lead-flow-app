@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { Output } from "@/lib/output"
 import { isBackofficeRole } from "@/lib/roles"
+import { createSupabaseServer } from "@/lib/supabase/server"
 
 export type BackofficeAccess = {
   supabaseId: string
@@ -18,7 +19,17 @@ export type BackofficeAccessResult =
 export async function getBackofficeAccess(
   request: NextRequest
 ): Promise<BackofficeAccessResult> {
-  const supabaseId = request.headers.get("x-supabase-user-id")
+  let supabaseId = request.headers.get("x-supabase-user-id")
+
+  if (!supabaseId) {
+    const supabase = await createSupabaseServer()
+    if (supabase) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      supabaseId = user?.id ?? null
+    }
+  }
 
   if (!supabaseId) {
     return {

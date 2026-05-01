@@ -3,6 +3,8 @@ export interface BillingSnapshot {
   teamCount: number;
   distinctUserCount: number;
   totalUsersIncludingMaster: number;
+  includedExtraTeams: number;
+  includedExtraUsers: number;
 }
 
 export interface IUpdateBillingProfileSubscriptionData {

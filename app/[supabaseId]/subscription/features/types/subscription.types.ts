@@ -24,6 +24,10 @@ export interface SubscriptionData {
     teamCount: number;
     distinctUserCount: number;
     totalUsersIncludingMaster: number;
+    includedExtraTeams: number;
+    includedExtraUsers: number;
+    availableExtraTeams: number;
+    availableExtraUsers: number;
     billableTeams: number;
     billableUsers: number;
     basePrice: number;

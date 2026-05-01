@@ -1,0 +1,20 @@
+import type {
+  BackofficeAdhesionCreationResult,
+  BackofficeAdhesionFilters,
+  BackofficeAdhesionFormValues,
+  BackofficeAdhesionListResult,
+  BackofficeAdhesionOptions,
+} from "../context/BackofficeAdhesionsTypes"
+
+export interface IBackofficeAdhesionsService {
+  list(params?: {
+    filters?: Partial<BackofficeAdhesionFilters>
+    page?: number
+    pageSize?: number
+  }): Promise<BackofficeAdhesionListResult>
+  getOptions(): Promise<BackofficeAdhesionOptions>
+  create(values: BackofficeAdhesionFormValues): Promise<BackofficeAdhesionCreationResult>
+  update(id: string, values: Partial<Omit<BackofficeAdhesionFormValues, "leadId">>): Promise<void>
+  resend(id: string): Promise<BackofficeAdhesionCreationResult>
+  resendInvite(id: string): Promise<void>
+}

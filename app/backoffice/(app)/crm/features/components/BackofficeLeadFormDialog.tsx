@@ -42,6 +42,7 @@ import { useBackofficeCrm } from "../context/BackofficeCrmHook"
 import {
   BACKOFFICE_CRM_STATUS_LABELS,
   isBackofficeLeadStatusKey,
+  type BackofficeAdhesionStatusKey,
   type BackofficeLeadItem,
   type BackofficeLeadScheduleInput,
   type BackofficeLeadStatusKey,
@@ -50,6 +51,65 @@ import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
 
 const NO_SELECTION_VALUE = "__none__"
 const DEFAULT_STATUS: BackofficeLeadStatusKey = "new_opportunity"
+
+function sanitizePhoneDigits(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 11)
+}
+
+function sanitizeCnpjDigits(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 14)
+}
+
+function formatPhoneInput(value: string): string {
+  const digits = sanitizePhoneDigits(value)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+  if (digits.length <= 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+  }
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+}
+
+function formatCnpjInput(value: string): string {
+  const digits = sanitizeCnpjDigits(value)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`
+  if (digits.length <= 8) {
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`
+  }
+  if (digits.length <= 12) {
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`
+  }
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`
+}
+
+function isValidCnpj(value: string): boolean {
+  const cnpj = sanitizeCnpjDigits(value)
+  if (cnpj.length !== 14) return false
+  if (/^(\d)\1+$/.test(cnpj)) return false
+
+  const calculateDigit = (base: string, weights: number[]) => {
+    const sum = base
+      .split("")
+      .reduce((acc, digit, index) => acc + Number.parseInt(digit, 10) * weights[index], 0)
+    const remainder = sum % 11
+    return remainder < 2 ? 0 : 11 - remainder
+  }
+
+  const firstDigit = calculateDigit(
+    cnpj.slice(0, 12),
+    [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  )
+  const secondDigit = calculateDigit(
+    cnpj.slice(0, 13),
+    [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+  )
+
+  return (
+    firstDigit === Number.parseInt(cnpj[12], 10) &&
+    secondDigit === Number.parseInt(cnpj[13], 10)
+  )
+}
 
 const leadFormSchema = z
   .object({
@@ -60,7 +120,20 @@ const leadFormSchema = z
       .refine((value) => !value || z.string().email().safeParse(value).success, {
         message: "Informe um e-mail válido.",
       }),
-    phone: z.string().trim(),
+    phone: z.string().trim().refine(
+      (value) => {
+        if (!value) return true
+        return /^\d{10,11}$/.test(sanitizePhoneDigits(value))
+      },
+      { message: "Telefone deve conter 10 ou 11 dígitos." }
+    ),
+    cnpj: z.string().trim().refine(
+      (value) => {
+        if (!value) return true
+        return isValidCnpj(value)
+      },
+      { message: "CNPJ inválido." }
+    ),
     notes: z.string().trim(),
     status: z.custom<BackofficeLeadStatusKey>(isBackofficeLeadStatusKey, {
       message: "Status inválido.",
@@ -71,6 +144,7 @@ const leadFormSchema = z
     meetingTitle: z.string().trim(),
     meetingNotes: z.string().trim(),
     meetingLink: z.string().trim(),
+    meetingExtraGuests: z.array(z.string().email()),
   })
   .superRefine((data, ctx) => {
     if (!data.sdrBackofficeUserId) {
@@ -98,6 +172,20 @@ const leadFormSchema = z
         message: "Closer é obrigatório para leads agendados.",
       })
     }
+
+    if (!data.meetingLink) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["meetingLink"],
+        message: "Link da reunião é obrigatório.",
+      })
+    } else if (!z.string().url().safeParse(data.meetingLink).success) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["meetingLink"],
+        message: "Informe um link válido.",
+      })
+    }
   })
 
 type LeadFormValues = z.infer<typeof leadFormSchema>
@@ -106,6 +194,7 @@ const EMPTY_FORM_VALUES: LeadFormValues = {
   name: "",
   email: "",
   phone: "",
+  cnpj: "",
   notes: "",
   status: DEFAULT_STATUS,
   sdrBackofficeUserId: "",
@@ -114,6 +203,7 @@ const EMPTY_FORM_VALUES: LeadFormValues = {
   meetingTitle: "",
   meetingNotes: "",
   meetingLink: "",
+  meetingExtraGuests: [],
 }
 
 function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
@@ -122,7 +212,8 @@ function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
   return {
     name: lead.name,
     email: lead.email ?? "",
-    phone: lead.phone ?? "",
+    phone: formatPhoneInput(lead.phone ?? ""),
+    cnpj: formatCnpjInput(lead.cnpj ?? ""),
     notes: lead.notes ?? "",
     status: lead.status,
     sdrBackofficeUserId: lead.sdrBackofficeUserId ?? "",
@@ -131,6 +222,7 @@ function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
     meetingTitle: lead.meetingTitle ?? "",
     meetingNotes: lead.meetingNotes ?? "",
     meetingLink: lead.meetingLink ?? "",
+    meetingExtraGuests: lead.meetingExtraGuests,
   }
 }
 
@@ -152,6 +244,7 @@ function buildScheduleInput(values: LeadFormValues): BackofficeLeadScheduleInput
     meetingTitle: nullIfEmpty(values.meetingTitle),
     meetingNotes: nullIfEmpty(values.meetingNotes),
     meetingLink: nullIfEmpty(values.meetingLink),
+    extraGuests: values.meetingExtraGuests,
   }
 }
 
@@ -160,9 +253,29 @@ function getStatusBadgeClass(status: BackofficeLeadStatusKey): string {
     new_opportunity: "border-primary/30 bg-primary/10 text-primary",
     scheduled: "border-primary/30 bg-primary text-primary-foreground",
     no_show: "border-muted bg-muted text-muted-foreground",
+    new_adhesion: "border-primary/30 bg-primary/15 text-primary",
     lost: "border-destructive/30 bg-destructive/10 text-destructive",
     implementation: "border-border bg-secondary text-secondary-foreground",
     finalized: "border-primary/30 bg-primary/15 text-primary",
+  }
+  return classes[status]
+}
+
+const ADHESION_STATUS_LABELS: Record<BackofficeAdhesionStatusKey, string> = {
+  pending: "Pendente",
+  paid: "Pago",
+  overdue: "Atrasado",
+  expired: "Expirado",
+  canceled: "Cancelado",
+}
+
+function getAdhesionStatusBadgeClass(status: BackofficeAdhesionStatusKey): string {
+  const classes: Record<BackofficeAdhesionStatusKey, string> = {
+    pending: "border-primary/30 bg-primary/10 text-primary",
+    paid: "border-primary/30 bg-primary/15 text-primary",
+    overdue: "border-destructive/30 bg-destructive/10 text-destructive",
+    expired: "border-muted bg-muted text-muted-foreground",
+    canceled: "border-muted bg-muted text-muted-foreground",
   }
   return classes[status]
 }
@@ -175,6 +288,7 @@ export function BackofficeLeadFormDialog() {
     createLead,
     updateLead,
     updateLeadStatus,
+    users,
     sdrOptions,
     closerOptions,
   } = useBackofficeCrm()
@@ -194,7 +308,12 @@ export function BackofficeLeadFormDialog() {
   const canSubmit =
     watchedValues.name.trim().length >= 2 &&
     Boolean(watchedValues.sdrBackofficeUserId) &&
-    (!isScheduled || Boolean(watchedValues.meetingDate && watchedValues.closerBackofficeUserId))
+    (!isScheduled ||
+      Boolean(
+        watchedValues.meetingDate &&
+          watchedValues.closerBackofficeUserId &&
+          watchedValues.meetingLink
+      ))
 
   useEffect(() => {
     if (!isFormDialogOpen) return
@@ -210,6 +329,7 @@ export function BackofficeLeadFormDialog() {
       meetingTitle: watchedValues.meetingTitle || null,
       meetingNotes: watchedValues.meetingNotes || null,
       meetingLink: watchedValues.meetingLink || null,
+      meetingExtraGuests: watchedValues.meetingExtraGuests,
     }),
     [
       selectedLead?.name,
@@ -218,6 +338,7 @@ export function BackofficeLeadFormDialog() {
       watchedValues.meetingLink,
       watchedValues.meetingNotes,
       watchedValues.meetingTitle,
+      watchedValues.meetingExtraGuests,
       watchedValues.name,
     ]
   )
@@ -235,6 +356,7 @@ export function BackofficeLeadFormDialog() {
     form.setValue("meetingTitle", input.meetingTitle ?? "", { shouldDirty: true })
     form.setValue("meetingNotes", input.meetingNotes ?? "", { shouldDirty: true })
     form.setValue("meetingLink", input.meetingLink ?? "", { shouldDirty: true })
+    form.setValue("meetingExtraGuests", input.extraGuests ?? [], { shouldDirty: true })
   }
 
   async function handleSubmit(values: LeadFormValues) {
@@ -242,7 +364,8 @@ export function BackofficeLeadFormDialog() {
       const basePayload = {
         name: values.name.trim(),
         email: nullIfEmpty(values.email),
-        phone: nullIfEmpty(values.phone),
+        phone: nullIfEmpty(sanitizePhoneDigits(values.phone)),
+        cnpj: nullIfEmpty(sanitizeCnpjDigits(values.cnpj)),
         notes: nullIfEmpty(values.notes),
         sdrBackofficeUserId: nullIfEmpty(values.sdrBackofficeUserId),
         closerBackofficeUserId: nullIfEmpty(values.closerBackofficeUserId),
@@ -250,6 +373,7 @@ export function BackofficeLeadFormDialog() {
         meetingTitle: nullIfEmpty(values.meetingTitle),
         meetingNotes: nullIfEmpty(values.meetingNotes),
         meetingLink: nullIfEmpty(values.meetingLink),
+        meetingExtraGuests: values.meetingExtraGuests,
       }
 
       if (isEdit && selectedLead) {
@@ -300,6 +424,17 @@ export function BackofficeLeadFormDialog() {
                       >
                         {BACKOFFICE_CRM_STATUS_LABELS[watchedValues.status]}
                       </Badge>
+                      {selectedLead?.adhesion ? (
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "font-medium",
+                            getAdhesionStatusBadgeClass(selectedLead.adhesion.status)
+                          )}
+                        >
+                          Adesão {ADHESION_STATUS_LABELS[selectedLead.adhesion.status]}
+                        </Badge>
+                      ) : null}
                     </div>
                     <DialogDescription className="mt-1">
                       {isEdit
@@ -372,6 +507,29 @@ export function BackofficeLeadFormDialog() {
                               <Input
                                 {...field}
                                 placeholder="(00) 00000-0000"
+                                onChange={(event) =>
+                                  field.onChange(formatPhoneInput(event.target.value))
+                                }
+                                disabled={isSubmitting}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="cnpj"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>CNPJ</FormLabel>
+                            <FormControl>
+                              <Input
+                                {...field}
+                                placeholder="00.000.000/0000-00"
+                                onChange={(event) =>
+                                  field.onChange(formatCnpjInput(event.target.value))
+                                }
                                 disabled={isSubmitting}
                               />
                             </FormControl>
@@ -513,56 +671,59 @@ export function BackofficeLeadFormDialog() {
                     </div>
 
                     {isScheduled ? (
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <FormField
-                          control={form.control}
-                          name="meetingDate"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormControl>
-                                <DateTimePicker
-                                  date={parseMeetingDate(field.value)}
-                                  onDateChange={(date) =>
-                                    field.onChange(date ? date.toISOString() : "")
-                                  }
-                                  label="Data do agendamento"
-                                  required
-                                  disabled={isSubmitting}
-                                  invalid={Boolean(form.formState.errors.meetingDate)}
-                                  disablePastDates
-                                  tz={tz}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name="meetingTitle"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Título</FormLabel>
-                              <FormControl>
-                                <Input
-                                  {...field}
-                                  placeholder="Título do agendamento"
-                                  disabled={isSubmitting}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                      <div className="flex flex-col gap-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <FormField
+                            control={form.control}
+                            name="meetingDate"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <DateTimePicker
+                                    date={parseMeetingDate(field.value)}
+                                    onDateChange={(date) =>
+                                      field.onChange(date ? date.toISOString() : "")
+                                    }
+                                    label="Data do agendamento"
+                                    required
+                                    disabled={isSubmitting}
+                                    invalid={Boolean(form.formState.errors.meetingDate)}
+                                    disablePastDates
+                                    tz={tz}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name="meetingTitle"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Título</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    {...field}
+                                    placeholder="Título do agendamento"
+                                    disabled={isSubmitting}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
                         <FormField
                           control={form.control}
                           name="meetingLink"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Link</FormLabel>
+                              <FormLabel>Link *</FormLabel>
                               <FormControl>
                                 <Input
                                   {...field}
+                                  type="url"
                                   placeholder="https://meet..."
                                   disabled={isSubmitting}
                                 />
@@ -621,6 +782,7 @@ export function BackofficeLeadFormDialog() {
         open={scheduleDialogOpen}
         lead={scheduleLead}
         closerOptions={closerOptions}
+        guestOptions={users}
         onOpenChange={setScheduleDialogOpen}
         onConfirm={handleScheduleConfirm}
       />
