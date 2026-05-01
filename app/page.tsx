@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import Image from "next/image"
-import { ArrowRight, TrendingUp, Users } from "lucide-react"
+import { ArrowRight, CalendarCheck, UserPlus } from "lucide-react"
 import { LandingHeader } from "@/components/landing/landingHeader"
 import { FeaturesSection } from "@/components/landing/FeaturesSection"
 import { EmailCampaignsSpotlight } from "@/components/landing/EmailCampaignsSpotlight"
@@ -193,8 +193,8 @@ export default function HomePage() {
               <div className="relative w-full max-w-lg">
                 {/* Floating badge top-left */}
                 <div className="absolute -top-4 -left-4 z-10 flex items-center gap-2 rounded-2xl px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold landing-hero-floating">
-                  <TrendingUp className="h-4 w-4 text-primary" />
-                  <span>+40% conversão média</span>
+                  <UserPlus className="h-4 w-4 text-primary" />
+                  <span>Novo lead no pipeline</span>
                 </div>
 
                 {/* Product image */}
@@ -211,8 +211,8 @@ export default function HomePage() {
 
                 {/* Floating badge bottom-right */}
                 <div className="absolute -bottom-4 -right-4 z-10 flex items-center gap-2 rounded-2xl px-3.5 py-2.5 shadow-lg backdrop-blur text-sm font-semibold landing-hero-floating">
-                  <Users className="h-4 w-4 text-primary" />
-                  <span>500+ corretores ativos</span>
+                  <CalendarCheck className="h-4 w-4 text-primary" />
+                  <span>Reunião agendada</span>
                 </div>
               </div>
             </div>
