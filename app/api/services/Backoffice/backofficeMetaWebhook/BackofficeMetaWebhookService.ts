@@ -2,10 +2,10 @@ import type {
   BackofficeWebhookRequestLog,
   BackofficeWebhookToken,
 } from "@prisma/client"
-import { BackofficeWebhookRequestLogRepository } from "@/app/api/infra/data/repositories/backofficeWebhookRequestLog/BackofficeWebhookRequestLogRepository"
-import type { IBackofficeWebhookRequestLogRepository } from "@/app/api/infra/data/repositories/backofficeWebhookRequestLog/IBackofficeWebhookRequestLogRepository"
-import { BackofficeWebhookTokenRepository } from "@/app/api/infra/data/repositories/backofficeWebhookToken/BackofficeWebhookTokenRepository"
-import type { IBackofficeWebhookTokenRepository } from "@/app/api/infra/data/repositories/backofficeWebhookToken/IBackofficeWebhookTokenRepository"
+import { BackofficeWebhookRequestLogRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeWebhookRequestLog/BackofficeWebhookRequestLogRepository"
+import type { IBackofficeWebhookRequestLogRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeWebhookRequestLog/IBackofficeWebhookRequestLogRepository"
+import { BackofficeWebhookTokenRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeWebhookToken/BackofficeWebhookTokenRepository"
+import type { IBackofficeWebhookTokenRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeWebhookToken/IBackofficeWebhookTokenRepository"
 import {
   buildBackofficeWebhookTokenPreview,
   computeBackofficeWebhookTokenExpiry,

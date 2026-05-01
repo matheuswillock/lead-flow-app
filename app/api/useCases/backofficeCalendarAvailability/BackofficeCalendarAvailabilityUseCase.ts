@@ -1,10 +1,15 @@
 import { Output } from "@/lib/output"
-import { backofficeCalendarAvailabilityService } from "@/app/api/services/backofficeCalendarAvailability/BackofficeCalendarAvailabilityService"
-import type { IBackofficeCalendarAvailabilityService } from "@/app/api/services/backofficeCalendarAvailability/IBackofficeCalendarAvailabilityService"
+import { BackofficeCalendarAvailabilityService } from "@/app/api/services/Backoffice/backofficeCalendarAvailability/BackofficeCalendarAvailabilityService"
+import type { IBackofficeCalendarAvailabilityService } from "@/app/api/services/Backoffice/backofficeCalendarAvailability/IBackofficeCalendarAvailabilityService"
 import type {
   GetBackofficeCalendarAvailabilityUseCaseInput,
   IBackofficeCalendarAvailabilityUseCase,
 } from "./IBackofficeCalendarAvailabilityUseCase"
+import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
+import { BackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadSchedule/BackofficeLeadScheduleRepository"
+import {
+  backofficeGoogleCalendarService,
+} from "@/app/api/services/Backoffice/backofficeGoogleCalendar/BackofficeGoogleCalendarService"
 
 const DATE_KEY_REGEX = /^\d{4}-\d{2}-\d{2}$/
 
@@ -46,4 +51,10 @@ export class BackofficeCalendarAvailabilityUseCase
 }
 
 export const backofficeCalendarAvailabilityUseCase =
-  new BackofficeCalendarAvailabilityUseCase(backofficeCalendarAvailabilityService)
+  new BackofficeCalendarAvailabilityUseCase(
+    new BackofficeCalendarAvailabilityService(
+      new BackofficeUserRepository(),
+      new BackofficeLeadScheduleRepository(),
+      backofficeGoogleCalendarService
+    )
+  )

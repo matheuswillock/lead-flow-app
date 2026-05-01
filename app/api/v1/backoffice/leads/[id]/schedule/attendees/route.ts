@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
-import { backofficeLeadScheduleService } from "@/app/api/services/backofficeLeadSchedule/BackofficeLeadScheduleService"
+import {
+  backofficeLeadScheduleUseCase,
+} from "@/app/api/useCases/backofficeLeadSchedule/BackofficeLeadScheduleUseCase"
 
 export async function GET(
   request: NextRequest,
@@ -14,7 +16,7 @@ export async function GET(
     }
 
     const { id } = await params
-    const output = await backofficeLeadScheduleService.getAttendees({ leadId: id })
+    const output = await backofficeLeadScheduleUseCase.getAttendees(id)
     return NextResponse.json(output, { status: output.isValid ? 200 : 404 })
   } catch (error) {
     console.error("[BackofficeLeadScheduleAttendeesRoute][GET]", error)

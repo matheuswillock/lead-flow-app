@@ -1,15 +1,12 @@
 import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates"
-import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficeUserRepository"
-import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/BackofficeUserRepository"
-import type { IBackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backofficeLeadSchedule/IBackofficeLeadScheduleRepository"
-import { BackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backofficeLeadSchedule/BackofficeLeadScheduleRepository"
-import type { IBackofficeGoogleCalendarService } from "@/app/api/services/backofficeGoogleCalendar/IBackofficeGoogleCalendarService"
-import { backofficeGoogleCalendarService } from "@/app/api/services/backofficeGoogleCalendar/BackofficeGoogleCalendarService"
+import type { IBackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadSchedule/IBackofficeLeadScheduleRepository"
+import type { IBackofficeGoogleCalendarService } from "../backofficeGoogleCalendar/IBackofficeGoogleCalendarService"
 import type {
   BackofficeCalendarAvailabilityResult,
   GetBackofficeCalendarAvailabilityInput,
   IBackofficeCalendarAvailabilityService,
 } from "./IBackofficeCalendarAvailabilityService"
+import { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
 
 const SLOT_MINUTES = 30
 
@@ -151,10 +148,3 @@ export class BackofficeCalendarAvailabilityService
     }
   }
 }
-
-export const backofficeCalendarAvailabilityService =
-  new BackofficeCalendarAvailabilityService(
-    new BackofficeUserRepository(),
-    new BackofficeLeadScheduleRepository(),
-    backofficeGoogleCalendarService
-  )

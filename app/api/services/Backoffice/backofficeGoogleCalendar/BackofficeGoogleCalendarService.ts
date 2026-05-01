@@ -1,5 +1,6 @@
-import { prisma } from "@/app/api/infra/data/prisma"
 import { DEFAULT_TZ, resolveTimezone } from "@/lib/dates"
+import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
+import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
 import type {
   BackofficeCalendarAttendee,
   BackofficeCalendarEventInput,
@@ -114,7 +115,10 @@ async function refreshAccessToken(refreshToken: string): Promise<GoogleTokenResu
   return response.json() as Promise<GoogleTokenResult>
 }
 
-async function getValidAccessToken(organizer: BackofficeCalendarOrganizer) {
+async function getValidAccessToken(
+  organizer: BackofficeCalendarOrganizer,
+  userRepo: IBackofficeUserRepository
+) {
   const now = Date.now()
   const expiresAt = organizer.googleTokenExpiresAt?.getTime() ?? 0
 
@@ -129,14 +133,11 @@ async function getValidAccessToken(organizer: BackofficeCalendarOrganizer) {
   const refreshed = await refreshAccessToken(organizer.googleRefreshToken)
   const expiresAtDate = new Date(Date.now() + refreshed.expires_in * 1000)
 
-  await prisma.backofficeUser.update({
-    where: { id: organizer.id },
-    data: {
-      googleAccessToken: refreshed.access_token,
-      googleRefreshToken: refreshed.refresh_token ?? organizer.googleRefreshToken,
-      googleTokenExpiresAt: expiresAtDate,
-      googleCalendarConnected: true,
-    },
+  await userRepo.update(organizer.id, {
+    googleAccessToken: refreshed.access_token,
+    googleRefreshToken: refreshed.refresh_token ?? organizer.googleRefreshToken,
+    googleTokenExpiresAt: expiresAtDate,
+    googleCalendarConnected: true,
   })
 
   return refreshed.access_token
@@ -178,6 +179,8 @@ async function googleCalendarFetch<T>(
 export class BackofficeGoogleCalendarService
   implements IBackofficeGoogleCalendarService
 {
+  constructor(private readonly userRepo: IBackofficeUserRepository) {}
+
   async getBusyIntervals({
     organizer,
     timeMin,
@@ -189,7 +192,7 @@ export class BackofficeGoogleCalendarService
     timeMax: string
     calendarId?: string
   }) {
-    const accessToken = await getValidAccessToken(organizer)
+    const accessToken = await getValidAccessToken(organizer, this.userRepo)
     const timezone = resolveTimezone(organizer.timezone ?? DEFAULT_TZ)
     const response = await googleCalendarFetch<{
       calendars?: Record<string, { busy?: Array<{ start: string; end: string }> }>
@@ -207,7 +210,7 @@ export class BackofficeGoogleCalendarService
   }
 
   async upsertEvent(input: BackofficeCalendarEventInput): Promise<BackofficeCalendarEventResult> {
-    const accessToken = await getValidAccessToken(input.organizer)
+    const accessToken = await getValidAccessToken(input.organizer, this.userRepo)
     const calendarId = "primary"
     const timezone = resolveTimezone(input.organizer.timezone ?? DEFAULT_TZ)
     const endTime = getEventEnd(input.meetingDate)
@@ -279,7 +282,7 @@ export class BackofficeGoogleCalendarService
     eventId: string
     calendarId?: string
   }) {
-    const accessToken = await getValidAccessToken(organizer)
+    const accessToken = await getValidAccessToken(organizer, this.userRepo)
     const baseUrl = `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`
     await googleCalendarFetch<void>(
       `${baseUrl}/${encodeURIComponent(eventId)}?sendUpdates=all`,
@@ -297,7 +300,7 @@ export class BackofficeGoogleCalendarService
     eventId: string
     calendarId?: string
   }): Promise<BackofficeCalendarAttendee[]> {
-    const accessToken = await getValidAccessToken(organizer)
+    const accessToken = await getValidAccessToken(organizer, this.userRepo)
     const baseUrl = `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`
     const event = await googleCalendarFetch<{
       attendees?: Array<{
@@ -324,4 +327,4 @@ export class BackofficeGoogleCalendarService
 }
 
 export const backofficeGoogleCalendarService =
-  new BackofficeGoogleCalendarService()
+  new BackofficeGoogleCalendarService(new BackofficeUserRepository())

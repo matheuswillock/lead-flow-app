@@ -1,27 +1,27 @@
 import { randomUUID } from "node:crypto"
 import { BackofficeLeadOrigin, BackofficeLeadStatus } from "@prisma/client"
 import { Output } from "@/lib/output"
-import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/BackofficeUserRepository"
-import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficeUserRepository"
-import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backofficeLead/BackofficeLeadRepository"
+import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/BackofficeLeadRepository"
 import {
   backofficeLeadScheduleService,
-} from "@/app/api/services/backofficeLeadSchedule/BackofficeLeadScheduleService"
+} from "@/app/api/useCases/backofficeLeadSchedule/backofficeLeadScheduleService"
 import type {
   BackofficeLeadScheduleResult,
   IBackofficeLeadScheduleService,
-} from "@/app/api/services/backofficeLeadSchedule/IBackofficeLeadScheduleService"
+} from "@/app/api/services/Backoffice/backofficeLeadSchedule/IBackofficeLeadScheduleService"
 import type {
   BackofficeLeadUserRelation,
   BackofficeLeadWithRelations,
   IBackofficeLeadRepository,
-} from "@/app/api/infra/data/repositories/backofficeLead/IBackofficeLeadRepository"
+} from "@/app/api/infra/data/repositories/backoffice/backofficeLead/IBackofficeLeadRepository"
 import type {
   CreateBackofficeLeadDTO,
   IBackofficeLeadUseCase,
   UpdateBackofficeLeadDTO,
   UpdateBackofficeLeadStatusDTO,
 } from "./IBackofficeLeadUseCase"
+import { IBackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
+import { BackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
 
 export const BACKOFFICE_LEAD_STATUS_VALUES = [
   "new_opportunity",

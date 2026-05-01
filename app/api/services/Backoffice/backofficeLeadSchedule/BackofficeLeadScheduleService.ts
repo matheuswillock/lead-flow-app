@@ -2,20 +2,9 @@ import { BackofficeInviteDispatchStatus, type Prisma } from "@prisma/client"
 import { Output } from "@/lib/output"
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink"
 import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/IBackofficeUserRepository"
-import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/BackofficeUserRepository"
-import type { IBackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backofficeLeadSchedule/IBackofficeLeadScheduleRepository"
-import {
-  BackofficeLeadScheduleRepository,
-} from "@/app/api/infra/data/repositories/backofficeLeadSchedule/BackofficeLeadScheduleRepository"
-import type { IBackofficeLeadRepository } from "@/app/api/infra/data/repositories/backofficeLead/IBackofficeLeadRepository"
-import { BackofficeLeadRepository } from "@/app/api/infra/data/repositories/backofficeLead/BackofficeLeadRepository"
-import type { IBackofficeGoogleCalendarService } from "@/app/api/services/backofficeGoogleCalendar/IBackofficeGoogleCalendarService"
-import {
-  backofficeGoogleCalendarService,
-} from "@/app/api/services/backofficeGoogleCalendar/BackofficeGoogleCalendarService"
-import {
-  backofficeLeadScheduleInviteService,
-} from "./BackofficeLeadScheduleInviteService"
+import type { IBackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadSchedule/IBackofficeLeadScheduleRepository"
+import type { IBackofficeLeadRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLead/IBackofficeLeadRepository"
+import type { IBackofficeGoogleCalendarService } from "../backofficeGoogleCalendar/IBackofficeGoogleCalendarService"
 import type {
   CancelBackofficeLeadScheduleInput,
   GetBackofficeLeadScheduleAttendeesInput,
@@ -351,11 +340,3 @@ export class BackofficeLeadScheduleService
     }
   }
 }
-
-export const backofficeLeadScheduleService = new BackofficeLeadScheduleService(
-  new BackofficeLeadScheduleRepository(),
-  new BackofficeUserRepository(),
-  new BackofficeLeadRepository(),
-  backofficeGoogleCalendarService,
-  backofficeLeadScheduleInviteService
-)

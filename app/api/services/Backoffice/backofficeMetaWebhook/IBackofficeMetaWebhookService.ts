@@ -5,7 +5,7 @@ import type {
 import type {
   BackofficeWebhookRequestLogResultType,
   CreateBackofficeWebhookRequestLogInput,
-} from "@/app/api/infra/data/repositories/backofficeWebhookRequestLog/IBackofficeWebhookRequestLogRepository"
+} from "@/app/api/infra/data/repositories/backoffice/backofficeWebhookRequestLog/IBackofficeWebhookRequestLogRepository"
 import type { BackofficeWebhookTokenExpiryModeValue } from "@/lib/webhooks/backofficeWebhookSecurity"
 
 export type RotateBackofficeMetaWebhookTokenInput = {
