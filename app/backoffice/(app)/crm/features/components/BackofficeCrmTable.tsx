@@ -112,7 +112,7 @@ const TABLE_COLUMN_OPTIONS: { key: BackofficeCrmTableColumnKey; label: string }[
   { key: "name", label: "Nome" },
   { key: "email", label: "Email" },
   { key: "phone", label: "Telefone" },
-  { key: "cnpj", label: "CNPJ" },
+  { key: "cpfCnpj", label: "Documento" },
   { key: "status", label: "Status" },
   { key: "origin", label: "Origem" },
   { key: "sdr", label: "SDR" },
@@ -496,9 +496,9 @@ export function BackofficeCrmTable() {
       },
       {
         accessorKey: "cnpj",
-        meta: { label: "CNPJ" },
-        header: ({ column }) => <SortableHeader column={column} label="CNPJ" />,
-        cell: ({ row }) => formatCnpj(row.original.cnpj),
+        meta: { label: "Documento" },
+        header: ({ column }) => <SortableHeader column={column} label="Documento" />,
+        cell: ({ row }) => formatCnpj(row.original.cpfCnpj),
       },
       {
         accessorKey: "status",
