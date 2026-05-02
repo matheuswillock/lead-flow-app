@@ -191,13 +191,7 @@ const leadFormSchema = z
       })
     }
 
-    if (!data.meetingLink) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["meetingLink"],
-        message: "Link da reunião é obrigatório.",
-      })
-    } else if (!z.string().url().safeParse(data.meetingLink).success) {
+    if (data.meetingLink && !z.string().url().safeParse(data.meetingLink).success) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["meetingLink"],
@@ -328,6 +322,7 @@ export function BackofficeLeadFormDialog() {
   useEffect(() => {
     if (!isFormDialogOpen) return
     form.reset(toFormValues(selectedLead))
+    void form.trigger()
     setScheduleDialogOpen(false)
   }, [form, isFormDialogOpen, selectedLead])
 
@@ -733,7 +728,7 @@ export function BackofficeLeadFormDialog() {
                           name="meetingLink"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Link *</FormLabel>
+                              <FormLabel>Link</FormLabel>
                               <FormControl>
                                 <Input
                                   {...field}
