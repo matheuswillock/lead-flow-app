@@ -25,7 +25,7 @@ export interface CreateBackofficeLeadInput {
   name: string
   email?: string | null
   phone?: string | null
-  cnpj?: string | null
+  cpfCnpj?: string | null
   notes?: string | null
   status?: BackofficeLeadStatus
   origin?: BackofficeLeadOrigin
@@ -45,7 +45,7 @@ export interface UpdateBackofficeLeadInput {
   name?: string
   email?: string | null
   phone?: string | null
-  cnpj?: string | null
+  cpfCnpj?: string | null
   notes?: string | null
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null

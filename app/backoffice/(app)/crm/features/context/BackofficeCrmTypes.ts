@@ -39,7 +39,7 @@ export interface BackofficeLeadItem {
   name: string
   email: string | null
   phone: string | null
-  cnpj: string | null
+  cpfCnpj: string | null
   notes: string | null
   status: BackofficeLeadStatusKey
   origin: BackofficeLeadOriginKey
@@ -69,7 +69,7 @@ export interface BackofficeLeadCreateInput {
   name: string
   email?: string | null
   phone?: string | null
-  cnpj?: string | null
+  cpfCnpj?: string | null
   notes?: string | null
   status?: BackofficeLeadStatusKey
   sdrBackofficeUserId?: string | null
@@ -85,7 +85,7 @@ export interface BackofficeLeadUpdateInput {
   name?: string
   email?: string | null
   phone?: string | null
-  cnpj?: string | null
+  cpfCnpj?: string | null
   notes?: string | null
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
@@ -118,7 +118,7 @@ export type BackofficeCrmTableColumnKey =
   | "name"
   | "email"
   | "phone"
-  | "cnpj"
+  | "cpfCnpj"
   | "status"
   | "origin"
   | "sdr"
@@ -166,7 +166,7 @@ export const DEFAULT_BACKOFFICE_CRM_TABLE_COLUMN_VISIBILITY: BackofficeCrmTableC
     name: true,
     email: true,
     phone: true,
-    cnpj: true,
+    cpfCnpj: true,
     status: true,
     origin: true,
     sdr: true,
@@ -182,7 +182,7 @@ export const DEFAULT_BACKOFFICE_CRM_TABLE_COLUMN_ORDER = [
   "name",
   "email",
   "phone",
-  "cnpj",
+  "cpfCnpj",
   "status",
   "origin",
   "sdr",

@@ -404,7 +404,7 @@ unsubscribed unsubscribed
     String name 
     String email "❓"
     String phone "❓"
-    String cnpj "❓"
+    String cpfCnpj "❓"
     String notes "❓"
     BackofficeLeadStatus status 
     BackofficeLeadOrigin origin 

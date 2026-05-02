@@ -49,15 +49,29 @@ import {
 } from "../context/BackofficeCrmTypes"
 import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
 
+// Remove todos os caracteres não numéricos de CPF ou CNPJ
+function sanitizeCpfCnpjDigits(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 14)
+}
+
+// Aplica máscara dinâmica de CPF ou CNPJ
+function formatCpfCnpjInput(value: string): string {
+  const digits = sanitizeCpfCnpjDigits(value)
+  if (digits.length <= 3) return digits
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`
+  if (digits.length <= 11)
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
+  if (digits.length <= 14)
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`
+  return value
+}
+
 const NO_SELECTION_VALUE = "__none__"
 const DEFAULT_STATUS: BackofficeLeadStatusKey = "new_opportunity"
 
 function sanitizePhoneDigits(value: string): string {
   return value.replace(/\D/g, "").slice(0, 11)
-}
-
-function sanitizeCnpjDigits(value: string): string {
-  return value.replace(/\D/g, "").slice(0, 14)
 }
 
 function formatPhoneInput(value: string): string {
@@ -70,45 +84,43 @@ function formatPhoneInput(value: string): string {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
 }
 
-function formatCnpjInput(value: string): string {
-  const digits = sanitizeCnpjDigits(value)
-  if (digits.length <= 2) return digits
-  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`
-  if (digits.length <= 8) {
-    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`
+function isValidCpf(value: string): boolean {
+  const cpf = value.replace(/\D/g, "")
+  if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false
+  const calc = (len: number) => {
+    let sum = 0
+    for (let i = 0; i < len; i++) sum += Number.parseInt(cpf.charAt(i), 10) * (len + 1 - i)
+    const rem = (sum * 10) % 11
+    return rem === 10 ? 0 : rem
   }
-  if (digits.length <= 12) {
-    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`
-  }
-  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`
+  return (
+    calc(9) === Number.parseInt(cpf.charAt(9), 10) &&
+    calc(10) === Number.parseInt(cpf.charAt(10), 10)
+  )
 }
 
 function isValidCnpj(value: string): boolean {
-  const cnpj = sanitizeCnpjDigits(value)
-  if (cnpj.length !== 14) return false
-  if (/^(\d)\1+$/.test(cnpj)) return false
-
-  const calculateDigit = (base: string, weights: number[]) => {
+  const cnpj = value.replace(/\D/g, "")
+  if (cnpj.length !== 14 || /^(\d)\1+$/.test(cnpj)) return false
+  const calcDigit = (base: string, weights: number[]) => {
     const sum = base
       .split("")
-      .reduce((acc, digit, index) => acc + Number.parseInt(digit, 10) * weights[index], 0)
-    const remainder = sum % 11
-    return remainder < 2 ? 0 : 11 - remainder
+      .reduce((acc, d, i) => acc + Number.parseInt(d, 10) * (weights[i] ?? 0), 0)
+    const rem = sum % 11
+    return rem < 2 ? 0 : 11 - rem
   }
-
-  const firstDigit = calculateDigit(
-    cnpj.slice(0, 12),
-    [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-  )
-  const secondDigit = calculateDigit(
-    cnpj.slice(0, 13),
-    [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-  )
-
   return (
-    firstDigit === Number.parseInt(cnpj[12], 10) &&
-    secondDigit === Number.parseInt(cnpj[13], 10)
+    calcDigit(cnpj.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) ===
+      Number.parseInt(cnpj.charAt(12), 10) &&
+    calcDigit(cnpj.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]) ===
+      Number.parseInt(cnpj.charAt(13), 10)
   )
+}
+
+function isValidCpfOrCnpj(value: string): boolean {
+  const digits = value.replace(/\D/g, "")
+  if (digits.length <= 11) return isValidCpf(digits)
+  return isValidCnpj(digits)
 }
 
 const leadFormSchema = z
@@ -120,20 +132,26 @@ const leadFormSchema = z
       .refine((value) => !value || z.string().email().safeParse(value).success, {
         message: "Informe um e-mail válido.",
       }),
-    phone: z.string().trim().refine(
-      (value) => {
-        if (!value) return true
-        return /^\d{10,11}$/.test(sanitizePhoneDigits(value))
-      },
-      { message: "Telefone deve conter 10 ou 11 dígitos." }
-    ),
-    cnpj: z.string().trim().refine(
-      (value) => {
-        if (!value) return true
-        return isValidCnpj(value)
-      },
-      { message: "CNPJ inválido." }
-    ),
+    phone: z
+      .string()
+      .trim()
+      .refine(
+        (value) => {
+          if (!value) return true
+          return /^\d{10,11}$/.test(sanitizePhoneDigits(value))
+        },
+        { message: "Telefone deve conter 10 ou 11 dígitos." },
+      ),
+    cpfCnpj: z
+      .string()
+      .trim()
+      .refine(
+        (value) => {
+          if (!value) return true
+          return isValidCpfOrCnpj(value)
+        },
+        { message: "CPF ou CNPJ inválido." },
+      ),
     notes: z.string().trim(),
     status: z.custom<BackofficeLeadStatusKey>(isBackofficeLeadStatusKey, {
       message: "Status inválido.",
@@ -194,7 +212,7 @@ const EMPTY_FORM_VALUES: LeadFormValues = {
   name: "",
   email: "",
   phone: "",
-  cnpj: "",
+  cpfCnpj: "",
   notes: "",
   status: DEFAULT_STATUS,
   sdrBackofficeUserId: "",
@@ -213,7 +231,7 @@ function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
     name: lead.name,
     email: lead.email ?? "",
     phone: formatPhoneInput(lead.phone ?? ""),
-    cnpj: formatCnpjInput(lead.cnpj ?? ""),
+    cpfCnpj: formatCpfCnpjInput(lead.cpfCnpj ?? ""),
     notes: lead.notes ?? "",
     status: lead.status,
     sdrBackofficeUserId: lead.sdrBackofficeUserId ?? "",
@@ -222,16 +240,16 @@ function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
     meetingTitle: lead.meetingTitle ?? "",
     meetingNotes: lead.meetingNotes ?? "",
     meetingLink: lead.meetingLink ?? "",
-    meetingExtraGuests: lead.meetingExtraGuests,
+    meetingExtraGuests: lead.meetingExtraGuests ?? [],
   }
 }
 
-function nullIfEmpty(value: string): string | null {
-  const trimmed = value.trim()
+function nullIfEmpty(value?: string | null): string | null {
+  const trimmed = (value ?? "").trim()
   return trimmed ? trimmed : null
 }
 
-function parseMeetingDate(value: string): Date | undefined {
+function parseMeetingDate(value?: string | null): Date | undefined {
   if (!value) return undefined
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? undefined : date
@@ -305,15 +323,7 @@ export function BackofficeLeadFormDialog() {
   const watchedValues = form.watch()
   const isScheduled = watchedValues.status === "scheduled"
   const isSubmitting = form.formState.isSubmitting
-  const canSubmit =
-    watchedValues.name.trim().length >= 2 &&
-    Boolean(watchedValues.sdrBackofficeUserId) &&
-    (!isScheduled ||
-      Boolean(
-        watchedValues.meetingDate &&
-          watchedValues.closerBackofficeUserId &&
-          watchedValues.meetingLink
-      ))
+  const canSubmit = form.formState.isValid && !isSubmitting
 
   useEffect(() => {
     if (!isFormDialogOpen) return
@@ -340,16 +350,16 @@ export function BackofficeLeadFormDialog() {
       watchedValues.meetingTitle,
       watchedValues.meetingExtraGuests,
       watchedValues.name,
-    ]
+    ],
   )
 
   async function handleScheduleConfirm(input: BackofficeLeadScheduleInput) {
     form.setValue("status", "scheduled", { shouldDirty: true, shouldValidate: true })
-    form.setValue("closerBackofficeUserId", input.closerBackofficeUserId, {
+    form.setValue("closerBackofficeUserId", input.closerBackofficeUserId ?? "", {
       shouldDirty: true,
       shouldValidate: true,
     })
-    form.setValue("meetingDate", input.meetingDate, {
+    form.setValue("meetingDate", input.meetingDate ?? "", {
       shouldDirty: true,
       shouldValidate: true,
     })
@@ -365,7 +375,7 @@ export function BackofficeLeadFormDialog() {
         name: values.name.trim(),
         email: nullIfEmpty(values.email),
         phone: nullIfEmpty(sanitizePhoneDigits(values.phone)),
-        cnpj: nullIfEmpty(sanitizeCnpjDigits(values.cnpj)),
+        cpfCnpj: nullIfEmpty(sanitizeCpfCnpjDigits(values.cpfCnpj)),
         notes: nullIfEmpty(values.notes),
         sdrBackofficeUserId: nullIfEmpty(values.sdrBackofficeUserId),
         closerBackofficeUserId: nullIfEmpty(values.closerBackofficeUserId),
@@ -383,7 +393,7 @@ export function BackofficeLeadFormDialog() {
             selectedLead.id,
             values.status,
             values.status === "scheduled" ? buildScheduleInput(values) : undefined,
-            { silent: true }
+            { silent: true },
           )
         }
       } else {
@@ -429,7 +439,7 @@ export function BackofficeLeadFormDialog() {
                           variant="outline"
                           className={cn(
                             "font-medium",
-                            getAdhesionStatusBadgeClass(selectedLead.adhesion.status)
+                            getAdhesionStatusBadgeClass(selectedLead.adhesion.status),
                           )}
                         >
                           Adesão {ADHESION_STATUS_LABELS[selectedLead.adhesion.status]}
@@ -519,17 +529,19 @@ export function BackofficeLeadFormDialog() {
                       />
                       <FormField
                         control={form.control}
-                        name="cnpj"
+                        name="cpfCnpj"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>CNPJ</FormLabel>
+                            <FormLabel>Documento</FormLabel>
                             <FormControl>
                               <Input
                                 {...field}
-                                placeholder="00.000.000/0000-00"
+                                placeholder="CPF ou CNPJ"
+                                value={formatCpfCnpjInput(field.value ?? "")}
                                 onChange={(event) =>
-                                  field.onChange(formatCnpjInput(event.target.value))
+                                  field.onChange(formatCpfCnpjInput(event.target.value))
                                 }
+                                maxLength={18}
                                 disabled={isSubmitting}
                               />
                             </FormControl>
@@ -582,7 +594,9 @@ export function BackofficeLeadFormDialog() {
                               disabled={isSubmitting}
                             >
                               <FormControl>
-                                <SelectTrigger aria-invalid={Boolean(fieldState.error || !field.value)}>
+                                <SelectTrigger
+                                  aria-invalid={Boolean(fieldState.error || !field.value)}
+                                >
                                   <SelectValue placeholder="Selecione o SDR" />
                                 </SelectTrigger>
                               </FormControl>
@@ -624,7 +638,7 @@ export function BackofficeLeadFormDialog() {
                               <FormControl>
                                 <SelectTrigger
                                   aria-invalid={Boolean(
-                                    form.formState.errors.closerBackofficeUserId
+                                    form.formState.errors.closerBackofficeUserId,
                                   )}
                                 >
                                   <SelectValue placeholder="Selecione o closer" />
@@ -723,6 +737,7 @@ export function BackofficeLeadFormDialog() {
                               <FormControl>
                                 <Input
                                   {...field}
+                                  value={field.value ?? ""}
                                   type="url"
                                   placeholder="https://meet..."
                                   disabled={isSubmitting}

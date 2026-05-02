@@ -515,7 +515,7 @@ model BackofficeLead {
   name                   String               @db.Text
   email                  String?              @db.Text
   phone                  String?              @db.Text
-  cnpj                   String?              @db.Text
+  cpfCnpj                String?              @db.Text
   notes                  String?              @db.Text
   status                 BackofficeLeadStatus @default(new_opportunity)
   origin                 BackofficeLeadOrigin @default(manual)
@@ -547,7 +547,7 @@ model BackofficeLead {
   @@index([meetingDate], map: "backoffice_leads_meeting_date_idx")
   @@index([createdByProfileId], map: "backoffice_leads_created_by_profile_id_idx")
   @@index([email], map: "backoffice_leads_email_idx")
-  @@index([cnpj], map: "backoffice_leads_cnpj_idx")
+  @@index([cpfCnpj], map: "backoffice_leads_cpf_cnpj_idx")
   @@map("backoffice_leads")
 }
 

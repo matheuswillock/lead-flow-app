@@ -105,16 +105,44 @@ function isValidCnpj(value: string): boolean {
   )
 }
 
-function normalizeCnpj(value: unknown): NormalizedText {
+function isValidCpf(value: string): boolean {
+  const cpf = value.replace(/\D/g, "")
+  if (cpf.length !== 11) return false
+  if (/^(\d)\1+$/.test(cpf)) return false
+
+  const calcDigit = (base: string, len: number) => {
+    let sum = 0
+    for (let i = 0; i < len; i++) {
+      sum += Number.parseInt(base[i], 10) * (len + 1 - i)
+    }
+    const rem = (sum * 10) % 11
+    return rem === 10 ? 0 : rem
+  }
+
+  return (
+    calcDigit(cpf, 9) === Number.parseInt(cpf[9], 10) &&
+    calcDigit(cpf, 10) === Number.parseInt(cpf[10], 10)
+  )
+}
+
+function normalizeCpfCnpj(value: unknown): NormalizedText {
   const raw = trimOrNull(value)
   if (!raw) return { isValid: true, value: null }
 
-  const digits = raw.replace(/\D/g, "").slice(0, 14)
-  if (!isValidCnpj(digits)) {
-    return { isValid: false, errorMessage: "CNPJ inválido" }
+  const digits = raw.replace(/\D/g, "")
+  if (digits.length <= 11) {
+    const cpf = digits.slice(0, 11)
+    if (!isValidCpf(cpf)) {
+      return { isValid: false, errorMessage: "CPF inválido" }
+    }
+    return { isValid: true, value: cpf }
   }
 
-  return { isValid: true, value: digits }
+  const cnpj = digits.slice(0, 14)
+  if (!isValidCnpj(cnpj)) {
+    return { isValid: false, errorMessage: "CNPJ inválido" }
+  }
+  return { isValid: true, value: cnpj }
 }
 
 function isValidEmail(value: string): boolean {
@@ -198,7 +226,7 @@ function mapLead(lead: BackofficeLeadWithRelations) {
     name: lead.name,
     email: lead.email,
     phone: lead.phone,
-    cnpj: lead.cnpj,
+    cpfCnpj: lead.cpfCnpj,
     notes: lead.notes,
     status: lead.status,
     origin: lead.origin,
@@ -287,7 +315,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         return new Output(false, [], [phone.errorMessage], null)
       }
 
-      const cnpj = normalizeCnpj(data.cnpj)
+      const cnpj = normalizeCpfCnpj(data.cnpj)
       if (!cnpj.isValid) {
         return new Output(false, [], [cnpj.errorMessage], null)
       }
@@ -332,7 +360,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         name,
         email: trimOrNull(data.email),
         phone: phone.value,
-        cnpj: cnpj.value,
+        cpfCnpj: cnpj.value,
         notes: trimOrNull(data.notes),
         status,
         origin,
@@ -418,7 +446,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
 
       let cnpjValue: string | null | undefined
       if (data.cnpj !== undefined) {
-        const cnpj = normalizeCnpj(data.cnpj)
+        const cnpj = normalizeCpfCnpj(data.cnpj)
         if (!cnpj.isValid) {
           return new Output(false, [], [cnpj.errorMessage], null)
         }
@@ -522,7 +550,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         name: nextName,
         email: data.email !== undefined ? trimOrNull(data.email) : undefined,
         phone: data.phone !== undefined ? phoneValue : undefined,
-        cnpj: data.cnpj !== undefined ? cnpjValue : undefined,
+        cpfCnpj: data.cnpj !== undefined ? cnpjValue : undefined,
         notes: data.notes !== undefined ? trimOrNull(data.notes) : undefined,
         sdrBackofficeUserId:
           data.sdrBackofficeUserId !== undefined ? sdrBackofficeUserId : undefined,
