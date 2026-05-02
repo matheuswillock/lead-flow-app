@@ -40,7 +40,7 @@ export interface BackofficeAdhesionCheckoutInput {
   complement?: string | null
   city: string
   state: string
-  billingType: "PIX" | "BOLETO" | "CREDIT_CARD"
+  billingType: "PIX" | "CREDIT_CARD"
   installments?: number
   creditCard?: {
     holderName: string

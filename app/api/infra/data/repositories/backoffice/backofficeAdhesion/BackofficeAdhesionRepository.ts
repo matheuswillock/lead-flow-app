@@ -340,6 +340,21 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     })
   }
 
+  async clearPaymentArtifacts(id: string): Promise<BackofficeAdhesionWithRelations> {
+    return prisma.backofficeAdhesion.update({
+      where: { id },
+      data: {
+        asaasPaymentId: null,
+        pixQrCode: null,
+        pixPayload: null,
+        bankSlipUrl: null,
+        invoiceUrl: null,
+        paymentDueDate: null,
+      },
+      include: backofficeAdhesionInclude,
+    })
+  }
+
   async getOptions(): Promise<BackofficeAdhesionOptions> {
     const [leads, users] = await Promise.all([
       prisma.backofficeLead.findMany({

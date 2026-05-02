@@ -1,8 +1,18 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CheckCircle2, CreditCard, Loader2, QrCode, ReceiptText } from "lucide-react"
+import { CheckCircle2, CreditCard, Loader2, QrCode } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -25,6 +35,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { maskCEP, maskCPFOrCNPJ, maskCardNumber, maskPhone, unmask } from "@/lib/masks"
 import { usePublicAdhesion } from "../context/PublicAdhesionHook"
 import type {
   PublicAdhesionBillingType,
@@ -76,6 +87,8 @@ export function PublicAdhesionContainer() {
     refreshPaymentStatus,
   } = usePublicAdhesion()
   const [form, setForm] = useState(initialForm())
+  const [pendingBillingSwitch, setPendingBillingSwitch] =
+    useState<PublicAdhesionBillingType | null>(null)
 
   useEffect(() => {
     if (!details) return
@@ -245,8 +258,8 @@ export function PublicAdhesionContainer() {
                   <Label htmlFor="phone">Celular</Label>
                   <Input
                     id="phone"
-                    value={form.phone}
-                    onChange={(event) => updateField("phone", onlyDigits(event.target.value, 11))}
+                    value={maskPhone(form.phone)}
+                    onChange={(event) => updateField("phone", unmask(event.target.value).slice(0, 11))}
                     disabled={isSubmitting || payment?.status === "paid"}
                   />
                 </div>
@@ -254,9 +267,9 @@ export function PublicAdhesionContainer() {
                   <Label htmlFor="cpfCnpj">CPF/CNPJ</Label>
                   <Input
                     id="cpfCnpj"
-                    value={form.cpfCnpj}
+                    value={maskCPFOrCNPJ(form.cpfCnpj)}
                     onChange={(event) =>
-                      updateField("cpfCnpj", onlyDigits(event.target.value, 14))
+                      updateField("cpfCnpj", unmask(event.target.value).slice(0, 14))
                     }
                     disabled={isSubmitting || payment?.status === "paid"}
                   />
@@ -270,9 +283,9 @@ export function PublicAdhesionContainer() {
                   <Label htmlFor="postalCode">CEP</Label>
                   <Input
                     id="postalCode"
-                    value={form.postalCode}
+                    value={maskCEP(form.postalCode)}
                     onChange={(event) =>
-                      updateField("postalCode", onlyDigits(event.target.value, 8))
+                      updateField("postalCode", unmask(event.target.value).slice(0, 8))
                     }
                     disabled={isSubmitting || payment?.status === "paid"}
                   />
@@ -342,21 +355,25 @@ export function PublicAdhesionContainer() {
                   <Label>Forma de pagamento</Label>
                   <Tabs
                     value={form.billingType}
-                    onValueChange={(value) =>
-                      updateField("billingType", value as PublicAdhesionBillingType)
-                    }
+                    onValueChange={(value) => {
+                      const next = value as PublicAdhesionBillingType
+                      if (payment?.paymentId && payment.status !== "paid" && next !== form.billingType) {
+                        setPendingBillingSwitch(next)
+                      } else {
+                        updateField("billingType", next)
+                      }
+                    }}
                     className="mt-2"
                   >
                     <TabsList>
-                      <TabsTrigger value="PIX">
+                      <TabsTrigger value="PIX" disabled={isSubmitting || payment?.status === "paid"}>
                         <QrCode data-icon="inline-start" />
                         PIX
                       </TabsTrigger>
-                      <TabsTrigger value="BOLETO">
-                        <ReceiptText data-icon="inline-start" />
-                        Boleto
-                      </TabsTrigger>
-                      <TabsTrigger value="CREDIT_CARD">
+                      <TabsTrigger
+                        value="CREDIT_CARD"
+                        disabled={isSubmitting || payment?.status === "paid"}
+                      >
                         <CreditCard data-icon="inline-start" />
                         Cartão
                       </TabsTrigger>
@@ -379,9 +396,9 @@ export function PublicAdhesionContainer() {
                       <Label htmlFor="cardNumber">Número do cartão</Label>
                       <Input
                         id="cardNumber"
-                        value={form.cardNumber}
+                        value={maskCardNumber(form.cardNumber)}
                         onChange={(event) =>
-                          updateField("cardNumber", onlyDigits(event.target.value, 19))
+                          updateField("cardNumber", unmask(event.target.value).slice(0, 19))
                         }
                         disabled={isSubmitting || payment?.status === "paid"}
                       />
@@ -456,7 +473,7 @@ export function PublicAdhesionContainer() {
                 {isSubmitting ? (
                   <Loader2 data-icon="inline-start" className="animate-spin" />
                 ) : null}
-                Gerar pagamento
+                {form.billingType === "CREDIT_CARD" ? "Realizar pagamento" : "Gerar QR Code Pix"}
               </Button>
             </CardContent>
           </Card>
@@ -537,6 +554,35 @@ export function PublicAdhesionContainer() {
           </div>
         </div>
       </div>
+
+      <AlertDialog
+        open={Boolean(pendingBillingSwitch)}
+        onOpenChange={(open) => {
+          if (!open) setPendingBillingSwitch(null)
+        }}
+      >
+        <AlertDialogContent className="max-h-[90vh] flex flex-col">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Substituir forma de pagamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você já iniciou um pagamento. Ao trocar a forma de pagamento, a cobrança anterior será
+              cancelada e você precisará gerar uma nova.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingBillingSwitch) return
+                updateField("billingType", pendingBillingSwitch)
+                setPendingBillingSwitch(null)
+              }}
+            >
+              Substituir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   )
 }

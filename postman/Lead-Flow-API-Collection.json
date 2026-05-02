@@ -7767,7 +7767,7 @@
                     "checkout"
                   ]
                 },
-                "description": "Cria a cobrança Asaas da adesão pública. Cartão aceita parcelas conforme ciclo; PIX/Boleto cobram valor total."
+                "description": "Cria a cobrança Asaas da adesão pública. Cartão aceita parcelas conforme ciclo; PIX cobra valor total."
               }
             },
             {

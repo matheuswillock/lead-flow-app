@@ -184,5 +184,6 @@ export interface IBackofficeAdhesionRepository {
       canManageAccountTeams: boolean
     }
   ): Promise<void>
+  clearPaymentArtifacts(id: string): Promise<BackofficeAdhesionWithRelations>
   getOptions(): Promise<BackofficeAdhesionOptions>
 }

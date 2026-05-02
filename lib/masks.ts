@@ -107,6 +107,18 @@ export function maskCEP(value: string): string {
 }
 
 /**
+ * Aplica máscara de número de cartão de crédito
+ * Formato: 1111 2222 3333 4444
+ */
+export function maskCardNumber(value: string): string {
+  if (!value) return '';
+
+  const numbers = value.replace(/\D/g, '').slice(0, 19);
+
+  return numbers.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+}
+
+/**
  * Remove todos os caracteres não numéricos
  * Usado antes de enviar para os services
  */

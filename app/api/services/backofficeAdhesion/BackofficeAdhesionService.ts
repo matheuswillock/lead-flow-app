@@ -429,13 +429,35 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return tokenError("not_found")
     }
 
-    const adhesion = await this.repo.findById(validation.adhesionId)
+    let adhesion = await this.repo.findById(validation.adhesionId)
     if (!adhesion) {
       return tokenError("not_found")
     }
 
     if (adhesion.asaasPaymentId) {
-      return mapPayment(adhesion)
+      if (adhesion.status === "paid") {
+        return mapPayment(adhesion)
+      }
+
+      const requestedBillingType = input.billingType ?? "PIX"
+      const isSameBillingType = adhesion.billingType === requestedBillingType
+
+      if (isSameBillingType && requestedBillingType === "PIX") {
+        return mapPayment(adhesion)
+      }
+
+      try {
+        await asaasFetch(`${asaasApi.payments}/${adhesion.asaasPaymentId}`, {
+          method: "DELETE",
+        })
+      } catch (error) {
+        console.error(
+          "[BackofficeAdhesionService][createCheckout] Failed to cancel old Asaas payment:",
+          error
+        )
+      }
+
+      adhesion = await this.repo.clearPaymentArtifacts(adhesion.id)
     }
 
     const normalized = this.normalizeCheckoutInput(input, adhesion.cycle)
@@ -742,18 +764,6 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         encodedImage: String(pix.encodedImage ?? ""),
         payload: String(pix.payload ?? ""),
         expirationDate: pix.expirationDate ? String(pix.expirationDate) : null,
-      }
-    }
-
-    if (input.billingType === "BOLETO") {
-      const boleto = await asaasFetch(`${asaasApi.payments}/${result.paymentId}/identificationField`, {
-        method: "GET",
-      })
-      result.boleto = {
-        bankSlipUrl: result.bankSlipUrl || result.invoiceUrl,
-        identificationField: String(boleto.identificationField ?? ""),
-        barCode: String(boleto.barCode ?? ""),
-        dueDate: payment.dueDate ? String(payment.dueDate) : null,
       }
     }
 
