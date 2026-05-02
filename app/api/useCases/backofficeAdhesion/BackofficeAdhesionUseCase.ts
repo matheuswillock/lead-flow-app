@@ -185,9 +185,9 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
     }
   }
 
-  async getPaymentStatus(token: string): Promise<Output> {
+  async getPaymentStatus(token: string, options?: { sync?: boolean }): Promise<Output> {
     try {
-      const result = await this.service.getPaymentStatus(token)
+      const result = await this.service.getPaymentStatus(token, options)
       if ("tokenStatus" in result) {
         return new Output(false, [], [`Token inválido: ${result.tokenStatus}`], result)
       }

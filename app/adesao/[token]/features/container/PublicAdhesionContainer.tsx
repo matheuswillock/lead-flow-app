@@ -1,7 +1,16 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { CheckCircle2, CreditCard, Loader2, QrCode } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  CreditCard,
+  Loader2,
+  QrCode,
+  RefreshCw,
+} from "lucide-react"
+import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
@@ -40,7 +49,11 @@ import { usePublicAdhesion } from "../context/PublicAdhesionHook"
 import type {
   PublicAdhesionBillingType,
   PublicAdhesionCheckoutInput,
+  PublicAdhesionStatusKey,
 } from "../context/PublicAdhesionTypes"
+
+const ATTEMPT_DURATION_MS = 25 * 60 * 1000
+const ATTEMPT_STORAGE_PREFIX = "public-adhesion-attempt-start:"
 
 function onlyDigits(value: string, maxLength: number): string {
   return value.replace(/\D/g, "").slice(0, maxLength)
@@ -51,6 +64,17 @@ function formatCurrency(value: number): string {
     style: "currency",
     currency: "BRL",
   }).format(value)
+}
+
+function formatCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+}
+
+function getAttemptStorageKey(token: string): string {
+  return `${ATTEMPT_STORAGE_PREFIX}${token}`
 }
 
 function initialForm(detailsFullName = "", detailsPhone = "", detailsEmail = "") {
@@ -78,6 +102,7 @@ function initialForm(detailsFullName = "", detailsPhone = "", detailsEmail = "")
 
 export function PublicAdhesionContainer() {
   const {
+    token,
     details,
     payment,
     isLoading,
@@ -89,6 +114,11 @@ export function PublicAdhesionContainer() {
   const [form, setForm] = useState(initialForm())
   const [pendingBillingSwitch, setPendingBillingSwitch] =
     useState<PublicAdhesionBillingType | null>(null)
+  const [attemptStartedAt, setAttemptStartedAt] = useState<number | null>(null)
+  const [now, setNow] = useState(Date.now())
+  const [isValidatingPayment, setIsValidatingPayment] = useState(false)
+  const previousErrorRef = useRef<string | null>(null)
+  const previousStatusRef = useRef<PublicAdhesionStatusKey | null>(null)
 
   useEffect(() => {
     if (!details) return
@@ -102,12 +132,83 @@ export function PublicAdhesionContainer() {
   }, [details])
 
   useEffect(() => {
-    if (!payment?.paymentId || payment.status === "paid") return
+    if (typeof window === "undefined") return
+    const stored = window.sessionStorage.getItem(getAttemptStorageKey(token))
+    if (!stored) return
+    const parsed = Number(stored)
+    if (!Number.isNaN(parsed)) {
+      setAttemptStartedAt(parsed)
+      setNow(Date.now())
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !payment?.paymentId) return
+
+    const storageKey = getAttemptStorageKey(token)
+    const stored = window.sessionStorage.getItem(storageKey)
+    if (stored) {
+      const parsed = Number(stored)
+      if (!Number.isNaN(parsed)) {
+        setAttemptStartedAt((current) => current ?? parsed)
+        return
+      }
+    }
+
+    const startedAt = Date.now()
+    window.sessionStorage.setItem(storageKey, String(startedAt))
+    setAttemptStartedAt(startedAt)
+    setNow(Date.now())
+  }, [payment?.paymentId, token])
+
+  const attemptExpiresAt = attemptStartedAt ? attemptStartedAt + ATTEMPT_DURATION_MS : null
+  const attemptRemainingMs =
+    attemptExpiresAt !== null ? Math.max(0, attemptExpiresAt - now) : null
+  const isAttemptExpired = attemptRemainingMs === 0 && payment?.status !== "paid"
+  const isCheckoutLocked = payment?.status === "paid" || isAttemptExpired
+
+  useEffect(() => {
+    if (!attemptStartedAt || payment?.status === "paid") return
+    setNow(Date.now())
+    const timer = window.setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [attemptStartedAt, payment?.status])
+
+  useEffect(() => {
+    if (!payment?.paymentId || payment.status !== "pending" || isAttemptExpired) return
     const timer = window.setInterval(() => {
       void refreshPaymentStatus()
     }, 5000)
     return () => window.clearInterval(timer)
-  }, [payment?.paymentId, payment?.status, refreshPaymentStatus])
+  }, [isAttemptExpired, payment?.paymentId, payment?.status, refreshPaymentStatus])
+
+  useEffect(() => {
+    if (error && error !== previousErrorRef.current) {
+      toast.error(error)
+    }
+    previousErrorRef.current = error
+  }, [error])
+
+  useEffect(() => {
+    const currentStatus = payment?.status ?? null
+    const previousStatus = previousStatusRef.current
+
+    if (previousStatus === "pending" && currentStatus === "paid") {
+      toast.success("Pagamento confirmado. Verifique seu e-mail.")
+    }
+
+    if (
+      attemptStartedAt &&
+      previousStatus !== "canceled" &&
+      currentStatus === "canceled"
+    ) {
+      toast.error("Pagamento recusado. Reabra o link do e-mail para tentar novamente.")
+    }
+
+    previousStatusRef.current = currentStatus
+  }, [attemptStartedAt, payment?.status])
 
   const installmentOptions = useMemo(() => {
     const max = details?.maxInstallments ?? 1
@@ -116,6 +217,7 @@ export function PublicAdhesionContainer() {
 
   const canSubmit =
     Boolean(details) &&
+    !isCheckoutLocked &&
     form.fullName.trim().length >= 2 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) &&
     /^\d{10,11}$/.test(onlyDigits(form.phone, 11)) &&
@@ -170,6 +272,22 @@ export function PublicAdhesionContainer() {
     await submitCheckout(payload)
   }
 
+  async function handleValidatePayment() {
+    if (
+      !payment?.paymentId ||
+      payment.status === "paid" ||
+      isValidatingPayment ||
+      isAttemptExpired
+    ) return
+
+    setIsValidatingPayment(true)
+    try {
+      await refreshPaymentStatus({ sync: true })
+    } finally {
+      setIsValidatingPayment(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <main className="min-h-screen bg-background p-6">
@@ -208,21 +326,69 @@ export function PublicAdhesionContainer() {
           <Badge variant="outline">Plano CRM</Badge>
         </div>
 
-        {error ? (
-          <Alert variant="destructive">
-            <AlertTitle>Não foi possível concluir</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
+        {attemptStartedAt && payment?.status !== "paid" ? (
+          <Card className={isAttemptExpired ? "border-destructive/40" : undefined}>
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div className="flex items-center gap-3">
+                <Clock3 data-icon="inline-start" />
+                <div className="flex flex-col gap-1">
+                  <p className="font-medium">
+                    {isAttemptExpired ? "Tentativa expirada" : "Tempo restante da tentativa"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {isAttemptExpired
+                      ? "Reabra o link enviado por e-mail para iniciar uma nova tentativa."
+                      : `Finalize o pagamento em ${formatCountdown(attemptRemainingMs ?? 0)}.`}
+                  </p>
+                </div>
+              </div>
+              <Badge variant={isAttemptExpired ? "destructive" : "outline"}>
+                {isAttemptExpired ? "Link bloqueado" : formatCountdown(attemptRemainingMs ?? 0)}
+              </Badge>
+            </CardContent>
+          </Card>
         ) : null}
 
         {payment?.status === "paid" ? (
-          <Alert>
-            <CheckCircle2 data-icon="inline-start" />
-            <AlertTitle>Pagamento confirmado</AlertTitle>
-            <AlertDescription>
-              Sua conta será enviada para o e-mail informado nesta adesão.
-            </AlertDescription>
-          </Alert>
+          <Card className="border-emerald-500/30 bg-emerald-500/5">
+            <CardContent className="flex items-start gap-3 p-4">
+              <CheckCircle2 className="mt-0.5" data-icon="inline-start" />
+              <div className="flex flex-col gap-1">
+                <p className="font-medium">Pagamento confirmado. Verifique seu e-mail.</p>
+                <p className="text-sm text-muted-foreground">
+                  A conta será liberada no endereço informado nesta adesão.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {payment?.status === "canceled" ? (
+          <Card className="border-destructive/30 bg-destructive/5">
+            <CardContent className="flex items-start gap-3 p-4">
+              <AlertTriangle className="mt-0.5" data-icon="inline-start" />
+              <div className="flex flex-col gap-1">
+                <p className="font-medium">Pagamento recusado</p>
+                <p className="text-sm text-muted-foreground">
+                  Reabra o link do e-mail para iniciar uma nova tentativa de pagamento.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {isAttemptExpired ? (
+          <Card className="border-destructive/30 bg-destructive/5">
+            <CardContent className="flex items-start gap-3 p-4">
+              <AlertTriangle className="mt-0.5" data-icon="inline-start" />
+              <div className="flex flex-col gap-1">
+                <p className="font-medium">Link expirado</p>
+                <p className="text-sm text-muted-foreground">
+                  O prazo de pagamento terminou. Reabra o link enviado por e-mail para continuar.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         ) : null}
 
         <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
@@ -241,7 +407,7 @@ export function PublicAdhesionContainer() {
                     id="fullName"
                     value={form.fullName}
                     onChange={(event) => updateField("fullName", event.target.value)}
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -251,7 +417,7 @@ export function PublicAdhesionContainer() {
                     type="email"
                     value={form.email}
                     onChange={(event) => updateField("email", event.target.value)}
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -260,7 +426,7 @@ export function PublicAdhesionContainer() {
                     id="phone"
                     value={maskPhone(form.phone)}
                     onChange={(event) => updateField("phone", unmask(event.target.value).slice(0, 11))}
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -271,7 +437,7 @@ export function PublicAdhesionContainer() {
                     onChange={(event) =>
                       updateField("cpfCnpj", unmask(event.target.value).slice(0, 14))
                     }
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
               </div>
@@ -287,7 +453,7 @@ export function PublicAdhesionContainer() {
                     onChange={(event) =>
                       updateField("postalCode", unmask(event.target.value).slice(0, 8))
                     }
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -296,7 +462,7 @@ export function PublicAdhesionContainer() {
                     id="address"
                     value={form.address}
                     onChange={(event) => updateField("address", event.target.value)}
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -305,7 +471,7 @@ export function PublicAdhesionContainer() {
                     id="addressNumber"
                     value={form.addressNumber}
                     onChange={(event) => updateField("addressNumber", event.target.value)}
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -314,7 +480,7 @@ export function PublicAdhesionContainer() {
                     id="neighborhood"
                     value={form.neighborhood}
                     onChange={(event) => updateField("neighborhood", event.target.value)}
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -323,7 +489,7 @@ export function PublicAdhesionContainer() {
                     id="city"
                     value={form.city}
                     onChange={(event) => updateField("city", event.target.value)}
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -334,7 +500,7 @@ export function PublicAdhesionContainer() {
                     onChange={(event) =>
                       updateField("state", event.target.value.toUpperCase().slice(0, 2))
                     }
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2 md:col-span-2">
@@ -343,7 +509,7 @@ export function PublicAdhesionContainer() {
                     id="complement"
                     value={form.complement}
                     onChange={(event) => updateField("complement", event.target.value)}
-                    disabled={isSubmitting || payment?.status === "paid"}
+                    disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
               </div>
@@ -366,13 +532,13 @@ export function PublicAdhesionContainer() {
                     className="mt-2"
                   >
                     <TabsList>
-                      <TabsTrigger value="PIX" disabled={isSubmitting || payment?.status === "paid"}>
+                      <TabsTrigger value="PIX" disabled={isSubmitting || isCheckoutLocked}>
                         <QrCode data-icon="inline-start" />
                         PIX
                       </TabsTrigger>
                       <TabsTrigger
                         value="CREDIT_CARD"
-                        disabled={isSubmitting || payment?.status === "paid"}
+                        disabled={isSubmitting || isCheckoutLocked}
                       >
                         <CreditCard data-icon="inline-start" />
                         Cartão
@@ -389,7 +555,7 @@ export function PublicAdhesionContainer() {
                         id="cardHolderName"
                         value={form.cardHolderName}
                         onChange={(event) => updateField("cardHolderName", event.target.value)}
-                        disabled={isSubmitting || payment?.status === "paid"}
+                        disabled={isSubmitting || isCheckoutLocked}
                       />
                     </div>
                     <div className="flex flex-col gap-2 md:col-span-2">
@@ -400,7 +566,7 @@ export function PublicAdhesionContainer() {
                         onChange={(event) =>
                           updateField("cardNumber", unmask(event.target.value).slice(0, 19))
                         }
-                        disabled={isSubmitting || payment?.status === "paid"}
+                        disabled={isSubmitting || isCheckoutLocked}
                       />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -411,7 +577,7 @@ export function PublicAdhesionContainer() {
                         onChange={(event) =>
                           updateField("cardExpiryMonth", onlyDigits(event.target.value, 2))
                         }
-                        disabled={isSubmitting || payment?.status === "paid"}
+                        disabled={isSubmitting || isCheckoutLocked}
                       />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -422,7 +588,7 @@ export function PublicAdhesionContainer() {
                         onChange={(event) =>
                           updateField("cardExpiryYear", onlyDigits(event.target.value, 4))
                         }
-                        disabled={isSubmitting || payment?.status === "paid"}
+                        disabled={isSubmitting || isCheckoutLocked}
                       />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -433,7 +599,7 @@ export function PublicAdhesionContainer() {
                         onChange={(event) =>
                           updateField("cardCcv", onlyDigits(event.target.value, 4))
                         }
-                        disabled={isSubmitting || payment?.status === "paid"}
+                        disabled={isSubmitting || isCheckoutLocked}
                       />
                     </div>
                     <div className="flex flex-col gap-2">
@@ -443,7 +609,7 @@ export function PublicAdhesionContainer() {
                         onValueChange={(value) =>
                           updateField("installments", Number.parseInt(value, 10))
                         }
-                        disabled={isSubmitting || payment?.status === "paid"}
+                        disabled={isSubmitting || isCheckoutLocked}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -452,8 +618,7 @@ export function PublicAdhesionContainer() {
                           <SelectGroup>
                             {installmentOptions.map((installment) => (
                               <SelectItem key={installment} value={String(installment)}>
-                                {installment}x de{" "}
-                                {formatCurrency(details.totalAmount / installment)}
+                                {installment}x de {formatCurrency(details.totalAmount / installment)}
                               </SelectItem>
                             ))}
                           </SelectGroup>
@@ -467,7 +632,7 @@ export function PublicAdhesionContainer() {
               <Button
                 type="button"
                 size="lg"
-                disabled={!canSubmit || isSubmitting || payment?.status === "paid"}
+                disabled={!canSubmit || isSubmitting}
                 onClick={handleSubmit}
               >
                 {isSubmitting ? (
@@ -504,9 +669,7 @@ export function PublicAdhesionContainer() {
                 <Separator />
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Total antecipado</span>
-                  <span className="text-lg font-semibold">
-                    {formatCurrency(details.totalAmount)}
-                  </span>
+                  <span className="text-lg font-semibold">{formatCurrency(details.totalAmount)}</span>
                 </div>
               </CardContent>
             </Card>
@@ -518,20 +681,35 @@ export function PublicAdhesionContainer() {
                   <CardDescription>
                     {payment.status === "paid"
                       ? "Pagamento confirmado."
-                      : "Aguardando confirmação do Asaas."}
+                      : payment.status === "canceled"
+                        ? "Pagamento recusado."
+                        : "Aguardando confirmação do Asaas."}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
-                  {payment.pix ? (
+                  {form.billingType === "PIX" && payment.status !== "paid" ? (
                     <>
-                      {payment.pix.encodedImage ? (
+                      {payment.pix?.encodedImage ? (
                         <img
                           src={`data:image/png;base64,${payment.pix.encodedImage}`}
                           alt="QR Code PIX"
                           className="mx-auto size-48 rounded-md border"
                         />
                       ) : null}
-                      <Input value={payment.pix.payload} readOnly />
+                      {payment.pix?.payload ? <Input value={payment.pix.payload} readOnly /> : null}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleValidatePayment}
+                        disabled={isValidatingPayment || !payment.paymentId || isAttemptExpired}
+                      >
+                        {isValidatingPayment ? (
+                          <RefreshCw data-icon="inline-start" className="animate-spin" />
+                        ) : (
+                          <RefreshCw data-icon="inline-start" />
+                        )}
+                        Validar pagamento
+                      </Button>
                     </>
                   ) : null}
                   {payment.boleto?.bankSlipUrl ? (

@@ -199,7 +199,10 @@ export interface IBackofficeAdhesionService {
     token: string,
     input: BackofficeAdhesionCheckoutInput
   ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
-  getPaymentStatus(token: string): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
+  getPaymentStatus(
+    token: string,
+    options?: { sync?: boolean }
+  ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
   processPaymentWebhook(
     event: string,
     payment: BackofficeAdhesionPaymentWebhookInput

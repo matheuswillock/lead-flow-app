@@ -26,7 +26,7 @@ interface PublicAdhesionContextValue {
   isSubmitting: boolean
   error: string | null
   submitCheckout: (input: PublicAdhesionCheckoutInput) => Promise<void>
-  refreshPaymentStatus: () => Promise<void>
+  refreshPaymentStatus: (options?: { sync?: boolean }) => Promise<void>
 }
 
 const PublicAdhesionContext = createContext<PublicAdhesionContextValue | null>(null)
@@ -45,6 +45,7 @@ export function PublicAdhesionProvider({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inFlightKey = useRef<string | null>(null)
+  const paymentRefreshInFlightKey = useRef<string | null>(null)
   const lastSuccessKey = useRef<string | null>(null)
 
   const loadDetails = useCallback(async () => {
@@ -85,10 +86,24 @@ export function PublicAdhesionProvider({
     [isSubmitting, service, token]
   )
 
-  const refreshPaymentStatus = useCallback(async () => {
-    const response = await service.getPaymentStatus(token)
-    setPayment(response)
-  }, [service, token])
+  const refreshPaymentStatus = useCallback(
+    async (options?: { sync?: boolean }) => {
+      const requestKey = `payment:${token}:${options?.sync ? "sync" : "poll"}`
+      if (paymentRefreshInFlightKey.current) return
+
+      paymentRefreshInFlightKey.current = requestKey
+      try {
+        const response = await service.getPaymentStatus(token, options)
+        setPayment(response)
+      } catch (err) {
+        console.error("[PublicAdhesionContext][refreshPaymentStatus]", err)
+        setError(err instanceof Error ? err.message : "Erro ao verificar pagamento")
+      } finally {
+        paymentRefreshInFlightKey.current = null
+      }
+    },
+    [service, token]
+  )
 
   useEffect(() => {
     void loadDetails()

@@ -39,9 +39,16 @@ export class PublicAdhesionService implements IPublicAdhesionService {
     )
   }
 
-  async getPaymentStatus(token: string): Promise<PublicAdhesionPayment> {
+  async getPaymentStatus(
+    token: string,
+    options?: { sync?: boolean }
+  ): Promise<PublicAdhesionPayment> {
+    const url = `/api/v1/public-adhesions/${token}/payment-status${
+      options?.sync ? "?sync=1" : ""
+    }`
+
     return parseOutput<PublicAdhesionPayment>(
-      await fetch(`/api/v1/public-adhesions/${token}/payment-status`, {
+      await fetch(url, {
         cache: "no-store",
       })
     )

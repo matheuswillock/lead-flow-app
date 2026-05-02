@@ -49,7 +49,13 @@ const EXTRA_USER_PRODUCT_SLUG = "extra-user"
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000
 const PAID_ASAAS_STATUSES = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH", "APPROVED"])
 const OVERDUE_ASAAS_STATUSES = new Set(["OVERDUE"])
-const CANCELED_ASAAS_STATUSES = new Set(["REFUNDED", "CANCELED", "CANCELLED", "CHARGEBACK"])
+const CANCELED_ASAAS_STATUSES = new Set([
+  "REFUNDED",
+  "CANCELED",
+  "CANCELLED",
+  "CHARGEBACK",
+  "REFUSED",
+])
 
 function roundCurrency(value: number): number {
   return Number(value.toFixed(2))
@@ -166,6 +172,28 @@ function mapPayment(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhesi
 
 function tokenError(status: BackofficeAdhesionTokenError["tokenStatus"]): BackofficeAdhesionTokenError {
   return { tokenStatus: status }
+}
+
+function mapSyncedPaymentEvent(payment: BackofficeAdhesionPaymentWebhookInput): string {
+  const status = payment.status?.toUpperCase() ?? ""
+
+  if (status === "OVERDUE") {
+    return "PAYMENT_OVERDUE"
+  }
+
+  if (status === "REFUSED") {
+    return "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED"
+  }
+
+  if (status === "CANCELED" || status === "CANCELLED" || status === "REFUNDED" || status === "CHARGEBACK") {
+    return "PAYMENT_DELETED"
+  }
+
+  if (status === "APPROVED") {
+    return "PAYMENT_APPROVED"
+  }
+
+  return "PAYMENT_CONFIRMED"
 }
 
 export class BackofficeAdhesionService implements IBackofficeAdhesionService {
@@ -497,7 +525,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
   }
 
-  async getPaymentStatus(token: string): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError> {
+  async getPaymentStatus(
+    token: string,
+    options?: { sync?: boolean }
+  ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError> {
     const validation = await validateBackofficeAdhesionToken(token, {
       allowedStatuses: ["pending", "paid", "overdue", "expired", "canceled"],
       expirePendingToken: false,
@@ -509,9 +540,13 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return tokenError("not_found")
     }
 
-    const adhesion = await this.repo.findById(validation.adhesionId)
+    let adhesion = await this.repo.findById(validation.adhesionId)
     if (!adhesion) {
       return tokenError("not_found")
+    }
+
+    if (options?.sync && adhesion.asaasPaymentId) {
+      adhesion = await this.syncPaymentStatusFromAsaas(adhesion)
     }
 
     return mapPayment(adhesion)
@@ -545,7 +580,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const isCanceled =
       CANCELED_ASAAS_STATUSES.has(status) ||
       event === "PAYMENT_REFUNDED" ||
-      event === "PAYMENT_DELETED"
+      event === "PAYMENT_DELETED" ||
+      event === "PAYMENT_CREDIT_CARD_CAPTURE_REFUSED"
 
     if (isPaid) {
       const paidAt = this.resolvePaymentDate(payment) ?? new Date()
@@ -770,6 +806,32 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return result
   }
 
+  private async syncPaymentStatusFromAsaas(
+    adhesion: BackofficeAdhesionWithRelations
+  ): Promise<BackofficeAdhesionWithRelations> {
+    if (!adhesion.asaasPaymentId) {
+      return adhesion
+    }
+
+    const payment = (await asaasFetch(`${asaasApi.payments}/${adhesion.asaasPaymentId}`, {
+      method: "GET",
+    })) as BackofficeAdhesionPaymentWebhookInput
+
+    const status = payment.status?.toUpperCase() ?? ""
+    if (status === "PENDING") {
+      return adhesion
+    }
+
+    await this.processPaymentWebhook(mapSyncedPaymentEvent(payment), payment)
+
+    const updated = await this.repo.findById(adhesion.id)
+    if (!updated) {
+      throw new Error("Adesão não encontrada após sincronização")
+    }
+
+    return updated
+  }
+
   private resolvePaymentDate(payment: BackofficeAdhesionPaymentWebhookInput): Date | null {
     const value = payment.clientPaymentDate ?? payment.paymentDate ?? payment.confirmedDate
     if (!value) return null
@@ -969,12 +1031,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     const emailService = createEmailService()
-    await emailService.sendOperatorInviteEmail({
-      operatorName: adhesion.fullName,
-      operatorEmail: adhesion.email,
-      operatorRole: "manager",
-      managerName: "Corretor Studio",
-      inviteUrl: buildSetPasswordEmailAuthLink(linkData, type),
+    await emailService.sendAdhesionCompletedEmail({
+      userName: adhesion.fullName,
+      userEmail: adhesion.email,
+      setPasswordUrl: buildSetPasswordEmailAuthLink(linkData, type),
     })
   }
 }
