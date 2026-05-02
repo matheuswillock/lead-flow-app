@@ -59,5 +59,13 @@
       "Bash(grep -n \"DialogContent\\\\|onOpenChange\\\\|Dialog\" /a/develop/lead-flow-app/app/[supabaseId]/components/LeadDialog.tsx)",
       "Bash(grep -n \"LeadForm\\\\|leadForm\" /a/develop/lead-flow-app/app/[supabaseId]/components/LeadDialog.tsx)"
     ]
+  },
+  "hooks": {
+    "postToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "npx tsc --noEmit 2>&1 | head -20"
+      }
+    ]
   }
 }

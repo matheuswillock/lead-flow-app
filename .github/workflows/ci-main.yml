@@ -51,6 +51,11 @@ jobs:
       - name: Governance Check
         run: bun run governance:check
 
+      - name: Governance Sync Check
+        run: |
+          bun run governance:sync
+          git diff --exit-code
+
       - name: Governance Allowlist Warnings
         run: bun run governance:warn-allowlist
 
