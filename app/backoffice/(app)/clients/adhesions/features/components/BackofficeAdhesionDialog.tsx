@@ -35,6 +35,7 @@ import {
   type BackofficeAdhesionItem,
   type BackofficeAdhesionOptions,
 } from "../context/BackofficeAdhesionsTypes"
+import { formatDocumentInput, maskPhone } from "@/lib/masks"
 
 const NO_SELECTION_VALUE = "__none__"
 const CYCLE_MONTHS: Record<BackofficeAdhesionBillingCycleKey, number> = {
@@ -368,6 +369,7 @@ export function BackofficeAdhesionDialog({
                     handleLeadChange(value === NO_SELECTION_VALUE ? "" : value)
                   }
                   disabled={isLoadingOptions || isSubmitting}
+                  required
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione um lead elegível" />
@@ -416,15 +418,18 @@ export function BackofficeAdhesionDialog({
                   value={values.fullName}
                   onChange={(event) => updateValue("fullName", event.target.value)}
                   disabled={isSubmitting}
+                  required
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="adhesion-phone">Celular *</Label>
+                <Label htmlFor="adhesion-phone">Telefone *</Label>
                 <Input
                   id="adhesion-phone"
-                  value={values.phone}
+                  placeholder="(99) 99999-9999"
+                  value={maskPhone(values.phone)}
                   onChange={(event) => updateValue("phone", sanitizePhone(event.target.value))}
                   disabled={isSubmitting}
+                  required
                 />
               </div>
             </div>
@@ -438,6 +443,7 @@ export function BackofficeAdhesionDialog({
                     value={values.email}
                     onChange={(event) => updateValue("email", event.target.value)}
                     disabled={isSubmitting}
+                    required
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -445,7 +451,7 @@ export function BackofficeAdhesionDialog({
                   <Input
                     id="adhesion-cpf-cnpj"
                     placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                    value={values.cpfCnpj}
+                    value={formatDocumentInput(values.cpfCnpj)}
                     onChange={(event) =>
                       updateValue("cpfCnpj", sanitizeCpfCnpj(event.target.value))
                     }
@@ -460,7 +466,7 @@ export function BackofficeAdhesionDialog({
                   <Input
                     placeholder="000.000.000-00 ou 00.000.000/0000-00"
                     id="adhesion-cpf-cnpj"
-                    value={values.cpfCnpj}
+                    value={formatDocumentInput(values.cpfCnpj)}
                     onChange={(event) =>
                       updateValue("cpfCnpj", sanitizeCpfCnpj(event.target.value))
                     }
@@ -541,6 +547,7 @@ export function BackofficeAdhesionDialog({
                     updateValue("cycle", value as BackofficeAdhesionBillingCycleKey)
                   }
                   disabled={isSubmitting}
+                  required
                 >
                   <SelectTrigger>
                     <SelectValue />
