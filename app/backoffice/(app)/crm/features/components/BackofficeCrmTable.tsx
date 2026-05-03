@@ -495,7 +495,7 @@ export function BackofficeCrmTable() {
         cell: ({ row }) => row.original.phone || "-",
       },
       {
-        accessorKey: "cnpj",
+        accessorKey: "cpfCnpj",
         meta: { label: "Documento" },
         header: ({ column }) => <SortableHeader column={column} label="Documento" />,
         cell: ({ row }) => formatCnpj(row.original.cpfCnpj),
@@ -586,16 +586,11 @@ export function BackofficeCrmTable() {
                   <MoreHorizontal data-icon="inline-start" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                onClick={(event) => event.stopPropagation()}
-              >
+              <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
                 <DropdownMenuLabel>Ações</DropdownMenuLabel>
                 <DropdownMenuGroup>
                   <DropdownMenuSub>
-                    <DropdownMenuSubTrigger
-                      onClick={(event) => event.stopPropagation()}
-                    >
+                    <DropdownMenuSubTrigger onClick={(event) => event.stopPropagation()}>
                       <RefreshCw data-icon="inline-start" />
                       Mudar status
                     </DropdownMenuSubTrigger>
@@ -640,7 +635,7 @@ export function BackofficeCrmTable() {
         },
       },
     ],
-    [handleStatusChange, pendingStatusLeadId, tz]
+    [handleStatusChange, pendingStatusLeadId, tz],
   )
 
   const table = useReactTable({

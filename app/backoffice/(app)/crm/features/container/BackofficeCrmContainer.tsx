@@ -41,9 +41,9 @@ export function BackofficeCrmContainer() {
       {isLoading ? (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Skeleton className="h-8 w-[250px]" />
-            <Skeleton className="h-8 w-[110px]" />
-            <Skeleton className="h-8 w-[160px]" />
+            <Skeleton className="h-8 w-62.5" />
+            <Skeleton className="h-8 w-27.5" />
+            <Skeleton className="h-8 w-40" />
           </div>
           <div className="rounded-md border p-2">
             <Skeleton className="h-10 w-full" />

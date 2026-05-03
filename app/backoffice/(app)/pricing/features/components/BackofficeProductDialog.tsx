@@ -163,7 +163,7 @@ export function BackofficeProductDialog() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end gap-3 rounded-md border p-3">
+            <div className="flex items-center gap-3 pt-6">
               <Switch
                 id="product-active"
                 checked={formData.isActive}

@@ -315,9 +315,9 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         return new Output(false, [], [phone.errorMessage], null)
       }
 
-      const cnpj = normalizeCpfCnpj(data.cnpj)
-      if (!cnpj.isValid) {
-        return new Output(false, [], [cnpj.errorMessage], null)
+      const cpfCnpj = normalizeCpfCnpj(data.cpfCnpj)
+      if (!cpfCnpj.isValid) {
+        return new Output(false, [], [cpfCnpj.errorMessage], null)
       }
 
       const meetingExtraGuests = normalizeExtraGuests(data.meetingExtraGuests)
@@ -360,7 +360,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         name,
         email: trimOrNull(data.email),
         phone: phone.value,
-        cpfCnpj: cnpj.value,
+        cpfCnpj: cpfCnpj.value,
         notes: trimOrNull(data.notes),
         status,
         origin,
@@ -444,13 +444,15 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         phoneValue = phone.value
       }
 
-      let cnpjValue: string | null | undefined
-      if (data.cnpj !== undefined) {
-        const cnpj = normalizeCpfCnpj(data.cnpj)
-        if (!cnpj.isValid) {
-          return new Output(false, [], [cnpj.errorMessage], null)
+      console.info("[BackofficeLeadUseCase][updateLead] data.cpfCnpj:", data.cpfCnpj)
+
+      let cpfCnpjValue: string | null | undefined
+      if (data.cpfCnpj !== undefined) {
+        const cpfCnpj = normalizeCpfCnpj(data.cpfCnpj)
+        if (!cpfCnpj.isValid) {
+          return new Output(false, [], [cpfCnpj.errorMessage], null)
         }
-        cnpjValue = cnpj.value
+        cpfCnpjValue = cpfCnpj.value
       }
 
       let meetingExtraGuestsValue: string[] | undefined
@@ -550,7 +552,7 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         name: nextName,
         email: data.email !== undefined ? trimOrNull(data.email) : undefined,
         phone: data.phone !== undefined ? phoneValue : undefined,
-        cpfCnpj: data.cnpj !== undefined ? cnpjValue : undefined,
+        cpfCnpj: data.cpfCnpj !== undefined ? cpfCnpjValue : undefined,
         notes: data.notes !== undefined ? trimOrNull(data.notes) : undefined,
         sdrBackofficeUserId:
           data.sdrBackofficeUserId !== undefined ? sdrBackofficeUserId : undefined,
