@@ -1,4 +1,4 @@
-import { Prisma, UserRole, type BackofficeAdhesionStatus } from "@prisma/client"
+import { Prisma, UserRole, SubscriptionStatus, SubscriptionPlan, type BackofficeAdhesionStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   BackofficeAdhesionOptions,
@@ -285,7 +285,6 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       functions: ["SDR", "CLOSER"],
       cpfCnpj: data.cpfCnpj ?? undefined,
       asaasCustomerId: data.asaasCustomerId ?? undefined,
-      subscriptionId: data.subscriptionId,
       subscriptionStatus: "active",
       subscriptionPlan: "manager_base",
       operatorCount: data.operatorCount,
@@ -342,6 +341,34 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     await prisma.profile.update({
       where: { id: profileId },
       data,
+    })
+  }
+
+  async upsertProfileSubscription(data: {
+    profileId: string
+    adhesionId: string
+    productId: string
+    subscriptionStatus: string
+    subscriptionPlan: string
+    subscriptionCycle: string
+    subscriptionStartDate: Date
+    subscriptionEndDate: Date
+    subscriptionNextDueDate: Date
+  }): Promise<void> {
+    const payload = {
+      adhesionId: data.adhesionId,
+      productId: data.productId,
+      subscriptionStatus: data.subscriptionStatus as SubscriptionStatus,
+      subscriptionPlan: data.subscriptionPlan as SubscriptionPlan,
+      subscriptionCycle: data.subscriptionCycle,
+      subscriptionStartDate: data.subscriptionStartDate,
+      subscriptionEndDate: data.subscriptionEndDate,
+      subscriptionNextDueDate: data.subscriptionNextDueDate,
+    }
+    await prisma.profileSubscription.upsert({
+      where: { profileId: data.profileId },
+      create: { profileId: data.profileId, ...payload, hasPermanentSubscription: false },
+      update: payload,
     })
   }
 

@@ -167,8 +167,7 @@ export async function DELETE(
         role: true,
         isMaster: true,
         managerId: true,
-        asaasSubscriptionId: true,
-        subscriptionId: true,
+        subscription: { select: { asaasSubscriptionId: true } },
       }
     });
 
@@ -207,33 +206,27 @@ export async function DELETE(
     const subscriptionIdsToCancel = new Set<string>();
     const addSubscriptionId = (subscriptionId?: string | null) => {
       const normalizedSubscriptionId = subscriptionId?.trim();
-      if (normalizedSubscriptionId) {
+      // Markers do fluxo de adhesion não são IDs reais do Asaas — ignorar
+      if (normalizedSubscriptionId && !normalizedSubscriptionId.startsWith('backoffice-adhesion-')) {
         subscriptionIdsToCancel.add(normalizedSubscriptionId);
       }
     };
 
-    addSubscriptionId(profile.asaasSubscriptionId);
-    addSubscriptionId(profile.subscriptionId);
+    addSubscriptionId(profile.subscription?.asaasSubscriptionId);
 
     if (profile.isMaster) {
-      const operatorsForSubscriptionCancel = await prisma.profile.findMany({
-        where: { managerId: profile.id },
-        select: {
-          id: true,
-          email: true,
-          asaasSubscriptionId: true,
-          subscriptionId: true,
-        },
+      const operatorSubscriptions = await prisma.profileSubscription.findMany({
+        where: { profile: { managerId: profile.id } },
+        select: { asaasSubscriptionId: true },
       });
 
-      for (const operator of operatorsForSubscriptionCancel) {
-        addSubscriptionId(operator.asaasSubscriptionId);
-        addSubscriptionId(operator.subscriptionId);
+      for (const sub of operatorSubscriptions) {
+        addSubscriptionId(sub.asaasSubscriptionId);
       }
 
       console.info("📋 [DELETE Profile] IDs de assinatura coletados dos operadores", {
         managerId: profile.id,
-        operatorsCount: operatorsForSubscriptionCancel.length,
+        subscriptionsCount: operatorSubscriptions.length,
       });
     }
 
@@ -412,6 +405,7 @@ function isIdempotentAsaasCancelError(errorMessage: string): boolean {
     "ja cancelado",
     "cancelada anteriormente",
     "inexistente",
+    "erro na api asaas: 404",
   ];
 
   return idempotentPatterns.some((pattern) => normalized.includes(pattern));

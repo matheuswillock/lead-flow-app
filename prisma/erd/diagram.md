@@ -904,6 +904,23 @@ unsubscribed unsubscribed
     DateTime updatedAt 
     }
   
+
+  "profile_subscriptions" {
+    String id "🗝️"
+    String asaasSubscriptionId "❓"
+    String asaasInstallmentId "❓"
+    SubscriptionStatus subscriptionStatus "❓"
+    SubscriptionPlan subscriptionPlan "❓"
+    DateTime subscriptionStartDate "❓"
+    DateTime subscriptionEndDate "❓"
+    DateTime trialEndDate "❓"
+    DateTime subscriptionNextDueDate "❓"
+    String subscriptionCycle "❓"
+    Boolean hasPermanentSubscription 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "profiles" |o--|| "UserRole" : "enum:role"
     "profiles" |o--}o "UserFunction" : "enum:functions"
     "profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -1016,4 +1033,9 @@ unsubscribed unsubscribed
     "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_user_subscriptions" }o--|| profiles : "profile"
     "backoffice_user_subscriptions" }o--|| backoffice_products : "product"
+    "profile_subscriptions" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
+    "profile_subscriptions" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
+    "profile_subscriptions" |o--|| profiles : "profile"
+    "profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
+    "profile_subscriptions" }o--|o backoffice_products : "product"
 ```

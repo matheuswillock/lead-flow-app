@@ -179,8 +179,26 @@ export class IncrementalBillingService implements IIncrementalBillingService {
 
   async createIncrementalCharge(input: CreateIncrementalChargeInput): Promise<IncrementalChargeResult> {
     const customerId = await this.ensureCustomer(input.master);
-    const subscription = await this.getCurrentSubscription(input.master);
-    const billingType = normalizeBillingType(subscription.billingType);
+
+    // Usuários vindos do fluxo de backoffice adhesion não possuem assinatura recorrente no Asaas
+    // (pagaram lump-sum semestral). Nesse caso, criamos cobrança avulsa com billingType UNDEFINED,
+    // permitindo que o cliente escolha o método de pagamento via link gerado.
+    let billingType: IncrementalBillingType = "UNDEFINED";
+    let creditCardToken: string | undefined;
+
+    if (input.master.asaasSubscriptionId) {
+      const subscription = await this.getCurrentSubscription(input.master);
+      billingType = normalizeBillingType(subscription.billingType);
+      if (billingType === "CREDIT_CARD") {
+        creditCardToken = subscription.creditCard?.creditCardToken;
+        if (!creditCardToken) {
+          throw new Error(
+            "A assinatura em cartão não possui tokenização ativa para cobrança incremental imediata."
+          );
+        }
+      }
+    }
+
     const ownerTz = input.master.timezone ?? DEFAULT_TZ;
     const dueDate = formatIntimezone(new Date(), "yyyy-MM-dd", ownerTz);
     const externalReference = `pending-action-${input.pendingActionId}`;
@@ -193,13 +211,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       externalReference,
     };
 
-    if (billingType === "CREDIT_CARD") {
-      const creditCardToken = subscription.creditCard?.creditCardToken;
-      if (!creditCardToken) {
-        throw new Error(
-          "A assinatura em cartão não possui tokenização ativa para cobrança incremental imediata."
-        );
-      }
+    if (billingType === "CREDIT_CARD" && creditCardToken) {
       paymentPayload.creditCardToken = creditCardToken;
     }
 

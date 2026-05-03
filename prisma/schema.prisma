@@ -406,6 +406,9 @@ model Profile {
   // Backoffice subscriptions
   backofficeSubscriptions BackofficeUserSubscription[] @relation("BackofficeUserSubscriptions")
 
+  // Product subscription (master only; operators inherit via managerId)
+  subscription ProfileSubscription?
+
   @@index([role])
   @@index([managerId])
   @@index([cpfCnpj])
@@ -611,6 +614,8 @@ model BackofficeAdhesion {
   sdrBackofficeUser       BackofficeUser? @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
   closerBackofficeUser    BackofficeUser? @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull)
   createdByBackofficeUser BackofficeUser? @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+
+  profileSubscription ProfileSubscription?
 
   @@index([status], map: "backoffice_adhesions_status_idx")
   @@index([expiresAt], map: "backoffice_adhesions_expires_at_idx")
@@ -1324,8 +1329,9 @@ model BackofficeProduct {
   createdAt       DateTime                     @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime                     @updatedAt @db.Timestamptz(6)
 
-  paymentRules      BackofficeProductPaymentRule[]
-  userSubscriptions BackofficeUserSubscription[]
+  paymentRules         BackofficeProductPaymentRule[]
+  userSubscriptions    BackofficeUserSubscription[]
+  profileSubscriptions ProfileSubscription[]
 
   @@index([slug])
   @@index([type, isActive])
@@ -1370,4 +1376,37 @@ model BackofficeUserSubscription {
   @@index([adhesionId])
   @@unique([profileId, productId])
   @@map("backoffice_user_subscriptions")
+}
+
+// -----------------------------
+// PROFILE SUBSCRIPTION (public.profile_subscriptions)
+// One record per master Profile. Operators inherit via Profile.managerId.
+// -----------------------------
+
+model ProfileSubscription {
+  id                      String              @id @default(uuid()) @db.Uuid
+  profileId               String              @unique @db.Uuid
+  adhesionId              String?             @unique @db.Uuid
+  productId               String?             @db.Uuid
+  asaasSubscriptionId     String?             @db.Text
+  asaasInstallmentId      String?             @db.Text
+  subscriptionStatus      SubscriptionStatus?
+  subscriptionPlan        SubscriptionPlan?
+  subscriptionStartDate   DateTime?           @db.Timestamptz(6)
+  subscriptionEndDate     DateTime?           @db.Timestamptz(6)
+  trialEndDate            DateTime?           @db.Timestamptz(6)
+  subscriptionNextDueDate DateTime?           @db.Timestamptz(6)
+  subscriptionCycle       String?             @db.Text
+  hasPermanentSubscription Boolean            @default(false)
+  createdAt               DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime            @updatedAt @db.Timestamptz(6)
+
+  profile  Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  adhesion BackofficeAdhesion? @relation(fields: [adhesionId], references: [id], onDelete: SetNull)
+  product  BackofficeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([adhesionId])
+  @@index([productId])
+  @@index([subscriptionStatus])
+  @@map("profile_subscriptions")
 }

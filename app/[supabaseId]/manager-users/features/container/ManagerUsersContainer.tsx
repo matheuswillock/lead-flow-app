@@ -114,13 +114,21 @@ export function ManagerUsersContainer({
       const result = await response.json();
 
       if (!result.isValid) {
-        throw new Error(result.errorMessages?.join(', ') || 'Erro ao deletar');
+        const msg = result.errorMessages?.join(', ') || 'Não foi possível deletar. Tente novamente.';
+        console.error('[handleConfirmDeletePending]', msg);
+        toast.error(msg, { id: loadingToast });
+        notifyManagerUsersError({
+          operation: "deletePendingOperator",
+          errorMessages: result.errorMessages,
+          context: errorContext,
+        });
+        return;
       }
 
       toast.success('Operador pendente deletado com sucesso!', { id: loadingToast });
       setIsDeletePendingDialogOpen(false);
       setPendingOperatorToDelete(null);
-      
+
       // Atualizar dados
       await refreshData();
 

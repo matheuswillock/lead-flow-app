@@ -948,7 +948,6 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         phone: adhesion.phone,
         email: adhesion.email,
         asaasCustomerId: adhesion.asaasCustomerId,
-        subscriptionId: `backoffice-adhesion-${adhesion.id}`,
         cpfCnpj: adhesion.cpfCnpj,
         operatorCount: adhesion.extraUsers,
         subscriptionStartDate,
@@ -975,6 +974,19 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       })
 
       await this.ensureUserSubscriptionForPaidAdhesion(adhesion, createdProfile.profileId)
+
+      const crmProduct = await this.getActiveProductBySlug(CRM_PRODUCT_SLUG)
+      await this.repo.upsertProfileSubscription({
+        profileId: createdProfile.profileId,
+        adhesionId: adhesion.id,
+        productId: crmProduct.id,
+        subscriptionStatus: "active",
+        subscriptionPlan: "manager_base",
+        subscriptionCycle: adhesion.cycle,
+        subscriptionStartDate,
+        subscriptionEndDate,
+        subscriptionNextDueDate: subscriptionEndDate,
+      })
 
       await this.sendSetPasswordEmail(adhesion, "invite", data)
     } catch (accountError) {

@@ -115,7 +115,6 @@ export interface CreateBackofficeAdhesionManagerProfileInput {
   phone: string
   email: string
   asaasCustomerId?: string | null
-  subscriptionId: string
   cpfCnpj?: string | null
   operatorCount: number
   subscriptionStartDate: Date
@@ -189,6 +188,17 @@ export interface IBackofficeAdhesionRepository {
       canManageAccountTeams: boolean
     }
   ): Promise<void>
+  upsertProfileSubscription(data: {
+    profileId: string
+    adhesionId: string
+    productId: string
+    subscriptionStatus: string
+    subscriptionPlan: string
+    subscriptionCycle: string
+    subscriptionStartDate: Date
+    subscriptionEndDate: Date
+    subscriptionNextDueDate: Date
+  }): Promise<void>
   clearPaymentArtifacts(id: string): Promise<BackofficeAdhesionWithRelations>
   getOptions(): Promise<BackofficeAdhesionOptions>
 }
