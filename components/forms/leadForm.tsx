@@ -22,7 +22,7 @@ import {
     DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
-import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
+import { maskPhone, formatDocumentInput, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
 import { Loader2, X } from "lucide-react";
 import { CopyIcon } from "@/components/animate-ui/icons/copy";
@@ -486,9 +486,9 @@ export function LeadForm({
                         <FormLabel className="block text-sm font-medium mb-1">CNPJ</FormLabel>
                         <FormControl>
                             <Input
-                                value={maskCNPJ(field.value || '')}
+                                value={formatDocumentInput(field.value || '')}
                                 onChange={(e) => {
-                                    const masked = maskCNPJ(e.target.value);
+                                    const masked = formatDocumentInput(e.target.value);
                                     const unmasked = unmask(masked);
                                     field.onChange(unmasked);
                                 }}

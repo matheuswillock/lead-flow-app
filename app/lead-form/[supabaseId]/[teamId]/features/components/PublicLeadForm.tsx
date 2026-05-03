@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
-import { maskPhone, maskCNPJ, unmask } from "@/lib/masks";
+import { maskPhone, formatDocumentInput, unmask } from "@/lib/masks";
 import { useIsInView } from "@/hooks/use-is-in-view";
 import {
   getPendingRequiredFieldsFeedback,
@@ -475,9 +475,9 @@ export function PublicLeadForm() {
                           <Input
                             className={fieldInputClassName}
                             placeholder="00.000.000/0000-00"
-                            value={maskCNPJ(field.value || "")}
+                            value={formatDocumentInput(field.value || "")}
                             onChange={(e) => {
-                              const masked = maskCNPJ(e.target.value);
+                              const masked = formatDocumentInput(e.target.value);
                               const unmasked = unmask(masked);
                               field.onChange(unmasked);
                             }}

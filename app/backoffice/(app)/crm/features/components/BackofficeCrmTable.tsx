@@ -106,8 +106,8 @@ import {
   type BackofficeLeadScheduleInput,
   type BackofficeLeadStatusKey,
 } from "../context/BackofficeCrmTypes"
-import { formatDocumentInput } from "@/lib/utils/masksAndSanitize"
 import { formatDateTime } from "@/lib/dates/formatters"
+import { formatDocumentInput } from "@/lib/masks"
 
 const TABLE_COLUMN_OPTIONS: { key: BackofficeCrmTableColumnKey; label: string }[] = [
   { key: "name", label: "Nome" },

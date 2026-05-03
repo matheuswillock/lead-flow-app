@@ -26,6 +26,7 @@ import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth"
 import { getProfileTimezoneOptions } from "@/lib/dates"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
 import type { BackofficeAccountUpdateInput } from "../context/BackofficeAccountTypes"
+import { formatDocumentInput } from "@/lib/masks"
 
 const EMPTY_FORM: BackofficeAccountUpdateInput = {
   fullName: "",
@@ -346,7 +347,7 @@ export function BackofficeAccountContainer() {
                   <Input
                     id="backoffice-account-document"
                     placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                    value={form.cpfCnpj ?? ""}
+                    value={formatDocumentInput(form.cpfCnpj ?? "")}
                     onChange={(event) => setField("cpfCnpj", event.target.value)}
                   />
                 </div>

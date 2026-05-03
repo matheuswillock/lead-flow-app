@@ -48,7 +48,7 @@ import {
   type BackofficeLeadStatusKey,
 } from "../context/BackofficeCrmTypes"
 import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
-import { formatDocumentInput } from "@/lib/utils/masksAndSanitize"
+import { formatDocumentInput } from "@/lib/masks"
 
 const NO_SELECTION_VALUE = "__none__"
 const DEFAULT_STATUS: BackofficeLeadStatusKey = "new_opportunity"

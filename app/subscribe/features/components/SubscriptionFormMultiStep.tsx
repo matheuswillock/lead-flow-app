@@ -23,7 +23,7 @@ import {
 import { StepIndicator } from './StepIndicator';
 import { subscriptionSchema, type SubscriptionFormSchema } from '../validation/subscriptionSchema';
 import { SubscriptionService } from '../services/SubscriptionService';
-import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from '@/lib/masks';
+import { maskPhone, maskCEP, unmask, formatDocumentInput } from '@/lib/masks';
 import { createSupabaseBrowser } from '@/lib/supabase/browser';
 import { useWebhookListener } from '@/hooks/useWebhookListener';
 import { detectBrowserTimezone, formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
@@ -532,9 +532,9 @@ export function SubscriptionFormMultiStep({
                           <Input
                             placeholder="000.000.000-00"
                             {...field}
-                            value={maskCPFOrCNPJ(field.value)}
+                            value={formatDocumentInput(field.value)}
                             onChange={(e) => {
-                              const masked = maskCPFOrCNPJ(e.target.value)
+                              const masked = formatDocumentInput(e.target.value)
                               const unmasked = unmask(masked)
                               field.onChange(unmasked)
                             }}

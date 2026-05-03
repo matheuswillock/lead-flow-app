@@ -31,65 +31,6 @@ export function maskPhone(value: string): string {
 }
 
 /**
- * Aplica máscara de CPF
- * Formato: 111.111.111-11
- */
-export function maskCPF(value: string): string {
-  if (!value) return '';
-  
-  // Remove tudo que não é número
-  const numbers = value.replace(/\D/g, '');
-  
-  // Limita a 11 dígitos
-  const limited = numbers.slice(0, 11);
-  
-  // Aplica a máscara
-  return limited
-    .replace(/^(\d{3})(\d)/, '$1.$2')
-    .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
-    .replace(/\.(\d{3})(\d)/, '.$1-$2');
-}
-
-/**
- * Aplica máscara de CNPJ
- * Formato: 11.111.111/1111-11
- */
-export function maskCNPJ(value: string): string {
-  if (!value) return '';
-  
-  // Remove tudo que não é número
-  const numbers = value.replace(/\D/g, '');
-  
-  // Limita a 14 dígitos
-  const limited = numbers.slice(0, 14);
-  
-  // Aplica a máscara
-  return limited
-    .replace(/^(\d{2})(\d)/, '$1.$2')
-    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-    .replace(/\.(\d{3})(\d)/, '.$1/$2')
-    .replace(/(\d{4})(\d)/, '$1-$2');
-}
-
-/**
- * Aplica máscara de CPF ou CNPJ automaticamente
- * Detecta o tipo baseado no comprimento
- */
-export function maskCPFOrCNPJ(value: string): string {
-  if (!value) return '';
-  
-  // Remove tudo que não é número
-  const numbers = value.replace(/\D/g, '');
-  
-  // Se tem mais de 11 dígitos, é CNPJ
-  if (numbers.length > 11) {
-    return maskCNPJ(value);
-  } else {
-    return maskCPF(value);
-  }
-}
-
-/**
  * Aplica máscara de CEP
  * Formato: 12345-678
  */
@@ -200,4 +141,39 @@ export function isValidCNPJ(cnpj: string): boolean {
 export function isValidPhone(phone: string): boolean {
   const numbers = unmask(phone);
   return numbers.length === 10 || numbers.length === 11;
+}
+
+
+/**
+ * Retorna o documento formatado com máscara de CPF ou CNPJ, dependendo do número de dígitos
+ * @param value - Valor do documento (CPF ou CNPJ) como string, pode conter caracteres não numéricos
+ * @returns Documento formatado com máscara ou string vazia se o valor for null
+ * Exemplo de formatação:
+ * - CPF: 12345678901 -> 123.456.789-01
+ * - CNPJ: 12345678000199 -> 12.345.678/0001-99
+ */
+export function formatDocumentInput(value: string | null): string {
+  if (value === null) return ""
+
+  const digits = sanitizeDocumentDigits(value)
+  if (digits.length <= 3) return digits
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`
+  if (digits.length <= 11)
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
+  if (digits.length <= 14)
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`
+  return value
+}
+
+/**
+ * Remove todos os caracteres não numéricos do documento e limita a 14 dígitos (CPF ou CNPJ)
+ * @param value - Valor do documento como string, pode conter caracteres não numéricos
+ * @return String contendo apenas os dígitos do documento, limitada a 14 caracteres
+ * Exemplo:
+ * - "123.456.789-01" -> "12345678901"
+ * - "12.345.678/0001-99" -> "12345678000199"
+ */
+export function sanitizeDocumentDigits(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 14)
 }

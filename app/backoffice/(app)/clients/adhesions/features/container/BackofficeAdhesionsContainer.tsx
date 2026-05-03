@@ -50,8 +50,8 @@ import {
   type BackofficeAdhesionItem,
   type BackofficeAdhesionStatusKey,
 } from "../context/BackofficeAdhesionsTypes"
-import { formatDocumentInput } from "@/lib/utils/masksAndSanitize"
 import { formatIntimezone } from "@/lib/dates/formatters"
+import { formatDocumentInput } from "@/lib/masks"
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50]
 

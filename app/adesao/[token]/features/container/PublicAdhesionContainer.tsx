@@ -44,7 +44,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { maskCEP, maskCPFOrCNPJ, maskCardNumber, maskPhone, unmask } from "@/lib/masks"
+import { formatDocumentInput, maskCEP, maskCardNumber, maskPhone, unmask } from "@/lib/masks"
 import { usePublicAdhesion } from "../context/PublicAdhesionHook"
 import type {
   PublicAdhesionBillingType,
@@ -426,7 +426,9 @@ export function PublicAdhesionContainer() {
                   <Input
                     id="phone"
                     value={maskPhone(form.phone)}
-                    onChange={(event) => updateField("phone", unmask(event.target.value).slice(0, 11))}
+                    onChange={(event) =>
+                      updateField("phone", unmask(event.target.value).slice(0, 11))
+                    }
                     disabled={isSubmitting || isCheckoutLocked}
                   />
                 </div>
@@ -434,7 +436,7 @@ export function PublicAdhesionContainer() {
                   <Label htmlFor="cpfCnpj">CPF/CNPJ</Label>
                   <Input
                     id="cpfCnpj"
-                    value={maskCPFOrCNPJ(form.cpfCnpj)}
+                    value={formatDocumentInput(form.cpfCnpj)}
                     onChange={(event) =>
                       updateField("cpfCnpj", unmask(event.target.value).slice(0, 14))
                     }
@@ -524,7 +526,11 @@ export function PublicAdhesionContainer() {
                     value={form.billingType}
                     onValueChange={(value) => {
                       const next = value as PublicAdhesionBillingType
-                      if (payment?.paymentId && payment.status !== "paid" && next !== form.billingType) {
+                      if (
+                        payment?.paymentId &&
+                        payment.status !== "paid" &&
+                        next !== form.billingType
+                      ) {
                         setPendingBillingSwitch(next)
                       } else {
                         updateField("billingType", next)
@@ -537,10 +543,7 @@ export function PublicAdhesionContainer() {
                         <QrCode data-icon="inline-start" />
                         PIX
                       </TabsTrigger>
-                      <TabsTrigger
-                        value="CREDIT_CARD"
-                        disabled={isSubmitting || isCheckoutLocked}
-                      >
+                      <TabsTrigger value="CREDIT_CARD" disabled={isSubmitting || isCheckoutLocked}>
                         <CreditCard data-icon="inline-start" />
                         Cartão
                       </TabsTrigger>
@@ -619,7 +622,11 @@ export function PublicAdhesionContainer() {
                           <SelectGroup>
                             {installmentOptions.map((installment) => (
                               <SelectItem key={installment} value={String(installment)}>
-                                {installment}x de {formatCurrency((details.creditCardTotalAmount ?? details.totalAmount) / installment)}
+                                {installment}x de{" "}
+                                {formatCurrency(
+                                  (details.creditCardTotalAmount ?? details.totalAmount) /
+                                    installment,
+                                )}
                               </SelectItem>
                             ))}
                           </SelectGroup>
@@ -661,7 +668,7 @@ export function PublicAdhesionContainer() {
                     {formatCurrency(
                       form.billingType === "PIX"
                         ? (details.pixMonthlyTotalAmount ?? details.monthlyTotalAmount)
-                        : (details.creditCardMonthlyTotalAmount ?? details.monthlyTotalAmount)
+                        : (details.creditCardMonthlyTotalAmount ?? details.monthlyTotalAmount),
                     )}
                   </span>
                 </div>
@@ -680,7 +687,7 @@ export function PublicAdhesionContainer() {
                     {formatCurrency(
                       form.billingType === "PIX"
                         ? (details.pixTotalAmount ?? details.totalAmount)
-                        : (details.creditCardTotalAmount ?? details.totalAmount)
+                        : (details.creditCardTotalAmount ?? details.totalAmount),
                     )}
                   </span>
                 </div>
