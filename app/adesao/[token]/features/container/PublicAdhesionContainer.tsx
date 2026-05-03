@@ -90,7 +90,7 @@ function initialForm(detailsFullName = "", detailsPhone = "", detailsEmail = "")
     complement: "",
     city: "",
     state: "",
-    billingType: "PIX" as PublicAdhesionBillingType,
+    billingType: "CREDIT_CARD" as PublicAdhesionBillingType,
     installments: 1,
     cardHolderName: "",
     cardNumber: "",
@@ -122,12 +122,13 @@ export function PublicAdhesionContainer() {
 
   useEffect(() => {
     if (!details) return
+    const maxCard = details.maxCardInstallments ?? details.maxInstallments
     setForm((current) => ({
       ...current,
       fullName: current.fullName || details.fullName,
       phone: current.phone || details.phone,
       email: current.email || details.email || "",
-      installments: Math.min(current.installments, details.maxInstallments),
+      installments: current.installments === 1 ? maxCard : Math.min(current.installments, maxCard),
     }))
   }, [details])
 
@@ -211,9 +212,9 @@ export function PublicAdhesionContainer() {
   }, [attemptStartedAt, payment?.status])
 
   const installmentOptions = useMemo(() => {
-    const max = details?.maxInstallments ?? 1
+    const max = details?.maxCardInstallments ?? details?.maxInstallments ?? 1
     return Array.from({ length: max }, (_, index) => index + 1)
-  }, [details?.maxInstallments])
+  }, [details?.maxCardInstallments, details?.maxInstallments])
 
   const canSubmit =
     Boolean(details) &&
@@ -618,7 +619,7 @@ export function PublicAdhesionContainer() {
                           <SelectGroup>
                             {installmentOptions.map((installment) => (
                               <SelectItem key={installment} value={String(installment)}>
-                                {installment}x de {formatCurrency(details.totalAmount / installment)}
+                                {installment}x de {formatCurrency((details.creditCardTotalAmount ?? details.totalAmount) / installment)}
                               </SelectItem>
                             ))}
                           </SelectGroup>
@@ -656,7 +657,13 @@ export function PublicAdhesionContainer() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Mensalidade</span>
-                  <span className="font-medium">{formatCurrency(details.monthlyTotalAmount)}</span>
+                  <span className="font-medium">
+                    {formatCurrency(
+                      form.billingType === "PIX"
+                        ? (details.pixMonthlyTotalAmount ?? details.monthlyTotalAmount)
+                        : (details.creditCardMonthlyTotalAmount ?? details.monthlyTotalAmount)
+                    )}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Times adicionais</span>
@@ -669,7 +676,13 @@ export function PublicAdhesionContainer() {
                 <Separator />
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">Total antecipado</span>
-                  <span className="text-lg font-semibold">{formatCurrency(details.totalAmount)}</span>
+                  <span className="text-lg font-semibold">
+                    {formatCurrency(
+                      form.billingType === "PIX"
+                        ? (details.pixTotalAmount ?? details.totalAmount)
+                        : (details.creditCardTotalAmount ?? details.totalAmount)
+                    )}
+                  </span>
                 </div>
               </CardContent>
             </Card>

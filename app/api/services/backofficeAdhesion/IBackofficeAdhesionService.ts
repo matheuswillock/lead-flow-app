@@ -93,6 +93,11 @@ export interface BackofficeAdhesionPublicDTO {
   monthlyTotalAmount: number
   totalAmount: number
   maxInstallments: number
+  pixMonthlyTotalAmount: number
+  pixTotalAmount: number
+  creditCardMonthlyTotalAmount: number
+  creditCardTotalAmount: number
+  maxCardInstallments: number
   expiresAt: string
 }
 

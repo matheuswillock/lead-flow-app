@@ -88,6 +88,8 @@ export interface UpdateBackofficeAdhesionCheckoutInput {
   state?: string
   asaasCustomerId?: string
   asaasPaymentId?: string
+  asaasInstallmentId?: string | null
+  installmentCount?: number | null
   billingType?: string
   paymentDueDate?: Date | null
   invoiceUrl?: string | null

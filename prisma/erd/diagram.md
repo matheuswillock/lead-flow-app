@@ -170,6 +170,13 @@ LIFETIME LIFETIME
     
 
 
+        backoffice_payment_method {
+            PIX PIX
+CREDIT_CARD CREDIT_CARD
+        }
+    
+
+
         backoffice_subscription_status {
             active active
 suspended suspended
@@ -449,6 +456,8 @@ unsubscribed unsubscribed
     BackofficeAdhesionStatus status 
     String asaasCustomerId "❓"
     String asaasPaymentId "❓"
+    String asaasInstallmentId "❓"
+    Int installmentCount "❓"
     String billingType "❓"
     DateTime paymentDueDate "❓"
     String invoiceUrl "❓"
@@ -872,6 +881,18 @@ unsubscribed unsubscribed
     }
   
 
+  "backoffice_product_payment_rules" {
+    String id "🗝️"
+    BackofficePaymentMethod paymentMethod 
+    BackofficeAdhesionBillingCycle billingCycle 
+    Decimal price 
+    Boolean canInstallment 
+    Int maxInstallments 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_user_subscriptions" {
     String id "🗝️"
     BackofficeSubscriptionStatus status 
@@ -988,6 +1009,9 @@ unsubscribed unsubscribed
     "email_events" }o--|| email_logs : "log"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
+    "backoffice_product_payment_rules" |o--|| "BackofficePaymentMethod" : "enum:paymentMethod"
+    "backoffice_product_payment_rules" |o--|| "BackofficeAdhesionBillingCycle" : "enum:billingCycle"
+    "backoffice_product_payment_rules" }o--|| backoffice_products : "product"
     "backoffice_user_subscriptions" |o--|| "BackofficeSubscriptionStatus" : "enum:status"
     "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_user_subscriptions" }o--|| profiles : "profile"

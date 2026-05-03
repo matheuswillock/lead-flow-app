@@ -1,8 +1,13 @@
 import type {
   BackofficeProduct,
   BackofficeProductBillingMode,
+  BackofficeProductPaymentRule,
   BackofficeProductType,
 } from "@prisma/client"
+
+export type BackofficeProductWithPaymentRules = BackofficeProduct & {
+  paymentRules: BackofficeProductPaymentRule[]
+}
 
 export interface CreateBackofficeProductInput {
   name: string
@@ -32,10 +37,22 @@ export interface UpdateBackofficeProductInput {
 
 export interface IBackofficeProductRepository {
   findAll(): Promise<BackofficeProduct[]>
+  findAllWithPaymentRules(): Promise<BackofficeProductWithPaymentRules[]>
   findById(id: string): Promise<BackofficeProduct | null>
+  findByIdWithPaymentRules(id: string): Promise<BackofficeProductWithPaymentRules | null>
   findBySlug(slug: string): Promise<BackofficeProduct | null>
+  findBySlugWithPaymentRules(slug: string): Promise<BackofficeProductWithPaymentRules | null>
   create(data: CreateBackofficeProductInput): Promise<BackofficeProduct>
   update(id: string, data: UpdateBackofficeProductInput): Promise<BackofficeProduct>
+  upsertPaymentRules(productId: string, rules: UpsertPaymentRuleInput[]): Promise<void>
   delete(id: string): Promise<void>
   hasActiveSubscriptions(id: string): Promise<boolean>
+}
+
+export interface UpsertPaymentRuleInput {
+  paymentMethod: "PIX" | "CREDIT_CARD"
+  billingCycle: "monthly" | "quarterly" | "semiannual"
+  price: number
+  canInstallment: boolean
+  maxInstallments: number
 }

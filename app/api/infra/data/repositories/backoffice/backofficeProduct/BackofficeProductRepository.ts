@@ -1,11 +1,15 @@
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
+  BackofficeProductWithPaymentRules,
   CreateBackofficeProductInput,
   IBackofficeProductRepository,
   UpdateBackofficeProductInput,
+  UpsertPaymentRuleInput,
 } from "./IBackofficeProductRepository"
 import type { BackofficeProduct } from "@prisma/client"
+
+const paymentRulesInclude = { paymentRules: true } as const
 
 function toDecimalOrNull(value: number | null | undefined): Prisma.Decimal | null {
   if (value == null) return null
@@ -19,12 +23,33 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
     })
   }
 
+  async findAllWithPaymentRules(): Promise<BackofficeProductWithPaymentRules[]> {
+    return prisma.backofficeProduct.findMany({
+      orderBy: [{ type: "asc" }, { name: "asc" }],
+      include: paymentRulesInclude,
+    })
+  }
+
   async findById(id: string): Promise<BackofficeProduct | null> {
     return prisma.backofficeProduct.findUnique({ where: { id } })
   }
 
+  async findByIdWithPaymentRules(id: string): Promise<BackofficeProductWithPaymentRules | null> {
+    return prisma.backofficeProduct.findUnique({
+      where: { id },
+      include: paymentRulesInclude,
+    })
+  }
+
   async findBySlug(slug: string): Promise<BackofficeProduct | null> {
     return prisma.backofficeProduct.findUnique({ where: { slug } })
+  }
+
+  async findBySlugWithPaymentRules(slug: string): Promise<BackofficeProductWithPaymentRules | null> {
+    return prisma.backofficeProduct.findUnique({
+      where: { slug },
+      include: paymentRulesInclude,
+    })
   }
 
   async create(data: CreateBackofficeProductInput): Promise<BackofficeProduct> {
@@ -70,6 +95,35 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
         ...(data.isActive !== undefined && { isActive: data.isActive }),
       },
     })
+  }
+
+  async upsertPaymentRules(productId: string, rules: UpsertPaymentRuleInput[]): Promise<void> {
+    await Promise.all(
+      rules.map((rule) =>
+        prisma.backofficeProductPaymentRule.upsert({
+          where: {
+            productId_paymentMethod_billingCycle: {
+              productId,
+              paymentMethod: rule.paymentMethod,
+              billingCycle: rule.billingCycle,
+            },
+          },
+          create: {
+            productId,
+            paymentMethod: rule.paymentMethod,
+            billingCycle: rule.billingCycle,
+            price: new Prisma.Decimal(rule.price),
+            canInstallment: rule.canInstallment,
+            maxInstallments: rule.maxInstallments,
+          },
+          update: {
+            price: new Prisma.Decimal(rule.price),
+            canInstallment: rule.canInstallment,
+            maxInstallments: rule.maxInstallments,
+          },
+        })
+      )
+    )
   }
 
   async delete(id: string): Promise<void> {

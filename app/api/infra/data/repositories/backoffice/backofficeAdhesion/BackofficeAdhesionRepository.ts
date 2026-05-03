@@ -345,6 +345,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       where: { id },
       data: {
         asaasPaymentId: null,
+        asaasInstallmentId: null,
+        installmentCount: null,
         pixQrCode: null,
         pixPayload: null,
         bankSlipUrl: null,

@@ -1,4 +1,4 @@
-import type { BackofficeAdhesionBillingCycle, BackofficeProduct } from "@prisma/client"
+import type { BackofficeAdhesionBillingCycle, BackofficeProduct, BackofficeProductPaymentRule } from "@prisma/client"
 import { asaasApi, asaasFetch } from "@/lib/asaas"
 import {
   BACKOFFICE_ADHESION_CYCLE_LABELS,
@@ -116,9 +116,39 @@ function mapAdhesion(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhes
 }
 
 function mapPublicAdhesion(
-  adhesion: BackofficeAdhesionWithRelations
+  adhesion: BackofficeAdhesionWithRelations,
+  paymentRules?: BackofficeProductPaymentRule[]
 ): BackofficeAdhesionPublicDTO {
   const cycleMonths = BACKOFFICE_ADHESION_CYCLE_MONTHS[adhesion.cycle] ?? 1
+  const monthlyExtras = roundCurrency(
+    decimalToNumber(adhesion.monthlyExtraTeamsAmount) +
+    decimalToNumber(adhesion.monthlyExtraUsersAmount)
+  )
+
+  let pixMonthlyTotalAmount = decimalToNumber(adhesion.monthlyTotalAmount)
+  let pixTotalAmount = decimalToNumber(adhesion.totalAmount)
+  let creditCardMonthlyTotalAmount = decimalToNumber(adhesion.monthlyTotalAmount)
+  let creditCardTotalAmount = decimalToNumber(adhesion.totalAmount)
+  let maxCardInstallments = cycleMonths
+
+  if (paymentRules && paymentRules.length > 0) {
+    const pixRule = paymentRules.find(
+      (r) => r.billingCycle === adhesion.cycle && r.paymentMethod === "PIX"
+    )
+    if (pixRule) {
+      pixMonthlyTotalAmount = roundCurrency(Number(pixRule.price.toString()) + monthlyExtras)
+      pixTotalAmount = roundCurrency(pixMonthlyTotalAmount * cycleMonths)
+    }
+
+    const cardRule = paymentRules.find(
+      (r) => r.billingCycle === adhesion.cycle && r.paymentMethod === "CREDIT_CARD"
+    )
+    if (cardRule) {
+      creditCardMonthlyTotalAmount = roundCurrency(Number(cardRule.price.toString()) + monthlyExtras)
+      creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
+      maxCardInstallments = cardRule.maxInstallments
+    }
+  }
 
   return {
     id: adhesion.id,
@@ -130,11 +160,16 @@ function mapPublicAdhesion(
     cycleLabel: BACKOFFICE_ADHESION_CYCLE_LABELS[adhesion.cycle],
     cycleMonths,
     modules: adhesion.modules,
-    extraTeams: adhesion.extraTeams,
-    extraUsers: adhesion.extraUsers,
-    monthlyTotalAmount: decimalToNumber(adhesion.monthlyTotalAmount),
-    totalAmount: decimalToNumber(adhesion.totalAmount),
-    maxInstallments: cycleMonths,
+    extraTeams: adhesion.extraTeams ?? 0,
+    extraUsers: adhesion.extraUsers ?? 0,
+    monthlyTotalAmount: creditCardMonthlyTotalAmount,
+    totalAmount: creditCardTotalAmount,
+    maxInstallments: maxCardInstallments,
+    pixMonthlyTotalAmount,
+    pixTotalAmount,
+    creditCardMonthlyTotalAmount,
+    creditCardTotalAmount,
+    maxCardInstallments,
     expiresAt: adhesion.expiresAt.toISOString(),
   }
 }
@@ -442,7 +477,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       return tokenError("not_found")
     }
 
-    return mapPublicAdhesion(adhesion)
+    const crmProduct = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
+    const paymentRules = crmProduct?.paymentRules ?? []
+
+    return mapPublicAdhesion(adhesion, paymentRules)
   }
 
   async createCheckout(
@@ -494,8 +532,16 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error("Já existe uma conta cadastrada com este e-mail")
     }
 
+    const crmProduct = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
+    const paymentRules = crmProduct?.paymentRules ?? []
+    const publicDetails = mapPublicAdhesion(adhesion, paymentRules)
+    const chargeAmount =
+      normalized.billingType === "PIX"
+        ? publicDetails.pixTotalAmount
+        : publicDetails.creditCardTotalAmount
+
     const customerId = await this.ensureAsaasCustomer(adhesion, normalized)
-    const paymentResult = await this.createAsaasPayment(adhesion, customerId, normalized)
+    const paymentResult = await this.createAsaasPayment(adhesion, customerId, normalized, chargeAmount)
     const updated = await this.repo.updateCheckoutData(adhesion.id, {
       fullName: normalized.fullName,
       phone: normalized.phone,
@@ -510,6 +556,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       state: normalized.state,
       asaasCustomerId: customerId,
       asaasPaymentId: paymentResult.paymentId,
+      asaasInstallmentId: paymentResult.installmentId ?? null,
+      installmentCount: normalized.billingType === "CREDIT_CARD" ? (normalized.installments ?? null) : null,
       billingType: normalized.billingType,
       paymentDueDate: paymentResult.paymentDueDate,
       invoiceUrl: paymentResult.invoiceUrl,
@@ -728,9 +776,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   private async createAsaasPayment(
     adhesion: BackofficeAdhesionWithRelations,
     customerId: string,
-    input: BackofficeAdhesionCheckoutInput
+    input: BackofficeAdhesionCheckoutInput,
+    chargeAmount: number
   ): Promise<{
     paymentId: string
+    installmentId: string | null
     paymentDueDate: Date | null
     invoiceUrl: string | null
     bankSlipUrl: string | null
@@ -744,11 +794,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   }> {
     const ownerTz = DEFAULT_TZ
     const dueDate = formatInTz(new Date(), "yyyy-MM-dd", ownerTz)
-    const totalAmount = decimalToNumber(adhesion.totalAmount)
     const payload: Record<string, unknown> = {
       customer: customerId,
       billingType: input.billingType,
-      value: totalAmount,
+      value: chargeAmount,
       dueDate,
       description: `Corretor Studio - Nova adesão ${BACKOFFICE_ADHESION_CYCLE_LABELS[adhesion.cycle]}`,
       externalReference: `backoffice-adhesion-${adhesion.id}`,
@@ -767,8 +816,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         mobilePhone: input.phone,
       }
       payload.remoteIp = input.remoteIp
-      payload.installmentCount = input.installments
-      payload.installmentValue = roundCurrency(totalAmount / Math.max(input.installments ?? 1, 1))
+      if ((input.installments ?? 1) > 1) {
+        payload.installmentCount = input.installments
+        payload.installmentValue = roundCurrency(chargeAmount / Math.max(input.installments ?? 1, 1))
+      }
     }
 
     const payment = await asaasFetch(asaasApi.payments, {
@@ -778,6 +829,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     const result = {
       paymentId: String(payment.id),
+      installmentId: payment.installment ? String(payment.installment) : null,
       paymentDueDate: payment.dueDate ? new Date(`${payment.dueDate}T00:00:00`) : null,
       invoiceUrl: (payment.invoiceUrl as string | undefined) ?? null,
       bankSlipUrl: (payment.bankSlipUrl as string | undefined) ?? null,

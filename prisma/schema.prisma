@@ -180,6 +180,13 @@ enum BackofficeProductBillingMode {
   @@map("backoffice_product_billing_mode")
 }
 
+enum BackofficePaymentMethod {
+  PIX
+  CREDIT_CARD
+
+  @@map("backoffice_payment_method")
+}
+
 enum BackofficeSubscriptionStatus {
   active
   suspended
@@ -584,6 +591,8 @@ model BackofficeAdhesion {
   createdByBackofficeUserId String?                         @map("createdByBackofficeUserId") @db.Uuid
   asaasCustomerId           String?                         @map("asaasCustomerId") @db.Text
   asaasPaymentId            String?                         @unique @map("asaasPaymentId") @db.Text
+  asaasInstallmentId        String?                         @unique @map("asaasInstallmentId") @db.Text
+  installmentCount          Int?                            @map("installmentCount")
   billingType               String?                         @map("billingType") @db.Text
   paymentDueDate            DateTime?                       @map("paymentDueDate") @db.Timestamptz(6)
   invoiceUrl                String?                         @map("invoiceUrl") @db.Text
@@ -1315,11 +1324,30 @@ model BackofficeProduct {
   createdAt       DateTime                     @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime                     @updatedAt @db.Timestamptz(6)
 
+  paymentRules      BackofficeProductPaymentRule[]
   userSubscriptions BackofficeUserSubscription[]
 
   @@index([slug])
   @@index([type, isActive])
   @@map("backoffice_products")
+}
+
+model BackofficeProductPaymentRule {
+  id              String                         @id @default(uuid()) @db.Text
+  productId       String                         @db.Text
+  paymentMethod   BackofficePaymentMethod
+  billingCycle    BackofficeAdhesionBillingCycle
+  price           Decimal                        @db.Decimal(10, 2)
+  canInstallment  Boolean                        @default(false)
+  maxInstallments Int                            @default(1)
+  createdAt       DateTime                       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime                       @updatedAt @db.Timestamptz(6)
+
+  product BackofficeProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, paymentMethod, billingCycle])
+  @@index([productId])
+  @@map("backoffice_product_payment_rules")
 }
 
 model BackofficeUserSubscription {
