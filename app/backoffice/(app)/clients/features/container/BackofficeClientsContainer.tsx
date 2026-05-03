@@ -27,15 +27,15 @@ import {
 import { useBackofficeClients } from "../context/BackofficeClientsContext"
 import type { BackofficeClientsFilters } from "../context/BackofficeClientsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz } from "@/lib/dates"
 import { BackofficeAdhesionDialog } from "../../adhesions/features/components/BackofficeAdhesionDialog"
 import { BackofficeAdhesionsService } from "../../adhesions/features/services/BackofficeAdhesionsService"
+import { formatIntimezone } from "@/lib/dates/formatters"
 
 const CLIENTS_PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
 const adhesionsService = new BackofficeAdhesionsService()
 
 function formatDate(value: string, tz: string) {
-  return formatInTz(new Date(value), "dd/MM/yyyy", tz)
+  return formatIntimezone(new Date(value), "dd/MM/yyyy", tz)
 }
 
 function formatCurrency(value: number) {

@@ -24,10 +24,9 @@ import { StepIndicator } from './StepIndicator';
 import { subscriptionSchema, type SubscriptionFormSchema } from '../validation/subscriptionSchema';
 import { SubscriptionService } from '../services/SubscriptionService';
 import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from '@/lib/masks';
-// Legacy payment-first flow removed: no pendingSignUp/session storage
 import { createSupabaseBrowser } from '@/lib/supabase/browser';
 import { useWebhookListener } from '@/hooks/useWebhookListener';
-import { detectBrowserTimezone, formatInTz, parseDateKeyToUtc } from '@/lib/dates';
+import { detectBrowserTimezone, formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 
 interface SubscriptionFormMultiStepProps {
   onSuccess: (
@@ -491,9 +490,7 @@ export function SubscriptionFormMultiStep({
             <Card>
               <CardHeader>
                 <CardTitle>Dados Pessoais</CardTitle>
-                <CardDescription>
-                  Preencha suas informações pessoais para começar
-                </CardDescription>
+                <CardDescription>Preencha suas informações pessoais para começar</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <FormField
@@ -532,14 +529,14 @@ export function SubscriptionFormMultiStep({
                       <FormItem>
                         <FormLabel>CPF/CNPJ</FormLabel>
                         <FormControl>
-                          <Input 
-                            placeholder="000.000.000-00" 
+                          <Input
+                            placeholder="000.000.000-00"
                             {...field}
                             value={maskCPFOrCNPJ(field.value)}
                             onChange={(e) => {
-                              const masked = maskCPFOrCNPJ(e.target.value);
-                              const unmasked = unmask(masked);
-                              field.onChange(unmasked);
+                              const masked = maskCPFOrCNPJ(e.target.value)
+                              const unmasked = unmask(masked)
+                              field.onChange(unmasked)
                             }}
                           />
                         </FormControl>
@@ -556,14 +553,14 @@ export function SubscriptionFormMultiStep({
                     <FormItem>
                       <FormLabel>Telefone</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="(11) 99999-9999" 
+                        <Input
+                          placeholder="(11) 99999-9999"
                           {...field}
                           value={maskPhone(field.value)}
                           onChange={(e) => {
-                            const masked = maskPhone(e.target.value);
-                            const unmasked = unmask(masked);
-                            field.onChange(unmasked);
+                            const masked = maskPhone(e.target.value)
+                            const unmasked = unmask(masked)
+                            field.onChange(unmasked)
                           }}
                         />
                       </FormControl>
@@ -580,9 +577,7 @@ export function SubscriptionFormMultiStep({
             <Card>
               <CardHeader>
                 <CardTitle>Endereço</CardTitle>
-                <CardDescription>
-                  Informe seu endereço para cobrança
-                </CardDescription>
+                <CardDescription>Informe seu endereço para cobrança</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <FormField
@@ -592,14 +587,14 @@ export function SubscriptionFormMultiStep({
                     <FormItem>
                       <FormLabel>CEP</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="00000-000" 
+                        <Input
+                          placeholder="00000-000"
                           {...field}
                           value={maskCEP(field.value)}
                           onChange={(e) => {
-                            const masked = maskCEP(e.target.value);
-                            const unmasked = unmask(masked);
-                            field.onChange(unmasked);
+                            const masked = maskCEP(e.target.value)
+                            const unmasked = unmask(masked)
+                            field.onChange(unmasked)
                           }}
                         />
                       </FormControl>
@@ -704,21 +699,19 @@ export function SubscriptionFormMultiStep({
             <Card>
               <CardHeader>
                 <CardTitle>Forma de Pagamento</CardTitle>
-                <CardDescription>
-                  Escolha como deseja pagar sua assinatura
-                </CardDescription>
+                <CardDescription>Escolha como deseja pagar sua assinatura</CardDescription>
               </CardHeader>
               <CardContent>
                 <Tabs
                   value={billingType}
                   onValueChange={(value) => {
-                    const newBillingType = value as typeof billingType;
-                    setBillingType(newBillingType);
-                    form.setValue('billingType', newBillingType);
-                    
+                    const newBillingType = value as typeof billingType
+                    setBillingType(newBillingType)
+                    form.setValue("billingType", newBillingType)
+
                     // Carregar método de pagamento quando trocar de tab
-                    if (newBillingType === 'PIX' || newBillingType === 'BOLETO') {
-                      loadPaymentMethod(newBillingType);
+                    if (newBillingType === "PIX" || newBillingType === "BOLETO") {
+                      loadPaymentMethod(newBillingType)
                     }
                   }}
                   className="w-full"
@@ -749,10 +742,8 @@ export function SubscriptionFormMultiStep({
                             className="mx-auto w-64 h-64 border-4 border-primary rounded-lg"
                           />
                         </div>
-                        
-                        <h3 className="font-semibold text-lg mb-2">
-                          Escaneie o QR Code
-                        </h3>
+
+                        <h3 className="font-semibold text-lg mb-2">Escaneie o QR Code</h3>
                         <p className="text-sm text-muted-foreground mb-4">
                           Abra o app do seu banco e escaneie o código acima
                         </p>
@@ -768,8 +759,8 @@ export function SubscriptionFormMultiStep({
                               size="sm"
                               variant="outline"
                               onClick={() => {
-                                navigator.clipboard.writeText(pixData.payload);
-                                toast.success('Código copiado!');
+                                navigator.clipboard.writeText(pixData.payload)
+                                toast.success("Código copiado!")
                               }}
                             >
                               <Copy className="h-4 w-4" />
@@ -778,7 +769,12 @@ export function SubscriptionFormMultiStep({
                         </div>
 
                         <p className="text-xs text-muted-foreground">
-                          Expira em: {formatInTz(new Date(pixData.expirationDate), 'dd/MM/yyyy HH:mm', browserTz)}
+                          Expira em:{" "}
+                          {formatIntimezone(
+                            new Date(pixData.expirationDate),
+                            "dd/MM/yyyy HH:mm",
+                            browserTz,
+                          )}
                         </p>
 
                         {/* Indicador de aguardando confirmação via webhook */}
@@ -814,13 +810,12 @@ export function SubscriptionFormMultiStep({
                           )}
                         </div>
                         <h3 className="font-semibold text-lg mb-2">
-                          {loadingPayment ? 'Gerando QR Code...' : 'Pagamento via PIX'}
+                          {loadingPayment ? "Gerando QR Code..." : "Pagamento via PIX"}
                         </h3>
                         <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
-                          {loadingPayment 
-                            ? 'Aguarde enquanto preparamos seu código de pagamento'
-                            : 'Após confirmar, você receberá um QR Code para realizar o pagamento instantaneamente'
-                          }
+                          {loadingPayment
+                            ? "Aguarde enquanto preparamos seu código de pagamento"
+                            : "Após confirmar, você receberá um QR Code para realizar o pagamento instantaneamente"}
                         </p>
                         {!loadingPayment && (
                           <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-full text-sm font-medium">
@@ -912,11 +907,14 @@ export function SubscriptionFormMultiStep({
                       <div className="space-y-4 p-6 border rounded-lg bg-card">
                         <div className="text-center mb-4">
                           <Barcode className="h-16 w-16 mx-auto mb-2 text-primary" />
-                          <h3 className="font-semibold text-lg mb-1">
-                            Boleto Bancário Gerado
-                          </h3>
+                          <h3 className="font-semibold text-lg mb-1">Boleto Bancário Gerado</h3>
                           <p className="text-sm text-muted-foreground">
-                            Vencimento: {formatInTz(parseDateKeyToUtc(boletoData.dueDate, browserTz), 'dd/MM/yyyy', browserTz)}
+                            Vencimento:{" "}
+                            {formatIntimezone(
+                              parseDateKeyToUtc(boletoData.dueDate, browserTz),
+                              "dd/MM/yyyy",
+                              browserTz,
+                            )}
                           </p>
                         </div>
 
@@ -933,8 +931,8 @@ export function SubscriptionFormMultiStep({
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  navigator.clipboard.writeText(boletoData.identificationField);
-                                  toast.success('Linha digitável copiada!');
+                                  navigator.clipboard.writeText(boletoData.identificationField)
+                                  toast.success("Linha digitável copiada!")
                                 }}
                               >
                                 <Copy className="h-4 w-4" />
@@ -951,18 +949,18 @@ export function SubscriptionFormMultiStep({
                                 type="button"
                                 variant="default"
                                 className="flex-1"
-                                onClick={() => window.open(boletoData.bankSlipUrl, '_blank')}
+                                onClick={() => window.open(boletoData.bankSlipUrl, "_blank")}
                               >
                                 <ExternalLink className="mr-2 h-4 w-4" />
                                 Visualizar Boleto
                               </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="flex-1"
-                                asChild
-                              >
-                                <a href={boletoData.bankSlipUrl} download target="_blank" rel="noopener noreferrer">
+                              <Button type="button" variant="outline" className="flex-1" asChild>
+                                <a
+                                  href={boletoData.bankSlipUrl}
+                                  download
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
                                   <Download className="mr-2 h-4 w-4" />
                                   Baixar PDF
                                 </a>
@@ -1010,13 +1008,12 @@ export function SubscriptionFormMultiStep({
                           )}
                         </div>
                         <h3 className="font-semibold text-lg mb-2">
-                          {loadingPayment ? 'Gerando Boleto...' : 'Pagamento via Boleto Bancário'}
+                          {loadingPayment ? "Gerando Boleto..." : "Pagamento via Boleto Bancário"}
                         </h3>
                         <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
                           {loadingPayment
-                            ? 'Aguarde enquanto preparamos seu boleto de pagamento'
-                            : 'Após confirmar, você receberá um boleto bancário para pagamento'
-                          }
+                            ? "Aguarde enquanto preparamos seu boleto de pagamento"
+                            : "Após confirmar, você receberá um boleto bancário para pagamento"}
                         </p>
                         {!loadingPayment && (
                           <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-full text-sm font-medium">
@@ -1046,9 +1043,9 @@ export function SubscriptionFormMultiStep({
             </Button>
 
             {currentStep < 3 ? (
-              <Button 
-                type="button" 
-                onClick={handleNext} 
+              <Button
+                type="button"
+                onClick={handleNext}
                 disabled={!isStepValid || loading || loadingNext}
                 className="cursor-pointer disabled:cursor-not-allowed"
               >
@@ -1072,7 +1069,7 @@ export function SubscriptionFormMultiStep({
                     Processando...
                   </>
                 ) : (
-                  'Confirmar Assinatura'
+                  "Confirmar Assinatura"
                 )}
               </Button>
             )}
@@ -1080,5 +1077,5 @@ export function SubscriptionFormMultiStep({
         </form>
       </Form>
     </div>
-  );
+  )
 }

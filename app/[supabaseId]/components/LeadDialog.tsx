@@ -56,7 +56,7 @@ import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import { isManagerLikeRole } from "@/lib/roles";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import {
-  formatInTz,
+  formatIntimezone,
   formatLocalDateValue,
   formatLocalTimeValue,
   parseDateKeyAndTimeToUtc,
@@ -927,7 +927,7 @@ export default function LeadDialog({
 
   const formatActivityDate = (value: string) => {
     try {
-      return formatInTz(new Date(value), "dd/MM/yyyy HH:mm", scheduleTimezone);
+      return formatIntimezone(new Date(value), "dd/MM/yyyy HH:mm", scheduleTimezone)
     } catch {
       return value;
     }

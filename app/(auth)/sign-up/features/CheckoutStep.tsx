@@ -22,7 +22,12 @@ import { useSignUp } from "./signUpContext";
 import { signUpCheckoutSchema, type SignUpCheckoutFormData } from "@/lib/validations/checkoutSchema";
 import { usePaymentPolling } from "@/hooks/usePaymentPolling";
 import { toast } from "sonner";
-import { addMonthsInTz, detectBrowserTimezone, formatInTz, parseDateKeyToUtc } from "@/lib/dates";
+import {
+  addMonthsInTz,
+  detectBrowserTimezone,
+  formatIntimezone,
+  parseDateKeyToUtc,
+} from "@/lib/dates"
 
 const PLAN_PRICE = 59.9;
 
@@ -79,8 +84,8 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
   const [countdown, setCountdown] = useState<string | null>(null);
   const firstChargeDate = new Date();
   const lastChargeDate = addMonthsInTz(firstChargeDate, 12, browserTz);
-  const formattedFirstCharge = formatInTz(firstChargeDate, "dd/MM/yyyy", browserTz);
-  const formattedLastCharge = formatInTz(lastChargeDate, "dd/MM/yyyy", browserTz);
+  const formattedFirstCharge = formatIntimezone(firstChargeDate, "dd/MM/yyyy", browserTz);
+  const formattedLastCharge = formatIntimezone(lastChargeDate, "dd/MM/yyyy", browserTz);
 
   const handleError = (message: string) => {
     setError(message);
@@ -316,19 +321,19 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
               <Form {...form}>
                 <form
                   onSubmit={form.handleSubmit(handleSubmit, (errors) => {
-                    const firstError = Object.values(errors)[0];
-                    const message = firstError?.message || "Verifique os campos obrigatorios.";
-                    toast.error(message);
+                    const firstError = Object.values(errors)[0]
+                    const message = firstError?.message || "Verifique os campos obrigatorios."
+                    toast.error(message)
                   })}
                   className="space-y-6"
                 >
                   <Tabs
                     value={billingType}
                     onValueChange={(value) => {
-                      const nextValue = value as SignUpCheckoutFormData["billingType"];
-                      form.setValue("billingType", nextValue);
+                      const nextValue = value as SignUpCheckoutFormData["billingType"]
+                      form.setValue("billingType", nextValue)
                       if (nextValue !== "CREDIT_CARD") {
-                        form.setValue("creditCard", undefined, { shouldValidate: false });
+                        form.setValue("creditCard", undefined, { shouldValidate: false })
                       } else if (!form.getValues("creditCard")) {
                         form.setValue("creditCard", {
                           holderName: "",
@@ -336,7 +341,7 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
                           expiryMonth: "",
                           expiryYear: "",
                           ccv: "",
-                        });
+                        })
                       }
                     }}
                   >
@@ -510,7 +515,8 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
                         </div>
                         {!isSecureContext && (
                           <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-                            O preenchimento automatico de cartoes fica disponivel apenas em conexao segura (HTTPS).
+                            O preenchimento automatico de cartoes fica disponivel apenas em conexao
+                            segura (HTTPS).
                           </div>
                         )}
                       </>
@@ -524,14 +530,21 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
                             <div>
                               <p className="text-sm font-medium">Boleto gerado</p>
                               <p className="text-xs text-muted-foreground">
-                                Vencimento: {formatInTz(parseDateKeyToUtc(boletoData.dueDate, browserTz), "dd/MM/yyyy", browserTz)}
+                                Vencimento:{" "}
+                                {formatIntimezone(
+                                  parseDateKeyToUtc(boletoData.dueDate, browserTz),
+                                  "dd/MM/yyyy",
+                                  browserTz,
+                                )}
                               </p>
                             </div>
                           </div>
                           <div className="space-y-2">
                             <p className="text-sm font-medium">Linha digitavel</p>
                             <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3">
-                              <code className="text-xs break-all">{boletoData.identificationField}</code>
+                              <code className="text-xs break-all">
+                                {boletoData.identificationField}
+                              </code>
                               <Button
                                 type="button"
                                 variant="outline"
@@ -551,7 +564,11 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
                               Visualizar boleto
                             </Button>
                             <Button type="button" variant="outline" className="w-full" asChild>
-                              <a href={boletoData.bankSlipUrl} target="_blank" rel="noopener noreferrer">
+                              <a
+                                href={boletoData.bankSlipUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
                                 Baixar PDF
                               </a>
                             </Button>
@@ -571,7 +588,11 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
                     </div>
                   )}
 
-                  <Button type="submit" className="w-full" disabled={isSubmitting || !createdUserData}>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={isSubmitting || !createdUserData}
+                  >
                     {isSubmitting
                       ? "Processando..."
                       : billingType === "PIX"
@@ -641,9 +662,12 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
                       <span className="font-medium">Plano Professional</span>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Sistema completo de gestao de leads com pipeline Kanban, analytics em tempo real e gestao de equipe.
+                      Sistema completo de gestao de leads com pipeline Kanban, analytics em tempo
+                      real e gestao de equipe.
                     </p>
-                    <p className="text-sm font-semibold text-foreground">{formatCurrency(PLAN_PRICE)}</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {formatCurrency(PLAN_PRICE)}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -659,5 +683,5 @@ export function CheckoutStep({ onBack }: CheckoutStepProps) {
         </div>
       </div>
     </main>
-  );
+  )
 }

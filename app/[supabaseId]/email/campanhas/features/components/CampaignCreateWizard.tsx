@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz, formatLocalInputValue, parseLocalToUtc } from "@/lib/dates"
+import { formatIntimezone, formatLocalInputValue, parseLocalToUtc } from "@/lib/dates"
 
 export function CampaignCreateWizard() {
   const { tz } = useTimezone()
@@ -142,7 +142,7 @@ export function CampaignCreateWizard() {
               />
               <p className="text-xs text-muted-foreground">
                 {wizardScheduledAt
-                  ? `Será disparada em ${formatInTz(
+                  ? `Será disparada em ${formatIntimezone(
                       parseLocalToUtc(wizardScheduledAt, tz),
                       "dd/MM/yyyy HH:mm",
                       tz

@@ -58,6 +58,7 @@ export interface BackofficeAdhesionDTO {
   leadName: string
   fullName: string
   phone: string
+  cpfCnpj: string | null
   email: string | null
   sdrBackofficeUserId: string | null
   closerBackofficeUserId: string | null
@@ -82,6 +83,7 @@ export interface BackofficeAdhesionPublicDTO {
   id: string
   fullName: string
   phone: string
+  cpfCnpj: string | null
   email: string | null
   status: BackofficeAdhesionStatus
   cycle: BackofficeAdhesionBillingCycle
@@ -128,6 +130,7 @@ export interface BackofficeAdhesionOptionsDTO {
     name: string
     email: string | null
     phone: string | null
+    cpfCnpj: string | null
     status: string
     sdrBackofficeUserId: string | null
     closerBackofficeUserId: string | null

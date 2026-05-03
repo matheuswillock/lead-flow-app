@@ -1,7 +1,7 @@
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
 import { BILLING_PRICES, type BillingSummary } from "@/app/api/shared/billing/billingConfig";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
-import { addMonthsInTz, formatInTz, DEFAULT_TZ } from "@/lib/dates";
+import { addMonthsInTz, formatIntimezone, DEFAULT_TZ } from "@/lib/dates";
 import { buildBillingSummary } from "./TeamBillingService";
 import type {
   BillingOwnerProfile,
@@ -182,7 +182,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     const subscription = await this.getCurrentSubscription(input.master);
     const billingType = normalizeBillingType(subscription.billingType);
     const ownerTz = input.master.timezone ?? DEFAULT_TZ;
-    const dueDate = formatInTz(new Date(), "yyyy-MM-dd", ownerTz);
+    const dueDate = formatIntimezone(new Date(), "yyyy-MM-dd", ownerTz);
     const externalReference = `pending-action-${input.pendingActionId}`;
     const paymentPayload: Record<string, unknown> = {
       customer: customerId,
@@ -344,7 +344,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     }
 
     // Asaas espera yyyy-MM-dd no fuso do cliente (BRT), não em UTC
-    return formatInTz(nextDueDate, "yyyy-MM-dd", ownerTz);
+    return formatIntimezone(nextDueDate, "yyyy-MM-dd", ownerTz);
   }
 }
 

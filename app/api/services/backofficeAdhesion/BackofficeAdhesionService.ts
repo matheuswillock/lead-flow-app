@@ -13,7 +13,7 @@ import {
   hashBackofficeAdhesionToken,
   validateBackofficeAdhesionToken,
 } from "@/lib/backoffice-adhesions/adhesion-token-validation"
-import { addMonthsInTz, DEFAULT_TZ, formatInTz } from "@/lib/dates"
+import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { createEmailService } from "@/lib/email/create-email-service"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
@@ -94,6 +94,7 @@ function mapAdhesion(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhes
     leadName: adhesion.lead.name,
     fullName: adhesion.fullName,
     phone: adhesion.phone,
+    cpfCnpj: adhesion.cpfCnpj,
     email: adhesion.email,
     sdrBackofficeUserId: adhesion.sdrBackofficeUserId,
     closerBackofficeUserId: adhesion.closerBackofficeUserId,
@@ -155,6 +156,7 @@ function mapPublicAdhesion(
     fullName: adhesion.fullName,
     phone: adhesion.phone,
     email: adhesion.email,
+    cpfCnpj: adhesion.cpfCnpj,
     status: adhesion.status,
     cycle: adhesion.cycle,
     cycleLabel: BACKOFFICE_ADHESION_CYCLE_LABELS[adhesion.cycle],
@@ -280,6 +282,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         name: lead.name,
         email: lead.email,
         phone: lead.phone,
+        cpfCnpj: lead.cpfCnpj,
         status: lead.status,
         sdrBackofficeUserId: lead.sdrBackofficeUserId,
         closerBackofficeUserId: lead.closerBackofficeUserId,
@@ -411,6 +414,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       ...pricing,
       sdrBackofficeUserId: next.sdrBackofficeUserId,
       closerBackofficeUserId: next.closerBackofficeUserId,
+      cpfCnpj: undefined
     })
 
     return mapAdhesion(updated)
@@ -431,6 +435,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       tokenHash: hashBackofficeAdhesionToken(token),
       tokenPreview: getBackofficeAdhesionTokenPreview(token),
       expiresAt: addTokenTtl(),
+      cpfCnpj: undefined
     })
 
     return {
@@ -793,7 +798,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
   }> {
     const ownerTz = DEFAULT_TZ
-    const dueDate = formatInTz(new Date(), "yyyy-MM-dd", ownerTz)
+    const dueDate = formatIntimezone(new Date(), "yyyy-MM-dd", ownerTz)
     const payload: Record<string, unknown> = {
       customer: customerId,
       billingType: input.billingType,

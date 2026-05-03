@@ -33,7 +33,7 @@ import {
 import { useBackofficePayments } from "../context/BackofficePaymentsContext"
 import type { CreatePaymentFormData } from "../services/IBackofficePaymentsService"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz, parseDateKeyToUtc } from "@/lib/dates"
+import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   PENDING: { label: "Pendente", variant: "outline" },
@@ -60,7 +60,7 @@ function formatCurrency(value: string | number) {
 
 function formatDate(value: string | null, tz: string) {
   if (!value) return "—"
-  return formatInTz(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz)
+  return formatIntimezone(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz)
 }
 
 interface PixDialogProps {

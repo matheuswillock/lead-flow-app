@@ -38,7 +38,7 @@ import { useBackofficeClientDetails } from "../context/BackofficeClientDetailsCo
 import { BackofficeClientEditDialog } from "../components/BackofficeClientEditDialog"
 import { BackofficeClientDeleteDialog } from "../components/BackofficeClientDeleteDialog"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz, parseDateKeyToUtc } from "@/lib/dates"
+import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 
 const INVOICE_STATUS_BADGES: Record<
   "paid" | "overdue" | "upcoming" | "other",
@@ -82,12 +82,12 @@ const INVOICE_PERIOD_OPTIONS = [
 ] as const
 
 function formatDate(value: string, tz: string) {
-  return formatInTz(new Date(value), "dd/MM/yyyy", tz)
+  return formatIntimezone(new Date(value), "dd/MM/yyyy", tz)
 }
 
 function formatNullableDate(value: string | null, tz: string) {
   if (!value) return "—"
-  return formatInTz(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz)
+  return formatIntimezone(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz)
 }
 
 function formatCurrency(value: number) {

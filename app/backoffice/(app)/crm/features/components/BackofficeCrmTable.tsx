@@ -93,7 +93,6 @@ import {
 } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { formatInTz } from "@/lib/dates"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { useBackofficeCrm } from "../context/BackofficeCrmHook"
 import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
@@ -107,6 +106,7 @@ import {
   type BackofficeLeadScheduleInput,
   type BackofficeLeadStatusKey,
 } from "../context/BackofficeCrmTypes"
+import { formatDocumentInput } from "@/lib/utils/masksAndSanitize"
 
 const TABLE_COLUMN_OPTIONS: { key: BackofficeCrmTableColumnKey; label: string }[] = [
   { key: "name", label: "Nome" },
@@ -124,21 +124,6 @@ const TABLE_COLUMN_OPTIONS: { key: BackofficeCrmTableColumnKey; label: string }[
 ]
 
 const headerButtonClass = "h-8 w-full justify-center px-2 hover:bg-accent"
-
-function formatDateTime(value: string, tz: string): string {
-  try {
-    return formatInTz(new Date(value), "dd/MM/yyyy HH:mm", tz)
-  } catch {
-    return value
-  }
-}
-
-function formatCnpj(value: string | null): string {
-  if (!value) return "-"
-  const digits = value.replace(/\D/g, "")
-  if (digits.length !== 14) return value
-  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`
-}
 
 function getStatusBadgeClass(status: BackofficeLeadStatusKey): string {
   const classes: Record<BackofficeLeadStatusKey, string> = {
@@ -498,7 +483,7 @@ export function BackofficeCrmTable() {
         accessorKey: "cpfCnpj",
         meta: { label: "Documento" },
         header: ({ column }) => <SortableHeader column={column} label="Documento" />,
-        cell: ({ row }) => formatCnpj(row.original.cpfCnpj),
+        cell: ({ row }) => formatDocumentInput(row.original.cpfCnpj),
       },
       {
         accessorKey: "status",
@@ -815,3 +800,7 @@ export function BackofficeCrmTable() {
     </div>
   )
 }
+function formatDateTime(meetingDate: string, tz: string): any {
+  throw new Error("Function not implemented.")
+}
+

@@ -6,22 +6,36 @@ import type { Locale } from "date-fns"
 /**
  * Formats a date using a date-fns pattern string, expressed in the given timezone.
  *
- * Example: formatInTz(d, "dd/MM/yyyy HH:mm", "America/Sao_Paulo")
+ * Example: formatIntimezone(d, "dd/MM/yyyy HH:mm", "America/Sao_Paulo")
  */
-export function formatInTz(
+export function formatIntimezone(
   date: Date,
   pattern: string,
-  tz: string,
+  timezone: string,
   locale: Locale = ptBR
 ): string {
-  const tzDate = new TZDate(date, tz)
-  return format(tzDate, pattern, { locale })
+  const timezoneDate = new TZDate(date, timezone)
+  return format(timezoneDate, pattern, { locale })
 }
 
 /**
  * Formats a date as a relative string ("há 3 dias", "em 2 horas") in the given timezone.
  */
-export function formatRelativeInTz(date: Date, tz: string, locale: Locale = ptBR): string {
-  const tzDate = new TZDate(date, tz)
-  return formatDistanceToNow(tzDate, { addSuffix: true, locale })
+export function formatRelativeIntimezone(date: Date, timezone: string, locale: Locale = ptBR): string {
+  const timezoneDate = new TZDate(date, timezone)
+  return formatDistanceToNow(timezoneDate, { addSuffix: true, locale })
+}
+
+/**
+ * Formats a date and time string in the given timezone.
+ * @param value 
+ * @param timezone 
+ * @returns 
+ */
+function formatDateTime(value: string, timezone: string): string {
+  try {
+    return formatIntimezone(new Date(value), "dd/MM/yyyy HH:mm", timezone)
+  } catch {
+    return value
+  }
 }

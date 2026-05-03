@@ -17,7 +17,7 @@ import {
   resolveLeadTimeState,
   type TeamStatusRulesResponse,
 } from "@/lib/teamStatusRules";
-import { formatInTz, formatLocalDateValue } from "@/lib/dates";
+import { formatIntimezone, formatLocalDateValue } from "@/lib/dates"
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -127,7 +127,7 @@ const COLUMNS: { key: ColumnKey; title: string }[] = [
 
 function formatDate(iso: string, tz: string) {
   try {
-    return formatInTz(new Date(iso), "dd/MM/yyyy", tz);
+    return formatIntimezone(new Date(iso), "dd/MM/yyyy", tz);
   } catch {
     return iso;
   }
@@ -448,11 +448,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
                 
                 // 🎉 Notificar usuário sobre mudanças específicas
                 if (updatedLead.meetingDate !== currentSelected.meetingDate && updatedLead.meetingDate) {
-                  const meetingDateFormatted = formatInTz(
+                  const meetingDateFormatted = formatIntimezone(
                     new Date(updatedLead.meetingDate),
                     "dd 'de' MMMM 'de' yyyy HH:mm",
-                    tz
-                  );
+                    tz,
+                  )
                   toast.info(`📅 Data de reunião atualizada: ${meetingDateFormatted}`, {
                     duration: 3000,
                   });

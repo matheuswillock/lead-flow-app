@@ -48,24 +48,7 @@ import {
   type BackofficeLeadStatusKey,
 } from "../context/BackofficeCrmTypes"
 import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
-
-// Remove todos os caracteres não numéricos de CPF ou CNPJ
-function sanitizeCpfCnpjDigits(value: string): string {
-  return value.replace(/\D/g, "").slice(0, 14)
-}
-
-// Aplica máscara dinâmica de CPF ou CNPJ
-function formatCpfCnpjInput(value: string): string {
-  const digits = sanitizeCpfCnpjDigits(value)
-  if (digits.length <= 3) return digits
-  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`
-  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`
-  if (digits.length <= 11)
-    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`
-  if (digits.length <= 14)
-    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`
-  return value
-}
+import { formatDocumentInput } from "@/lib/utils/masksAndSanitize"
 
 const NO_SELECTION_VALUE = "__none__"
 const DEFAULT_STATUS: BackofficeLeadStatusKey = "new_opportunity"
@@ -225,7 +208,7 @@ function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
     name: lead.name,
     email: lead.email ?? "",
     phone: formatPhoneInput(lead.phone ?? ""),
-    cpfCnpj: formatCpfCnpjInput(lead.cpfCnpj ?? ""),
+    cpfCnpj: formatDocumentInput(lead.cpfCnpj ?? ""),
     notes: lead.notes ?? "",
     status: lead.status,
     sdrBackofficeUserId: lead.sdrBackofficeUserId ?? "",
@@ -370,7 +353,7 @@ export function BackofficeLeadFormDialog() {
         name: values.name.trim(),
         email: nullIfEmpty(values.email),
         phone: nullIfEmpty(sanitizePhoneDigits(values.phone)),
-        cpfCnpj: nullIfEmpty(sanitizeCpfCnpjDigits(values.cpfCnpj)),
+        cpfCnpj: nullIfEmpty(formatDocumentInput(values.cpfCnpj)),
         notes: nullIfEmpty(values.notes),
         sdrBackofficeUserId: nullIfEmpty(values.sdrBackofficeUserId),
         closerBackofficeUserId: nullIfEmpty(values.closerBackofficeUserId),
@@ -532,9 +515,9 @@ export function BackofficeLeadFormDialog() {
                               <Input
                                 {...field}
                                 placeholder="CPF ou CNPJ"
-                                value={formatCpfCnpjInput(field.value ?? "")}
+                                value={formatDocumentInput(field.value ?? "")}
                                 onChange={(event) =>
-                                  field.onChange(formatCpfCnpjInput(event.target.value))
+                                  field.onChange(formatDocumentInput(event.target.value))
                                 }
                                 maxLength={18}
                                 disabled={isSubmitting}

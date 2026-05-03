@@ -39,7 +39,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { formatInTz } from "@/lib/dates"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
 import { BackofficeAdhesionDialog } from "../components/BackofficeAdhesionDialog"
@@ -51,12 +50,14 @@ import {
   type BackofficeAdhesionItem,
   type BackofficeAdhesionStatusKey,
 } from "../context/BackofficeAdhesionsTypes"
+import { formatDocumentInput } from "@/lib/utils/masksAndSanitize"
+import { formatIntimezone } from "@/lib/dates/formatters"
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50]
 
 function formatDate(value: string, tz: string): string {
   try {
-    return formatInTz(new Date(value), "dd/MM/yyyy HH:mm", tz)
+    return formatIntimezone(new Date(value), "dd/MM/yyyy HH:mm", tz)
   } catch {
     return value
   }
@@ -225,6 +226,7 @@ export function BackofficeAdhesionsContainer() {
             <TableRow>
               <TableHead>Nome</TableHead>
               <TableHead>Lead</TableHead>
+              <TableHead>Documento</TableHead>
               <TableHead>Vencimento</TableHead>
               <TableHead>Data da adesão</TableHead>
               <TableHead>Status</TableHead>
@@ -253,6 +255,7 @@ export function BackofficeAdhesionsContainer() {
                 <TableRow key={adhesion.id}>
                   <TableCell className="font-medium">{adhesion.fullName}</TableCell>
                   <TableCell>{adhesion.leadName}</TableCell>
+                  <TableCell>{formatDocumentInput(adhesion.cpfCnpj)}</TableCell>
                   <TableCell>{formatDate(adhesion.expiresAt, tz)}</TableCell>
                   <TableCell>{formatDate(adhesion.createdAt, tz)}</TableCell>
                   <TableCell>
@@ -385,7 +388,9 @@ export function BackofficeAdhesionsContainer() {
         <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Link de adesão</DialogTitle>
-            <DialogDescription>Envie este link para o cliente concluir o checkout.</DialogDescription>
+            <DialogDescription>
+              Envie este link para o cliente concluir o checkout.
+            </DialogDescription>
           </DialogHeader>
           {resendResult?.publicUrl ? (
             <div className="flex flex-1 flex-col gap-2 overflow-y-auto">

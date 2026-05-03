@@ -24,7 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useTimezone } from '@/app/context/TimezoneContext'
-import { formatInTz } from '@/lib/dates'
+import { formatIntimezone } from "@/lib/dates"
 
 type CreditPlan = 'starter' | 'plus' | 'pro' | 'business'
 
@@ -136,8 +136,8 @@ export function EmailCreditsCard() {
           <CardTitle className="text-lg">Créditos de Email</CardTitle>
         </div>
         <CardDescription>
-          Pacote mensal para disparo de campanhas de email. Créditos expiram no fim do ciclo e
-          o excedente é cobrado automaticamente.
+          Pacote mensal para disparo de campanhas de email. Créditos expiram no fim do ciclo e o
+          excedente é cobrado automaticamente.
         </CardDescription>
       </CardHeader>
 
@@ -163,8 +163,8 @@ export function EmailCreditsCard() {
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Créditos usados</span>
                 <span>
-                  {status.creditsUsed.toLocaleString('pt-BR')} /{' '}
-                  {status.monthlyCredits.toLocaleString('pt-BR')}
+                  {status.creditsUsed.toLocaleString("pt-BR")} /{" "}
+                  {status.monthlyCredits.toLocaleString("pt-BR")}
                 </span>
               </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-border">
@@ -175,7 +175,7 @@ export function EmailCreditsCard() {
                       100,
                       status.monthlyCredits > 0
                         ? (status.creditsUsed / status.monthlyCredits) * 100
-                        : 0
+                        : 0,
                     )}%`,
                   }}
                 />
@@ -183,7 +183,7 @@ export function EmailCreditsCard() {
             </div>
             {status.currentPeriodEnd && (
               <p className="text-xs text-muted-foreground">
-                Renova em {formatInTz(new Date(status.currentPeriodEnd), 'dd/MM/yyyy', tz)}
+                Renova em {formatIntimezone(new Date(status.currentPeriodEnd), "dd/MM/yyyy", tz)}
               </p>
             )}
             <Button
@@ -213,9 +213,7 @@ export function EmailCreditsCard() {
               <div
                 key={plan.id}
                 className={`relative rounded-lg border p-4 space-y-3 transition-colors ${
-                  isCurrent
-                    ? 'border-primary bg-primary/5'
-                    : 'hover:border-primary/40'
+                  isCurrent ? "border-primary bg-primary/5" : "hover:border-primary/40"
                 }`}
               >
                 {isCurrent && (
@@ -234,7 +232,7 @@ export function EmailCreditsCard() {
                   </p>
                 </div>
                 <ul className="space-y-1 text-sm text-muted-foreground">
-                  <li>{plan.credits.toLocaleString('pt-BR')} emails/mês</li>
+                  <li>{plan.credits.toLocaleString("pt-BR")} emails/mês</li>
                   <li>Excedente: R${plan.overage.toFixed(2)}/100 emails</li>
                 </ul>
                 {!isCurrent && (
@@ -245,10 +243,10 @@ export function EmailCreditsCard() {
                     onClick={() => handleSubscribe(plan.id)}
                   >
                     {isLoading
-                      ? 'Ativando...'
+                      ? "Ativando..."
                       : status?.hasSubscription
-                      ? 'Mudar para este plano'
-                      : 'Ativar'}
+                        ? "Mudar para este plano"
+                        : "Ativar"}
                   </Button>
                 )}
               </div>
@@ -273,7 +271,7 @@ export function EmailCreditsCard() {
               disabled={canceling}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {canceling ? 'Cancelando...' : 'Sim, cancelar'}
+              {canceling ? "Cancelando..." : "Sim, cancelar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

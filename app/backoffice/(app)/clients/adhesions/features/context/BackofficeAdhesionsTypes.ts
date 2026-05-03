@@ -14,6 +14,7 @@ export interface BackofficeAdhesionItem {
   fullName: string
   phone: string
   email: string | null
+  cpfCnpj: string | null
   sdrBackofficeUserId: string | null
   closerBackofficeUserId: string | null
   status: BackofficeAdhesionStatusKey

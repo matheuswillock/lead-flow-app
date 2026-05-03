@@ -1,7 +1,7 @@
 import { assertResend } from "@/lib/email";
 import { getAppUrl, getFullUrl } from '@/lib/utils/app-url';
 import type { Attachment } from "resend";
-import { DEFAULT_TZ, formatInTz, parseDateKeyToUtc, resolveTimezone } from "@/lib/dates";
+import { DEFAULT_TZ, formatIntimezone, parseDateKeyToUtc, resolveTimezone } from "@/lib/dates";
 
 export interface EmailOptions {
   to: string[];
@@ -164,12 +164,12 @@ export class EmailService {
 
     const tz = resolveTimezone(timezone ?? DEFAULT_TZ);
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return formatInTz(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz);
+      return formatIntimezone(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz);
     }
 
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return undefined;
-    return formatInTz(parsed, "dd/MM/yyyy", tz);
+    return formatIntimezone(parsed, "dd/MM/yyyy", tz);
   }
 
   private buildMeetingInviteIcs(data: MeetingInviteEmailData) {
@@ -1153,8 +1153,8 @@ export class EmailService {
 
   async sendMeetingInviteEmail(data: MeetingInviteEmailData) {
     const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
-    const formattedDate = formatInTz(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
-    const formattedTime = formatInTz(data.meetingDate, "HH:mm", timezone);
+    const formattedDate = formatIntimezone(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
+    const formattedTime = formatIntimezone(data.meetingDate, "HH:mm", timezone);
     const title = data.meetingTitle || `Estudo Plano de Saúde: ${data.leadName}`;
     const linkMarkup = data.meetingLink
       ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
@@ -1226,8 +1226,8 @@ export class EmailService {
 
   async sendCloserScheduleNotificationEmail(data: CloserScheduleNotificationEmailData) {
     const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
-    const formattedDate = formatInTz(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
-    const formattedTime = formatInTz(data.meetingDate, "HH:mm", timezone);
+    const formattedDate = formatIntimezone(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
+    const formattedTime = formatIntimezone(data.meetingDate, "HH:mm", timezone);
     const subjectPrefix = data.isReschedule ? "Reunião reagendada" : "Reunião agendada";
     const subject = `${subjectPrefix}: ${data.meetingTitle}`;
     const scheduleIntroText = data.isReschedule

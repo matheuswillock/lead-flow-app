@@ -67,7 +67,7 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
   }): Promise<Output> {
     try {
       const result = await this.service.list(input)
-      return new Output(true, [], [], result)
+      return new Output(true, ["Adesões listadas com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeAdhesionUseCase][list]", error)
       return new Output(false, [], ["Erro ao listar adesões"], null)
@@ -77,7 +77,7 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
   async getOptions(): Promise<Output> {
     try {
       const result = await this.service.getOptions()
-      return new Output(true, [], [], result)
+      return new Output(true, ["Opções de adesão carregadas com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeAdhesionUseCase][getOptions]", error)
       return new Output(false, [], ["Erro ao carregar opções de adesão"], null)

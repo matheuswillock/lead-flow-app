@@ -88,7 +88,7 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     fullName: adhesion.fullName,
     phone: adhesion.phone,
     email: adhesion.email ?? "",
-    cpfCnpj: "",
+    cpfCnpj: adhesion.cpfCnpj ?? "",
     cycle: adhesion.cycle,
     extraTeams: adhesion.extraTeams,
     extraUsers: adhesion.extraUsers,

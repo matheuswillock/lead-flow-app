@@ -4,7 +4,7 @@ import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createClient } from "@supabase/supabase-js";
 import { getFullUrl } from "@/lib/utils/app-url";
-import { addMonthsInTz, formatInTz, resolveTimezone, startOfDayInTz } from "@/lib/dates";
+import { addMonthsInTz, formatIntimezone, resolveTimezone, startOfDayInTz } from "@/lib/dates";
 
 // Helper para detectar ambiente de produção
 function getIsProduction() {
@@ -170,9 +170,9 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       // A segunda cobrança será automaticamente agendada para +1 mês (MONTHLY)
       const ownerTz = resolveTimezone(profile.timezone);
       const periodStart = startOfDayInTz(new Date(), ownerTz);
-      const nextDueDateStr = formatInTz(periodStart, "yyyy-MM-dd HH:mm:ss", ownerTz);
+      const nextDueDateStr = formatIntimezone(periodStart, "yyyy-MM-dd HH:mm:ss", ownerTz);
       const endDate = addMonthsInTz(periodStart, 12, ownerTz);
-      const endDateStr = formatInTz(endDate, "yyyy-MM-dd HH:mm:ss", ownerTz);
+      const endDateStr = formatIntimezone(endDate, "yyyy-MM-dd HH:mm:ss", ownerTz);
 
       console.info('📝 [createSubscriptionCheckout] Criando Asaas Checkout...');
       console.info('📅 [createSubscriptionCheckout] Datas da assinatura:', {
@@ -427,9 +427,9 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       // Usar checkout hospedado do Asaas (permite escolher forma de pagamento)
       const ownerTz = resolveTimezone(manager.timezone);
       const periodStart = startOfDayInTz(new Date(), ownerTz);
-      const nextDueDateStr = formatInTz(periodStart, "yyyy-MM-dd HH:mm:ss", ownerTz);
+      const nextDueDateStr = formatIntimezone(periodStart, "yyyy-MM-dd HH:mm:ss", ownerTz);
       const endDate = addMonthsInTz(periodStart, 12, ownerTz);
-      const endDateStr = formatInTz(endDate, "yyyy-MM-dd HH:mm:ss", ownerTz);
+      const endDateStr = formatIntimezone(endDate, "yyyy-MM-dd HH:mm:ss", ownerTz);
 
       console.info('📝 [createOperatorCheckout] Criando Asaas Checkout...');
       console.info('📅 [createOperatorCheckout] Datas:', {
