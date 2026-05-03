@@ -107,7 +107,7 @@ import {
   type BackofficeLeadStatusKey,
 } from "../context/BackofficeCrmTypes"
 import { formatDateTime } from "@/lib/dates/formatters"
-import { formatDocumentInput } from "@/lib/masks"
+import { formatDocumentInput, maskPhone } from "@/lib/masks"
 
 const TABLE_COLUMN_OPTIONS: { key: BackofficeCrmTableColumnKey; label: string }[] = [
   { key: "name", label: "Nome" },
@@ -478,7 +478,7 @@ export function BackofficeCrmTable() {
         accessorKey: "phone",
         meta: { label: "Telefone" },
         header: ({ column }) => <SortableHeader column={column} label="Telefone" />,
-        cell: ({ row }) => row.original.phone || "-",
+        cell: ({ row }) => maskPhone(row.original.phone ?? "") || "-",
       },
       {
         accessorKey: "cpfCnpj",
@@ -529,9 +529,7 @@ export function BackofficeCrmTable() {
         meta: { label: "Agendamento" },
         header: ({ column }) => <SortableHeader column={column} label="Agendamento" />,
         cell: ({ row }) =>
-          row.original.meetingDate
-            ? formatDateTime(row.original.meetingDate, tz)
-            : "-",
+          row.original.meetingDate ? formatDateTime(row.original.meetingDate, tz) : "-",
       },
       {
         accessorKey: "notes",

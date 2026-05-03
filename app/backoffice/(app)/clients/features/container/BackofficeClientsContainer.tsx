@@ -30,6 +30,7 @@ import { useTimezone } from "@/app/context/TimezoneContext"
 import { BackofficeAdhesionDialog } from "../../adhesions/features/components/BackofficeAdhesionDialog"
 import { BackofficeAdhesionsService } from "../../adhesions/features/services/BackofficeAdhesionsService"
 import { formatIntimezone } from "@/lib/dates/formatters"
+import { maskPhone } from "@/lib/masks"
 
 const CLIENTS_PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
 const adhesionsService = new BackofficeAdhesionsService()
@@ -155,7 +156,7 @@ export function BackofficeClientsContainer() {
       )}
 
       <div className="rounded-md border overflow-hidden">
-        <div className="grid grid-cols-[1.8fr_1fr_1.8fr_1.2fr_0.8fr_1.2fr_1fr_0.9fr] gap-3 border-b bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground min-w-[1200px]">
+        <div className="grid grid-cols-[1.8fr_1fr_1.8fr_1.2fr_0.8fr_1.2fr_1fr_0.9fr] gap-3 border-b bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground min-w-300">
           <span className="text-center">Usuário master</span>
           <span className="text-center">Criado em</span>
           <span className="text-center">E-mail</span>
@@ -202,7 +203,7 @@ export function BackofficeClientsContainer() {
                     <span className="font-medium truncate text-center">{client.fullName || "Sem nome"}</span>
                     <span className="text-center">{formatDate(client.createdAt, tz)}</span>
                     <span className="truncate text-center">{client.email}</span>
-                    <span className="truncate text-center">{client.phone || "—"}</span>
+                    <span className="truncate text-center">{maskPhone(client.phone ?? "") || "—"}</span>
                     <span className="inline-flex items-center justify-center gap-1">
                       {client.teamsCount}
                     </span>

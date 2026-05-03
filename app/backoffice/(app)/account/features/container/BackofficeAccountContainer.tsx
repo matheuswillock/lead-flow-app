@@ -26,7 +26,7 @@ import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth"
 import { getProfileTimezoneOptions } from "@/lib/dates"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
 import type { BackofficeAccountUpdateInput } from "../context/BackofficeAccountTypes"
-import { formatDocumentInput } from "@/lib/masks"
+import { formatDocumentInput, maskPhone } from "@/lib/masks"
 
 const EMPTY_FORM: BackofficeAccountUpdateInput = {
   fullName: "",
@@ -338,7 +338,7 @@ export function BackofficeAccountContainer() {
                   <Label htmlFor="backoffice-account-phone">Telefone</Label>
                   <Input
                     id="backoffice-account-phone"
-                    value={form.phone ?? ""}
+                    value={maskPhone(form.phone ?? "")}
                     onChange={(event) => setField("phone", event.target.value)}
                   />
                 </div>

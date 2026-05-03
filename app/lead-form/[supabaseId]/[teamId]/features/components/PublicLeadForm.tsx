@@ -6,14 +6,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import Image from "next/image";
-
 import {
   publicLeadFormSchema,
   type PublicLeadFormData,
 } from "@/lib/validations/publicLeadFormSchema";
 import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
 import { SchedulingSection } from "./SchedulingSection";
-
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
-import { maskPhone, formatDocumentInput, unmask } from "@/lib/masks";
+import { maskPhone, formatDocumentInput, unmask, normalizeLeadPhoneDigits } from "@/lib/masks";
 import { useIsInView } from "@/hooks/use-is-in-view";
 import {
   getPendingRequiredFieldsFeedback,
@@ -60,13 +58,6 @@ const formatCurrencyInput = (value: string): string => {
 
 const MAX_CURRENCY_VALUE = 9_999_999_999.99;
 const MAX_CURRENCY_LABEL = "10.000.000.000,00";
-
-const normalizeLeadPhoneDigits = (value: string): string => {
-  if (!value) return "";
-  const digits = value.replace(/\D/g, "");
-  if (digits.length <= 11) return digits;
-  return digits.slice(0, 11);
-};
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 

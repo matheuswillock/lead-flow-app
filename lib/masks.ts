@@ -177,3 +177,10 @@ export function formatDocumentInput(value: string | null): string {
 export function sanitizeDocumentDigits(value: string): string {
   return value.replace(/\D/g, "").slice(0, 14)
 }
+
+export function normalizeLeadPhoneDigits(value: string): string {
+  if (!value) return "";
+  const digits = value.replace(/\D/g, "");
+  if (digits.length <= 11) return digits;
+  return digits.slice(0, 11);
+};
