@@ -186,7 +186,7 @@ export function BackofficeClientEditDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-cpfCnpj">CPF/CNPJ (opcional)</Label>
+              <Label htmlFor="edit-cpfCnpj">Documento</Label>
               <Input
                 id="edit-cpfCnpj"
                 placeholder="000.000.000-00 ou 00.000.000/0000-00"

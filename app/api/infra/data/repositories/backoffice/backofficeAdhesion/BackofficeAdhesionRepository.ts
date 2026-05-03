@@ -23,6 +23,8 @@ const backofficeAdhesionUserSelect = {
     select: {
       fullName: true,
       email: true,
+      cpfCnpj: true,
+      phone: true,
     },
   },
 } satisfies Prisma.BackofficeUserSelect
@@ -32,6 +34,7 @@ const backofficeAdhesionLeadSelect = {
   name: true,
   email: true,
   phone: true,
+  cpfCnpj: true,
   status: true,
   sdrBackofficeUserId: true,
   closerBackofficeUserId: true,
@@ -65,6 +68,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           leadId: data.leadId,
           fullName: data.fullName,
           phone: data.phone,
+          cpfCnpj: data.cpfCnpj,
           plan: data.plan,
           cycle: data.cycle,
           modules: data.modules,
@@ -168,6 +172,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       data: {
         ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
         ...(data.phone !== undefined ? { phone: data.phone } : {}),
+        ...(data.cpfCnpj !== undefined ? { cpfCnpj: data.cpfCnpj } : {}),
         ...(data.cycle !== undefined ? { cycle: data.cycle } : {}),
         ...(data.modules !== undefined ? { modules: data.modules } : {}),
         ...(data.extraTeams !== undefined ? { extraTeams: data.extraTeams } : {}),

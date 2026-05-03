@@ -283,7 +283,10 @@ export function BackofficeAccountContainer() {
                 <h2 className="text-base font-semibold">Ícone de perfil</h2>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                   <Avatar className="h-24 w-24">
-                    <AvatarImage src={account.profileIconUrl ?? undefined} alt={account.fullName ?? "Backoffice"} />
+                    <AvatarImage
+                      src={account.profileIconUrl ?? undefined}
+                      alt={account.fullName ?? "Backoffice"}
+                    />
                     <AvatarFallback>{initials(account.fullName)}</AvatarFallback>
                   </Avatar>
                   <div className="flex flex-wrap gap-2">
@@ -294,7 +297,11 @@ export function BackofficeAccountContainer() {
                       className="hidden"
                       onChange={(event) => void handleIconChange(event.target.files?.[0] ?? null)}
                     />
-                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
                       <Upload className="h-4 w-4" />
                       Enviar imagem
                     </Button>
@@ -312,58 +319,109 @@ export function BackofficeAccountContainer() {
               <section className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="backoffice-account-name">Nome</Label>
-                  <Input id="backoffice-account-name" value={form.fullName} onChange={(event) => setField("fullName", event.target.value)} />
+                  <Input
+                    id="backoffice-account-name"
+                    value={form.fullName}
+                    onChange={(event) => setField("fullName", event.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="backoffice-account-email">Email</Label>
-                  <Input id="backoffice-account-email" value={form.email} onChange={(event) => setField("email", event.target.value)} />
+                  <Input
+                    id="backoffice-account-email"
+                    value={form.email}
+                    onChange={(event) => setField("email", event.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="backoffice-account-phone">Telefone</Label>
-                  <Input id="backoffice-account-phone" value={form.phone ?? ""} onChange={(event) => setField("phone", event.target.value)} />
+                  <Input
+                    id="backoffice-account-phone"
+                    value={form.phone ?? ""}
+                    onChange={(event) => setField("phone", event.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="backoffice-account-document">CPF/CNPJ (opcional)</Label>
-                  <Input id="backoffice-account-document" value={form.cpfCnpj ?? ""} onChange={(event) => setField("cpfCnpj", event.target.value)} />
+                  <Label htmlFor="backoffice-account-document">Documento</Label>
+                  <Input
+                    id="backoffice-account-document"
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                    value={form.cpfCnpj ?? ""}
+                    onChange={(event) => setField("cpfCnpj", event.target.value)}
+                  />
                 </div>
               </section>
 
               <section className="space-y-4">
-                <h2 className="text-base font-semibold text-muted-foreground">Endereço (opcional)</h2>
+                <h2 className="text-base font-semibold text-muted-foreground">
+                  Endereço (opcional)
+                </h2>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="backoffice-account-postal-code">CEP</Label>
-                    <Input id="backoffice-account-postal-code" value={form.postalCode ?? ""} onChange={(event) => setField("postalCode", event.target.value)} />
+                    <Input
+                      id="backoffice-account-postal-code"
+                      value={form.postalCode ?? ""}
+                      onChange={(event) => setField("postalCode", event.target.value)}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="backoffice-account-city">Cidade</Label>
-                    <Input id="backoffice-account-city" value={form.city ?? ""} onChange={(event) => setField("city", event.target.value)} />
+                    <Input
+                      id="backoffice-account-city"
+                      value={form.city ?? ""}
+                      onChange={(event) => setField("city", event.target.value)}
+                    />
                   </div>
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="backoffice-account-address">Endereço</Label>
-                    <Input id="backoffice-account-address" value={form.address ?? ""} onChange={(event) => setField("address", event.target.value)} />
+                    <Input
+                      id="backoffice-account-address"
+                      value={form.address ?? ""}
+                      onChange={(event) => setField("address", event.target.value)}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="backoffice-account-number">Número</Label>
-                    <Input id="backoffice-account-number" value={form.addressNumber ?? ""} onChange={(event) => setField("addressNumber", event.target.value)} />
+                    <Input
+                      id="backoffice-account-number"
+                      value={form.addressNumber ?? ""}
+                      onChange={(event) => setField("addressNumber", event.target.value)}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="backoffice-account-neighborhood">Bairro</Label>
-                    <Input id="backoffice-account-neighborhood" value={form.neighborhood ?? ""} onChange={(event) => setField("neighborhood", event.target.value)} />
+                    <Input
+                      id="backoffice-account-neighborhood"
+                      value={form.neighborhood ?? ""}
+                      onChange={(event) => setField("neighborhood", event.target.value)}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="backoffice-account-complement">Complemento</Label>
-                    <Input id="backoffice-account-complement" value={form.complement ?? ""} onChange={(event) => setField("complement", event.target.value)} />
+                    <Input
+                      id="backoffice-account-complement"
+                      value={form.complement ?? ""}
+                      onChange={(event) => setField("complement", event.target.value)}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="backoffice-account-state">Estado</Label>
-                    <Input id="backoffice-account-state" value={form.state ?? ""} onChange={(event) => setField("state", event.target.value)} />
+                    <Input
+                      id="backoffice-account-state"
+                      value={form.state ?? ""}
+                      onChange={(event) => setField("state", event.target.value)}
+                    />
                   </div>
                 </div>
               </section>
 
               <div className="flex justify-end">
-                <Button type="button" onClick={() => void handleSaveProfile()} disabled={isSavingProfile}>
+                <Button
+                  type="button"
+                  onClick={() => void handleSaveProfile()}
+                  disabled={isSavingProfile}
+                >
                   {isSavingProfile ? "Salvando..." : "Salvar alterações"}
                 </Button>
               </div>
@@ -386,7 +444,13 @@ export function BackofficeAccountContainer() {
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                     />
-                    <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-8 w-8" onClick={() => setShowPassword((prev) => !prev)}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1 h-8 w-8"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                    >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
@@ -400,20 +464,36 @@ export function BackofficeAccountContainer() {
                       value={confirmPassword}
                       onChange={(event) => setConfirmPassword(event.target.value)}
                     />
-                    <Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1 h-8 w-8" onClick={() => setShowConfirmPassword((prev) => !prev)}>
-                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-1 top-1 h-8 w-8"
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </Button>
                   </div>
                 </div>
                 <div className="rounded-lg border border-border/60 p-4 text-xs text-muted-foreground">
                   <p className="mb-2 text-sm font-medium text-foreground">Requisitos da senha:</p>
-                  <p>Mínimo de 6 caracteres, uma letra maiúscula, um número e um caractere especial.</p>
+                  <p>
+                    Mínimo de 6 caracteres, uma letra maiúscula, um número e um caractere especial.
+                  </p>
                 </div>
                 <div className="flex justify-end">
                   <Button
                     type="button"
                     onClick={() => void handleSavePassword()}
-                    disabled={isSavingPassword || !hasStrongPassword(password) || password !== confirmPassword}
+                    disabled={
+                      isSavingPassword ||
+                      !hasStrongPassword(password) ||
+                      password !== confirmPassword
+                    }
                   >
                     {isSavingPassword ? "Atualizando..." : "Atualizar senha"}
                   </Button>
@@ -442,7 +522,9 @@ export function BackofficeAccountContainer() {
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 p-4">
                   <div className="space-y-1">
                     <p className="text-sm font-medium">
-                      {account.googleCalendarConnected ? "Conta vinculada" : "Conectar conta Google"}
+                      {account.googleCalendarConnected
+                        ? "Conta vinculada"
+                        : "Conectar conta Google"}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {account.googleCalendarConnected
@@ -453,7 +535,12 @@ export function BackofficeAccountContainer() {
                   {account.googleCalendarConnected ? (
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button type="button" variant="outline" className="text-destructive" disabled={isDisconnectingGoogle}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="text-destructive"
+                          disabled={isDisconnectingGoogle}
+                        >
                           Desconectar Google
                         </Button>
                       </AlertDialogTrigger>
@@ -468,15 +555,25 @@ export function BackofficeAccountContainer() {
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel disabled={isDisconnectingGoogle}>Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => void handleDisconnectGoogle()} disabled={isDisconnectingGoogle}>
+                          <AlertDialogCancel disabled={isDisconnectingGoogle}>
+                            Cancelar
+                          </AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => void handleDisconnectGoogle()}
+                            disabled={isDisconnectingGoogle}
+                          >
                             {isDisconnectingGoogle ? "Desconectando..." : "Desconectar"}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
                   ) : (
-                    <Button type="button" variant="outline" onClick={() => void handleConnectGoogle()} disabled={isConnectingGoogle}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void handleConnectGoogle()}
+                      disabled={isConnectingGoogle}
+                    >
                       <Link2 className="h-4 w-4" />
                       {isConnectingGoogle ? "Conectando..." : "Conectar Google"}
                     </Button>
@@ -495,13 +592,21 @@ export function BackofficeAccountContainer() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
-                    {isUpdatingTimezone ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
+                    {isUpdatingTimezone ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Calendar className="h-4 w-4" />
+                    )}
                     {isUpdatingTimezone ? "Salvando..." : selectedTimezoneLabel}
                   </div>
                 </div>
                 <div className="rounded-lg border border-border/60 p-4">
                   <Label htmlFor="backoffice-account-timezone">Timezone da conta</Label>
-                  <Select value={account.timezone} onValueChange={(value) => void handleTimezoneChange(value)} disabled={isUpdatingTimezone}>
+                  <Select
+                    value={account.timezone}
+                    onValueChange={(value) => void handleTimezoneChange(value)}
+                    disabled={isUpdatingTimezone}
+                  >
                     <SelectTrigger id="backoffice-account-timezone" className="mt-2">
                       <SelectValue />
                     </SelectTrigger>

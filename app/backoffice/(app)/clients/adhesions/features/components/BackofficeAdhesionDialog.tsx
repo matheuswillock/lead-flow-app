@@ -332,30 +332,30 @@ export function BackofficeAdhesionDialog({
 
         {result ? (
           <div className="flex flex-1 flex-col gap-4 overflow-y-auto py-2">
-              <div className="rounded-md border p-4">
-                {result.publicUrl ? (
-                  <>
-                    <Label>Link público</Label>
-                    <div className="mt-2 flex gap-2">
-                      <Input value={result.publicUrl} readOnly />
-                      <Button type="button" size="icon" onClick={() => copyLink(result.publicUrl!)}>
-                        <Copy data-icon="inline-start" />
-                        <span className="sr-only">Copiar link</span>
-                      </Button>
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Expira em {new Date(result.expiresAt).toLocaleString("pt-BR")}.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-medium">Adesão ativada</p>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      O cliente recebeu o e-mail para definir senha e acessar o Corretor Studio.
-                    </p>
-                  </>
-                )}
-              </div>
+            <div className="rounded-md border p-4">
+              {result.publicUrl ? (
+                <>
+                  <Label>Link público</Label>
+                  <div className="mt-2 flex gap-2">
+                    <Input value={result.publicUrl} readOnly />
+                    <Button type="button" size="icon" onClick={() => copyLink(result.publicUrl!)}>
+                      <Copy data-icon="inline-start" />
+                      <span className="sr-only">Copiar link</span>
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Expira em {new Date(result.expiresAt).toLocaleString("pt-BR")}.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">Adesão ativada</p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    O cliente recebeu o e-mail para definir senha e acessar o Corretor Studio.
+                  </p>
+                </>
+              )}
+            </div>
           </div>
         ) : (
           <div className="dialog-scrollbar flex flex-1 flex-col gap-5 overflow-y-auto pr-1">
@@ -374,9 +374,7 @@ export function BackofficeAdhesionDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectItem value={NO_SELECTION_VALUE}>
-                        Selecione um lead
-                      </SelectItem>
+                      <SelectItem value={NO_SELECTION_VALUE}>Selecione um lead</SelectItem>
                       {(options?.leads ?? []).map((lead) => (
                         <SelectItem key={lead.id} value={lead.id}>
                           {lead.name}
@@ -443,9 +441,10 @@ export function BackofficeAdhesionDialog({
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="adhesion-cpf-cnpj">CPF/CNPJ (opcional)</Label>
+                  <Label htmlFor="adhesion-cpf-cnpj">Documento</Label>
                   <Input
                     id="adhesion-cpf-cnpj"
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
                     value={values.cpfCnpj}
                     onChange={(event) =>
                       updateValue("cpfCnpj", sanitizeCpfCnpj(event.target.value))
@@ -457,8 +456,9 @@ export function BackofficeAdhesionDialog({
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="adhesion-cpf-cnpj">CPF/CNPJ (opcional)</Label>
+                  <Label htmlFor="adhesion-cpf-cnpj">Documento</Label>
                   <Input
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
                     id="adhesion-cpf-cnpj"
                     value={values.cpfCnpj}
                     onChange={(event) =>
@@ -476,10 +476,7 @@ export function BackofficeAdhesionDialog({
                 <Select
                   value={values.sdrBackofficeUserId ?? NO_SELECTION_VALUE}
                   onValueChange={(value) =>
-                    updateValue(
-                      "sdrBackofficeUserId",
-                      value === NO_SELECTION_VALUE ? null : value
-                    )
+                    updateValue("sdrBackofficeUserId", value === NO_SELECTION_VALUE ? null : value)
                   }
                   disabled={isSubmitting || isLoadingOptions}
                 >
@@ -505,7 +502,7 @@ export function BackofficeAdhesionDialog({
                   onValueChange={(value) =>
                     updateValue(
                       "closerBackofficeUserId",
-                      value === NO_SELECTION_VALUE ? null : value
+                      value === NO_SELECTION_VALUE ? null : value,
                     )
                   }
                   disabled={isSubmitting || isLoadingOptions}
@@ -550,13 +547,11 @@ export function BackofficeAdhesionDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      {Object.entries(BACKOFFICE_ADHESION_CYCLE_LABELS).map(
-                        ([cycle, label]) => (
-                          <SelectItem key={cycle} value={cycle}>
-                            {label}
-                          </SelectItem>
-                        )
-                      )}
+                      {Object.entries(BACKOFFICE_ADHESION_CYCLE_LABELS).map(([cycle, label]) => (
+                        <SelectItem key={cycle} value={cycle}>
+                          {label}
+                        </SelectItem>
+                      ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
