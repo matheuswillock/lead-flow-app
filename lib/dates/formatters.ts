@@ -32,7 +32,7 @@ export function formatRelativeIntimezone(date: Date, timezone: string, locale: L
  * @param timezone 
  * @returns 
  */
-function formatDateTime(value: string, timezone: string): string {
+export function formatDateTime(value: string, timezone: string): string {
   try {
     return formatIntimezone(new Date(value), "dd/MM/yyyy HH:mm", timezone)
   } catch {

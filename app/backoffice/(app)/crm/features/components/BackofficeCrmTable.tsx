@@ -107,6 +107,7 @@ import {
   type BackofficeLeadStatusKey,
 } from "../context/BackofficeCrmTypes"
 import { formatDocumentInput } from "@/lib/utils/masksAndSanitize"
+import { formatDateTime } from "@/lib/dates/formatters"
 
 const TABLE_COLUMN_OPTIONS: { key: BackofficeCrmTableColumnKey; label: string }[] = [
   { key: "name", label: "Nome" },
@@ -528,7 +529,9 @@ export function BackofficeCrmTable() {
         meta: { label: "Agendamento" },
         header: ({ column }) => <SortableHeader column={column} label="Agendamento" />,
         cell: ({ row }) =>
-          row.original.meetingDate ? formatDateTime(row.original.meetingDate, tz) : "-",
+          row.original.meetingDate
+            ? formatDateTime(row.original.meetingDate, tz)
+            : "-",
       },
       {
         accessorKey: "notes",
@@ -799,8 +802,5 @@ export function BackofficeCrmTable() {
       />
     </div>
   )
-}
-function formatDateTime(meetingDate: string, tz: string): any {
-  throw new Error("Function not implemented.")
 }
 

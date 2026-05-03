@@ -17,7 +17,7 @@ export {
   getDayRangeInTz,
 } from "./core"
 
-export { formatIntimezone, formatRelativeIntimezone } from "./formatters"
+export { formatIntimezone, formatRelativeIntimezone, formatDateTime } from "./formatters"
 
 export {
   parseLocalToUtc,
