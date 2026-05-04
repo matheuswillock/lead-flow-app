@@ -259,6 +259,37 @@ export function PublicLeadForm() {
     }
   }, [form, isSubmitting, submitting]);
 
+  const isLoading = submitting || isSubmitting;
+  const isSchemaValid = publicLeadFormSchema.safeParse(watchedValues).success;
+  const hasManualBlockingErrors = Object.values(form.formState.errors).some((error) => {
+    return (error as { type?: string } | undefined)?.type === "manual";
+  });
+  const isSubmitDisabled =
+    isLoading || sdrs.length === 0 || !isSchemaValid || hasManualBlockingErrors;
+
+  useEffect(() => {
+    if (isSchemaValid) {
+      lastInvalidHashRef.current = "";
+    }
+  }, [isSchemaValid]);
+
+  useEffect(() => {
+    if (!hasReachedFormEnd) return;
+    if (!form.formState.isDirty) return;
+    if (isSubmitted) return;
+    if (isSchemaValid) return;
+    if (isLoading) return;
+
+    void handleInvalidSubmit();
+  }, [
+    form.formState.isDirty,
+    handleInvalidSubmit,
+    hasReachedFormEnd,
+    isSchemaValid,
+    isLoading,
+    isSubmitted,
+  ]);
+
   if (bootstrapStatus === "loading") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -315,37 +346,6 @@ export function PublicLeadForm() {
       </div>
     );
   }
-
-  const isLoading = submitting || isSubmitting;
-  const isSchemaValid = publicLeadFormSchema.safeParse(watchedValues).success;
-  const hasManualBlockingErrors = Object.values(form.formState.errors).some((error) => {
-    return (error as { type?: string } | undefined)?.type === "manual";
-  });
-  const isSubmitDisabled =
-    isLoading || sdrs.length === 0 || !isSchemaValid || hasManualBlockingErrors;
-
-  useEffect(() => {
-    if (isSchemaValid) {
-      lastInvalidHashRef.current = "";
-    }
-  }, [isSchemaValid]);
-
-  useEffect(() => {
-    if (!hasReachedFormEnd) return;
-    if (!form.formState.isDirty) return;
-    if (isSubmitted) return;
-    if (isSchemaValid) return;
-    if (isLoading) return;
-
-    void handleInvalidSubmit();
-  }, [
-    form.formState.isDirty,
-    handleInvalidSubmit,
-    hasReachedFormEnd,
-    isSchemaValid,
-    isLoading,
-    isSubmitted,
-  ]);
 
   return (
     <div className="flex min-h-screen items-start justify-center bg-background p-4 pt-8">
