@@ -39,6 +39,7 @@ This document defines the implementation governance for AI agents in this reposi
 - Prefer sessions focused on one layer at a time (backend OR frontend, not both).
 - Read at most 5 files before starting implementation. Do not explore the codebase extensively without necessity.
 - Before deleting any record, check for FK constraints in the schema.
+- **MUST NOT** create or edit Prisma migration SQL files manually. Always generate new migrations by running `bun run prisma:migrate` (defined in `package.json`). **MUST NOT** apply, deploy or push migration updates to the database without explicit authorization from the project owner.
 <!-- - Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`. -->
 
 ## Automated Validation (FOR ALL CHANGES)
