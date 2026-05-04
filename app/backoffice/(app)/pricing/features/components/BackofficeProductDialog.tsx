@@ -36,7 +36,7 @@ const CYCLES: { key: BackofficeAdhesionBillingCycleKey; label: string; months: n
 ]
 
 function normalizePriceInput(value: string): string {
-  return value.replace(/[^\d,.]/g, "").replace(",", ".")
+  return value.replace(/[^\d,]/g, "").replace(",", ".")
 }
 
 function displayCurrencyInput(raw: string): string {
