@@ -144,6 +144,8 @@ export interface BackofficeAdhesionOptionsDTO {
         baseMonthlyPrice: number
         extraTeamPrice: number
         extraUserPrice: number
+        pixBaseMonthlyPrice: number | null
+        cardBaseMonthlyPrice: number | null
       }
     >
   }

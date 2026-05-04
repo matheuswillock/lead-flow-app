@@ -181,20 +181,28 @@ export function BackofficeAdhesionDialog({
     baseMonthlyPrice: 0,
     extraTeamPrice: 0,
     extraUserPrice: 0,
+    pixBaseMonthlyPrice: null,
+    cardBaseMonthlyPrice: null,
   }
-  const monthlyTotal =
-    cyclePrices.baseMonthlyPrice +
+  const extrasMonthly =
     values.extraTeams * cyclePrices.extraTeamPrice +
     values.extraUsers * cyclePrices.extraUserPrice
-  const total = monthlyTotal * CYCLE_MONTHS[values.cycle]
+  const cardBaseMonthly = cyclePrices.cardBaseMonthlyPrice ?? cyclePrices.baseMonthlyPrice
+  const pixBaseMonthly = cyclePrices.pixBaseMonthlyPrice ?? cyclePrices.baseMonthlyPrice
+  const cardMonthlyTotal = cardBaseMonthly + extrasMonthly
+  const pixMonthlyTotal = pixBaseMonthly + extrasMonthly
+  const cycleMonths = CYCLE_MONTHS[values.cycle]
+  const cardTotal = cardMonthlyTotal * cycleMonths
+  const pixTotal = pixMonthlyTotal * cycleMonths
+  const total = cardTotal
   const commercialItems = [
     {
       key: "crm",
       name: "CRM",
       description: "Plano principal do Corretor Studio",
       quantity: "1 plano",
-      monthlyUnitPrice: cyclePrices.baseMonthlyPrice,
-      monthlyTotal: cyclePrices.baseMonthlyPrice,
+      monthlyUnitPrice: cardBaseMonthly,
+      monthlyTotal: cardBaseMonthly,
     },
     ...(values.extraTeams > 0
       ? [
@@ -264,6 +272,7 @@ export function BackofficeAdhesionDialog({
       fullName: lead?.name ?? current.fullName,
       phone: sanitizePhone(lead?.phone ?? current.phone),
       email: lead?.email ?? current.email,
+      cpfCnpj: lead?.cpfCnpj ? sanitizeCpfCnpj(lead.cpfCnpj) : current.cpfCnpj,
       sdrBackofficeUserId: lead?.sdrBackofficeUserId ?? current.sdrBackofficeUserId,
       closerBackofficeUserId: lead?.closerBackofficeUserId ?? current.closerBackofficeUserId,
     }))
@@ -625,10 +634,11 @@ export function BackofficeAdhesionDialog({
                 ))}
               </div>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>Custo mensal: {formatCurrency(monthlyTotal)}</span>
+                <span>PIX: {formatCurrency(pixTotal)}</span>
+                <span>Cartão: {formatCurrency(cardTotal)}</span>
                 <span>
-                  Ciclo: {CYCLE_MONTHS[values.cycle]}{" "}
-                  {CYCLE_MONTHS[values.cycle] === 1 ? "mês" : "meses"}
+                  Ciclo: {cycleMonths}{" "}
+                  {cycleMonths === 1 ? "mês" : "meses"}
                 </span>
               </div>
               {selectedLead ? (

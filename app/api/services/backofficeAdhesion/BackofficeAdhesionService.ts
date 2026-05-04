@@ -1000,12 +1000,38 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   private async resolvePricingOptions(): Promise<
     BackofficeAdhesionOptionsDTO["pricing"]["cycles"]
   > {
-    const cycles = Object.keys(
-      BACKOFFICE_ADHESION_CYCLE_MONTHS
-    ) as BackofficeAdhesionBillingCycle[]
-    const entries = await Promise.all(
-      cycles.map(async (cycle) => [cycle, await this.resolvePrices(cycle)] as const)
-    )
+    const [crmWithRules, extraTeamProduct, extraUserProduct] = await Promise.all([
+      this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG),
+      this.getActiveProductBySlug(EXTRA_TEAM_PRODUCT_SLUG),
+      this.getActiveProductBySlug(EXTRA_USER_PRODUCT_SLUG),
+    ])
+
+    if (!crmWithRules?.isActive) {
+      throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
+    }
+
+    const cycles = Object.keys(BACKOFFICE_ADHESION_CYCLE_MONTHS) as BackofficeAdhesionBillingCycle[]
+
+    const entries = cycles.map((cycle) => {
+      const baseMonthlyPrice = resolveProductPriceForCycle(crmWithRules, cycle)
+      const extraTeamPrice = resolveProductPriceForCycle(extraTeamProduct, cycle)
+      const extraUserPrice = resolveProductPriceForCycle(extraUserProduct, cycle)
+
+      const pixRule = crmWithRules.paymentRules.find(
+        (r) => r.billingCycle === cycle && r.paymentMethod === "PIX"
+      )
+      const cardRule = crmWithRules.paymentRules.find(
+        (r) => r.billingCycle === cycle && r.paymentMethod === "CREDIT_CARD"
+      )
+
+      return [cycle, {
+        baseMonthlyPrice,
+        extraTeamPrice,
+        extraUserPrice,
+        pixBaseMonthlyPrice: pixRule ? Number(pixRule.price.toString()) : null,
+        cardBaseMonthlyPrice: cardRule ? Number(cardRule.price.toString()) : null,
+      }] as const
+    })
 
     return Object.fromEntries(entries) as BackofficeAdhesionOptionsDTO["pricing"]["cycles"]
   }
