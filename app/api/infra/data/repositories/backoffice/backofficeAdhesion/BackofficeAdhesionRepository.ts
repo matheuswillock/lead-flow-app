@@ -376,6 +376,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     return prisma.backofficeAdhesion.update({
       where: { id },
       data: {
+        status: "pending",
         asaasPaymentId: null,
         asaasInstallmentId: null,
         installmentCount: null,

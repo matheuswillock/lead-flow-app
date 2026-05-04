@@ -39,6 +39,7 @@ export interface BackofficeAdhesionLeadOption {
   name: string
   email: string | null
   phone: string | null
+  cpfCnpj: string | null
   status: string
   sdrBackofficeUserId: string | null
   closerBackofficeUserId: string | null
@@ -61,6 +62,8 @@ export interface BackofficeAdhesionOptions {
         baseMonthlyPrice: number
         extraTeamPrice: number
         extraUserPrice: number
+        pixBaseMonthlyPrice: number | null
+        cardBaseMonthlyPrice: number | null
       }
     >
   }

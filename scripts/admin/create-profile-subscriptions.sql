@@ -1,32 +1,33 @@
 -- Script: criar tabela profile_subscriptions e popular com dados existentes
--- Executar no Supabase SQL Editor (em duas etapas se preferir)
+-- Executar no Supabase SQL Editor
+-- IMPORTANTE: colunas usam camelCase com aspas (convenção deste projeto Prisma)
 
 -- ============================================================
 -- PASSO 1: Criar tabela
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS profile_subscriptions (
-  id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  profile_id                UUID NOT NULL UNIQUE REFERENCES profiles(id) ON DELETE CASCADE,
-  adhesion_id               UUID UNIQUE REFERENCES backoffice_adhesions(id) ON DELETE SET NULL,
-  product_id                UUID REFERENCES backoffice_products(id) ON DELETE SET NULL,
-  asaas_subscription_id     TEXT,
-  asaas_installment_id      TEXT,
-  subscription_status       subscription_status,
-  subscription_plan         subscription_plan,
-  subscription_start_date   TIMESTAMPTZ,
-  subscription_end_date     TIMESTAMPTZ,
-  trial_end_date            TIMESTAMPTZ,
-  subscription_next_due_date TIMESTAMPTZ,
-  subscription_cycle        TEXT,
-  has_permanent_subscription BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at                TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  "profileId"                 UUID        NOT NULL UNIQUE REFERENCES profiles(id) ON DELETE CASCADE,
+  "adhesionId"                UUID        UNIQUE REFERENCES backoffice_adhesions(id) ON DELETE SET NULL,
+  "productId"                 TEXT        REFERENCES backoffice_products(id) ON DELETE SET NULL,
+  "asaasSubscriptionId"       TEXT,
+  "asaasInstallmentId"        TEXT,
+  "subscriptionStatus"        subscription_status,
+  "subscriptionPlan"          subscription_plan,
+  "subscriptionStartDate"     TIMESTAMPTZ,
+  "subscriptionEndDate"       TIMESTAMPTZ,
+  "trialEndDate"              TIMESTAMPTZ,
+  "subscriptionNextDueDate"   TIMESTAMPTZ,
+  "subscriptionCycle"         TEXT,
+  "hasPermanentSubscription"  BOOLEAN     NOT NULL DEFAULT FALSE,
+  "createdAt"                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updatedAt"                 TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS profile_subscriptions_adhesion_id_idx  ON profile_subscriptions(adhesion_id);
-CREATE INDEX IF NOT EXISTS profile_subscriptions_product_id_idx   ON profile_subscriptions(product_id);
-CREATE INDEX IF NOT EXISTS profile_subscriptions_status_idx       ON profile_subscriptions(subscription_status);
+CREATE INDEX IF NOT EXISTS profile_subscriptions_adhesion_id_idx ON profile_subscriptions("adhesionId");
+CREATE INDEX IF NOT EXISTS profile_subscriptions_product_id_idx  ON profile_subscriptions("productId");
+CREATE INDEX IF NOT EXISTS profile_subscriptions_status_idx      ON profile_subscriptions("subscriptionStatus");
 
 -- ============================================================
 -- PASSO 2: Migrar dados existentes dos profiles
@@ -34,59 +35,59 @@ CREATE INDEX IF NOT EXISTS profile_subscriptions_status_idx       ON profile_sub
 
 INSERT INTO profile_subscriptions (
   id,
-  profile_id,
-  adhesion_id,
-  asaas_subscription_id,
-  subscription_status,
-  subscription_plan,
-  subscription_start_date,
-  subscription_end_date,
-  trial_end_date,
-  subscription_next_due_date,
-  subscription_cycle,
-  has_permanent_subscription,
-  created_at,
-  updated_at
+  "profileId",
+  "adhesionId",
+  "asaasSubscriptionId",
+  "subscriptionStatus",
+  "subscriptionPlan",
+  "subscriptionStartDate",
+  "subscriptionEndDate",
+  "trialEndDate",
+  "subscriptionNextDueDate",
+  "subscriptionCycle",
+  "hasPermanentSubscription",
+  "createdAt",
+  "updatedAt"
 )
 SELECT
   gen_random_uuid(),
   p.id,
   -- Extrai adhesionId do marker "backoffice-adhesion-{uuid}"
   CASE
-    WHEN p.subscription_id LIKE 'backoffice-adhesion-%'
-    THEN REPLACE(p.subscription_id, 'backoffice-adhesion-', '')::uuid
+    WHEN p."subscriptionId" LIKE 'backoffice-adhesion-%'
+    THEN REPLACE(p."subscriptionId", 'backoffice-adhesion-', '')::uuid
     ELSE NULL
   END,
-  -- asaas_subscription_id: ignora para usuários de adhesion (sem recorrência)
+  -- asaasSubscriptionId: ignora markers de adhesion (não são IDs reais do Asaas)
   CASE
-    WHEN p.subscription_id LIKE 'backoffice-adhesion-%' THEN NULL
-    ELSE p.asaas_subscription_id
+    WHEN p."subscriptionId" LIKE 'backoffice-adhesion-%' THEN NULL
+    ELSE p."asaasSubscriptionId"
   END,
-  p.subscription_status,
-  p.subscription_plan,
-  p.subscription_start_date,
-  p.subscription_end_date,
-  p.trial_end_date,
-  p.subscription_next_due_date,
-  p.subscription_cycle,
-  p.has_permanent_subscription,
+  p."subscriptionStatus",
+  p."subscriptionPlan",
+  p."subscriptionStartDate",
+  p."subscriptionEndDate",
+  p."trialEndDate",
+  p."subscriptionNextDueDate",
+  p."subscriptionCycle",
+  p."hasPermanentSubscription",
   now(),
   now()
 FROM profiles p
-WHERE p.subscription_status IS NOT NULL
-   OR p.has_permanent_subscription = true
-ON CONFLICT (profile_id) DO NOTHING;
+WHERE p."subscriptionStatus" IS NOT NULL
+   OR p."hasPermanentSubscription" = true
+ON CONFLICT ("profileId") DO NOTHING;
 
 -- ============================================================
--- PASSO 3: Associar productId via BackofficeUserSubscription
+-- PASSO 3: Associar productId via backoffice_user_subscriptions
 -- ============================================================
 
 UPDATE profile_subscriptions ps
-SET product_id = bus.product_id
+SET "productId" = bus."productId"
 FROM backoffice_user_subscriptions bus
-WHERE bus.profile_id = ps.profile_id
-  AND (ps.adhesion_id IS NULL OR bus.adhesion_id = ps.adhesion_id)
-  AND ps.product_id IS NULL;
+WHERE bus."profileId" = ps."profileId"
+  AND (ps."adhesionId" IS NULL OR bus."adhesionId" = ps."adhesionId")
+  AND ps."productId" IS NULL;
 
 -- ============================================================
 -- VERIFICAÇÃO (rodar após os passos acima)
@@ -95,9 +96,9 @@ WHERE bus.profile_id = ps.profile_id
 -- Conferir registros criados:
 -- SELECT COUNT(*) FROM profile_subscriptions;
 
--- Conferir profiles que deveriam ter assinatura mas não têm:
--- SELECT p.id, p.email, p.subscription_status
+-- Conferir profiles que deveriam ter assinatura mas não têm registro:
+-- SELECT p.id, p.email, p."subscriptionStatus"
 -- FROM profiles p
--- LEFT JOIN profile_subscriptions ps ON ps.profile_id = p.id
--- WHERE (p.subscription_status IS NOT NULL OR p.has_permanent_subscription = true)
+-- LEFT JOIN profile_subscriptions ps ON ps."profileId" = p.id
+-- WHERE (p."subscriptionStatus" IS NOT NULL OR p."hasPermanentSubscription" = true)
 --   AND ps.id IS NULL;

@@ -59,7 +59,12 @@ export async function POST(request: NextRequest) {
         name: typeof data.name === "string" ? data.name : "",
         email: typeof data.email === "string" || data.email === null ? data.email : null,
         phone: typeof data.phone === "string" || data.phone === null ? data.phone : null,
-        cpfCnpj: typeof data.cnpj === "string" || data.cnpj === null ? data.cnpj : null,
+        cpfCnpj:
+          typeof data.cpfCnpj === "string" || data.cpfCnpj === null
+            ? data.cpfCnpj
+            : typeof data.cnpj === "string" || data.cnpj === null
+              ? data.cnpj
+              : null,
         notes: typeof data.notes === "string" || data.notes === null ? data.notes : null,
         status:
           typeof data.status === "string"

@@ -39,6 +39,16 @@ function normalizePriceInput(value: string): string {
   return value.replace(/[^\d,.]/g, "").replace(",", ".")
 }
 
+function displayCurrencyInput(raw: string): string {
+  const n = parseFloat(raw.replace(",", "."))
+  if (!isFinite(n) || n <= 0) return raw
+  return `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function parseCurrencyInput(display: string): string {
+  return normalizePriceInput(display.replace(/^R\$\s*/, ""))
+}
+
 function hasPositivePrice(value: string): boolean {
   const parsed = Number.parseFloat(value.replace(",", "."))
   return Number.isFinite(parsed) && parsed > 0
@@ -157,7 +167,7 @@ export function BackofficeProductDialog() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="RECURRING">Recorrente</SelectItem>
+                    <SelectItem value="RECURRING">Parcelado</SelectItem>
                     <SelectItem value="LIFETIME">Vitalício</SelectItem>
                   </SelectGroup>
                 </SelectContent>
@@ -208,13 +218,13 @@ export function BackofficeProductDialog() {
                           <td className="px-3 py-2 font-medium text-muted-foreground">{label}</td>
                           <td className="px-3 py-2">
                             <Input
-                              className="h-8 w-24 text-sm"
+                              className="h-8 w-28 text-sm"
                               inputMode="decimal"
-                              placeholder="0.00"
-                              value={entry.cardPrice}
+                              placeholder="R$ 0,00"
+                              value={displayCurrencyInput(entry.cardPrice)}
                               disabled={isSaving}
                               onChange={(e) =>
-                                setPaymentRuleField(key, "cardPrice", normalizePriceInput(e.target.value))
+                                setPaymentRuleField(key, "cardPrice", parseCurrencyInput(e.target.value))
                               }
                             />
                           </td>
@@ -223,13 +233,13 @@ export function BackofficeProductDialog() {
                           </td>
                           <td className="px-3 py-2">
                             <Input
-                              className="h-8 w-24 text-sm"
+                              className="h-8 w-28 text-sm"
                               inputMode="decimal"
-                              placeholder="0.00"
-                              value={entry.pixPrice}
+                              placeholder="R$ 0,00"
+                              value={displayCurrencyInput(entry.pixPrice)}
                               disabled={isSaving}
                               onChange={(e) =>
-                                setPaymentRuleField(key, "pixPrice", normalizePriceInput(e.target.value))
+                                setPaymentRuleField(key, "pixPrice", parseCurrencyInput(e.target.value))
                               }
                             />
                           </td>
