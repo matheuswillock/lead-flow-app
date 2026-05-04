@@ -1387,7 +1387,7 @@ model ProfileSubscription {
   id                      String              @id @default(uuid()) @db.Uuid
   profileId               String              @unique @db.Uuid
   adhesionId              String?             @unique @db.Uuid
-  productId               String?             @db.Uuid
+  productId               String?             @db.Text
   asaasSubscriptionId     String?             @db.Text
   asaasInstallmentId      String?             @db.Text
   subscriptionStatus      SubscriptionStatus?
