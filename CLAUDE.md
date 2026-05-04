@@ -34,7 +34,7 @@ This document defines the implementation governance for AI agents in this reposi
 - Prefer sessions focused on one layer at a time (backend OR frontend, not both).
 - Read at most 5 files before starting implementation. Do not explore the codebase extensively without necessity.
 - Before deleting any record, check for FK constraints in the schema.
-- Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`.
+<!-- - Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`. -->
 
 ## Automated Validation (FOR ALL CHANGES)
 
