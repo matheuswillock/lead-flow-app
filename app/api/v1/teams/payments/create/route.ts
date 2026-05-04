@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
-import { prisma } from "@/app/api/infra/data/prisma";
+import prisma from "@/app/api/infra/data/prisma";
 import {
   getTeamAccess,
   hasDelegatedTeamManagementAccess,
 } from "@/app/api/v1/utils/teamAccess";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { emailService } from "@/lib/services/EmailService";
+import { getFullUrl } from "@/lib/utils/app-url";
 
 const formatTeamName = (value: unknown) => (typeof value === "string" ? value.trim() : "");
 
@@ -70,6 +72,7 @@ export async function POST(request: NextRequest) {
           asaasSubscriptionId: true,
           subscriptionStatus: true,
           subscriptionNextDueDate: true,
+          subscriptionEndDate: true,
           subscriptionCycle: true,
           timezone: true,
         },
@@ -96,33 +99,67 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const projectedBilling = await incrementalBillingService.projectBilling(master.id, {
-      additionalTeams: 1,
-    });
-    const amount = projectedBilling.billingDelta;
-
-    if (amount <= 0) {
+    const isExternalSubscription = !master.asaasSubscriptionId;
+    const subscriptionEnd = master.subscriptionEndDate ?? master.subscriptionNextDueDate;
+    if (
+      isExternalSubscription &&
+      subscriptionEnd &&
+      subscriptionEnd.getTime() < Date.now()
+    ) {
       return NextResponse.json(
-        new Output(false, [], ["Nenhuma cobrança adicional é necessária."], null),
+        new Output(false, [], ["Assinatura externa expirada. Solicite renovação ao backoffice."], null),
         { status: 400 }
       );
     }
 
-    if (!master.cpfCnpj) {
+    const proportionalData = await incrementalBillingService.calculateProportionalAmount(master.id, "team");
+    const { billingDelta, totalCharge } = proportionalData;
+
+    // Bifurcação: se billingDelta = 0, criar time imediatamente
+    if (billingDelta === 0) {
+      const newTeam = await prisma.team.create({
+        data: {
+          masterId: master.id,
+          name: teamName,
+        },
+      });
+
+      await prisma.teamMember.create({
+        data: {
+          profileId: requester.id,
+          teamId: newTeam.id,
+          role: teamMember.role,
+          functions: teamMember.functions ?? [],
+        },
+      });
+
+      await emailService.sendAddOnConfirmedEmail({
+        masterName: master.fullName || master.email,
+        masterEmail: master.email,
+        addonType: "team",
+        addonLabel: "Time adicional",
+        addonDetail: teamName,
+        requesterName: requester.fullName || requester.email,
+        requesterEmail: requester.email,
+      });
+
       return NextResponse.json(
-        new Output(false, [], ["CPF/CNPJ do master nao informado"], null),
-        { status: 400 }
+        new Output(true, ["Time criado com sucesso sem cobrança adicional"], [], { created: true }),
+        { status: 201 }
       );
     }
 
+    // billingDelta > 0: criar PendingAction e enviar email com link de checkout
     const pendingPayload = {
-      name: teamName,
+      teamName,
       requestedByProfileId: requester.id,
       requestedByName: requester.fullName || requester.email,
       requestedByEmail: requester.email,
       requestedByFunctions: requester.functions ?? teamMember.functions ?? [],
-      billingDelta: projectedBilling.billingDelta,
-      targetRecurringTotal: projectedBilling.targetRecurringTotal,
+      billingDelta,
+      totalCharge,
+      remainingMonths: proportionalData.remainingMonths,
+      maxInstallments: proportionalData.maxInstallments,
     };
 
     const pendingAction = await prisma.pendingAction.create({
@@ -135,64 +172,28 @@ export async function POST(request: NextRequest) {
       select: { id: true },
     });
 
-    try {
-      const charge = await incrementalBillingService.createIncrementalCharge({
-        master,
+    const checkoutUrl = getFullUrl(`/addon-checkout/${pendingAction.id}`);
+
+    await emailService.sendAddOnPendingPaymentEmail({
+      masterName: master.fullName || master.email,
+      masterEmail: master.email,
+      addonType: "team",
+      addonLabel: "Time adicional",
+      addonDetail: teamName,
+      totalCharge,
+      remainingMonths: proportionalData.remainingMonths,
+      checkoutUrl,
+      requesterName: requester.fullName || requester.email,
+      requesterEmail: requester.email,
+    });
+
+    return NextResponse.json(
+      new Output(true, ["Cobrança pendente criada. Um link de pagamento foi enviado."], [], {
         pendingActionId: pendingAction.id,
-        amount,
-        description: `Time adicional - ${teamName}`,
-      });
-
-      await prisma.pendingAction.update({
-        where: { id: pendingAction.id },
-        data: {
-          paymentId: charge.paymentId,
-          payload: {
-            ...pendingPayload,
-            paymentId: charge.paymentId,
-            paymentStatus: charge.paymentStatus,
-            billingType: charge.billingType,
-          },
-        },
-      });
-
-      const result: any = {
-        pendingActionId: pendingAction.id,
-        paymentId: charge.paymentId,
-        paymentStatus: charge.paymentStatus || "PENDING",
-        billingType: charge.billingType,
-        amount: charge.amount,
-        dueDate: charge.dueDate,
-      };
-
-      if (charge.pix) {
-        result.pix = charge.pix;
-      }
-
-      if (charge.boleto) {
-        result.boleto = charge.boleto;
-      }
-
-      return NextResponse.json(new Output(true, ["Pagamento criado com sucesso"], [], result), {
-        status: 201,
-      });
-    } catch (chargeError: any) {
-      await prisma.pendingAction.update({
-        where: { id: pendingAction.id },
-        data: {
-          status: "failed",
-          payload: {
-            ...pendingPayload,
-            paymentStatus: "FAILED",
-          },
-        },
-      });
-
-      return NextResponse.json(
-        new Output(false, [], [chargeError.message || "Erro ao criar pagamento"], null),
-        { status: 500 }
-      );
-    }
+        checkoutUrl,
+      }),
+      { status: 201 }
+    );
   } catch (error: any) {
     console.error("[POST /api/v1/teams/payments/create] Erro:", error);
     return NextResponse.json(

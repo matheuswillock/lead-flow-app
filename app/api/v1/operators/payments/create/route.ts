@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
-import { prisma } from "@/app/api/infra/data/prisma";
+import prisma from "@/app/api/infra/data/prisma";
 import { asaasApi, asaasFetch, asaasHeaders } from "@/lib/asaas";
 import { asaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { emailService } from "@/lib/services/EmailService";
 import { isManagerLikeRole } from "@/lib/roles";
+import { getFullUrl } from "@/lib/utils/app-url";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { managerId, operatorData, billingType, creditCard, teamId } = body;
+    const { managerId, operatorData, teamId } = body;
 
     if (!managerId || !operatorData) {
       return NextResponse.json(
@@ -29,20 +31,6 @@ export async function POST(request: NextRequest) {
     if (!operatorData.name || !operatorData.email) {
       return NextResponse.json(
         new Output(false, [], ["Nome e e-mail do operador sao obrigatorios"], null),
-        { status: 400 }
-      );
-    }
-
-    if (!billingType || !["PIX", "BOLETO", "CREDIT_CARD"].includes(billingType)) {
-      return NextResponse.json(
-        new Output(false, [], ["Forma de pagamento invalida"], null),
-        { status: 400 }
-      );
-    }
-
-    if (billingType === "CREDIT_CARD" && !creditCard) {
-      return NextResponse.json(
-        new Output(false, [], ["Dados do cartao sao obrigatorios"], null),
         { status: 400 }
       );
     }
@@ -84,6 +72,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const isExternalSubscription = !manager.asaasSubscriptionId;
+    const subscriptionEnd = manager.subscriptionEndDate ?? manager.subscriptionNextDueDate;
+    if (
+      isExternalSubscription &&
+      subscriptionEnd &&
+      subscriptionEnd.getTime() < Date.now()
+    ) {
+      return NextResponse.json(
+        new Output(false, [], ["Assinatura externa expirada. Solicite renovação ao backoffice."], null),
+        { status: 400 }
+      );
+    }
+
     const existingUser = await prisma.profile.findFirst({
       where: { email: operatorData.email },
     });
@@ -106,156 +107,81 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const projectedBilling = await incrementalBillingService.projectBilling(manager.id, {
-      additionalUsers: 1,
-    });
-    const amount = projectedBilling.billingDelta;
+    const proportionalData = await incrementalBillingService.calculateProportionalAmount(manager.id, "user");
+    const { billingDelta, totalCharge } = proportionalData;
 
-    if (amount <= 0) {
-      return NextResponse.json(
-        new Output(false, [], ["Nenhuma cobrança adicional é necessária."], null),
-        { status: 400 }
-      );
-    }
-
-    const pendingOperator = await prisma.pendingOperator.create({
-      data: {
-        managerId: manager.id,
-        teamId: team.id,
-        name: operatorData.name,
-        email: operatorData.email,
-        role: operatorData.role || "operator",
-        functions: operatorData.functions ?? [],
-        paymentId: null,
-        subscriptionId: null,
-        paymentStatus: "PENDING",
-        paymentMethod: billingType,
-      },
-    });
-
-    if (!manager.cpfCnpj) {
-      return NextResponse.json(
-        new Output(false, [], ["CPF/CNPJ do manager nao informado"], null),
-        { status: 400 }
-      );
-    }
-
-    const createCustomer = async () => {
-
-      const customer = await asaasCustomerService.createCustomer({
-        name: manager.fullName || manager.email,
-        email: manager.email,
-        cpfCnpj: manager.cpfCnpj || '',
-        phone: manager.phone || undefined,
-        postalCode: manager.postalCode || undefined,
-        address: manager.address || undefined,
-        addressNumber: manager.addressNumber || undefined,
-        complement: manager.complement || undefined,
-        province: manager.neighborhood || undefined,
-        externalReference: manager.id,
-      });
-
-      await prisma.profile.update({
-        where: { id: manager.id },
-        data: { asaasCustomerId: customer.customerId },
-      });
-
-      return customer.customerId;
-    };
-
-    let customerId = manager.asaasCustomerId;
-    if (customerId) {
-      const customerCheck = await fetch(`${asaasApi.customers}/${customerId}`, {
-        headers: {
-          ...asaasHeaders,
+    // Bifurcação: se billingDelta = 0, criar operador imediatamente
+    if (billingDelta === 0) {
+      const newOperator = await prisma.profile.create({
+        data: {
+          supabaseId: crypto.randomUUID(),
+          email: operatorData.email,
+          fullName: operatorData.name,
+          role: operatorData.role || "operator",
+          functions: operatorData.functions ?? [],
         },
-        cache: "no-store",
       });
 
-      if (!customerCheck.ok) {
-        console.warn(
-          "[POST /api/v1/operators/payments/create] Customer do manager invalido no Asaas, recriando...",
-          { customerId, status: customerCheck.status }
-        );
-        customerId = await createCustomer();
-      }
-    } else {
-      customerId = await createCustomer();
+      await prisma.teamMember.create({
+        data: {
+          profileId: newOperator.id,
+          teamId: team.id,
+          role: operatorData.role || "operator",
+        },
+      });
+
+      await emailService.sendAddOnConfirmedEmail({
+        masterName: manager.fullName || manager.email,
+        masterEmail: manager.email,
+        addonType: "user",
+        addonLabel: "Licença Usuário",
+        addonDetail: `${operatorData.name} (${operatorData.email})`,
+      });
+
+      return NextResponse.json(
+        new Output(true, ["Usuário criado com sucesso sem cobrança adicional"], [], { created: true }),
+        { status: 201 }
+      );
     }
 
-    if (billingType === "CREDIT_CARD") {
-      if (!manager.cpfCnpj || !manager.postalCode || !manager.addressNumber || !manager.phone) {
-        return NextResponse.json(
-          new Output(false, [], ["Dados do manager incompletos para cartao"], null),
-          { status: 400 }
-        );
-      }
-    }
-
-    const dueDate = new Date().toISOString().slice(0, 10);
-    const paymentPayload: any = {
-      customer: customerId,
-      billingType,
-      value: amount,
-      dueDate,
-      description: `Licenca Operador - ${operatorData.email}`,
-      externalReference: `pending-operator-${pendingOperator.id}`,
-    };
-
-    if (billingType === "CREDIT_CARD") {
-      paymentPayload.creditCard = creditCard;
-      paymentPayload.creditCardHolderInfo = {
-        name: manager.fullName || manager.email,
-        email: manager.email,
-        cpfCnpj: manager.cpfCnpj,
-        postalCode: manager.postalCode,
-        addressNumber: manager.addressNumber,
-        addressComplement: manager.complement || null,
-        phone: manager.phone,
-        mobilePhone: manager.phone,
-      };
-    }
-
-    const payment = await asaasFetch(asaasApi.payments, {
-      method: "POST",
-      body: JSON.stringify(paymentPayload),
-    });
-
-    await prisma.pendingOperator.update({
-      where: { id: pendingOperator.id },
+    // billingDelta > 0: criar PendingAction e enviar email com link de checkout
+    const pendingAction = await prisma.pendingAction.create({
       data: {
-        paymentId: payment.id,
-        paymentStatus: payment.status || "PENDING",
+        masterId: manager.id,
+        teamId: team.id,
+        actionType: "add_user",
+        status: "pending",
+        payload: {
+          operatorName: operatorData.name,
+          operatorEmail: operatorData.email,
+          operatorRole: operatorData.role || "operator",
+          operatorFunctions: operatorData.functions ?? [],
+          billingDelta,
+          totalCharge,
+          remainingMonths: proportionalData.remainingMonths,
+          maxInstallments: proportionalData.maxInstallments,
+        },
       },
     });
 
-    const result: any = {
-      pendingOperatorId: pendingOperator.id,
-      paymentId: payment.id,
-      paymentStatus: payment.status || "PENDING",
-    };
+    const checkoutUrl = getFullUrl(`/addon-checkout/${pendingAction.id}`);
 
-    if (billingType === "PIX") {
-      const pix = await AsaasSubscriptionService.getPixQrCode(payment.id);
-      result.pix = {
-        encodedImage: pix.encodedImage,
-        payload: pix.payload,
-        expirationDate: pix.expirationDate,
-      };
-    }
-
-    if (billingType === "BOLETO") {
-      const boletoIdentification = await AsaasSubscriptionService.getBoletoIdentificationField(payment.id);
-      result.boleto = {
-        bankSlipUrl: payment.bankSlipUrl || payment.invoiceUrl,
-        identificationField: boletoIdentification.identificationField,
-        barCode: boletoIdentification.barCode,
-        dueDate: payment.dueDate,
-      };
-    }
+    await emailService.sendAddOnPendingPaymentEmail({
+      masterName: manager.fullName || manager.email,
+      masterEmail: manager.email,
+      addonType: "user",
+      addonLabel: "Licença Usuário",
+      addonDetail: `${operatorData.name} (${operatorData.email})`,
+      totalCharge,
+      remainingMonths: proportionalData.remainingMonths,
+      checkoutUrl,
+    });
 
     return NextResponse.json(
-      new Output(true, ["Pagamento criado com sucesso"], [], result),
+      new Output(true, ["Cobrança pendente criada. Um link de pagamento foi enviado."], [], {
+        pendingActionId: pendingAction.id,
+        checkoutUrl,
+      }),
       { status: 201 }
     );
   } catch (error: any) {

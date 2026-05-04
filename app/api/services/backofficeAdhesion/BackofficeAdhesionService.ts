@@ -351,13 +351,24 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       if (!externalEmail) {
         throw new Error("E-mail é obrigatório para pagamento por fora")
       }
+      if (!externalCpfCnpj) {
+        throw new Error("CPF/CNPJ é obrigatório para pagamento por fora")
+      }
       const paidAt = new Date()
+      const asaasCustomerId = await this.createExternalAsaasCustomer({
+        adhesionId: adhesion.id,
+        fullName: normalized.fullName,
+        email: externalEmail,
+        cpfCnpj: externalCpfCnpj,
+        phone: normalized.phone,
+      })
       const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
         fullName: normalized.fullName,
         phone: normalized.phone,
         email: externalEmail,
         cpfCnpj: externalCpfCnpj,
         paidAt,
+        asaasCustomerId,
       })
       await this.ensureAccountForPaidAdhesion(paidAdhesion)
 
@@ -772,6 +783,28 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         complement: input.complement ?? undefined,
         province: input.neighborhood,
         externalReference: `backoffice-adhesion-${adhesion.id}`,
+      }),
+    })
+
+    return String(customer.id)
+  }
+
+  private async createExternalAsaasCustomer(input: {
+    adhesionId: string
+    fullName: string
+    email: string
+    cpfCnpj: string
+    phone: string
+  }): Promise<string> {
+    const customer = await asaasFetch(asaasApi.customers, {
+      method: "POST",
+      body: JSON.stringify({
+        name: input.fullName,
+        email: input.email,
+        cpfCnpj: input.cpfCnpj,
+        mobilePhone: input.phone,
+        externalReference: `backoffice-adhesion-${input.adhesionId}`,
+        observations: "Cliente criado via adesão com pagamento externo (sem fatura Asaas).",
       }),
     })
 

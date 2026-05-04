@@ -230,6 +230,9 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         billingType: "EXTERNAL",
         status: "paid",
         paidAt: data.paidAt,
+        ...(data.asaasCustomerId !== undefined
+          ? { asaasCustomerId: data.asaasCustomerId }
+          : {}),
       },
       include: backofficeAdhesionInclude,
     })
