@@ -7,7 +7,7 @@ import { AsaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCust
 import { getEmailService } from "@/lib/services/EmailService";
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getFullUrl } from '@/lib/utils/app-url';
-import { addMonthsInTz, formatInTz, resolveTimezone, startOfDayInTz } from "@/lib/dates";
+import { addMonthsInTz, formatIntimezone, resolveTimezone, startOfDayInTz } from "@/lib/dates";
 import type { 
   ISubscriptionUpgradeUseCase, 
   AddOperatorPaymentData,
@@ -30,7 +30,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
     return {
       nextDueDate,
-      nextDueDateStr: formatInTz(nextDueDate, "yyyy-MM-dd", ownerTz),
+      nextDueDateStr: formatIntimezone(nextDueDate, "yyyy-MM-dd", ownerTz),
     };
   }
   
@@ -728,7 +728,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         customer: data.customer,
         billingType: 'PIX', // PIX como padrão, mas checkout permite alterar
         value: data.value,
-        dueDate: formatInTz(nextDueDate, "yyyy-MM-dd", ownerTz),
+        dueDate: formatIntimezone(nextDueDate, "yyyy-MM-dd", ownerTz),
         description: data.description,
         externalReference: `pending-operator-${data.pendingOperatorId}`,
       };

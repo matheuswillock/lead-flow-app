@@ -10,7 +10,7 @@ import {
   addDaysInTz,
   startOfDayInTz,
   DEFAULT_TZ,
-  formatInTz,
+  formatIntimezone,
   parseDateKeyToUtc,
   resolveTimezone,
 } from "@/lib/dates"
@@ -135,7 +135,7 @@ function getSortableInvoiceDate(payment: AsaasPaymentItem): number {
 
 function formatInvoiceDate(value: string | undefined, timezone: string): string {
   if (!value) return "não informada"
-  return formatInTz(parseDateKeyToUtc(value, timezone), "dd/MM/yyyy", timezone)
+  return formatIntimezone(parseDateKeyToUtc(value, timezone), "dd/MM/yyyy", timezone)
 }
 
 function formatInvoiceCurrency(value?: number): string {

@@ -234,7 +234,10 @@ export class PaymentValidationService implements IPaymentValidationService {
         // Fallback: se não encontrar profile, tentar usar externalReference como email
         const userEmail = profile?.email || (payment.externalReference && payment.externalReference.includes('@') ? payment.externalReference : undefined);
 
-        if (userEmail) {
+        const isAdhesionPayment =
+          payment.externalReference?.startsWith("backoffice-adhesion-") ?? false
+
+        if (userEmail && !isAdhesionPayment) {
           const userName = profile?.fullName || userEmail.split('@')[0];
           const appUrl = getAppUrl({ removeTrailingSlash: true });
           const manageUrl = profile?.supabaseId ? `${appUrl}/${profile.supabaseId}/account` : `${appUrl}/sign-in`;

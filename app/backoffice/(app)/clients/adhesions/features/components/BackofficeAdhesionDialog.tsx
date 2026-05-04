@@ -35,6 +35,7 @@ import {
   type BackofficeAdhesionItem,
   type BackofficeAdhesionOptions,
 } from "../context/BackofficeAdhesionsTypes"
+import { formatDocumentInput, maskPhone } from "@/lib/masks"
 
 const NO_SELECTION_VALUE = "__none__"
 const CYCLE_MONTHS: Record<BackofficeAdhesionBillingCycleKey, number> = {
@@ -88,7 +89,7 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     fullName: adhesion.fullName,
     phone: adhesion.phone,
     email: adhesion.email ?? "",
-    cpfCnpj: "",
+    cpfCnpj: adhesion.cpfCnpj ?? "",
     cycle: adhesion.cycle,
     extraTeams: adhesion.extraTeams,
     extraUsers: adhesion.extraUsers,
@@ -180,20 +181,28 @@ export function BackofficeAdhesionDialog({
     baseMonthlyPrice: 0,
     extraTeamPrice: 0,
     extraUserPrice: 0,
+    pixBaseMonthlyPrice: null,
+    cardBaseMonthlyPrice: null,
   }
-  const monthlyTotal =
-    cyclePrices.baseMonthlyPrice +
+  const extrasMonthly =
     values.extraTeams * cyclePrices.extraTeamPrice +
     values.extraUsers * cyclePrices.extraUserPrice
-  const total = monthlyTotal * CYCLE_MONTHS[values.cycle]
+  const cardBaseMonthly = cyclePrices.cardBaseMonthlyPrice ?? cyclePrices.baseMonthlyPrice
+  const pixBaseMonthly = cyclePrices.pixBaseMonthlyPrice ?? cyclePrices.baseMonthlyPrice
+  const cardMonthlyTotal = cardBaseMonthly + extrasMonthly
+  const pixMonthlyTotal = pixBaseMonthly + extrasMonthly
+  const cycleMonths = CYCLE_MONTHS[values.cycle]
+  const cardTotal = cardMonthlyTotal * cycleMonths
+  const pixTotal = pixMonthlyTotal * cycleMonths
+  const total = cardTotal
   const commercialItems = [
     {
       key: "crm",
       name: "CRM",
       description: "Plano principal do Corretor Studio",
       quantity: "1 plano",
-      monthlyUnitPrice: cyclePrices.baseMonthlyPrice,
-      monthlyTotal: cyclePrices.baseMonthlyPrice,
+      monthlyUnitPrice: cardBaseMonthly,
+      monthlyTotal: cardBaseMonthly,
     },
     ...(values.extraTeams > 0
       ? [
@@ -263,6 +272,7 @@ export function BackofficeAdhesionDialog({
       fullName: lead?.name ?? current.fullName,
       phone: sanitizePhone(lead?.phone ?? current.phone),
       email: lead?.email ?? current.email,
+      cpfCnpj: lead?.cpfCnpj ? sanitizeCpfCnpj(lead.cpfCnpj) : current.cpfCnpj,
       sdrBackofficeUserId: lead?.sdrBackofficeUserId ?? current.sdrBackofficeUserId,
       closerBackofficeUserId: lead?.closerBackofficeUserId ?? current.closerBackofficeUserId,
     }))
@@ -332,30 +342,30 @@ export function BackofficeAdhesionDialog({
 
         {result ? (
           <div className="flex flex-1 flex-col gap-4 overflow-y-auto py-2">
-              <div className="rounded-md border p-4">
-                {result.publicUrl ? (
-                  <>
-                    <Label>Link público</Label>
-                    <div className="mt-2 flex gap-2">
-                      <Input value={result.publicUrl} readOnly />
-                      <Button type="button" size="icon" onClick={() => copyLink(result.publicUrl!)}>
-                        <Copy data-icon="inline-start" />
-                        <span className="sr-only">Copiar link</span>
-                      </Button>
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Expira em {new Date(result.expiresAt).toLocaleString("pt-BR")}.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-medium">Adesão ativada</p>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      O cliente recebeu o e-mail para definir senha e acessar o Corretor Studio.
-                    </p>
-                  </>
-                )}
-              </div>
+            <div className="rounded-md border p-4">
+              {result.publicUrl ? (
+                <>
+                  <Label>Link público</Label>
+                  <div className="mt-2 flex gap-2">
+                    <Input value={result.publicUrl} readOnly />
+                    <Button type="button" size="icon" onClick={() => copyLink(result.publicUrl!)}>
+                      <Copy data-icon="inline-start" />
+                      <span className="sr-only">Copiar link</span>
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Expira em {new Date(result.expiresAt).toLocaleString("pt-BR")}.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">Adesão ativada</p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    O cliente recebeu o e-mail para definir senha e acessar o Corretor Studio.
+                  </p>
+                </>
+              )}
+            </div>
           </div>
         ) : (
           <div className="dialog-scrollbar flex flex-1 flex-col gap-5 overflow-y-auto pr-1">
@@ -368,15 +378,14 @@ export function BackofficeAdhesionDialog({
                     handleLeadChange(value === NO_SELECTION_VALUE ? "" : value)
                   }
                   disabled={isLoadingOptions || isSubmitting}
+                  required
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione um lead elegível" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectItem value={NO_SELECTION_VALUE}>
-                        Selecione um lead
-                      </SelectItem>
+                      <SelectItem value={NO_SELECTION_VALUE}>Selecione um lead</SelectItem>
                       {(options?.leads ?? []).map((lead) => (
                         <SelectItem key={lead.id} value={lead.id}>
                           {lead.name}
@@ -418,15 +427,18 @@ export function BackofficeAdhesionDialog({
                   value={values.fullName}
                   onChange={(event) => updateValue("fullName", event.target.value)}
                   disabled={isSubmitting}
+                  required
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="adhesion-phone">Celular *</Label>
+                <Label htmlFor="adhesion-phone">Telefone *</Label>
                 <Input
                   id="adhesion-phone"
-                  value={values.phone}
+                  placeholder="(99) 99999-9999"
+                  value={maskPhone(values.phone)}
                   onChange={(event) => updateValue("phone", sanitizePhone(event.target.value))}
                   disabled={isSubmitting}
+                  required
                 />
               </div>
             </div>
@@ -440,13 +452,15 @@ export function BackofficeAdhesionDialog({
                     value={values.email}
                     onChange={(event) => updateValue("email", event.target.value)}
                     disabled={isSubmitting}
+                    required
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="adhesion-cpf-cnpj">CPF/CNPJ (opcional)</Label>
+                  <Label htmlFor="adhesion-cpf-cnpj">Documento</Label>
                   <Input
                     id="adhesion-cpf-cnpj"
-                    value={values.cpfCnpj}
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                    value={formatDocumentInput(values.cpfCnpj)}
                     onChange={(event) =>
                       updateValue("cpfCnpj", sanitizeCpfCnpj(event.target.value))
                     }
@@ -457,10 +471,11 @@ export function BackofficeAdhesionDialog({
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="adhesion-cpf-cnpj">CPF/CNPJ (opcional)</Label>
+                  <Label htmlFor="adhesion-cpf-cnpj">Documento</Label>
                   <Input
+                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
                     id="adhesion-cpf-cnpj"
-                    value={values.cpfCnpj}
+                    value={formatDocumentInput(values.cpfCnpj)}
                     onChange={(event) =>
                       updateValue("cpfCnpj", sanitizeCpfCnpj(event.target.value))
                     }
@@ -476,10 +491,7 @@ export function BackofficeAdhesionDialog({
                 <Select
                   value={values.sdrBackofficeUserId ?? NO_SELECTION_VALUE}
                   onValueChange={(value) =>
-                    updateValue(
-                      "sdrBackofficeUserId",
-                      value === NO_SELECTION_VALUE ? null : value
-                    )
+                    updateValue("sdrBackofficeUserId", value === NO_SELECTION_VALUE ? null : value)
                   }
                   disabled={isSubmitting || isLoadingOptions}
                 >
@@ -505,7 +517,7 @@ export function BackofficeAdhesionDialog({
                   onValueChange={(value) =>
                     updateValue(
                       "closerBackofficeUserId",
-                      value === NO_SELECTION_VALUE ? null : value
+                      value === NO_SELECTION_VALUE ? null : value,
                     )
                   }
                   disabled={isSubmitting || isLoadingOptions}
@@ -544,19 +556,18 @@ export function BackofficeAdhesionDialog({
                     updateValue("cycle", value as BackofficeAdhesionBillingCycleKey)
                   }
                   disabled={isSubmitting}
+                  required
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      {Object.entries(BACKOFFICE_ADHESION_CYCLE_LABELS).map(
-                        ([cycle, label]) => (
-                          <SelectItem key={cycle} value={cycle}>
-                            {label}
-                          </SelectItem>
-                        )
-                      )}
+                      {Object.entries(BACKOFFICE_ADHESION_CYCLE_LABELS).map(([cycle, label]) => (
+                        <SelectItem key={cycle} value={cycle}>
+                          {label}
+                        </SelectItem>
+                      ))}
                     </SelectGroup>
                   </SelectContent>
                 </Select>
@@ -623,10 +634,11 @@ export function BackofficeAdhesionDialog({
                 ))}
               </div>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>Custo mensal: {formatCurrency(monthlyTotal)}</span>
+                <span>PIX: {formatCurrency(pixTotal)}</span>
+                <span>Cartão: {formatCurrency(cardTotal)}</span>
                 <span>
-                  Ciclo: {CYCLE_MONTHS[values.cycle]}{" "}
-                  {CYCLE_MONTHS[values.cycle] === 1 ? "mês" : "meses"}
+                  Ciclo: {cycleMonths}{" "}
+                  {cycleMonths === 1 ? "mês" : "meses"}
                 </span>
               </div>
               {selectedLead ? (

@@ -17,6 +17,16 @@ function formatPrice(value: number | null): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
 }
 
+function getCardPrice(
+  product: BackofficeProductItem,
+  cycle: "monthly" | "quarterly" | "semiannual"
+): number | null {
+  const rule = product.paymentRules.find(
+    (r) => r.paymentMethod === "CREDIT_CARD" && r.billingCycle === cycle
+  )
+  return rule ? rule.price : null
+}
+
 interface Props {
   products: BackofficeProductItem[]
 }
@@ -44,70 +54,86 @@ export function BackofficeProductTable({ products }: Props) {
             <TableHead className="text-right">Trimestral</TableHead>
             <TableHead className="text-right">Semestral</TableHead>
             <TableHead className="text-right">Vitalício</TableHead>
+            <TableHead className="text-right">Total</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="w-[80px]" />
+            <TableHead className="w-20" />
           </TableRow>
         </TableHeader>
         <TableBody>
-          {products.map((product) => (
-            <TableRow key={product.id}>
-              <TableCell className="font-medium">
-                <div>
-                  <p>{product.name}</p>
-                  {product.description && (
-                    <p className="text-xs text-muted-foreground">{product.description}</p>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <Badge variant={product.type === "PLAN" ? "default" : "secondary"}>
-                  {product.type === "PLAN" ? "Plano" : "Add-on"}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline">
-                  {product.billingMode === "RECURRING" ? "Recorrente" : "Vitalício"}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm">
-                {formatPrice(product.priceMonthly)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm">
-                {formatPrice(product.priceQuarterly)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm">
-                {formatPrice(product.priceSemiannual)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-sm">
-                {formatPrice(product.priceLifetime)}
-              </TableCell>
-              <TableCell>
-                <Badge variant={product.isActive ? "default" : "secondary"}>
-                  {product.isActive ? "Ativo" : "Inativo"}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => openEditDialog(product)}
-                    aria-label="Editar produto"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => openDeleteDialog(product)}
-                    aria-label="Excluir produto"
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+          {products.map((product) => {
+            const cardMonthly = getCardPrice(product, "monthly")
+            const cardQuarterly = getCardPrice(product, "quarterly")
+            const cardSemiannual = getCardPrice(product, "semiannual")
+            const total =
+              product.billingMode === "LIFETIME"
+                ? product.priceLifetime
+                : cardSemiannual != null
+                  ? cardSemiannual * 6
+                  : null
+
+            return (
+              <TableRow key={product.id}>
+                <TableCell className="font-medium">
+                  <div>
+                    <p>{product.name}</p>
+                    {product.description && (
+                      <p className="text-xs text-muted-foreground">{product.description}</p>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={product.type === "PLAN" ? "default" : "secondary"}>
+                    {product.type === "PLAN" ? "Plano" : "Add-on"}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">
+                    {product.billingMode === "RECURRING" ? "Parcelado" : "Vitalício"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm">
+                  {product.billingMode === "RECURRING" ? formatPrice(cardMonthly) : "—"}
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm">
+                  {product.billingMode === "RECURRING" ? formatPrice(cardQuarterly) : "—"}
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm">
+                  {product.billingMode === "RECURRING" ? formatPrice(cardSemiannual) : "—"}
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm">
+                  {formatPrice(product.priceLifetime)}
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm font-medium">
+                  {formatPrice(total)}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={product.isActive ? "default" : "secondary"}>
+                    {product.isActive ? "Ativo" : "Inativo"}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openEditDialog(product)}
+                      aria-label="Editar produto"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openDeleteDialog(product)}
+                      aria-label="Excluir produto"
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )
+          })}
         </TableBody>
       </Table>
     </div>

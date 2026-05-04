@@ -19,7 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { formatInTz } from "@/lib/dates"
+import { formatIntimezone } from "@/lib/dates"
 
 interface CreateColumnsProps {
   onEdit: (user: ManagerUserTableRow) => void;
@@ -410,7 +410,7 @@ export function createColumns({
         const date = new Date(row.getValue("createdAt"));
         return (
           <div className="text-center text-muted-foreground">
-            {formatInTz(date, "dd/MM/yyyy", tz)}
+            {formatIntimezone(date, "dd/MM/yyyy", tz)}
           </div>
         );
       },

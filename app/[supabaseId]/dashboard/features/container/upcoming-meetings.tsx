@@ -5,7 +5,7 @@ import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Clock, Calendar } from "lucide-react"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { isPastInTz, formatInTz } from "@/lib/dates"
+import { isPastInTz, formatIntimezone } from "@/lib/dates"
 
 import {
   Card,
@@ -260,10 +260,10 @@ export function UpcomingMeetings({ supabaseId }: UpcomingMeetingsProps) {
                         <Clock className="text-muted-foreground h-4 w-4" />
                         <div className="flex flex-col">
                           <span className="font-medium">
-                            {formatInTz(meetingDate, "HH:mm", tz)}
+                            {formatIntimezone(meetingDate, "HH:mm", tz)}
                           </span>
                           <span className="text-muted-foreground text-xs">
-                            {formatInTz(meetingDate, "dd/MM/yyyy", tz)}
+                            {formatIntimezone(meetingDate, "dd/MM/yyyy", tz)}
                           </span>
                         </div>
                       </div>

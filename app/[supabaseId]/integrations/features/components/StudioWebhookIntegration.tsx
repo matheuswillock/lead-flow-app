@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { useIntegrationsContext } from "../context/IntegrationsContext";
 import type { StudioWebhookLogItem } from "../services/IIntegrationsService";
 import { useTimezone } from "@/app/context/TimezoneContext";
-import { formatInTz } from "@/lib/dates";
+import { formatIntimezone } from "@/lib/dates"
 
 const expiryModeLabel: Record<"hours_24" | "months_6" | "indeterminate", string> = {
   hours_24: "24 horas",
@@ -131,7 +131,7 @@ const formatWebhookLogDateTime = (value: string, tz: string): string => {
     return "-";
   }
 
-  return formatInTz(parsedDate, "dd/MM/yyyy HH:mm:ss", tz);
+  return formatIntimezone(parsedDate, "dd/MM/yyyy HH:mm:ss", tz);
 };
 
 const formatPayloadForDetails = (payload: unknown): string => {

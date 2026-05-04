@@ -102,13 +102,22 @@ class PrismaBillingRepository implements IBillingRepository {
     profileId: string,
     data: IUpdateBillingProfileSubscriptionData
   ): Promise<void> {
+    const subData = {
+      asaasSubscriptionId: data.asaasSubscriptionId,
+      subscriptionNextDueDate: data.subscriptionNextDueDate,
+      subscriptionCycle: data.subscriptionCycle,
+    };
+
+    await prisma.profileSubscription.upsert({
+      where: { profileId },
+      create: { profileId, ...subData },
+      update: subData,
+    });
+
+    // Keep Profile in sync for legacy compatibility
     await prisma.profile.update({
       where: { id: profileId },
-      data: {
-        asaasSubscriptionId: data.asaasSubscriptionId,
-        subscriptionNextDueDate: data.subscriptionNextDueDate,
-        subscriptionCycle: data.subscriptionCycle,
-      },
+      data: subData,
     });
   }
 }

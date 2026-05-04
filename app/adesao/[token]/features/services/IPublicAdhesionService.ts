@@ -10,5 +10,8 @@ export interface IPublicAdhesionService {
     token: string,
     input: PublicAdhesionCheckoutInput
   ): Promise<PublicAdhesionPayment>
-  getPaymentStatus(token: string): Promise<PublicAdhesionPayment>
+  getPaymentStatus(
+    token: string,
+    options?: { sync?: boolean }
+  ): Promise<PublicAdhesionPayment>
 }

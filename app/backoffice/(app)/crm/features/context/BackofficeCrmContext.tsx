@@ -122,7 +122,7 @@ function leadMatchesFilters(
     lead.name.toLowerCase().includes(q) ||
     (lead.email ?? "").toLowerCase().includes(q) ||
     (lead.phone ?? "").toLowerCase().includes(q) ||
-    (lead.cnpj ?? "").toLowerCase().includes(q) ||
+    (lead.cpfCnpj ?? "").toLowerCase().includes(q) ||
     (lead.notes ?? "").toLowerCase().includes(q)
 
   const matchesStatus =

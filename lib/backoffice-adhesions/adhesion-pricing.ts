@@ -1,4 +1,4 @@
-import type { BackofficeAdhesionBillingCycle, BackofficeProduct } from "@prisma/client"
+import type { BackofficeAdhesionBillingCycle, BackofficePaymentMethod, BackofficeProduct, BackofficeProductPaymentRule } from "@prisma/client"
 
 export const BACKOFFICE_ADHESION_CYCLE_MONTHS: Record<
   BackofficeAdhesionBillingCycle,
@@ -38,6 +38,11 @@ export interface BackofficeAdhesionPricing {
   monthlyTotalAmount: number
   totalAmount: number
   maxInstallments: number
+  pixMonthlyTotalAmount: number
+  pixTotalAmount: number
+  creditCardMonthlyTotalAmount: number
+  creditCardTotalAmount: number
+  maxCardInstallments: number
 }
 
 function roundCurrency(value: number): number {
@@ -67,9 +72,24 @@ export function resolveProductPriceForCycle(
   return price
 }
 
+export function resolvePaymentRule(
+  rules: BackofficeProductPaymentRule[],
+  cycle: BackofficeAdhesionBillingCycle,
+  paymentMethod: BackofficePaymentMethod
+): BackofficeProductPaymentRule {
+  const rule = rules.find(
+    (r) => r.billingCycle === cycle && r.paymentMethod === paymentMethod
+  )
+  if (!rule) {
+    throw new Error(`Regra de pagamento não encontrada para ciclo ${cycle} e método ${paymentMethod}`)
+  }
+  return rule
+}
+
 export function calculateBackofficeAdhesionPricing(
   input: BackofficeAdhesionPricingInput,
-  prices: BackofficeAdhesionPrices
+  prices: BackofficeAdhesionPrices,
+  paymentRules?: BackofficeProductPaymentRule[]
 ): BackofficeAdhesionPricing {
   const cycleMonths = BACKOFFICE_ADHESION_CYCLE_MONTHS[input.cycle] ?? 1
   const extraTeams = Math.max(0, Math.trunc(input.extraTeams || 0))
@@ -85,13 +105,47 @@ export function calculateBackofficeAdhesionPricing(
     monthlyBaseAmount + monthlyExtraTeamsAmount + monthlyExtraUsersAmount
   )
 
+  let pixMonthlyTotalAmount = monthlyTotalAmount
+  let pixTotalAmount = roundCurrency(monthlyTotalAmount * cycleMonths)
+  let creditCardMonthlyTotalAmount = monthlyTotalAmount
+  let creditCardTotalAmount = roundCurrency(monthlyTotalAmount * cycleMonths)
+  let maxCardInstallments = cycleMonths
+
+  if (paymentRules && paymentRules.length > 0) {
+    try {
+      const pixRule = resolvePaymentRule(paymentRules, input.cycle, "PIX")
+      const pixBaseMonthly = roundCurrency(Number(pixRule.price.toString()))
+      const pixMonthlyExtras = roundCurrency(monthlyExtraTeamsAmount + monthlyExtraUsersAmount)
+      pixMonthlyTotalAmount = roundCurrency(pixBaseMonthly + pixMonthlyExtras)
+      pixTotalAmount = roundCurrency(pixMonthlyTotalAmount * cycleMonths)
+    } catch {
+      // fallback to flat price
+    }
+
+    try {
+      const cardRule = resolvePaymentRule(paymentRules, input.cycle, "CREDIT_CARD")
+      const cardBaseMonthly = roundCurrency(Number(cardRule.price.toString()))
+      const cardMonthlyExtras = roundCurrency(monthlyExtraTeamsAmount + monthlyExtraUsersAmount)
+      creditCardMonthlyTotalAmount = roundCurrency(cardBaseMonthly + cardMonthlyExtras)
+      creditCardTotalAmount = roundCurrency(creditCardMonthlyTotalAmount * cycleMonths)
+      maxCardInstallments = cardRule.maxInstallments
+    } catch {
+      // fallback to flat price
+    }
+  }
+
   return {
     cycleMonths,
     monthlyBaseAmount,
     monthlyExtraTeamsAmount,
     monthlyExtraUsersAmount,
-    monthlyTotalAmount,
-    totalAmount: roundCurrency(monthlyTotalAmount * cycleMonths),
-    maxInstallments: cycleMonths,
+    monthlyTotalAmount: creditCardMonthlyTotalAmount,
+    totalAmount: creditCardTotalAmount,
+    maxInstallments: maxCardInstallments,
+    pixMonthlyTotalAmount,
+    pixTotalAmount,
+    creditCardMonthlyTotalAmount,
+    creditCardTotalAmount,
+    maxCardInstallments,
   }
 }

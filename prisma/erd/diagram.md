@@ -170,6 +170,13 @@ LIFETIME LIFETIME
     
 
 
+        backoffice_payment_method {
+            PIX PIX
+CREDIT_CARD CREDIT_CARD
+        }
+    
+
+
         backoffice_subscription_status {
             active active
 suspended suspended
@@ -404,7 +411,7 @@ unsubscribed unsubscribed
     String name 
     String email "❓"
     String phone "❓"
-    String cnpj "❓"
+    String cpfCnpj "❓"
     String notes "❓"
     BackofficeLeadStatus status 
     BackofficeLeadOrigin origin 
@@ -449,6 +456,8 @@ unsubscribed unsubscribed
     BackofficeAdhesionStatus status 
     String asaasCustomerId "❓"
     String asaasPaymentId "❓"
+    String asaasInstallmentId "❓"
+    Int installmentCount "❓"
     String billingType "❓"
     DateTime paymentDueDate "❓"
     String invoiceUrl "❓"
@@ -872,6 +881,18 @@ unsubscribed unsubscribed
     }
   
 
+  "backoffice_product_payment_rules" {
+    String id "🗝️"
+    BackofficePaymentMethod paymentMethod 
+    BackofficeAdhesionBillingCycle billingCycle 
+    Decimal price 
+    Boolean canInstallment 
+    Int maxInstallments 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_user_subscriptions" {
     String id "🗝️"
     BackofficeSubscriptionStatus status 
@@ -879,6 +900,23 @@ unsubscribed unsubscribed
     DateTime startDate 
     DateTime endDate "❓"
     String adhesionId "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "profile_subscriptions" {
+    String id "🗝️"
+    String asaasSubscriptionId "❓"
+    String asaasInstallmentId "❓"
+    SubscriptionStatus subscriptionStatus "❓"
+    SubscriptionPlan subscriptionPlan "❓"
+    DateTime subscriptionStartDate "❓"
+    DateTime subscriptionEndDate "❓"
+    DateTime trialEndDate "❓"
+    DateTime subscriptionNextDueDate "❓"
+    String subscriptionCycle "❓"
+    Boolean hasPermanentSubscription 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -988,8 +1026,16 @@ unsubscribed unsubscribed
     "email_events" }o--|| email_logs : "log"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
+    "backoffice_product_payment_rules" |o--|| "BackofficePaymentMethod" : "enum:paymentMethod"
+    "backoffice_product_payment_rules" |o--|| "BackofficeAdhesionBillingCycle" : "enum:billingCycle"
+    "backoffice_product_payment_rules" }o--|| backoffice_products : "product"
     "backoffice_user_subscriptions" |o--|| "BackofficeSubscriptionStatus" : "enum:status"
     "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_user_subscriptions" }o--|| profiles : "profile"
     "backoffice_user_subscriptions" }o--|| backoffice_products : "product"
+    "profile_subscriptions" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
+    "profile_subscriptions" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
+    "profile_subscriptions" |o--|| profiles : "profile"
+    "profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
+    "profile_subscriptions" }o--|o backoffice_products : "product"
 ```

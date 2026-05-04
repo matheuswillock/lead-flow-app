@@ -180,6 +180,13 @@ enum BackofficeProductBillingMode {
   @@map("backoffice_product_billing_mode")
 }
 
+enum BackofficePaymentMethod {
+  PIX
+  CREDIT_CARD
+
+  @@map("backoffice_payment_method")
+}
+
 enum BackofficeSubscriptionStatus {
   active
   suspended
@@ -399,6 +406,9 @@ model Profile {
   // Backoffice subscriptions
   backofficeSubscriptions BackofficeUserSubscription[] @relation("BackofficeUserSubscriptions")
 
+  // Product subscription (master only; operators inherit via managerId)
+  subscription ProfileSubscription?
+
   @@index([role])
   @@index([managerId])
   @@index([cpfCnpj])
@@ -515,7 +525,7 @@ model BackofficeLead {
   name                   String               @db.Text
   email                  String?              @db.Text
   phone                  String?              @db.Text
-  cnpj                   String?              @db.Text
+  cpfCnpj                String?              @db.Text
   notes                  String?              @db.Text
   status                 BackofficeLeadStatus @default(new_opportunity)
   origin                 BackofficeLeadOrigin @default(manual)
@@ -547,7 +557,7 @@ model BackofficeLead {
   @@index([meetingDate], map: "backoffice_leads_meeting_date_idx")
   @@index([createdByProfileId], map: "backoffice_leads_created_by_profile_id_idx")
   @@index([email], map: "backoffice_leads_email_idx")
-  @@index([cnpj], map: "backoffice_leads_cnpj_idx")
+  @@index([cpfCnpj], map: "backoffice_leads_cpf_cnpj_idx")
   @@map("backoffice_leads")
 }
 
@@ -584,6 +594,8 @@ model BackofficeAdhesion {
   createdByBackofficeUserId String?                         @map("createdByBackofficeUserId") @db.Uuid
   asaasCustomerId           String?                         @map("asaasCustomerId") @db.Text
   asaasPaymentId            String?                         @unique @map("asaasPaymentId") @db.Text
+  asaasInstallmentId        String?                         @unique @map("asaasInstallmentId") @db.Text
+  installmentCount          Int?                            @map("installmentCount")
   billingType               String?                         @map("billingType") @db.Text
   paymentDueDate            DateTime?                       @map("paymentDueDate") @db.Timestamptz(6)
   invoiceUrl                String?                         @map("invoiceUrl") @db.Text
@@ -602,6 +614,8 @@ model BackofficeAdhesion {
   sdrBackofficeUser       BackofficeUser? @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
   closerBackofficeUser    BackofficeUser? @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull)
   createdByBackofficeUser BackofficeUser? @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
+
+  profileSubscription ProfileSubscription?
 
   @@index([status], map: "backoffice_adhesions_status_idx")
   @@index([expiresAt], map: "backoffice_adhesions_expires_at_idx")
@@ -1315,11 +1329,31 @@ model BackofficeProduct {
   createdAt       DateTime                     @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime                     @updatedAt @db.Timestamptz(6)
 
-  userSubscriptions BackofficeUserSubscription[]
+  paymentRules         BackofficeProductPaymentRule[]
+  userSubscriptions    BackofficeUserSubscription[]
+  profileSubscriptions ProfileSubscription[]
 
   @@index([slug])
   @@index([type, isActive])
   @@map("backoffice_products")
+}
+
+model BackofficeProductPaymentRule {
+  id              String                         @id @default(uuid()) @db.Text
+  productId       String                         @db.Text
+  paymentMethod   BackofficePaymentMethod
+  billingCycle    BackofficeAdhesionBillingCycle
+  price           Decimal                        @db.Decimal(10, 2)
+  canInstallment  Boolean                        @default(false)
+  maxInstallments Int                            @default(1)
+  createdAt       DateTime                       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime                       @updatedAt @db.Timestamptz(6)
+
+  product BackofficeProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, paymentMethod, billingCycle])
+  @@index([productId])
+  @@map("backoffice_product_payment_rules")
 }
 
 model BackofficeUserSubscription {
@@ -1342,4 +1376,37 @@ model BackofficeUserSubscription {
   @@index([adhesionId])
   @@unique([profileId, productId])
   @@map("backoffice_user_subscriptions")
+}
+
+// -----------------------------
+// PROFILE SUBSCRIPTION (public.profile_subscriptions)
+// One record per master Profile. Operators inherit via Profile.managerId.
+// -----------------------------
+
+model ProfileSubscription {
+  id                      String              @id @default(uuid()) @db.Uuid
+  profileId               String              @unique @db.Uuid
+  adhesionId              String?             @unique @db.Uuid
+  productId               String?             @db.Text
+  asaasSubscriptionId     String?             @db.Text
+  asaasInstallmentId      String?             @db.Text
+  subscriptionStatus      SubscriptionStatus?
+  subscriptionPlan        SubscriptionPlan?
+  subscriptionStartDate   DateTime?           @db.Timestamptz(6)
+  subscriptionEndDate     DateTime?           @db.Timestamptz(6)
+  trialEndDate            DateTime?           @db.Timestamptz(6)
+  subscriptionNextDueDate DateTime?           @db.Timestamptz(6)
+  subscriptionCycle       String?             @db.Text
+  hasPermanentSubscription Boolean            @default(false)
+  createdAt               DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime            @updatedAt @db.Timestamptz(6)
+
+  profile  Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  adhesion BackofficeAdhesion? @relation(fields: [adhesionId], references: [id], onDelete: SetNull)
+  product  BackofficeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([adhesionId])
+  @@index([productId])
+  @@index([subscriptionStatus])
+  @@map("profile_subscriptions")
 }

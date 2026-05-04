@@ -3,12 +3,15 @@ import { Output } from "@/lib/output"
 import { backofficeAdhesionUseCase } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
   try {
     const { token } = await params
-    const output = await backofficeAdhesionUseCase.getPaymentStatus(token)
+    const sync = request.nextUrl.searchParams.get("sync")
+    const output = await backofficeAdhesionUseCase.getPaymentStatus(token, {
+      sync: sync === "1" || sync === "true",
+    })
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
     console.error("[PublicAdhesionPaymentStatusRoute][GET]", error)

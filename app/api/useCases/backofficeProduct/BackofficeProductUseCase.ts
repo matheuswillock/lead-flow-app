@@ -1,11 +1,25 @@
 import { Output } from "@/lib/output"
 import { BackofficeProductRepository } from "../../infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository"
-import type { IBackofficeProductRepository } from "../../infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository"
 import type {
+  BackofficeProductWithPaymentRules,
+  IBackofficeProductRepository,
+  UpsertPaymentRuleInput,
+} from "../../infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository"
+import type {
+  BackofficePaymentMethod,
   BackofficeProduct,
   BackofficeProductBillingMode,
+  BackofficeProductPaymentRule,
   BackofficeProductType,
 } from "@prisma/client"
+
+export interface BackofficeProductPaymentRuleDTO {
+  paymentMethod: BackofficePaymentMethod
+  billingCycle: string
+  price: number
+  canInstallment: boolean
+  maxInstallments: number
+}
 
 export interface BackofficeProductDTO {
   id: string
@@ -21,6 +35,7 @@ export interface BackofficeProductDTO {
   isActive: boolean
   createdAt: string
   updatedAt: string
+  paymentRules: BackofficeProductPaymentRuleDTO[]
 }
 
 export interface CreateBackofficeProductUseCaseInput {
@@ -34,6 +49,7 @@ export interface CreateBackofficeProductUseCaseInput {
   priceSemiannual?: number | null
   priceLifetime?: number | null
   isActive?: boolean
+  paymentRules?: UpsertPaymentRuleInput[]
 }
 
 export interface UpdateBackofficeProductUseCaseInput {
@@ -47,6 +63,7 @@ export interface UpdateBackofficeProductUseCaseInput {
   priceSemiannual?: number | null
   priceLifetime?: number | null
   isActive?: boolean
+  paymentRules?: UpsertPaymentRuleInput[]
 }
 
 export class BackofficeProductUseCase {
@@ -54,8 +71,8 @@ export class BackofficeProductUseCase {
 
   async list(): Promise<Output> {
     try {
-      const products = await this.productRepo.findAll()
-      return new Output(true, [], [], products.map(mapProductDTO))
+      const products = await this.productRepo.findAllWithPaymentRules()
+      return new Output(true, [], [], products.map(mapProductWithRulesDTO))
     } catch (error) {
       console.error("[BackofficeProductUseCase][list]", error)
       return new Output(false, [], ["Erro ao listar produtos"], null)
@@ -82,7 +99,11 @@ export class BackofficeProductUseCase {
       }
 
       const product = await this.productRepo.create(input)
-      return new Output(true, ["Produto criado com sucesso"], [], mapProductDTO(product))
+      if (input.billingMode === "RECURRING" && input.paymentRules?.length) {
+        await this.productRepo.upsertPaymentRules(product.id, input.paymentRules)
+      }
+      const withRules = await this.productRepo.findByIdWithPaymentRules(product.id)
+      return new Output(true, ["Produto criado com sucesso"], [], mapProductWithRulesDTO(withRules ?? { ...product, paymentRules: [] }))
     } catch (error) {
       console.error("[BackofficeProductUseCase][create]", error)
       return new Output(false, [], ["Erro ao criar produto"], null)
@@ -130,8 +151,13 @@ export class BackofficeProductUseCase {
         return new Output(false, [], [validationError], null)
       }
 
-      const product = await this.productRepo.update(id, input)
-      return new Output(true, ["Produto atualizado com sucesso"], [], mapProductDTO(product))
+      const { paymentRules, ...productInput } = input
+      const product = await this.productRepo.update(id, productInput)
+      if (paymentRules?.length) {
+        await this.productRepo.upsertPaymentRules(id, paymentRules)
+      }
+      const withRules = await this.productRepo.findByIdWithPaymentRules(id)
+      return new Output(true, ["Produto atualizado com sucesso"], [], mapProductWithRulesDTO(withRules ?? { ...product, paymentRules: [] }))
     } catch (error) {
       console.error("[BackofficeProductUseCase][update]", error)
       return new Output(false, [], ["Erro ao atualizar produto"], null)
@@ -195,6 +221,16 @@ function decimalToNumber(value: { toString(): string } | null): number | null {
   return value == null ? null : Number(value.toString())
 }
 
+function mapPaymentRuleDTO(rule: BackofficeProductPaymentRule): BackofficeProductPaymentRuleDTO {
+  return {
+    paymentMethod: rule.paymentMethod,
+    billingCycle: rule.billingCycle,
+    price: Number(rule.price.toString()),
+    canInstallment: rule.canInstallment,
+    maxInstallments: rule.maxInstallments,
+  }
+}
+
 export function mapProductDTO(product: BackofficeProduct): BackofficeProductDTO {
   return {
     id: product.id,
@@ -210,6 +246,14 @@ export function mapProductDTO(product: BackofficeProduct): BackofficeProductDTO 
     isActive: product.isActive,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
+    paymentRules: [],
+  }
+}
+
+export function mapProductWithRulesDTO(product: BackofficeProductWithPaymentRules): BackofficeProductDTO {
+  return {
+    ...mapProductDTO(product),
+    paymentRules: product.paymentRules.map(mapPaymentRuleDTO),
   }
 }
 

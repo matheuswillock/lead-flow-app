@@ -21,6 +21,7 @@ export type BackofficeAdhesionLeadRelation = Pick<
   | "name"
   | "email"
   | "phone"
+  | "cpfCnpj"
   | "status"
   | "sdrBackofficeUserId"
   | "closerBackofficeUserId"
@@ -36,6 +37,7 @@ export interface CreateBackofficeAdhesionInput {
   leadId: string
   fullName: string
   phone: string
+  cpfCnpj?: string | null
   plan: BackofficeAdhesionPlan
   cycle: BackofficeAdhesionBillingCycle
   modules: string[]
@@ -55,6 +57,7 @@ export interface CreateBackofficeAdhesionInput {
 }
 
 export interface UpdateBackofficeAdhesionInput {
+  cpfCnpj: undefined
   fullName?: string
   phone?: string
   cycle?: BackofficeAdhesionBillingCycle
@@ -88,6 +91,8 @@ export interface UpdateBackofficeAdhesionCheckoutInput {
   state?: string
   asaasCustomerId?: string
   asaasPaymentId?: string
+  asaasInstallmentId?: string | null
+  installmentCount?: number | null
   billingType?: string
   paymentDueDate?: Date | null
   invoiceUrl?: string | null
@@ -110,7 +115,6 @@ export interface CreateBackofficeAdhesionManagerProfileInput {
   phone: string
   email: string
   asaasCustomerId?: string | null
-  subscriptionId: string
   cpfCnpj?: string | null
   operatorCount: number
   subscriptionStartDate: Date
@@ -184,5 +188,17 @@ export interface IBackofficeAdhesionRepository {
       canManageAccountTeams: boolean
     }
   ): Promise<void>
+  upsertProfileSubscription(data: {
+    profileId: string
+    adhesionId: string
+    productId: string
+    subscriptionStatus: string
+    subscriptionPlan: string
+    subscriptionCycle: string
+    subscriptionStartDate: Date
+    subscriptionEndDate: Date
+    subscriptionNextDueDate: Date
+  }): Promise<void>
+  clearPaymentArtifacts(id: string): Promise<BackofficeAdhesionWithRelations>
   getOptions(): Promise<BackofficeAdhesionOptions>
 }

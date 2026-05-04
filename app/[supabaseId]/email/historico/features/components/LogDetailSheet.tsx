@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator"
 import { useHistoricoContext } from "../context/HistoricoContext"
 import { EventsTimeline } from "./EventsTimeline"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz } from "@/lib/dates"
+import { formatIntimezone } from "@/lib/dates"
 
 const STATUS_LABELS: Record<string, string> = {
   queued: "Na fila",
@@ -31,7 +31,7 @@ function Timestamp({ label, value, tz }: { label: string; value: string | null; 
   return (
     <div className="flex justify-between text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span>{formatInTz(new Date(value), "dd/MM/yyyy HH:mm", tz)}</span>
+      <span>{formatIntimezone(new Date(value), "dd/MM/yyyy HH:mm", tz)}</span>
     </div>
   )
 }

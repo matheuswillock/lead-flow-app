@@ -93,7 +93,6 @@ import {
 } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { formatInTz } from "@/lib/dates"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { useBackofficeCrm } from "../context/BackofficeCrmHook"
 import { BackofficeLeadScheduleDialog } from "./BackofficeLeadScheduleDialog"
@@ -107,12 +106,14 @@ import {
   type BackofficeLeadScheduleInput,
   type BackofficeLeadStatusKey,
 } from "../context/BackofficeCrmTypes"
+import { formatDateTime } from "@/lib/dates/formatters"
+import { formatDocumentInput, maskPhone } from "@/lib/masks"
 
 const TABLE_COLUMN_OPTIONS: { key: BackofficeCrmTableColumnKey; label: string }[] = [
   { key: "name", label: "Nome" },
   { key: "email", label: "Email" },
   { key: "phone", label: "Telefone" },
-  { key: "cnpj", label: "CNPJ" },
+  { key: "cpfCnpj", label: "Documento" },
   { key: "status", label: "Status" },
   { key: "origin", label: "Origem" },
   { key: "sdr", label: "SDR" },
@@ -124,21 +125,6 @@ const TABLE_COLUMN_OPTIONS: { key: BackofficeCrmTableColumnKey; label: string }[
 ]
 
 const headerButtonClass = "h-8 w-full justify-center px-2 hover:bg-accent"
-
-function formatDateTime(value: string, tz: string): string {
-  try {
-    return formatInTz(new Date(value), "dd/MM/yyyy HH:mm", tz)
-  } catch {
-    return value
-  }
-}
-
-function formatCnpj(value: string | null): string {
-  if (!value) return "-"
-  const digits = value.replace(/\D/g, "")
-  if (digits.length !== 14) return value
-  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`
-}
 
 function getStatusBadgeClass(status: BackofficeLeadStatusKey): string {
   const classes: Record<BackofficeLeadStatusKey, string> = {
@@ -492,13 +478,13 @@ export function BackofficeCrmTable() {
         accessorKey: "phone",
         meta: { label: "Telefone" },
         header: ({ column }) => <SortableHeader column={column} label="Telefone" />,
-        cell: ({ row }) => row.original.phone || "-",
+        cell: ({ row }) => maskPhone(row.original.phone ?? "") || "-",
       },
       {
-        accessorKey: "cnpj",
-        meta: { label: "CNPJ" },
-        header: ({ column }) => <SortableHeader column={column} label="CNPJ" />,
-        cell: ({ row }) => formatCnpj(row.original.cnpj),
+        accessorKey: "cpfCnpj",
+        meta: { label: "Documento" },
+        header: ({ column }) => <SortableHeader column={column} label="Documento" />,
+        cell: ({ row }) => formatDocumentInput(row.original.cpfCnpj),
       },
       {
         accessorKey: "status",
@@ -586,16 +572,11 @@ export function BackofficeCrmTable() {
                   <MoreHorizontal data-icon="inline-start" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                onClick={(event) => event.stopPropagation()}
-              >
+              <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
                 <DropdownMenuLabel>Ações</DropdownMenuLabel>
                 <DropdownMenuGroup>
                   <DropdownMenuSub>
-                    <DropdownMenuSubTrigger
-                      onClick={(event) => event.stopPropagation()}
-                    >
+                    <DropdownMenuSubTrigger onClick={(event) => event.stopPropagation()}>
                       <RefreshCw data-icon="inline-start" />
                       Mudar status
                     </DropdownMenuSubTrigger>
@@ -640,7 +621,7 @@ export function BackofficeCrmTable() {
         },
       },
     ],
-    [handleStatusChange, pendingStatusLeadId, tz]
+    [handleStatusChange, pendingStatusLeadId, tz],
   )
 
   const table = useReactTable({
@@ -820,3 +801,4 @@ export function BackofficeCrmTable() {
     </div>
   )
 }
+

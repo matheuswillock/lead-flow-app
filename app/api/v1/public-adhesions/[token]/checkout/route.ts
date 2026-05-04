@@ -28,10 +28,26 @@ export async function POST(
 
     const { token } = await params
     const data = body as Record<string, unknown>
+
+    const billingType = data.billingType === "PIX" || data.billingType === "CREDIT_CARD"
+      ? data.billingType
+      : null
+
+    if (!billingType) {
+      console.info("[PublicAdhesionCheckoutRoute][POST] billingType rejeitado:", data.billingType)
+      return NextResponse.json(
+        new Output(false, [], ["Forma de pagamento inválida. Use PIX ou CREDIT_CARD."], null),
+        { status: 400 }
+      )
+    }
+
     const creditCard =
       data.creditCard && typeof data.creditCard === "object"
         ? (data.creditCard as PublicAdhesionCreditCardPayload)
         : undefined
+
+    console.info("[PublicAdhesionCheckoutRoute][POST] token:", token, "billingType:", billingType)
+
     const output = await backofficeAdhesionUseCase.createCheckout(token, {
       fullName: typeof data.fullName === "string" ? data.fullName : "",
       email: typeof data.email === "string" ? data.email : "",
@@ -47,12 +63,7 @@ export async function POST(
           : undefined,
       city: typeof data.city === "string" ? data.city : "",
       state: typeof data.state === "string" ? data.state : "",
-      billingType:
-        data.billingType === "PIX" ||
-        data.billingType === "BOLETO" ||
-        data.billingType === "CREDIT_CARD"
-          ? data.billingType
-          : "PIX",
+      billingType,
       installments:
         typeof data.installments === "number" && Number.isFinite(data.installments)
           ? Math.trunc(data.installments)

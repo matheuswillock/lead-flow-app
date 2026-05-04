@@ -11,11 +11,11 @@ import { cn } from "@/lib/utils";
 import type { NotificationItem } from "../types/notification.types";
 import { useNotifications } from "../context/NotificationsHook";
 import { useTimezone } from "@/app/context/TimezoneContext";
-import { formatInTz } from "@/lib/dates";
+import { formatIntimezone } from "@/lib/dates";
 
 function formatCreatedAt(value: string, tz: string) {
   try {
-    return formatInTz(new Date(value), "dd/MM/yyyy HH:mm", tz);
+    return formatIntimezone(new Date(value), "dd/MM/yyyy HH:mm", tz);
   } catch {
     return value;
   }

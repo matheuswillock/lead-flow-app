@@ -1,5 +1,21 @@
 export type BackofficeProductType = "PLAN" | "ADDON"
 export type BackofficeProductBillingMode = "RECURRING" | "LIFETIME"
+export type BackofficePaymentMethodKey = "PIX" | "CREDIT_CARD"
+export type BackofficeAdhesionBillingCycleKey = "monthly" | "quarterly" | "semiannual"
+
+export interface BackofficeProductPaymentRuleItem {
+  paymentMethod: BackofficePaymentMethodKey
+  billingCycle: BackofficeAdhesionBillingCycleKey
+  price: number
+  canInstallment: boolean
+  maxInstallments: number
+}
+
+export interface BackofficeProductPaymentRuleFormEntry {
+  pixPrice: string
+  cardPrice: string
+  maxInstallments: string
+}
 
 export interface BackofficeProductItem {
   id: string
@@ -15,6 +31,7 @@ export interface BackofficeProductItem {
   isActive: boolean
   createdAt: string
   updatedAt: string
+  paymentRules: BackofficeProductPaymentRuleItem[]
 }
 
 export interface BackofficeProductFormData {
@@ -28,6 +45,17 @@ export interface BackofficeProductFormData {
   priceSemiannual: string
   priceLifetime: string
   isActive: boolean
+  paymentRules: {
+    monthly: BackofficeProductPaymentRuleFormEntry
+    quarterly: BackofficeProductPaymentRuleFormEntry
+    semiannual: BackofficeProductPaymentRuleFormEntry
+  }
+}
+
+const EMPTY_RULE_ENTRY: BackofficeProductPaymentRuleFormEntry = {
+  pixPrice: "",
+  cardPrice: "",
+  maxInstallments: "1",
 }
 
 export const EMPTY_PRODUCT_FORM: BackofficeProductFormData = {
@@ -41,4 +69,9 @@ export const EMPTY_PRODUCT_FORM: BackofficeProductFormData = {
   priceSemiannual: "",
   priceLifetime: "",
   isActive: true,
+  paymentRules: {
+    monthly: { ...EMPTY_RULE_ENTRY, maxInstallments: "1" },
+    quarterly: { ...EMPTY_RULE_ENTRY, maxInstallments: "3" },
+    semiannual: { ...EMPTY_RULE_ENTRY, maxInstallments: "6" },
+  },
 }

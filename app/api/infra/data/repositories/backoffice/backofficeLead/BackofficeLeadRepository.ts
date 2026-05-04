@@ -51,7 +51,7 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
         name: data.name,
         email: data.email ?? null,
         phone: data.phone ?? null,
-        cnpj: data.cnpj ?? null,
+        cpfCnpj: data.cpfCnpj ?? null,
         notes: data.notes ?? null,
         status: data.status,
         origin: data.origin ?? BackofficeLeadOrigin.manual,
@@ -104,7 +104,7 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.email !== undefined ? { email: data.email } : {}),
         ...(data.phone !== undefined ? { phone: data.phone } : {}),
-        ...(data.cnpj !== undefined ? { cnpj: data.cnpj } : {}),
+        ...(data.cpfCnpj !== undefined ? { cpfCnpj: data.cpfCnpj } : {}),
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
         ...(data.sdrBackofficeUserId !== undefined
           ? { sdrBackofficeUserId: data.sdrBackofficeUserId }
@@ -149,6 +149,9 @@ export class BackofficeLeadRepository implements IBackofficeLeadRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await prisma.backofficeLead.delete({ where: { id } })
+    await prisma.$transaction(async (tx) => {
+      await tx.backofficeAdhesion.deleteMany({ where: { leadId: id } })
+      await tx.backofficeLead.delete({ where: { id } })
+    })
   }
 }

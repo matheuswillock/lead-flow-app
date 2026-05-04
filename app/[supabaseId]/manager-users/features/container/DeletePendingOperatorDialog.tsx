@@ -32,16 +32,16 @@ export function DeletePendingOperatorDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>⚠️ Ação Irreversível</AlertDialogTitle>
           <AlertDialogDescription className="space-y-2">
-            <p>
+            <span className="block">
               Você está prestes a <strong className="text-destructive">deletar permanentemente</strong> o operador pendente:
-            </p>
-            <div className="bg-muted p-3 rounded-md space-y-1">
-              <p className="font-medium">{operatorName}</p>
-              <p className="text-sm text-muted-foreground">{operatorEmail}</p>
-            </div>
-            <p className="text-destructive font-medium pt-2">
+            </span>
+            <span className="block bg-muted p-3 rounded-md space-y-1">
+              <span className="block font-medium">{operatorName}</span>
+              <span className="block text-sm text-muted-foreground">{operatorEmail}</span>
+            </span>
+            <span className="block text-destructive font-medium pt-2">
               Esta ação não pode ser desfeita. Todos os dados relacionados a este operador pendente serão removidos da base de dados.
-            </p>
+            </span>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

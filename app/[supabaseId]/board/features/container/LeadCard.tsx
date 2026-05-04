@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import useBoardContext from "../context/BoardHook";
 import { cn } from "@/lib/utils";
 import { useTimezone } from "@/app/context/TimezoneContext";
-import { formatInTz } from "@/lib/dates";
+import { formatIntimezone } from "@/lib/dates"
 
 interface LeadCardProps {
     lead: LeadResponseDTO;
@@ -97,7 +97,7 @@ function LeadCardComponent({
         if (!value) return null;
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return value;
-        return formatInTz(date, "dd/MM/yyyy HH:mm", tz);
+        return formatIntimezone(date, "dd/MM/yyyy HH:mm", tz);
     };
 
     const closerName = lead.closer?.fullName || lead.closer?.email;

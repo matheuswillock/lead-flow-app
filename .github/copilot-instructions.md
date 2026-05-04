@@ -20,6 +20,103 @@ This document defines the implementation governance for AI agents in this reposi
 - **LEGACY EXCEPTIONS**: allowed temporary deviations, explicitly listed in `.governance/ai-governance.config.json` (source of truth for governance checks).
 - **FOR NEW FEATURES**: rules that apply to all net-new feature work.
 
+## Communication Style
+
+- Do NOT explain what you are about to do before doing it. Just do it.
+- Do NOT summarize what you just did after doing it.
+- Do NOT ask for confirmation on tasks that were clearly requested.
+- Do NOT narrate file reads, searches or tool calls.
+- Only speak when you have a question that genuinely blocks progress, or when the task is fully done.
+- When done, report only: what changed and any errors found.
+
+## Working Style
+
+- Prefer sessions focused on one layer at a time (backend OR frontend, not both).
+- Read at most 5 files before starting implementation. Do not explore the codebase extensively without necessity.
+- Before deleting any record, check for FK constraints in the schema.
+- **MUST NOT** create or edit Prisma migration SQL files manually. Always generate new migrations by running `bun run prisma:migrate` (defined in `package.json`). **MUST NOT** apply, deploy or push migration updates to the database without explicit authorization from the project owner.
+<!-- - Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`. -->
+
+## Automated Validation (FOR ALL CHANGES)
+
+After every edit, automatically run in this order:
+
+```bash
+bun run typecheck 2>&1 | head -20
+bun run lint
+bun run governance:check
+```
+
+Rules:
+- Do NOT skip these commands even for small changes.
+- Do NOT ask for confirmation to run them.
+- Do NOT report the task as done if any command fails.
+- Fix all errors immediately before moving to the next file or task.
+- If `governance:check` fails, fix the violation before continuing — do not add to allowlist unless explicitly instructed.
+
+
+
+
+## Visual Implementation (FOR NEW FEATURES)
+
+### Design Reference (MUST)
+
+Before implementing any UI screen, modal, form, or component:
+
+1. Read `DESIGN.md` — it is the canonical source for all tokens, 
+   typography, spacing, and visual direction.
+2. Use the `corretor-studio-design` skill to generate a design brief 
+   before writing any JSX. Do NOT skip this step for new screens.
+3. Never use hardcoded hex values in JSX/TSX for themable UI. 
+   Always use semantic CSS variable tokens.
+4. Never manually edit CSS regions managed by `design:sync` 
+   in `app/globals.css`.
+
+### shadcn MCP Workflow (MUST)
+
+Before creating any visual component, use the shadcn MCP server:
+
+1. `shadcn:search_items_in_registries` — search for the component.
+2. `shadcn:view_items_in_registries` — inspect its full API and variants.
+3. `shadcn:get_add_command_for_items` — get the install command.
+4. Run the install command with Bun: `bunx --bun shadcn@latest add <component>`.
+5. Only create custom markup if the component does not exist in the registry.
+
+Never install shadcn components with npm or yarn. Always use `bunx --bun shadcn@latest`.
+
+### shadcn Composition Rules (MUST)
+
+- Use `FieldGroup` + `Field` for all forms. Never use raw `div` with `space-y-*`.
+- Use `gap-*` instead of `space-y-*` or `space-x-*` everywhere.
+- Use `size-*` instead of `w-* h-*` when width and height are equal.
+- Use semantic color tokens (`bg-primary`, `text-muted-foreground`) — 
+  never raw Tailwind colors like `bg-blue-500` or `text-gray-600`.
+- Never add manual `dark:` color overrides — semantic tokens handle light/dark.
+- Never add `z-index` to overlay components (Dialog, Sheet, Drawer, Popover, Tooltip).
+- Use `cn()` from `@/lib/utils` for conditional class names — never manual ternaries.
+- Icons inside Button use `data-icon="inline-start"` or `data-icon="inline-end"`. 
+  No sizing classes (`size-4`, `w-4`, `h-4`) on icons inside shadcn components.
+- Always use the project icon library: `lucide-react` (check `components.json`).
+- Avatar always needs `AvatarFallback`.
+- Dialog, Sheet, and Drawer always need a Title (use `sr-only` if visually hidden).
+- Use `Skeleton` for loading states — never custom `animate-pulse` divs.
+- Use `Badge` for status indicators — never custom styled spans.
+- Use `Separator` instead of `<hr>` or `<div className="border-t">`.
+- Use `sonner` for toast notifications — never browser-native `alert`.
+
+### Design Validation (MUST)
+
+Add `bun run design:check` to the validation sequence after every UI change:
+
+```bash
+bun run typecheck 2>&1 | head -20
+bun run lint
+bun run governance:check
+bun run design:check
+```
+
+If `design:check` fails, run `bun run design:sync` and commit the result.
+
 ## Project Context Reference
 
 - Agents **MUST** read `.github/instructions/project-context.instructions.md` at the start of every session or task to obtain full project context: tech stack, design system, database schema, architecture patterns, integrations, and conventions.

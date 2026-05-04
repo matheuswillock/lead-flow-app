@@ -4,7 +4,7 @@ import { Output } from "@/lib/output"
 import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
-import { formatInTz, resolveTimezone } from "@/lib/dates"
+import { formatIntimezone, resolveTimezone } from "@/lib/dates"
 
 const DEFAULT_FROM = `Corretor Studio <no-reply@corretorstudio.com>`
 const MAX_CAMPAIGNS_PER_RUN = 5
@@ -126,7 +126,7 @@ export async function GET(request: NextRequest) {
 
         dispatched++
         const scheduledLabel = campaign.scheduledAt
-          ? formatInTz(campaign.scheduledAt, "dd/MM/yyyy HH:mm", ownerTz)
+          ? formatIntimezone(campaign.scheduledAt, "dd/MM/yyyy HH:mm", ownerTz)
           : "sem data"
         console.info(
           `[EmailCronDispatch] Campanha ${campaign.id} disparada: ${result.sent} emails enviados (agendada para ${scheduledLabel} ${ownerTz})`

@@ -1,7 +1,7 @@
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
 import { BILLING_PRICES, type BillingSummary } from "@/app/api/shared/billing/billingConfig";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
-import { addMonthsInTz, formatInTz, DEFAULT_TZ } from "@/lib/dates";
+import { addMonthsInTz, formatIntimezone, DEFAULT_TZ } from "@/lib/dates";
 import { buildBillingSummary } from "./TeamBillingService";
 import type {
   BillingOwnerProfile,
@@ -179,10 +179,28 @@ export class IncrementalBillingService implements IIncrementalBillingService {
 
   async createIncrementalCharge(input: CreateIncrementalChargeInput): Promise<IncrementalChargeResult> {
     const customerId = await this.ensureCustomer(input.master);
-    const subscription = await this.getCurrentSubscription(input.master);
-    const billingType = normalizeBillingType(subscription.billingType);
+
+    // Usuários vindos do fluxo de backoffice adhesion não possuem assinatura recorrente no Asaas
+    // (pagaram lump-sum semestral). Nesse caso, criamos cobrança avulsa com billingType UNDEFINED,
+    // permitindo que o cliente escolha o método de pagamento via link gerado.
+    let billingType: IncrementalBillingType = "UNDEFINED";
+    let creditCardToken: string | undefined;
+
+    if (input.master.asaasSubscriptionId) {
+      const subscription = await this.getCurrentSubscription(input.master);
+      billingType = normalizeBillingType(subscription.billingType);
+      if (billingType === "CREDIT_CARD") {
+        creditCardToken = subscription.creditCard?.creditCardToken;
+        if (!creditCardToken) {
+          throw new Error(
+            "A assinatura em cartão não possui tokenização ativa para cobrança incremental imediata."
+          );
+        }
+      }
+    }
+
     const ownerTz = input.master.timezone ?? DEFAULT_TZ;
-    const dueDate = formatInTz(new Date(), "yyyy-MM-dd", ownerTz);
+    const dueDate = formatIntimezone(new Date(), "yyyy-MM-dd", ownerTz);
     const externalReference = `pending-action-${input.pendingActionId}`;
     const paymentPayload: Record<string, unknown> = {
       customer: customerId,
@@ -193,13 +211,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       externalReference,
     };
 
-    if (billingType === "CREDIT_CARD") {
-      const creditCardToken = subscription.creditCard?.creditCardToken;
-      if (!creditCardToken) {
-        throw new Error(
-          "A assinatura em cartão não possui tokenização ativa para cobrança incremental imediata."
-        );
-      }
+    if (billingType === "CREDIT_CARD" && creditCardToken) {
       paymentPayload.creditCardToken = creditCardToken;
     }
 
@@ -344,7 +356,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     }
 
     // Asaas espera yyyy-MM-dd no fuso do cliente (BRT), não em UTC
-    return formatInTz(nextDueDate, "yyyy-MM-dd", ownerTz);
+    return formatIntimezone(nextDueDate, "yyyy-MM-dd", ownerTz);
   }
 }
 
