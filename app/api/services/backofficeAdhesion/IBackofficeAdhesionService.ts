@@ -40,7 +40,7 @@ export interface BackofficeAdhesionCheckoutInput {
   complement?: string | null
   city: string
   state: string
-  billingType: "PIX" | "BOLETO" | "CREDIT_CARD"
+  billingType: "PIX" | "CREDIT_CARD"
   installments?: number
   creditCard?: {
     holderName: string
@@ -58,6 +58,7 @@ export interface BackofficeAdhesionDTO {
   leadName: string
   fullName: string
   phone: string
+  cpfCnpj: string | null
   email: string | null
   sdrBackofficeUserId: string | null
   closerBackofficeUserId: string | null
@@ -82,6 +83,7 @@ export interface BackofficeAdhesionPublicDTO {
   id: string
   fullName: string
   phone: string
+  cpfCnpj: string | null
   email: string | null
   status: BackofficeAdhesionStatus
   cycle: BackofficeAdhesionBillingCycle
@@ -93,6 +95,11 @@ export interface BackofficeAdhesionPublicDTO {
   monthlyTotalAmount: number
   totalAmount: number
   maxInstallments: number
+  pixMonthlyTotalAmount: number
+  pixTotalAmount: number
+  creditCardMonthlyTotalAmount: number
+  creditCardTotalAmount: number
+  maxCardInstallments: number
   expiresAt: string
 }
 
@@ -123,6 +130,7 @@ export interface BackofficeAdhesionOptionsDTO {
     name: string
     email: string | null
     phone: string | null
+    cpfCnpj: string | null
     status: string
     sdrBackofficeUserId: string | null
     closerBackofficeUserId: string | null
@@ -199,7 +207,10 @@ export interface IBackofficeAdhesionService {
     token: string,
     input: BackofficeAdhesionCheckoutInput
   ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
-  getPaymentStatus(token: string): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
+  getPaymentStatus(
+    token: string,
+    options?: { sync?: boolean }
+  ): Promise<BackofficeAdhesionPaymentDTO | BackofficeAdhesionTokenError>
   processPaymentWebhook(
     event: string,
     payment: BackofficeAdhesionPaymentWebhookInput

@@ -46,12 +46,15 @@ export async function PUT(
       return NextResponse.json(new Output(false, [], ["Payload inválido"], null), { status: 400 })
     }
 
+    console.info("[BackofficeLeadByIdRoute][PUT] Received body:", body)
+
+
     const data = body as Record<string, unknown>
     const output = await backofficeLeadUseCase.updateLead(id, {
       name: typeof data.name === "string" ? data.name : undefined,
       email: typeof data.email === "string" || data.email === null ? data.email : undefined,
       phone: typeof data.phone === "string" || data.phone === null ? data.phone : undefined,
-      cnpj: typeof data.cnpj === "string" || data.cnpj === null ? data.cnpj : undefined,
+      cpfCnpj: typeof data.cpfCnpj === "string" || data.cpfCnpj === null ? data.cpfCnpj : undefined,
       notes: typeof data.notes === "string" || data.notes === null ? data.notes : undefined,
       sdrBackofficeUserId:
         typeof data.sdrBackofficeUserId === "string" || data.sdrBackofficeUserId === null

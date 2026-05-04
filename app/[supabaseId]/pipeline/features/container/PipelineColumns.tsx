@@ -20,7 +20,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { maskPhone } from "@/lib/masks";
 import { getHealthPlanLabel } from "@/lib/healthPlanLabels";
-import { formatInTz } from "@/lib/dates";
+import { formatIntimezone } from "@/lib/dates"
 
 const headerButtonClass = "h-8 px-2 hover:bg-accent w-full justify-center";
 const formatCurrency = (value: number | null | undefined) => {
@@ -91,7 +91,7 @@ function formatMeetingDate(dateString: string | null, tz: string): string {
   
   try {
     const date = new Date(dateString);
-    return formatInTz(date, "dd/MM/yyyy HH:mm", tz);
+    return formatIntimezone(date, "dd/MM/yyyy HH:mm", tz);
   } catch {
     return dateString;
   }

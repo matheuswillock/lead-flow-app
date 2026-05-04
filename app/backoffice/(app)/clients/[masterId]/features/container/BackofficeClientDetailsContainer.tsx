@@ -38,7 +38,8 @@ import { useBackofficeClientDetails } from "../context/BackofficeClientDetailsCo
 import { BackofficeClientEditDialog } from "../components/BackofficeClientEditDialog"
 import { BackofficeClientDeleteDialog } from "../components/BackofficeClientDeleteDialog"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz, parseDateKeyToUtc } from "@/lib/dates"
+import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
+import { maskPhone } from "@/lib/masks"
 
 const INVOICE_STATUS_BADGES: Record<
   "paid" | "overdue" | "upcoming" | "other",
@@ -82,12 +83,12 @@ const INVOICE_PERIOD_OPTIONS = [
 ] as const
 
 function formatDate(value: string, tz: string) {
-  return formatInTz(new Date(value), "dd/MM/yyyy", tz)
+  return formatIntimezone(new Date(value), "dd/MM/yyyy", tz)
 }
 
 function formatNullableDate(value: string | null, tz: string) {
   if (!value) return "—"
-  return formatInTz(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz)
+  return formatIntimezone(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz)
 }
 
 function formatCurrency(value: number) {
@@ -245,7 +246,10 @@ export function BackofficeClientDetailsContainer() {
           <div className="flex flex-wrap items-start justify-between gap-4 py-1 mb-2">
             <div className="flex flex-wrap items-center gap-4">
               <Avatar className="h-16 w-16 rounded-full">
-                <AvatarImage src={details.profileIconUrl || undefined} alt={details.fullName || details.email} />
+                <AvatarImage
+                  src={details.profileIconUrl || undefined}
+                  alt={details.fullName || details.email}
+                />
                 <AvatarFallback>{getInitials(details.fullName, details.email)}</AvatarFallback>
               </Avatar>
               <div className="space-y-1">
@@ -253,9 +257,7 @@ export function BackofficeClientDetailsContainer() {
                   <h1 className="text-xl font-semibold">{details.fullName || "Sem nome"}</h1>
                   {details.plan.kind === "lifetime" && <Badge>Vitalício</Badge>}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  E-mail: {details.email}
-                </p>
+                <p className="text-sm text-muted-foreground">E-mail: {details.email}</p>
                 <p className="text-sm text-muted-foreground">
                   Telefone: {details.phone || "Não informado"}
                 </p>
@@ -286,12 +288,20 @@ export function BackofficeClientDetailsContainer() {
               <Search className="mr-1 h-4 w-4" />
               Buscar
             </Button>
-            <Button size="sm" variant="outline" onClick={handleClearFilters} disabled={isTeamsLoading}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleClearFilters}
+              disabled={isTeamsLoading}
+            >
               Limpar
             </Button>
           </LeadsFiltersLayout>
 
-          <Tabs value={activeSection} onValueChange={(value) => handleTabChange(value as "teams" | "invoices")}>
+          <Tabs
+            value={activeSection}
+            onValueChange={(value) => handleTabChange(value as "teams" | "invoices")}
+          >
             <TabsList>
               <TabsTrigger value="teams">Times</TabsTrigger>
               <TabsTrigger value="invoices">Faturas</TabsTrigger>
@@ -348,14 +358,18 @@ export function BackofficeClientDetailsContainer() {
                               <TableBody>
                                 {team.members.map((member) => (
                                   <TableRow key={`${member.id}-${member.addedAt}`}>
-                                    <TableCell className="font-medium">{member.fullName || "Sem nome"}</TableCell>
+                                    <TableCell className="font-medium">
+                                      {member.fullName || "Sem nome"}
+                                    </TableCell>
                                     <TableCell>{member.email}</TableCell>
-                                    <TableCell>{member.phone || "—"}</TableCell>
+                                    <TableCell>{maskPhone(member.phone ?? "") || "—"}</TableCell>
                                     <TableCell>
                                       <Badge variant="secondary">{member.role}</Badge>
                                     </TableCell>
                                     <TableCell>
-                                      {member.functions.length > 0 ? member.functions.join(", ") : "—"}
+                                      {member.functions.length > 0
+                                        ? member.functions.join(", ")
+                                        : "—"}
                                     </TableCell>
                                     <TableCell>{formatDate(member.addedAt, tz)}</TableCell>
                                   </TableRow>
@@ -432,7 +446,11 @@ export function BackofficeClientDetailsContainer() {
                       size="sm"
                       onClick={() => void handleToggleLifetime()}
                       disabled={isTogglingLifetime}
-                      className={details.plan.kind === "lifetime" ? "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive" : ""}
+                      className={
+                        details.plan.kind === "lifetime"
+                          ? "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          : ""
+                      }
                     >
                       {details.plan.kind === "lifetime" ? (
                         <>
@@ -517,7 +535,10 @@ export function BackofficeClientDetailsContainer() {
                     >
                       A vencer: {invoicesSummary.upcoming}
                     </Badge>
-                    <Badge variant="outline" className="border-red-500/40 bg-red-500/15 text-red-300">
+                    <Badge
+                      variant="outline"
+                      className="border-red-500/40 bg-red-500/15 text-red-300"
+                    >
                       Vencidas: {invoicesSummary.overdue}
                     </Badge>
                   </div>
@@ -589,7 +610,10 @@ export function BackofficeClientDetailsContainer() {
                                     {formatCurrency(invoice.value)}
                                   </TableCell>
                                   <TableCell className="px-4 text-center align-middle">
-                                    <Badge variant={statusInfo.variant} className={statusInfo.className}>
+                                    <Badge
+                                      variant={statusInfo.variant}
+                                      className={statusInfo.className}
+                                    >
                                       {statusInfo.label}
                                     </Badge>
                                   </TableCell>

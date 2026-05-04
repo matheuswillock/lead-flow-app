@@ -14,7 +14,7 @@ import {
 import { useHistoricoContext } from "../context/HistoricoContext"
 import type { EmailLog, EmailLogStatus } from "../context/HistoricoTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz } from "@/lib/dates"
+import { formatIntimezone } from "@/lib/dates"
 
 const STATUS_CONFIG: Record<EmailLogStatus, { label: string; className: string }> = {
   queued: { label: "Na fila", className: "border bg-transparent text-muted-foreground" },
@@ -50,7 +50,7 @@ function LogRow({ log }: { log: EmailLog }) {
         {log.campaign?.name ?? "—"}
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
-        {log.sentAt ? formatInTz(new Date(log.sentAt), "dd/MM/yyyy HH:mm", tz) : "—"}
+        {log.sentAt ? formatIntimezone(new Date(log.sentAt), "dd/MM/yyyy HH:mm", tz) : "—"}
       </TableCell>
       <TableCell>
         <Button

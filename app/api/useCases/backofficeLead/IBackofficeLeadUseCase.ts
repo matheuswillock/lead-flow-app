@@ -5,7 +5,7 @@ export interface CreateBackofficeLeadDTO {
   name: string
   email?: string | null
   phone?: string | null
-  cnpj?: string | null
+  cpfCnpj?: string | null
   notes?: string | null
   status?: BackofficeLeadStatus
   origin?: BackofficeLeadOrigin
@@ -24,7 +24,7 @@ export interface UpdateBackofficeLeadDTO {
   name?: string
   email?: string | null
   phone?: string | null
-  cnpj?: string | null
+  cpfCnpj?: string | null
   notes?: string | null
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null

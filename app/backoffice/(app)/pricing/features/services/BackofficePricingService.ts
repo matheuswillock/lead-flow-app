@@ -6,6 +6,13 @@ function parsePrice(value: string): number | null {
   return isNaN(n) || n <= 0 ? null : n
 }
 
+const BILLING_CYCLES = ["monthly", "quarterly", "semiannual"] as const
+const CYCLE_MAX_INSTALLMENTS: Record<string, number> = {
+  monthly: 1,
+  quarterly: 3,
+  semiannual: 6,
+}
+
 function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProductFormData>) {
   const payload: Record<string, unknown> = {}
 
@@ -19,6 +26,45 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
   if ("priceSemiannual" in data) payload.priceSemiannual = parsePrice(data.priceSemiannual ?? "")
   if ("priceLifetime" in data) payload.priceLifetime = parsePrice(data.priceLifetime ?? "")
   if (data.isActive !== undefined) payload.isActive = data.isActive
+
+  if (data.paymentRules && data.billingMode === "RECURRING") {
+    const rules = []
+    for (const cycle of BILLING_CYCLES) {
+      const entry = data.paymentRules[cycle]
+      if (!entry) continue
+      const pixPrice = parsePrice(entry.pixPrice)
+      const cardPrice = parsePrice(entry.cardPrice)
+      const maxInstallments = Math.max(1, parseInt(entry.maxInstallments || "1", 10) || 1)
+      if (pixPrice != null) {
+        rules.push({
+          paymentMethod: "PIX",
+          billingCycle: cycle,
+          price: pixPrice,
+          canInstallment: false,
+          maxInstallments: 1,
+        })
+      }
+      if (cardPrice != null) {
+        rules.push({
+          paymentMethod: "CREDIT_CARD",
+          billingCycle: cycle,
+          price: cardPrice,
+          canInstallment: maxInstallments > 1,
+          maxInstallments,
+        })
+      }
+    }
+    if (rules.length) {
+      payload.paymentRules = rules
+      // keep flat prices synced with PIX rules for backward-compat (ADDON pricing)
+      const pixMonthly = parsePrice(data.paymentRules.monthly?.pixPrice ?? "")
+      const pixQuarterly = parsePrice(data.paymentRules.quarterly?.pixPrice ?? "")
+      const pixSemiannual = parsePrice(data.paymentRules.semiannual?.pixPrice ?? "")
+      if (pixMonthly != null) payload.priceMonthly = pixMonthly
+      if (pixQuarterly != null) payload.priceQuarterly = pixQuarterly
+      if (pixSemiannual != null) payload.priceSemiannual = pixSemiannual
+    }
+  }
 
   return payload
 }

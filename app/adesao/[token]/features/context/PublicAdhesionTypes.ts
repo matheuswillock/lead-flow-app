@@ -6,7 +6,7 @@ export type PublicAdhesionStatusKey =
   | "canceled"
 
 export type PublicAdhesionBillingCycleKey = "monthly" | "quarterly" | "semiannual"
-export type PublicAdhesionBillingType = "PIX" | "BOLETO" | "CREDIT_CARD"
+export type PublicAdhesionBillingType = "PIX" | "CREDIT_CARD"
 
 export interface PublicAdhesionDetails {
   id: string
@@ -23,6 +23,11 @@ export interface PublicAdhesionDetails {
   monthlyTotalAmount: number
   totalAmount: number
   maxInstallments: number
+  pixMonthlyTotalAmount: number
+  pixTotalAmount: number
+  creditCardMonthlyTotalAmount: number
+  creditCardTotalAmount: number
+  maxCardInstallments: number
   expiresAt: string
 }
 

@@ -1,7 +1,7 @@
 import { assertResend } from "@/lib/email";
 import { getAppUrl, getFullUrl } from '@/lib/utils/app-url';
 import type { Attachment } from "resend";
-import { DEFAULT_TZ, formatInTz, parseDateKeyToUtc, resolveTimezone } from "@/lib/dates";
+import { DEFAULT_TZ, formatIntimezone, parseDateKeyToUtc, resolveTimezone } from "@/lib/dates";
 
 export interface EmailOptions {
   to: string[];
@@ -50,6 +50,12 @@ export interface SubscriptionConfirmationData {
   nextDueDate?: string; // ISO
   manageUrl?: string; // URL para gerenciar assinatura
   timezone?: string | null;
+}
+
+export interface AdhesionCompletedEmailData {
+  userName: string;
+  userEmail: string;
+  setPasswordUrl: string;
 }
 
 export interface OperatorInviteEmailData {
@@ -158,12 +164,12 @@ export class EmailService {
 
     const tz = resolveTimezone(timezone ?? DEFAULT_TZ);
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return formatInTz(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz);
+      return formatIntimezone(parseDateKeyToUtc(value, tz), "dd/MM/yyyy", tz);
     }
 
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return undefined;
-    return formatInTz(parsed, "dd/MM/yyyy", tz);
+    return formatIntimezone(parsed, "dd/MM/yyyy", tz);
   }
 
   private buildMeetingInviteIcs(data: MeetingInviteEmailData) {
@@ -536,6 +542,84 @@ export class EmailService {
       subject: 'Corretor Studio — Assinatura confirmada',
       html,
     });
+  }
+
+  async sendAdhesionCompletedEmail(data: AdhesionCompletedEmailData) {
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+                <tr>
+                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td style="padding: 48px 32px;">
+                    <div style="text-align: center; margin-bottom: 24px;">
+                      <div style="display: inline-block; width: 72px; height: 72px; background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); border-radius: 50%; margin-bottom: 16px;">
+                        <span style="font-size: 40px; line-height: 72px; display: block;">🎉</span>
+                      </div>
+                    </div>
+
+                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 24px; font-weight: 600; text-align: center;">Adesão concluída com sucesso</h2>
+
+                    <p style="margin: 0 0 24px 0; color: #525252; font-size: 16px; line-height: 1.6; text-align: center;">
+                      Olá <strong>${data.userName}</strong>, sua adesão foi concluída. Defina sua senha para acessar a plataforma.
+                    </p>
+
+                    <div style="background: linear-gradient(135deg, #fff7ed 0%, #fed7aa 100%); border: 2px solid #ff6900; border-radius: 12px; padding: 24px; margin: 24px 0;">
+                      <h3 style="margin: 0 0 12px 0; color: #7c2d12; font-size: 16px; font-weight: 600; text-align: center;">Próximo passo</h3>
+                      <p style="margin: 0; color: #9a3412; font-size: 15px; line-height: 1.6; text-align: center;">
+                        Crie sua senha para concluir o primeiro acesso e seguir com a configuração da conta.
+                      </p>
+                    </div>
+
+                    <div style="text-align: center; margin: 32px 0;">
+                      <a href="${data.setPasswordUrl}"
+                         style="display: inline-block; background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(255, 105, 0, 0.3);">
+                        Definir senha
+                      </a>
+                    </div>
+
+                    <p style="margin: 24px 0 0 0; color: #737373; font-size: 14px; line-height: 1.6; text-align: center;">
+                      Se o botão não abrir, use o link direto recebido neste e-mail.
+                    </p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td style="background-color: #fafafa; padding: 24px 32px; border-top: 1px solid #e5e5e5;">
+                    <p style="margin: 0 0 8px 0; color: #a3a3a3; font-size: 12px; text-align: center;">
+                      Este é um e-mail automático do Corretor Studio
+                    </p>
+                    <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
+                      © ${new Date().getFullYear()} Corretor Studio. Todos os direitos reservados.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `
+
+    return this.sendEmail({
+      to: [data.userEmail],
+      subject: "Corretor Studio — Adesao concluida com sucesso",
+      html,
+    })
   }
 
   // Notificação de novo lead para managers
@@ -1069,8 +1153,8 @@ export class EmailService {
 
   async sendMeetingInviteEmail(data: MeetingInviteEmailData) {
     const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
-    const formattedDate = formatInTz(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
-    const formattedTime = formatInTz(data.meetingDate, "HH:mm", timezone);
+    const formattedDate = formatIntimezone(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
+    const formattedTime = formatIntimezone(data.meetingDate, "HH:mm", timezone);
     const title = data.meetingTitle || `Estudo Plano de Saúde: ${data.leadName}`;
     const linkMarkup = data.meetingLink
       ? `<a href="${data.meetingLink}" style="color: #ff6900; text-decoration: none;">${data.meetingLink}</a>`
@@ -1142,8 +1226,8 @@ export class EmailService {
 
   async sendCloserScheduleNotificationEmail(data: CloserScheduleNotificationEmailData) {
     const timezone = resolveTimezone(data.timezone ?? DEFAULT_TZ);
-    const formattedDate = formatInTz(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
-    const formattedTime = formatInTz(data.meetingDate, "HH:mm", timezone);
+    const formattedDate = formatIntimezone(data.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone);
+    const formattedTime = formatIntimezone(data.meetingDate, "HH:mm", timezone);
     const subjectPrefix = data.isReschedule ? "Reunião reagendada" : "Reunião agendada";
     const subject = `${subjectPrefix}: ${data.meetingTitle}`;
     const scheduleIntroText = data.isReschedule

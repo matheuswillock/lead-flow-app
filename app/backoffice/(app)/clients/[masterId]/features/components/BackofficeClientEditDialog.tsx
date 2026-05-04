@@ -15,7 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { maskPhone, maskCPFOrCNPJ, maskCEP, unmask } from "@/lib/masks"
+import { maskPhone, maskCEP, unmask, formatDocumentInput } from "@/lib/masks"
 import type { BackofficeClientDetails } from "../context/BackofficeClientDetailsTypes"
 import type { IBackofficeClientDetailsService } from "../services/IBackofficeClientDetailsService"
 
@@ -144,7 +144,6 @@ export function BackofficeClientEditDialog({
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
           <div className="overflow-y-auto flex-1 space-y-5 pr-1">
-
             {/* Basic info */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -186,12 +185,12 @@ export function BackofficeClientEditDialog({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-cpfCnpj">CPF/CNPJ (opcional)</Label>
+              <Label htmlFor="edit-cpfCnpj">Documento</Label>
               <Input
                 id="edit-cpfCnpj"
                 placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                value={maskCPFOrCNPJ(form.cpfCnpj)}
-                onChange={(e) => setField("cpfCnpj", unmask(maskCPFOrCNPJ(e.target.value)))}
+                value={formatDocumentInput(form.cpfCnpj)}
+                onChange={(e) => setField("cpfCnpj", unmask(formatDocumentInput(e.target.value)))}
                 disabled={isSubmitting}
               />
             </div>
@@ -325,7 +324,8 @@ export function BackofficeClientEditDialog({
                 <span className="text-sm font-semibold">Zona de Perigo</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Excluir esta conta é uma ação permanente e irreversível. Todos os times, dados e acessos serão removidos.
+                Excluir esta conta é uma ação permanente e irreversível. Todos os times, dados e
+                acessos serão removidos.
               </p>
               <Button
                 type="button"

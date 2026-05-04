@@ -35,7 +35,13 @@ import { cn } from "@/lib/utils"
 import { useTeamContext } from "@/app/context/TeamContext"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz, formatLocalDateValue, getMinutesInTz, nowInTz, parseDateKeyToUtc } from "@/lib/dates"
+import {
+  formatIntimezone,
+  formatLocalDateValue,
+  getMinutesInTz,
+  nowInTz,
+  parseDateKeyToUtc,
+} from "@/lib/dates"
 
 type AttendeeRole = "closer" | "sdr" | "lead" | "extra"
 
@@ -164,7 +170,7 @@ const getNextSlotTime = (tz: string) => {
   return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`
 }
 
-const formatTime = (date: Date, tz: string) => formatInTz(date, "HH:mm", tz)
+const formatTime = (date: Date, tz: string) => formatIntimezone(date, "HH:mm", tz)
 
 const timeToMinutes = (time: string) => {
   const [hours, minutes] = time.split(":").map((part) => Number(part))
@@ -182,7 +188,7 @@ const isWithinSlot = (meetingDate: Date, slotStart: string, tz: string) => {
 }
 
 const formatDateRange = (from: Date, to: Date, tz: string) => {
-  const day = formatInTz(from, "dd/MM/yyyy", tz)
+  const day = formatIntimezone(from, "dd/MM/yyyy", tz)
   return `${day} ${formatTime(from, tz)} - ${formatTime(to, tz)}`
 }
 
@@ -598,9 +604,9 @@ export default function CalendarStudio() {
               }}
               formatters={{
                 formatMonthCaption: (value) => {
-                  const raw = formatInTz(value, "MMM", tz)
+                  const raw = formatIntimezone(value, "MMM", tz)
                   const month = raw.endsWith(".") ? raw : `${raw}.`
-                  return `${month} ${formatInTz(value, "yyyy", tz)}`
+                  return `${month} ${formatIntimezone(value, "yyyy", tz)}`
                 },
               }}
             />
@@ -731,7 +737,7 @@ export default function CalendarStudio() {
               <div>
                 <div className="text-sm font-medium">
                   {selectedDateKey
-                    ? formatInTz(
+                    ? formatIntimezone(
                         parseDateKeyToUtc(selectedDateKey, tz),
                         "EEEE, dd 'de' MMMM 'de' yyyy",
                         tz
@@ -836,7 +842,7 @@ export default function CalendarStudio() {
                         <div className={cn("text-xs text-muted-foreground", isCanceled && "line-through")}>
                           {isMeeting && meetingStart && meetingEnd
                             ? formatDateRange(meetingStart, meetingEnd, tz)
-                            : formatInTz(event.date, "dd/MM/yyyy HH:mm", tz)}
+                            : formatIntimezone(event.date, "dd/MM/yyyy HH:mm", tz)}
                         </div>
                         <div className={cn("text-xs text-muted-foreground", isCanceled && "line-through")}>
                           Closer: {closerLabel}

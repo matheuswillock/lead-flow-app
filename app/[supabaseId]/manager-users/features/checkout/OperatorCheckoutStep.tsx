@@ -21,7 +21,7 @@ import { signUpCheckoutSchema, type SignUpCheckoutFormData } from "@/lib/validat
 import { toast } from "sonner";
 import type { CreateManagerUserFormData } from "../types";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
-import { detectBrowserTimezone, formatInTz, parseDateKeyToUtc } from "@/lib/dates";
+import { detectBrowserTimezone, formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 
 const OPERATOR_PRICE = 19.9;
 
@@ -336,23 +336,23 @@ export function OperatorCheckoutStep({
               <Form {...form}>
                 <form
                   onSubmit={form.handleSubmit(handleSubmit, (errors) => {
-                    const firstError = Object.values(errors)[0];
-                    const message = firstError?.message || "Verifique os campos obrigatorios.";
+                    const firstError = Object.values(errors)[0]
+                    const message = firstError?.message || "Verifique os campos obrigatorios."
                     notifyManagerUsersError({
                       operation: "formValidation",
                       errorMessages: [message],
                       context: errorContext,
-                    });
+                    })
                   })}
                   className="space-y-6"
                 >
                   <Tabs
                     value={billingType}
                     onValueChange={(value) => {
-                      const nextValue = value as SignUpCheckoutFormData["billingType"];
-                      form.setValue("billingType", nextValue);
+                      const nextValue = value as SignUpCheckoutFormData["billingType"]
+                      form.setValue("billingType", nextValue)
                       if (nextValue !== "CREDIT_CARD") {
-                        form.setValue("creditCard", undefined, { shouldValidate: false });
+                        form.setValue("creditCard", undefined, { shouldValidate: false })
                       } else if (!form.getValues("creditCard")) {
                         form.setValue("creditCard", {
                           holderName: "",
@@ -360,7 +360,7 @@ export function OperatorCheckoutStep({
                           expiryMonth: "",
                           expiryYear: "",
                           ccv: "",
-                        });
+                        })
                       }
                     }}
                   >
@@ -455,7 +455,9 @@ export function OperatorCheckoutStep({
                                   autoComplete={isSecureContext ? "cc-number" : "off"}
                                   value={formatCardNumber(field.value || "")}
                                   onChange={(event) =>
-                                    field.onChange(event.target.value.replace(/\D/g, "").slice(0, 19))
+                                    field.onChange(
+                                      event.target.value.replace(/\D/g, "").slice(0, 19),
+                                    )
                                   }
                                   maxLength={23}
                                 />
@@ -479,7 +481,9 @@ export function OperatorCheckoutStep({
                                     maxLength={2}
                                     value={field.value || ""}
                                     onChange={(event) =>
-                                      field.onChange(event.target.value.replace(/\D/g, "").slice(0, 2))
+                                      field.onChange(
+                                        event.target.value.replace(/\D/g, "").slice(0, 2),
+                                      )
                                     }
                                   />
                                 </FormControl>
@@ -501,7 +505,9 @@ export function OperatorCheckoutStep({
                                     maxLength={4}
                                     value={field.value || ""}
                                     onChange={(event) =>
-                                      field.onChange(event.target.value.replace(/\D/g, "").slice(0, 4))
+                                      field.onChange(
+                                        event.target.value.replace(/\D/g, "").slice(0, 4),
+                                      )
                                     }
                                   />
                                 </FormControl>
@@ -523,7 +529,9 @@ export function OperatorCheckoutStep({
                                     maxLength={4}
                                     value={field.value || ""}
                                     onChange={(event) =>
-                                      field.onChange(event.target.value.replace(/\D/g, "").slice(0, 4))
+                                      field.onChange(
+                                        event.target.value.replace(/\D/g, "").slice(0, 4),
+                                      )
                                     }
                                   />
                                 </FormControl>
@@ -534,7 +542,8 @@ export function OperatorCheckoutStep({
                         </div>
                         {!isSecureContext && (
                           <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-                            O preenchimento automatico de cartoes fica disponivel apenas em conexao segura (HTTPS).
+                            O preenchimento automatico de cartoes fica disponivel apenas em conexao
+                            segura (HTTPS).
                           </div>
                         )}
                       </>
@@ -548,14 +557,21 @@ export function OperatorCheckoutStep({
                             <div>
                               <p className="text-sm font-medium">Boleto gerado</p>
                               <p className="text-xs text-muted-foreground">
-                                Vencimento: {formatInTz(parseDateKeyToUtc(boletoData.dueDate, browserTz), "dd/MM/yyyy", browserTz)}
+                                Vencimento:{" "}
+                                {formatIntimezone(
+                                  parseDateKeyToUtc(boletoData.dueDate, browserTz),
+                                  "dd/MM/yyyy",
+                                  browserTz,
+                                )}
                               </p>
                             </div>
                           </div>
                           <div className="space-y-2">
                             <p className="text-sm font-medium">Linha digitavel</p>
                             <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3">
-                              <code className="text-xs break-all">{boletoData.identificationField}</code>
+                              <code className="text-xs break-all">
+                                {boletoData.identificationField}
+                              </code>
                               <Button
                                 type="button"
                                 variant="outline"
@@ -575,7 +591,11 @@ export function OperatorCheckoutStep({
                               Visualizar boleto
                             </Button>
                             <Button type="button" variant="outline" className="w-full" asChild>
-                              <a href={boletoData.bankSlipUrl} target="_blank" rel="noopener noreferrer">
+                              <a
+                                href={boletoData.bankSlipUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
                                 Baixar PDF
                               </a>
                             </Button>
@@ -657,7 +677,9 @@ export function OperatorCheckoutStep({
                     <p className="text-xs text-muted-foreground">
                       Acesso completo a plataforma - {operatorData.email}.
                     </p>
-                    <p className="text-sm font-semibold text-foreground">{formatCurrency(OPERATOR_PRICE)}</p>
+                    <p className="text-sm font-semibold text-foreground">
+                      {formatCurrency(OPERATOR_PRICE)}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -673,5 +695,5 @@ export function OperatorCheckoutStep({
         </div>
       </div>
     </main>
-  );
+  )
 }

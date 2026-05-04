@@ -4,8 +4,11 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from "react"
 import type { IBackofficePricingService } from "../services/IBackofficePricingService"
 import type {
+  BackofficeAdhesionBillingCycleKey,
   BackofficeProductFormData,
   BackofficeProductItem,
+  BackofficeProductPaymentRuleFormEntry,
+  BackofficeProductPaymentRuleItem,
 } from "./BackofficePricingTypes"
 import { EMPTY_PRODUCT_FORM } from "./BackofficePricingTypes"
 import { toast } from "sonner"
@@ -23,6 +26,11 @@ interface PricingContextValue {
   openEditDialog: (product: BackofficeProductItem) => void
   closeDialog: () => void
   setFormField: (field: keyof BackofficeProductFormData, value: string | boolean) => void
+  setPaymentRuleField: (
+    cycle: BackofficeAdhesionBillingCycleKey,
+    field: keyof BackofficeProductPaymentRuleFormEntry,
+    value: string
+  ) => void
   submitForm: () => Promise<void>
 
   deleteDialogOpen: boolean
@@ -86,6 +94,20 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
   const openEditDialog = useCallback((product: BackofficeProductItem) => {
     setDialogMode("edit")
     setDialogProduct(product)
+
+    function findRule(cycle: BackofficeAdhesionBillingCycleKey, method: "PIX" | "CREDIT_CARD"): BackofficeProductPaymentRuleItem | undefined {
+      return product.paymentRules.find((r) => r.billingCycle === cycle && r.paymentMethod === method)
+    }
+    function ruleEntry(cycle: BackofficeAdhesionBillingCycleKey, defaultMax: string): BackofficeProductPaymentRuleFormEntry {
+      const pix = findRule(cycle, "PIX")
+      const card = findRule(cycle, "CREDIT_CARD")
+      return {
+        pixPrice: pix ? String(pix.price) : "",
+        cardPrice: card ? String(card.price) : "",
+        maxInstallments: card ? String(card.maxInstallments) : defaultMax,
+      }
+    }
+
     setFormData({
       name: product.name,
       slug: product.slug,
@@ -97,6 +119,11 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
       priceSemiannual: product.priceSemiannual != null ? String(product.priceSemiannual) : "",
       priceLifetime: product.priceLifetime != null ? String(product.priceLifetime) : "",
       isActive: product.isActive,
+      paymentRules: {
+        monthly: ruleEntry("monthly", "1"),
+        quarterly: ruleEntry("quarterly", "3"),
+        semiannual: ruleEntry("semiannual", "6"),
+      },
     })
     setDialogOpen(true)
   }, [])
@@ -108,6 +135,23 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
   const setFormField = useCallback(
     (field: keyof BackofficeProductFormData, value: string | boolean) => {
       setFormData((prev) => ({ ...prev, [field]: value }))
+    },
+    []
+  )
+
+  const setPaymentRuleField = useCallback(
+    (
+      cycle: BackofficeAdhesionBillingCycleKey,
+      field: keyof BackofficeProductPaymentRuleFormEntry,
+      value: string
+    ) => {
+      setFormData((prev) => ({
+        ...prev,
+        paymentRules: {
+          ...prev.paymentRules,
+          [cycle]: { ...prev.paymentRules[cycle], [field]: value },
+        },
+      }))
     },
     []
   )
@@ -173,6 +217,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
         openEditDialog,
         closeDialog,
         setFormField,
+        setPaymentRuleField,
         submitForm,
         deleteDialogOpen,
         deleteProduct,

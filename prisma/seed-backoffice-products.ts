@@ -2,7 +2,13 @@
  * Seed dos produtos do backoffice (BackofficeProduct).
  * Execução: bun run db:seed:backoffice-products
  */
-import { PrismaClient, BackofficeProductType, BackofficeProductBillingMode } from "@prisma/client"
+import {
+  BackofficeAdhesionBillingCycle,
+  BackofficePaymentMethod,
+  BackofficeProductBillingMode,
+  BackofficeProductType,
+  PrismaClient,
+} from "@prisma/client"
 
 const prisma = new PrismaClient()
 
@@ -13,9 +19,9 @@ const PRODUCTS = [
     description: "Plano CRM — acesso completo ao módulo de gestão de leads.",
     type: BackofficeProductType.PLAN,
     billingMode: BackofficeProductBillingMode.RECURRING,
-    priceMonthly: 79.9,
-    priceQuarterly: 69.9,
-    priceSemiannual: 59.9,
+    priceMonthly: 89.9,
+    priceQuarterly: 79.9,
+    priceSemiannual: 69.9,
     priceLifetime: null,
     isActive: true,
   },
@@ -57,6 +63,21 @@ const PRODUCTS = [
   },
 ]
 
+const CRM_PAYMENT_RULES: Array<{
+  paymentMethod: BackofficePaymentMethod
+  billingCycle: BackofficeAdhesionBillingCycle
+  price: number
+  canInstallment: boolean
+  maxInstallments: number
+}> = [
+  { paymentMethod: BackofficePaymentMethod.PIX, billingCycle: BackofficeAdhesionBillingCycle.monthly, price: 89.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX, billingCycle: BackofficeAdhesionBillingCycle.quarterly, price: 79.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.PIX, billingCycle: BackofficeAdhesionBillingCycle.semiannual, price: 69.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.monthly, price: 102.9, canInstallment: false, maxInstallments: 1 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.quarterly, price: 91.4, canInstallment: true, maxInstallments: 3 },
+  { paymentMethod: BackofficePaymentMethod.CREDIT_CARD, billingCycle: BackofficeAdhesionBillingCycle.semiannual, price: 79.9, canInstallment: true, maxInstallments: 6 },
+]
+
 async function main() {
   console.info("[seed:backoffice-products] Iniciando...")
 
@@ -69,10 +90,31 @@ async function main() {
         description: product.description,
         type: product.type,
         billingMode: product.billingMode,
+        priceMonthly: product.priceMonthly,
+        priceQuarterly: product.priceQuarterly,
+        priceSemiannual: product.priceSemiannual,
         isActive: product.isActive,
       },
     })
     console.info(`[seed:backoffice-products] Produto pronto: ${product.slug}`)
+  }
+
+  const crmProduct = await prisma.backofficeProduct.findUnique({ where: { slug: "crm" } })
+  if (crmProduct) {
+    for (const rule of CRM_PAYMENT_RULES) {
+      await prisma.backofficeProductPaymentRule.upsert({
+        where: {
+          productId_paymentMethod_billingCycle: {
+            productId: crmProduct.id,
+            paymentMethod: rule.paymentMethod,
+            billingCycle: rule.billingCycle,
+          },
+        },
+        create: { productId: crmProduct.id, ...rule },
+        update: { price: rule.price, canInstallment: rule.canInstallment, maxInstallments: rule.maxInstallments },
+      })
+    }
+    console.info("[seed:backoffice-products] Regras de pagamento CRM prontas")
   }
 
   console.info("[seed:backoffice-products] Concluído.")

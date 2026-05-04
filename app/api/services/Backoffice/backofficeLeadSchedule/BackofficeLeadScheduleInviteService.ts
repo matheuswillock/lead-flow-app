@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
 import type { Attachment, CreateEmailOptions } from "resend"
 import { assertResend } from "@/lib/email"
-import { DEFAULT_TZ, formatInTz } from "@/lib/dates"
+import { DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
 import { Output } from "@/lib/output"
 import type {
   IBackofficeLeadScheduleInviteService,
@@ -123,8 +123,8 @@ function buildInviteAttachment(
 
 function buildScheduleDetailsHtml(input: SendBackofficeLeadScheduleInviteInput) {
   const timezone = input.timezone || DEFAULT_TZ
-  const formattedDate = formatInTz(input.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone)
-  const formattedTime = formatInTz(input.meetingDate, "HH:mm", timezone)
+  const formattedDate = formatIntimezone(input.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone)
+  const formattedTime = formatIntimezone(input.meetingDate, "HH:mm", timezone)
   const safeMeetingLink = escapeHtml(input.meetingLink)
   const linkMarkup = `<a href="${escapeHtmlAttribute(input.meetingLink)}" style="color: #ff6900; text-decoration: none;">${safeMeetingLink}</a>`
 

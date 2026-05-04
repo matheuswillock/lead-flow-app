@@ -2,7 +2,7 @@
 
 import type { EmailEvent } from "../context/HistoricoTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz } from "@/lib/dates"
+import { formatIntimezone } from "@/lib/dates"
 
 const EVENT_LABELS: Record<string, string> = {
   sent: "Enviado",
@@ -42,7 +42,7 @@ export function EventsTimeline({ events }: EventsTimelineProps) {
               {EVENT_LABELS[event.type] ?? event.type}
             </p>
             <p className="text-xs text-muted-foreground">
-              {formatInTz(new Date(event.occurredAt), "dd/MM/yyyy HH:mm", tz)}
+              {formatIntimezone(new Date(event.occurredAt), "dd/MM/yyyy HH:mm", tz)}
             </p>
             {event.metadata?.link && (
               <p className="mt-0.5 text-xs text-muted-foreground break-all">

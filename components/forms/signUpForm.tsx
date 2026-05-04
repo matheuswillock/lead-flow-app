@@ -7,7 +7,7 @@ import Link from "next/link"
 import Image from "next/image"
 import type { UseFormReturn } from "react-hook-form"
 import { signUpFormData, signUpOAuthFormData } from "@/lib/validations/validationForms"
-import { maskPhone, maskCPFOrCNPJ, unmask } from "@/lib/masks"
+import { maskPhone, unmask, formatDocumentInput } from "@/lib/masks"
 import { useState } from "react"
 import { CepService } from "@/lib/services/CepService"
 import { toast } from "sonner"
@@ -169,15 +169,12 @@ export function SignupForm({
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className={cn("flex flex-col gap-6", className)} 
+        className={cn("flex flex-col gap-6", className)}
         {...divProps}
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col items-center gap-2">
-            <Link
-              href="/"
-              className="flex flex-col items-center gap-2 font-medium"
-            >
+            <Link href="/" className="flex flex-col items-center gap-2 font-medium">
               <Image
                 src="/corretor-studio-icon.svg"
                 alt="Corretor Studio"
@@ -188,9 +185,7 @@ export function SignupForm({
               />
               <span className="sr-only">Corretor Studio</span>
             </Link>
-            <h1 className="text-xl font-bold">
-              {isOAuth ? "Completar cadastro" : "Criar conta"}
-            </h1>
+            <h1 className="text-xl font-bold">{isOAuth ? "Completar cadastro" : "Criar conta"}</h1>
             <p className="text-center text-sm text-muted-foreground max-w-sm">
               {isOAuth
                 ? "Preencha os dados restantes para seguir para a assinatura."
@@ -202,8 +197,7 @@ export function SignupForm({
               </Badge>
             )}
             <div className="text-center text-sm">
-              Já tem uma conta? 
-              {' '}
+              Já tem uma conta?{" "}
               <Link href="/sign-in" className="underline underline-offset-4 text-lg">
                 Entrar
               </Link>
@@ -229,7 +223,7 @@ export function SignupForm({
                 </div>
               </TooltipProvider>
             )} */}
-            
+
             <FormField
               control={form.control}
               name="fullName"
@@ -259,9 +253,9 @@ export function SignupForm({
                     Email <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="email@exemplo.com" 
-                      {...field} 
+                    <Input
+                      placeholder="email@exemplo.com"
+                      {...field}
                       className="border-2 border-gray-300 rounded-md p-2"
                       disabled={readonly || (isOAuth && !!field.value)}
                     />
@@ -280,14 +274,14 @@ export function SignupForm({
                     Telefone <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="(11) 99999-9999" 
+                    <Input
+                      placeholder="(11) 99999-9999"
                       {...field}
                       value={maskPhone(field.value)}
                       onChange={(e) => {
-                        const masked = maskPhone(e.target.value);
-                        const unmasked = unmask(masked);
-                        field.onChange(unmasked);
+                        const masked = maskPhone(e.target.value)
+                        const unmasked = unmask(masked)
+                        field.onChange(unmasked)
                       }}
                       className="border-2 border-gray-300 rounded-md p-2"
                       disabled={readonly}
@@ -307,14 +301,14 @@ export function SignupForm({
                     CPF ou CNPJ <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="000.000.000-00 ou 00.000.000/0000-00" 
+                    <Input
+                      placeholder="000.000.000-00 ou 00.000.000/0000-00"
                       {...field}
-                      value={maskCPFOrCNPJ(field.value || '')}
+                      value={formatDocumentInput(field.value || "")}
                       onChange={(e) => {
-                        const masked = maskCPFOrCNPJ(e.target.value);
-                        const unmasked = unmask(masked);
-                        field.onChange(unmasked);
+                        const masked = formatDocumentInput(e.target.value)
+                        const unmasked = unmask(masked)
+                        field.onChange(unmasked)
                       }}
                       className="border-2 border-gray-300 rounded-md p-2"
                       disabled={readonly}
@@ -336,19 +330,19 @@ export function SignupForm({
                   </FormLabel>
                   <FormControl>
                     <div className="flex gap-2">
-                      <Input 
-                        placeholder="00000-000" 
+                      <Input
+                        placeholder="00000-000"
                         {...field}
-                        value={field.value?.replace(/(\d{5})(\d{3})/, '$1-$2') || ''}
+                        value={field.value?.replace(/(\d{5})(\d{3})/, "$1-$2") || ""}
                         onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, '');
-                          field.onChange(value);
+                          const value = e.target.value.replace(/\D/g, "")
+                          field.onChange(value)
                         }}
                         onBlur={(e) => {
                           // Busca automática ao sair do campo se CEP estiver completo
-                          const cep = e.target.value.replace(/\D/g, '');
+                          const cep = e.target.value.replace(/\D/g, "")
                           if (cep.length === 8 && !readonly) {
-                            handleSearchCep();
+                            handleSearchCep()
                           }
                         }}
                         maxLength={9}
@@ -383,8 +377,8 @@ export function SignupForm({
                     Endereço <span className="text-red-500">*</span>
                   </FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="Rua, Avenida, etc." 
+                    <Input
+                      placeholder="Rua, Avenida, etc."
                       {...field}
                       className="border-2 border-gray-300 rounded-md p-2"
                       disabled={readonly}
@@ -406,8 +400,8 @@ export function SignupForm({
                       Número <span className="text-red-500">*</span>
                     </FormLabel>
                     <FormControl>
-                      <Input 
-                        placeholder="123" 
+                      <Input
+                        placeholder="123"
                         {...field}
                         className="border-2 border-gray-300 rounded-md p-2"
                         disabled={readonly}
@@ -427,8 +421,8 @@ export function SignupForm({
                       Bairro <span className="text-red-500">*</span>
                     </FormLabel>
                     <FormControl>
-                      <Input 
-                        placeholder="Centro, Jardins, etc." 
+                      <Input
+                        placeholder="Centro, Jardins, etc."
                         {...field}
                         className="border-2 border-gray-300 rounded-md p-2"
                         disabled={readonly}
@@ -448,8 +442,8 @@ export function SignupForm({
                 <FormItem className="grid gap-2">
                   <FormLabel>Complemento (opcional)</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="Apto, Bloco, etc." 
+                    <Input
+                      placeholder="Apto, Bloco, etc."
                       {...field}
                       className="border-2 border-gray-300 rounded-md p-2"
                       disabled={readonly}
@@ -471,8 +465,8 @@ export function SignupForm({
                       Cidade <span className="text-red-500">*</span>
                     </FormLabel>
                     <FormControl>
-                      <Input 
-                        placeholder="São Paulo" 
+                      <Input
+                        placeholder="São Paulo"
                         {...field}
                         className="border-2 border-gray-300 rounded-md p-2"
                         disabled={readonly}
@@ -492,8 +486,8 @@ export function SignupForm({
                       UF <span className="text-red-500">*</span>
                     </FormLabel>
                     <FormControl>
-                      <Input 
-                        placeholder="SP" 
+                      <Input
+                        placeholder="SP"
                         {...field}
                         maxLength={2}
                         onChange={(e) => field.onChange(e.target.value.toUpperCase())}
@@ -530,76 +524,105 @@ export function SignupForm({
                       </div>
                       <FormControl>
                         <div className="relative">
-                          <Input 
-                            type={showPassword ? "text" : "password"} 
+                          <Input
+                            type={showPassword ? "text" : "password"}
                             {...field}
                             onChange={(e) => {
-                              field.onChange(e);
-                              setCurrentPassword(e.target.value);
+                              field.onChange(e)
+                              setCurrentPassword(e.target.value)
                               if (e.target.value) {
-                                setPasswordStrength(calculatePasswordStrength(e.target.value));
+                                setPasswordStrength(calculatePasswordStrength(e.target.value))
                               } else {
-                                setPasswordStrength(null);
+                                setPasswordStrength(null)
                               }
                             }}
-                            className="border-2 border-gray-300 rounded-md p-2 pr-10" 
+                            className="border-2 border-gray-300 rounded-md p-2 pr-10"
                           />
                           <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                           >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            {showPassword ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
                           </button>
                         </div>
                       </FormControl>
-                      
+
                       {/* Indicador de força da senha */}
                       {passwordStrength && (
                         <div className="space-y-1">
                           <div className="flex gap-1">
-                            <div className={`h-1 flex-1 rounded ${
-                              passwordStrength === 'weak' ? 'bg-red-500' :
-                              passwordStrength === 'medium' ? 'bg-yellow-500' :
-                              'bg-green-500'
-                            }`} />
-                            <div className={`h-1 flex-1 rounded ${
-                              passwordStrength === 'medium' || passwordStrength === 'strong' ? 
-                              (passwordStrength === 'medium' ? 'bg-yellow-500' : 'bg-green-500') : 
-                              'bg-muted'
-                            }`} />
-                            <div className={`h-1 flex-1 rounded ${
-                              passwordStrength === 'strong' ? 'bg-green-500' : 'bg-muted'
-                            }`} />
+                            <div
+                              className={`h-1 flex-1 rounded ${
+                                passwordStrength === "weak"
+                                  ? "bg-red-500"
+                                  : passwordStrength === "medium"
+                                    ? "bg-yellow-500"
+                                    : "bg-green-500"
+                              }`}
+                            />
+                            <div
+                              className={`h-1 flex-1 rounded ${
+                                passwordStrength === "medium" || passwordStrength === "strong"
+                                  ? passwordStrength === "medium"
+                                    ? "bg-yellow-500"
+                                    : "bg-green-500"
+                                  : "bg-muted"
+                              }`}
+                            />
+                            <div
+                              className={`h-1 flex-1 rounded ${
+                                passwordStrength === "strong" ? "bg-green-500" : "bg-muted"
+                              }`}
+                            />
                           </div>
                           <div className="flex items-center gap-1.5">
-                            <ShieldCheck className={`h-3 w-3 ${
-                              passwordStrength === 'weak' ? 'text-red-500' :
-                              passwordStrength === 'medium' ? 'text-yellow-500' :
-                              'text-green-500'
-                            }`} />
-                            <p className={`text-xs font-medium ${
-                              passwordStrength === 'weak' ? 'text-red-500' :
-                              passwordStrength === 'medium' ? 'text-yellow-500' :
-                              'text-green-500'
-                            }`}>
-                              {passwordStrength === 'weak' ? 'Senha fraca' :
-                               passwordStrength === 'medium' ? 'Senha média' :
-                               'Senha forte'}
+                            <ShieldCheck
+                              className={`h-3 w-3 ${
+                                passwordStrength === "weak"
+                                  ? "text-red-500"
+                                  : passwordStrength === "medium"
+                                    ? "text-yellow-500"
+                                    : "text-green-500"
+                              }`}
+                            />
+                            <p
+                              className={`text-xs font-medium ${
+                                passwordStrength === "weak"
+                                  ? "text-red-500"
+                                  : passwordStrength === "medium"
+                                    ? "text-yellow-500"
+                                    : "text-green-500"
+                              }`}
+                            >
+                              {passwordStrength === "weak"
+                                ? "Senha fraca"
+                                : passwordStrength === "medium"
+                                  ? "Senha média"
+                                  : "Senha forte"}
                             </p>
                           </div>
                         </div>
                       )}
-                      
+
                       {/* Regras de validação com feedback visual dinâmico */}
                       <div className="border border-muted rounded-md p-3 bg-muted/30 space-y-2">
                         <p className="font-medium text-foreground text-sm">A senha deve conter:</p>
                         <ul className="space-y-1.5">
-                          <li className={cn(
-                            "flex items-center gap-2 text-sm transition-colors",
-                            currentPassword.length === 0 ? "text-muted-foreground" :
-                            passwordValidations.minLength ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                          )}>
+                          <li
+                            className={cn(
+                              "flex items-center gap-2 text-sm transition-colors",
+                              currentPassword.length === 0
+                                ? "text-muted-foreground"
+                                : passwordValidations.minLength
+                                  ? "text-green-600 dark:text-green-400"
+                                  : "text-red-600 dark:text-red-400",
+                            )}
+                          >
                             {currentPassword.length === 0 ? (
                               <span className="w-4 h-4 flex items-center justify-center">•</span>
                             ) : passwordValidations.minLength ? (
@@ -609,12 +632,17 @@ export function SignupForm({
                             )}
                             <span>Mínimo de 8 caracteres</span>
                           </li>
-                          
-                          <li className={cn(
-                            "flex items-center gap-2 text-sm transition-colors",
-                            currentPassword.length === 0 ? "text-muted-foreground" :
-                            passwordValidations.hasUppercase ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                          )}>
+
+                          <li
+                            className={cn(
+                              "flex items-center gap-2 text-sm transition-colors",
+                              currentPassword.length === 0
+                                ? "text-muted-foreground"
+                                : passwordValidations.hasUppercase
+                                  ? "text-green-600 dark:text-green-400"
+                                  : "text-red-600 dark:text-red-400",
+                            )}
+                          >
                             {currentPassword.length === 0 ? (
                               <span className="w-4 h-4 flex items-center justify-center">•</span>
                             ) : passwordValidations.hasUppercase ? (
@@ -624,12 +652,17 @@ export function SignupForm({
                             )}
                             <span>Pelo menos uma letra maiúscula</span>
                           </li>
-                          
-                          <li className={cn(
-                            "flex items-center gap-2 text-sm transition-colors",
-                            currentPassword.length === 0 ? "text-muted-foreground" :
-                            passwordValidations.hasLowercase ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                          )}>
+
+                          <li
+                            className={cn(
+                              "flex items-center gap-2 text-sm transition-colors",
+                              currentPassword.length === 0
+                                ? "text-muted-foreground"
+                                : passwordValidations.hasLowercase
+                                  ? "text-green-600 dark:text-green-400"
+                                  : "text-red-600 dark:text-red-400",
+                            )}
+                          >
                             {currentPassword.length === 0 ? (
                               <span className="w-4 h-4 flex items-center justify-center">•</span>
                             ) : passwordValidations.hasLowercase ? (
@@ -639,12 +672,17 @@ export function SignupForm({
                             )}
                             <span>Pelo menos uma letra minúscula</span>
                           </li>
-                          
-                          <li className={cn(
-                            "flex items-center gap-2 text-sm transition-colors",
-                            currentPassword.length === 0 ? "text-muted-foreground" :
-                            passwordValidations.hasNumber ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                          )}>
+
+                          <li
+                            className={cn(
+                              "flex items-center gap-2 text-sm transition-colors",
+                              currentPassword.length === 0
+                                ? "text-muted-foreground"
+                                : passwordValidations.hasNumber
+                                  ? "text-green-600 dark:text-green-400"
+                                  : "text-red-600 dark:text-red-400",
+                            )}
+                          >
                             {currentPassword.length === 0 ? (
                               <span className="w-4 h-4 flex items-center justify-center">•</span>
                             ) : passwordValidations.hasNumber ? (
@@ -654,12 +692,17 @@ export function SignupForm({
                             )}
                             <span>Pelo menos um número</span>
                           </li>
-                          
-                          <li className={cn(
-                            "flex items-center gap-2 text-sm transition-colors",
-                            currentPassword.length === 0 ? "text-muted-foreground" :
-                            passwordValidations.hasSpecialChar ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-                          )}>
+
+                          <li
+                            className={cn(
+                              "flex items-center gap-2 text-sm transition-colors",
+                              currentPassword.length === 0
+                                ? "text-muted-foreground"
+                                : passwordValidations.hasSpecialChar
+                                  ? "text-green-600 dark:text-green-400"
+                                  : "text-red-600 dark:text-red-400",
+                            )}
+                          >
                             {currentPassword.length === 0 ? (
                               <span className="w-4 h-4 flex items-center justify-center">•</span>
                             ) : passwordValidations.hasSpecialChar ? (
@@ -686,21 +729,27 @@ export function SignupForm({
                       </FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <Input 
-                            type={showConfirmPassword ? "text" : "password"} 
-                            {...field} 
-                            className="border-2 border-gray-300 rounded-md p-2 pr-10" 
+                          <Input
+                            type={showConfirmPassword ? "text" : "password"}
+                            {...field}
+                            className="border-2 border-gray-300 rounded-md p-2 pr-10"
                           />
                           <button
                             type="button"
                             onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                           >
-                            {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            {showConfirmPassword ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
                           </button>
                         </div>
                       </FormControl>
-                      <FormMessage className="text-red-500">{errors.confirmPassword || errors.apiError}</FormMessage>
+                      <FormMessage className="text-red-500">
+                        {errors.confirmPassword || errors.apiError}
+                      </FormMessage>
                     </FormItem>
                   )}
                 />
@@ -730,10 +779,10 @@ export function SignupForm({
                   className="w-full flex justify-center items-center gap-2"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="h-4 w-4">
-                  <path
-                    d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
-                    fill="currentColor"
-                  />
+                    <path
+                      d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
+                      fill="currentColor"
+                    />
                   </svg>
                   Continuar com Google
                 </Button>

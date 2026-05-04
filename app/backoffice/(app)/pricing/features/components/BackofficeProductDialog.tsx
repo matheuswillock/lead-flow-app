@@ -23,10 +23,17 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { useBackofficePricing } from "../context/BackofficePricingContext"
 import type {
+  BackofficeAdhesionBillingCycleKey,
   BackofficeProductBillingMode,
   BackofficeProductFormData,
   BackofficeProductType,
 } from "../context/BackofficePricingTypes"
+
+const CYCLES: { key: BackofficeAdhesionBillingCycleKey; label: string; months: number; defaultMax: number }[] = [
+  { key: "monthly", label: "Mensal", months: 1, defaultMax: 1 },
+  { key: "quarterly", label: "Trimestral", months: 3, defaultMax: 3 },
+  { key: "semiannual", label: "Semestral", months: 6, defaultMax: 6 },
+]
 
 function normalizePriceInput(value: string): string {
   return value.replace(/[^\d,.]/g, "").replace(",", ".")
@@ -37,13 +44,21 @@ function hasPositivePrice(value: string): boolean {
   return Number.isFinite(parsed) && parsed > 0
 }
 
+function parsePrice(value: string): number {
+  return Number.parseFloat(value.replace(",", ".")) || 0
+}
+
+function formatCurrency(value: number): string {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+}
+
 function canSubmit(formData: BackofficeProductFormData): boolean {
   if (!formData.name.trim() || !formData.slug.trim()) return false
   if (formData.billingMode === "RECURRING") {
-    return (
-      hasPositivePrice(formData.priceMonthly) &&
-      hasPositivePrice(formData.priceQuarterly) &&
-      hasPositivePrice(formData.priceSemiannual)
+    return CYCLES.every(
+      ({ key }) =>
+        hasPositivePrice(formData.paymentRules[key].pixPrice) &&
+        hasPositivePrice(formData.paymentRules[key].cardPrice)
     )
   }
   return !formData.priceLifetime || hasPositivePrice(formData.priceLifetime)
@@ -57,6 +72,7 @@ export function BackofficeProductDialog() {
     formData,
     isSaving,
     setFormField,
+    setPaymentRuleField,
     submitForm,
   } = useBackofficePricing()
   const isRecurring = formData.billingMode === "RECURRING"
@@ -64,7 +80,7 @@ export function BackofficeProductDialog() {
 
   return (
     <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>
             {dialogMode === "create" ? "Novo produto" : "Editar produto"}
@@ -147,7 +163,7 @@ export function BackofficeProductDialog() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-end gap-3 rounded-md border p-3">
+            <div className="flex items-center gap-3 pt-6">
               <Switch
                 id="product-active"
                 checked={formData.isActive}
@@ -159,42 +175,97 @@ export function BackofficeProductDialog() {
           </div>
 
           {isRecurring ? (
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="product-monthly">Mensal *</Label>
-                <Input
-                  id="product-monthly"
-                  inputMode="decimal"
-                  value={formData.priceMonthly}
-                  disabled={isSaving}
-                  onChange={(event) =>
-                    setFormField("priceMonthly", normalizePriceInput(event.target.value))
-                  }
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="product-quarterly">Trimestral *</Label>
-                <Input
-                  id="product-quarterly"
-                  inputMode="decimal"
-                  value={formData.priceQuarterly}
-                  disabled={isSaving}
-                  onChange={(event) =>
-                    setFormField("priceQuarterly", normalizePriceInput(event.target.value))
-                  }
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="product-semiannual">Semestral *</Label>
-                <Input
-                  id="product-semiannual"
-                  inputMode="decimal"
-                  value={formData.priceSemiannual}
-                  disabled={isSaving}
-                  onChange={(event) =>
-                    setFormField("priceSemiannual", normalizePriceInput(event.target.value))
-                  }
-                />
+            <div className="flex flex-col gap-3">
+              <Label className="text-sm font-medium">Regras de Pagamento</Label>
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
+                      <th className="px-3 py-2 text-left font-medium">Ciclo</th>
+                      <th className="px-3 py-2 text-left font-medium">Cartão/mês *</th>
+                      <th className="px-3 py-2 text-left font-medium">Total Cartão</th>
+                      <th className="px-3 py-2 text-left font-medium">PIX/mês *</th>
+                      <th className="px-3 py-2 text-left font-medium">Total PIX</th>
+                      <th className="px-3 py-2 text-left font-medium">Desc/mês</th>
+                      <th className="px-3 py-2 text-left font-medium">Desc Total</th>
+                      <th className="px-3 py-2 text-left font-medium">Max Parcelas</th>
+                      <th className="px-3 py-2 text-left font-medium">Desc %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {CYCLES.map(({ key, label, months }) => {
+                      const entry = formData.paymentRules[key]
+                      const cardPrice = parsePrice(entry.cardPrice)
+                      const pixPrice = parsePrice(entry.pixPrice)
+                      const totalCard = cardPrice * months
+                      const totalPix = pixPrice * months
+                      const discountMonth = cardPrice > 0 && pixPrice > 0 ? cardPrice - pixPrice : 0
+                      const discountTotal = discountMonth * months
+                      const discountPct = cardPrice > 0 && discountMonth > 0 ? (discountMonth / cardPrice) * 100 : 0
+
+                      return (
+                        <tr key={key} className="border-b last:border-b-0">
+                          <td className="px-3 py-2 font-medium text-muted-foreground">{label}</td>
+                          <td className="px-3 py-2">
+                            <Input
+                              className="h-8 w-24 text-sm"
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              value={entry.cardPrice}
+                              disabled={isSaving}
+                              onChange={(e) =>
+                                setPaymentRuleField(key, "cardPrice", normalizePriceInput(e.target.value))
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {cardPrice > 0 ? formatCurrency(totalCard) : "—"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              className="h-8 w-24 text-sm"
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              value={entry.pixPrice}
+                              disabled={isSaving}
+                              onChange={(e) =>
+                                setPaymentRuleField(key, "pixPrice", normalizePriceInput(e.target.value))
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {pixPrice > 0 ? formatCurrency(totalPix) : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {discountMonth > 0 ? formatCurrency(discountMonth) : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {discountTotal > 0 ? formatCurrency(discountTotal) : "—"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              className="h-8 w-16 text-sm"
+                              inputMode="numeric"
+                              placeholder="1"
+                              value={entry.maxInstallments}
+                              disabled={isSaving}
+                              onChange={(e) =>
+                                setPaymentRuleField(
+                                  key,
+                                  "maxInstallments",
+                                  e.target.value.replace(/\D/g, "")
+                                )
+                              }
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">
+                            {discountPct > 0 ? `${discountPct.toFixed(2)}%` : "—"}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           ) : (

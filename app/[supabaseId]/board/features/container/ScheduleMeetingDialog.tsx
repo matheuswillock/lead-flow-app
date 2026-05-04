@@ -31,7 +31,7 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import {
-  formatInTz,
+  formatIntimezone,
   formatLocalDateValue,
   formatLocalTimeValue,
   parseDateKeyAndTimeToUtc,
@@ -389,16 +389,16 @@ export function ScheduleMeetingDialog({
 
       // ✅ Sucesso - Fechar dialog e atualizar UI
       toast.success(
-        `Reunião agendada para ${formatInTz(
+        `Reunião agendada para ${formatIntimezone(
           scheduledMeetingDate,
           "dd 'de' MMMM 'de' yyyy 'às' HH:mm",
-          SCHEDULE_TIMEZONE
+          SCHEDULE_TIMEZONE,
         )}`,
         {
           id: loadingToast,
           duration: 4000,
-        }
-      );
+        },
+      )
 
       if (inviteDispatch?.status === "failed") {
         const errorText = inviteDispatch.error

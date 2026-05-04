@@ -7520,7 +7520,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"Produto Exemplo\",\n  \"slug\": \"produto-exemplo\",\n  \"description\": \"Produto de teste\",\n  \"type\": \"ADDON\",\n  \"billingMode\": \"RECURRING\",\n  \"priceMonthly\": 29.9,\n  \"priceQuarterly\": 29.9,\n  \"priceSemiannual\": 29.9,\n  \"priceLifetime\": null,\n  \"isActive\": true\n}"
+                  "raw": "{\n  \"name\": \"Produto Exemplo\",\n  \"slug\": \"produto-exemplo\",\n  \"description\": \"Produto de teste\",\n  \"type\": \"PLAN\",\n  \"billingMode\": \"RECURRING\",\n  \"priceMonthly\": 89.9,\n  \"priceQuarterly\": 79.9,\n  \"priceSemiannual\": 69.9,\n  \"priceLifetime\": null,\n  \"isActive\": true,\n  \"paymentRules\": [\n    { \"paymentMethod\": \"PIX\", \"billingCycle\": \"monthly\", \"price\": 89.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"PIX\", \"billingCycle\": \"quarterly\", \"price\": 79.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"PIX\", \"billingCycle\": \"semiannual\", \"price\": 69.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"CREDIT_CARD\", \"billingCycle\": \"monthly\", \"price\": 102.9, \"canInstallment\": false, \"maxInstallments\": 1 },\n    { \"paymentMethod\": \"CREDIT_CARD\", \"billingCycle\": \"quarterly\", \"price\": 91.4, \"canInstallment\": true, \"maxInstallments\": 3 },\n    { \"paymentMethod\": \"CREDIT_CARD\", \"billingCycle\": \"semiannual\", \"price\": 79.9, \"canInstallment\": true, \"maxInstallments\": 6 }\n  ]\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/pricing",
@@ -7767,7 +7767,7 @@
                     "checkout"
                   ]
                 },
-                "description": "Cria a cobrança Asaas da adesão pública. Cartão aceita parcelas conforme ciclo; PIX/Boleto cobram valor total."
+                "description": "Cria a cobrança Asaas da adesão pública. Cartão aceita parcelas conforme ciclo; PIX cobra valor total."
               }
             },
             {

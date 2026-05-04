@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useParams } from "next/navigation"
 import { useCampanhasContext } from "../context/CampanhasContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz } from "@/lib/dates"
+import { formatIntimezone } from "@/lib/dates"
 
 const PLAN_LABELS: Record<string, string> = {
   starter: "Starter",
@@ -72,7 +72,7 @@ export function CreditBalanceBar() {
         </div>
         {credits.currentPeriodEnd && (
           <p className="shrink-0 text-xs text-muted-foreground">
-            Expira em {formatInTz(new Date(credits.currentPeriodEnd), "dd/MM/yyyy", tz)}
+            Expira em {formatIntimezone(new Date(credits.currentPeriodEnd), "dd/MM/yyyy", tz)}
           </p>
         )}
       </CardContent>

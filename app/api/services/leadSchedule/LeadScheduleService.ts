@@ -12,7 +12,7 @@ import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 import type { ILeadScheduleService, CreateScheduleParams } from "./ILeadScheduleService";
 import { buildUniqueEmails, resolveParticipantDispatchGroups } from "./participantDispatch";
 import type { Attachment } from "resend";
-import { formatInTz, resolveTimezone } from "@/lib/dates";
+import { formatIntimezone, resolveTimezone } from "@/lib/dates";
 
 type InviteDispatchProvider = "google" | "resend";
 
@@ -50,7 +50,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 
 const LOG_PREFIX = "[LeadScheduleService]";
 
-const formatMeetingDate = (date: Date, tz: string) => formatInTz(date, "dd/MM/yyyy HH:mm", tz);
+const formatMeetingDate = (date: Date, tz: string) => formatIntimezone(date, "dd/MM/yyyy HH:mm", tz);
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;

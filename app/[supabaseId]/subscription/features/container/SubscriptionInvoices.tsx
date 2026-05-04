@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { FileText, Download, Search } from 'lucide-react';
 import type { SubscriptionInvoice } from '../types/subscription.types';
 import { useTimezone } from '@/app/context/TimezoneContext';
-import { formatInTz, parseDateKeyToUtc } from '@/lib/dates';
+import { formatIntimezone, parseDateKeyToUtc } from '@/lib/dates';
 
 interface SubscriptionInvoicesProps {
   invoices: SubscriptionInvoice[];
@@ -42,7 +42,7 @@ export function SubscriptionInvoices({ invoices }: SubscriptionInvoicesProps) {
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
-    return formatInTz(parseDateKeyToUtc(dateString, tz), 'dd/MM/yyyy', tz);
+    return formatIntimezone(parseDateKeyToUtc(dateString, tz), 'dd/MM/yyyy', tz);
   };
 
   const formatCurrency = (value: number) => {
@@ -57,7 +57,7 @@ export function SubscriptionInvoices({ invoices }: SubscriptionInvoicesProps) {
       invoices.map((invoice) => {
         const referenceDate = invoice.dueDate || invoice.paymentDate || '';
         const parsed = referenceDate ? parseDateKeyToUtc(referenceDate, tz) : null;
-        const year = parsed ? formatInTz(parsed, 'yyyy', tz) : 'Sem ano';
+        const year = parsed ? formatIntimezone(parsed, 'yyyy', tz) : 'Sem ano';
 
         return {
           ...invoice,

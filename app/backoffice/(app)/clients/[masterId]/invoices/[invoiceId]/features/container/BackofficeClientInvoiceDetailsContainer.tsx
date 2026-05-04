@@ -38,7 +38,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useBackofficeClientInvoiceDetails } from "../context/BackofficeClientInvoiceDetailsContext"
 import { useTimezone } from "@/app/context/TimezoneContext"
-import { formatInTz, parseDateKeyToUtc } from "@/lib/dates"
+import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 
 const STATUS_BADGES: Record<
   "paid" | "overdue" | "upcoming" | "other",
@@ -86,7 +86,7 @@ function formatDate(value: string | null, tz: string) {
     /^\d{4}-\d{2}-\d{2}$/.test(value)
       ? parseDateKeyToUtc(value, tz)
       : new Date(value)
-  return formatInTz(parsed, "dd/MM/yyyy", tz)
+  return formatIntimezone(parsed, "dd/MM/yyyy", tz)
 }
 
 export function BackofficeClientInvoiceDetailsContainer() {

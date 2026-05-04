@@ -21,7 +21,7 @@ export interface IBackofficeAdhesionUseCase {
   resendInvite(id: string): Promise<Output>
   getPublicDetails(token: string): Promise<Output>
   createCheckout(token: string, input: BackofficeAdhesionCheckoutInput): Promise<Output>
-  getPaymentStatus(token: string): Promise<Output>
+  getPaymentStatus(token: string, options?: { sync?: boolean }): Promise<Output>
   processPaymentWebhook(
     event: string,
     payment: BackofficeAdhesionPaymentWebhookInput

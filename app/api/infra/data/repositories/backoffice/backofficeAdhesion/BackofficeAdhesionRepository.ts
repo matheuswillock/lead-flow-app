@@ -1,4 +1,4 @@
-import { Prisma, UserRole, type BackofficeAdhesionStatus } from "@prisma/client"
+import { Prisma, UserRole, SubscriptionStatus, SubscriptionPlan, type BackofficeAdhesionStatus } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   BackofficeAdhesionOptions,
@@ -23,6 +23,8 @@ const backofficeAdhesionUserSelect = {
     select: {
       fullName: true,
       email: true,
+      cpfCnpj: true,
+      phone: true,
     },
   },
 } satisfies Prisma.BackofficeUserSelect
@@ -32,6 +34,7 @@ const backofficeAdhesionLeadSelect = {
   name: true,
   email: true,
   phone: true,
+  cpfCnpj: true,
   status: true,
   sdrBackofficeUserId: true,
   closerBackofficeUserId: true,
@@ -65,6 +68,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           leadId: data.leadId,
           fullName: data.fullName,
           phone: data.phone,
+          cpfCnpj: data.cpfCnpj,
           plan: data.plan,
           cycle: data.cycle,
           modules: data.modules,
@@ -168,6 +172,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       data: {
         ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
         ...(data.phone !== undefined ? { phone: data.phone } : {}),
+        ...(data.cpfCnpj !== undefined ? { cpfCnpj: data.cpfCnpj } : {}),
         ...(data.cycle !== undefined ? { cycle: data.cycle } : {}),
         ...(data.modules !== undefined ? { modules: data.modules } : {}),
         ...(data.extraTeams !== undefined ? { extraTeams: data.extraTeams } : {}),
@@ -280,7 +285,6 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       functions: ["SDR", "CLOSER"],
       cpfCnpj: data.cpfCnpj ?? undefined,
       asaasCustomerId: data.asaasCustomerId ?? undefined,
-      subscriptionId: data.subscriptionId,
       subscriptionStatus: "active",
       subscriptionPlan: "manager_base",
       operatorCount: data.operatorCount,
@@ -337,6 +341,51 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     await prisma.profile.update({
       where: { id: profileId },
       data,
+    })
+  }
+
+  async upsertProfileSubscription(data: {
+    profileId: string
+    adhesionId: string
+    productId: string
+    subscriptionStatus: string
+    subscriptionPlan: string
+    subscriptionCycle: string
+    subscriptionStartDate: Date
+    subscriptionEndDate: Date
+    subscriptionNextDueDate: Date
+  }): Promise<void> {
+    const payload = {
+      adhesionId: data.adhesionId,
+      productId: data.productId,
+      subscriptionStatus: data.subscriptionStatus as SubscriptionStatus,
+      subscriptionPlan: data.subscriptionPlan as SubscriptionPlan,
+      subscriptionCycle: data.subscriptionCycle,
+      subscriptionStartDate: data.subscriptionStartDate,
+      subscriptionEndDate: data.subscriptionEndDate,
+      subscriptionNextDueDate: data.subscriptionNextDueDate,
+    }
+    await prisma.profileSubscription.upsert({
+      where: { profileId: data.profileId },
+      create: { profileId: data.profileId, ...payload, hasPermanentSubscription: false },
+      update: payload,
+    })
+  }
+
+  async clearPaymentArtifacts(id: string): Promise<BackofficeAdhesionWithRelations> {
+    return prisma.backofficeAdhesion.update({
+      where: { id },
+      data: {
+        asaasPaymentId: null,
+        asaasInstallmentId: null,
+        installmentCount: null,
+        pixQrCode: null,
+        pixPayload: null,
+        bankSlipUrl: null,
+        invoiceUrl: null,
+        paymentDueDate: null,
+      },
+      include: backofficeAdhesionInclude,
     })
   }
 
