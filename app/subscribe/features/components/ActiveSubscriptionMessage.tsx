@@ -40,7 +40,7 @@ export function ActiveSubscriptionMessage({
       
       await supabase.auth.signOut();
       toast.success('Sessão encerrada com sucesso');
-      router.push('/sign-up');
+      router.push('/sign-in');
     } catch (error) {
       console.error('Erro ao deslogar:', error);
       toast.error('Erro ao encerrar sessão. Tente novamente.');

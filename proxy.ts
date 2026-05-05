@@ -6,7 +6,7 @@ import { isManagerLikeRole, isBackofficeRole } from "@/lib/roles"
 const protectedPrefixes = ["/dashboard", "/account", "/crm", "/board", "/pipeline", "/manager-users", "/notifications", "/integrations", "/docs"]
 
 // Public routes that don't require authentication
-const publicRoutes = ["/", "/sign-in", "/sign-up", "/checkout-return", "/operator-confirmed", "/pix-confirmed", "/set-password", "/forgot-password", "/adesao/expirado"]
+const publicRoutes = ["/", "/sign-in", "/operator-confirmed", "/pix-confirmed", "/set-password", "/forgot-password", "/adesao/expirado"]
 
 // Routes that require manager role
 const managerOnlyRoutes = ["/manager-users", "/integrations"]
@@ -111,7 +111,7 @@ export async function proxy(request: NextRequest) {
   })
 
   // If the user is logged in and is trying to access auth pages, redirect to CRM with supabaseId
-  const authPages = ["/login", "/sign-in", "/sign-up"]
+  const authPages = ["/login", "/sign-in"]
   if (user && authPages.includes(pathname)) {
     const url = new URL(`/${user.id}/crm`, request.url)
     url.search = request.nextUrl.search
