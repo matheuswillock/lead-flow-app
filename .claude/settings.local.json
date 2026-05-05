@@ -60,7 +60,8 @@
       "Bash(grep -n \"LeadForm\\\\|leadForm\" /a/develop/lead-flow-app/app/[supabaseId]/components/LeadDialog.tsx)",
       "mcp__asaas__execute-request",
       "mcp__asaas__list-specs",
-      "mcp__asaas__fetch"
+      "mcp__asaas__fetch",
+      "Bash(claude mcp:*)"
     ]
   }
 }

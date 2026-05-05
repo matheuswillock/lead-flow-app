@@ -67,6 +67,10 @@ function AuthCallbackContent() {
           description.toLowerCase().includes("already linked")
         ) {
           setError("Esta conta Google já está vinculada. Tente reconectar novamente.");
+        } else if (description.toLowerCase().includes("conta nao encontrada")) {
+          setError(
+            "Conta não encontrada. Crie sua conta com e-mail e senha ou fale com o suporte."
+          );
         } else {
           setError(`Falha ao conectar com o Google: ${description}`);
         }
