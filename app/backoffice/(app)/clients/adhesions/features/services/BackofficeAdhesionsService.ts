@@ -100,6 +100,14 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
     )
   }
 
+  async getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }> {
+    return parseOutput<{ publicUrl: string; expiresAt: string }>(
+      await fetch(`/api/v1/backoffice/adhesions/${id}/public-url`, {
+        cache: "no-store",
+      })
+    )
+  }
+
   async resendInvite(id: string): Promise<void> {
     await parseOutput(
       await fetch(`/api/v1/backoffice/adhesions/${id}/invite`, {

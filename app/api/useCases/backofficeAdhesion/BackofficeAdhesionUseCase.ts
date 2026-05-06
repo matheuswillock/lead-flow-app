@@ -151,6 +151,16 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
     }
   }
 
+  async getPublicUrl(id: string): Promise<Output> {
+    try {
+      const result = await this.service.getPublicUrl(id)
+      return new Output(true, [], [], result)
+    } catch (error) {
+      console.error("[BackofficeAdhesionUseCase][getPublicUrl]", error)
+      return new Output(false, [], [getErrorMessage(error, "Erro ao copiar link")], null)
+    }
+  }
+
   async getPublicDetails(token: string): Promise<Output> {
     try {
       const result = await this.service.getPublicDetails(token)

@@ -22,9 +22,12 @@ export interface BackofficeAdhesionCreateInput {
 export interface BackofficeAdhesionUpdateInput {
   fullName?: string
   phone?: string
+  email?: string | null
+  cpfCnpj?: string | null
   cycle?: BackofficeAdhesionBillingCycle
   extraTeams?: number
   extraUsers?: number
+  billingType?: "PIX" | "CREDIT_CARD" | null
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
 }
@@ -175,6 +178,7 @@ export interface BackofficeAdhesionCreationResult {
   activationMode?: "checkout" | "external_paid"
 }
 
+
 export interface BackofficeAdhesionTokenError {
   tokenStatus: Exclude<BackofficeAdhesionTokenValidationStatus, "valid">
 }
@@ -209,6 +213,7 @@ export interface IBackofficeAdhesionService {
   update(id: string, input: BackofficeAdhesionUpdateInput): Promise<BackofficeAdhesionDTO>
   resend(id: string): Promise<BackofficeAdhesionCreationResult>
   resendInvite(id: string): Promise<{ email: string }>
+  getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }>
   getPublicDetails(token: string): Promise<BackofficeAdhesionPublicDTO | BackofficeAdhesionTokenError>
   createCheckout(
     token: string,

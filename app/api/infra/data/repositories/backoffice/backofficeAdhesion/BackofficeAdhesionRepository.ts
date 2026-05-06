@@ -82,6 +82,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           totalAmount: toDecimal(data.totalAmount),
           tokenHash: data.tokenHash,
           tokenPreview: data.tokenPreview,
+          ...(data.tokenPlain !== undefined ? ({ tokenPlain: data.tokenPlain } as object) : {}),
           expiresAt: data.expiresAt,
           sdrBackofficeUserId: data.sdrBackofficeUserId ?? null,
           closerBackofficeUserId: data.closerBackofficeUserId ?? null,
@@ -173,6 +174,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       data: {
         ...(data.fullName !== undefined ? { fullName: data.fullName } : {}),
         ...(data.phone !== undefined ? { phone: data.phone } : {}),
+        ...(data.email !== undefined ? { email: data.email } : {}),
         ...(data.cpfCnpj !== undefined ? { cpfCnpj: data.cpfCnpj } : {}),
         ...(data.cycle !== undefined ? { cycle: data.cycle } : {}),
         ...(data.modules !== undefined ? { modules: data.modules } : {}),
@@ -197,9 +199,11 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         ...(data.closerBackofficeUserId !== undefined
           ? { closerBackofficeUserId: data.closerBackofficeUserId }
           : {}),
+        ...(data.billingType !== undefined ? { billingType: data.billingType } : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.tokenHash !== undefined ? { tokenHash: data.tokenHash } : {}),
         ...(data.tokenPreview !== undefined ? { tokenPreview: data.tokenPreview } : {}),
+        ...(data.tokenPlain !== undefined ? ({ tokenPlain: data.tokenPlain } as object) : {}),
         ...(data.expiresAt !== undefined ? { expiresAt: data.expiresAt } : {}),
       },
       include: backofficeAdhesionInclude,

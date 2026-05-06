@@ -359,6 +359,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       ...pricing,
       tokenHash: hashBackofficeAdhesionToken(token),
       tokenPreview: getBackofficeAdhesionTokenPreview(token),
+      tokenPlain: token,
       expiresAt: addTokenTtl(),
       sdrBackofficeUserId: normalized.sdrBackofficeUserId ?? lead.sdrBackofficeUserId,
       closerBackofficeUserId:
@@ -437,13 +438,18 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error("Adesões pagas não podem ser editadas")
     }
 
+    const currentBillingType =
+      existing.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX"
     const next = this.normalizeCommercialInput({
       leadId: existing.leadId,
       fullName: input.fullName ?? existing.fullName,
       phone: input.phone ?? existing.phone,
+      email: input.email !== undefined ? input.email : existing.email,
+      cpfCnpj: input.cpfCnpj !== undefined ? input.cpfCnpj : existing.cpfCnpj,
       cycle: input.cycle ?? existing.cycle,
       extraTeams: input.extraTeams ?? existing.extraTeams,
       extraUsers: input.extraUsers ?? existing.extraUsers,
+      billingType: input.billingType !== undefined ? input.billingType : currentBillingType,
       sdrBackofficeUserId:
         input.sdrBackofficeUserId !== undefined
           ? input.sdrBackofficeUserId
@@ -452,23 +458,71 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         input.closerBackofficeUserId !== undefined
           ? input.closerBackofficeUserId
           : existing.closerBackofficeUserId,
+      activationMode: "checkout",
     })
     const prices = await this.resolvePrices(next.cycle)
     const pricing = calculateBackofficeAdhesionPricing(next, prices)
+    const resolvedMonthlyTotalAmount =
+      next.billingType === "PIX" ? pricing.pixMonthlyTotalAmount : pricing.creditCardMonthlyTotalAmount
+    const resolvedTotalAmount =
+      next.billingType === "PIX" ? pricing.pixTotalAmount : pricing.creditCardTotalAmount
+
+    const hadExistingPayment = Boolean(
+      existing.asaasPaymentId ||
+      existing.invoiceUrl ||
+      existing.pixPayload ||
+      existing.pixQrCode ||
+      existing.bankSlipUrl
+    )
+
+    const shouldResetPaymentData =
+      hadExistingPayment &&
+      (existing.billingType !== next.billingType ||
+        decimalToNumber(existing.totalAmount) !== resolvedTotalAmount)
+
+    if (shouldResetPaymentData && existing.asaasPaymentId) {
+      try {
+        await asaasFetch(`${asaasApi.payments}/${existing.asaasPaymentId}`, {
+          method: "DELETE",
+        })
+      } catch (cancelErr) {
+        console.error("[BackofficeAdhesionService][update][cancel-payment]", cancelErr)
+      }
+    }
+
     const updated = await this.repo.update(id, {
       fullName: next.fullName,
       phone: next.phone,
+      email: next.email,
+      cpfCnpj: next.cpfCnpj,
       cycle: next.cycle,
       modules: CRM_MODULES,
       extraTeams: next.extraTeams,
       extraUsers: next.extraUsers,
-      ...pricing,
+      monthlyBaseAmount: pricing.monthlyBaseAmount,
+      monthlyExtraTeamsAmount: pricing.monthlyExtraTeamsAmount,
+      monthlyExtraUsersAmount: pricing.monthlyExtraUsersAmount,
+      monthlyTotalAmount: resolvedMonthlyTotalAmount,
+      totalAmount: resolvedTotalAmount,
+      billingType: next.billingType,
       sdrBackofficeUserId: next.sdrBackofficeUserId,
       closerBackofficeUserId: next.closerBackofficeUserId,
-      cpfCnpj: undefined
     })
 
-    return mapAdhesion(updated)
+    const persisted = shouldResetPaymentData
+      ? await this.repo.updateCheckoutData(updated.id, {
+          asaasPaymentId: null,
+          asaasInstallmentId: null,
+          installmentCount: null,
+          invoiceUrl: null,
+          bankSlipUrl: null,
+          pixQrCode: null,
+          pixPayload: null,
+          paymentDueDate: null,
+        })
+      : updated
+
+    return mapAdhesion(persisted)
   }
 
   async resend(id: string): Promise<BackofficeAdhesionCreationResult> {
@@ -485,8 +539,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       status: "pending",
       tokenHash: hashBackofficeAdhesionToken(token),
       tokenPreview: getBackofficeAdhesionTokenPreview(token),
+      tokenPlain: token,
       expiresAt: addTokenTtl(),
-      cpfCnpj: undefined
     })
 
     const checkoutUrl = getPublicUrl(token)
@@ -527,6 +581,31 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     await this.sendSetPasswordEmail(existing, "recovery")
     return { email: existing.email }
+  }
+
+  async getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }> {
+    const existing = await this.repo.findById(id)
+    if (!existing) {
+      throw new Error("Adesão não encontrada")
+    }
+
+    const token = existing.tokenPlain?.trim()
+    if (!token) {
+      throw new Error("Link não disponível. Reenvie a adesão para gerar um novo link.")
+    }
+
+    const now = new Date()
+    if (existing.expiresAt.getTime() <= now.getTime()) {
+      await this.repo
+        .update(id, {
+          status: existing.status === "pending" ? "expired" : existing.status,
+          tokenPlain: null,
+        })
+        .catch(() => null)
+      throw new Error("Link expirado. Reenvie a adesão para gerar um novo link.")
+    }
+
+    return { publicUrl: getPublicUrl(token), expiresAt: existing.expiresAt.toISOString() }
   }
 
   async getPublicDetails(
@@ -725,7 +804,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       tokenHash: hashBackofficeAdhesionToken(token),
       tokenPreview: getBackofficeAdhesionTokenPreview(token),
       expiresAt: expireTokenNow(),
-      cpfCnpj: undefined,
+      tokenPlain: null,
     })
   }
 

@@ -19,6 +19,7 @@ export interface IBackofficeAdhesionUseCase {
   update(id: string, input: BackofficeAdhesionUpdateInput): Promise<Output>
   resend(id: string): Promise<Output>
   resendInvite(id: string): Promise<Output>
+  getPublicUrl(id: string): Promise<Output>
   getPublicDetails(token: string): Promise<Output>
   createCheckout(token: string, input: BackofficeAdhesionCheckoutInput): Promise<Output>
   getPaymentStatus(token: string, options?: { sync?: boolean }): Promise<Output>

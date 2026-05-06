@@ -31,6 +31,9 @@ function initialPaymentInput(prefill: PublicCheckoutPayerPrefill): PublicCheckou
   }
 }
 
+const checkoutInputClassName =
+  "disabled:opacity-100 disabled:bg-muted/30 disabled:text-foreground/70 disabled:border-input"
+
 export function PublicCheckoutPaymentStep({
   details,
   billingType,
@@ -219,7 +222,7 @@ export function PublicCheckoutPaymentStep({
             </div>
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               onClick={async () => {
                 await navigator.clipboard.writeText(payment.pix!.payload)
                 toast.success("Copiado.")
@@ -286,6 +289,7 @@ export function PublicCheckoutPaymentStep({
             value={form.fullName}
             onChange={(e) => updateField("fullName", e.target.value)}
             disabled={isLocked}
+            className={checkoutInputClassName}
           />
         </Field>
 
@@ -296,6 +300,7 @@ export function PublicCheckoutPaymentStep({
               value={form.email}
               onChange={(e) => updateField("email", e.target.value)}
               disabled={isLocked}
+              className={checkoutInputClassName}
             />
           </Field>
           <Field label="Telefone">
@@ -303,6 +308,7 @@ export function PublicCheckoutPaymentStep({
               value={maskPhone(form.phone)}
               onChange={(e) => updateField("phone", unmask(maskPhone(e.target.value)))}
               disabled={isLocked}
+              className={checkoutInputClassName}
             />
           </Field>
         </div>
@@ -312,6 +318,7 @@ export function PublicCheckoutPaymentStep({
             value={formatDocumentInput(form.cpfCnpj)}
             onChange={(e) => updateField("cpfCnpj", unmask(formatDocumentInput(e.target.value)))}
             disabled={isLocked}
+            className={checkoutInputClassName}
           />
         </Field>
 
@@ -327,6 +334,7 @@ export function PublicCheckoutPaymentStep({
               void resolveCepIfNeeded(next)
             }}
             disabled={isLocked}
+            className={checkoutInputClassName}
           />
         </Field>
         <Field label="Numero">
@@ -334,6 +342,7 @@ export function PublicCheckoutPaymentStep({
             value={form.addressNumber}
             onChange={(e) => updateField("addressNumber", e.target.value)}
             disabled={isAddressLocked}
+            className={checkoutInputClassName}
           />
         </Field>
       </div>
@@ -343,6 +352,7 @@ export function PublicCheckoutPaymentStep({
           value={form.address}
           onChange={(e) => updateField("address", e.target.value)}
           disabled={isAddressLocked}
+          className={checkoutInputClassName}
         />
       </Field>
 
@@ -352,6 +362,7 @@ export function PublicCheckoutPaymentStep({
             value={form.neighborhood}
             onChange={(e) => updateField("neighborhood", e.target.value)}
             disabled={isAddressLocked}
+            className={checkoutInputClassName}
           />
         </Field>
         <Field label="Complemento" hint="Opcional">
@@ -359,6 +370,7 @@ export function PublicCheckoutPaymentStep({
             value={form.complement}
             onChange={(e) => updateField("complement", e.target.value)}
             disabled={isAddressLocked}
+            className={checkoutInputClassName}
           />
         </Field>
       </div>
@@ -369,6 +381,7 @@ export function PublicCheckoutPaymentStep({
             value={form.city}
             onChange={(e) => updateField("city", e.target.value)}
             disabled={isAddressLocked}
+            className={checkoutInputClassName}
           />
         </Field>
         <Field label="Estado">
@@ -377,6 +390,7 @@ export function PublicCheckoutPaymentStep({
             onChange={(e) => updateField("state", e.target.value.toUpperCase().slice(0, 2))}
             disabled={isAddressLocked}
             maxLength={2}
+            className={checkoutInputClassName}
           />
         </Field>
       </div>
@@ -396,6 +410,7 @@ export function PublicCheckoutPaymentStep({
                 value={form.creditCard.holderName}
                 onChange={(e) => updateCardField("holderName", e.target.value)}
                 disabled={isLocked}
+                className={checkoutInputClassName}
               />
             </Field>
 
@@ -404,6 +419,7 @@ export function PublicCheckoutPaymentStep({
                 value={maskCardNumber(form.creditCard.number)}
                 onChange={(e) => updateCardField("number", unmask(maskCardNumber(e.target.value)))}
                 disabled={isLocked}
+                className={checkoutInputClassName}
               />
             </Field>
 
@@ -413,6 +429,7 @@ export function PublicCheckoutPaymentStep({
                   value={form.creditCard.expiryMonth}
                   onChange={(e) => updateCardField("expiryMonth", onlyDigits(e.target.value, 2))}
                   disabled={isLocked}
+                  className={checkoutInputClassName}
                 />
               </Field>
               <Field label="Ano">
@@ -420,6 +437,7 @@ export function PublicCheckoutPaymentStep({
                   value={form.creditCard.expiryYear}
                   onChange={(e) => updateCardField("expiryYear", onlyDigits(e.target.value, 4))}
                   disabled={isLocked}
+                  className={checkoutInputClassName}
                 />
               </Field>
               <Field label="CVV">
@@ -427,6 +445,7 @@ export function PublicCheckoutPaymentStep({
                   value={form.creditCard.ccv}
                   onChange={(e) => updateCardField("ccv", onlyDigits(e.target.value, 4))}
                   disabled={isLocked}
+                  className={checkoutInputClassName}
                 />
               </Field>
             </div>

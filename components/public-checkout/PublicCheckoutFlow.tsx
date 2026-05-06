@@ -176,8 +176,8 @@ export function PublicCheckoutFlow({
           <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
             <CheckCircle2 aria-hidden="true" />
           </div>
-          <div className="text-lg font-semibold text-background">Pagamento confirmado</div>
-          <div className="text-sm text-background/70">Verifique seu e-mail para os proximos passos.</div>
+          <div className="text-lg font-semibold text-foreground">Pagamento confirmado</div>
+          <div className="text-sm text-muted-foreground">Verifique seu e-mail para os proximos passos.</div>
         </div>
       ) : null}
     </PublicCheckoutShell>

@@ -101,6 +101,7 @@ export function BackofficeAdhesionsContainer() {
   const [editingAdhesion, setEditingAdhesion] = useState<BackofficeAdhesionItem | null>(null)
   const [resendResult, setResendResult] = useState<BackofficeAdhesionCreationResult | null>(null)
   const [resendingId, setResendingId] = useState<string | null>(null)
+  const [copyingId, setCopyingId] = useState<string | null>(null)
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -145,6 +146,20 @@ export function BackofficeAdhesionsContainer() {
       toast.error(err instanceof Error ? err.message : "Erro ao reenviar convite")
     } finally {
       setResendingInviteId(null)
+    }
+  }
+
+  async function handleCopyPublicLink(adhesion: BackofficeAdhesionItem) {
+    if (copyingId) return
+    setCopyingId(adhesion.id)
+    try {
+      const result = await service.getPublicUrl(adhesion.id)
+      await copyLink(result.publicUrl)
+    } catch (err) {
+      console.error("[BackofficeAdhesionsContainer][copyPublicUrl]", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao copiar link de adesão")
+    } finally {
+      setCopyingId(null)
     }
   }
 
@@ -304,6 +319,13 @@ export function BackofficeAdhesionsContainer() {
                           >
                             <RefreshCw data-icon="inline-start" />
                             Reenviar adesão
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={copyingId === adhesion.id || adhesion.status === "paid"}
+                            onSelect={() => void handleCopyPublicLink(adhesion)}
+                          >
+                            <Copy data-icon="inline-start" />
+                            Copiar link de adesão
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             disabled={
