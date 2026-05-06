@@ -152,6 +152,13 @@ export interface AddOnConfirmedEmailData {
   requesterEmail?: string;
 }
 
+export interface BackofficeAdhesionCheckoutEmailData {
+  userName: string;
+  userEmail: string;
+  checkoutUrl: string;
+  expiresAt: Date;
+}
+
 export class EmailService {
   private resend?: ReturnType<typeof assertResend>;
 
@@ -1577,6 +1584,27 @@ export class EmailService {
       subject: `${data.addonLabel} ativado com sucesso — Corretor Studio`,
       html,
     });
+  }
+
+  async sendBackofficeAdhesionCheckoutEmail(data: BackofficeAdhesionCheckoutEmailData) {
+    const timezone = DEFAULT_TZ
+    const expiresAt = formatIntimezone(data.expiresAt, "dd/MM/yyyy 'às' HH:mm", timezone)
+
+    await this.sendEmail({
+      to: [data.userEmail],
+      subject: "Finalize sua adesão no Corretor Studio",
+      html: `
+        <div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; line-height: 1.5; color: #111827;">
+          <p>Olá, <strong>${data.userName}</strong>.</p>
+          <p>Seu link para finalizar a adesão está pronto:</p>
+          <p><a href="${data.checkoutUrl}" target="_blank" rel="noreferrer">${data.checkoutUrl}</a></p>
+          <p><strong>Validade:</strong> ${expiresAt}</p>
+          <p>Se você não solicitou isso, pode ignorar este e-mail.</p>
+        </div>
+      `,
+      text: `Olá, ${data.userName}.\n\nSeu link para finalizar a adesão está pronto: ${data.checkoutUrl}\n\nValidade: ${expiresAt}\n`,
+      from: "Corretor Studio <no-reply@corretorstudio.com>",
+    })
   }
 }
 
