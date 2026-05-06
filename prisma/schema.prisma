@@ -589,6 +589,7 @@ model BackofficeAdhesion {
   tokenPreview              String                         @map("tokenPreview") @db.Text
   expiresAt                 DateTime                       @map("expiresAt") @db.Timestamptz(6)
   status                    BackofficeAdhesionStatus       @default(pending)
+  tokenPlain                String?                        @map("tokenPlain") @db.Text
   sdrBackofficeUserId       String?                        @map("sdrBackofficeUserId") @db.Uuid
   closerBackofficeUserId    String?                        @map("closerBackofficeUserId") @db.Uuid
   createdByBackofficeUserId String?                        @map("createdByBackofficeUserId") @db.Uuid
