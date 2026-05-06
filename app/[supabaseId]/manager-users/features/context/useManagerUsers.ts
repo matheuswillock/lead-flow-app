@@ -199,6 +199,7 @@ export function useManagerUsers({
           email: userData.email,
           role: userData.role || 'operator',
           functions: userData.functions,
+          billingType: (userData as any).billingType,
           hasPermanentSubscription,
           canCreateAccountUsers: userData.canCreateAccountUsers,
           canManageAccountTeams: userData.canManageAccountTeams,
@@ -209,16 +210,17 @@ export function useManagerUsers({
       toast.dismiss();
 
       if (result.isValid) {
-        const pendingPayment = result?.result?.paymentId;
-        if (pendingPayment) {
-          const billingType = result?.result?.billingType;
-          toast.success("Solicitação criada com sucesso!", {
-            description:
-              billingType === "CREDIT_CARD"
-                ? "A cobrança adicional foi enviada ao cartão do master. O usuário será criado após a confirmação do pagamento."
-                : "A cobrança foi enviada ao master. O usuário será criado após a confirmação do pagamento.",
+        const checkoutUrl = result?.result?.checkoutUrl;
+        if (checkoutUrl) {
+          toast.success("Checkout gerado com sucesso!", {
+            description: currentUserIsMaster
+              ? "Abrimos o checkout em uma nova aba e enviamos o link por e-mail."
+              : "O master recebeu o e-mail com o link de pagamento.",
             duration: 6000,
           });
+          if (currentUserIsMaster) {
+            window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+          }
         } else {
           toast.success("Usuário criado com sucesso!", {
             description: 'Um email de convite foi enviado para o novo usuário.',
@@ -246,7 +248,7 @@ export function useManagerUsers({
       });
       setState(prev => ({ ...prev, loading: false }));
     }
-  }, [supabaseId, hasPermanentSubscription, loadUsers, managerUsersService, state.users, activeTeamId, errorContext]);
+  }, [supabaseId, hasPermanentSubscription, loadUsers, managerUsersService, state.users, activeTeamId, errorContext, currentUserIsMaster]);
 
   // Atualizar usuário
   const updateUser = useCallback(async (userId: string, userData: UpdateManagerUserFormData) => {

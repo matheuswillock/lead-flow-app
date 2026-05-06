@@ -423,6 +423,7 @@ The following blocks are parsed by `scripts/design/sync-tokens.ts`.
     }
   },
   "badgeVariants": {
+    "_note": "Two valid patterns — never mix them. Tinted: surface bg + semantic color as text (auto-adapts, preferred). Solid: semantic color bg + foreground (high contrast, for critical status). Never use *-foreground as text on *-surface (dark *-foreground on dark *-surface in dark mode = invisible).",
     "new": {
       "background": "var(--semantic-new-surface)",
       "foreground": "var(--semantic-new)",

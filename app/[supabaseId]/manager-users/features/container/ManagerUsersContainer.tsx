@@ -23,6 +23,7 @@ import { useUserContext } from "@/app/context/UserContext";
 import { notifyManagerUsersError } from "../utils/managerUsersErrors";
 import { isManagerLikeRole } from "@/lib/roles";
 import { useTimezone } from "@/app/context/TimezoneContext";
+import { useBillingSlots } from "@/app/hooks/useBillingSlots";
 
 interface ManagerUsersContainerProps {
   supabaseId: string;
@@ -44,6 +45,7 @@ export function ManagerUsersContainer({
   const resolvedIsMaster = isTeamMaster ?? currentUserIsMaster;
   const canCreateUser = resolvedIsMaster || (resolvedRole === "manager" && user?.canCreateAccountUsers === true);
   const canDeleteUser = resolvedIsMaster;
+  const { hasAvailableUserSlot } = useBillingSlots(supabaseId, resolvedIsMaster);
   const [isDeletePendingDialogOpen, setIsDeletePendingDialogOpen] = useState(false);
   const [pendingOperatorToDelete, setPendingOperatorToDelete] = useState<ManagerUserTableRow | null>(null);
   const errorContext = {
@@ -287,6 +289,7 @@ export function ManagerUsersContainer({
           loading={loading}
           supabaseId={supabaseId}
           currentProfileId={user?.id}
+          hasAvailableUserSlot={hasAvailableUserSlot}
         />
       )}
 

@@ -148,7 +148,7 @@ export async function PUT(
 
     const lead = await prisma.lead.findUnique({
       where: { id },
-      select: { id: true, teamId: true, status: true }
+      select: { id: true, teamId: true, status: true, closerId: true }
     });
 
     if (!lead || lead.teamId !== teamId) {
@@ -163,7 +163,9 @@ export async function PUT(
       });
 
       const isTeamMaster = !!(team && team.masterId === profile.id);
-      const canMarkMeetingHeald = isTeamMaster || membership.functions?.includes("CLOSER");
+      const isAssignedCloser = !!lead.closerId && lead.closerId === profile.id;
+      const canMarkMeetingHeald =
+        isTeamMaster || (membership.functions?.includes("CLOSER") && isAssignedCloser);
 
       if (lead.status !== "scheduled") {
         const output = new Output(false, [], ["Reuniao so pode ser marcada como realizada para leads agendados."], null);
@@ -171,7 +173,7 @@ export async function PUT(
       }
 
       if (!canMarkMeetingHeald) {
-        const output = new Output(false, [], ["Acesso negado: somente o closer (ou master) pode marcar reuniao como realizada."], null);
+        const output = new Output(false, [], ["Acesso negado: somente o closer do lead (ou master) pode marcar reuniao como realizada."], null);
         return NextResponse.json(output, { status: 403 });
       }
     }

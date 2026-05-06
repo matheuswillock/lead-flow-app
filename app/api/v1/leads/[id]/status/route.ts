@@ -21,10 +21,6 @@ export async function PUT(
     if (teamAccess.error) {
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
-    if (!hasLeadAccess(teamAccess.access.teamMember)) {
-      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
-      return NextResponse.json(output, { status: 403 });
-    }
 
     const body = await request.json().catch(() => null);
     const status = body?.status;
@@ -44,12 +40,29 @@ export async function PUT(
 
     const lead = await prisma.lead.findUnique({
       where: { id },
-      select: { id: true, teamId: true },
+      select: { id: true, teamId: true, closerId: true },
     });
 
     if (!lead || lead.teamId !== teamAccess.access.teamId) {
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
+    }
+
+    const teamMember = teamAccess.access.teamMember;
+    const hasBaseAccess = hasLeadAccess(teamMember);
+    const isAssignedCloser =
+      !!lead.closerId && lead.closerId === teamAccess.access.profileId;
+    const canUseCloserFallback =
+      teamMember.functions?.includes("CLOSER") && (teamAccess.access.isMaster || isAssignedCloser);
+
+    if (!hasBaseAccess && !canUseCloserFallback) {
+      const output = new Output(
+        false,
+        [],
+        ["Acesso negado: somente SDR/manager ou o closer do lead pode atualizar o status."],
+        null
+      );
+      return NextResponse.json(output, { status: 403 });
     }
 
     const output = await leadUseCase.updateLeadStatus(
@@ -64,7 +77,14 @@ export async function PUT(
       "requiresConfirmation" in output.result &&
       (output.result as { requiresConfirmation?: boolean }).requiresConfirmation
     );
-    const responseStatus = output.isValid ? 200 : needsConfirmation ? 409 : 400;
+    const requiresMeetingHeald = !!(
+      output.result &&
+      typeof output.result === "object" &&
+      "requiresMeetingHeald" in output.result &&
+      (output.result as { requiresMeetingHeald?: boolean }).requiresMeetingHeald
+    );
+
+    const responseStatus = output.isValid ? 200 : needsConfirmation || requiresMeetingHeald ? 409 : 400;
     return NextResponse.json(output, { status: responseStatus });
 
   } catch (error) {

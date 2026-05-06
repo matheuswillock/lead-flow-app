@@ -18,13 +18,13 @@ import { formatIntimezone } from "@/lib/dates"
 
 const STATUS_CONFIG: Record<EmailLogStatus, { label: string; className: string }> = {
   queued: { label: "Na fila", className: "border bg-transparent text-muted-foreground" },
-  sent: { label: "Enviado", className: "border border-blue-200 bg-blue-50 text-blue-700" },
-  delivered: { label: "Entregue", className: "bg-blue-500/15 text-blue-700 border-0" },
-  opened: { label: "Aberto", className: "bg-purple-500/15 text-purple-700 border-0" },
-  clicked: { label: "Clicado", className: "bg-emerald-500/15 text-emerald-700 border-0" },
-  bounced: { label: "Bounce", className: "bg-destructive/15 text-destructive border-0" },
-  complained: { label: "Reclamação", className: "bg-orange-500/15 text-orange-700 border-0" },
-  failed: { label: "Falhou", className: "bg-destructive/15 text-destructive border-0" },
+  sent: { label: "Enviado", className: "border-semantic-info-border bg-semantic-info-surface text-semantic-info" },
+  delivered: { label: "Entregue", className: "border-semantic-info-border bg-semantic-info-surface text-semantic-info" },
+  opened: { label: "Aberto", className: "border-semantic-new-border bg-semantic-new-surface text-semantic-new" },
+  clicked: { label: "Clicado", className: "border-semantic-success-border bg-semantic-success-surface text-semantic-success" },
+  bounced: { label: "Bounce", className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger" },
+  complained: { label: "Reclamação", className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning" },
+  failed: { label: "Falhou", className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger" },
 }
 
 function LogStatusBadge({ status }: { status: EmailLogStatus }) {

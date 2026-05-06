@@ -62,10 +62,10 @@ function buildAffectedUsers(
 
 function getRoleBadge(role: string, isMaster: boolean) {
   if (isMaster) {
-    return <Badge variant="outline" className="border-orange-500/40 bg-orange-500/15 text-orange-300 shrink-0">Master</Badge>
+    return <Badge variant="outline" className="border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning shrink-0">Master</Badge>
   }
   if (role === "manager") {
-    return <Badge variant="outline" className="border-blue-500/40 bg-blue-500/15 text-blue-300 shrink-0">Manager</Badge>
+    return <Badge variant="outline" className="border-semantic-info-border bg-semantic-info-surface text-semantic-info shrink-0">Manager</Badge>
   }
   return <Badge variant="secondary" className="shrink-0">Operador</Badge>
 }

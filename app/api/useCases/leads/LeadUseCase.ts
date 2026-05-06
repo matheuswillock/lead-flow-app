@@ -701,6 +701,68 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
+      const statusUpdateExtraData: Prisma.LeadUpdateInput = {};
+
+      if (status === LeadStatus.no_show) {
+        if (!existingLead.meetingDate) {
+          return new Output(false, [], ["Lead precisa ter um agendamento para marcar no-show."], null);
+        }
+        if (existingLead.meetingDate.getTime() > Date.now()) {
+          return new Output(false, [], ["Não é possível marcar no-show antes do horário agendado."], null);
+        }
+      }
+
+      const isLeavingScheduled =
+        existingLead.status === LeadStatus.scheduled &&
+        status !== LeadStatus.scheduled &&
+        status !== LeadStatus.no_show;
+
+      if (isLeavingScheduled && existingLead.meetingHeald !== "yes") {
+        const team = existingLead.teamId
+          ? await prisma.team.findUnique({
+              where: { id: existingLead.teamId },
+              select: { masterId: true },
+            })
+          : null;
+        const isTeamMaster = !!(team && team.masterId === profileInfo.id);
+        const isAssignedCloser = !!existingLead.closerId && existingLead.closerId === profileInfo.id;
+        const canConfirmMeetingHeald = isTeamMaster || isAssignedCloser;
+
+        const allowNoShow =
+          !!existingLead.meetingDate && existingLead.meetingDate.getTime() <= Date.now();
+
+        const wantsMarkMeetingHeald = trigger?.meetingHeald === "yes";
+        if (!wantsMarkMeetingHeald) {
+          return new Output(
+            false,
+            [],
+            ["Reunião não marcada como realizada. Somente o master ou o closer do lead pode confirmar."],
+            {
+              requiresMeetingHeald: true,
+              canConfirmMeetingHeald,
+              allowNoShow,
+              meetingDate: existingLead.meetingDate ? existingLead.meetingDate.toISOString() : null,
+            }
+          );
+        }
+
+        if (!canConfirmMeetingHeald) {
+          return new Output(
+            false,
+            [],
+            ["Acesso negado: somente o master ou o closer do lead pode marcar a reunião como realizada."],
+            {
+              requiresMeetingHeald: true,
+              canConfirmMeetingHeald: false,
+              allowNoShow,
+              meetingDate: existingLead.meetingDate ? existingLead.meetingDate.toISOString() : null,
+            }
+          );
+        }
+
+        statusUpdateExtraData.meetingHeald = "yes";
+      }
+
       const activeStatusRules = existingLead.teamId
         ? await teamStatusRuleService.findActiveByTargetStatus(existingLead.teamId, status)
         : [];
@@ -788,8 +850,6 @@ export class LeadUseCase implements ILeadUseCase {
           );
         }
       }
-
-      const statusUpdateExtraData: Prisma.LeadUpdateInput = {};
 
       if (status !== existingLead.status) {
         statusUpdateExtraData.statusEnteredAt = new Date();

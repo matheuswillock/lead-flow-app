@@ -55,6 +55,20 @@ type PendingStatusTriggerDrop = {
   confirmationMessage?: string | null;
 };
 
+type PendingMeetingHealdGateDrop = {
+  leadId: string;
+  from: ColumnKey;
+  to: ColumnKey;
+  canConfirmMeetingHeald: boolean;
+  trigger?: {
+    followUpAt?: string;
+    followUpNotes?: string;
+    reason?: string;
+    reasonDetails?: string;
+    confirmRuleId?: string;
+  };
+};
+
 interface IBoardContextState {
   isLoading: boolean;
   query: string;
@@ -105,6 +119,9 @@ interface IBoardContextState {
     reasonDetails?: string;
     confirmRuleId?: string;
   }) => Promise<boolean>;
+  pendingMeetingHealdGateDrop: PendingMeetingHealdGateDrop | null;
+  clearPendingMeetingHealdGateDrop: () => void;
+  applyPendingMeetingHealdGateTransition: () => Promise<boolean>;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
@@ -193,6 +210,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pendingScheduledDrop, setPendingScheduledDrop] = useState<PendingScheduledDrop | null>(null);
   const [pendingStatusTriggerDrop, setPendingStatusTriggerDrop] = useState<PendingStatusTriggerDrop | null>(null);
+  const [pendingMeetingHealdGateDrop, setPendingMeetingHealdGateDrop] =
+    useState<PendingMeetingHealdGateDrop | null>(null);
 
   // Sync external CRM filters into board filter state whenever they change.
   // Using useEffect (not lazy initializer) is safe because data loads asynchronously;
@@ -690,6 +709,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         reason?: string;
         reasonDetails?: string;
         confirmRuleId?: string;
+        meetingHeald?: "yes" | "no" | null;
       },
       pendingDropContext?: { from: ColumnKey; to: ColumnKey }
     ) => {
@@ -712,6 +732,38 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         const result = await response.json().catch(() => null);
 
         if (!response.ok || !result?.isValid) {
+          const requiresMeetingHeald =
+            !!result?.result &&
+            typeof result.result === "object" &&
+            !!result.result.requiresMeetingHeald;
+
+          if (requiresMeetingHeald) {
+            const canConfirmMeetingHealdResult = !!result?.result?.canConfirmMeetingHeald;
+            const fallbackContext =
+              pendingDropContext ??
+              (pendingStatusTriggerDrop && pendingStatusTriggerDrop.leadId === leadId && pendingStatusTriggerDrop.to === newStatus
+                ? { from: pendingStatusTriggerDrop.from, to: pendingStatusTriggerDrop.to }
+                : null);
+
+            if (fallbackContext) {
+              setPendingMeetingHealdGateDrop({
+                leadId,
+                from: fallbackContext.from,
+                to: fallbackContext.to,
+                canConfirmMeetingHeald: canConfirmMeetingHealdResult,
+                trigger: trigger ? { ...trigger } : undefined,
+              });
+            } else {
+              setPendingMeetingHealdGateDrop(null);
+            }
+
+            toast.info(result?.errorMessages?.[0] || "Reuniao nao marcada como realizada.", {
+              id: loadingToast,
+              duration: 5000,
+            });
+            return result;
+          }
+
           const requiresConfirmation =
             !!result?.result &&
             typeof result.result === "object" &&
@@ -789,7 +841,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         return null;
       }
     },
-    [activeTeamId, supabaseId]
+    [activeTeamId, pendingStatusTriggerDrop, supabaseId]
   );
 
   const onDrop = useCallback(
@@ -888,6 +940,39 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const clearPendingStatusTriggerDrop = useCallback(() => {
     setPendingStatusTriggerDrop(null);
   }, []);
+
+  const clearPendingMeetingHealdGateDrop = useCallback(() => {
+    setPendingMeetingHealdGateDrop(null);
+  }, []);
+
+  const applyPendingMeetingHealdGateTransition = useCallback(async (): Promise<boolean> => {
+    if (!pendingMeetingHealdGateDrop) return false;
+    if (!pendingMeetingHealdGateDrop.canConfirmMeetingHeald) return false;
+
+    const result = await updateLeadStatusInAPI(
+      pendingMeetingHealdGateDrop.leadId,
+      pendingMeetingHealdGateDrop.to,
+      {
+        ...(pendingMeetingHealdGateDrop.trigger ?? {}),
+        meetingHeald: "yes",
+      },
+      { from: pendingMeetingHealdGateDrop.from, to: pendingMeetingHealdGateDrop.to }
+    );
+
+    if (!result?.isValid) return false;
+
+    const payload =
+      result.result && typeof result.result === "object" ? (result.result as Partial<Lead>) : {};
+
+    moveLeadBetweenColumns(
+      pendingMeetingHealdGateDrop.leadId,
+      pendingMeetingHealdGateDrop.from,
+      pendingMeetingHealdGateDrop.to,
+      payload
+    );
+    setPendingMeetingHealdGateDrop(null);
+    return true;
+  }, [moveLeadBetweenColumns, pendingMeetingHealdGateDrop, updateLeadStatusInAPI]);
 
   const applyPendingStatusTriggerTransition = useCallback(
     async (trigger: {
@@ -1042,6 +1127,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingStatusTriggerDrop,
       clearPendingStatusTriggerDrop,
       applyPendingStatusTriggerTransition,
+      pendingMeetingHealdGateDrop,
+      clearPendingMeetingHealdGateDrop,
+      applyPendingMeetingHealdGateTransition,
       finalizeContract,
     }),
     [
@@ -1079,6 +1167,9 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingStatusTriggerDrop,
       clearPendingStatusTriggerDrop,
       applyPendingStatusTriggerTransition,
+      pendingMeetingHealdGateDrop,
+      clearPendingMeetingHealdGateDrop,
+      applyPendingMeetingHealdGateTransition,
       finalizeContract,
     ]
   );

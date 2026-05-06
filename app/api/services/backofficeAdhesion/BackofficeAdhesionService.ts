@@ -703,7 +703,6 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       const paidAt = this.resolvePaymentDate(payment) ?? new Date()
       const updated = await this.repo.updateStatus(adhesion.id, "paid", { paidAt })
       await this.ensureAccountForPaidAdhesion(updated)
-      await this.invalidateTokenAfterPayment(updated.id)
       return { processed: true, adhesionId: adhesion.id }
     }
 

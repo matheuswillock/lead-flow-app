@@ -225,7 +225,6 @@ export function BackofficeAdhesionsContainer() {
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
-              <TableHead>Lead</TableHead>
               <TableHead>Documento</TableHead>
               <TableHead>Vencimento</TableHead>
               <TableHead>Data da adesão</TableHead>
@@ -254,7 +253,6 @@ export function BackofficeAdhesionsContainer() {
               adhesions.map((adhesion) => (
                 <TableRow key={adhesion.id}>
                   <TableCell className="font-medium">{adhesion.fullName}</TableCell>
-                  <TableCell>{adhesion.leadName}</TableCell>
                   <TableCell>{formatDocumentInput(adhesion.cpfCnpj)}</TableCell>
                   <TableCell>{formatDate(adhesion.expiresAt, tz)}</TableCell>
                   <TableCell>{formatDate(adhesion.createdAt, tz)}</TableCell>
