@@ -107,14 +107,6 @@ type MentionToken = {
   label: string;
 };
 
-type InviteDispatchResult = {
-  status: "sent_google" | "sent_resend" | "failed";
-  provider: "google" | "resend";
-  fallbackUsed: boolean;
-  attemptedAt: string;
-  error: string | null;
-};
-
 type LeadOriginBadge = {
   label: string;
   variant: "default" | "secondary" | "outline";

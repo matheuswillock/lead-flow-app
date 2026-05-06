@@ -144,10 +144,7 @@ export function LeadForm({
     const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
         threshold: 0.2,
     });
-    const closers = React.useMemo(
-        () => closersToAssign ?? [],
-        [closersToAssign]
-    );
+
     const sdrs = React.useMemo(
         () => sdrsToAssign ?? [],
         [sdrsToAssign]
@@ -156,14 +153,6 @@ export function LeadForm({
         () => (sdrs.length > 0 ? sdrs : usersToAssign ?? []),
         [sdrs, usersToAssign]
     );
-
-    const parseEmails = (value: string | undefined) => {
-        if (!value) return [];
-        return value
-            .split(/[,;\s]+/)
-            .map((item) => item.trim().toLowerCase())
-            .filter(Boolean);
-    };
 
     const buildEmailValue = (emails: string[]) => {
         const unique = Array.from(new Set(emails));
@@ -195,14 +184,6 @@ export function LeadForm({
             onChange(buildEmailValue([...currentEmails, ...normalized]));
         }
         setExtraGuestsDraft(last);
-    };
-
-    const commitGuestDraft = (
-        currentEmails: string[],
-        onChange: (value: string) => void
-    ) => {
-        if (!extraGuestsDraft.trim()) return;
-        handleGuestDraftChange(`${extraGuestsDraft} `, currentEmails, onChange);
     };
 
     const watchedValues = form.watch();
