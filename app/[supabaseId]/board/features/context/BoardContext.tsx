@@ -104,7 +104,7 @@ interface IBoardContextState {
     reason?: string;
     reasonDetails?: string;
     confirmRuleId?: string;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
@@ -896,8 +896,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       reason?: string;
       reasonDetails?: string;
       confirmRuleId?: string;
-    }) => {
-      if (!pendingStatusTriggerDrop) return;
+    }): Promise<boolean> => {
+      if (!pendingStatusTriggerDrop) return false;
 
       const result = await updateLeadStatusInAPI(
         pendingStatusTriggerDrop.leadId,
@@ -911,7 +911,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         }
       );
 
-      if (!result?.isValid) return;
+      if (!result?.isValid) return false;
 
       const payload =
         result.result && typeof result.result === "object"
@@ -925,6 +925,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         payload
       );
       setPendingStatusTriggerDrop(null);
+      return true;
     },
     [moveLeadBetweenColumns, pendingStatusTriggerDrop, updateLeadStatusInAPI]
   );

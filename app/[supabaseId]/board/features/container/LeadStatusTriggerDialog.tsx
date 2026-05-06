@@ -105,7 +105,7 @@ export function LeadStatusTriggerDialog({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !isSubmitting && onOpenChange(nextOpen)}>
-      <DialogContent className="sm:max-w-130">
+      <DialogContent className="sm:max-w-[520px] max-h-[90vh] flex flex-col bg-card text-card-foreground shadow-2xl">
         <DialogHeader>
           <DialogTitle>{mode === "future_sale" ? "Configurar Venda Futura" : "Informar motivo da perda"}</DialogTitle>
           <DialogDescription>
@@ -113,62 +113,68 @@ export function LeadStatusTriggerDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {confirmationMessage ? (
-          <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">
-            {confirmationMessage}
-          </div>
-        ) : null}
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid gap-4">
+            {confirmationMessage ? (
+              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">
+                {confirmationMessage}
+              </div>
+            ) : null}
 
-        {mode === "future_sale" ? (
-          <div className="grid gap-3">
-            <div className="grid gap-2">
-              <Label>Data para entrar em contato</Label>
-              <DateTimePicker
-                date={followUpDate}
-                onDateChange={setFollowUpDate}
-                label=""
-                disabled={isSubmitting}
-                disablePastDates
-                tz={tz}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="future-sale-notes">Comentários</Label>
-              <Textarea
-                id="future-sale-notes"
-                rows={4}
-                value={followUpNotes}
-                onChange={(event) => setFollowUpNotes(event.target.value)}
-                placeholder="Contexto para o próximo contato com o lead..."
-                disabled={isSubmitting}
-              />
-            </div>
+            {mode === "future_sale" ? (
+              <div className="grid gap-3">
+                <div className="grid gap-2">
+                  <Label>Data para entrar em contato</Label>
+                  <DateTimePicker
+                    date={followUpDate}
+                    onDateChange={setFollowUpDate}
+                    label=""
+                    disabled={isSubmitting}
+                    disablePastDates
+                    tz={tz}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="future-sale-notes">Comentários</Label>
+                  <Textarea
+                    id="future-sale-notes"
+                    rows={4}
+                    value={followUpNotes}
+                    onChange={(event) => setFollowUpNotes(event.target.value)}
+                    placeholder="Contexto para o próximo contato com o lead..."
+                    disabled={isSubmitting}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="loss-reason">
+                    Motivo <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="loss-reason"
+                    value={reason}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => setReason(event.target.value)}
+                    placeholder="Ex: Cliente desistiu, proposta recusada..."
+                    disabled={isSubmitting}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="loss-reason-details">Detalhes</Label>
+                  <Textarea
+                    id="loss-reason-details"
+                    rows={4}
+                    value={reasonDetails}
+                    onChange={(event) => setReasonDetails(event.target.value)}
+                    placeholder="Detalhes adicionais sobre o motivo..."
+                    disabled={isSubmitting}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="grid gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="loss-reason">Motivo <span className="text-destructive">*</span></Label>
-              <Input
-                id="loss-reason"
-                value={reason}
-                onChange={(event: React.ChangeEvent<HTMLInputElement>) => setReason(event.target.value)}
-                placeholder="Ex: Cliente desistiu, proposta recusada..."
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="loss-reason-details">Detalhes</Label>
-              <Textarea
-                id="loss-reason-details"
-                rows={4}
-                value={reasonDetails}
-                onChange={(event) => setReasonDetails(event.target.value)}
-                placeholder="Detalhes adicionais sobre o motivo..."
-                disabled={isSubmitting}
-              />
-            </div>
-          </div>
-        )}
+        </div>
 
         <DialogFooter className="gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
