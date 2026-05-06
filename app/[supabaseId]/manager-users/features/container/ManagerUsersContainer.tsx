@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
 import { useManagerUsers } from "../context/useManagerUsers";
-import { DataTable } from "./DataTable";
+import { DataTable } from "@/app/[supabaseId]/components/data-table/DataTable";
 // import { createColumns } from "./columns";
 import { UserFormDialog } from "./UserFormDialog";
 import { DeleteUserDialog } from "./DeleteUserDialog";
@@ -276,6 +276,26 @@ export function ManagerUsersContainer({
             columns={columns}
             data={visibleTableData}
             loading={loading}
+            toolbar={{
+              search: { columnId: "name", placeholder: "Buscar por nome ou email..." },
+              selectFilters: [
+                {
+                  columnId: "role",
+                  placeholder: "Filtrar por nível",
+                  options: [
+                    { value: "all", label: "Todos os níveis" },
+                    { value: "manager", label: "Manager" },
+                    { value: "backoffice", label: "Backoffice" },
+                    { value: "operator", label: "Operator" },
+                  ],
+                },
+              ],
+              dateRangeFilter: { columnId: "createdAt", title: "Data de Criação" },
+              columnsToggle: { label: "Colunas" },
+            }}
+            loadingText="Carregando usuários..."
+            emptyText="Nenhum usuário encontrado."
+            countText={(count) => `${count} usuário(s) encontrado(s).`}
           />
         </CardContent>
       </Card>
