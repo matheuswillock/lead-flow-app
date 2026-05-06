@@ -158,10 +158,10 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   } as const;
 
   const canShowItem = (item: SidebarItem) => {
-    if (item.managerOnly && !isManager && !isMaster) {
+    if (item.managerOnly && !isManager && !isMaster && !user?.canCreateAccountUsers) {
       return false;
     }
-    if (item.masterOnly && !isTeamMaster) {
+    if (item.masterOnly && !isTeamMaster && !user?.canManageAccountTeams) {
       return false;
     }
     if (item.closerOrManager && !isManager && !isMaster && !isCloser) {

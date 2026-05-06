@@ -69,6 +69,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           fullName: data.fullName,
           phone: data.phone,
           cpfCnpj: data.cpfCnpj,
+          billingType: data.billingType ?? null,
           plan: data.plan,
           cycle: data.cycle,
           modules: data.modules,
@@ -230,6 +231,9 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         billingType: "EXTERNAL",
         status: "paid",
         paidAt: data.paidAt,
+        ...(data.asaasCustomerId !== undefined
+          ? { asaasCustomerId: data.asaasCustomerId }
+          : {}),
       },
       include: backofficeAdhesionInclude,
     })
@@ -408,5 +412,24 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
     ])
 
     return { leads, users }
+  }
+
+  async cancelAdhesionAndRestoreLead(
+    adhesionId: string,
+    previousLeadStatus: import("@prisma/client").BackofficeLeadStatus
+  ): Promise<void> {
+    const adhesion = await prisma.backofficeAdhesion.findUnique({
+      where: { id: adhesionId },
+      select: { leadId: true },
+    })
+    if (!adhesion) return
+
+    await prisma.$transaction([
+      prisma.backofficeAdhesion.delete({ where: { id: adhesionId } }),
+      prisma.backofficeLead.update({
+        where: { id: adhesion.leadId },
+        data: { status: previousLeadStatus },
+      }),
+    ])
   }
 }

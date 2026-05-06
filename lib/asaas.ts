@@ -96,10 +96,15 @@ const getBase = () => getAsaasApiUrl();
 
 export async function asaas(path: string, init?: RequestInit) {
   const BASE = getBase();
-  
+  const ASAAS_API_KEY = getAsaasApiKey();
+
+  if (!ASAAS_API_KEY) {
+    throw new Error('ASAAS_API_KEY não configurada');
+  }
+
   const headers = new Headers(init?.headers)
-  // headers.set("Authorization", `Bearer ${ASAAS_API_KEY}`)
   headers.set("Content-Type", "application/json")
+  headers.set("access_token", `$${ASAAS_API_KEY}`)
   const res = await fetch(`${BASE}${path}`, { ...init, headers, cache: "no-store" })
   if (!res.ok) throw new Error(`Asaas ${res.status}: ${await res.text()}`)
   return res.json()

@@ -42,7 +42,7 @@ export async function signin(formData: FormData) {
   // Se o login foi bem-sucedido, redirecionar
   if (data.user) {
     // Redirect de subscription ou checkout
-    if (from === 'subscribe' || from === 'checkout') {
+    if (from === 'checkout') {
       redirect(`/${data.user.id}/dashboard`);
     }
     

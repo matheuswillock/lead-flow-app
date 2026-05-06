@@ -12,20 +12,7 @@ function SignInInner() {
   const form = useLoginForm();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const searchParams = useSearchParams();
-  const isFromSubscription = searchParams.get('from') === 'subscribe';
-  const isFromCheckout = searchParams.get('from') === 'checkout';
-  const paymentSuccess = searchParams.get('success') === 'true';
   const emailPrefill = searchParams.get('email') ?? '';
-
-  // Exibir toast de sucesso do pagamento
-  useEffect(() => {
-    if (isFromCheckout && paymentSuccess) {
-      toast.success('Pagamento realizado com sucesso!', {
-        description: 'Faça login para acessar sua conta.',
-        duration: 5000,
-      });
-    }
-  }, [isFromCheckout, paymentSuccess]);
 
   useEffect(() => {
     if (!emailPrefill) return;
@@ -38,10 +25,6 @@ function SignInInner() {
     const formData = new FormData();
     formData.append("email", data.email);
     formData.append("password", data.password);
-    
-    // Preservar origem (checkout ou subscribe)
-    const from = searchParams.get('from');
-    if (from) formData.append('from', from);
 
     const result = await signin(formData);
     if (!result.success) {
@@ -68,7 +51,6 @@ function SignInInner() {
           form={form}
           errors={errors}
           onSubmit={onSubmit}
-          fromSubscribe={isFromSubscription}
         />
       </div>
     </main>

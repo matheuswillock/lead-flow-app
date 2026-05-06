@@ -13,6 +13,7 @@ export interface BackofficeAdhesionCreateInput {
   cycle: BackofficeAdhesionBillingCycle
   extraTeams: number
   extraUsers: number
+  billingType?: "PIX" | "CREDIT_CARD" | null
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   activationMode?: "checkout" | "external_paid"
@@ -85,6 +86,7 @@ export interface BackofficeAdhesionPublicDTO {
   phone: string
   cpfCnpj: string | null
   email: string | null
+  billingType: "PIX" | "CREDIT_CARD" | null
   status: BackofficeAdhesionStatus
   cycle: BackofficeAdhesionBillingCycle
   cycleLabel: string
@@ -92,6 +94,9 @@ export interface BackofficeAdhesionPublicDTO {
   modules: string[]
   extraTeams: number
   extraUsers: number
+  monthlyBaseAmount: number
+  monthlyExtraTeamsAmount: number
+  monthlyExtraUsersAmount: number
   monthlyTotalAmount: number
   totalAmount: number
   maxInstallments: number

@@ -4,6 +4,7 @@
 // explicitamente a partir dos plugins modernos.
 
 import nextPlugin from '@next/eslint-plugin-next'
+import reactHooksPlugin from 'eslint-plugin-react-hooks'
 import tseslint from 'typescript-eslint'
 
 export default [
@@ -20,6 +21,7 @@ export default [
     files: ['**/*.{ts,tsx,js,jsx}'],
     plugins: {
       '@next/next': nextPlugin,
+      'react-hooks': reactHooksPlugin,
     },
     rules: {
       ...nextPlugin.configs.recommended.rules,

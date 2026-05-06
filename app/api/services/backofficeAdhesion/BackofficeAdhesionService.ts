@@ -87,6 +87,10 @@ function getPublicUrl(token: string): string {
   return getFullUrl(`/adesao/${token}`)
 }
 
+function expireTokenNow(): Date {
+  return new Date()
+}
+
 function mapAdhesion(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhesionDTO {
   return {
     id: adhesion.id,
@@ -151,12 +155,25 @@ function mapPublicAdhesion(
     }
   }
 
+  const presetBillingType = adhesion.billingType === "PIX" ? "PIX" : "CREDIT_CARD"
+  const resolvedMonthlyTotalAmount =
+    presetBillingType === "PIX" ? pixMonthlyTotalAmount : creditCardMonthlyTotalAmount
+  const resolvedTotalAmount = presetBillingType === "PIX" ? pixTotalAmount : creditCardTotalAmount
+  const resolvedMaxInstallments =
+    presetBillingType === "PIX" ? 1 : Math.max(1, Math.trunc(maxCardInstallments || 1))
+
   return {
     id: adhesion.id,
     fullName: adhesion.fullName,
     phone: adhesion.phone,
     email: adhesion.email,
     cpfCnpj: adhesion.cpfCnpj,
+    billingType:
+      adhesion.billingType === "PIX"
+        ? "PIX"
+        : adhesion.billingType === "CREDIT_CARD"
+          ? "CREDIT_CARD"
+          : null,
     status: adhesion.status,
     cycle: adhesion.cycle,
     cycleLabel: BACKOFFICE_ADHESION_CYCLE_LABELS[adhesion.cycle],
@@ -164,9 +181,12 @@ function mapPublicAdhesion(
     modules: adhesion.modules,
     extraTeams: adhesion.extraTeams ?? 0,
     extraUsers: adhesion.extraUsers ?? 0,
-    monthlyTotalAmount: creditCardMonthlyTotalAmount,
-    totalAmount: creditCardTotalAmount,
-    maxInstallments: maxCardInstallments,
+    monthlyBaseAmount: roundCurrency(decimalToNumber(adhesion.monthlyBaseAmount)),
+    monthlyExtraTeamsAmount: roundCurrency(decimalToNumber(adhesion.monthlyExtraTeamsAmount)),
+    monthlyExtraUsersAmount: roundCurrency(decimalToNumber(adhesion.monthlyExtraUsersAmount)),
+    monthlyTotalAmount: resolvedMonthlyTotalAmount,
+    totalAmount: resolvedTotalAmount,
+    maxInstallments: resolvedMaxInstallments,
     pixMonthlyTotalAmount,
     pixTotalAmount,
     creditCardMonthlyTotalAmount,
@@ -330,6 +350,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       leadId: normalized.leadId,
       fullName: normalized.fullName,
       phone: normalized.phone,
+      billingType: normalized.billingType ?? "PIX",
       plan: "crm",
       cycle: normalized.cycle,
       modules: CRM_MODULES,
@@ -347,31 +368,61 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     if (normalized.activationMode === "external_paid") {
       const externalEmail = normalized.email
-      const externalCpfCnpj = normalized.cpfCnpj
       if (!externalEmail) {
         throw new Error("E-mail é obrigatório para pagamento por fora")
       }
-      const paidAt = new Date()
-      const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
-        fullName: normalized.fullName,
-        phone: normalized.phone,
-        email: externalEmail,
-        cpfCnpj: externalCpfCnpj,
-        paidAt,
-      })
-      await this.ensureAccountForPaidAdhesion(paidAdhesion)
-
-      return {
-        adhesion: mapAdhesion(paidAdhesion),
-        publicUrl: null,
-        expiresAt: paidAdhesion.expiresAt.toISOString(),
-        activationMode: "external_paid",
+      const normalizedCpfCnpj = (normalized.cpfCnpj ?? "").replace(/\D/g, "")
+      if (!normalizedCpfCnpj || !/^\d{11}$|^\d{14}$/.test(normalizedCpfCnpj)) {
+        throw new Error("CPF/CNPJ inválido para pagamento por fora")
       }
+      const paidAt = new Date()
+      try {
+        const asaasCustomerId = await this.createExternalAsaasCustomer({
+          adhesionId: adhesion.id,
+          fullName: normalized.fullName,
+          email: externalEmail,
+          cpfCnpj: normalizedCpfCnpj,
+          phone: normalized.phone,
+        })
+        const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
+          fullName: normalized.fullName,
+          phone: normalized.phone,
+          email: externalEmail,
+          cpfCnpj: normalizedCpfCnpj,
+          paidAt,
+          asaasCustomerId,
+        })
+        await this.ensureAccountForPaidAdhesion(paidAdhesion)
+
+        return {
+          adhesion: mapAdhesion(paidAdhesion),
+          publicUrl: null,
+          expiresAt: paidAdhesion.expiresAt.toISOString(),
+          activationMode: "external_paid",
+        }
+      } catch (externalPaidErr) {
+        await this.repo.cancelAdhesionAndRestoreLead(adhesion.id, lead.status).catch((rollbackErr) => {
+          console.error("[BackofficeAdhesionService][create][rollback]", rollbackErr)
+        })
+        throw externalPaidErr
+      }
+    }
+
+    const checkoutUrl = getPublicUrl(token)
+    const leadEmail = (lead.email ?? normalized.email)?.trim() ?? null
+    if (leadEmail) {
+      const emailService = createEmailService()
+      await emailService.sendBackofficeAdhesionCheckoutEmail({
+        userName: lead.name ?? normalized.fullName,
+        userEmail: leadEmail,
+        checkoutUrl,
+        expiresAt: adhesion.expiresAt,
+      })
     }
 
     return {
       adhesion: mapAdhesion(adhesion),
-      publicUrl: getPublicUrl(token),
+      publicUrl: checkoutUrl,
       expiresAt: adhesion.expiresAt.toISOString(),
       activationMode: "checkout",
     }
@@ -438,9 +489,21 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       cpfCnpj: undefined
     })
 
+    const checkoutUrl = getPublicUrl(token)
+    const leadEmail = (updated.lead.email ?? updated.email)?.trim() ?? null
+    if (leadEmail) {
+      const emailService = createEmailService()
+      await emailService.sendBackofficeAdhesionCheckoutEmail({
+        userName: updated.lead.name ?? updated.fullName,
+        userEmail: leadEmail,
+        checkoutUrl,
+        expiresAt: updated.expiresAt,
+      })
+    }
+
     return {
       adhesion: mapAdhesion(updated),
-      publicUrl: getPublicUrl(token),
+      publicUrl: checkoutUrl,
       expiresAt: updated.expiresAt.toISOString(),
     }
   }
@@ -640,6 +703,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       const paidAt = this.resolvePaymentDate(payment) ?? new Date()
       const updated = await this.repo.updateStatus(adhesion.id, "paid", { paidAt })
       await this.ensureAccountForPaidAdhesion(updated)
+      await this.invalidateTokenAfterPayment(updated.id)
       return { processed: true, adhesionId: adhesion.id }
     }
 
@@ -654,6 +718,16 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     return { processed: true, adhesionId: adhesion.id }
+  }
+
+  private async invalidateTokenAfterPayment(adhesionId: string): Promise<void> {
+    const token = generateBackofficeAdhesionToken()
+    await this.repo.update(adhesionId, {
+      tokenHash: hashBackofficeAdhesionToken(token),
+      tokenPreview: getBackofficeAdhesionTokenPreview(token),
+      expiresAt: expireTokenNow(),
+      cpfCnpj: undefined,
+    })
   }
 
   private normalizeCommercialInput(
@@ -672,6 +746,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const extraTeams = Math.max(0, Math.trunc(input.extraTeams || 0))
     const extraUsers = Math.max(0, Math.trunc(input.extraUsers || 0))
     const activationMode = input.activationMode ?? "checkout"
+    const billingType = input.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX"
     const email = normalizeText(input.email)?.toLowerCase() ?? null
     const cpfCnpj = normalizeDigits(input.cpfCnpj, 14)
 
@@ -697,6 +772,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       sdrBackofficeUserId: normalizeText(input.sdrBackofficeUserId),
       closerBackofficeUserId: normalizeText(input.closerBackofficeUserId),
       activationMode,
+      billingType,
     }
   }
 
@@ -776,6 +852,34 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     })
 
     return String(customer.id)
+  }
+
+  private async createExternalAsaasCustomer(input: {
+    adhesionId: string
+    fullName: string
+    email: string
+    cpfCnpj: string
+    phone: string
+  }): Promise<string> {
+    const customer = await asaasFetch(asaasApi.customers, {
+      method: "POST",
+      body: JSON.stringify({
+        name: input.fullName,
+        email: input.email,
+        cpfCnpj: input.cpfCnpj,
+        mobilePhone: input.phone,
+        externalReference: `backoffice-adhesion-${input.adhesionId}`,
+        observations: "Cliente criado via adesão com pagamento externo (sem fatura Asaas).",
+      }),
+    })
+
+    const customerId = customer?.id
+    if (!customerId) {
+      throw new Error(
+        `Asaas não retornou um ID válido para o cliente criado (adhesionId: ${input.adhesionId})`
+      )
+    }
+    return String(customerId)
   }
 
   private async createAsaasPayment(
@@ -915,7 +1019,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     const redirectTo = getFullUrl("/set-password")
-    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: "invite",
       email: adhesion.email,
       options: {
@@ -928,13 +1032,16 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       },
     })
 
-    if (error || !data?.properties?.action_link) {
-      throw new Error("Erro ao criar convite de acesso")
-    }
+    // Extract supabaseId before guards so we can clean up if parsing fails
+    const supabaseId = linkData?.user?.id
 
-    const supabaseId = data.user?.id
-    if (!supabaseId) {
-      throw new Error("Supabase não retornou o usuário criado")
+    if (linkError || !linkData?.properties?.action_link || !supabaseId) {
+      if (supabaseId) {
+        await supabaseAdmin.auth.admin.deleteUser(supabaseId).catch((deleteError) => {
+          console.error("[BackofficeAdhesionService][ensureAccountForPaidAdhesion][invite-rollback]", deleteError)
+        })
+      }
+      throw new Error(linkError?.message || "Erro ao criar convite de acesso")
     }
 
     try {
@@ -988,7 +1095,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         subscriptionNextDueDate: subscriptionEndDate,
       })
 
-      await this.sendSetPasswordEmail(adhesion, "invite", data)
+      await this.sendSetPasswordEmail(adhesion, "invite", linkData)
     } catch (accountError) {
       await supabaseAdmin.auth.admin.deleteUser(supabaseId).catch((deleteError) => {
         console.error("[BackofficeAdhesionService][ensureAccountForPaidAdhesion][rollback]", deleteError)

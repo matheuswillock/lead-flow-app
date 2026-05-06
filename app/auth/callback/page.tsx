@@ -67,6 +67,11 @@ function AuthCallbackContent() {
           description.toLowerCase().includes("already linked")
         ) {
           setError("Esta conta Google já está vinculada. Tente reconectar novamente.");
+        } else if (description.toLowerCase().includes("conta nao encontrada")) {
+          setError(
+            "Conta não encontrada. Crie sua conta com e-mail e senha ou fale com o suporte."
+          );
+          setTimeout(() => router.replace("/"), 5000);
         } else {
           setError(`Falha ao conectar com o Google: ${description}`);
         }
@@ -118,10 +123,9 @@ function AuthCallbackContent() {
         (identity) => identity.provider === "google"
       );
       const identityData = googleIdentity?.identity_data as
-        | { email?: string; phone?: string; phone_number?: string }
+        | { email?: string }
         | undefined;
       const googleEmail = identityData?.email || session.user.email || undefined;
-      const googlePhone = identityData?.phone || identityData?.phone_number || undefined;
 
       const profileResponse = await fetch(`/api/v1/profiles/${supabaseId}`, {
         cache: "no-store",
@@ -135,44 +139,8 @@ function AuthCallbackContent() {
           );
           return;
         }
-
-        // Verificar se o e-mail do Google já está vinculado a outro profile existente.
-        // Isso acontece quando o usuário desconecta o Google e tenta conectar um novo
-        // e-mail que pertence a outro usuário já cadastrado na plataforma.
-        if (googleEmail) {
-          const emailCheckResponse = await fetch(
-            `/api/v1/profiles/by-email?email=${encodeURIComponent(googleEmail)}`,
-            { cache: "no-store" }
-          );
-          if (emailCheckResponse.ok) {
-            setError(
-              "Este e-mail Google já está vinculado a outra conta na plataforma. Faça login com a conta original."
-            );
-            return;
-          }
-        }
-
-        const userMetadata = session.user.user_metadata as { full_name?: string; name?: string } | undefined;
-        const fullName = userMetadata?.full_name || userMetadata?.name;
-
-        sessionStorage.setItem("oauthSignup", JSON.stringify({
-          fullName,
-          email: googleEmail,
-          phone: googlePhone,
-        }));
-
-        if (providerToken) {
-          sessionStorage.setItem("googleConnectPending", JSON.stringify({
-            accessToken: providerToken,
-            refreshToken: refreshToken || undefined,
-            expiresAt: session.expires_at
-              ? new Date(session.expires_at * 1000).toISOString()
-              : undefined,
-            email: googleEmail,
-          }));
-        }
-
-        router.replace("/sign-up?oauth=google&newUser=1");
+        setError("Conta não encontrada. Você será redirecionado em instantes...");
+        setTimeout(() => router.replace("/"), 5000);
         return;
       }
 

@@ -23,17 +23,7 @@ export default function CrmPage() {
         });
       }
 
-      const welcome = searchParams.get("welcome");
-      if (welcome === "subscribe") {
-        toast.success("Assinatura ativada 🎉", {
-          description: "Bem-vindo(a)! Sua assinatura está ativa. Vamos começar?",
-          duration: 5000,
-        });
-
-        const url = new URL(window.location.href);
-        url.searchParams.delete("welcome");
-        window.history.replaceState({}, "", url.toString());
-      }
+      // legacy subscribe onboarding removed
     } catch (_) {}
   }, [searchParams]);
 

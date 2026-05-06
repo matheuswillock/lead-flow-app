@@ -38,6 +38,7 @@ export interface CreateBackofficeAdhesionInput {
   fullName: string
   phone: string
   cpfCnpj?: string | null
+  billingType?: string | null
   plan: BackofficeAdhesionPlan
   cycle: BackofficeAdhesionBillingCycle
   modules: string[]
@@ -107,6 +108,7 @@ export interface MarkBackofficeAdhesionExternalPaidInput {
   email: string
   cpfCnpj?: string | null
   paidAt: Date
+  asaasCustomerId?: string | null
 }
 
 export interface CreateBackofficeAdhesionManagerProfileInput {
@@ -201,4 +203,8 @@ export interface IBackofficeAdhesionRepository {
   }): Promise<void>
   clearPaymentArtifacts(id: string): Promise<BackofficeAdhesionWithRelations>
   getOptions(): Promise<BackofficeAdhesionOptions>
+  cancelAdhesionAndRestoreLead(
+    adhesionId: string,
+    previousLeadStatus: import("@prisma/client").BackofficeLeadStatus
+  ): Promise<void>
 }
