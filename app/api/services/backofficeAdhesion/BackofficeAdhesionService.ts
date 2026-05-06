@@ -14,7 +14,7 @@ import {
   validateBackofficeAdhesionToken,
 } from "@/lib/backoffice-adhesions/adhesion-token-validation"
 import { addMonthsInTz, DEFAULT_TZ, formatIntimezone } from "@/lib/dates"
-import { createEmailService } from "@/lib/email/create-email-service"
+import { createEmailService } from "@/lib/services/EmailService"
 import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import { createSupabaseAdmin } from "@/lib/supabase/server"
 import { getFullUrl } from "@/lib/utils/app-url"
