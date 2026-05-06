@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import prisma from "@/app/api/infra/data/prisma";
-import { asaasApi, asaasFetch, asaasHeaders } from "@/lib/asaas";
-import { asaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
-import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { emailService } from "@/lib/services/EmailService";
 import { isManagerLikeRole } from "@/lib/roles";
@@ -13,6 +10,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { managerId, operatorData, teamId } = body;
+    const billingType = body?.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX"
 
     if (!managerId || !operatorData) {
       return NextResponse.json(
@@ -156,6 +154,7 @@ export async function POST(request: NextRequest) {
           operatorEmail: operatorData.email,
           operatorRole: operatorData.role || "operator",
           operatorFunctions: operatorData.functions ?? [],
+          billingType,
           billingDelta,
           totalCharge,
           remainingMonths: proportionalData.remainingMonths,

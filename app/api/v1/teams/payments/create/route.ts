@@ -10,6 +10,10 @@ import { emailService } from "@/lib/services/EmailService";
 import { getFullUrl } from "@/lib/utils/app-url";
 
 const formatTeamName = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+const normalizeBillingType = (value: unknown): "PIX" | "CREDIT_CARD" | null => {
+  if (value === "PIX" || value === "CREDIT_CARD") return value
+  return null
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,6 +27,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const teamName = formatTeamName(body?.name);
+    const billingType = normalizeBillingType(body?.billingType) ?? "PIX"
 
     if (!teamName || teamName.length < 2) {
       return NextResponse.json(
@@ -152,6 +157,7 @@ export async function POST(request: NextRequest) {
     // billingDelta > 0: criar PendingAction e enviar email com link de checkout
     const pendingPayload = {
       teamName,
+      billingType,
       requestedByProfileId: requester.id,
       requestedByName: requester.fullName || requester.email,
       requestedByEmail: requester.email,
