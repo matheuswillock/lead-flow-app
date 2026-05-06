@@ -44,6 +44,7 @@ export interface IncrementalChargeResult {
   amount: number;
   dueDate: string;
   externalReference: string;
+  invoiceUrl?: string | null;
   pix?: {
     encodedImage: string;
     payload: string;
@@ -57,11 +58,38 @@ export interface IncrementalChargeResult {
   };
 }
 
+export interface IncrementalChargeCustomerOverride {
+  fullName: string;
+  email: string;
+  cpfCnpj: string;
+  phone: string;
+  postalCode: string;
+  address: string;
+  addressNumber: string;
+  neighborhood: string;
+  complement?: string;
+  city?: string;
+  state?: string;
+}
+
+export interface IncrementalChargeCreditCard {
+  holderName: string;
+  number: string;
+  expiryMonth: string;
+  expiryYear: string;
+  ccv: string;
+}
+
 export interface CreateIncrementalChargeInput {
   master: BillingOwnerProfile;
   pendingActionId: string;
   amount: number;
   description: string;
+  billingType?: "PIX" | "CREDIT_CARD";
+  customerOverride?: IncrementalChargeCustomerOverride;
+  creditCard?: IncrementalChargeCreditCard;
+  installments?: number;
+  remoteIp?: string;
 }
 
 export interface SyncRecurringSubscriptionInput {
@@ -70,8 +98,16 @@ export interface SyncRecurringSubscriptionInput {
   reason: string;
 }
 
+export interface ProportionalChargeData {
+  billingDelta: number;
+  remainingMonths: number;
+  totalCharge: number;
+  maxInstallments: number;
+}
+
 export interface IIncrementalBillingService {
   projectBilling(masterId: string, input: ProjectBillingInput): Promise<ProjectedBillingSummary>;
   createIncrementalCharge(input: CreateIncrementalChargeInput): Promise<IncrementalChargeResult>;
   syncRecurringSubscription(input: SyncRecurringSubscriptionInput): Promise<void>;
+  calculateProportionalAmount(masterId: string, addonType: "user" | "team"): Promise<ProportionalChargeData>;
 }
