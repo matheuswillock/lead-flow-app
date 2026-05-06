@@ -267,8 +267,8 @@ h1, h2, h3, h4, h5, h6 {
   .tiptap .lead-flow-email-node {
     border: 1px solid color-mix(in oklab, var(--primary) 34%, var(--border));
     border-radius: 8px;
-    background: color-mix(in oklab, var(--primary) 6%, white);
-    color: #111827;
+    background: color-mix(in oklab, var(--primary) 6%, var(--card));
+    color: var(--foreground);
     margin: 10px 0;
     padding: 12px;
     -webkit-user-select: none;
@@ -304,7 +304,7 @@ h1, h2, h3, h4, h5, h6 {
 
   .tiptap .lead-flow-proposal-card__grid span,
   .tiptap .lead-flow-lgpd-footer span {
-    color: #64748b;
+    color: var(--muted-foreground);
     display: block;
     font-size: 11px;
   }
@@ -313,7 +313,7 @@ h1, h2, h3, h4, h5, h6 {
   .tiptap .lead-flow-broker-data strong,
   .tiptap .lead-flow-broker-signature strong,
   .tiptap .lead-flow-whatsapp-link strong {
-    color: #111827;
+    color: var(--foreground);
     display: block;
     font-size: 13px;
   }

@@ -52,17 +52,17 @@ const INVOICE_STATUS_BADGES: Record<
   paid: {
     label: "Paga",
     variant: "outline",
-    className: "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
+    className: "border-semantic-success-border bg-semantic-success-surface text-semantic-success",
   },
   overdue: {
     label: "Vencida",
     variant: "outline",
-    className: "border-red-500/40 bg-red-500/15 text-red-300",
+    className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger",
   },
   upcoming: {
     label: "A vencer",
     variant: "outline",
-    className: "border-orange-500/40 bg-orange-500/20 text-orange-200",
+    className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
   },
   other: { label: "Em processamento", variant: "secondary" },
 }
