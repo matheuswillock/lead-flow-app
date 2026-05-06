@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import { pendingActionRepository } from "@/app/api/infra/data/repositories/pendingAction/PendingActionRepository";
+import { pendingActionUseCase } from "@/app/api/useCases/pendingActions/PendingActionUseCase";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
 import { asaas } from "@/lib/asaas";
 import type {
@@ -113,6 +114,32 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
 
       if (pendingAction.status !== "pending") {
         return new Output(false, [], ["Esta ação já foi processada"], null);
+      }
+
+      if (pendingAction.paymentId) {
+        const existingPayment = await asaas(`/payments/${pendingAction.paymentId}`);
+        if (!existingPayment) {
+          return new Output(false, [], ["Erro ao recuperar pagamento existente"], null);
+        }
+        const existingResponse: Record<string, unknown> = {
+          paymentId: existingPayment.id,
+          paymentStatus: existingPayment.status,
+          billingType: existingPayment.billingType,
+          amount: existingPayment.value,
+          dueDate: existingPayment.dueDate,
+        };
+        if (existingPayment.billingType === "PIX") {
+          const pixData = await asaas(`/payments/${pendingAction.paymentId}/pixQrCode`);
+          if (pixData) {
+            existingResponse.pix = {
+              encodedImage: pixData.encodedImage,
+              payload: pixData.payload,
+              expirationDate: pixData.expirationDate,
+            };
+          }
+          existingResponse.invoiceUrl = existingPayment.invoiceUrl || null;
+        }
+        return new Output(true, ["Cobrança já criada"], [], existingResponse);
       }
 
       const payload = pendingAction.payload as Record<string, unknown>;
@@ -245,10 +272,11 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       // Asaas status: PENDING, RECEIVED, CONFIRMED, FAILED, EXPIRED, CANCELED
       const wasConfirmed = payment.status === "RECEIVED" || payment.status === "CONFIRMED";
 
-      // If payment was confirmed and PendingAction is still pending, mark as applied
+      // If payment was confirmed and PendingAction is still pending, run the full apply flow
+      // (creates team/user and syncs recurring subscription — not just a status update)
       let currentStatus = pendingAction.status;
       if (wasConfirmed && pendingAction.status === "pending") {
-        await pendingActionRepository.updateStatus(pendingActionId, "applied");
+        await pendingActionUseCase.applyPendingActionByPaymentId(pendingAction.paymentId);
         currentStatus = "applied";
       }
 

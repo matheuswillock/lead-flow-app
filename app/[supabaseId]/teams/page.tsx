@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
+import { useBillingSlots } from "@/app/hooks/useBillingSlots";
 import { cn } from "@/lib/utils";
 
 type TeamMember = {
@@ -177,6 +178,7 @@ export default function TeamsPage() {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const canManageTeams = !!(user?.isMaster || (activeRole === "manager" && user?.canManageAccountTeams));
+  const { hasAvailableTeamSlot } = useBillingSlots(supabaseId, !!user?.isMaster);
   const isOnlyMasterTeam = user?.id
     ? teams.filter((team) => team.masterId === user.id).length <= 1
     : false;
@@ -938,26 +940,28 @@ export default function TeamsPage() {
               disabled={isCreatingTeam}
             />
           </div>
-          <div className="flex flex-col gap-2">
-            <Label>Forma de pagamento</Label>
-            <RadioGroup
-              value={createTeamBillingType}
-              onValueChange={(value) =>
-                setCreateTeamBillingType(value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
-              }
-              className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"
-              disabled={isCreatingTeam}
-            >
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="PIX" id="create-team-pix" />
-                <Label htmlFor="create-team-pix">PIX</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="CREDIT_CARD" id="create-team-card" />
-                <Label htmlFor="create-team-card">Cartão de crédito</Label>
-              </div>
-            </RadioGroup>
-          </div>
+          {!hasAvailableTeamSlot && (
+            <div className="flex flex-col gap-2">
+              <Label>Forma de pagamento</Label>
+              <RadioGroup
+                value={createTeamBillingType}
+                onValueChange={(value) =>
+                  setCreateTeamBillingType(value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
+                }
+                className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"
+                disabled={isCreatingTeam}
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="PIX" id="create-team-pix" />
+                  <Label htmlFor="create-team-pix">PIX</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="CREDIT_CARD" id="create-team-card" />
+                  <Label htmlFor="create-team-card">Cartão de crédito</Label>
+                </div>
+              </RadioGroup>
+            </div>
+          )}
           <DialogFooter className="gap-2">
             <Button
               type="button"

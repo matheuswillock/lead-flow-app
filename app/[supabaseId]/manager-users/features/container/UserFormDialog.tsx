@@ -57,6 +57,7 @@ interface UserFormDialogProps {
   loading?: boolean;
   supabaseId?: string;
   currentProfileId?: string;
+  hasAvailableUserSlot?: boolean;
 }
 
 export function UserFormDialog({
@@ -67,6 +68,7 @@ export function UserFormDialog({
   loading = false,
   supabaseId,
   currentProfileId,
+  hasAvailableUserSlot = false,
 }: UserFormDialogProps) {
   const { activeTeamId } = useTeamContext();
   const { user: currentUser } = useUserContext();
@@ -375,7 +377,7 @@ export function UserFormDialog({
               )}
             />
 
-            {!isEditing ? (
+            {!isEditing && !hasAvailableUserSlot ? (
               <FormField
                 control={form.control}
                 name="billingType"
