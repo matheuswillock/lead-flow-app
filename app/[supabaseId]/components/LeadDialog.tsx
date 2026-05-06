@@ -1933,6 +1933,7 @@ export default function LeadDialog({
     }
 
     setShowStatusTriggerDialog(false);
+    setStatusSelection("");
   };
 
   const handleConfirmPendingStatusRule = async () => {
@@ -2378,7 +2379,10 @@ export default function LeadDialog({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setStatusDialogOpen(true)}
+                      onClick={() => {
+                        setStatusSelection(lead?.status || "");
+                        setStatusDialogOpen(true);
+                      }}
                       disabled={!lead}
                     >
                       {statusLabel}
@@ -2840,7 +2844,13 @@ export default function LeadDialog({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+      <Dialog
+        open={statusDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setStatusDialogOpen(nextOpen);
+          if (!nextOpen) setStatusSelection("");
+        }}
+      >
         <DialogContent className="sm:max-w-105">
           <DialogHeader>
             <DialogTitle>Alterar status</DialogTitle>
@@ -2921,6 +2931,16 @@ export default function LeadDialog({
           mode={statusSelection === "future_sale" ? "future_sale" : "loss_reason"}
           leadName={lead.name}
           statusLabel={COLUMNS.find((column) => column.key === statusSelection)?.title || statusSelection}
+          confirmationMessage={
+            pendingStatusConfirmation?.status === statusSelection
+              ? pendingStatusConfirmation.message
+              : null
+          }
+          confirmationRuleId={
+            pendingStatusConfirmation?.status === statusSelection
+              ? pendingStatusConfirmation.confirmationRuleId
+              : null
+          }
           onConfirm={handleStatusTriggerConfirm}
         />
       )}
