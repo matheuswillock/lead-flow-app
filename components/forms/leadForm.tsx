@@ -12,19 +12,10 @@ import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
-import { Checkbox } from "../ui/checkbox";
-import { Alert, AlertDescription } from "../ui/alert";
-import {
-    DropdownMenu,
-    DropdownMenuCheckboxItem,
-    DropdownMenuContent,
-    DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, formatDocumentInput, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
-import { Loader2, X, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink } from "lucide-react";
-import { CopyIcon } from "@/components/animate-ui/icons/copy";
+import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { useIsInView } from "@/hooks/use-is-in-view";
 import { useTimezone } from "@/app/context/TimezoneContext";
@@ -228,7 +219,7 @@ export function LeadForm({
         const entries = Object.entries(form.formState.errors);
         if (entries.length === 0) return false;
 
-        return entries.some(([key, error]) => {
+        return entries.some(([error]) => {
             const errorType = (error as { type?: string } | undefined)?.type;
             if (errorType !== "manual") {
                 return false;
