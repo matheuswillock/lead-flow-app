@@ -226,13 +226,11 @@ export async function POST(
     const attendeeEmails = participantDispatch.all;
 
     const canUseGoogleCalendar = !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
-    const googleRecipients = canUseGoogleCalendar
-      ? buildUniqueEmails([closerEmail, ...participantDispatch.googleEligible])
-      : [];
-    const googleRecipientSet = new Set(googleRecipients);
-    const resendRecipients = canUseGoogleCalendar
-      ? attendeeEmails.filter((item) => !googleRecipientSet.has(item))
-      : attendeeEmails;
+    // When Google Calendar is available, ALL participants are added as attendees on the event
+    // and Google handles delivery to every address (including external guests).
+    // Resend is only used when Google is not connected.
+    const googleRecipients = canUseGoogleCalendar ? attendeeEmails : [];
+    const resendRecipients = canUseGoogleCalendar ? [] : attendeeEmails;
     const participantDispatchMetadata = {
       googleEligible: participantDispatch.googleEligible,
       resendRequired: participantDispatch.resendRequired,
