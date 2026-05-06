@@ -29,7 +29,9 @@
     "db:seed:backoffice": "bunx tsx prisma/seed-backoffice.ts",
     "db:seed:backoffice-products": "bunx tsx prisma/seed-backoffice-products.ts",
     "db:seed:leads": "bunx tsx prisma/seed-leads.ts",
-    "prisma:migrate": "bunx prisma migrate dev",
+    "prisma:migrate": "bunx prisma generate && bun run typecheck && bun run scripts/create-prisma-migration-from-diff.ts",
+    "prisma:migrate:diff": "bun scripts/create-prisma-migration-from-diff.ts",
+    "prisma:migrate:dev": "bunx prisma migrate dev",
     "prisma:migrate:resolve": "bunx prisma migrate resolve --rolled-back",
     "prisma:backfill-leadcode": "bunx tsx scripts/backfill-leadcode.ts",
     "prisma:generate-import-leads-sql": "bunx tsx scripts/generate-backfill-import-leads.ts",
@@ -123,6 +125,7 @@
   "devDependencies": {
     "@next/eslint-plugin-next": "15.5.10",
     "@tailwindcss/postcss": "^4.2.2",
+    "@types/bun": "^1.3.13",
     "@types/node": "^24.12.2",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.14",

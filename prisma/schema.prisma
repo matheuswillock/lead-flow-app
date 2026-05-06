@@ -435,25 +435,25 @@ model HealthPlanOption {
 // -----------------------------
 
 model BackofficeUser {
-  id                   String    @id @db.Uuid
-  profileId            String    @unique @map("profileId") @db.Uuid
-  email                String    @unique @db.Text
-  fullAccess           Boolean   @default(false) @map("fullAccess")
-  isActive             Boolean   @default(true) @map("isActive")
-  isSdr                Boolean   @default(true) @map("isSdr")
-  isCloser             Boolean   @default(true) @map("isCloser")
-  googleCalendarConnected Boolean @default(false) @map("googleCalendarConnected")
-  googleAccessToken    String?   @map("googleAccessToken") @db.Text
-  googleRefreshToken   String?   @map("googleRefreshToken") @db.Text
-  googleTokenExpiresAt DateTime? @map("googleTokenExpiresAt") @db.Timestamptz(6)
-  googleEmail          String?   @map("googleEmail") @db.Text
-  timezone             String    @default("America/Sao_Paulo") @db.Text
-  mailboxStatus        String    @default("pending_manual_action") @map("mailboxStatus") @db.Text
-  mailboxAddress       String?   @map("mailboxAddress") @db.Text
-  mailboxProvisionedAt DateTime? @map("mailboxProvisionedAt") @db.Timestamptz(6)
-  createdByProfileId   String?   @map("createdByProfileId") @db.Uuid
-  createdAt            DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt            DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
+  id                      String    @id @db.Uuid
+  profileId               String    @unique @map("profileId") @db.Uuid
+  email                   String    @unique @db.Text
+  fullAccess              Boolean   @default(false) @map("fullAccess")
+  isActive                Boolean   @default(true) @map("isActive")
+  isSdr                   Boolean   @default(true) @map("isSdr")
+  isCloser                Boolean   @default(true) @map("isCloser")
+  googleCalendarConnected Boolean   @default(false) @map("googleCalendarConnected")
+  googleAccessToken       String?   @map("googleAccessToken") @db.Text
+  googleRefreshToken      String?   @map("googleRefreshToken") @db.Text
+  googleTokenExpiresAt    DateTime? @map("googleTokenExpiresAt") @db.Timestamptz(6)
+  googleEmail             String?   @map("googleEmail") @db.Text
+  timezone                String    @default("America/Sao_Paulo") @db.Text
+  mailboxStatus           String    @default("pending_manual_action") @map("mailboxStatus") @db.Text
+  mailboxAddress          String?   @map("mailboxAddress") @db.Text
+  mailboxProvisionedAt    DateTime? @map("mailboxProvisionedAt") @db.Timestamptz(6)
+  createdByProfileId      String?   @map("createdByProfileId") @db.Uuid
+  createdAt               DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt               DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
 
   profile                Profile                  @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
   creator                Profile?                 @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
@@ -543,10 +543,10 @@ model BackofficeLead {
   createdAt              DateTime             @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt              DateTime             @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
-  creator              Profile?                @relation("BackofficeLeadCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
-  sourceWebhookEvent   BackofficeWebhookEvent? @relation("BackofficeLeadSourceWebhookEvent", fields: [sourceWebhookEventId], references: [id], onDelete: SetNull, map: "backoffice_leads_source_webhook_event_id_fkey")
-  sdrBackofficeUser    BackofficeUser?         @relation("BackofficeLeadSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_sdr_backoffice_user_id_fkey")
-  closerBackofficeUser BackofficeUser?         @relation("BackofficeLeadCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_closer_backoffice_user_id_fkey")
+  creator              Profile?                 @relation("BackofficeLeadCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  sourceWebhookEvent   BackofficeWebhookEvent?  @relation("BackofficeLeadSourceWebhookEvent", fields: [sourceWebhookEventId], references: [id], onDelete: SetNull, map: "backoffice_leads_source_webhook_event_id_fkey")
+  sdrBackofficeUser    BackofficeUser?          @relation("BackofficeLeadSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_sdr_backoffice_user_id_fkey")
+  closerBackofficeUser BackofficeUser?          @relation("BackofficeLeadCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_closer_backoffice_user_id_fkey")
   schedules            BackofficeLeadSchedule[]
   adhesion             BackofficeAdhesion?
 
@@ -562,53 +562,53 @@ model BackofficeLead {
 }
 
 model BackofficeAdhesion {
-  id                        String                          @id @default(uuid()) @db.Uuid
-  leadId                    String                          @unique @map("leadId") @db.Uuid
-  fullName                  String                          @map("fullName") @db.Text
-  phone                     String                          @db.Text
-  email                     String?                         @db.Text
-  cpfCnpj                   String?                         @map("cpfCnpj") @db.Text
-  postalCode                String?                         @map("postalCode") @db.Text
-  address                   String?                         @db.Text
-  addressNumber             String?                         @map("addressNumber") @db.Text
-  neighborhood              String?                         @db.Text
-  complement                String?                         @db.Text
-  city                      String?                         @db.Text
-  state                     String?                         @db.Text
-  plan                      BackofficeAdhesionPlan          @default(crm)
+  id                        String                         @id @default(uuid()) @db.Uuid
+  leadId                    String                         @unique @map("leadId") @db.Uuid
+  fullName                  String                         @map("fullName") @db.Text
+  phone                     String                         @db.Text
+  email                     String?                        @db.Text
+  cpfCnpj                   String?                        @map("cpfCnpj") @db.Text
+  postalCode                String?                        @map("postalCode") @db.Text
+  address                   String?                        @db.Text
+  addressNumber             String?                        @map("addressNumber") @db.Text
+  neighborhood              String?                        @db.Text
+  complement                String?                        @db.Text
+  city                      String?                        @db.Text
+  state                     String?                        @db.Text
+  plan                      BackofficeAdhesionPlan         @default(crm)
   cycle                     BackofficeAdhesionBillingCycle
-  modules                   String[]                        @default(["crm"])
-  extraTeams                Int                             @default(0) @map("extraTeams")
-  extraUsers                Int                             @default(0) @map("extraUsers")
-  monthlyBaseAmount         Decimal                         @map("monthlyBaseAmount") @db.Decimal(12, 2)
-  monthlyExtraTeamsAmount   Decimal                         @map("monthlyExtraTeamsAmount") @db.Decimal(12, 2)
-  monthlyExtraUsersAmount   Decimal                         @map("monthlyExtraUsersAmount") @db.Decimal(12, 2)
-  monthlyTotalAmount        Decimal                         @map("monthlyTotalAmount") @db.Decimal(12, 2)
-  totalAmount               Decimal                         @map("totalAmount") @db.Decimal(12, 2)
-  tokenHash                 String                          @unique @map("tokenHash") @db.Text
-  tokenPreview              String                          @map("tokenPreview") @db.Text
-  expiresAt                 DateTime                        @map("expiresAt") @db.Timestamptz(6)
-  status                    BackofficeAdhesionStatus        @default(pending)
-  sdrBackofficeUserId       String?                         @map("sdrBackofficeUserId") @db.Uuid
-  closerBackofficeUserId    String?                         @map("closerBackofficeUserId") @db.Uuid
-  createdByBackofficeUserId String?                         @map("createdByBackofficeUserId") @db.Uuid
-  asaasCustomerId           String?                         @map("asaasCustomerId") @db.Text
-  asaasPaymentId            String?                         @unique @map("asaasPaymentId") @db.Text
-  asaasInstallmentId        String?                         @unique @map("asaasInstallmentId") @db.Text
-  installmentCount          Int?                            @map("installmentCount")
-  billingType               String?                         @map("billingType") @db.Text
-  paymentDueDate            DateTime?                       @map("paymentDueDate") @db.Timestamptz(6)
-  invoiceUrl                String?                         @map("invoiceUrl") @db.Text
-  bankSlipUrl               String?                         @map("bankSlipUrl") @db.Text
-  pixQrCode                 String?                         @map("pixQrCode") @db.Text
-  pixPayload                String?                         @map("pixPayload") @db.Text
-  paidAt                    DateTime?                       @map("paidAt") @db.Timestamptz(6)
-  overdueAt                 DateTime?                       @map("overdueAt") @db.Timestamptz(6)
-  canceledAt                DateTime?                       @map("canceledAt") @db.Timestamptz(6)
-  createdProfileId          String?                         @map("createdProfileId") @db.Uuid
-  createdSupabaseId         String?                         @map("createdSupabaseId") @db.Uuid
-  createdAt                 DateTime                        @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt                 DateTime                        @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  modules                   String[]                       @default(["crm"])
+  extraTeams                Int                            @default(0) @map("extraTeams")
+  extraUsers                Int                            @default(0) @map("extraUsers")
+  monthlyBaseAmount         Decimal                        @map("monthlyBaseAmount") @db.Decimal(12, 2)
+  monthlyExtraTeamsAmount   Decimal                        @map("monthlyExtraTeamsAmount") @db.Decimal(12, 2)
+  monthlyExtraUsersAmount   Decimal                        @map("monthlyExtraUsersAmount") @db.Decimal(12, 2)
+  monthlyTotalAmount        Decimal                        @map("monthlyTotalAmount") @db.Decimal(12, 2)
+  totalAmount               Decimal                        @map("totalAmount") @db.Decimal(12, 2)
+  tokenHash                 String                         @unique @map("tokenHash") @db.Text
+  tokenPreview              String                         @map("tokenPreview") @db.Text
+  expiresAt                 DateTime                       @map("expiresAt") @db.Timestamptz(6)
+  status                    BackofficeAdhesionStatus       @default(pending)
+  sdrBackofficeUserId       String?                        @map("sdrBackofficeUserId") @db.Uuid
+  closerBackofficeUserId    String?                        @map("closerBackofficeUserId") @db.Uuid
+  createdByBackofficeUserId String?                        @map("createdByBackofficeUserId") @db.Uuid
+  asaasCustomerId           String?                        @map("asaasCustomerId") @db.Text
+  asaasPaymentId            String?                        @unique @map("asaasPaymentId") @db.Text
+  asaasInstallmentId        String?                        @unique(map: "backoffice_adhesions_asaasinstallmentid_key") @map("asaasInstallmentId") @db.Text
+  installmentCount          Int?                           @map("installmentCount")
+  billingType               String?                        @map("billingType") @db.Text
+  paymentDueDate            DateTime?                      @map("paymentDueDate") @db.Timestamptz(6)
+  invoiceUrl                String?                        @map("invoiceUrl") @db.Text
+  bankSlipUrl               String?                        @map("bankSlipUrl") @db.Text
+  pixQrCode                 String?                        @map("pixQrCode") @db.Text
+  pixPayload                String?                        @map("pixPayload") @db.Text
+  paidAt                    DateTime?                      @map("paidAt") @db.Timestamptz(6)
+  overdueAt                 DateTime?                      @map("overdueAt") @db.Timestamptz(6)
+  canceledAt                DateTime?                      @map("canceledAt") @db.Timestamptz(6)
+  createdProfileId          String?                        @map("createdProfileId") @db.Uuid
+  createdSupabaseId         String?                        @map("createdSupabaseId") @db.Uuid
+  createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                 DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
   lead                    BackofficeLead  @relation(fields: [leadId], references: [id], onDelete: Restrict)
   sdrBackofficeUser       BackofficeUser? @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
@@ -1315,7 +1315,7 @@ model EmailEvent {
 // -----------------------------
 
 model BackofficeProduct {
-  id              String                       @id @default(uuid()) @db.Uuid
+  id              String                       @id @default(uuid()) @db.Text
   name            String                       @db.Text
   slug            String                       @unique @db.Text
   description     String?                      @db.Text
@@ -1339,7 +1339,7 @@ model BackofficeProduct {
 }
 
 model BackofficeProductPaymentRule {
-  id              String                         @id @default(uuid()) @db.Text
+  id              String                         @id @default(dbgenerated("(gen_random_uuid())::text")) @db.Text
   productId       String                         @db.Text
   paymentMethod   BackofficePaymentMethod
   billingCycle    BackofficeAdhesionBillingCycle
@@ -1347,34 +1347,34 @@ model BackofficeProductPaymentRule {
   canInstallment  Boolean                        @default(false)
   maxInstallments Int                            @default(1)
   createdAt       DateTime                       @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime                       @updatedAt @db.Timestamptz(6)
+  updatedAt       DateTime                       @default(now()) @updatedAt @db.Timestamptz(6)
 
-  product BackofficeProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product BackofficeProduct @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "backoffice_product_payment_rules_productid_fkey")
 
-  @@unique([productId, paymentMethod, billingCycle])
-  @@index([productId])
+  @@unique([productId, paymentMethod, billingCycle], map: "backoffice_product_payment_rules_unique")
+  @@index([productId], map: "backoffice_product_payment_rules_productid_idx")
   @@map("backoffice_product_payment_rules")
 }
 
 model BackofficeUserSubscription {
-  id         String                        @id @default(uuid()) @db.Uuid
-  profileId  String                        @db.Uuid
-  productId  String                        @db.Uuid
-  status     BackofficeSubscriptionStatus  @default(active)
+  id         String                          @id @default(uuid()) @db.Text
+  profileId  String                          @db.Uuid
+  productId  String                          @db.Text
+  status     BackofficeSubscriptionStatus    @default(active)
   cycle      BackofficeAdhesionBillingCycle?
-  startDate  DateTime                      @db.Timestamptz(6)
-  endDate    DateTime?                     @db.Timestamptz(6)
-  adhesionId String?                       @db.Uuid
-  createdAt  DateTime                      @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime                      @updatedAt @db.Timestamptz(6)
+  startDate  DateTime                        @db.Timestamptz(6)
+  endDate    DateTime?                       @db.Timestamptz(6)
+  adhesionId String?                         @db.Uuid
+  createdAt  DateTime                        @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime                        @updatedAt @db.Timestamptz(6)
 
   profile Profile           @relation("BackofficeUserSubscriptions", fields: [profileId], references: [id], onDelete: Cascade)
   product BackofficeProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
 
+  @@unique([profileId, productId], map: "backoffice_user_subscriptions_profile_id_product_id_key")
   @@index([profileId, status])
   @@index([productId])
   @@index([adhesionId])
-  @@unique([profileId, productId])
   @@map("backoffice_user_subscriptions")
 }
 
@@ -1384,29 +1384,29 @@ model BackofficeUserSubscription {
 // -----------------------------
 
 model ProfileSubscription {
-  id                      String              @id @default(uuid()) @db.Uuid
-  profileId               String              @unique @db.Uuid
-  adhesionId              String?             @unique @db.Uuid
-  productId               String?             @db.Text
-  asaasSubscriptionId     String?             @db.Text
-  asaasInstallmentId      String?             @db.Text
-  subscriptionStatus      SubscriptionStatus?
-  subscriptionPlan        SubscriptionPlan?
-  subscriptionStartDate   DateTime?           @db.Timestamptz(6)
-  subscriptionEndDate     DateTime?           @db.Timestamptz(6)
-  trialEndDate            DateTime?           @db.Timestamptz(6)
-  subscriptionNextDueDate DateTime?           @db.Timestamptz(6)
-  subscriptionCycle       String?             @db.Text
-  hasPermanentSubscription Boolean            @default(false)
-  createdAt               DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt               DateTime            @updatedAt @db.Timestamptz(6)
+  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId                String              @unique @db.Uuid
+  adhesionId               String?             @unique @db.Uuid
+  productId                String?             @db.Text
+  asaasSubscriptionId      String?             @db.Text
+  asaasInstallmentId       String?             @db.Text
+  subscriptionStatus       SubscriptionStatus?
+  subscriptionPlan         SubscriptionPlan?
+  subscriptionStartDate    DateTime?           @db.Timestamptz(6)
+  subscriptionEndDate      DateTime?           @db.Timestamptz(6)
+  trialEndDate             DateTime?           @db.Timestamptz(6)
+  subscriptionNextDueDate  DateTime?           @db.Timestamptz(6)
+  subscriptionCycle        String?             @db.Text
+  hasPermanentSubscription Boolean             @default(false)
+  createdAt                DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
 
-  profile  Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  adhesion BackofficeAdhesion? @relation(fields: [adhesionId], references: [id], onDelete: SetNull)
-  product  BackofficeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  profile  Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscriptions_profileId_fkey")
+  adhesion BackofficeAdhesion? @relation(fields: [adhesionId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_adhesionId_fkey")
+  product  BackofficeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_productId_fkey")
 
-  @@index([adhesionId])
-  @@index([productId])
-  @@index([subscriptionStatus])
+  @@index([adhesionId], map: "profile_subscriptions_adhesion_id_idx")
+  @@index([productId], map: "profile_subscriptions_product_id_idx")
+  @@index([subscriptionStatus], map: "profile_subscriptions_status_idx")
   @@map("profile_subscriptions")
 }
