@@ -1,4 +1,4 @@
-import { LeadStatus, Prisma } from "@prisma/client";
+import { LeadStatus, MeetingHeald, Prisma } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
@@ -19,6 +19,7 @@ export interface UpdateLeadStatusTriggerInput {
   reason?: string;
   reasonDetails?: string;
   confirmRuleId?: string;
+  meetingHeald?: MeetingHeald | null;
 }
 
 export interface ILeadUseCase {

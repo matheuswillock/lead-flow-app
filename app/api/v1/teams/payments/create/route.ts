@@ -91,9 +91,35 @@ export async function POST(request: NextRequest) {
     }
 
     if (master.hasPermanentSubscription) {
+      const newTeam = await prisma.team.create({
+        data: {
+          masterId: master.id,
+          name: teamName,
+        },
+      });
+
+      await prisma.teamMember.create({
+        data: {
+          profileId: requester.id,
+          teamId: newTeam.id,
+          role: teamMember.role,
+          functions: teamMember.functions ?? [],
+        },
+      });
+
+      await emailService.sendAddOnConfirmedEmail({
+        masterName: master.fullName || master.email,
+        masterEmail: master.email,
+        addonType: "team",
+        addonLabel: "Time adicional",
+        addonDetail: teamName,
+        requesterName: requester.fullName || requester.email,
+        requesterEmail: requester.email,
+      });
+
       return NextResponse.json(
-        new Output(false, [], ["Assinatura permanente ativa. Nenhum pagamento é necessário."], null),
-        { status: 400 }
+        new Output(true, ["Time criado com sucesso sem cobrança adicional"], [], { created: true }),
+        { status: 201 }
       );
     }
 

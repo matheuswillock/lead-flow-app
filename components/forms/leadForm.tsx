@@ -11,7 +11,6 @@ import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { Badge } from "../ui/badge";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { Checkbox } from "../ui/checkbox";
 import { Alert, AlertDescription } from "../ui/alert";
@@ -24,7 +23,7 @@ import {
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, formatDocumentInput, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
-import { Loader2, X } from "lucide-react";
+import { Loader2, X, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink } from "lucide-react";
 import { CopyIcon } from "@/components/animate-ui/icons/copy";
 import { toast } from "sonner";
 import { useIsInView } from "@/hooks/use-is-in-view";
@@ -73,8 +72,6 @@ const normalizeLeadPhoneDigits = (value: string): string => {
     return digits.slice(0, 11);
 };
 
-export type LeadScheduleField = "meetingDate" | "closerId" | "meetingNotes" | "extraGuests";
-
 export interface ILeadFormProps {
     form: UseFormReturn<leadFormData>;
     onSubmit: (data: leadFormData) => void | Promise<void>;
@@ -85,10 +82,22 @@ export interface ILeadFormProps {
     onCancel: () => void;
     className?: string;
     initialData?: leadFormData;
-    showMeetingHeald?: boolean;
-    meetingHealdReadOnly?: boolean;
+    scheduleSummary?: {
+        status?: string | null;
+        meetingDate?: string | null;
+        closerName?: string | null;
+        meetingTitle?: string | null;
+        meetingNotes?: string | null;
+        meetingLink?: string | null;
+        meetingHeald?: "yes" | "no" | null;
+        isOverdue?: boolean;
+    };
+    onManageSchedule?: () => void;
+    canToggleMeetingHeald?: boolean;
     meetingHealdSaving?: boolean;
     onMeetingHealdChange?: (next: "yes" | "no") => void | Promise<void>;
+    canMarkNoShow?: boolean;
+    onMarkNoShow?: () => void | Promise<void>;
     usersToAssign: UserAssociated[];
     closersToAssign?: UserAssociated[];
     sdrsToAssign?: UserAssociated[];
@@ -96,16 +105,9 @@ export interface ILeadFormProps {
     closersError?: string | null;
     sdrsLoading?: boolean;
     sdrsError?: string | null;
-    availableTimes?: string[];
-    availabilityLoading?: boolean;
-    availabilityError?: string | null;
-    hasLoadedAvailability?: boolean;
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     onUploadStateChange?: (isUploading: boolean) => void;
-    showMeetingLink?: boolean;
     isEditMode?: boolean;
-    scheduleChangeWarning?: boolean;
-    changedScheduleFields?: LeadScheduleField[];
     currentProfileId?: string;
     currentUserIsSdr?: boolean;
 }
@@ -120,10 +122,13 @@ export function LeadForm({
     onCancel,
     className,
     initialData,
-    showMeetingHeald,
-    meetingHealdReadOnly,
+    scheduleSummary,
+    onManageSchedule,
+    canToggleMeetingHeald,
     meetingHealdSaving,
     onMeetingHealdChange,
+    canMarkNoShow,
+    onMarkNoShow,
     usersToAssign,
     closersToAssign,
     sdrsToAssign,
@@ -131,16 +136,9 @@ export function LeadForm({
     closersError,
     sdrsLoading,
     sdrsError,
-    availableTimes,
-    availabilityLoading = false,
-    availabilityError,
-    hasLoadedAvailability = false,
     leadId,
     onUploadStateChange,
-    showMeetingLink,
     isEditMode = false,
-    scheduleChangeWarning = false,
-    changedScheduleFields = [],
     currentProfileId,
     currentUserIsSdr = false,
 }: ILeadFormProps) {
@@ -149,8 +147,8 @@ export function LeadForm({
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
     const [ticketDisplay, setTicketDisplay] = useState("");
     const [currentValueError, setCurrentValueError] = useState<string | null>(null);
-    const [ticketError, setTicketError] = useState<string | null>(null);
     const [extraGuestsDraft, setExtraGuestsDraft] = useState("");
+    const [ticketError, setTicketError] = useState<string | null>(null);
     const lastInvalidHashRef = useRef<string>("");
     const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
         threshold: 0.2,
@@ -226,10 +224,6 @@ export function LeadForm({
             .filter((value) => value && !baseNames.includes(value));
         return [...baseNames, ...extras];
     }, [healthPlanOptions, watchedValues.currentHealthPlan, watchedValues.soldPlan]);
-    const changedScheduleFieldSet = React.useMemo(
-        () => new Set<LeadScheduleField>(changedScheduleFields),
-        [changedScheduleFields]
-    );
     const hasBlockingErrors = React.useMemo(() => {
         const entries = Object.entries(form.formState.errors);
         if (entries.length === 0) return false;
@@ -239,34 +233,15 @@ export function LeadForm({
             if (errorType !== "manual") {
                 return false;
             }
-
-            if (!scheduleChangeWarning) return true;
-
-            const isChangedScheduleField = changedScheduleFieldSet.has(key as LeadScheduleField);
-            if (isChangedScheduleField) {
-                return false;
-            }
-
             return true;
         });
-    }, [form.formState.errors, scheduleChangeWarning, changedScheduleFieldSet]);
+    }, [form.formState.errors]);
     const isSchemaValid = React.useMemo(
         () => leadFormSchema.safeParse(watchedValues).success,
         [watchedValues]
     );
     const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
-    const watchedMeetingDate = form.watch("meetingDate");
-    const watchedCloserId = form.watch("closerId");
-    const isMeetingDateChanged = scheduleChangeWarning && changedScheduleFieldSet.has("meetingDate");
-    const isCloserChanged = scheduleChangeWarning && changedScheduleFieldSet.has("closerId");
-    const isMeetingNotesChanged = scheduleChangeWarning && changedScheduleFieldSet.has("meetingNotes");
-    const isExtraGuestsChanged = scheduleChangeWarning && changedScheduleFieldSet.has("extraGuests");
-    const meetingDateObject = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
-    const hasValidMeetingDate =
-        meetingDateObject instanceof Date && !Number.isNaN(meetingDateObject.getTime());
-    const schedulingReady = !!watchedCloserId && hasLoadedAvailability && !availabilityLoading;
-    const scheduleFieldsDisabled = isLoading || isUpdating || (!isEditMode && !schedulingReady);
-    const scheduleDateDisabled = isLoading || isUpdating || (!isEditMode && !watchedCloserId);
+    const meetingHealdValue = (scheduleSummary?.meetingHeald ?? "no") as "yes" | "no";
 
     useEffect(() => {
         if (!initialData) {
@@ -281,8 +256,6 @@ export function LeadForm({
                 (watchedValues.referenceHospital && watchedValues.referenceHospital.trim() !== '') ||
                 (watchedValues.ongoingTreatment && watchedValues.ongoingTreatment.trim() !== '') ||
                 (watchedValues.additionalNotes && watchedValues.additionalNotes.trim() !== '') ||
-                (watchedValues.meetingDate && watchedValues.meetingDate.trim() !== '') ||
-                (!onMeetingHealdChange && watchedValues.meetingHeald && watchedValues.meetingHeald.trim() !== '') ||
                 (watchedValues.responsible && watchedValues.responsible.trim() !== '') ||
                 (watchedValues.closerId && watchedValues.closerId.trim() !== '');
 
@@ -302,8 +275,6 @@ export function LeadForm({
                 watchedValues.referenceHospital !== initialData.referenceHospital ||
                 watchedValues.ongoingTreatment !== initialData.ongoingTreatment ||
                 watchedValues.additionalNotes !== initialData.additionalNotes ||
-                watchedValues.meetingDate !== initialData.meetingDate ||
-                (!onMeetingHealdChange && watchedValues.meetingHeald !== initialData.meetingHeald) ||
                 watchedValues.responsible !== initialData.responsible ||
                 watchedValues.closerId !== initialData.closerId;
 
@@ -674,391 +645,132 @@ export function LeadForm({
             />
 
             <div className="sm:col-span-2 pt-4 border-t">
-                <div className="flex items-center justify-between gap-4">
-                    <h3 className="text-sm font-semibold text-foreground">
-                        Informacoes de agendamento
-                    </h3>
-                    {!!showMeetingHeald && (
-                        <FormField
-                            control={form.control}
-                            name="meetingHeald"
-                            render={({ field }) => (
-                                <FormItem className="flex items-center gap-2">
-                                    <FormControl>
-                                        <Checkbox
-                                            checked={field.value === "yes"}
-                                            onCheckedChange={(value) => {
-                                                const checked = value === true;
-                                                const next = checked ? "yes" : "no";
-                                                // Keep UI state in sync without forcing a full submit.
-                                                field.onChange(next);
-                                                onMeetingHealdChange?.(next);
-                                            }}
-                                            className="mt-px"
-                                            disabled={
-                                                isLoading ||
-                                                isUpdating ||
-                                                meetingHealdSaving ||
-                                                !!meetingHealdReadOnly
-                                            }
-                                        />
-                                    </FormControl>
-                                    <FormLabel className="text-sm font-medium leading-none mb-2">
-                                        Reunião realizada?
-                                    </FormLabel>
-                                    {meetingHealdSaving && (
-                                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                                    )}
-                                </FormItem>
+                <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-foreground">Agendamento</h3>
+                    <div className="flex items-center gap-2">
+                        {!!canToggleMeetingHeald && (
+                            <Button
+                                type="button"
+                                variant={meetingHealdValue === "yes" ? "default" : "outline"}
+                                disabled={isLoading || isUpdating || meetingHealdSaving}
+                                onClick={() => {
+                                    const next = meetingHealdValue === "yes" ? "no" : "yes";
+                                    onMeetingHealdChange?.(next);
+                                }}
+                            >
+                                {meetingHealdSaving ? (
+                                    <span className="inline-flex items-center gap-2">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Salvando...
+                                    </span>
+                                ) : meetingHealdValue === "yes" ? (
+                                    <>
+                                        <BadgeCheck className="h-4 w-4" />
+                                        Reunião realizada
+                                    </>
+                                ) : (
+                                    <>
+                                        <BadgeIcon className="h-4 w-4" />
+                                        Reunião realizada
+                                    </>
+                                )}
+                            </Button>
+                        )}
+                        {!!canMarkNoShow && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={isLoading || isUpdating}
+                                onClick={() => {
+                                    void onMarkNoShow?.();
+                                }}
+                            >
+                                <CalendarX2 className="h-4 w-4" />
+                                No-show
+                            </Button>
+                        )}
+                        <Button type="button" variant="outline" onClick={onManageSchedule} disabled={!onManageSchedule}>
+                            {scheduleSummary?.meetingDate ? (
+                                <><CalendarSync className="h-4 w-4" />Editar agendamento</>
+                            ) : (
+                                <><CalendarClock className="h-4 w-4" />Agendar lead</>
                             )}
-                        />
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="mt-3 rounded-md border border-dashed border-border/70 bg-muted/30 p-3 grid gap-2 text-sm text-muted-foreground">
+                    {scheduleSummary?.meetingDate ? (
+                        <>
+                            <div className="grid gap-1">
+                                <span className="text-foreground">Data/hora</span>
+                                <span>{new Date(scheduleSummary.meetingDate).toLocaleString("pt-BR")}</span>
+                            </div>
+                            {!!scheduleSummary?.closerName && (
+                                <div className="grid gap-1">
+                                    <span className="text-foreground">Closer</span>
+                                    <span>{scheduleSummary.closerName}</span>
+                                </div>
+                            )}
+                            {!!scheduleSummary?.meetingTitle && (
+                                <div className="grid gap-1">
+                                    <span className="text-foreground">Titulo</span>
+                                    <span>{scheduleSummary.meetingTitle}</span>
+                                </div>
+                            )}
+                            {!!scheduleSummary?.meetingLink && (
+                                <div className="grid gap-1">
+                                    <span className="text-foreground">Link</span>
+                                    <div className="flex items-center gap-1">
+                                        <Input
+                                            readOnly
+                                            value={scheduleSummary.meetingLink}
+                                            className="h-8 text-xs bg-transparent cursor-default flex-1"
+                                        />
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-8 w-8 shrink-0"
+                                            onClick={() =>
+                                                navigator.clipboard
+                                                    .writeText(scheduleSummary.meetingLink!)
+                                                    .then(() => toast.success("Link copiado"))
+                                            }
+                                            aria-label="Copiar link"
+                                        >
+                                            <Copy className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-8 w-8 shrink-0"
+                                            onClick={() => window.open(scheduleSummary.meetingLink!, "_blank")}
+                                            aria-label="Abrir link"
+                                        >
+                                            <ExternalLink className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                            {!!scheduleSummary?.meetingNotes && (
+                                <div className="grid gap-1">
+                                    <span className="text-foreground">Notas</span>
+                                    <Textarea
+                                        readOnly
+                                        value={scheduleSummary.meetingNotes}
+                                        className="resize-none text-muted-foreground bg-transparent cursor-default"
+                                        rows={3}
+                                    />
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <span>Nenhum agendamento registrado.</span>
                     )}
                 </div>
-                {scheduleChangeWarning && changedScheduleFields.length > 0 && (
-                    <Alert variant="destructive" className="mt-3">
-                        <AlertDescription>
-                            Agendamento alterado. Revise os campos em vermelho e confirme o reagendamento ao salvar.
-                        </AlertDescription>
-                    </Alert>
-                )}
             </div>
-
-            {/* Data, Horário e Responsável em uma linha no desktop */}
-            <div className="sm:col-span-2 flex flex-col sm:flex-row gap-4">
-                <FormField
-                    control={form.control}
-                    name="meetingDate"
-                    render={({ field }) => (
-                        <FormItem className="sm:shrink-0">
-                            <FormControl>
-                                <DateTimePicker
-                                    date={field.value ? new Date(field.value) : undefined}
-                                    onDateChange={(date) => {
-                                        field.onChange(date ? date.toISOString() : '');
-                                    }}
-                                    label="Data e Horário da Reunião"
-                                    disabled={scheduleDateDisabled}
-                                    disablePastDates={true}
-                                    availableTimes={availableTimes}
-                                    invalid={isMeetingDateChanged}
-                                    tz={tz}
-                                />
-                            </FormControl>
-                        </FormItem>
-                    )}
-                />
-
-                <FormField
-                    control={form.control}
-                    name="closerId"
-                    render={({ field }) => {
-                        const selectedCloser = closers.find((user) => user.id === field.value);
-                        const isOnlyOneCloser = closers.length === 1;
-                        const closerIsLoading = !!closersLoading;
-                        const closerHasError = !!closersError;
-                        const closerIsEmpty = !closerIsLoading && !closerHasError && closers.length === 0;
-
-                        useEffect(() => {
-                            if (isEditMode) return;
-                            if (!field.value && closers.length === 1) {
-                                field.onChange(closers[0].id);
-                            }
-                        }, [closers, field.value, field.onChange, isEditMode]);
-
-                        return (
-                            <FormItem className="flex flex-col sm:flex-1">
-                                <FormLabel className="text-sm font-medium">
-                                    Closer{isOnlyOneCloser && " (único disponível)"}
-                                </FormLabel>
-                                <FormControl>
-                                    <Select
-                                        value={field.value || ""}
-                                        onValueChange={field.onChange}
-                                        disabled={
-                                            isLoading ||
-                                            isUpdating ||
-                                            closerIsLoading ||
-                                            closerHasError ||
-                                            closerIsEmpty
-                                        }
-                                    >
-                                        <SelectTrigger
-                                            className={cn(
-                                                "h-9",
-                                                isCloserChanged && "border-destructive focus:ring-destructive"
-                                            )}
-                                            aria-invalid={isCloserChanged || undefined}
-                                        >
-                                            <SelectValue
-                                                placeholder={
-                                                    closerIsLoading
-                                                        ? "Carregando closers..."
-                                                        : closerHasError
-                                                            ? "Erro ao carregar closers"
-                                                            : closerIsEmpty
-                                                        ? "Nenhum closer disponível"
-                                                        : "Selecione um closer"
-                                                }
-                                            >
-                                                {selectedCloser && (
-                                                    <div className="flex items-center gap-2">
-                                                        <Avatar className="h-5 w-5">
-                                                            <AvatarImage
-                                                                src={selectedCloser.avatarImageUrl || undefined}
-                                                            />
-                                                            <AvatarFallback className="text-xs">
-                                                                {selectedCloser.name
-                                                                    .split(" ")
-                                                                    .map((n) => n[0])
-                                                                    .join("")
-                                                                    .toUpperCase()}
-                                                            </AvatarFallback>
-                                                        </Avatar>
-                                                        <span className="truncate">{selectedCloser.name}</span>
-                                                    </div>
-                                                )}
-                                            </SelectValue>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {closers.map((user) => (
-                                                <SelectItem key={user.id} value={user.id}>
-                                                    <div className="flex items-center gap-2">
-                                                        <Avatar className="h-6 w-6">
-                                                            <AvatarImage
-                                                                src={user.avatarImageUrl || undefined}
-                                                            />
-                                                            <AvatarFallback className="text-xs">
-                                                                {user.name
-                                                                    .split(" ")
-                                                                    .map((n) => n[0])
-                                                                    .join("")
-                                                                    .toUpperCase()}
-                                                            </AvatarFallback>
-                                                        </Avatar>
-                                                        <span>{user.name}</span>
-                                                    </div>
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </FormControl>
-                                {closersError && (
-                                    <p className="mt-1 text-xs text-destructive">{closersError}</p>
-                                )}
-                            </FormItem>
-                        );
-                    }}
-                />
-
-            </div>
-            <div className="sm:col-span-2">
-                {!watchedCloserId && (
-                    <p className="text-xs text-muted-foreground">
-                        Selecione um closer para habilitar data e carregar horários disponíveis.
-                    </p>
-                )}
-                {watchedCloserId && !hasValidMeetingDate && (
-                    <p className="text-xs text-muted-foreground">
-                        Selecione uma data para carregar horários disponíveis.
-                    </p>
-                )}
-                {availabilityLoading && (
-                    <p className="text-xs text-muted-foreground">Carregando horários disponíveis...</p>
-                )}
-                {availabilityError && (
-                    <p className="text-xs text-destructive">{availabilityError}</p>
-                )}
-                {hasLoadedAvailability &&
-                    Array.isArray(availableTimes) &&
-                    availableTimes.length === 0 &&
-                    !availabilityLoading &&
-                    !availabilityError && (
-                        <p className="text-xs text-muted-foreground">
-                            Nenhum horário disponível para este dia.
-                        </p>
-                    )}
-            </div>
-
-            <FormField
-                control={form.control}
-                name="meetingNotes"
-                render={({ field }) => (
-                    <FormItem className="sm:col-span-2">
-                        <FormLabel className="block text-sm font-medium mb-1">
-                            Observações
-                        </FormLabel>
-                        <FormControl>
-                            <Textarea
-                                {...field}
-                                placeholder="Adicione observacoes sobre a reuniao"
-                                className={cn(
-                                    "min-h-21 resize-y",
-                                    isMeetingNotesChanged && "border-destructive focus-visible:ring-destructive"
-                                )}
-                                disabled={scheduleFieldsDisabled}
-                                aria-invalid={isMeetingNotesChanged || undefined}
-                            />
-                        </FormControl>
-                    </FormItem>
-                )}
-            />
-
-                    {showMeetingLink && (
-                        <FormField
-                            control={form.control}
-                            name="meetingLink"
-                            render={({ field }) => (
-                                <FormItem className="sm:col-span-2">
-                                    <FormLabel className="block text-sm font-medium mb-1">
-                                        Link da reuniao
-                                    </FormLabel>
-                                    <FormControl>
-                                        <div className="flex items-center gap-2">
-                                            <Input
-                                                {...field}
-                                                type="url"
-                                                placeholder="https://meet.google.com/..."
-                                                readOnly
-                                                onFocus={(event) => event.currentTarget.select()}
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-9 w-9 shrink-0"
-                                                disabled={!field.value}
-                                                onClick={async () => {
-                                                    if (!field.value) return;
-                                                    try {
-                                                        await navigator.clipboard.writeText(field.value);
-                                                        toast.success("Link da reuniao copiado");
-                                                    } catch {
-                                                        toast.error("Nao foi possivel copiar o link da reuniao");
-                                                    }
-                                                }}
-                                                aria-label="Copiar link da reuniao"
-                                            >
-                                                <CopyIcon size={16} animateOnHover />
-                                            </Button>
-                                        </div>
-                                    </FormControl>
-                                </FormItem>
-                            )}
-                        />
-                    )}
-
-            <FormField
-                control={form.control}
-                name="extraGuests"
-                render={({ field }) => {
-                    const selectedEmails = parseEmails(field.value);
-                    return (
-                        <FormItem className="sm:col-span-2">
-                            <FormLabel className="block text-sm font-medium mb-1">
-                                Convidados extras (emails)
-                            </FormLabel>
-                            <FormControl>
-                                <div className="grid gap-2">
-                                    <div
-                                        className={cn(
-                                            "flex flex-wrap items-center gap-2 rounded-md border border-input bg-transparent px-3 py-2",
-                                            isExtraGuestsChanged && "border-destructive"
-                                        )}
-                                    >
-                                        {selectedEmails.map((email) => (
-                                            <Badge key={email} variant="secondary" className="gap-1 pr-1">
-                                                <span>{email}</span>
-                                                <button
-                                                    type="button"
-                                                    className="rounded-sm px-1 text-muted-foreground transition hover:text-foreground"
-                                                    onClick={() => {
-                                                        const next = selectedEmails.filter((item) => item !== email);
-                                                        field.onChange(buildEmailValue(next));
-                                                    }}
-                                                    aria-label={`Remover ${email}`}
-                                                >
-                                                    <X className="h-3 w-3" />
-                                                </button>
-                                            </Badge>
-                                        ))}
-                                        <Input
-                                            type="text"
-                                            value={extraGuestsDraft}
-                                            onChange={(e) =>
-                                                handleGuestDraftChange(
-                                                    e.target.value,
-                                                    selectedEmails,
-                                                    field.onChange
-                                                )
-                                            }
-                                            onBlur={() => commitGuestDraft(selectedEmails, field.onChange)}
-                                            onKeyDown={(event) => {
-                                                if (event.key === "Enter") {
-                                                    event.preventDefault();
-                                                    commitGuestDraft(selectedEmails, field.onChange);
-                                                }
-                                            }}
-                                            placeholder="ex: convidado1@email.com, convidado2@email.com"
-                                            className="min-w-35 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                                            disabled={scheduleFieldsDisabled}
-                                            aria-invalid={isExtraGuestsChanged || undefined}
-                                        />
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                        <span>Adicionar membros do time:</span>
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button type="button" variant="outline" size="sm" disabled={scheduleFieldsDisabled}>
-                                                    Selecionar
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent className="w-60">
-                                                {usersToAssign
-                                                    .filter((user) => user.email)
-                                                    .map((user) => {
-                                                        const email = user.email;
-                                                        const checked = selectedEmails.includes(email.toLowerCase());
-                                                        return (
-                                                            <DropdownMenuCheckboxItem
-                                                                key={user.id}
-                                                                checked={checked}
-                                                                onCheckedChange={(nextChecked) => {
-                                                                    const next = nextChecked
-                                                                        ? [...selectedEmails, email]
-                                                                        : selectedEmails.filter((item) => item !== email.toLowerCase());
-                                                                    field.onChange(buildEmailValue(next));
-                                                                }}
-                                                            >
-                                                                <div className="flex items-center gap-2">
-                                                                    <Avatar className="h-5 w-5">
-                                                                        <AvatarImage
-                                                                            src={user.avatarImageUrl || undefined}
-                                                                        />
-                                                                        <AvatarFallback className="text-[10px]">
-                                                                            {user.name
-                                                                                .split(" ")
-                                                                                .map((n) => n[0])
-                                                                                .join("")
-                                                                                .toUpperCase()}
-                                                                        </AvatarFallback>
-                                                                    </Avatar>
-                                                                    <span className="truncate">{user.name}</span>
-                                                                </div>
-                                                            </DropdownMenuCheckboxItem>
-                                                        );
-                                                    })}
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        Separe os emails por virgula ou espaco.
-                                    </p>
-                                </div>
-                            </FormControl>
-                        </FormItem>
-                    );
-                }}
-            />
 
             {/* Campos adicionais apenas para leads em edição */}
             {leadId && (

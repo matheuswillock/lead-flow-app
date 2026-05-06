@@ -37,6 +37,7 @@ import {
 import { UserAssociated } from '@/app/api/v1/profiles/DTO/profileResponseDTO';
 import { useParams } from 'next/navigation';
 import { useTeamContext } from '@/app/context/TeamContext';
+import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from '@/app/[supabaseId]/components/MeetingHealdGateDialog';
 
 interface ChangeStatusDialogProps {
   open: boolean;
@@ -76,6 +77,11 @@ export function ChangeStatusDialog({
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showStatusTriggerDialog, setShowStatusTriggerDialog] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [meetingHealdGateOpen, setMeetingHealdGateOpen] = useState(false);
+  const [meetingHealdBlockedOpen, setMeetingHealdBlockedOpen] = useState(false);
+  const [pendingMeetingHealdGate, setPendingMeetingHealdGate] = useState<
+    { status: string; trigger?: Record<string, unknown> } | null
+  >(null);
 
   const updateLeadStatus = async (
     newStatus: string,
@@ -85,6 +91,7 @@ export function ChangeStatusDialog({
       reason?: string;
       reasonDetails?: string;
       confirmRuleId?: string;
+      meetingHeald?: 'yes' | 'no' | null;
     },
     allowAutoConfirmation = false
   ) => {
@@ -109,6 +116,27 @@ export function ChangeStatusDialog({
       const result = await response.json().catch(() => null);
 
       if (!response.ok || !result?.isValid) {
+        const requiresMeetingHeald = !!result?.result?.requiresMeetingHeald;
+        const canConfirmMeetingHealdResult = !!result?.result?.canConfirmMeetingHeald;
+
+        if (requiresMeetingHeald) {
+          setPendingConfirmation(null);
+          if (canConfirmMeetingHealdResult) {
+            setPendingMeetingHealdGate({
+              status: newStatus,
+              trigger: trigger ? (trigger as unknown as Record<string, unknown>) : undefined,
+            });
+            setMeetingHealdGateOpen(true);
+          } else {
+            setMeetingHealdBlockedOpen(true);
+          }
+          toast.info(result?.errorMessages?.[0] || 'Reuniao nao marcada como realizada.', {
+            id: loadingToast,
+            duration: 5000,
+          });
+          return false;
+        }
+
         const requiresConfirmation = !!result?.result?.requiresConfirmation;
         const confirmationRuleId =
           typeof result?.result?.confirmationRuleId === 'string'
@@ -357,6 +385,33 @@ export function ChangeStatusDialog({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <MeetingHealdConfirmDialog
+        open={meetingHealdGateOpen}
+        onOpenChange={(open) => {
+          setMeetingHealdGateOpen(open);
+          if (!open) setPendingMeetingHealdGate(null);
+        }}
+        onConfirm={async () => {
+          if (!pendingMeetingHealdGate) return;
+          const mergedTrigger = {
+            ...(pendingMeetingHealdGate.trigger ?? {}),
+            meetingHeald: 'yes' as const,
+          };
+          const updated = await updateLeadStatus(pendingMeetingHealdGate.status, mergedTrigger, false);
+          if (updated) {
+            setMeetingHealdGateOpen(false);
+            setPendingMeetingHealdGate(null);
+            setShowStatusTriggerDialog(false);
+            onOpenChange(false);
+          }
+        }}
+      />
+
+      <MeetingHealdBlockedDialog
+        open={meetingHealdBlockedOpen}
+        onOpenChange={setMeetingHealdBlockedOpen}
+      />
     </>
   );
 }

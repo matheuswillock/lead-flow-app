@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
+import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
 
 interface BoardContainerProps {
   title?: string;
@@ -51,6 +52,9 @@ export function BoardContainer({
     pendingStatusTriggerDrop,
     clearPendingStatusTriggerDrop,
     applyPendingStatusTriggerTransition,
+    pendingMeetingHealdGateDrop,
+    clearPendingMeetingHealdGateDrop,
+    applyPendingMeetingHealdGateTransition,
     data,
   } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
@@ -327,6 +331,33 @@ export function BoardContainer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <MeetingHealdConfirmDialog
+        open={!!pendingMeetingHealdGateDrop && pendingMeetingHealdGateDrop.canConfirmMeetingHeald}
+        onOpenChange={(open) => {
+          if (!open) {
+            clearPendingMeetingHealdGateDrop();
+            setSelectedLead(null);
+          }
+        }}
+        onConfirm={async () => {
+          const updated = await applyPendingMeetingHealdGateTransition();
+          if (updated) {
+            clearPendingMeetingHealdGateDrop();
+            setSelectedLead(null);
+          }
+        }}
+      />
+
+      <MeetingHealdBlockedDialog
+        open={!!pendingMeetingHealdGateDrop && !pendingMeetingHealdGateDrop.canConfirmMeetingHeald}
+        onOpenChange={(open) => {
+          if (!open) {
+            clearPendingMeetingHealdGateDrop();
+            setSelectedLead(null);
+          }
+        }}
+      />
     </div>
   );
 }

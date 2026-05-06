@@ -12,7 +12,9 @@ export interface PublicAdhesionDetails {
   id: string
   fullName: string
   phone: string
+  cpfCnpj: string | null
   email: string | null
+  billingType: PublicAdhesionBillingType | null
   status: PublicAdhesionStatusKey
   cycle: PublicAdhesionBillingCycleKey
   cycleLabel: string
@@ -20,6 +22,9 @@ export interface PublicAdhesionDetails {
   modules: string[]
   extraTeams: number
   extraUsers: number
+  monthlyBaseAmount: number
+  monthlyExtraTeamsAmount: number
+  monthlyExtraUsersAmount: number
   monthlyTotalAmount: number
   totalAmount: number
   maxInstallments: number

@@ -19,9 +19,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
-import { TeamCheckoutStep } from "./features/checkout/TeamCheckoutStep";
 import { cn } from "@/lib/utils";
 
 type TeamMember = {
@@ -142,8 +142,8 @@ export default function TeamsPage() {
   const [switchingTeamId, setSwitchingTeamId] = useState<string | null>(null);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
+  const [createTeamBillingType, setCreateTeamBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX");
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
-  const [teamCheckout, setTeamCheckout] = useState<{ teamName: string; amount: number } | null>(null);
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [manageTeamId, setManageTeamId] = useState<string | null>(null);
   const [manageTeamName, setManageTeamName] = useState("");
@@ -289,13 +289,13 @@ export default function TeamsPage() {
 
     setIsCreatingTeam(true);
     try {
-      const response = await fetch("/api/v1/teams", {
+      const response = await fetch("/api/v1/teams/payments/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
         },
-        body: JSON.stringify({ name: trimmedName }),
+        body: JSON.stringify({ name: trimmedName, billingType: createTeamBillingType }),
       });
 
       const result = await response.json();
@@ -305,17 +305,27 @@ export default function TeamsPage() {
 
       const payload = result?.result as any;
 
-      if (payload?.requiresPayment) {
+      if (payload?.created === true) {
+        toast.success("Time criado com sucesso!");
         setIsCreateTeamOpen(false);
         setNewTeamName("");
-        setTeamCheckout({
-          teamName: payload.teamName || trimmedName,
-          amount: Number(payload.amount ?? 0),
-        });
+        await refreshTeams();
         return;
       }
 
-      toast.success("Time criado com sucesso!");
+      if (payload?.checkoutUrl) {
+        toast.success("Checkout gerado com sucesso!");
+        if (user?.isMaster) {
+          window.open(payload.checkoutUrl as string, "_blank", "noopener,noreferrer");
+        } else {
+          toast.message("O master recebeu o e-mail com o link de pagamento.");
+        }
+        setIsCreateTeamOpen(false);
+        setNewTeamName("");
+        return;
+      }
+
+      toast.success("Solicitação processada com sucesso!");
       setIsCreateTeamOpen(false);
       setNewTeamName("");
       await refreshTeams();
@@ -732,21 +742,6 @@ export default function TeamsPage() {
     }
   };
 
-  if (teamCheckout) {
-    return (
-      <TeamCheckoutStep
-        supabaseId={supabaseId}
-        teamName={teamCheckout.teamName}
-        amount={teamCheckout.amount}
-        onCancel={() => setTeamCheckout(null)}
-        onComplete={() => {
-          setTeamCheckout(null);
-          void refreshTeams();
-        }}
-      />
-    );
-  }
-
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
       <div className="w-full py-6 px-6 space-y-6">
@@ -930,11 +925,10 @@ export default function TeamsPage() {
           <DialogHeader>
             <DialogTitle>Criar novo time</DialogTitle>
             <DialogDescription>
-              Informe um nome para o time. Se houver cobranca adicional, voce sera direcionado ao
-              pagamento para concluir a ativacao.
+              Informe um nome para o time e escolha a forma de pagamento para gerar o checkout.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             <Label htmlFor="teamName">Nome do time</Label>
             <Input
               id="teamName"
@@ -943,6 +937,26 @@ export default function TeamsPage() {
               placeholder="Ex: Time Comercial"
               disabled={isCreatingTeam}
             />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label>Forma de pagamento</Label>
+            <RadioGroup
+              value={createTeamBillingType}
+              onValueChange={(value) =>
+                setCreateTeamBillingType(value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
+              }
+              className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"
+              disabled={isCreatingTeam}
+            >
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="PIX" id="create-team-pix" />
+                <Label htmlFor="create-team-pix">PIX</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="CREDIT_CARD" id="create-team-card" />
+                <Label htmlFor="create-team-card">Cartão de crédito</Label>
+              </div>
+            </RadioGroup>
           </div>
           <DialogFooter className="gap-2">
             <Button

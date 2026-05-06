@@ -72,13 +72,12 @@ export function PublicAdhesionProvider({
     async (input: PublicAdhesionCheckoutInput) => {
       if (isSubmitting) return
       setIsSubmitting(true)
-      setError(null)
       try {
         const response = await service.createCheckout(token, input)
         setPayment(response)
       } catch (err) {
         console.error("[PublicAdhesionContext][submitCheckout]", err)
-        setError(err instanceof Error ? err.message : "Erro ao gerar pagamento")
+        throw new Error(err instanceof Error ? err.message : "Erro ao gerar pagamento")
       } finally {
         setIsSubmitting(false)
       }
@@ -97,7 +96,7 @@ export function PublicAdhesionProvider({
         setPayment(response)
       } catch (err) {
         console.error("[PublicAdhesionContext][refreshPaymentStatus]", err)
-        setError(err instanceof Error ? err.message : "Erro ao verificar pagamento")
+        throw new Error(err instanceof Error ? err.message : "Erro ao verificar pagamento")
       } finally {
         paymentRefreshInFlightKey.current = null
       }

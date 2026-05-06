@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Table,
   TableBody,
@@ -101,6 +102,7 @@ export function UserFormDialog({
           email: "",
           role: "operator",
           functions: [],
+          billingType: "PIX",
           canCreateAccountUsers: false,
           canManageAccountTeams: false,
         },
@@ -124,6 +126,7 @@ export function UserFormDialog({
           email: "",
           role: "operator",
           functions: [],
+          billingType: "PIX",
           canCreateAccountUsers: false,
           canManageAccountTeams: false,
         });
@@ -371,6 +374,39 @@ export function UserFormDialog({
                 </FormItem>
               )}
             />
+
+            {!isEditing ? (
+              <FormField
+                control={form.control}
+                name="billingType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Forma de pagamento</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        value={field.value ?? "PIX"}
+                        onValueChange={field.onChange}
+                        className="grid gap-3 rounded-md border border-input p-3 sm:grid-cols-2"
+                        disabled={loading}
+                      >
+                        <div className="flex items-center gap-2">
+                          <RadioGroupItem value="PIX" id="manager-user-billing-pix" />
+                          <FormLabel htmlFor="manager-user-billing-pix">PIX</FormLabel>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <RadioGroupItem value="CREDIT_CARD" id="manager-user-billing-card" />
+                          <FormLabel htmlFor="manager-user-billing-card">Cartão de crédito</FormLabel>
+                        </div>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormDescription>
+                      Se houver cobrança adicional, o checkout será gerado no modo selecionado.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
 
             <FormField
               control={form.control}

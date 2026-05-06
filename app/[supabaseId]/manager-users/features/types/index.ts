@@ -81,6 +81,7 @@ export const CreateManagerUserSchema = z.object({
   functions: z.array(z.enum(["SDR", "CLOSER"]))
     .max(2, "Selecione no máximo 2 funções")
     .optional(),
+  billingType: z.enum(["PIX", "CREDIT_CARD"]).optional().default("PIX"),
   canCreateAccountUsers: z.boolean().optional(),
   canManageAccountTeams: z.boolean().optional(),
 });

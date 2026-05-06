@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import type { IBackofficeAdhesionsService } from "../services/IBackofficeAdhesionsService"
 import { BackofficeAdhesionsRequestError } from "../services/BackofficeAdhesionsService"
 import {
@@ -77,6 +78,7 @@ function defaultValues(): BackofficeAdhesionFormValues {
     cycle: "monthly",
     extraTeams: 0,
     extraUsers: 0,
+    billingType: "PIX",
     sdrBackofficeUserId: null,
     closerBackofficeUserId: null,
     activationMode: "checkout",
@@ -93,6 +95,7 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     cycle: adhesion.cycle,
     extraTeams: adhesion.extraTeams,
     extraUsers: adhesion.extraUsers,
+    billingType: adhesion.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : adhesion.billingType === "PIX" ? "PIX" : "PIX",
     sdrBackofficeUserId: adhesion.sdrBackofficeUserId,
     closerBackofficeUserId: adhesion.closerBackofficeUserId,
     activationMode: "checkout",
@@ -194,7 +197,7 @@ export function BackofficeAdhesionDialog({
   const cycleMonths = CYCLE_MONTHS[values.cycle]
   const cardTotal = cardMonthlyTotal * cycleMonths
   const pixTotal = pixMonthlyTotal * cycleMonths
-  const total = cardTotal
+  const total = values.billingType === "PIX" ? pixTotal : cardTotal
   const commercialItems = [
     {
       key: "crm",
@@ -239,6 +242,7 @@ export function BackofficeAdhesionDialog({
     (mode === "edit" || Boolean(values.leadId)) &&
     hasValidOptionalCpfCnpj &&
     (!isExternalPaid || isValidEmail(values.email.trim())) &&
+    (isExternalPaid || Boolean(values.billingType)) &&
     !isSubmitting
 
   useEffect(() => {
@@ -309,6 +313,7 @@ export function BackofficeAdhesionDialog({
         phone: sanitizePhone(values.phone),
         email: values.email.trim().toLowerCase(),
         cpfCnpj: sanitizeCpfCnpj(values.cpfCnpj),
+        billingType: values.activationMode === "checkout" ? (values.billingType ?? "PIX") : null,
       })
       setResult(created)
       await onSaved?.()
@@ -573,6 +578,29 @@ export function BackofficeAdhesionDialog({
                 </Select>
               </div>
             </div>
+
+            {!isExternalPaid ? (
+              <div className="flex flex-col gap-2">
+                <Label>Forma de pagamento *</Label>
+                <RadioGroup
+                  value={values.billingType ?? "PIX"}
+                  onValueChange={(value) =>
+                    updateValue("billingType", value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
+                  }
+                  className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"
+                  disabled={isSubmitting}
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="PIX" id="adhesion-billing-pix" />
+                    <Label htmlFor="adhesion-billing-pix">PIX</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="CREDIT_CARD" id="adhesion-billing-card" />
+                    <Label htmlFor="adhesion-billing-card">Cartão de crédito</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            ) : null}
 
             <div className="grid gap-4 md:grid-cols-2">
               <NumberStepper

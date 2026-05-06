@@ -427,6 +427,7 @@ export async function POST(
       requestedByEmail: requesterProfile?.email || "",
       canCreateAccountUsers: delegatedPermissions.canCreateAccountUsers,
       canManageAccountTeams: delegatedPermissions.canManageAccountTeams,
+      billingType: validatedData.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX",
       billingDelta: projectedBilling.billingDelta,
       targetRecurringTotal: projectedBilling.targetRecurringTotal,
     };
@@ -442,79 +443,48 @@ export async function POST(
       select: { id: true },
     });
 
-    try {
-      const charge = await incrementalBillingService.createIncrementalCharge({
-        master: billingOwner,
-        pendingActionId: pendingAction.id,
-        amount: projectedBilling.billingDelta,
-        description: `Usuário adicional - ${validatedData.name}`,
-      });
+    const proportionalData = await incrementalBillingService.calculateProportionalAmount(managerId, "user");
+    const totalCharge = proportionalData.totalCharge ?? projectedBilling.billingDelta;
 
-      await prisma.pendingAction.update({
-        where: { id: pendingAction.id },
-        data: {
-          paymentId: charge.paymentId,
-          payload: {
-            ...payload,
-            paymentId: charge.paymentId,
-            paymentStatus: charge.paymentStatus,
-            billingType: charge.billingType,
-          },
+    await prisma.pendingAction.update({
+      where: { id: pendingAction.id },
+      data: {
+        payload: {
+          ...payload,
+          billingDelta: proportionalData.billingDelta,
+          totalCharge,
+          remainingMonths: proportionalData.remainingMonths,
+          maxInstallments: proportionalData.maxInstallments,
+          monthlyPrice: proportionalData.billingDelta,
         },
-      });
+      },
+    });
 
-      if (charge.billingType === "PIX" || charge.billingType === "BOLETO") {
-        const emailService = getEmailService();
-        await emailService.sendPendingAccountUserPaymentEmail({
-          masterName: billingOwner.fullName || billingOwner.email,
-          masterEmail: billingOwner.email,
-          requestedUserName: validatedData.name,
-          requestedUserEmail: email,
-          requestedRole: validatedData.role,
-          requesterName: actorName,
-          requesterEmail: requesterProfile?.email || "",
-          billingType: charge.billingType,
-          amount: projectedBilling.billingDelta,
-          newRecurringTotal: projectedBilling.targetRecurringTotal,
-          paymentId: charge.paymentId,
-          boletoUrl: charge.boleto?.bankSlipUrl ?? undefined,
-          boletoDueDate: charge.boleto?.dueDate ?? undefined,
-          pixPayload: charge.pix?.payload ?? undefined,
-        });
-      }
+    const checkoutUrl = getFullUrl(`/addon-checkout/${pendingAction.id}`);
 
-      const output = new Output(true, ["Solicitação de usuário criada com sucesso"], [], {
-        pendingActionId: pendingAction.id,
-        paymentId: charge.paymentId,
-        paymentStatus: charge.paymentStatus,
-        billingType: charge.billingType,
-        amount: charge.amount,
-        dueDate: charge.dueDate,
-        pix: charge.pix,
-        boleto: charge.boleto,
-      });
+    const emailService = getEmailService();
+    await emailService.sendAddOnPendingPaymentEmail({
+      masterName: billingOwner.fullName || billingOwner.email,
+      masterEmail: billingOwner.email,
+      addonType: "user",
+      addonLabel: "Licença Usuário",
+      addonDetail: `${validatedData.name} (${email})`,
+      totalCharge,
+      remainingMonths: proportionalData.remainingMonths,
+      checkoutUrl,
+      requesterName: actorName,
+      requesterEmail: requesterProfile?.email || "",
+    });
 
-      return NextResponse.json(output, { status: 202 });
-    } catch (chargeError: any) {
-      await prisma.pendingAction.update({
-        where: { id: pendingAction.id },
-        data: {
-          status: "failed",
-          payload: {
-            ...payload,
-            paymentStatus: "FAILED",
-          },
-        },
-      });
+    const output = new Output(true, ["Cobrança pendente criada. Um link de pagamento foi enviado."], [], {
+      pendingActionId: pendingAction.id,
+      checkoutUrl,
+      billingType: payload.billingType,
+      totalCharge,
+      remainingMonths: proportionalData.remainingMonths,
+    });
 
-      const output = new Output(
-        false,
-        [],
-        [chargeError?.message || "Não foi possível gerar a cobrança incremental do novo usuário"],
-        null
-      );
-      return NextResponse.json(output, { status: 500 });
-    }
+    return NextResponse.json(output, { status: 202 });
   } catch (error) {
     console.error("Erro ao criar usuário:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
