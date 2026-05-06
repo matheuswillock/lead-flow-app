@@ -198,20 +198,15 @@ const { isPolling, attempts } = usePaymentPolling({
 
 ### Teste Manual
 
-1. **Criar assinatura:**
-   ```bash
-   POST /api/v1/subscriptions/create
-   ```
-
-2. **Verificar status (antes do pagamento):**
+1. **Verificar status (antes do pagamento):**
    ```bash
    GET /api/v1/subscriptions/sub_xxx/status
    # Deve retornar isPaid: false
    ```
 
-3. **Pagar no Asaas sandbox**
+2. **Pagar no Asaas sandbox**
 
-4. **Verificar status (após pagamento):**
+3. **Verificar status (após pagamento):**
    ```bash
    GET /api/v1/subscriptions/sub_xxx/status
    # Deve retornar isPaid: true

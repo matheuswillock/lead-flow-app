@@ -203,4 +203,8 @@ export interface IBackofficeAdhesionRepository {
   }): Promise<void>
   clearPaymentArtifacts(id: string): Promise<BackofficeAdhesionWithRelations>
   getOptions(): Promise<BackofficeAdhesionOptions>
+  cancelAdhesionAndRestoreLead(
+    adhesionId: string,
+    previousLeadStatus: import("@prisma/client").BackofficeLeadStatus
+  ): Promise<void>
 }
