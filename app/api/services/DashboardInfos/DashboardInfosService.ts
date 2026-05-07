@@ -38,10 +38,12 @@ export class DashboardInfosService implements IDashboardInfosService {
     const ctxFilters = { supabaseId: '', teamId, startDate, endDate, ctx };
 
     // Round 1: todas as queries independentes em paralelo
-    const [leads, finalizedLeads, meetingsHeldLeads, teamMembers] = await Promise.all([
+    const [leads, finalizedLeads, meetingsHeldLeads, scheduledLeads, meetingDateLeads, teamMembers] = await Promise.all([
       metricsRepository.findLeadsForMetricsWithCtx(ctxFilters),
       metricsRepository.getFinalizedLeadsWithCtx(ctxFilters),
       metricsRepository.getMeetingsHeldLeadsWithCtx(ctxFilters),
+      metricsRepository.getScheduledLeadsWithCtx(ctxFilters),
+      metricsRepository.getLeadsWithMeetingDateWithCtx(ctxFilters),
       prisma.teamMember.findMany({
         where: { teamId },
         select: {
@@ -144,23 +146,29 @@ export class DashboardInfosService implements IDashboardInfosService {
 
     const totalLeads = leads.length;
     const scheduledCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.SCHEDULED);
+    const scheduledLeadIds = new Set<string>();
+    scheduledLeads.forEach((item) => scheduledLeadIds.add(item.leadId));
+    meetingDateLeads.forEach((item) => scheduledLeadIds.add(item.leadId));
+    const agendamentos = scheduledLeadIds.size;
     const salesCountCrm = this.countByStatusGroup(statusCount, STATUS_GROUPS.SALES);
     const salesCount = salesCountCrm;
-    const noShowBase = scheduledCount + noShowCount;
+    const noShowBase = agendamentos + noShowCount;
     const conversionRateCrm = totalLeads > 0 ? (salesCountCrm / totalLeads) * 100 : 0;
     const conversionRateFinancial = totalLeads > 0 ? (salesCountFinancial / totalLeads) * 100 : 0;
     const churnBaseCount = churn + opportunityLost;
-    const churnRateCrm = scheduledCount > 0 ? (churnBaseCount / scheduledCount) * 100 : 0;
+    const churnRateCrm = agendamentos > 0 ? (churnBaseCount / agendamentos) * 100 : 0;
     const churnRateFinancial = salesCountFinancial > 0 ? (churn / salesCountFinancial) * 100 : 0;
     const noShowRate = noShowBase > 0 ? (noShowCount / noShowBase) * 100 : 0;
 
-    const receitaTotal = finalizedLeads.reduce((total, sale) => total + Number(sale.amount || 0), 0);
+    const receitaTotal = leads
+      .filter((lead) => lead.status === LeadStatus.contract_finalized)
+      .reduce((total, lead) => total + Number(lead.ticket || 0), 0);
 
     const ticket = leads.reduce((total, l) => total + Number(l.ticket || 0), 0);
     const cadencia = leads.reduce((total, l) => total + Number(l.currentValue || 0), 0);
 
     return {
-      agendamentos: scheduledCount,
+      agendamentos,
       totalLeads,
       scheduledCount,
       noShowCount,

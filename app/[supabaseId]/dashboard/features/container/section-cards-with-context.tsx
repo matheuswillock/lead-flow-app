@@ -243,7 +243,7 @@ export function SectionCardsWithContext() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 💰 Receita Total
-                <InfoTooltip text="Soma financeira das vendas finalizadas (lead_finalized.amount) no período selecionado." />
+                <InfoTooltip text="Soma do ticket dos leads fechados no CRM no período selecionado." />
               </CardTitle>
               <div className="rounded-full bg-green-500/10 p-2">
                 <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -361,7 +361,7 @@ export function SectionCardsWithContext() {
                 <Calendar className="h-4 w-4 text-blue-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Agendamentos
-                  <InfoTooltip text="Quantidade de leads com status Agendado no período selecionado." />
+                  <InfoTooltip text="Quantidade de leads que tiveram agendamento no período selecionado, mesmo que o status tenha mudado depois." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -374,7 +374,7 @@ export function SectionCardsWithContext() {
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">Status Agendado</CardAction>
+              <CardAction className="text-xs text-muted-foreground">Já agendados no período</CardAction>
             </CardFooter>
           </Card>
 
