@@ -29,6 +29,14 @@ const PRESETS: { value: PerformancePreset; label: string }[] = [
   { value: '3m', label: '3m' },
 ];
 
+const parseDateKey = (value: string): Date | undefined => {
+  if (!value) return undefined;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return undefined;
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
 export function PerformanceFiltersBar() {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
@@ -45,7 +53,7 @@ export function PerformanceFiltersBar() {
   const isActivePreset = (preset: PerformancePreset) => !hasCustomDateRange && filters.preset === preset;
 
   const dateRangeValue: DateRange | undefined = hasCustomDateRange
-    ? { from: new Date(filters.startDate), to: new Date(filters.endDate) }
+    ? { from: parseDateKey(filters.startDate), to: parseDateKey(filters.endDate) }
     : undefined;
 
   const handleDateRangeChange = useCallback(

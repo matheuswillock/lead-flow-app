@@ -62,7 +62,7 @@ export function LeadsDateFilter({ title, value, onChange }: LeadsDateFilterProps
           onSelect={onChange}
           weekdayLabelFormat="short"
           locale={ptBR}
-          numberOfMonths={2}
+          numberOfMonths={1}
           disabled={(date) => date > nowInTz(tz)}
         />
         {(value?.from || value?.to) && (

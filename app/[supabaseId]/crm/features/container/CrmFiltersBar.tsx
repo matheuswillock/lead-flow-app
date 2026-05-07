@@ -74,6 +74,14 @@ const areCrmFiltersEqual = (left: CrmFiltersState, right: CrmFiltersState) =>
   JSON.stringify(normalizeFiltersForComparison(left)) ===
   JSON.stringify(normalizeFiltersForComparison(right));
 
+const parseDateKey = (value: string): Date | undefined => {
+  if (!value) return undefined;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
 export function CrmFiltersBar() {
   const { crmFilters, setCrmFilters, setCrmFilter, clearCrmFilters } =
     useCrmContext();
@@ -126,8 +134,8 @@ export function CrmFiltersBar() {
   const dateRange = useMemo<DateRange | undefined>(() => {
     if (!crmFilters.periodStart) return undefined;
     return {
-      from: new Date(crmFilters.periodStart),
-      to: crmFilters.periodEnd ? new Date(crmFilters.periodEnd) : undefined,
+      from: parseDateKey(crmFilters.periodStart),
+      to: parseDateKey(crmFilters.periodEnd),
     };
   }, [crmFilters.periodStart, crmFilters.periodEnd]);
 

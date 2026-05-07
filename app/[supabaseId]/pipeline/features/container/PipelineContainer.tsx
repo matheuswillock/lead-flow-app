@@ -108,7 +108,7 @@ export function PipelineContainer({
   const {
     user,
     userLoading,
-    allLeads,
+    filtered,
     isLoading,
     openNewLeadDialog,
     open,
@@ -163,7 +163,7 @@ export function PipelineContainer({
   };
   
   // Calcular total de leads
-  const totalLeads = allLeads.length;
+  const totalLeads = filtered.length;
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -173,13 +173,11 @@ export function PipelineContainer({
           <Table2 className="size-6" />
           <div>
             <h1 className="text-2xl font-semibold">{title}</h1>
-            {userLoading ? (
+            {userLoading || isLoading ? (
               <p className="text-sm text-muted-foreground">Carregando...</p>
-            ) : user ? (
-              <p className="text-sm text-muted-foreground">
-                {user.email} ({user.role}) • {isLoading ? "Carregando..." : `${totalLeads} leads`}
-              </p>
-            ) : null}
+            ) : (
+              <p className="text-sm text-muted-foreground">{totalLeads} leads</p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
