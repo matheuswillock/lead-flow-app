@@ -106,6 +106,26 @@ export function PublicCheckoutFlow({
     if (payment.status === "paid") setStep("success")
   }, [payment])
 
+  useEffect(() => {
+    if (!onRefreshStatus) return
+    if (isLoading || isSubmitting || isExpired) return
+    if (!payment) return
+    if (payment.status === "paid" || payment.status === "canceled" || payment.status === "expired") return
+    if (step !== "payment") return
+
+    void onRefreshStatus({ sync: true }).catch((refreshError) => {
+      console.error("[PublicCheckoutFlow][auto-refresh]", refreshError)
+    })
+
+    const interval = setInterval(() => {
+      void onRefreshStatus({ sync: true }).catch((refreshError) => {
+        console.error("[PublicCheckoutFlow][auto-refresh]", refreshError)
+      })
+    }, 8000)
+
+    return () => clearInterval(interval)
+  }, [isExpired, isLoading, isSubmitting, onRefreshStatus, payment, step])
+
   const countdownLabel = remainingMs == null ? "00:00" : formatCountdown(remainingMs)
 
   return (
