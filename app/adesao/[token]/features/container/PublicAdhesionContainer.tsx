@@ -48,6 +48,13 @@ export function PublicAdhesionContainer() {
     const createdAt = details.createdAt ? new Date(details.createdAt) : null
     const startDate = paidAt ?? createdAt
     const dueDate = startDate ? addMonths(startDate, cycleMonths) : null
+    const extrasMonthly =
+      (details.monthlyExtraTeamsAmount ?? 0) + (details.monthlyExtraUsersAmount ?? 0)
+    const selectedMonthlyTotal =
+      preset === "CREDIT_CARD"
+        ? details.creditCardMonthlyTotalAmount ?? details.monthlyTotalAmount ?? 0
+        : details.pixMonthlyTotalAmount ?? details.monthlyTotalAmount ?? 0
+    const selectedBaseMonthly = Math.max(0, selectedMonthlyTotal - extrasMonthly)
 
     const invoiceItems = [
       {
@@ -55,8 +62,8 @@ export function PublicAdhesionContainer() {
         title: "Acesso Master",
         description: "Plano principal do Corretor Studio",
         quantity: 1,
-        unitAmountMonthly: details.monthlyBaseAmount ?? 0,
-        totalAmountMonthly: details.monthlyBaseAmount ?? 0,
+        unitAmountMonthly: selectedBaseMonthly,
+        totalAmountMonthly: selectedBaseMonthly,
       },
       ...(details.extraUsers > 0
         ? [
@@ -93,9 +100,7 @@ export function PublicAdhesionContainer() {
     const totalDueNow =
       preset === "CREDIT_CARD" ? details.creditCardTotalAmount ?? 0 : details.pixTotalAmount ?? 0
     const monthlyTotal =
-      preset === "CREDIT_CARD"
-        ? details.creditCardMonthlyTotalAmount ?? details.monthlyTotalAmount ?? 0
-        : details.pixMonthlyTotalAmount ?? details.monthlyTotalAmount ?? 0
+      selectedMonthlyTotal
 
     const compositionRows = [
       ...invoiceItems.map((item) => ({

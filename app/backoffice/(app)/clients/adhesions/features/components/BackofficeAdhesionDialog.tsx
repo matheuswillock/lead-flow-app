@@ -451,47 +451,30 @@ export function BackofficeAdhesionDialog({
               </div>
             </div>
 
-            {isExternalPaid ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="adhesion-email">E-mail *</Label>
-                  <Input
-                    id="adhesion-email"
-                    value={values.email}
-                    onChange={(event) => updateValue("email", event.target.value)}
-                    disabled={isSubmitting}
-                    required
-                  />
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="adhesion-cpf-cnpj">Documento</Label>
-                  <Input
-                    id="adhesion-cpf-cnpj"
-                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                    value={formatDocumentInput(values.cpfCnpj)}
-                    onChange={(event) =>
-                      updateValue("cpfCnpj", sanitizeCpfCnpj(event.target.value))
-                    }
-                    disabled={isSubmitting}
-                  />
-                </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="adhesion-email">E-mail{isExternalPaid ? " *" : ""}</Label>
+                <Input
+                  id="adhesion-email"
+                  value={values.email}
+                  onChange={(event) => updateValue("email", event.target.value)}
+                  disabled={isSubmitting}
+                  required={isExternalPaid}
+                />
               </div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="adhesion-cpf-cnpj">Documento</Label>
-                  <Input
-                    placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                    id="adhesion-cpf-cnpj"
-                    value={formatDocumentInput(values.cpfCnpj)}
-                    onChange={(event) =>
-                      updateValue("cpfCnpj", sanitizeCpfCnpj(event.target.value))
-                    }
-                    disabled={isSubmitting}
-                  />
-                </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="adhesion-cpf-cnpj">Documento</Label>
+                <Input
+                  id="adhesion-cpf-cnpj"
+                  placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                  value={formatDocumentInput(values.cpfCnpj)}
+                  onChange={(event) =>
+                    updateValue("cpfCnpj", sanitizeCpfCnpj(event.target.value))
+                  }
+                  disabled={isSubmitting}
+                />
               </div>
-            )}
+            </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="flex flex-col gap-2">
