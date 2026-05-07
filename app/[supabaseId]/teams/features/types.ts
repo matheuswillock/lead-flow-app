@@ -8,5 +8,11 @@ export type ManagerTeamTableRow = {
   role: "manager" | "backoffice" | "operator";
   functions: ("SDR" | "CLOSER")[];
   createdAt: string;
+  pendingPayment?: {
+    id: string;
+    paymentId: string;
+    paymentStatus: string;
+    paymentMethod: string;
+    checkoutUrl: string;
+  } | null;
 };
-

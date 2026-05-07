@@ -24,6 +24,8 @@ import { useUser } from "@/app/context/UserContext";
 import { useBillingSlots } from "@/app/hooks/useBillingSlots";
 import { cn } from "@/lib/utils";
 import { ManagerTeamsContainer } from "./features/container/ManagerTeamsContainer";
+import { PendingPaymentEditDialog } from "./features/container/PendingPaymentEditDialog";
+import type { ManagerTeamTableRow } from "./features/types";
 
 type TeamMember = {
   id: string;
@@ -169,6 +171,17 @@ export default function TeamsPage() {
   );
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesSaving, setRulesSaving] = useState(false);
+  const [isEditPendingPaymentOpen, setIsEditPendingPaymentOpen] = useState(false);
+  const [pendingPaymentLoading, setPendingPaymentLoading] = useState(false);
+  const [pendingPaymentSubmitting, setPendingPaymentSubmitting] = useState(false);
+  const [pendingPaymentBillingType, setPendingPaymentBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX");
+  const [pendingPaymentTarget, setPendingPaymentTarget] = useState<ManagerTeamTableRow | null>(null);
+  const [pendingPaymentSummary, setPendingPaymentSummary] = useState({
+    addonLabel: "",
+    addonDetail: "",
+    totalCharge: 0,
+    remainingMonths: 1,
+  });
   const addMemberFieldRef = React.useRef<HTMLDivElement | null>(null);
   const addMemberOptionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -312,6 +325,76 @@ export default function TeamsPage() {
       toast.error(error?.message || "Erro ao criar time.");
     } finally {
       setIsCreatingTeam(false);
+    }
+  };
+
+  const handleViewPendingCheckout = (team: ManagerTeamTableRow) => {
+    const checkoutUrl = team.pendingPayment?.checkoutUrl;
+    if (!checkoutUrl) {
+      toast.error("Checkout indisponível para este pagamento.");
+      return;
+    }
+    window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const handleOpenEditPendingPayment = async (team: ManagerTeamTableRow) => {
+    const pendingActionId = team.pendingPayment?.id;
+    if (!pendingActionId) {
+      toast.error("Pagamento pendente não encontrado.");
+      return;
+    }
+
+    setPendingPaymentTarget(team);
+    setIsEditPendingPaymentOpen(true);
+    setPendingPaymentLoading(true);
+
+    try {
+      const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}`);
+      const result = await response.json();
+      if (!response.ok || !result?.isValid || !result?.result) {
+        throw new Error(result?.errorMessages?.[0] || "Erro ao carregar pagamento pendente.");
+      }
+      const details = result.result as any;
+      setPendingPaymentBillingType(details.presetBillingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX");
+      setPendingPaymentSummary({
+        addonLabel: details.addonLabel ?? "Time adicional",
+        addonDetail: details.addonDetail ?? team.name,
+        totalCharge: Number(details.pricing?.totalCharge ?? 0),
+        remainingMonths: Number(details.pricing?.remainingMonths ?? 1),
+      });
+    } catch (error: any) {
+      toast.error(error?.message || "Erro ao carregar pagamento pendente.");
+      setIsEditPendingPaymentOpen(false);
+      setPendingPaymentTarget(null);
+    } finally {
+      setPendingPaymentLoading(false);
+    }
+  };
+
+  const handleSubmitEditPendingPayment = async () => {
+    const pendingActionId = pendingPaymentTarget?.pendingPayment?.id;
+    if (!pendingActionId) return;
+
+    setPendingPaymentSubmitting(true);
+    try {
+      const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}/billing-type`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ billingType: pendingPaymentBillingType }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.[0] || "Erro ao atualizar forma de pagamento.");
+      }
+
+      toast.success("Forma de pagamento atualizada.");
+      setIsEditPendingPaymentOpen(false);
+      setPendingPaymentTarget(null);
+      await refreshTeams();
+    } catch (error: any) {
+      toast.error(error?.message || "Erro ao atualizar forma de pagamento.");
+    } finally {
+      setPendingPaymentSubmitting(false);
     }
   };
 
@@ -731,6 +814,8 @@ export default function TeamsPage() {
           void handleSetActiveTeam(teamId);
         }}
         onManageTeam={handleOpenManageTeam}
+        onViewPendingCheckout={handleViewPendingCheckout}
+        onEditPendingPayment={handleOpenEditPendingPayment}
         onRefreshTeams={refreshTeams}
         onOpenCreateTeam={() => setIsCreateTeamOpen(true)}
         canManageTeams={canManageTeams}
@@ -793,6 +878,25 @@ export default function TeamsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PendingPaymentEditDialog
+        open={isEditPendingPaymentOpen}
+        loading={pendingPaymentLoading}
+        submitting={pendingPaymentSubmitting}
+        billingType={pendingPaymentBillingType}
+        addonLabel={pendingPaymentSummary.addonLabel}
+        addonDetail={pendingPaymentSummary.addonDetail}
+        totalCharge={pendingPaymentSummary.totalCharge}
+        remainingMonths={pendingPaymentSummary.remainingMonths}
+        onBillingTypeChange={setPendingPaymentBillingType}
+        onSubmit={handleSubmitEditPendingPayment}
+        onOpenChange={(open) => {
+          setIsEditPendingPaymentOpen(open);
+          if (!open) {
+            setPendingPaymentTarget(null);
+          }
+        }}
+      />
 
       <Dialog
         open={isManageOpen}

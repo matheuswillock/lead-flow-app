@@ -16,6 +16,7 @@ import { UserFormDialog } from "./UserFormDialog";
 import { DeleteUserDialog } from "./DeleteUserDialog";
 import { DeletePendingOperatorDialog } from "./DeletePendingOperatorDialog";
 import { PendingOperatorsAlert } from "./PendingOperatorsAlert";
+import { PendingPaymentEditDialog } from "./PendingPaymentEditDialog";
 import type { ManagerUserTableRow } from "../types";
 import { createColumns } from "./ManagerUsersColumns";
 import { useTeamContext } from "@/app/context/TeamContext";
@@ -45,9 +46,21 @@ export function ManagerUsersContainer({
   const resolvedIsMaster = isTeamMaster ?? currentUserIsMaster;
   const canCreateUser = resolvedIsMaster || (resolvedRole === "manager" && user?.canCreateAccountUsers === true);
   const canDeleteUser = resolvedIsMaster;
+  const canManagePendingPayments = resolvedIsMaster || (resolvedRole === "manager" && user?.canCreateAccountUsers === true);
   const { hasAvailableUserSlot } = useBillingSlots(supabaseId, resolvedIsMaster);
   const [isDeletePendingDialogOpen, setIsDeletePendingDialogOpen] = useState(false);
   const [pendingOperatorToDelete, setPendingOperatorToDelete] = useState<ManagerUserTableRow | null>(null);
+  const [isEditPendingPaymentOpen, setIsEditPendingPaymentOpen] = useState(false);
+  const [pendingPaymentTarget, setPendingPaymentTarget] = useState<ManagerUserTableRow | null>(null);
+  const [pendingPaymentBillingType, setPendingPaymentBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX");
+  const [pendingPaymentLoading, setPendingPaymentLoading] = useState(false);
+  const [pendingPaymentSubmitting, setPendingPaymentSubmitting] = useState(false);
+  const [pendingPaymentSummary, setPendingPaymentSummary] = useState({
+    addonLabel: "",
+    addonDetail: "",
+    totalCharge: 0,
+    remainingMonths: 1,
+  });
   const errorContext = {
     supabaseId,
     teamId: activeTeamId ?? undefined,
@@ -93,6 +106,77 @@ export function ManagerUsersContainer({
   const handleDeletePendingOperator = (user: ManagerUserTableRow) => {
     setPendingOperatorToDelete(user);
     setIsDeletePendingDialogOpen(true);
+  };
+
+  const handleViewPendingCheckout = (user: ManagerUserTableRow) => {
+    const checkoutUrl = user.pendingPayment?.checkoutUrl;
+    if (!checkoutUrl) {
+      toast.error("Checkout indisponível para este pagamento.");
+      return;
+    }
+    window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const handleOpenEditPendingPayment = async (user: ManagerUserTableRow) => {
+    const pendingActionId = user.pendingPayment?.pendingActionId;
+    if (!pendingActionId) {
+      toast.error("Não foi possível localizar o pagamento pendente.");
+      return;
+    }
+
+    setPendingPaymentTarget(user);
+    setIsEditPendingPaymentOpen(true);
+    setPendingPaymentLoading(true);
+
+    try {
+      const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}`);
+      const result = await response.json();
+      if (!response.ok || !result?.isValid || !result?.result) {
+        throw new Error(result?.errorMessages?.[0] || "Falha ao carregar dados do pagamento");
+      }
+
+      const details = result.result as any;
+      setPendingPaymentBillingType(details.presetBillingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX");
+      setPendingPaymentSummary({
+        addonLabel: details.addonLabel ?? "Pagamento pendente",
+        addonDetail: details.addonDetail ?? user.name,
+        totalCharge: Number(details.pricing?.totalCharge ?? 0),
+        remainingMonths: Number(details.pricing?.remainingMonths ?? 1),
+      });
+    } catch (error: any) {
+      toast.error(error?.message || "Erro ao carregar pagamento pendente.");
+      setIsEditPendingPaymentOpen(false);
+      setPendingPaymentTarget(null);
+    } finally {
+      setPendingPaymentLoading(false);
+    }
+  };
+
+  const handleSubmitEditPendingPayment = async () => {
+    const pendingActionId = pendingPaymentTarget?.pendingPayment?.pendingActionId;
+    if (!pendingActionId) return;
+
+    setPendingPaymentSubmitting(true);
+    try {
+      const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}/billing-type`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ billingType: pendingPaymentBillingType }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.[0] || "Erro ao atualizar forma de pagamento");
+      }
+
+      toast.success("Forma de pagamento atualizada.");
+      setIsEditPendingPaymentOpen(false);
+      setPendingPaymentTarget(null);
+      await refreshData();
+    } catch (error: any) {
+      toast.error(error?.message || "Erro ao atualizar forma de pagamento.");
+    } finally {
+      setPendingPaymentSubmitting(false);
+    }
   };
 
   // Handler para confirmar deleção de operador pendente
@@ -174,10 +258,13 @@ export function ManagerUsersContainer({
     onEdit: openEditModal,
     onDelete: openDeleteDialog,
     onDeletePendingOperator: handleDeletePendingOperator,
+    onViewPendingCheckout: handleViewPendingCheckout,
+    onEditPendingPayment: handleOpenEditPendingPayment,
     onResendInvite: resendInvite,
     onTogglePermanentSubscription: togglePermanentSubscription,
     currentUserIsMaster: resolvedIsMaster,
     canDelete: canDeleteUser,
+    canManagePendingPayments,
     tz,
   });
 
@@ -342,6 +429,25 @@ export function ManagerUsersContainer({
           />
         </>
       )}
+
+      <PendingPaymentEditDialog
+        open={isEditPendingPaymentOpen}
+        loading={pendingPaymentLoading}
+        submitting={pendingPaymentSubmitting}
+        billingType={pendingPaymentBillingType}
+        addonLabel={pendingPaymentSummary.addonLabel}
+        addonDetail={pendingPaymentSummary.addonDetail}
+        totalCharge={pendingPaymentSummary.totalCharge}
+        remainingMonths={pendingPaymentSummary.remainingMonths}
+        onBillingTypeChange={setPendingPaymentBillingType}
+        onSubmit={handleSubmitEditPendingPayment}
+        onOpenChange={(open) => {
+          setIsEditPendingPaymentOpen(open);
+          if (!open) {
+            setPendingPaymentTarget(null);
+          }
+        }}
+      />
     </div>
   );
 }

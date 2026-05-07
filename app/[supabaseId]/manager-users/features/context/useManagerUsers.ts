@@ -375,6 +375,8 @@ export function useManagerUsers({
         paymentStatus: user.pendingPayment.paymentStatus,
         paymentMethod: user.pendingPayment.paymentMethod,
         operatorCreated: user.pendingPayment.operatorCreated,
+        pendingActionId: (user.pendingPayment as any).pendingActionId ?? null,
+        checkoutUrl: (user.pendingPayment as any).checkoutUrl ?? null,
         operatorId: user.id,
         createdAt: typeof user.createdAt === 'string' ? user.createdAt : user.createdAt.toISOString(),
         updatedAt: typeof user.updatedAt === 'string' ? user.updatedAt : user.updatedAt.toISOString(),

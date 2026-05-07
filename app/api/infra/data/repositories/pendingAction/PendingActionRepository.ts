@@ -47,10 +47,24 @@ export class PendingActionRepository implements IPendingActionRepository {
     });
   }
 
+  async clearPaymentId(id: string): Promise<void> {
+    await prisma.pendingAction.update({
+      where: { id },
+      data: { paymentId: null },
+    });
+  }
+
   async updateStatus(id: string, status: string): Promise<void> {
     await prisma.pendingAction.update({
       where: { id },
       data: { status: status as any },
+    });
+  }
+
+  async updatePayload(id: string, payload: Record<string, unknown>): Promise<void> {
+    await prisma.pendingAction.update({
+      where: { id },
+      data: { payload: payload as any },
     });
   }
 }

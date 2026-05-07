@@ -658,6 +658,8 @@ export async function GET(
             paymentStatus: pending.paymentStatus,
             paymentMethod: pending.paymentMethod,
             operatorCreated: pending.operatorCreated,
+            pendingActionId: null,
+            checkoutUrl: null,
           },
         }))
       );
@@ -696,6 +698,8 @@ export async function GET(
               paymentStatus: payment?.paymentStatus || "PENDING",
               paymentMethod: payment?.paymentMethod || payload.billingType || "UNDEFINED",
               operatorCreated: false,
+              pendingActionId: action.id,
+              checkoutUrl: getFullUrl(`/addon-checkout/${action.id}`),
             },
           };
         })

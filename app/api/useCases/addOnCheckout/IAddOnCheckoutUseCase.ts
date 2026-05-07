@@ -70,4 +70,5 @@ export interface IAddOnCheckoutUseCase {
   getCheckoutDetails(pendingActionId: string): Promise<Output>;
   createPayment(pendingActionId: string, input: AddOnCheckoutPaymentInput): Promise<Output>;
   checkPaymentStatus(pendingActionId: string): Promise<Output>;
+  updateBillingType(pendingActionId: string, billingType: unknown): Promise<Output>;
 }

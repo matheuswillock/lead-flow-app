@@ -17,6 +17,8 @@ interface ManagerTeamsContainerProps {
   currentUserId: string | null;
   onSetActiveTeam: (teamId: string) => void;
   onManageTeam: (teamId: string, teamName: string) => void;
+  onViewPendingCheckout: (team: ManagerTeamTableRow) => void;
+  onEditPendingPayment: (team: ManagerTeamTableRow) => void;
   onRefreshTeams: () => void;
   onOpenCreateTeam: () => void;
   canManageTeams: boolean;
@@ -31,6 +33,8 @@ export function ManagerTeamsContainer({
   currentUserId,
   onSetActiveTeam,
   onManageTeam,
+  onViewPendingCheckout,
+  onEditPendingPayment,
   onRefreshTeams,
   onOpenCreateTeam,
   canManageTeams,
@@ -47,6 +51,7 @@ export function ManagerTeamsContainer({
     role: team.role,
     functions: team.functions ?? [],
     createdAt: team.membershipCreatedAt,
+    pendingPayment: team.pendingPayment ?? null,
   }));
 
   const columns = createColumns({
@@ -56,6 +61,9 @@ export function ManagerTeamsContainer({
     currentUserId,
     onSetActiveTeam,
     onManageTeam,
+    onViewPendingCheckout,
+    onEditPendingPayment,
+    canManageTeams,
   });
 
   return (

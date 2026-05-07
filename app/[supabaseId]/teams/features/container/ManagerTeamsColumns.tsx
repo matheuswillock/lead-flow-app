@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, MoreHorizontal, Settings } from "lucide-react";
+import { ArrowUpDown, CreditCard, ExternalLink, MoreHorizontal, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,9 @@ interface CreateColumnsProps {
   currentUserId: string | null;
   onSetActiveTeam: (teamId: string) => void;
   onManageTeam: (teamId: string, teamName: string) => void;
+  onViewPendingCheckout: (team: ManagerTeamTableRow) => void;
+  onEditPendingPayment: (team: ManagerTeamTableRow) => void;
+  canManageTeams: boolean;
 }
 
 export function createColumns({
@@ -30,6 +33,9 @@ export function createColumns({
   currentUserId,
   onSetActiveTeam,
   onManageTeam,
+  onViewPendingCheckout,
+  onEditPendingPayment,
+  canManageTeams,
 }: CreateColumnsProps): ColumnDef<ManagerTeamTableRow>[] {
   return [
     {
@@ -124,10 +130,14 @@ export function createColumns({
       ),
       cell: ({ row }) => {
         const isActive = row.original.id === activeTeamId;
-        const label = isActive ? "Ativo" : "Inativo";
-        const className = isActive
-          ? "bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-200"
-          : "bg-muted text-muted-foreground border-border";
+        const pendingStatus = (row.original.pendingPayment?.paymentStatus ?? "").toUpperCase();
+        const isPendingPayment = ["PENDING", "FAILED"].includes(pendingStatus);
+        const label = isPendingPayment ? "Pagamento pendente" : isActive ? "Ativo" : "Inativo";
+        const className = isPendingPayment
+          ? "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900 dark:text-yellow-200"
+          : isActive
+            ? "bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-200"
+            : "bg-muted text-muted-foreground border-border";
         return (
           <div className="flex justify-center">
             <Badge variant="secondary" className={className}>
@@ -181,6 +191,9 @@ export function createColumns({
         const team = row.original;
         const isActive = team.id === activeTeamId;
         const isMaster = !!(currentUserId && team.masterId === currentUserId);
+        const hasPendingPayment =
+          (team.pendingPayment?.paymentStatus ?? "").toUpperCase() !== "" &&
+          ["PENDING", "FAILED"].includes((team.pendingPayment?.paymentStatus ?? "").toUpperCase());
 
         return (
           <div className="flex justify-center">
@@ -195,11 +208,29 @@ export function createColumns({
                 <DropdownMenuLabel>Ações</DropdownMenuLabel>
                 <DropdownMenuItem
                   onClick={() => onSetActiveTeam(team.id)}
-                  disabled={isActive || switchingTeamId === team.id}
+                  disabled={isActive || switchingTeamId === team.id || hasPendingPayment}
                   className="flex items-center gap-2"
                 >
                   {isActive ? "Time ativo" : switchingTeamId === team.id ? "Alterando..." : "Definir ativo"}
                 </DropdownMenuItem>
+                {canManageTeams && team.pendingPayment?.checkoutUrl ? (
+                  <DropdownMenuItem
+                    onClick={() => onViewPendingCheckout(team)}
+                    className="flex items-center gap-2"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Ver checkout
+                  </DropdownMenuItem>
+                ) : null}
+                {canManageTeams && team.pendingPayment?.id ? (
+                  <DropdownMenuItem
+                    onClick={() => onEditPendingPayment(team)}
+                    className="flex items-center gap-2"
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    Editar pagamento
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem
                   onClick={() => onManageTeam(team.id, team.name)}
                   disabled={!isMaster}
@@ -218,4 +249,3 @@ export function createColumns({
     },
   ];
 }
-
