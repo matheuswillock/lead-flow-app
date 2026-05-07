@@ -131,6 +131,7 @@ export function DocsIndex({ chapters, activeChapterId, className, onSelect }: Do
                   <Button
                     key={chapter.id}
                     type="button"
+                    variant="ghost"
                     aria-pressed={isActive}
                     aria-disabled={isDisabled}
                     disabled={isDisabled}
@@ -140,7 +141,7 @@ export function DocsIndex({ chapters, activeChapterId, className, onSelect }: Do
                       }
                     }}
                     className={cn(
-                      "flex w-full items-center justify-between gap-3 border-l-[3px] px-3 py-2 pr-4 text-left transition-colors",
+                      "flex h-auto w-full items-center justify-between gap-3 rounded-none border-l-[3px] px-3 py-2 pr-4 text-left transition-colors",
                       isDisabled && "cursor-not-allowed opacity-55",
                       isActive
                         ? "border-l-primary bg-primary/8 text-foreground"
@@ -150,7 +151,12 @@ export function DocsIndex({ chapters, activeChapterId, className, onSelect }: Do
                     )}
                   >
                     <span className="flex min-w-0 items-center gap-3">
-                      <span className="min-w-[22px] font-mono text-[11px] font-semibold text-primary/95">
+                      <span
+                        className={cn(
+                          "min-w-[22px] font-mono text-[11px] font-semibold tabular-nums",
+                          isActive ? "text-primary" : "text-muted-foreground/80",
+                        )}
+                      >
                         {chapter.indexLabel}
                       </span>
                       <span
