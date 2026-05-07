@@ -92,6 +92,14 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
     )
   }
 
+  async deletePending(id: string): Promise<void> {
+    await parseOutput(
+      await fetch(`/api/v1/backoffice/adhesions/${id}`, {
+        method: "DELETE",
+      })
+    )
+  }
+
   async resend(id: string): Promise<BackofficeAdhesionCreationResult> {
     return parseOutput<BackofficeAdhesionCreationResult>(
       await fetch(`/api/v1/backoffice/adhesions/${id}/resend`, {

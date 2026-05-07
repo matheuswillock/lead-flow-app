@@ -42,8 +42,8 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     if (!data) return null
 
     const preset = data.presetBillingType
-    const startDate = new Date()
-    const dueDate = startDate
+    const startDate = data.alreadyPaid ? new Date() : null
+    const dueDate = data.alreadyPaid ? new Date() : null
     const totalCharge = data.pricing.totalCharge ?? 0
 
     const title = data.addonType === "team" ? "Add-on Time" : "Add-on Usuario"
@@ -96,11 +96,11 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       totalValue: formatCurrency(totalCharge),
       totalHint: preset === "CREDIT_CARD" ? `em ate ${Math.max(1, data.pricing.maxInstallments)}x no cartao` : "via PIX",
       startLabel: "Inicio",
-      startValue: formatDate(startDate),
+      startValue: startDate ? formatDate(startDate) : "após confirmação",
       dueLabel: "Vencimento",
-      dueValue: formatDate(dueDate),
+      dueValue: dueDate ? formatDate(dueDate) : "após confirmação",
       issuedLabel: "Emitido por Corretor Studio",
-      issuedValue: formatDate(startDate),
+      issuedValue: formatDate(new Date()),
     }
   }, [state.data])
 

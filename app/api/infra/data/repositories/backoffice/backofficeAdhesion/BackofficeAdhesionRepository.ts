@@ -293,6 +293,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       functions: ["SDR", "CLOSER"],
       cpfCnpj: data.cpfCnpj ?? undefined,
       asaasCustomerId: data.asaasCustomerId ?? undefined,
+      subscriptionId: data.subscriptionId ?? undefined,
       subscriptionStatus: "active",
       subscriptionPlan: "manager_base",
       operatorCount: data.operatorCount,

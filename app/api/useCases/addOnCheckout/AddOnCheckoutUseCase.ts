@@ -58,6 +58,7 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       const m = pendingAction.master as Record<string, any>;
       const checkoutDetails: CheckoutDetailsResponse = {
         pendingActionId,
+        paymentId: pendingAction.paymentId ?? null,
         presetBillingType,
         addonType,
         addonLabel,

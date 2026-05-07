@@ -295,9 +295,12 @@ export function BackofficeAdhesionDialog({
         await service.update(adhesion.id, {
           fullName: values.fullName.trim(),
           phone: sanitizePhone(values.phone),
+          email: values.email.trim().toLowerCase(),
+          cpfCnpj: sanitizeCpfCnpj(values.cpfCnpj),
           cycle: values.cycle,
           extraTeams: values.extraTeams,
           extraUsers: values.extraUsers,
+          billingType: values.billingType,
           sdrBackofficeUserId: values.sdrBackofficeUserId,
           closerBackofficeUserId: values.closerBackofficeUserId,
         })

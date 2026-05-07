@@ -471,10 +471,16 @@ export function PublicCheckoutPaymentStep({
       ) : null}
 
       <div className="flex flex-col gap-3">
-        <Button type="button" size="lg" onClick={submit} disabled={isLocked || isResolvingCep || !isFormValid}>
+        <Button
+          type="button"
+          size="lg"
+          onClick={submit}
+          disabled={isLocked || isResolvingCep || !isFormValid || isSubmitting}
+        >
           {isSubmitting ? (
             <>
-              Processando <Loader2 data-icon="inline-end" className={cn("animate-spin")} aria-hidden="true" />
+              {billingType === "PIX" ? "Gerando pagamento..." : "Verificando pagamento..."}
+              <Loader2 data-icon="inline-end" className={cn("animate-spin")} aria-hidden="true" />
             </>
           ) : (
             billingType === "PIX" ? "Gerar QR Code Pix" : "Pagar com cartão"

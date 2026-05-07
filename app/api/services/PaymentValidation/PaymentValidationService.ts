@@ -236,8 +236,12 @@ export class PaymentValidationService implements IPaymentValidationService {
 
         const isAdhesionPayment =
           payment.externalReference?.startsWith("backoffice-adhesion-") ?? false
+        const isPendingActionPayment =
+          payment.externalReference?.startsWith("pending-action-") ?? false
+        const shouldSendConfirmationEmail =
+          event === "PAYMENT_CONFIRMED" || event === "PAYMENT_APPROVED"
 
-        if (userEmail && !isAdhesionPayment) {
+        if (userEmail && shouldSendConfirmationEmail && !isAdhesionPayment && !isPendingActionPayment) {
           const userName = profile?.fullName || userEmail.split('@')[0];
           const appUrl = getAppUrl({ removeTrailingSlash: true });
           const manageUrl = profile?.supabaseId ? `${appUrl}/${profile.supabaseId}/account` : `${appUrl}/sign-in`;

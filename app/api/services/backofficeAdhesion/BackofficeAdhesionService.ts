@@ -166,8 +166,8 @@ function mapPublicAdhesion(
     id: adhesion.id,
     fullName: adhesion.fullName,
     phone: adhesion.phone,
-    email: adhesion.email,
-    cpfCnpj: adhesion.cpfCnpj,
+    email: adhesion.email ?? adhesion.lead.email ?? null,
+    cpfCnpj: adhesion.cpfCnpj ?? adhesion.lead.cpfCnpj ?? null,
     billingType:
       adhesion.billingType === "PIX"
         ? "PIX"
@@ -192,6 +192,7 @@ function mapPublicAdhesion(
     creditCardMonthlyTotalAmount,
     creditCardTotalAmount,
     maxCardInstallments,
+    paidAt: adhesion.paidAt?.toISOString() ?? null,
     expiresAt: adhesion.expiresAt.toISOString(),
   }
 }
@@ -523,6 +524,23 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       : updated
 
     return mapAdhesion(persisted)
+  }
+
+  async deletePending(id: string): Promise<void> {
+    const existing = await this.repo.findById(id)
+    if (!existing) {
+      throw new Error("Adesão não encontrada")
+    }
+    if (existing.status !== "pending") {
+      throw new Error("Somente adesões pendentes podem ser excluídas")
+    }
+
+    try {
+      await this.repo.cancelAdhesionAndRestoreLead(existing.id, "new_opportunity")
+    } catch (deleteError) {
+      console.error("[BackofficeAdhesionService][deletePending]", deleteError)
+      throw new Error("Não foi possível excluir a adesão pendente")
+    }
   }
 
   async resend(id: string): Promise<BackofficeAdhesionCreationResult> {
@@ -1134,6 +1152,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         email: adhesion.email,
         asaasCustomerId: adhesion.asaasCustomerId,
         cpfCnpj: adhesion.cpfCnpj,
+        subscriptionId: adhesion.billingType === "EXTERNAL" ? `external-adhesion-${adhesion.id}` : null,
         operatorCount: adhesion.extraUsers,
         subscriptionStartDate,
         postalCode: adhesion.postalCode,

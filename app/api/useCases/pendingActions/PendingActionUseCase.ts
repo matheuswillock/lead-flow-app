@@ -265,7 +265,7 @@ export class PendingActionUseCase {
     paymentId?: string
   ): Promise<AppliedPendingActionResult> {
     const payload = (action.payload as PendingActionPayload) || {};
-    const teamName = payload.name as string | undefined;
+    const teamName = (payload.teamName as string | undefined) ?? (payload.name as string | undefined);
 
     if (!teamName) {
       throw new Error("Nome do time não informado na ação pendente");

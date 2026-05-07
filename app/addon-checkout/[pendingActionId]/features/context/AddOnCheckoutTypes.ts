@@ -16,6 +16,7 @@ export interface AddOnCheckoutDefaultBillingData {
 
 export interface AddOnCheckoutData {
   pendingActionId: string;
+  paymentId: string | null;
   presetBillingType: "PIX" | "CREDIT_CARD";
   addonType: AddOnType;
   addonLabel: string;

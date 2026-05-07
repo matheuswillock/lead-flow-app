@@ -123,6 +123,7 @@ export interface CreateBackofficeAdhesionManagerProfileInput {
   email: string
   asaasCustomerId?: string | null
   cpfCnpj?: string | null
+  subscriptionId?: string | null
   operatorCount: number
   subscriptionStartDate: Date
   postalCode?: string | null

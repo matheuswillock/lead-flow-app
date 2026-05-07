@@ -76,17 +76,6 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const pollingIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
-  const fetchCheckoutData = useCallback(async (pendingActionId: string) => {
-    dispatch({ type: "SET_LOADING" });
-    try {
-      const data = await addOnCheckoutService.fetchCheckoutData(pendingActionId);
-      dispatch({ type: "SET_DATA", payload: data });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro ao carregar dados";
-      dispatch({ type: "SET_ERROR", payload: message });
-    }
-  }, []);
-
   const setSelectedPaymentMethod = useCallback((method: "PIX" | "CREDIT_CARD") => {
     dispatch({ type: "SET_PAYMENT_METHOD", payload: method });
   }, []);
@@ -117,6 +106,23 @@ export function AddOnCheckoutProvider({ children }: { children: ReactNode }) {
       pollingIntervalRef.current = intervalId;
     },
     [clearPolling]
+  );
+
+  const fetchCheckoutData = useCallback(
+    async (pendingActionId: string) => {
+      dispatch({ type: "SET_LOADING" });
+      try {
+        const data = await addOnCheckoutService.fetchCheckoutData(pendingActionId);
+        dispatch({ type: "SET_DATA", payload: data });
+        if (data.paymentId && data.status === "pending" && !data.alreadyPaid) {
+          startPolling(pendingActionId);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao carregar dados";
+        dispatch({ type: "SET_ERROR", payload: message });
+      }
+    },
+    [startPolling]
   );
 
   const submitPayment = useCallback(

@@ -108,6 +108,7 @@ export interface BackofficeAdhesionPublicDTO {
   creditCardMonthlyTotalAmount: number
   creditCardTotalAmount: number
   maxCardInstallments: number
+  paidAt: string | null
   expiresAt: string
 }
 
@@ -211,6 +212,7 @@ export interface IBackofficeAdhesionService {
     createdByBackofficeUserId: string | null
   ): Promise<BackofficeAdhesionCreationResult>
   update(id: string, input: BackofficeAdhesionUpdateInput): Promise<BackofficeAdhesionDTO>
+  deletePending(id: string): Promise<void>
   resend(id: string): Promise<BackofficeAdhesionCreationResult>
   resendInvite(id: string): Promise<{ email: string }>
   getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }>

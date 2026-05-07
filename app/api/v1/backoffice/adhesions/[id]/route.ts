@@ -73,3 +73,23 @@ export async function PATCH(
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const access = await getBackofficeAccess(request)
+    if (access.error) {
+      return NextResponse.json(access.error, { status: access.status })
+    }
+
+    const { id } = await params
+    const output = await backofficeAdhesionUseCase.deletePending(id)
+
+    return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
+  } catch (error) {
+    console.error("[BackofficeAdhesionByIdRoute][DELETE]", error)
+    return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
+  }
+}

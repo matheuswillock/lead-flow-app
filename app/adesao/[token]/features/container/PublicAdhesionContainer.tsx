@@ -21,6 +21,12 @@ function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("pt-BR").format(value)
 }
 
+function addMonths(date: Date, months: number): Date {
+  const next = new Date(date)
+  next.setMonth(next.getMonth() + months)
+  return next
+}
+
 function getAttemptStorageKey(token: string): string {
   return `${ATTEMPT_STORAGE_PREFIX}${token}`
 }
@@ -37,8 +43,10 @@ export function PublicAdhesionContainer() {
     if (!details) return null
 
     const preset = details.billingType ?? "PIX"
-    const startDate = new Date()
-    const dueDate = startDate
+    const cycleMonths = details.cycleMonths ?? 1
+    const paidAt = details.paidAt ? new Date(details.paidAt) : null
+    const startDate = paidAt
+    const dueDate = paidAt ? addMonths(paidAt, cycleMonths) : null
 
     const invoiceItems = [
       {
@@ -81,7 +89,6 @@ export function PublicAdhesionContainer() {
         : []),
     ]
 
-    const cycleMonths = details.cycleMonths ?? 1
     const totalDueNow =
       preset === "CREDIT_CARD" ? details.creditCardTotalAmount ?? 0 : details.pixTotalAmount ?? 0
     const monthlyTotal =
@@ -123,11 +130,11 @@ export function PublicAdhesionContainer() {
           ? `em até ${Math.max(1, details.maxCardInstallments ?? details.maxInstallments ?? 1)}x no cartão`
           : "via PIX",
       startLabel: "Início",
-      startValue: formatDate(startDate),
+      startValue: startDate ? formatDate(startDate) : "após confirmação",
       dueLabel: "Vencimento",
-      dueValue: formatDate(dueDate),
+      dueValue: dueDate ? formatDate(dueDate) : "após confirmação",
       issuedLabel: "Emitido por Corretor Studio",
-      issuedValue: formatDate(startDate),
+      issuedValue: formatDate(new Date()),
     }
   }, [details])
 
@@ -214,4 +221,3 @@ export function PublicAdhesionContainer() {
     />
   )
 }
-
