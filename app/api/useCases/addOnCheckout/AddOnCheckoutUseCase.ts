@@ -16,6 +16,13 @@ function isCheckoutExpired(createdAt: Date): boolean {
   return Date.now() - createdAt.getTime() > CHECKOUT_TOKEN_TTL_MS;
 }
 
+function normalizeBillingType(value: unknown): "PIX" | "CREDIT_CARD" | null {
+  if (value === "PIX" || value === "CREDIT_CARD") {
+    return value;
+  }
+  return null;
+}
+
 export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
   async getCheckoutDetails(pendingActionId: string): Promise<Output> {
     try {
@@ -58,6 +65,7 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
       const m = pendingAction.master as Record<string, any>;
       const checkoutDetails: CheckoutDetailsResponse = {
         pendingActionId,
+        paymentId: pendingAction.paymentId ?? null,
         presetBillingType,
         addonType,
         addonLabel,
@@ -302,6 +310,56 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         ["Erro ao verificar status do pagamento"],
         null
       );
+    }
+  }
+
+  async updateBillingType(pendingActionId: string, billingType: unknown): Promise<Output> {
+    try {
+      const nextBillingType = normalizeBillingType(billingType);
+      if (!nextBillingType) {
+        return new Output(false, [], ["Forma de pagamento invalida"], null);
+      }
+
+      const pendingAction = await pendingActionRepository.findByIdSimple(pendingActionId);
+      if (!pendingAction) {
+        return new Output(false, [], ["Ação pendente não encontrada"], null);
+      }
+
+      if (pendingAction.status !== "pending") {
+        return new Output(false, [], ["Esta ação já foi processada"], null);
+      }
+
+      const currentPayload = (pendingAction.payload as Record<string, unknown>) || {};
+      const currentBillingType = normalizeBillingType(currentPayload.billingType) ?? "PIX";
+      if (currentBillingType === nextBillingType) {
+        return new Output(true, ["Forma de pagamento já está atualizada"], [], {
+          pendingActionId,
+          billingType: nextBillingType,
+        });
+      }
+
+      if (pendingAction.paymentId) {
+        const payment = await asaas(`/payments/${pendingAction.paymentId}`);
+        const paymentStatus = String(payment?.status ?? "PENDING");
+        if (paymentStatus === "PENDING") {
+          await asaas(`/payments/${pendingAction.paymentId}`, { method: "DELETE" });
+        }
+      }
+
+      await pendingActionRepository.updatePayload(pendingActionId, {
+        ...currentPayload,
+        billingType: nextBillingType,
+      });
+
+      await pendingActionRepository.clearPaymentId(pendingActionId);
+
+      return new Output(true, ["Forma de pagamento atualizada com sucesso"], [], {
+        pendingActionId,
+        billingType: nextBillingType,
+      });
+    } catch (error) {
+      console.error("[AddOnCheckoutUseCase][updateBillingType]", error);
+      return new Output(false, [], ["Erro ao atualizar forma de pagamento"], null);
     }
   }
 }

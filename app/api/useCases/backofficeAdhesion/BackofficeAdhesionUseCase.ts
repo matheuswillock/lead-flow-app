@@ -119,6 +119,16 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
     }
   }
 
+  async deletePending(id: string): Promise<Output> {
+    try {
+      await this.service.deletePending(id)
+      return new Output(true, ["Adesão excluída com sucesso"], [], { deleted: true })
+    } catch (error) {
+      console.error("[BackofficeAdhesionUseCase][deletePending]", error)
+      return new Output(false, [], [getErrorMessage(error, "Erro ao excluir adesão")], null)
+    }
+  }
+
   async resend(id: string): Promise<Output> {
     try {
       const result = await this.service.resend(id)
@@ -148,6 +158,16 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
         [error instanceof Error ? error.message : "Erro ao reenviar convite"],
         null
       )
+    }
+  }
+
+  async getPublicUrl(id: string): Promise<Output> {
+    try {
+      const result = await this.service.getPublicUrl(id)
+      return new Output(true, [], [], result)
+    } catch (error) {
+      console.error("[BackofficeAdhesionUseCase][getPublicUrl]", error)
+      return new Output(false, [], [getErrorMessage(error, "Erro ao copiar link")], null)
     }
   }
 

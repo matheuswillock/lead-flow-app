@@ -21,6 +21,12 @@ function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("pt-BR").format(value)
 }
 
+function addMonths(date: Date, months: number): Date {
+  const next = new Date(date)
+  next.setMonth(next.getMonth() + months)
+  return next
+}
+
 function getAttemptStorageKey(token: string): string {
   return `${ATTEMPT_STORAGE_PREFIX}${token}`
 }
@@ -37,8 +43,18 @@ export function PublicAdhesionContainer() {
     if (!details) return null
 
     const preset = details.billingType ?? "PIX"
-    const startDate = new Date()
-    const dueDate = startDate
+    const cycleMonths = details.cycleMonths ?? 1
+    const paidAt = details.paidAt ? new Date(details.paidAt) : null
+    const createdAt = details.createdAt ? new Date(details.createdAt) : null
+    const startDate = paidAt ?? createdAt
+    const dueDate = startDate ? addMonths(startDate, cycleMonths) : null
+    const extrasMonthly =
+      (details.monthlyExtraTeamsAmount ?? 0) + (details.monthlyExtraUsersAmount ?? 0)
+    const selectedMonthlyTotal =
+      preset === "CREDIT_CARD"
+        ? details.creditCardMonthlyTotalAmount ?? details.monthlyTotalAmount ?? 0
+        : details.pixMonthlyTotalAmount ?? details.monthlyTotalAmount ?? 0
+    const selectedBaseMonthly = Math.max(0, selectedMonthlyTotal - extrasMonthly)
 
     const invoiceItems = [
       {
@@ -46,8 +62,8 @@ export function PublicAdhesionContainer() {
         title: "Acesso Master",
         description: "Plano principal do Corretor Studio",
         quantity: 1,
-        unitAmountMonthly: details.monthlyBaseAmount ?? 0,
-        totalAmountMonthly: details.monthlyBaseAmount ?? 0,
+        unitAmountMonthly: selectedBaseMonthly,
+        totalAmountMonthly: selectedBaseMonthly,
       },
       ...(details.extraUsers > 0
         ? [
@@ -81,13 +97,10 @@ export function PublicAdhesionContainer() {
         : []),
     ]
 
-    const cycleMonths = details.cycleMonths ?? 1
     const totalDueNow =
       preset === "CREDIT_CARD" ? details.creditCardTotalAmount ?? 0 : details.pixTotalAmount ?? 0
     const monthlyTotal =
-      preset === "CREDIT_CARD"
-        ? details.creditCardMonthlyTotalAmount ?? details.monthlyTotalAmount ?? 0
-        : details.pixMonthlyTotalAmount ?? details.monthlyTotalAmount ?? 0
+      selectedMonthlyTotal
 
     const compositionRows = [
       ...invoiceItems.map((item) => ({
@@ -123,11 +136,11 @@ export function PublicAdhesionContainer() {
           ? `em até ${Math.max(1, details.maxCardInstallments ?? details.maxInstallments ?? 1)}x no cartão`
           : "via PIX",
       startLabel: "Início",
-      startValue: formatDate(startDate),
+      startValue: startDate ? formatDate(startDate) : "—",
       dueLabel: "Vencimento",
-      dueValue: formatDate(dueDate),
+      dueValue: dueDate ? formatDate(dueDate) : "—",
       issuedLabel: "Emitido por Corretor Studio",
-      issuedValue: formatDate(startDate),
+      issuedValue: formatDate(new Date()),
     }
   }, [details])
 
@@ -214,4 +227,3 @@ export function PublicAdhesionContainer() {
     />
   )
 }
-

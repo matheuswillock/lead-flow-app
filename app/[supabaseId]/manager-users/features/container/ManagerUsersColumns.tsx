@@ -1,7 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
-import { ArrowUpDown, CircleCheck, CircleX, MoreHorizontal, Pencil, Trash2, Mail } from "lucide-react";
+import { ArrowUpDown, CircleCheck, CircleX, ExternalLink, MoreHorizontal, Pencil, Trash2, Mail, CreditCard } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -26,9 +26,12 @@ interface CreateColumnsProps {
   onDelete: (user: ManagerUserTableRow) => void;
   onResendInvite: (email: string, userId?: string) => void;
   onDeletePendingOperator: (user: ManagerUserTableRow) => void;
+  onViewPendingCheckout: (user: ManagerUserTableRow) => void;
+  onEditPendingPayment: (user: ManagerUserTableRow) => void;
   onTogglePermanentSubscription?: (userId: string, currentValue: boolean) => void;
   currentUserIsMaster?: boolean;
   canDelete?: boolean;
+  canManagePendingPayments?: boolean;
   tz: string;
 }
 
@@ -37,9 +40,12 @@ export function createColumns({
   onDelete, 
   onResendInvite,
   onDeletePendingOperator,
+  onViewPendingCheckout,
+  onEditPendingPayment,
   onTogglePermanentSubscription: _onTogglePermanentSubscription,
   currentUserIsMaster: _currentUserIsMaster = false,
   canDelete = false,
+  canManagePendingPayments = false,
   tz
 }: CreateColumnsProps): ColumnDef<ManagerUserTableRow>[] {
   return [
@@ -472,15 +478,35 @@ export function createColumns({
                     )}
                   </>
                 ) : (
-                  canDelete ? (
-                    <DropdownMenuItem
-                      onClick={() => onDeletePendingOperator(user)}
-                      className="flex items-center gap-2 text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Deletar operador pendente
-                    </DropdownMenuItem>
-                  ) : null
+                  <>
+                    {canManagePendingPayments && user.pendingPayment?.checkoutUrl ? (
+                      <DropdownMenuItem
+                        onClick={() => onViewPendingCheckout(user)}
+                        className="flex items-center gap-2"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        Ver checkout
+                      </DropdownMenuItem>
+                    ) : null}
+                    {canManagePendingPayments && user.pendingPayment?.pendingActionId ? (
+                      <DropdownMenuItem
+                        onClick={() => onEditPendingPayment(user)}
+                        className="flex items-center gap-2"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        Editar pagamento
+                      </DropdownMenuItem>
+                    ) : null}
+                    {canDelete ? (
+                      <DropdownMenuItem
+                        onClick={() => onDeletePendingOperator(user)}
+                        className="flex items-center gap-2 text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Deletar operador pendente
+                      </DropdownMenuItem>
+                    ) : null}
+                  </>
                 )}
                 
               </DropdownMenuContent>

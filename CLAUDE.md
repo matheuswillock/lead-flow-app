@@ -5,8 +5,8 @@
 <!-- CANONICAL AI GOVERNANCE FILE: agents.md -->
 # Lead Flow - AI Implementation Governance
 
-**Version:** 2.3.0
-**Last Updated:** 2026-04-06
+**Version:** 2.4.0
+**Last Updated:** 2026-05-06
 **Canonical Source:** `agents.md` (single source of truth)
 **Adapter Files:** generated with `bun run governance:sync`
 
@@ -34,8 +34,50 @@ This document defines the implementation governance for AI agents in this reposi
 - Prefer sessions focused on one layer at a time (backend OR frontend, not both).
 - Read at most 5 files before starting implementation. Do not explore the codebase extensively without necessity.
 - Before deleting any record, check for FK constraints in the schema.
-- **MUST NOT** create or edit Prisma migration SQL files manually. Always generate new migrations by running `bun run prisma:migrate` (defined in `package.json`). **MUST NOT** apply, deploy or push migration updates to the database without explicit authorization from the project owner.
+- **MUST NOT** apply, deploy, push, resolve or reset migration updates in any shared or remote database without explicit authorization from the project owner.
 <!-- - Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`. -->
+
+## Prisma Migration Policy
+
+### Schema-based migrations (MUST)
+
+For database changes represented in `prisma/schema.prisma` (tables, columns, enums, indexes and relations), agents **MUST** generate migrations with:
+
+```bash
+bun run prisma:migrate -- <migration-name>
+```
+
+This command **MUST** use the project script `scripts/create-prisma-migration-from-diff.ts`, which generates `prisma/migrations/<timestamp>_<migration-name>/migration.sql` via `prisma migrate diff` by comparing the current datasource database with `prisma/schema.prisma`.
+
+Agents **MUST NOT** use `prisma migrate dev` against Supabase remote, production, staging, preview or any shared database. `prisma migrate dev` may only be used through `bun run prisma:migrate:dev` when the datasource points to a disposable local/dev database.
+
+After generating a migration, agents **MUST** review the generated `migration.sql` before considering the database change ready. Empty migration directories are prohibited: every directory inside `prisma/migrations/**` **MUST** contain a `migration.sql` file.
+
+### Applying migrations (MUST)
+
+Shared or remote database migrations **MUST** be applied only with:
+
+```bash
+bun run prisma:migrate:deploy
+```
+
+Agents **MUST NOT** run `bun run prisma:migrate:deploy`, `bunx prisma migrate deploy`, `bunx prisma migrate resolve`, `bunx prisma migrate reset`, `bunx prisma db push`, or direct Supabase SQL Editor changes without explicit authorization from the project owner.
+
+After any authorized deploy, agents **MUST** validate with:
+
+```bash
+bun run prisma:migrate:status
+```
+
+### Supabase/Postgres unsupported features (MUST)
+
+`prisma migrate diff` only covers features represented in `schema.prisma`. For Supabase/Postgres features not represented by Prisma — including RLS policies, functions, triggers, grants/revokes, publications such as `supabase_realtime`, extensions and Auth Hooks — agents **MAY** create or edit SQL manually only inside a new Prisma migration directory:
+
+```text
+prisma/migrations/<timestamp>_<descriptive_name>/migration.sql
+```
+
+Manual SQL migrations **MUST** be idempotent when possible (`IF EXISTS`, `IF NOT EXISTS`, `CREATE OR REPLACE`, guarded `DO $$ ... $$` blocks) and **MUST** be reviewed before deploy. Direct SQL changes in Supabase SQL Editor are allowed only as an emergency/manual hotfix and **MUST** be reconciled back into `prisma/migrations` before the task is complete.
 
 ## Automated Validation (FOR ALL CHANGES)
 
@@ -47,15 +89,12 @@ bun run lint
 bun run governance:check
 ```
 
-Rules:
-- Do NOT skip these commands even for small changes.
-- Do NOT ask for confirmation to run them.
-- Do NOT report the task as done if any command fails.
-- Fix all errors immediately before moving to the next file or task.
-- If `governance:check` fails, fix the violation before continuing — do not add to allowlist unless explicitly instructed.
-
-
-
+  Rules:
+    - Do NOT skip these commands even for small changes.
+    - Do NOT ask for confirmation to run them.
+    - Do NOT report the task as done if any command fails.
+    - Fix all errors immediately before moving to the next file or task.
+    - If `governance:check` fails, fix the violation before continuing — do not add to allowlist unless explicitly instructed.
 
 ## Visual Implementation (FOR NEW FEATURES)
 
@@ -63,13 +102,13 @@ Rules:
 
 Before implementing any UI screen, modal, form, or component:
 
-1. Read `DESIGN.md` — it is the canonical source for all tokens, 
+1. Read `DESIGN.md` — it is the canonical source for all tokens,
    typography, spacing, and visual direction.
-2. Use the `corretor-studio-design` skill to generate a design brief 
+2. Use the `corretor-studio-design` skill to generate a design brief
    before writing any JSX. Do NOT skip this step for new screens.
-3. Never use hardcoded hex values in JSX/TSX for themable UI. 
+3. Never use hardcoded hex values in JSX/TSX for themable UI.
    Always use semantic CSS variable tokens.
-4. Never manually edit CSS regions managed by `design:sync` 
+4. Never manually edit CSS regions managed by `design:sync`
    in `app/globals.css`.
 
 ### shadcn MCP Workflow (MUST)
@@ -89,12 +128,12 @@ Never install shadcn components with npm or yarn. Always use `bunx --bun shadcn@
 - Use `FieldGroup` + `Field` for all forms. Never use raw `div` with `space-y-*`.
 - Use `gap-*` instead of `space-y-*` or `space-x-*` everywhere.
 - Use `size-*` instead of `w-* h-*` when width and height are equal.
-- Use semantic color tokens (`bg-primary`, `text-muted-foreground`) — 
+- Use semantic color tokens (`bg-primary`, `text-muted-foreground`) —
   never raw Tailwind colors like `bg-blue-500` or `text-gray-600`.
 - Never add manual `dark:` color overrides — semantic tokens handle light/dark.
 - Never add `z-index` to overlay components (Dialog, Sheet, Drawer, Popover, Tooltip).
 - Use `cn()` from `@/lib/utils` for conditional class names — never manual ternaries.
-- Icons inside Button use `data-icon="inline-start"` or `data-icon="inline-end"`. 
+- Icons inside Button use `data-icon="inline-start"` or `data-icon="inline-end"`.
   No sizing classes (`size-4`, `w-4`, `h-4`) on icons inside shadcn components.
 - Always use the project icon library: `lucide-react` (check `components.json`).
 - Avatar always needs `AvatarFallback`.
@@ -287,6 +326,7 @@ Use `bun run scaffold:feature -- --name <feature-name>` for new feature baseline
 ## Pull Request Checklist (MUST)
 
 - [ ] Seguiu `agents.md`?
+- [ ] Criou migration? Gerou com `bun run prisma:migrate -- <name>`, revisou `migration.sql` e aplicou somente com autorização?
 - [ ] Criou excecao legada? Se sim, justificou e atualizou allowlist?
 - [ ] Criou endpoint backend novo? Atualizou `postman/Lead-Flow-API-Collection.json` e, quando aplicavel, `postman/Lead-Flow-Environment.json`?
 - [ ] Rodou `bun run typecheck` e `bun run lint`?

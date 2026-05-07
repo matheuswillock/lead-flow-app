@@ -28,6 +28,8 @@ export interface ManagerUser {
     paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'RECEIVED' | 'APPROVED' | 'RECEIVED_IN_CASH';
     paymentMethod: 'PIX' | 'BOLETO' | 'CREDIT_CARD' | 'UNDEFINED';
     operatorCreated: boolean;
+    pendingActionId?: string | null;
+    checkoutUrl?: string | null;
   };
 }
 
@@ -42,6 +44,8 @@ export interface PendingOperator {
   paymentMethod: 'PIX' | 'BOLETO' | 'CREDIT_CARD' | 'UNDEFINED';
   operatorCreated: boolean;
   operatorId?: string;
+  pendingActionId?: string | null;
+  checkoutUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }

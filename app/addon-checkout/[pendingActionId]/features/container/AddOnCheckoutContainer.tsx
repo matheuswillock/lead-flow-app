@@ -21,6 +21,12 @@ function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("pt-BR").format(value)
 }
 
+function addMonths(date: Date, months: number): Date {
+  const next = new Date(date)
+  next.setMonth(next.getMonth() + months)
+  return next
+}
+
 function getAttemptStorageKey(pendingActionId: string): string {
   return `${ATTEMPT_STORAGE_PREFIX}${pendingActionId}`
 }
@@ -43,7 +49,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
 
     const preset = data.presetBillingType
     const startDate = new Date()
-    const dueDate = startDate
+    const dueDate = addMonths(startDate, Math.max(1, data.pricing.remainingMonths ?? 1))
     const totalCharge = data.pricing.totalCharge ?? 0
 
     const title = data.addonType === "team" ? "Add-on Time" : "Add-on Usuario"
@@ -100,7 +106,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       dueLabel: "Vencimento",
       dueValue: formatDate(dueDate),
       issuedLabel: "Emitido por Corretor Studio",
-      issuedValue: formatDate(startDate),
+      issuedValue: formatDate(new Date()),
     }
   }, [state.data])
 

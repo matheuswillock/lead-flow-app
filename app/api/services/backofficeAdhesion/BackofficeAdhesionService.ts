@@ -98,8 +98,8 @@ function mapAdhesion(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhes
     leadName: adhesion.lead.name,
     fullName: adhesion.fullName,
     phone: adhesion.phone,
-    cpfCnpj: adhesion.cpfCnpj,
-    email: adhesion.email,
+    cpfCnpj: adhesion.cpfCnpj ?? adhesion.lead.cpfCnpj,
+    email: adhesion.email ?? adhesion.lead.email,
     sdrBackofficeUserId: adhesion.sdrBackofficeUserId,
     closerBackofficeUserId: adhesion.closerBackofficeUserId,
     status: adhesion.status,
@@ -166,8 +166,8 @@ function mapPublicAdhesion(
     id: adhesion.id,
     fullName: adhesion.fullName,
     phone: adhesion.phone,
-    email: adhesion.email,
-    cpfCnpj: adhesion.cpfCnpj,
+    email: adhesion.email ?? adhesion.lead.email ?? null,
+    cpfCnpj: adhesion.cpfCnpj ?? adhesion.lead.cpfCnpj ?? null,
     billingType:
       adhesion.billingType === "PIX"
         ? "PIX"
@@ -192,6 +192,8 @@ function mapPublicAdhesion(
     creditCardMonthlyTotalAmount,
     creditCardTotalAmount,
     maxCardInstallments,
+    createdAt: adhesion.createdAt.toISOString(),
+    paidAt: adhesion.paidAt?.toISOString() ?? null,
     expiresAt: adhesion.expiresAt.toISOString(),
   }
 }
@@ -324,6 +326,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     createdByBackofficeUserId: string | null
   ): Promise<BackofficeAdhesionCreationResult> {
     const normalized = this.normalizeCommercialInput(input)
+    const crmWithRules = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
     const options = await this.repo.getOptions()
     const lead = options.leads.find((item) => item.id === normalized.leadId)
 
@@ -343,22 +346,34 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       }
     }
 
+    if (!crmWithRules?.isActive) {
+      throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
+    }
+
     const prices = await this.resolvePrices(normalized.cycle)
-    const pricing = calculateBackofficeAdhesionPricing(normalized, prices)
+    const pricing = calculateBackofficeAdhesionPricing(normalized, prices, crmWithRules.paymentRules)
+    const resolvedBillingType = normalized.billingType ?? "PIX"
+    const resolvedMonthlyTotalAmount =
+      resolvedBillingType === "PIX" ? pricing.pixMonthlyTotalAmount : pricing.creditCardMonthlyTotalAmount
+    const resolvedTotalAmount =
+      resolvedBillingType === "PIX" ? pricing.pixTotalAmount : pricing.creditCardTotalAmount
     const token = generateBackofficeAdhesionToken()
     const adhesion = await this.repo.createAndMoveLeadToAdhesion({
       leadId: normalized.leadId,
       fullName: normalized.fullName,
       phone: normalized.phone,
-      billingType: normalized.billingType ?? "PIX",
+      billingType: resolvedBillingType,
       plan: "crm",
       cycle: normalized.cycle,
       modules: CRM_MODULES,
       extraTeams: normalized.extraTeams,
       extraUsers: normalized.extraUsers,
       ...pricing,
+      monthlyTotalAmount: resolvedMonthlyTotalAmount,
+      totalAmount: resolvedTotalAmount,
       tokenHash: hashBackofficeAdhesionToken(token),
       tokenPreview: getBackofficeAdhesionTokenPreview(token),
+      tokenPlain: token,
       expiresAt: addTokenTtl(),
       sdrBackofficeUserId: normalized.sdrBackofficeUserId ?? lead.sdrBackofficeUserId,
       closerBackofficeUserId:
@@ -437,13 +452,18 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       throw new Error("Adesões pagas não podem ser editadas")
     }
 
+    const currentBillingType =
+      existing.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX"
     const next = this.normalizeCommercialInput({
       leadId: existing.leadId,
       fullName: input.fullName ?? existing.fullName,
       phone: input.phone ?? existing.phone,
+      email: input.email !== undefined ? input.email : existing.email,
+      cpfCnpj: input.cpfCnpj !== undefined ? input.cpfCnpj : existing.cpfCnpj,
       cycle: input.cycle ?? existing.cycle,
       extraTeams: input.extraTeams ?? existing.extraTeams,
       extraUsers: input.extraUsers ?? existing.extraUsers,
+      billingType: input.billingType !== undefined ? input.billingType : currentBillingType,
       sdrBackofficeUserId:
         input.sdrBackofficeUserId !== undefined
           ? input.sdrBackofficeUserId
@@ -452,23 +472,92 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         input.closerBackofficeUserId !== undefined
           ? input.closerBackofficeUserId
           : existing.closerBackofficeUserId,
+      activationMode: "checkout",
     })
     const prices = await this.resolvePrices(next.cycle)
-    const pricing = calculateBackofficeAdhesionPricing(next, prices)
+    const crmWithRules = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
+    if (!crmWithRules?.isActive) {
+      throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
+    }
+    const pricing = calculateBackofficeAdhesionPricing(next, prices, crmWithRules.paymentRules)
+    const resolvedMonthlyTotalAmount =
+      next.billingType === "PIX" ? pricing.pixMonthlyTotalAmount : pricing.creditCardMonthlyTotalAmount
+    const resolvedTotalAmount =
+      next.billingType === "PIX" ? pricing.pixTotalAmount : pricing.creditCardTotalAmount
+
+    const hadExistingPayment = Boolean(
+      existing.asaasPaymentId ||
+      existing.invoiceUrl ||
+      existing.pixPayload ||
+      existing.pixQrCode ||
+      existing.bankSlipUrl
+    )
+
+    const shouldResetPaymentData =
+      hadExistingPayment &&
+      (existing.billingType !== next.billingType ||
+        decimalToNumber(existing.totalAmount) !== resolvedTotalAmount)
+
+    if (shouldResetPaymentData && existing.asaasPaymentId) {
+      try {
+        await asaasFetch(`${asaasApi.payments}/${existing.asaasPaymentId}`, {
+          method: "DELETE",
+        })
+      } catch (cancelErr) {
+        console.error("[BackofficeAdhesionService][update][cancel-payment]", cancelErr)
+      }
+    }
+
     const updated = await this.repo.update(id, {
       fullName: next.fullName,
       phone: next.phone,
+      email: next.email,
+      cpfCnpj: next.cpfCnpj,
       cycle: next.cycle,
       modules: CRM_MODULES,
       extraTeams: next.extraTeams,
       extraUsers: next.extraUsers,
-      ...pricing,
+      monthlyBaseAmount: pricing.monthlyBaseAmount,
+      monthlyExtraTeamsAmount: pricing.monthlyExtraTeamsAmount,
+      monthlyExtraUsersAmount: pricing.monthlyExtraUsersAmount,
+      monthlyTotalAmount: resolvedMonthlyTotalAmount,
+      totalAmount: resolvedTotalAmount,
+      billingType: next.billingType,
       sdrBackofficeUserId: next.sdrBackofficeUserId,
       closerBackofficeUserId: next.closerBackofficeUserId,
-      cpfCnpj: undefined
     })
 
-    return mapAdhesion(updated)
+    const persisted = shouldResetPaymentData
+      ? await this.repo.updateCheckoutData(updated.id, {
+          asaasPaymentId: null,
+          asaasInstallmentId: null,
+          installmentCount: null,
+          invoiceUrl: null,
+          bankSlipUrl: null,
+          pixQrCode: null,
+          pixPayload: null,
+          paymentDueDate: null,
+        })
+      : updated
+
+    return mapAdhesion(persisted)
+  }
+
+  async deletePending(id: string): Promise<void> {
+    const existing = await this.repo.findById(id)
+    if (!existing) {
+      throw new Error("Adesão não encontrada")
+    }
+    if (existing.status !== "pending") {
+      throw new Error("Somente adesões pendentes podem ser excluídas")
+    }
+
+    try {
+      await this.repo.cancelAdhesionAndRestoreLead(existing.id, "new_opportunity")
+    } catch (deleteError) {
+      console.error("[BackofficeAdhesionService][deletePending]", deleteError)
+      throw new Error("Não foi possível excluir a adesão pendente")
+    }
   }
 
   async resend(id: string): Promise<BackofficeAdhesionCreationResult> {
@@ -485,8 +574,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       status: "pending",
       tokenHash: hashBackofficeAdhesionToken(token),
       tokenPreview: getBackofficeAdhesionTokenPreview(token),
+      tokenPlain: token,
       expiresAt: addTokenTtl(),
-      cpfCnpj: undefined
     })
 
     const checkoutUrl = getPublicUrl(token)
@@ -527,6 +616,31 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     await this.sendSetPasswordEmail(existing, "recovery")
     return { email: existing.email }
+  }
+
+  async getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }> {
+    const existing = await this.repo.findById(id)
+    if (!existing) {
+      throw new Error("Adesão não encontrada")
+    }
+
+    const token = existing.tokenPlain?.trim()
+    if (!token) {
+      throw new Error("Link não disponível. Reenvie a adesão para gerar um novo link.")
+    }
+
+    const now = new Date()
+    if (existing.expiresAt.getTime() <= now.getTime()) {
+      await this.repo
+        .update(id, {
+          status: existing.status === "pending" ? "expired" : existing.status,
+          tokenPlain: null,
+        })
+        .catch(() => null)
+      throw new Error("Link expirado. Reenvie a adesão para gerar um novo link.")
+    }
+
+    return { publicUrl: getPublicUrl(token), expiresAt: existing.expiresAt.toISOString() }
   }
 
   async getPublicDetails(
@@ -725,7 +839,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       tokenHash: hashBackofficeAdhesionToken(token),
       tokenPreview: getBackofficeAdhesionTokenPreview(token),
       expiresAt: expireTokenNow(),
-      cpfCnpj: undefined,
+      tokenPlain: null,
     })
   }
 
@@ -1055,6 +1169,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         email: adhesion.email,
         asaasCustomerId: adhesion.asaasCustomerId,
         cpfCnpj: adhesion.cpfCnpj,
+        subscriptionId: adhesion.billingType === "EXTERNAL" ? `external-adhesion-${adhesion.id}` : null,
         operatorCount: adhesion.extraUsers,
         subscriptionStartDate,
         postalCode: adhesion.postalCode,

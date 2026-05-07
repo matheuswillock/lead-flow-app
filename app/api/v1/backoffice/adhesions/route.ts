@@ -11,6 +11,9 @@ const ACTIVATION_MODES = ["checkout", "external_paid"] as const
 type BackofficeAdhesionBillingCycleValue = (typeof ADHESION_CYCLES)[number]
 type BackofficeAdhesionActivationMode = (typeof ACTIVATION_MODES)[number]
 
+const BILLING_TYPES = ["PIX", "CREDIT_CARD"] as const
+type BackofficeAdhesionBillingTypeValue = (typeof BILLING_TYPES)[number]
+
 function parsePositiveInt(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
@@ -26,6 +29,12 @@ function parseActivationMode(value: unknown): BackofficeAdhesionActivationMode {
   return typeof value === "string" && (ACTIVATION_MODES as readonly string[]).includes(value)
     ? (value as BackofficeAdhesionActivationMode)
     : "checkout"
+}
+
+function parseBillingType(value: unknown): BackofficeAdhesionBillingTypeValue | null {
+  return typeof value === "string" && (BILLING_TYPES as readonly string[]).includes(value)
+    ? (value as BackofficeAdhesionBillingTypeValue)
+    : null
 }
 
 function optionalString(data: Record<string, unknown>, key: string): string | null | undefined {
@@ -95,6 +104,7 @@ export async function POST(request: NextRequest) {
         cycle,
         extraTeams: optionalInteger(data, "extraTeams") ?? 0,
         extraUsers: optionalInteger(data, "extraUsers") ?? 0,
+        billingType: parseBillingType(data.billingType),
         sdrBackofficeUserId: optionalString(data, "sdrBackofficeUserId"),
         closerBackofficeUserId: optionalString(data, "closerBackofficeUserId"),
         activationMode: parseActivationMode(data.activationMode),

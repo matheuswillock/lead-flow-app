@@ -16,6 +16,7 @@ export interface AddOnCheckoutDefaultBillingData {
 
 export interface CheckoutDetailsResponse {
   pendingActionId: string;
+  paymentId: string | null;
   presetBillingType: "PIX" | "CREDIT_CARD";
   addonType: "user" | "team";
   addonLabel: string;
@@ -69,4 +70,5 @@ export interface IAddOnCheckoutUseCase {
   getCheckoutDetails(pendingActionId: string): Promise<Output>;
   createPayment(pendingActionId: string, input: AddOnCheckoutPaymentInput): Promise<Output>;
   checkPaymentStatus(pendingActionId: string): Promise<Output>;
+  updateBillingType(pendingActionId: string, billingType: unknown): Promise<Output>;
 }

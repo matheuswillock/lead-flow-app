@@ -72,7 +72,7 @@ export async function validateBackofficeAdhesionToken(
     if (options.expirePendingToken !== false && adhesion.status === "pending") {
       await prisma.backofficeAdhesion.update({
         where: { id: adhesion.id },
-        data: { status: "expired" },
+        data: { status: "expired", ...( { tokenPlain: null } as unknown as Record<string, unknown> ) },
       })
     }
 
