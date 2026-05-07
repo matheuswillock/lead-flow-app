@@ -2,7 +2,20 @@
 
 import * as React from "react";
 import type { SignInWithOAuthCredentials } from "@supabase/supabase-js";
-import { Upload, Camera, Eye, EyeOff, Trash2, AlertTriangle, Loader2, Calendar, Link2 } from "lucide-react";
+import {
+  Upload,
+  Camera,
+  Eye,
+  EyeOff,
+  Trash2,
+  AlertTriangle,
+  Loader2,
+  Calendar,
+  Link2,
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -76,6 +89,80 @@ export default function AccountProfilePage() {
     newPassword: "",
     confirmPassword: ""
   });
+
+  const calculatePasswordStrength = (pwd: string): "weak" | "medium" | "strong" => {
+    let strength = 0;
+    if (pwd.length >= 6) strength++;
+    if (/[A-Z]/.test(pwd)) strength++;
+    if (/[a-z]/.test(pwd)) strength++;
+    if (/[0-9]/.test(pwd)) strength++;
+    if (/[^A-Za-z0-9]/.test(pwd)) strength++; // caracteres especiais
+
+    if (strength <= 2) return "weak";
+    if (strength <= 4) return "medium";
+    return "strong";
+  };
+
+  const passwordStrength = useMemo<"weak" | "medium" | "strong" | null>(() => {
+    if (!passwordForm.newPassword) return null;
+    return calculatePasswordStrength(passwordForm.newPassword);
+  }, [passwordForm.newPassword]);
+
+  const isPasswordValid = useMemo(() => {
+    const pwd = passwordForm.newPassword;
+    if (!pwd) return false;
+    if (pwd.length < 6) return false;
+    if (!/[A-Z]/.test(pwd)) return false;
+    if (!/[a-z]/.test(pwd)) return false;
+    if (!/[0-9]/.test(pwd)) return false;
+    if (!/[^A-Za-z0-9]/.test(pwd)) return false;
+    return true;
+  }, [passwordForm.newPassword]);
+
+  const passwordRequirements = useMemo(() => {
+    const pwd = passwordForm.newPassword;
+
+    return [
+      {
+        id: "minLength",
+        label: "Mínimo de 6 caracteres",
+        isMet: pwd.length >= 6,
+      },
+      {
+        id: "uppercase",
+        label: "Pelo menos 1 letra maiúscula (A-Z)",
+        isMet: /[A-Z]/.test(pwd),
+      },
+      {
+        id: "lowercase",
+        label: "Pelo menos 1 letra minúscula (a-z)",
+        isMet: /[a-z]/.test(pwd),
+      },
+      {
+        id: "number",
+        label: "Pelo menos 1 número (0-9)",
+        isMet: /[0-9]/.test(pwd),
+      },
+      {
+        id: "special",
+        label: "Pelo menos 1 caractere especial (!@#$%^&*)",
+        isMet: /[^A-Za-z0-9]/.test(pwd),
+      },
+      {
+        id: "match",
+        label: "As senhas devem coincidir",
+        isMet:
+          passwordForm.newPassword.length > 0 &&
+          passwordForm.confirmPassword.length > 0 &&
+          passwordForm.newPassword === passwordForm.confirmPassword,
+      },
+    ] as const;
+  }, [passwordForm.newPassword, passwordForm.confirmPassword]);
+
+  const passwordsMatch =
+    passwordForm.newPassword.length === 0 ||
+    passwordForm.confirmPassword.length === 0 ||
+    passwordForm.newPassword === passwordForm.confirmPassword;
 
   // Atualizar form quando dados do usuário carregarem
   useEffect(() => {
@@ -536,107 +623,107 @@ export default function AccountProfilePage() {
                     </h2>
 
                     <div className="flex items-center gap-6">
-                    <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full border border-border">
-                      {avatarPreview ? (
-                        <img
-                          src={avatarPreview}
-                          alt="Pré-visualização do avatar"
-                          className="h-full w-full object-cover"
-                        />
-                      ) : user?.profileIconId ? (
-                        <img
-                          src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/profile-icons/${user.profileIconId}`}
-                          alt="Ícone de perfil atual"
-                          className="h-full w-full object-cover"
-                          onError={(e) => {
-                            // Fallback se a imagem não carregar
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                          }}
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-muted">
+                      <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full border border-border">
+                        {avatarPreview ? (
+                          <img
+                            src={avatarPreview}
+                            alt="Pré-visualização do avatar"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : user?.profileIconId ? (
+                          <img
+                            src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/profile-icons/${user.profileIconId}`}
+                            alt="Ícone de perfil atual"
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              // Fallback se a imagem não carregar
+                              e.currentTarget.style.display = "none"
+                              e.currentTarget.nextElementSibling?.classList.remove("hidden")
+                            }}
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-muted">
+                            <Camera className="h-7 w-7 text-muted-foreground" aria-hidden />
+                            <span className="sr-only">Sem imagem de perfil</span>
+                          </div>
+                        )}
+                        {/* Fallback div - inicialmente oculto */}
+                        <div className="hidden h-full w-full items-center justify-center bg-muted">
                           <Camera className="h-7 w-7 text-muted-foreground" aria-hidden />
-                          <span className="sr-only">Sem imagem de perfil</span>
-                        </div>
-                      )}
-                      {/* Fallback div - inicialmente oculto */}
-                      <div className="hidden h-full w-full items-center justify-center bg-muted">
-                        <Camera className="h-7 w-7 text-muted-foreground" aria-hidden />
-                        <span className="sr-only">Erro ao carregar imagem</span>
-                      </div>
-                    </div>
-
-                    <div className="grow">
-                      <div
-                        onDrop={onDrop}
-                        onDragOver={onDragOver}
-                        onDragLeave={onDragLeave}
-                        role="button"
-                        tabIndex={0}
-                        onClick={onFilePickerClick}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") onFilePickerClick();
-                        }}
-                        className={[
-                          "group flex min-h-24 w-full cursor-pointer items-center gap-4 rounded-xl border border-dashed p-4 transition",
-                          isDragging
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/60 hover:bg-muted/50",
-                          isUploadingIcon ? "pointer-events-none opacity-50" : ""
-                        ].join(" ")}
-                        aria-label="Área para soltar arquivo do ícone de perfil"
-                      >
-                        <div className="grid place-items-center rounded-lg bg-muted p-3">
-                          {isUploadingIcon ? (
-                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
-                          ) : (
-                            <Upload className="h-5 w-5 text-muted-foreground transition group-hover:scale-110" />
-                          )}
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium">
-                            {isUploadingIcon ? "Enviando..." : "Arraste e solte a imagem aqui"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            PNG, JPG, WebP, GIF até 5MB. Ou
-                            <button
-                              type="button"
-                              className="ml-1 underline decoration-dotted underline-offset-4 hover:text-primary"
-                              disabled={isUploadingIcon}
-                            >
-                              clique para selecionar
-                            </button>
-                          </p>
+                          <span className="sr-only">Erro ao carregar imagem</span>
                         </div>
                       </div>
 
-                      <Input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handleFiles(e.target.files)}
-                      />
-
-                      {/* Botão para remover ícone */}
-                      {(user?.profileIconId || avatarPreview) && (
-                        <button
-                          type="button"
-                          onClick={handleDeleteIcon}
-                          disabled={isUploadingIcon}
-                          className="mt-2 text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      <div className="grow">
+                        <div
+                          onDrop={onDrop}
+                          onDragOver={onDragOver}
+                          onDragLeave={onDragLeave}
+                          role="button"
+                          tabIndex={0}
+                          onClick={onFilePickerClick}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") onFilePickerClick()
+                          }}
+                          className={[
+                            "group flex min-h-24 w-full cursor-pointer items-center gap-4 rounded-xl border border-dashed p-4 transition",
+                            isDragging
+                              ? "border-primary bg-primary/5"
+                              : "border-border hover:border-primary/60 hover:bg-muted/50",
+                            isUploadingIcon ? "pointer-events-none opacity-50" : "",
+                          ].join(" ")}
+                          aria-label="Área para soltar arquivo do ícone de perfil"
                         >
-                          {isUploadingIcon ? "Processando..." : "Remover ícone atual"}
-                        </button>
-                      )}
+                          <div className="grid place-items-center rounded-lg bg-muted p-3">
+                            {isUploadingIcon ? (
+                              <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+                            ) : (
+                              <Upload className="h-5 w-5 text-muted-foreground transition group-hover:scale-110" />
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">
+                              {isUploadingIcon ? "Enviando..." : "Arraste e solte a imagem aqui"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              PNG, JPG, WebP, GIF até 5MB. Ou
+                              <button
+                                type="button"
+                                className="ml-1 underline decoration-dotted underline-offset-4 hover:text-primary"
+                                disabled={isUploadingIcon}
+                              >
+                                clique para selecionar
+                              </button>
+                            </p>
+                          </div>
+                        </div>
+
+                        <Input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleFiles(e.target.files)}
+                        />
+
+                        {/* Botão para remover ícone */}
+                        {(user?.profileIconId || avatarPreview) && (
+                          <button
+                            type="button"
+                            onClick={handleDeleteIcon}
+                            disabled={isUploadingIcon}
+                            className="mt-2 text-xs text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                          >
+                            {isUploadingIcon ? "Processando..." : "Remover ícone atual"}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </section>
+                  </section>
 
                   <Separator />
 
-                  <AccountForm 
+                  <AccountForm
                     form={form}
                     onSubmit={onSubmit}
                     isLoading={isLoading}
@@ -740,7 +827,10 @@ export default function AccountProfilePage() {
                         </p>
                       </div>
                       {user?.googleCalendarConnected ? (
-                        <AlertDialog open={disconnectDialogOpen} onOpenChange={setDisconnectDialogOpen}>
+                        <AlertDialog
+                          open={disconnectDialogOpen}
+                          onOpenChange={setDisconnectDialogOpen}
+                        >
                           <AlertDialogTrigger asChild>
                             <Button
                               type="button"
@@ -759,7 +849,8 @@ export default function AccountProfilePage() {
                               <AlertDialogDescription asChild>
                                 <div className="space-y-2">
                                   <p>
-                                    Você deixará de criar eventos automaticamente no Google Calendar.
+                                    Você deixará de criar eventos automaticamente no Google
+                                    Calendar.
                                   </p>
                                   <p className="text-sm text-muted-foreground">
                                     Esta ação não remove eventos já criados.
@@ -768,7 +859,10 @@ export default function AccountProfilePage() {
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel className="cursor-pointer" disabled={isDisconnectingGoogle}>
+                              <AlertDialogCancel
+                                className="cursor-pointer"
+                                disabled={isDisconnectingGoogle}
+                              >
                                 Cancelar
                               </AlertDialogCancel>
                               <Button
@@ -808,7 +902,11 @@ export default function AccountProfilePage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground">
-                        {isUpdatingTimezone ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
+                        {isUpdatingTimezone ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Calendar className="h-4 w-4" />
+                        )}
                         {isUpdatingTimezone ? "Salvando..." : selectedTimezoneOption?.label}
                       </div>
                     </div>
@@ -825,7 +923,7 @@ export default function AccountProfilePage() {
                         <Select
                           value={tz}
                           onValueChange={(value) => {
-                            void handleTimezoneChange(value);
+                            void handleTimezoneChange(value)
                           }}
                           disabled={isTimezoneLoading || isUpdatingTimezone}
                         >
@@ -851,7 +949,6 @@ export default function AccountProfilePage() {
                   </section>
                 </TabsContent>
 
-
                 {/* Aba de Segurança */}
                 <TabsContent value="security" className="space-y-6">
                   <div className="space-y-4">
@@ -864,10 +961,10 @@ export default function AccountProfilePage() {
 
                     <Separator />
 
-                    <form 
+                    <form
                       onSubmit={(e) => {
-                        e.preventDefault();
-                        onPasswordSubmit(passwordForm);
+                        e.preventDefault()
+                        onPasswordSubmit(passwordForm)
                       }}
                       className="space-y-4"
                     >
@@ -881,7 +978,9 @@ export default function AccountProfilePage() {
                             type={showNewPassword ? "text" : "password"}
                             placeholder="••••••••"
                             value={passwordForm.newPassword}
-                            onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                            onChange={(e) =>
+                              setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))
+                            }
                             className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 pr-11 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isUpdating}
                           />
@@ -892,9 +991,70 @@ export default function AccountProfilePage() {
                             aria-label={showNewPassword ? "Ocultar senha" : "Mostrar senha"}
                             disabled={isUpdating}
                           >
-                            {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            {showNewPassword ? (
+                              <EyeOff className="h-5 w-5" />
+                            ) : (
+                              <Eye className="h-5 w-5" />
+                            )}
                           </button>
                         </div>
+
+                        {/* Indicador de força da senha */}
+                        {passwordStrength && (
+                          <div className="space-y-1">
+                            <div className="flex gap-1">
+                              <div
+                                className={`h-1 flex-1 rounded ${
+                                  passwordStrength === "weak"
+                                    ? "bg-red-500"
+                                    : passwordStrength === "medium"
+                                      ? "bg-yellow-500"
+                                      : "bg-green-500"
+                                }`}
+                              />
+                              <div
+                                className={`h-1 flex-1 rounded ${
+                                  passwordStrength === "medium" || passwordStrength === "strong"
+                                    ? passwordStrength === "medium"
+                                      ? "bg-yellow-500"
+                                      : "bg-green-500"
+                                    : "bg-muted"
+                                }`}
+                              />
+                              <div
+                                className={`h-1 flex-1 rounded ${
+                                  passwordStrength === "strong" ? "bg-green-500" : "bg-muted"
+                                }`}
+                              />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <ShieldCheck
+                                className={`h-3 w-3 ${
+                                  passwordStrength === "weak"
+                                    ? "text-red-500"
+                                    : passwordStrength === "medium"
+                                      ? "text-yellow-500"
+                                      : "text-green-500"
+                                }`}
+                              />
+                              <p
+                                className={`text-xs font-medium ${
+                                  passwordStrength === "weak"
+                                    ? "text-red-500"
+                                    : passwordStrength === "medium"
+                                      ? "text-yellow-500"
+                                      : "text-green-500"
+                                }`}
+                              >
+                                {passwordStrength === "weak"
+                                  ? "Senha fraca"
+                                  : passwordStrength === "medium"
+                                    ? "Senha média"
+                                    : "Senha forte"}
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="space-y-2">
@@ -907,7 +1067,12 @@ export default function AccountProfilePage() {
                             type={showConfirmPassword ? "text" : "password"}
                             placeholder="••••••••"
                             value={passwordForm.confirmPassword}
-                            onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                            onChange={(e) =>
+                              setPasswordForm((prev) => ({
+                                ...prev,
+                                confirmPassword: e.target.value,
+                              }))
+                            }
                             className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 pr-11 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={isUpdating}
                           />
@@ -918,35 +1083,32 @@ export default function AccountProfilePage() {
                             aria-label={showConfirmPassword ? "Ocultar senha" : "Mostrar senha"}
                             disabled={isUpdating}
                           >
-                            {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            {showConfirmPassword ? (
+                              <EyeOff className="h-5 w-5" />
+                            ) : (
+                              <Eye className="h-5 w-5" />
+                            )}
                           </button>
                         </div>
+                        {!passwordsMatch && (
+                          <p className="text-xs text-destructive">As senhas não coincidem</p>
+                        )}
                       </div>
 
                       {/* Requisitos da senha */}
                       <div className="rounded-lg border border-border bg-muted/50 p-4 space-y-2">
                         <p className="text-sm font-medium text-foreground">Requisitos da senha:</p>
                         <ul className="text-xs text-muted-foreground space-y-1 ml-1">
-                          <li className="flex items-start gap-2">
-                            <span className="text-primary mt-0.5">•</span>
-                            <span>Mínimo de 6 caracteres</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <span className="text-primary mt-0.5">•</span>
-                            <span>Pelo menos 1 letra maiúscula (A-Z)</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <span className="text-primary mt-0.5">•</span>
-                            <span>Pelo menos 1 letra minúscula (a-z)</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <span className="text-primary mt-0.5">•</span>
-                            <span>Pelo menos 1 número (0-9)</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <span className="text-primary mt-0.5">•</span>
-                            <span>Pelo menos 1 caractere especial (!@#$%^&*)</span>
-                          </li>
+                          {passwordRequirements.map((requirement) => (
+                            <li key={requirement.id} className="flex items-start gap-2">
+                              {requirement.isMet ? (
+                                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 text-green-500" />
+                              ) : (
+                                <XCircle className="mt-0.5 h-3.5 w-3.5 text-destructive" />
+                              )}
+                              <span>{requirement.label}</span>
+                            </li>
+                          ))}
                         </ul>
                       </div>
 
@@ -961,7 +1123,13 @@ export default function AccountProfilePage() {
                         </button>
                         <button
                           type="submit"
-                          disabled={isUpdating || !passwordForm.newPassword || !passwordForm.confirmPassword}
+                          disabled={
+                            isUpdating ||
+                            !passwordForm.newPassword ||
+                            !passwordForm.confirmPassword ||
+                            !passwordsMatch ||
+                            !isPasswordValid
+                          }
                           className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-11 px-6"
                         >
                           {isUpdating ? "Atualizando..." : "Atualizar senha"}
@@ -986,7 +1154,8 @@ export default function AccountProfilePage() {
                         <div className="space-y-1">
                           <p className="text-sm font-medium">Deletar conta permanentemente</p>
                           <p className="text-xs text-muted-foreground">
-                            Esta ação é irreversível. Todos os seus dados, incluindo operadores e managers, serão removidos.
+                            Esta ação é irreversível. Todos os seus dados, incluindo operadores e
+                            managers, serão removidos.
                           </p>
                         </div>
                         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -1002,8 +1171,18 @@ export default function AccountProfilePage() {
                             {deletionComplete ? (
                               <div className="text-center py-6">
                                 <div className="mx-auto w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/20 flex items-center justify-center mb-4">
-                                  <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  <svg
+                                    className="h-6 w-6 text-green-600 dark:text-green-400"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M5 13l4 4L19 7"
+                                    />
                                   </svg>
                                 </div>
                                 <h3 className="text-xl font-semibold mb-2">Até logo! 👋</h3>
@@ -1032,7 +1211,11 @@ export default function AccountProfilePage() {
                                   <AlertDialogDescription asChild className="space-y-3 pt-2">
                                     <div>
                                       <p>
-                                        Esta ação <strong className="text-foreground">não pode ser desfeita</strong>. Isso irá deletar permanentemente:
+                                        Esta ação{" "}
+                                        <strong className="text-foreground">
+                                          não pode ser desfeita
+                                        </strong>
+                                        . Isso irá deletar permanentemente:
                                       </p>
                                       <ul className="list-disc list-inside space-y-1 text-sm">
                                         <li>Sua conta e todos os dados pessoais</li>
@@ -1050,7 +1233,10 @@ export default function AccountProfilePage() {
 
                                 <div className="space-y-4 py-4">
                                   <div className="space-y-2">
-                                    <Label htmlFor="delete-password" className="text-sm font-medium">
+                                    <Label
+                                      htmlFor="delete-password"
+                                      className="text-sm font-medium"
+                                    >
                                       Digite sua senha para confirmar
                                     </Label>
                                     <div className="relative">
@@ -1067,16 +1253,25 @@ export default function AccountProfilePage() {
                                         type="button"
                                         onClick={() => setShowDeletePassword(!showDeletePassword)}
                                         className="absolute inset-y-0 right-0 grid w-11 place-items-center text-muted-foreground hover:text-foreground transition-colors"
-                                        aria-label={showDeletePassword ? "Ocultar senha" : "Mostrar senha"}
+                                        aria-label={
+                                          showDeletePassword ? "Ocultar senha" : "Mostrar senha"
+                                        }
                                       >
-                                        {showDeletePassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                        {showDeletePassword ? (
+                                          <EyeOff className="h-5 w-5" />
+                                        ) : (
+                                          <Eye className="h-5 w-5" />
+                                        )}
                                       </button>
                                     </div>
                                   </div>
                                 </div>
 
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel onClick={handleCancelDelete} className="cursor-pointer">
+                                  <AlertDialogCancel
+                                    onClick={handleCancelDelete}
+                                    className="cursor-pointer"
+                                  >
                                     Cancelar
                                   </AlertDialogCancel>
                                   <Button
@@ -1103,5 +1298,5 @@ export default function AccountProfilePage() {
         </Card>
       </div>
     </div>
-  );
+  )
 }
