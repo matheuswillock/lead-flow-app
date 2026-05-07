@@ -98,8 +98,8 @@ function mapAdhesion(adhesion: BackofficeAdhesionWithRelations): BackofficeAdhes
     leadName: adhesion.lead.name,
     fullName: adhesion.fullName,
     phone: adhesion.phone,
-    cpfCnpj: adhesion.cpfCnpj,
-    email: adhesion.email,
+    cpfCnpj: adhesion.cpfCnpj ?? adhesion.lead.cpfCnpj,
+    email: adhesion.email ?? adhesion.lead.email,
     sdrBackofficeUserId: adhesion.sdrBackofficeUserId,
     closerBackofficeUserId: adhesion.closerBackofficeUserId,
     status: adhesion.status,
@@ -192,6 +192,7 @@ function mapPublicAdhesion(
     creditCardMonthlyTotalAmount,
     creditCardTotalAmount,
     maxCardInstallments,
+    createdAt: adhesion.createdAt.toISOString(),
     paidAt: adhesion.paidAt?.toISOString() ?? null,
     expiresAt: adhesion.expiresAt.toISOString(),
   }
@@ -325,6 +326,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     createdByBackofficeUserId: string | null
   ): Promise<BackofficeAdhesionCreationResult> {
     const normalized = this.normalizeCommercialInput(input)
+    const crmWithRules = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
     const options = await this.repo.getOptions()
     const lead = options.leads.find((item) => item.id === normalized.leadId)
 
@@ -344,20 +346,31 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       }
     }
 
+    if (!crmWithRules?.isActive) {
+      throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
+    }
+
     const prices = await this.resolvePrices(normalized.cycle)
-    const pricing = calculateBackofficeAdhesionPricing(normalized, prices)
+    const pricing = calculateBackofficeAdhesionPricing(normalized, prices, crmWithRules.paymentRules)
+    const resolvedBillingType = normalized.billingType ?? "PIX"
+    const resolvedMonthlyTotalAmount =
+      resolvedBillingType === "PIX" ? pricing.pixMonthlyTotalAmount : pricing.creditCardMonthlyTotalAmount
+    const resolvedTotalAmount =
+      resolvedBillingType === "PIX" ? pricing.pixTotalAmount : pricing.creditCardTotalAmount
     const token = generateBackofficeAdhesionToken()
     const adhesion = await this.repo.createAndMoveLeadToAdhesion({
       leadId: normalized.leadId,
       fullName: normalized.fullName,
       phone: normalized.phone,
-      billingType: normalized.billingType ?? "PIX",
+      billingType: resolvedBillingType,
       plan: "crm",
       cycle: normalized.cycle,
       modules: CRM_MODULES,
       extraTeams: normalized.extraTeams,
       extraUsers: normalized.extraUsers,
       ...pricing,
+      monthlyTotalAmount: resolvedMonthlyTotalAmount,
+      totalAmount: resolvedTotalAmount,
       tokenHash: hashBackofficeAdhesionToken(token),
       tokenPreview: getBackofficeAdhesionTokenPreview(token),
       tokenPlain: token,
@@ -462,7 +475,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       activationMode: "checkout",
     })
     const prices = await this.resolvePrices(next.cycle)
-    const pricing = calculateBackofficeAdhesionPricing(next, prices)
+    const crmWithRules = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
+    if (!crmWithRules?.isActive) {
+      throw new Error(`Produto obrigatório indisponível: ${CRM_PRODUCT_SLUG}`)
+    }
+    const pricing = calculateBackofficeAdhesionPricing(next, prices, crmWithRules.paymentRules)
     const resolvedMonthlyTotalAmount =
       next.billingType === "PIX" ? pricing.pixMonthlyTotalAmount : pricing.creditCardMonthlyTotalAmount
     const resolvedTotalAmount =

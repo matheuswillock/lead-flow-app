@@ -33,6 +33,7 @@ export interface PublicAdhesionDetails {
   creditCardMonthlyTotalAmount: number
   creditCardTotalAmount: number
   maxCardInstallments: number
+  createdAt: string
   paidAt: string | null
   expiresAt: string
 }

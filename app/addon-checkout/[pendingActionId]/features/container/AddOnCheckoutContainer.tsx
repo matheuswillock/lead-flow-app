@@ -21,6 +21,12 @@ function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("pt-BR").format(value)
 }
 
+function addMonths(date: Date, months: number): Date {
+  const next = new Date(date)
+  next.setMonth(next.getMonth() + months)
+  return next
+}
+
 function getAttemptStorageKey(pendingActionId: string): string {
   return `${ATTEMPT_STORAGE_PREFIX}${pendingActionId}`
 }
@@ -42,8 +48,8 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     if (!data) return null
 
     const preset = data.presetBillingType
-    const startDate = data.alreadyPaid ? new Date() : null
-    const dueDate = data.alreadyPaid ? new Date() : null
+    const startDate = new Date()
+    const dueDate = addMonths(startDate, Math.max(1, data.pricing.remainingMonths ?? 1))
     const totalCharge = data.pricing.totalCharge ?? 0
 
     const title = data.addonType === "team" ? "Add-on Time" : "Add-on Usuario"
@@ -96,9 +102,9 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       totalValue: formatCurrency(totalCharge),
       totalHint: preset === "CREDIT_CARD" ? `em ate ${Math.max(1, data.pricing.maxInstallments)}x no cartao` : "via PIX",
       startLabel: "Inicio",
-      startValue: startDate ? formatDate(startDate) : "após confirmação",
+      startValue: formatDate(startDate),
       dueLabel: "Vencimento",
-      dueValue: dueDate ? formatDate(dueDate) : "após confirmação",
+      dueValue: formatDate(dueDate),
       issuedLabel: "Emitido por Corretor Studio",
       issuedValue: formatDate(new Date()),
     }

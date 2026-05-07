@@ -45,8 +45,9 @@ export function PublicAdhesionContainer() {
     const preset = details.billingType ?? "PIX"
     const cycleMonths = details.cycleMonths ?? 1
     const paidAt = details.paidAt ? new Date(details.paidAt) : null
-    const startDate = paidAt
-    const dueDate = paidAt ? addMonths(paidAt, cycleMonths) : null
+    const createdAt = details.createdAt ? new Date(details.createdAt) : null
+    const startDate = paidAt ?? createdAt
+    const dueDate = startDate ? addMonths(startDate, cycleMonths) : null
 
     const invoiceItems = [
       {
@@ -130,9 +131,9 @@ export function PublicAdhesionContainer() {
           ? `em até ${Math.max(1, details.maxCardInstallments ?? details.maxInstallments ?? 1)}x no cartão`
           : "via PIX",
       startLabel: "Início",
-      startValue: startDate ? formatDate(startDate) : "após confirmação",
+      startValue: startDate ? formatDate(startDate) : "—",
       dueLabel: "Vencimento",
-      dueValue: dueDate ? formatDate(dueDate) : "após confirmação",
+      dueValue: dueDate ? formatDate(dueDate) : "—",
       issuedLabel: "Emitido por Corretor Studio",
       issuedValue: formatDate(new Date()),
     }

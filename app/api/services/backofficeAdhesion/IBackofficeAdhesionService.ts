@@ -108,6 +108,7 @@ export interface BackofficeAdhesionPublicDTO {
   creditCardMonthlyTotalAmount: number
   creditCardTotalAmount: number
   maxCardInstallments: number
+  createdAt: string
   paidAt: string | null
   expiresAt: string
 }
