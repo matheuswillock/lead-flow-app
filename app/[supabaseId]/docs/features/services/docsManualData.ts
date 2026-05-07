@@ -367,7 +367,7 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
           {
             title: "Cards de métricas",
             description:
-              "Total de leads, reuniões realizadas, taxa de conversão e ticket médio com filtros por 7d, 30d, 3m, 6m ou 1 ano.",
+              "Visão operacional e financeira com fórmulas explícitas para vendas, conversão, churn, no-show e valores consolidados.",
           },
           {
             title: "Gráfico de funil",
@@ -392,6 +392,90 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
         title: "Filtro de período",
         content:
           "Use os atalhos 7d, 30d, 3m, 6m e 1a para ajustar o recorte das métricas. O padrão inicial é os últimos 30 dias.",
+      },
+      {
+        type: "table",
+        title: "Fórmulas dos cards do Dashboard",
+        columns: ["Card", "Fórmula", "Base de dados"],
+        rows: [
+          {
+            cells: [
+              "Receita Total",
+              "Soma de todas as vendas finalizadas no período",
+              "Some todos os valores das vendas finalizadas",
+            ],
+          },
+          {
+            cells: [
+              "Valor da Venda",
+              "Soma dos tickets dos leads no período",
+              "Some o ticket de todos os leads do período",
+            ],
+          },
+          {
+            cells: [
+              "Taxa de Conversão",
+              "Leads fechados dividido pelo total de leads, em porcentagem",
+              "(Leads fechados / Total de leads) x 100",
+            ],
+          },
+          {
+            cells: [
+              "Potencial de Receita",
+              "Soma do valor potencial atual de todos os leads",
+              "Some o valor potencial atual de todos os leads",
+            ],
+          },
+          {
+            cells: [
+              "Agendamentos",
+              "Quantidade de leads agendados",
+              "Conte quantos leads estão em Agendado",
+            ],
+          },
+          {
+            cells: [
+              "Negociação",
+              "Quantidade de leads em cotação ou negociação",
+              "Conte quantos leads estão em Cotação ou Negociação",
+            ],
+          },
+          {
+            cells: [
+              "Implementação",
+              "Quantidade de leads em proposta, contrato, boleto ou documentos",
+              "Conte quantos leads estão nessas etapas",
+            ],
+          },
+          {
+            cells: [
+              "Vendas",
+              "Quantidade de leads fechados no CRM",
+              "Conte quantos leads estão como Negócio fechado",
+            ],
+          },
+          {
+            cells: [
+              "Taxa de No-show",
+              "Leads que faltaram dividido por (agendados + faltaram), em porcentagem",
+              "(No-show / (Agendamentos + No-show)) x 100",
+            ],
+          },
+          {
+            cells: [
+              "Taxa de Churn Rate",
+              "Negado operadora + perdido dividido por agendamentos, em porcentagem",
+              "((Negado operadora + Perdido) / Agendamentos) x 100",
+            ],
+          },
+          {
+            cells: [
+              "Leads por Período",
+              "Mostra, por período, quantos leads entraram e quantos fecharam",
+              "Para cada período: Leads criados e Leads fechados",
+            ],
+          },
+        ],
       },
     ],
   },

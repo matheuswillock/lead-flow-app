@@ -185,11 +185,11 @@ export function SectionCardsWithContext() {
     <TooltipProvider delayDuration={0}>
       <div className="space-y-6 px-4 lg:px-6">
       {/* Header do dashboard com filtro global de periodo */}
-      <div className="flex w-full flex-wrap items-center justify-between gap-2">
+      <div className="flex w-full flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="rounded-md border border-border/60 bg-card/30 px-3 py-1 text-xs font-medium text-muted-foreground">
           {filterDateRangeText}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
           {(['7d', '30d', '3m', '6m', '1y'] as const).map((period) => (
             <Button
               key={period}
@@ -205,13 +205,13 @@ export function SectionCardsWithContext() {
             type="date"
             value={startDateInput}
             onChange={(event) => setStartDateInput(event.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+            className="h-9 w-[170px] rounded-md border border-input bg-background px-2 text-xs sm:w-[190px]"
           />
           <Input
             type="date"
             value={endDateInput}
             onChange={(event) => setEndDateInput(event.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+            className="h-9 w-[170px] rounded-md border border-input bg-background px-2 text-xs sm:w-[190px]"
           />
           <Button size="sm" variant="outline" onClick={applyCustomDateRange} className="text-xs">
             Aplicar
