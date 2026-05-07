@@ -6,6 +6,7 @@ export interface LeadMetricsData {
   currentValue: any; // Prisma Decimal type
   ticket: any; // Prisma Decimal type
   createdAt: Date;
+  statusEnteredAt: Date | null;
   meetingHeald: MeetingHeald | null;
   assignedTo: string | null;
   closerId: string | null;

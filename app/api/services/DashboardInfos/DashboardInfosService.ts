@@ -27,6 +27,7 @@ const STATUS_GROUPS = {
   ] as LeadStatus[],
   SALES: ["contract_finalized"] as LeadStatus[],
   CHURN: ["operator_denied"] as LeadStatus[],
+  OPPORTUNITY_LOST: ["opportunityLost"] as LeadStatus[],
   NO_SHOW: ["no_show"] as LeadStatus[],
 } as const;
 
@@ -37,7 +38,7 @@ export class DashboardInfosService implements IDashboardInfosService {
     const ctxFilters = { supabaseId: '', teamId, startDate, endDate, ctx };
 
     // Round 1: todas as queries independentes em paralelo
-    const [leads, finalizedLeads, meetingsHeldLeads, teamMembers, team] = await Promise.all([
+    const [leads, finalizedLeads, meetingsHeldLeads, teamMembers] = await Promise.all([
       metricsRepository.findLeadsForMetricsWithCtx(ctxFilters),
       metricsRepository.getFinalizedLeadsWithCtx(ctxFilters),
       metricsRepository.getMeetingsHeldLeadsWithCtx(ctxFilters),
@@ -56,30 +57,14 @@ export class DashboardInfosService implements IDashboardInfosService {
           },
         },
       }),
-      prisma.team.findUnique({
-        where: { id: teamId },
-        select: { masterId: true },
-      }),
     ]);
 
-    // Round 2: lead.count depende do masterId — inicia em paralelo com getLeadsByPeriod
+    // Round 2: busca por período
     const periodFilters = this.resolvePeriodDates(filters);
-
-    const [masterLeadCount, leadsPorPeriodo] = await Promise.all([
-      team?.masterId
-        ? prisma.lead.count({
-            where: {
-              managerId: team.masterId,
-              teamId,
-              ...(startDate && endDate && { createdAt: { gte: startDate, lte: endDate } }),
-            },
-          })
-        : Promise.resolve(leads.length),
-      this.buildLeadsByPeriod(ctx, filters, periodFilters, finalizedLeads),
-    ]);
+    const leadsPorPeriodo = await this.buildLeadsByPeriod(ctx, filters, periodFilters, leads);
 
     // Cálculos em memória
-    const vendas = finalizedLeads.length;
+    const salesCountFinancial = finalizedLeads.length;
 
     const hasFunction = (
       member: { functions: string[]; profile?: { functions: string[] | null } | null },
@@ -154,31 +139,48 @@ export class DashboardInfosService implements IDashboardInfosService {
     const negociacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.NEGOTIATION);
     const implementacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.IMPLEMENTATION);
     const churn = this.countByStatusGroup(statusCount, STATUS_GROUPS.CHURN);
+    const opportunityLost = this.countByStatusGroup(statusCount, STATUS_GROUPS.OPPORTUNITY_LOST);
     const noShowCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.NO_SHOW);
 
-    const agendamentos = masterLeadCount;
-    const taxaConversao = agendamentos > 0 ? (vendas / agendamentos) * 100 : 0;
-    const churnRate = vendas > 0 ? (churn / vendas) * 100 : 0;
-    const noShowRate = agendamentos > 0 ? (noShowCount / agendamentos) * 100 : 0;
+    const totalLeads = leads.length;
+    const scheduledCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.SCHEDULED);
+    const salesCountCrm = this.countByStatusGroup(statusCount, STATUS_GROUPS.SALES);
+    const salesCount = salesCountCrm;
+    const noShowBase = scheduledCount + noShowCount;
+    const conversionRateCrm = totalLeads > 0 ? (salesCountCrm / totalLeads) * 100 : 0;
+    const conversionRateFinancial = totalLeads > 0 ? (salesCountFinancial / totalLeads) * 100 : 0;
+    const churnBaseCount = churn + opportunityLost;
+    const churnRateCrm = scheduledCount > 0 ? (churnBaseCount / scheduledCount) * 100 : 0;
+    const churnRateFinancial = salesCountFinancial > 0 ? (churn / salesCountFinancial) * 100 : 0;
+    const noShowRate = noShowBase > 0 ? (noShowCount / noShowBase) * 100 : 0;
 
-    const receitaTotal = leads
-      .filter((l) => l.status === "contract_finalized" && l.ticket !== null)
-      .reduce((total, l) => total + Number(l.ticket || 0), 0);
+    const receitaTotal = finalizedLeads.reduce((total, sale) => total + Number(sale.amount || 0), 0);
 
     const ticket = leads.reduce((total, l) => total + Number(l.ticket || 0), 0);
     const cadencia = leads.reduce((total, l) => total + Number(l.currentValue || 0), 0);
 
     return {
-      agendamentos,
+      agendamentos: scheduledCount,
+      totalLeads,
+      scheduledCount,
+      noShowCount,
+      salesCount,
+      salesCountCrm,
+      salesCountFinancial,
       negociacao,
       implementacao,
-      vendas,
+      vendas: salesCountCrm,
       reunioesRealizadasCloser,
       reunioesRealizadasSdr,
-      taxaConversao: Math.round(taxaConversao * 100) / 100,
+      conversionRate: Math.round(conversionRateCrm * 100) / 100,
+      conversionRateCrm: Math.round(conversionRateCrm * 100) / 100,
+      conversionRateFinancial: Math.round(conversionRateFinancial * 100) / 100,
+      taxaConversao: Math.round(conversionRateCrm * 100) / 100,
       receitaTotal,
       ticket,
-      churnRate: Math.round(churnRate * 100) / 100,
+      churnRate: Math.round(churnRateCrm * 100) / 100,
+      churnRateCrm: Math.round(churnRateCrm * 100) / 100,
+      churnRateFinancial: Math.round(churnRateFinancial * 100) / 100,
       noShowRate: Math.round(noShowRate * 100) / 100,
       cadencia,
       leadsPorPeriodo,
@@ -224,7 +226,7 @@ export class DashboardInfosService implements IDashboardInfosService {
     ctx: import("@/app/api/infra/data/repositories/metrics/IMetricsRepository").TeamContext,
     filters: DashboardFilters,
     periodDates: { startDate: Date; endDate: Date },
-    finalizedLeads: import("@/app/api/infra/data/repositories/metrics/IMetricsRepository").SaleMetricsData[]
+    leads: import("@/app/api/infra/data/repositories/metrics/IMetricsRepository").LeadMetricsData[]
   ) {
     const { teamId, period = "30d" } = filters;
     const { startDate, endDate } = periodDates;
@@ -237,7 +239,7 @@ export class DashboardInfosService implements IDashboardInfosService {
     );
 
     const groupedLeads = this.groupLeadsByTimeInterval(leadsByPeriod, period);
-    const groupedConversions = this.groupConversionsByTimeInterval(finalizedLeads, period);
+    const groupedConversions = this.groupConversionsByTimeInterval(leads, period);
 
     return groupedLeads.map((item) => ({
       periodo: item.date,
@@ -268,20 +270,22 @@ export class DashboardInfosService implements IDashboardInfosService {
 
   /**
    * Agrupa conversões por intervalo de tempo.
-   * IMPORTANTE: agrupa pela data de CRIAÇÃO do lead, não pela data de finalização.
+   * Agrupa conversões CRM no mesmo eixo temporal dos leads por período.
    */
   private groupConversionsByTimeInterval(
-    conversions: Array<{ finalizedDateAt: Date; lead: { createdAt: Date } }>,
+    leads: Array<{ status: LeadStatus; createdAt: Date }>,
     period: string
   ): Map<string, number> {
     const grouped = new Map<string, number>();
 
-    conversions.forEach((conversion) => {
+    leads
+      .filter((lead) => lead.status === LeadStatus.contract_finalized)
+      .forEach((lead) => {
       const key =
         period === "7d" || period === "30d"
-          ? conversion.lead.createdAt.toISOString().split("T")[0]
+          ? lead.createdAt.toISOString().split("T")[0]
           : (() => {
-              const d = new Date(conversion.lead.createdAt);
+              const d = new Date(lead.createdAt);
               return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
             })();
       grouped.set(key, (grouped.get(key) || 0) + 1);

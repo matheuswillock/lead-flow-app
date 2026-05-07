@@ -1,4 +1,5 @@
 'use client';
+import * as React from "react";
 
 import { useDashboardContext } from '../context/DashboardContext';
 import { DashboardCardsSkeleton } from './components/DashboardSkeleton';
@@ -36,6 +37,7 @@ import {
   parseDateKeyToUtc,
   startOfDayInTz,
 } from '@/lib/dates';
+import { Input } from "@/components/ui/input";
 
 function InfoTooltip({ text }: { text: string }) {
   return (
@@ -96,7 +98,18 @@ function formatDatePtBr(date: Date, tz: string): string {
 }
 
 export function SectionCardsWithContext() {
-  const { metrics, isLoading, error, filters, customDateRange, isBlurred, toggleBlur } = useDashboardContext();
+  const {
+    metrics,
+    isLoading,
+    error,
+    filters,
+    customDateRange,
+    isBlurred,
+    toggleBlur,
+    setPeriod,
+    setCustomDateRange,
+    clearCustomDateRange,
+  } = useDashboardContext();
   const { tz } = useTimezone();
 
   if (isLoading) {
@@ -138,6 +151,19 @@ export function SectionCardsWithContext() {
   };
 
   const periodText = getPeriodText();
+  const [startDateInput, setStartDateInput] = React.useState(customDateRange?.startDate ?? "");
+  const [endDateInput, setEndDateInput] = React.useState(customDateRange?.endDate ?? "");
+
+  React.useEffect(() => {
+    setStartDateInput(customDateRange?.startDate ?? "");
+    setEndDateInput(customDateRange?.endDate ?? "");
+  }, [customDateRange]);
+
+  const applyCustomDateRange = () => {
+    if (startDateInput && endDateInput) {
+      setCustomDateRange(startDateInput, endDateInput);
+    }
+  };
   const filterDateRangeText = (() => {
     let startDate: Date | null = null;
     let endDate: Date | null = null;
@@ -158,24 +184,55 @@ export function SectionCardsWithContext() {
   return (
     <TooltipProvider delayDuration={0}>
       <div className="space-y-6 px-4 lg:px-6">
-      {/* Toggle de Blur para Privacidade */}
+      {/* Header do dashboard com filtro global de periodo */}
       <div className="flex w-full flex-wrap items-center justify-between gap-2">
         <div className="rounded-md border border-border/60 bg-card/30 px-3 py-1 text-xs font-medium text-muted-foreground">
           {filterDateRangeText}
         </div>
-        <Button variant="outline" size="sm" onClick={toggleBlur} className="gap-2">
-          {isBlurred ? (
-            <>
-              <EyeOff className="h-4 w-4" />
-              <span className="text-xs">Mostrar valores</span>
-            </>
-          ) : (
-            <>
-              <Eye className="h-4 w-4" />
-              <span className="text-xs">Ocultar valores</span>
-            </>
-          )}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {(['7d', '30d', '3m', '6m', '1y'] as const).map((period) => (
+            <Button
+              key={period}
+              size="sm"
+              variant={filters.period === period && !customDateRange ? "default" : "outline"}
+              onClick={() => setPeriod(period)}
+              className="text-xs"
+            >
+              {period}
+            </Button>
+          ))}
+          <Input
+            type="date"
+            value={startDateInput}
+            onChange={(event) => setStartDateInput(event.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+          />
+          <Input
+            type="date"
+            value={endDateInput}
+            onChange={(event) => setEndDateInput(event.target.value)}
+            className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+          />
+          <Button size="sm" variant="outline" onClick={applyCustomDateRange} className="text-xs">
+            Aplicar
+          </Button>
+          <Button size="sm" variant="outline" onClick={clearCustomDateRange} className="text-xs">
+            Limpar
+          </Button>
+          <Button variant="outline" size="sm" onClick={toggleBlur} className="gap-2">
+            {isBlurred ? (
+              <>
+                <EyeOff className="h-4 w-4" />
+                <span className="text-xs">Mostrar valores</span>
+              </>
+            ) : (
+              <>
+                <Eye className="h-4 w-4" />
+                <span className="text-xs">Ocultar valores</span>
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {/* SEÇÃO 1: MÉTRICAS PRINCIPAIS - Destaque Visual */}
@@ -186,7 +243,7 @@ export function SectionCardsWithContext() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 💰 Receita Total
-                <InfoTooltip text="Soma do ticket dos leads com status Negocio fechado no periodo selecionado." />
+                <InfoTooltip text="Soma financeira das vendas finalizadas (lead_finalized.amount) no período selecionado." />
               </CardTitle>
               <div className="rounded-full bg-green-500/10 p-2">
                 <DollarSign className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -214,7 +271,7 @@ export function SectionCardsWithContext() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 📊 Valor da Venda
-                <InfoTooltip text="Soma do valor da venda de todos os leads no período selecionado." />
+                <InfoTooltip text="Soma de ticket dos leads do CRM no período selecionado." />
               </CardTitle>
               <div className="rounded-full bg-amber-500/10 p-2">
                 <TrendingUp className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -242,7 +299,7 @@ export function SectionCardsWithContext() {
             <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
                 🎯 Taxa de Conversão
-                <InfoTooltip text="Vendas divididas pelo total de leads do master no periodo selecionado." />
+                <InfoTooltip text="Quantidade de vendas dividida pelo total de leads no período selecionado." />
                 </CardTitle>
               <div className="rounded-full bg-blue-500/10 p-2">
                 <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -258,11 +315,11 @@ export function SectionCardsWithContext() {
             </CardDescription>
           </CardHeader>
           <CardFooter className="pt-0">
-            <CardAction className="text-xs font-medium text-blue-600 dark:text-blue-400">
-              Agendamentos convertidos em vendas
-            </CardAction>
-          </CardFooter>
-        </Card>
+              <CardAction className="text-xs font-medium text-blue-600 dark:text-blue-400">
+              Vendas / total de leads
+              </CardAction>
+            </CardFooter>
+          </Card>
 
         {/* Potencial de Receita - DESTAQUE */}
         <Card className="@container/card border-purple-500/20 bg-gradient-to-br from-purple-500/5 via-purple-500/3 to-transparent shadow-md">
@@ -304,7 +361,7 @@ export function SectionCardsWithContext() {
                 <Calendar className="h-4 w-4 text-blue-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Agendamentos
-                  <InfoTooltip text="Total de leads cadastrados pelo master no periodo selecionado." />
+                  <InfoTooltip text="Quantidade de leads com status Agendado no período selecionado." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -317,7 +374,7 @@ export function SectionCardsWithContext() {
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">Leads cadastrados</CardAction>
+              <CardAction className="text-xs text-muted-foreground">Status Agendado</CardAction>
             </CardFooter>
           </Card>
 
@@ -376,7 +433,7 @@ export function SectionCardsWithContext() {
                 <TrendingUp className="h-4 w-4 text-green-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Vendas
-                  <InfoTooltip text="Quantidade de leads com status Negocio fechado no periodo selecionado." />
+                  <InfoTooltip text="Quantidade de leads com status Negócio fechado (CRM) no período selecionado." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -385,7 +442,7 @@ export function SectionCardsWithContext() {
                   isBlurred && "blur-sm select-none",
                 )}
               >
-                {metrics.vendas}
+                {metrics.salesCount}
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
@@ -466,7 +523,7 @@ export function SectionCardsWithContext() {
                 <UserX className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Taxa de No-show
-                  <InfoTooltip text="No-show dividido pelo total de leads do master no periodo selecionado." />
+                  <InfoTooltip text="No-show dividido por (agendados + no-show) no período selecionado." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -490,7 +547,7 @@ export function SectionCardsWithContext() {
                 <TrendingDown className="h-4 w-4 text-red-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
                   Taxa de Churn Rate
-                  <InfoTooltip text="Negado operadora dividido por vendas no periodo selecionado." />
+                  <InfoTooltip text="(Negado operadora + perdido) dividido por agendamentos no período selecionado." />
                 </CardTitle>
               </div>
               <CardDescription

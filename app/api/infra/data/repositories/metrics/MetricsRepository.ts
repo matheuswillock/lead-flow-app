@@ -87,7 +87,7 @@ export class MetricsRepository implements IMetricsRepository {
     endDate?: Date
   ) {
     const dateFilter =
-      startDate && endDate ? { createdAt: { gte: startDate, lte: endDate } } : {};
+      startDate && endDate ? { finalizedDateAt: { gte: startDate, lte: endDate } } : {};
 
     if (isManagerLikeRole(ctx.teamMember.role)) {
       return { lead: { teamId }, ...dateFilter };
@@ -146,6 +146,7 @@ export class MetricsRepository implements IMetricsRepository {
         currentValue: true,
         ticket: true,
         createdAt: true,
+        statusEnteredAt: true,
         meetingHeald: true,
         assignedTo: true,
         closerId: true,
