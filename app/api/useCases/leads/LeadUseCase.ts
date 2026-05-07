@@ -701,6 +701,28 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
+      const requiresFinalizeContractBeforeTransition =
+        existingLead.status === LeadStatus.offerSubmission &&
+        (status === LeadStatus.dps_agreement ||
+          status === LeadStatus.invoicePayment ||
+          status === LeadStatus.contract_finalized);
+
+      if (requiresFinalizeContractBeforeTransition) {
+        const finalizedContract = await leadFinalizedRepository.findLatestByLeadId(id);
+        if (!finalizedContract) {
+          return new Output(
+            false,
+            [],
+            ["Para mover de Proposta para este status, você precisa finalizar o contrato!"],
+            {
+              requiresFinalizeContract: true,
+              sourceStatus: LeadStatus.offerSubmission,
+              targetStatus: status,
+            }
+          );
+        }
+      }
+
       const statusUpdateExtraData: Prisma.LeadUpdateInput = {};
 
       if (status === LeadStatus.no_show) {
