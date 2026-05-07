@@ -254,6 +254,21 @@ export default function TeamsPage() {
     });
   }, [highlightedEligibleProfileIndex, isAddMemberDropdownOpen]);
 
+  React.useEffect(() => {
+    const hasPendingTeamPayment = teams.some((team) => {
+      const status = (team.pendingPayment?.paymentStatus ?? "").toUpperCase();
+      return status === "PENDING" || status === "FAILED";
+    });
+
+    if (!hasPendingTeamPayment) return;
+
+    const intervalId = setInterval(() => {
+      void refreshTeams();
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [teams, refreshTeams]);
+
   const handleSetActiveTeam = async (teamId: string) => {
     if (!teamId || teamId === activeTeamId) {
       return;
@@ -809,7 +824,6 @@ export default function TeamsPage() {
         teams={teams}
         activeTeamId={activeTeamId}
         switchingTeamId={switchingTeamId}
-        currentUserId={user?.id ?? null}
         onSetActiveTeam={(teamId) => {
           void handleSetActiveTeam(teamId);
         }}

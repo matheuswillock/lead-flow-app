@@ -6,8 +6,10 @@ import { backofficeAdhesionUseCase } from "@/app/api/useCases/backofficeAdhesion
 const ADHESION_CYCLES = ["monthly", "quarterly", "semiannual"] as const
 type BackofficeAdhesionBillingCycleValue = (typeof ADHESION_CYCLES)[number]
 
-const BILLING_TYPES = ["PIX", "CREDIT_CARD"] as const
+const BILLING_TYPES = ["PIX", "CREDIT_CARD", "EXTERNAL"] as const
 type BackofficeAdhesionBillingTypeValue = (typeof BILLING_TYPES)[number]
+const ACTIVATION_MODES = ["checkout", "external_paid"] as const
+type BackofficeAdhesionActivationModeValue = (typeof ACTIVATION_MODES)[number]
 
 function parseCycle(value: unknown): BackofficeAdhesionBillingCycleValue | undefined {
   return typeof value === "string" && (ADHESION_CYCLES as readonly string[]).includes(value)
@@ -37,6 +39,15 @@ function optionalInteger(data: Record<string, unknown>, key: string): number | u
   return undefined
 }
 
+function parseActivationMode(
+  value: unknown
+): BackofficeAdhesionActivationModeValue | undefined {
+  return typeof value === "string" &&
+    (ACTIVATION_MODES as readonly string[]).includes(value)
+    ? (value as BackofficeAdhesionActivationModeValue)
+    : undefined
+}
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -63,6 +74,7 @@ export async function PATCH(
       extraTeams: optionalInteger(data, "extraTeams"),
       extraUsers: optionalInteger(data, "extraUsers"),
       billingType: parseBillingType(data.billingType),
+      activationMode: parseActivationMode(data.activationMode),
       sdrBackofficeUserId: optionalString(data, "sdrBackofficeUserId"),
       closerBackofficeUserId: optionalString(data, "closerBackofficeUserId"),
     })

@@ -78,7 +78,7 @@ export interface BackofficeAdhesionFormValues {
   cycle: BackofficeAdhesionBillingCycleKey
   extraTeams: number
   extraUsers: number
-  billingType: "PIX" | "CREDIT_CARD" | null
+  billingType: "PIX" | "CREDIT_CARD" | "EXTERNAL" | null
   sdrBackofficeUserId: string | null
   closerBackofficeUserId: string | null
   activationMode: "checkout" | "external_paid"

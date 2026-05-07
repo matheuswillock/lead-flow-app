@@ -95,7 +95,12 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     cycle: adhesion.cycle,
     extraTeams: adhesion.extraTeams,
     extraUsers: adhesion.extraUsers,
-    billingType: adhesion.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : adhesion.billingType === "PIX" ? "PIX" : "PIX",
+    billingType:
+      adhesion.billingType === "CREDIT_CARD"
+        ? "CREDIT_CARD"
+        : adhesion.billingType === "EXTERNAL"
+          ? "EXTERNAL"
+          : "PIX",
     sdrBackofficeUserId: adhesion.sdrBackofficeUserId,
     closerBackofficeUserId: adhesion.closerBackofficeUserId,
     activationMode: "checkout",
@@ -233,6 +238,7 @@ export function BackofficeAdhesionDialog({
       : []),
   ]
   const isExternalPaid = values.activationMode === "external_paid"
+  const isExternalBilling = mode === "edit" && values.billingType === "EXTERNAL"
   const sanitizedCpfCnpj = sanitizeCpfCnpj(values.cpfCnpj)
   const hasValidOptionalCpfCnpj =
     sanitizedCpfCnpj.length === 0 || /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)
@@ -241,8 +247,9 @@ export function BackofficeAdhesionDialog({
     /^\d{10,11}$/.test(sanitizePhone(values.phone)) &&
     (mode === "edit" || Boolean(values.leadId)) &&
     hasValidOptionalCpfCnpj &&
-    (!isExternalPaid || isValidEmail(values.email.trim())) &&
-    (isExternalPaid || Boolean(values.billingType)) &&
+    (!(isExternalPaid || isExternalBilling) || isValidEmail(values.email.trim())) &&
+    (!(isExternalPaid || isExternalBilling) || /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)) &&
+    (isExternalPaid || isExternalBilling || Boolean(values.billingType)) &&
     !isSubmitting
 
   useEffect(() => {
@@ -301,6 +308,7 @@ export function BackofficeAdhesionDialog({
           extraTeams: values.extraTeams,
           extraUsers: values.extraUsers,
           billingType: values.billingType,
+          activationMode: values.billingType === "EXTERNAL" ? "external_paid" : "checkout",
           sdrBackofficeUserId: values.sdrBackofficeUserId,
           closerBackofficeUserId: values.closerBackofficeUserId,
         })
@@ -453,13 +461,13 @@ export function BackofficeAdhesionDialog({
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <Label htmlFor="adhesion-email">E-mail{isExternalPaid ? " *" : ""}</Label>
+                <Label htmlFor="adhesion-email">E-mail{isExternalPaid || isExternalBilling ? " *" : ""}</Label>
                 <Input
                   id="adhesion-email"
                   value={values.email}
                   onChange={(event) => updateValue("email", event.target.value)}
                   disabled={isSubmitting}
-                  required={isExternalPaid}
+                  required={isExternalPaid || isExternalBilling}
                 />
               </div>
               <div className="flex flex-col gap-2">
@@ -570,9 +578,13 @@ export function BackofficeAdhesionDialog({
                 <Label>Forma de pagamento *</Label>
                 <RadioGroup
                   value={values.billingType ?? "PIX"}
-                  onValueChange={(value) =>
+                  onValueChange={(value) => {
+                    if (value === "EXTERNAL") {
+                      updateValue("billingType", "EXTERNAL")
+                      return
+                    }
                     updateValue("billingType", value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
-                  }
+                  }}
                   className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"
                   disabled={isSubmitting}
                 >
@@ -584,6 +596,12 @@ export function BackofficeAdhesionDialog({
                     <RadioGroupItem value="CREDIT_CARD" id="adhesion-billing-card" />
                     <Label htmlFor="adhesion-billing-card">Cartão de crédito</Label>
                   </div>
+                  {mode === "edit" ? (
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="EXTERNAL" id="adhesion-billing-external" />
+                      <Label htmlFor="adhesion-billing-external">Pagamento externo</Label>
+                    </div>
+                  ) : null}
                 </RadioGroup>
               </div>
             ) : null}

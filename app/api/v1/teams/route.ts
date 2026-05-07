@@ -136,6 +136,7 @@ export async function GET(request: NextRequest) {
         paymentId: true,
         payload: true,
         status: true,
+        createdAt: true,
       },
     });
 
@@ -174,7 +175,7 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    const teams = memberships.map((membership) => ({
+    const activeTeams = memberships.map((membership) => ({
       id: membership.team.id,
       name: membership.team.name,
       masterId: membership.team.masterId,
@@ -184,6 +185,46 @@ export async function GET(request: NextRequest) {
       membershipCreatedAt: membership.createdAt,
       pendingPayment: pendingByName.get(membership.team.name) ?? null,
     }));
+
+    const pendingTeamRows = pendingActions
+      .filter((action) => {
+        const payload = (action.payload as Record<string, unknown>) || {};
+        const teamName = String(payload.teamName ?? "").trim();
+        if (!teamName) return false;
+        return !activeTeams.some((team) => team.name.trim() === teamName);
+      })
+      .map((action) => {
+        const payload = (action.payload as Record<string, unknown>) || {};
+        const teamName = String(payload.teamName ?? "").trim();
+        const billingType = String(payload.billingType ?? "PIX").toUpperCase();
+        const paymentStatus =
+          action.status === "failed"
+            ? "FAILED"
+            : pendingByName.get(teamName)?.paymentStatus || "PENDING";
+        const paymentMethod =
+          action.status === "failed"
+            ? billingType
+            : pendingByName.get(teamName)?.paymentMethod || billingType;
+
+        return {
+          id: `pending-${action.id}`,
+          name: teamName,
+          masterId: profile.id,
+          isDefault: false,
+          role: "manager",
+          functions: [],
+          membershipCreatedAt: action.createdAt,
+          pendingPayment: {
+            id: action.id,
+            paymentId: action.paymentId || "",
+            paymentStatus,
+            paymentMethod,
+            checkoutUrl: getFullUrl(`/addon-checkout/${action.id}`),
+          },
+        };
+      });
+
+    const teams = [...activeTeams, ...pendingTeamRows];
 
     return NextResponse.json(
       new Output(true, [], [], { teams, activeTeamId: profile.activeTeamId }),
