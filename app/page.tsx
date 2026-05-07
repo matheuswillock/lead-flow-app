@@ -161,11 +161,11 @@ export default function HomePage() {
               {/* Subtitle */}
               <p className="mt-6 max-w-xl text-base sm:text-lg md:text-xl text-muted-foreground leading-relaxed">
                 Enquanto outros perdem leads no WhatsApp e em planilhas, seu time opera com{" "}
-                <span className="text-white font-semibold">pipeline</span>
+                <span className="text-foreground font-semibold">pipeline</span>
                 {", "}
-                <span className="text-white font-semibold">agenda</span>
+                <span className="text-foreground font-semibold">agenda</span>
                 {" e "}
-                <span className="text-white font-semibold">indicadores</span>{" "}
+                <span className="text-foreground font-semibold">indicadores</span>{" "}
                 tudo em um só lugar para não ficar para trás.
               </p>
 

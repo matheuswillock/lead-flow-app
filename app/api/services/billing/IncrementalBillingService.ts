@@ -8,6 +8,7 @@ import type {
   CreateIncrementalChargeInput,
   IIncrementalBillingService,
   IncrementalBillingType,
+  IncrementalChargeCustomerOverride,
   IncrementalChargeResult,
   ProjectBillingInput,
   ProjectedBillingSummary,
@@ -78,6 +79,29 @@ const createAsaasCustomer = async (master: BillingOwnerProfile): Promise<string>
       complement: master.complement || undefined,
       province: master.neighborhood || undefined,
       externalReference: master.id,
+    }),
+  });
+
+  return customer.id as string;
+};
+
+const createAsaasCustomerFromOverride = async (
+  masterId: string,
+  override: IncrementalChargeCustomerOverride
+): Promise<string> => {
+  const customer = await asaasFetch(asaasApi.customers, {
+    method: "POST",
+    body: JSON.stringify({
+      name: override.fullName,
+      email: override.email,
+      cpfCnpj: override.cpfCnpj || "",
+      phone: override.phone || undefined,
+      postalCode: override.postalCode || undefined,
+      address: override.address || undefined,
+      addressNumber: override.addressNumber || undefined,
+      complement: override.complement || undefined,
+      province: override.neighborhood || undefined,
+      externalReference: masterId,
     }),
   });
 
@@ -178,15 +202,23 @@ export class IncrementalBillingService implements IIncrementalBillingService {
   }
 
   async createIncrementalCharge(input: CreateIncrementalChargeInput): Promise<IncrementalChargeResult> {
-    const customerId = await this.ensureCustomer(input.master);
+    const customerId = await this.ensureCustomer(input.master, input.customerOverride);
 
-    // Usuários vindos do fluxo de backoffice adhesion não possuem assinatura recorrente no Asaas
-    // (pagaram lump-sum semestral). Nesse caso, criamos cobrança avulsa com billingType UNDEFINED,
-    // permitindo que o cliente escolha o método de pagamento via link gerado.
     let billingType: IncrementalBillingType = "UNDEFINED";
     let creditCardToken: string | undefined;
+    const hasCreditCardForm = input.billingType === "CREDIT_CARD" && Boolean(input.creditCard);
 
-    if (input.master.asaasSubscriptionId) {
+    if (input.billingType === "PIX") {
+      billingType = "PIX";
+    } else if (input.billingType === "CREDIT_CARD") {
+      billingType = "CREDIT_CARD";
+      if (!hasCreditCardForm && input.master.asaasSubscriptionId) {
+        const subscription = await this.getCurrentSubscription(input.master);
+        if (subscription.billingType === "CREDIT_CARD") {
+          creditCardToken = subscription.creditCard?.creditCardToken;
+        }
+      }
+    } else if (input.master.asaasSubscriptionId) {
       const subscription = await this.getCurrentSubscription(input.master);
       billingType = normalizeBillingType(subscription.billingType);
       if (billingType === "CREDIT_CARD") {
@@ -211,8 +243,46 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       externalReference,
     };
 
-    if (billingType === "CREDIT_CARD" && creditCardToken) {
-      paymentPayload.creditCardToken = creditCardToken;
+    if (billingType === "CREDIT_CARD") {
+      if (hasCreditCardForm && input.creditCard) {
+        const holder = input.customerOverride ?? {
+          fullName: input.master.fullName ?? "",
+          email: input.master.email,
+          cpfCnpj: input.master.cpfCnpj ?? "",
+          phone: input.master.phone ?? "",
+          postalCode: input.master.postalCode ?? "",
+          addressNumber: input.master.addressNumber ?? "",
+          complement: input.master.complement ?? undefined,
+        };
+        paymentPayload.creditCard = {
+          holderName: input.creditCard.holderName,
+          number: input.creditCard.number,
+          expiryMonth: input.creditCard.expiryMonth,
+          expiryYear: input.creditCard.expiryYear,
+          ccv: input.creditCard.ccv,
+        };
+        paymentPayload.creditCardHolderInfo = {
+          name: holder.fullName,
+          email: holder.email,
+          cpfCnpj: holder.cpfCnpj,
+          postalCode: holder.postalCode,
+          addressNumber: holder.addressNumber,
+          addressComplement: holder.complement,
+          phone: holder.phone,
+          mobilePhone: holder.phone,
+        };
+        if (input.remoteIp) {
+          paymentPayload.remoteIp = input.remoteIp;
+        }
+        if ((input.installments ?? 1) > 1) {
+          paymentPayload.installmentCount = input.installments;
+          paymentPayload.installmentValue = roundCurrency(
+            input.amount / Math.max(input.installments ?? 1, 1)
+          );
+        }
+      } else if (creditCardToken) {
+        paymentPayload.creditCardToken = creditCardToken;
+      }
     }
 
     const payment = await asaasFetch(asaasApi.payments, {
@@ -231,6 +301,7 @@ export class IncrementalBillingService implements IIncrementalBillingService {
 
     if (billingType === "PIX") {
       result.pix = await getPixQrCode(payment.id);
+      result.invoiceUrl = payment.invoiceUrl || null;
     }
 
     if (billingType === "BOLETO") {
@@ -316,7 +387,10 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     }
   }
 
-  private async ensureCustomer(master: BillingOwnerProfile): Promise<string> {
+  private async ensureCustomer(
+    master: BillingOwnerProfile,
+    override?: IncrementalChargeCustomerOverride
+  ): Promise<string> {
     if (master.asaasCustomerId) {
       try {
         await asaasFetch(`${asaasApi.customers}/${master.asaasCustomerId}`, { method: "GET" });
@@ -326,7 +400,10 @@ export class IncrementalBillingService implements IIncrementalBillingService {
       }
     }
 
-    const customerId = await createAsaasCustomer(master);
+    const customerId = override
+      ? await createAsaasCustomerFromOverride(master.id, override)
+      : await createAsaasCustomer(master);
+
     await billingRepository.updateAsaasCustomerId(master.id, customerId);
     return customerId;
   }
@@ -357,6 +434,37 @@ export class IncrementalBillingService implements IIncrementalBillingService {
 
     // Asaas espera yyyy-MM-dd no fuso do cliente (BRT), não em UTC
     return formatIntimezone(nextDueDate, "yyyy-MM-dd", ownerTz);
+  }
+
+  async calculateProportionalAmount(
+    masterId: string,
+    addonType: "user" | "team"
+  ): Promise<{ billingDelta: number; remainingMonths: number; totalCharge: number; maxInstallments: number }> {
+    const projection = await this.projectBilling(masterId, {
+      additionalUsers: addonType === "user" ? 1 : 0,
+      additionalTeams: addonType === "team" ? 1 : 0,
+    });
+    const billingDelta = projection.billingDelta;
+
+    const endDate = await billingRepository.getSubscriptionEndDate(masterId);
+    const now = new Date();
+
+    let remainingMonths = 1;
+    if (endDate && !Number.isNaN(endDate.getTime())) {
+      const monthsRemaining = Math.round(
+        (endDate.getFullYear() - now.getFullYear()) * 12 + (endDate.getMonth() - now.getMonth())
+      );
+      remainingMonths = Math.max(1, monthsRemaining);
+    }
+
+    const totalCharge = roundCurrency(billingDelta * remainingMonths);
+
+    return {
+      billingDelta,
+      remainingMonths,
+      totalCharge,
+      maxInstallments: remainingMonths,
+    };
   }
 }
 

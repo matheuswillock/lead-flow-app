@@ -7,10 +7,33 @@ import {
   getTeamAccess,
   hasDelegatedTeamManagementAccess,
 } from "@/app/api/v1/utils/teamAccess";
+import { getFullUrl } from "@/lib/utils/app-url";
+import { asaasApi, asaasFetch } from "@/lib/asaas";
 
 const CreateTeamSchema = z.object({
   name: z.string().min(2, "Nome do time deve ter pelo menos 2 caracteres"),
 });
+
+async function getPendingPaymentStatus(paymentId?: string | null) {
+  if (!paymentId) {
+    return null;
+  }
+  try {
+    const payment = await asaasFetch(`${asaasApi.payments}/${paymentId}`, { method: "GET" });
+    return {
+      paymentId,
+      paymentStatus: payment?.status || "PENDING",
+      paymentMethod: payment?.billingType || "UNDEFINED",
+    };
+  } catch (error) {
+    console.error("[TeamsRoute][GET] Erro ao consultar pagamento pendente:", error);
+    return {
+      paymentId,
+      paymentStatus: "PENDING",
+      paymentMethod: "UNDEFINED",
+    };
+  }
+}
 
 async function createTeamForAccount(args: {
   teamName: string;
@@ -101,15 +124,107 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "asc" }
     });
 
-    const teams = memberships.map((membership) => ({
+    const pendingActions = await prisma.pendingAction.findMany({
+      where: {
+        masterId: profile.id,
+        actionType: "create_team",
+        status: { in: ["pending", "failed"] },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        paymentId: true,
+        payload: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+
+    const pendingByName = new Map<string, {
+      id: string;
+      paymentId: string;
+      paymentStatus: string;
+      paymentMethod: string;
+      checkoutUrl: string;
+    }>();
+
+    await Promise.all(
+      pendingActions.map(async (action) => {
+        const payload = (action.payload as Record<string, unknown>) || {};
+        const teamName = String(payload.teamName ?? "").trim();
+        if (!teamName || pendingByName.has(teamName)) {
+          return;
+        }
+
+        const payment =
+          action.status === "failed"
+            ? {
+                paymentId: action.paymentId || "",
+                paymentStatus: "FAILED",
+                paymentMethod: payload.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX",
+              }
+            : await getPendingPaymentStatus(action.paymentId);
+
+        pendingByName.set(teamName, {
+          id: action.id,
+          paymentId: payment?.paymentId || "",
+          paymentStatus: payment?.paymentStatus || "PENDING",
+          paymentMethod: payment?.paymentMethod || "UNDEFINED",
+          checkoutUrl: getFullUrl(`/addon-checkout/${action.id}`),
+        });
+      })
+    );
+
+    const activeTeams = memberships.map((membership) => ({
       id: membership.team.id,
       name: membership.team.name,
       masterId: membership.team.masterId,
       isDefault: membership.team.isDefault,
       role: membership.role,
       functions: membership.functions,
-      membershipCreatedAt: membership.createdAt
+      membershipCreatedAt: membership.createdAt,
+      pendingPayment: pendingByName.get(membership.team.name) ?? null,
     }));
+
+    const pendingTeamRows = pendingActions
+      .filter((action) => {
+        const payload = (action.payload as Record<string, unknown>) || {};
+        const teamName = String(payload.teamName ?? "").trim();
+        if (!teamName) return false;
+        return !activeTeams.some((team) => team.name.trim() === teamName);
+      })
+      .map((action) => {
+        const payload = (action.payload as Record<string, unknown>) || {};
+        const teamName = String(payload.teamName ?? "").trim();
+        const billingType = String(payload.billingType ?? "PIX").toUpperCase();
+        const paymentStatus =
+          action.status === "failed"
+            ? "FAILED"
+            : pendingByName.get(teamName)?.paymentStatus || "PENDING";
+        const paymentMethod =
+          action.status === "failed"
+            ? billingType
+            : pendingByName.get(teamName)?.paymentMethod || billingType;
+
+        return {
+          id: `pending-${action.id}`,
+          name: teamName,
+          masterId: profile.id,
+          isDefault: false,
+          role: "manager",
+          functions: [],
+          membershipCreatedAt: action.createdAt,
+          pendingPayment: {
+            id: action.id,
+            paymentId: action.paymentId || "",
+            paymentStatus,
+            paymentMethod,
+            checkoutUrl: getFullUrl(`/addon-checkout/${action.id}`),
+          },
+        };
+      });
+
+    const teams = [...activeTeams, ...pendingTeamRows];
 
     return NextResponse.json(
       new Output(true, [], [], { teams, activeTeamId: profile.activeTeamId }),

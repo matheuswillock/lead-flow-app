@@ -15,6 +15,13 @@ export interface TeamSummary {
   role: "manager" | "backoffice" | "operator";
   functions: ("SDR" | "CLOSER")[];
   membershipCreatedAt: string;
+  pendingPayment?: {
+    id: string;
+    paymentId: string;
+    paymentStatus: string;
+    paymentMethod: string;
+    checkoutUrl: string;
+  } | null;
 }
 
 interface TeamContextState {

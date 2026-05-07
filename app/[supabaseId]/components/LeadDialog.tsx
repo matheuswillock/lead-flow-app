@@ -1,6 +1,6 @@
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { LeadForm, type LeadScheduleField } from "@/components/forms/leadForm";
+import { LeadForm } from "@/components/forms/leadForm";
 import { useLeadForm } from "@/hooks/useForms";
 import { leadFormData } from "@/lib/validations/validationForms";
 import {
@@ -26,6 +26,7 @@ import {
   ScheduleMeetingDialog,
   type ScheduleMeetingSuccessPayload,
 } from "@/app/[supabaseId]/board/features/container/ScheduleMeetingDialog";
+import { LeadStatusTriggerDialog, type LeadStatusTriggerPayload } from "@/app/[supabaseId]/board/features/container/LeadStatusTriggerDialog";
 import type { Lead } from "@/app/[supabaseId]/board/features/context/BoardTypes";
 import type { ProfileResponseDTO, UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import type { LeadActivityReactionSummary, LeadActivityResponseDTO } from "@/app/api/v1/leads/DTO/leadResponseDTO";
@@ -54,12 +55,11 @@ import {
 import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import { isManagerLikeRole } from "@/lib/roles";
+import { isMeetingOverdue } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
+import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
 import {
   formatIntimezone,
-  formatLocalDateValue,
-  formatLocalTimeValue,
-  parseDateKeyAndTimeToUtc,
   parseLocalToUtc,
 } from "@/lib/dates";
 
@@ -73,6 +73,15 @@ interface LeadDialogProps {
   patchLead?: (leadId: string, patch: Partial<Lead>) => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
+
+type PendingStatusConfirmation = {
+  status: string;
+  confirmationRuleId: string;
+  message: string;
+};
+
+const needsStatusTriggerDialog = (status: string) =>
+  status === "future_sale" || status === "opportunityLost" || status === "operator_denied";
 
 const EmojiPicker = dynamic(() => import("emoji-picker-react").then((mod) => mod.default), {
   ssr: false,
@@ -98,14 +107,6 @@ type MentionToken = {
   label: string;
 };
 
-type InviteDispatchResult = {
-  status: "sent_google" | "sent_resend" | "failed";
-  provider: "google" | "resend";
-  fallbackUsed: boolean;
-  attemptedAt: string;
-  error: string | null;
-};
-
 type LeadOriginBadge = {
   label: string;
   variant: "default" | "secondary" | "outline";
@@ -115,8 +116,6 @@ const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62
 const TEAM_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const teamMembersCacheByTeamId = new Map<string, { members: MentionMember[]; timestamp: number }>();
 const teamMembersInFlightByTeamId = new Map<string, Promise<MentionMember[]>>();
-const SCHEDULE_CHANGE_ERROR_MESSAGE = "Agendamento alterado. Confirme o reagendamento para continuar.";
-const SCHEDULE_FIELD_ORDER: LeadScheduleField[] = ["meetingDate", "closerId", "meetingNotes", "extraGuests"];
 
 const normalizeLeadPhoneDigits = (phone: string): string => {
   if (!phone) return "";
@@ -125,15 +124,7 @@ const normalizeLeadPhoneDigits = (phone: string): string => {
   return numbers.slice(0, 11);
 };
 
-const isValidScheduleDate = (value?: Date): value is Date =>
-  value instanceof Date && !Number.isNaN(value.getTime());
 
-const toScheduleDateKey = (date: Date, tz: string) => {
-  if (!isValidScheduleDate(date)) return null;
-  return formatLocalDateValue(date, tz);
-};
-
-const formatScheduleTime = (date: Date, tz: string) => formatLocalTimeValue(date, tz);
 
 export default function LeadDialog({
   open,
@@ -160,15 +151,8 @@ export default function LeadDialog({
   const [newParticipantDraft, setNewParticipantDraft] = useState("");
   const [newParticipants, setNewParticipants] = useState<string[]>([]);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
-  const [rescheduleConfirmOpen, setRescheduleConfirmOpen] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<leadFormData | null>(null);
-  const [pendingChangedScheduleFields, setPendingChangedScheduleFields] = useState<LeadScheduleField[]>([]);
-  const [highlightedScheduleFields, setHighlightedScheduleFields] = useState<LeadScheduleField[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
-  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
-  const [availabilityLoading, setAvailabilityLoading] = useState(false);
-  const [availabilityError, setAvailabilityError] = useState<string | null>(null);
-  const [hasLoadedAvailability, setHasLoadedAvailability] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [origin, setOrigin] = useState("");
   const [activityType, setActivityType] = useState<"note" | "call" | "whatsapp" | "email">("note");
@@ -180,8 +164,15 @@ export default function LeadDialog({
   const [commentEmojiOpen, setCommentEmojiOpen] = useState(false);
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [showStatusTriggerDialog, setShowStatusTriggerDialog] = useState(false);
   const [statusSelection, setStatusSelection] = useState<string>("");
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [pendingStatusConfirmation, setPendingStatusConfirmation] = useState<PendingStatusConfirmation | null>(null);
+  const [meetingHealdGateOpen, setMeetingHealdGateOpen] = useState(false);
+  const [meetingHealdBlockedOpen, setMeetingHealdBlockedOpen] = useState(false);
+  const [pendingMeetingHealdGate, setPendingMeetingHealdGate] = useState<
+    { status: string; trigger?: Record<string, unknown> } | null
+  >(null);
   const [teamMembers, setTeamMembers] = useState<MentionMember[]>([]);
   const [teamMembersLoading, setTeamMembersLoading] = useState(false);
   const [teamMembersError, setTeamMembersError] = useState<string | null>(null);
@@ -198,8 +189,6 @@ export default function LeadDialog({
   const silentFetchTimerRef = useRef<number | null>(null);
   const appliedReactionRealtimeEventsRef = useRef<Set<string>>(new Set());
   const pendingOwnReactionOpsRef = useRef<Set<string>>(new Set());
-  const availabilityInFlightKeyRef = useRef<string | null>(null);
-  const availabilityLastSuccessKeyRef = useRef<string | null>(null);
   const params = useParams();
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
@@ -255,11 +244,7 @@ export default function LeadDialog({
       setSelectedMentions([]);
       setHighlightedActivityId(null);
       activityItemRefs.current.clear();
-      setRescheduleConfirmOpen(false);
       setPendingSubmitData(null);
-      setPendingChangedScheduleFields([]);
-      setHighlightedScheduleFields([]);
-      form.clearErrors(SCHEDULE_FIELD_ORDER);
     }
   }, [open, form]);
 
@@ -393,12 +378,15 @@ export default function LeadDialog({
     lead.status === "dps_agreement" ||
     lead.status === "offerSubmission"
   );
-  const canMarkNoShow = lead?.status === "scheduled";
   const shouldShowMeetingHeald = !!lead && lead.status === "scheduled";
+  const isAssignedCloser = !!(lead && user && lead.closerId && lead.closerId === user.id);
   const canEditMeetingHeald =
-    shouldShowMeetingHeald && (isTeamMaster || activeFunctions.includes("CLOSER"));
-  const canShowMeetingHeald = shouldShowMeetingHeald && canEditMeetingHeald;
-  const showMeetingLink = !!lead && lead.status !== "new_opportunity";
+    shouldShowMeetingHeald && (isTeamMaster || isAssignedCloser);
+  const canMarkNoShow =
+    !!lead &&
+    lead.status === "scheduled" &&
+    isMeetingOverdue(lead.meetingDate) &&
+    lead.meetingHeald !== "yes";
   const canReactToActivity =
     !!user && (isManagerLikeRole(user.role) || activeFunctions.includes("SDR") || activeFunctions.includes("CLOSER"));
   const statusLabel = lead
@@ -483,8 +471,6 @@ export default function LeadDialog({
       googleCalendarConnected: member.googleCalendarConnected ?? false,
     }));
   }, [teamMembers]);
-  const watchedMeetingDate = form.watch("meetingDate");
-  const watchedCloserId = form.watch("closerId");
   const fallbackClosers = useMemo(
     () =>
       closersByTeam.filter(
@@ -1333,71 +1319,6 @@ export default function LeadDialog({
     }
   };
 
-  const parseExtraGuests = (value: string | undefined): string[] => {
-    if (!value) return [];
-    return value
-      .split(/[,;\s]+/)
-      .map((item) => item.trim().toLowerCase())
-      .filter(Boolean)
-      .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
-  };
-
-  const normalizeScheduleText = (value?: string | null) => (value || "").trim();
-
-  const normalizeScheduleId = (value?: string | null) => (value || "").trim();
-
-  const normalizeGuestList = (values: string[]) =>
-    Array.from(new Set(values.map((email) => email.trim().toLowerCase()).filter(Boolean))).sort();
-
-  const areGuestsEqual = (left: string[], right: string[]) =>
-    left.length === right.length && left.every((value, index) => value === right[index]);
-
-  const clearScheduleFieldErrors = () => {
-    form.clearErrors(SCHEDULE_FIELD_ORDER);
-  };
-
-  const applyScheduleFieldErrors = (fields: LeadScheduleField[]) => {
-    clearScheduleFieldErrors();
-    fields.forEach((field) => {
-      form.setError(field, {
-        type: "manual",
-        message: SCHEDULE_CHANGE_ERROR_MESSAGE,
-      });
-    });
-  };
-
-  const getChangedScheduleFields = (data: leadFormData): LeadScheduleField[] => {
-    if (!lead) return [];
-
-    const changedFields: LeadScheduleField[] = [];
-
-    const normalizedMeetingDate = parseMeetingDate(data.meetingDate || "") ?? null;
-    const normalizedLeadMeetingDate = parseMeetingDate(lead.meetingDate || "") ?? null;
-    if (normalizedMeetingDate !== normalizedLeadMeetingDate) {
-      changedFields.push("meetingDate");
-    }
-
-    const normalizedCloserId = normalizeScheduleId(data.closerId);
-    const normalizedLeadCloserId = normalizeScheduleId(lead.closerId);
-    if (normalizedCloserId !== normalizedLeadCloserId) {
-      changedFields.push("closerId");
-    }
-
-    const normalizedMeetingNotes = normalizeScheduleText(data.meetingNotes);
-    const normalizedLeadMeetingNotes = normalizeScheduleText(lead.meetingNotes);
-    if (normalizedMeetingNotes !== normalizedLeadMeetingNotes) {
-      changedFields.push("meetingNotes");
-    }
-
-    const normalizedFormGuests = normalizeGuestList(parseExtraGuests(data.extraGuests));
-    const normalizedExistingGuests = normalizeGuestList(scheduleGuests);
-    if (!areGuestsEqual(normalizedFormGuests, normalizedExistingGuests)) {
-      changedFields.push("extraGuests");
-    }
-
-    return changedFields;
-  };
-
   const transformToCreateRequest = (data: leadFormData): CreateLeadRequest => {
     const normalizedPhone = normalizeLeadPhoneDigits(data.phone || "");
 
@@ -1405,16 +1326,16 @@ export default function LeadDialog({
       name: data.name,
       email: data.email || undefined,
       phone: normalizedPhone || undefined,
+      meetingDate: undefined,
+      meetingTitle: undefined,
+      meetingNotes: undefined,
+      meetingLink: undefined,
       age: data.age || undefined,
       currentHealthPlan: data.currentHealthPlan || undefined,
       currentValue: parseCurrentValue(data.currentValue),
       referenceHospital: data.referenceHospital || undefined,
       currentTreatment: data.ongoingTreatment || undefined,
       notes: data.additionalNotes || undefined,
-      meetingDate: parseMeetingDate(data.meetingDate || ""),
-      meetingTitle: data.meetingTitle || undefined,
-      meetingNotes: data.meetingNotes || undefined,
-      meetingLink: data.meetingLink || undefined,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
       closerId: data.closerId || undefined,
@@ -1432,16 +1353,16 @@ export default function LeadDialog({
       name: data.name,
       email: data.email || undefined,
       phone: normalizedPhone || undefined,
+      meetingDate: undefined,
+      meetingTitle: undefined,
+      meetingNotes: undefined,
+      meetingLink: undefined,
       age: data.age || undefined,
       currentHealthPlan: data.currentHealthPlan || undefined,
       currentValue: parseCurrentValue(data.currentValue),
       referenceHospital: data.referenceHospital || undefined,
       currentTreatment: data.ongoingTreatment || undefined,
       notes: data.additionalNotes || undefined,
-      meetingDate: parseMeetingDate(data.meetingDate || ""),
-      meetingTitle: data.meetingTitle || undefined,
-      meetingNotes: data.meetingNotes || undefined,
-      meetingLink: data.meetingLink || undefined,
       cnpj: data.cnpj || undefined,
       assignedTo: data.responsible || undefined,
       closerId: data.closerId || undefined,
@@ -1496,40 +1417,28 @@ export default function LeadDialog({
 
     try {
       if (lead) {
-        const changedScheduleFields = getChangedScheduleFields(data);
+        setPendingSubmitData(null);
+        const loadingToast = toast.loading("Atualizando lead...");
 
-        if (changedScheduleFields.length > 0) {
-          setPendingSubmitData(data);
-          setPendingChangedScheduleFields(changedScheduleFields);
-          setRescheduleConfirmOpen(true);
-          return;
-        } else {
-          setPendingSubmitData(null);
-          setPendingChangedScheduleFields([]);
-          setHighlightedScheduleFields([]);
-          clearScheduleFieldErrors();
-          const loadingToast = toast.loading("Atualizando lead...");
+        const updateData = transformToUpdateRequest(data);
+        const result = await updateLead(lead.id, updateData);
 
-          const updateData = transformToUpdateRequest(data);
-          const result = await updateLead(lead.id, updateData);
-
-          if (result.success) {
-            toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
-              id: loadingToast,
-              duration: 3000,
-            });
-            if (result.lead) {
-              await applyLocalLeadPatch(lead.id, result.lead);
-            } else {
-              await refreshLeads();
-            }
-            setOpen(false);
+        if (result.success) {
+          toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
+            id: loadingToast,
+            duration: 3000,
+          });
+          if (result.lead) {
+            await applyLocalLeadPatch(lead.id, result.lead);
           } else {
-            toast.error(result.message || "Erro ao atualizar lead", {
-              id: loadingToast,
-              duration: 5000,
-            });
+            await refreshLeads();
           }
+          setOpen(false);
+        } else {
+          toast.error(result.message || "Erro ao atualizar lead", {
+            id: loadingToast,
+            duration: 5000,
+          });
         }
       } else {
         const loadingToast = toast.loading(`Criando lead "${data.name}"...`);
@@ -1591,151 +1500,6 @@ export default function LeadDialog({
     }
   };
 
-  const handleSaveWithReschedule = async () => {
-    if (!pendingSubmitData || !lead) return;
-    const data = pendingSubmitData;
-    setRescheduleConfirmOpen(false);
-    setPendingSubmitData(null);
-    setPendingChangedScheduleFields([]);
-    setHighlightedScheduleFields([]);
-    clearScheduleFieldErrors();
-
-    const loadingToast = toast.loading("Atualizando lead...");
-    const updateData = transformToUpdateRequest(data);
-    const result = await updateLead(lead.id, updateData);
-
-    if (!result.success) {
-      toast.error(result.message || "Erro ao atualizar lead", { id: loadingToast, duration: 5000 });
-      return;
-    }
-
-    toast.success(`Lead "${data.name}" atualizado com sucesso!`, { id: loadingToast, duration: 3000 });
-    if (result.lead) {
-      await applyLocalLeadPatch(lead.id, result.lead);
-    } else {
-      await refreshLeads();
-    }
-
-    const extraGuests = parseExtraGuests(data.extraGuests);
-    const normalizedGuests = Array.from(
-      new Set(extraGuests.map((email) => email.toLowerCase()))
-    );
-    const meetingDateValue =
-      parseMeetingDate(data.meetingDate || "") ??
-      parseMeetingDate(lead.meetingDate || "") ??
-      undefined;
-    const closerIdValue = normalizeScheduleId(data.closerId || lead.closerId || "") || undefined;
-
-    if (!meetingDateValue || !closerIdValue) {
-      toast.info("Lead salvo, mas o reagendamento não foi executado por falta de data/hora ou closer.");
-      setOpen(false);
-      return;
-    }
-
-    try {
-      const scheduleResponse = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-supabase-user-id": supabaseId || "",
-          "x-team-id": activeTeamId || "",
-        },
-        body: JSON.stringify({
-          date: meetingDateValue,
-          meetingTitle: data.meetingTitle || undefined,
-          notes: data.meetingNotes || undefined,
-          meetingLink: data.meetingLink || undefined,
-          closerId: closerIdValue,
-          extraGuests: normalizedGuests,
-          transitionStatusToScheduled: true,
-        }),
-      });
-      const scheduleResult = await scheduleResponse.json().catch(() => null);
-      if (!scheduleResponse.ok || !scheduleResult?.isValid) {
-        throw new Error(
-          Array.isArray(scheduleResult?.errorMessages) && scheduleResult.errorMessages.length > 0
-            ? scheduleResult.errorMessages.join(", ")
-            : "Erro ao atualizar agendamento"
-        );
-      }
-      const warningMessage =
-        Array.isArray(scheduleResult?.successMessages) && scheduleResult.successMessages.length > 0
-          ? scheduleResult.successMessages.find((message: string) =>
-              message.toLowerCase().startsWith("aviso")
-            )
-          : undefined;
-      const inviteDispatch = (scheduleResult?.result as { inviteDispatch?: InviteDispatchResult } | null)
-        ?.inviteDispatch;
-      const schedulePayload = scheduleResult?.result
-        ? {
-            leadId: lead.id,
-            status: (scheduleResult.result.status ?? "scheduled") as Lead["status"],
-            meetingDate:
-              typeof scheduleResult.result.date === "string"
-                ? scheduleResult.result.date
-                : meetingDateValue,
-            meetingTitle:
-              typeof scheduleResult.result.meetingTitle === "string"
-                ? scheduleResult.result.meetingTitle
-                : data.meetingTitle || null,
-            meetingNotes:
-              typeof scheduleResult.result.notes === "string"
-                ? scheduleResult.result.notes
-                : data.meetingNotes || null,
-            meetingLink:
-              typeof scheduleResult.result.meetingLink === "string"
-                ? scheduleResult.result.meetingLink
-                : data.meetingLink || null,
-            closerId: closerIdValue,
-            extraGuests: Array.isArray(scheduleResult.result.extraGuests)
-              ? scheduleResult.result.extraGuests
-              : normalizedGuests,
-          }
-        : null;
-      if (inviteDispatch?.status === "failed") {
-        console.error("[LeadDialog][handleSaveWithReschedule] Falha no disparo do convite", {
-          leadId: lead.id,
-          dispatchStatus: inviteDispatch.status,
-          provider: inviteDispatch.provider,
-          fallbackUsed: inviteDispatch.fallbackUsed,
-          attemptedAt: inviteDispatch.attemptedAt,
-          errorMessage: inviteDispatch.error || "Erro desconhecido no disparo do convite",
-        });
-        toast.error("Agendamento salvo, mas o convite não foi enviado.", { duration: 6000 });
-      } else if (inviteDispatch?.status === "sent_resend" && inviteDispatch.fallbackUsed) {
-        toast.info("Google falhou e o convite foi enviado via e-mail (Resend).", { duration: 5000 });
-      } else if (warningMessage) {
-        toast.info(warningMessage, { duration: 5000 });
-      }
-      setScheduleGuests(normalizedGuests);
-      if (schedulePayload) {
-        await applySchedulePayload(schedulePayload);
-      }
-    } catch (error) {
-      console.error("[LeadDialog][handleSaveWithReschedule] Erro ao reagendar convite:", error);
-      const message = error instanceof Error ? error.message : "Erro ao reagendar convite.";
-      toast.error(message, { duration: 5000 });
-    }
-
-    setOpen(false);
-  };
-
-  const handleCancelReschedule = () => {
-    const fieldsToHighlight = pendingChangedScheduleFields.length > 0
-      ? pendingChangedScheduleFields
-      : getChangedScheduleFields(form.getValues());
-
-    setRescheduleConfirmOpen(false);
-    setPendingSubmitData(null);
-    setPendingChangedScheduleFields([]);
-    setHighlightedScheduleFields(fieldsToHighlight);
-    if (fieldsToHighlight.length > 0) {
-      applyScheduleFieldErrors(fieldsToHighlight);
-    } else {
-      clearScheduleFieldErrors();
-    }
-  };
-
   const handleFinalizeSubmit = async (data: FinalizeContractData) => {
     if (!lead) return;
 
@@ -1786,18 +1550,22 @@ export default function LeadDialog({
     }
   };
 
-  const handleStatusUpdate = async () => {
-    if (!lead || !supabaseId) return;
-    const nextStatus = statusSelection || lead.status;
-    if (!nextStatus || nextStatus === lead.status) {
-      setStatusDialogOpen(false);
-      return;
-    }
-    if (nextStatus === "scheduled") {
-      setStatusDialogOpen(false);
-      setShowScheduleDialog(true);
-      return;
-    }
+  const updateLeadStatus = async (
+    newStatus: string,
+    trigger?: {
+      followUpAt?: string;
+      followUpNotes?: string;
+      reason?: string;
+      reasonDetails?: string;
+      confirmRuleId?: string;
+      meetingHeald?: "yes" | "no" | null;
+    },
+    allowAutoConfirmation = false
+  ) => {
+    if (!lead || !supabaseId) return false;
+
+    const loadingToast = toast.loading("Atualizando status...");
+
     setStatusUpdating(true);
     try {
       const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
@@ -1807,26 +1575,153 @@ export default function LeadDialog({
           "x-supabase-user-id": supabaseId,
           "x-team-id": activeTeamId || "",
         },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({
+          status: newStatus,
+          ...(trigger ? { trigger } : {}),
+        }),
       });
+
       const result = await response.json().catch(() => null);
+
       if (!response.ok || !result?.isValid) {
+        const requiresMeetingHeald = !!result?.result?.requiresMeetingHeald;
+        const canConfirmMeetingHealdResult = !!result?.result?.canConfirmMeetingHeald;
+
+        if (requiresMeetingHeald) {
+          setPendingStatusConfirmation(null);
+          if (canConfirmMeetingHealdResult) {
+            setPendingMeetingHealdGate({
+              status: newStatus,
+              trigger: trigger ? (trigger as unknown as Record<string, unknown>) : undefined,
+            });
+            setMeetingHealdGateOpen(true);
+          } else {
+            setMeetingHealdBlockedOpen(true);
+          }
+          toast.info(result?.errorMessages?.[0] || "Reuniao nao marcada como realizada.", {
+            id: loadingToast,
+            duration: 5000,
+          });
+          return false;
+        }
+
+        const requiresConfirmation = !!result?.result?.requiresConfirmation;
+        const confirmationRuleId =
+          typeof result?.result?.confirmationRuleId === "string" ? result.result.confirmationRuleId : null;
+        const confirmationMessage =
+          result?.errorMessages?.[0] || "Confirmação adicional é necessária para concluir esta transição.";
+
+        if (requiresConfirmation && confirmationRuleId) {
+          if (allowAutoConfirmation) {
+            return updateLeadStatus(
+              newStatus,
+              {
+                ...(trigger ?? {}),
+                confirmRuleId: confirmationRuleId,
+              },
+              false
+            );
+          }
+
+          setPendingStatusConfirmation({
+            status: newStatus,
+            confirmationRuleId,
+            message: confirmationMessage,
+          });
+          toast.info(confirmationMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
         throw new Error(result?.errorMessages?.join(", ") || "Erro ao atualizar status");
       }
+
       const payload =
-        result.result && typeof result.result === "object"
-          ? (result.result as Partial<Lead>)
-          : {};
+        result.result && typeof result.result === "object" ? (result.result as Partial<Lead>) : {};
       await applyLocalLeadPatch(lead.id, {
         ...payload,
-        status: nextStatus as Lead["status"],
+        status: newStatus as Lead["status"],
       });
-      toast.success("Status atualizado");
-      setStatusDialogOpen(false);
+      toast.success("Status atualizado", { id: loadingToast });
+      return true;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao atualizar status");
+      toast.error(error instanceof Error ? error.message : "Erro ao atualizar status", { id: loadingToast });
+      return false;
     } finally {
       setStatusUpdating(false);
+    }
+  };
+
+  const handleStatusUpdate = async () => {
+    if (!lead || !supabaseId) return;
+    const nextStatus = statusSelection || lead.status;
+    setPendingStatusConfirmation(null);
+    if (!nextStatus || nextStatus === lead.status) {
+      setStatusDialogOpen(false);
+      return;
+    }
+    if (nextStatus === "scheduled") {
+      setStatusDialogOpen(false);
+      setShowScheduleDialog(true);
+      return;
+    }
+
+    if (needsStatusTriggerDialog(nextStatus)) {
+      setStatusDialogOpen(false);
+      setShowStatusTriggerDialog(true);
+      return;
+    }
+
+    const updated = await updateLeadStatus(nextStatus, undefined, false);
+    if (updated) {
+      setStatusDialogOpen(false);
+    }
+  };
+
+  const handleStatusTriggerConfirm = async (payload: LeadStatusTriggerPayload) => {
+    if (!lead) return;
+    const nextStatus = statusSelection || lead.status;
+    if (!nextStatus || !needsStatusTriggerDialog(nextStatus)) return;
+
+    if (payload.kind === "future_sale") {
+      const updated = await updateLeadStatus(
+        nextStatus,
+        {
+          followUpAt: payload.followUpAt,
+          followUpNotes: payload.followUpNotes,
+          confirmRuleId: payload.confirmRuleId,
+        },
+        true
+      );
+      if (!updated) return;
+    } else {
+      const updated = await updateLeadStatus(
+        nextStatus,
+        {
+          reason: payload.reason,
+          reasonDetails: payload.reasonDetails,
+          confirmRuleId: payload.confirmRuleId,
+        },
+        true
+      );
+      if (!updated) return;
+    }
+
+    setShowStatusTriggerDialog(false);
+    setStatusSelection("");
+  };
+
+  const handleConfirmPendingStatusRule = async () => {
+    if (!pendingStatusConfirmation) return;
+
+    const updated = await updateLeadStatus(
+      pendingStatusConfirmation.status,
+      { confirmRuleId: pendingStatusConfirmation.confirmationRuleId },
+      false
+    );
+
+    if (updated) {
+      setPendingStatusConfirmation(null);
+      setStatusDialogOpen(false);
     }
   };
 
@@ -1903,139 +1798,6 @@ export default function LeadDialog({
       });
     }
   }, [lead, open, form]);
-
-  useEffect(() => {
-    if (!open || !supabaseId || !activeTeamId) {
-      setAvailableTimes([]);
-      setAvailabilityLoading(false);
-      setAvailabilityError(null);
-      setHasLoadedAvailability(false);
-      availabilityInFlightKeyRef.current = null;
-      availabilityLastSuccessKeyRef.current = null;
-      return;
-    }
-
-    const normalizedCloserId = (watchedCloserId || "").trim();
-    const parsedMeetingDate = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
-
-    if (!normalizedCloserId || !isValidScheduleDate(parsedMeetingDate)) {
-      setAvailableTimes([]);
-      setAvailabilityLoading(false);
-      setAvailabilityError(null);
-      setHasLoadedAvailability(false);
-      availabilityInFlightKeyRef.current = null;
-      availabilityLastSuccessKeyRef.current = null;
-      return;
-    }
-
-    const dateKey = toScheduleDateKey(parsedMeetingDate, scheduleTimezone);
-    if (!dateKey) {
-      setAvailableTimes([]);
-      setAvailabilityLoading(false);
-      setAvailabilityError("Data da reunião inválida. Selecione novamente.");
-      setHasLoadedAvailability(true);
-      availabilityInFlightKeyRef.current = null;
-      return;
-    }
-
-    const requestKey = `${supabaseId}:${activeTeamId}:${normalizedCloserId}:${dateKey}`;
-    setHasLoadedAvailability(true);
-
-    if (
-      availabilityLastSuccessKeyRef.current === requestKey ||
-      availabilityInFlightKeyRef.current === requestKey
-    ) {
-      return;
-    }
-
-    let isMounted = true;
-    availabilityInFlightKeyRef.current = requestKey;
-    setAvailabilityLoading(true);
-    setAvailabilityError(null);
-
-    const fetchAvailability = async () => {
-      try {
-        const response = await fetch("/api/v1/calendar/availability", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-supabase-user-id": supabaseId,
-            "x-team-id": activeTeamId,
-          },
-          body: JSON.stringify({
-            closerId: normalizedCloserId,
-            date: dateKey,
-            excludeLeadId: lead?.id || undefined,
-          }),
-        });
-
-        const result = await response.json().catch(() => null);
-        if (!response.ok || !result?.isValid) {
-          throw new Error(
-            Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
-              ? result.errorMessages.join(", ")
-              : "Erro ao buscar disponibilidade."
-          );
-        }
-
-        if (!isMounted || availabilityInFlightKeyRef.current !== requestKey) {
-          return;
-        }
-
-        const times = Array.isArray(result?.result?.availableTimes)
-          ? (result.result.availableTimes as string[])
-          : [];
-        setAvailableTimes(times);
-        setAvailabilityError(null);
-        availabilityLastSuccessKeyRef.current = requestKey;
-      } catch (error) {
-        if (!isMounted || availabilityInFlightKeyRef.current !== requestKey) {
-          return;
-        }
-
-        setAvailableTimes([]);
-        setAvailabilityError(
-          error instanceof Error ? error.message : "Erro ao buscar disponibilidade."
-        );
-      } finally {
-        if (isMounted && availabilityInFlightKeyRef.current === requestKey) {
-          availabilityInFlightKeyRef.current = null;
-          setAvailabilityLoading(false);
-        }
-      }
-    };
-
-    fetchAvailability();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [open, supabaseId, activeTeamId, watchedMeetingDate, watchedCloserId, lead?.id]);
-
-  useEffect(() => {
-    if (!open || availableTimes.length === 0) return;
-    const parsedMeetingDate = watchedMeetingDate ? new Date(watchedMeetingDate) : undefined;
-    if (!isValidScheduleDate(parsedMeetingDate)) return;
-
-    const currentTime = formatScheduleTime(parsedMeetingDate, scheduleTimezone);
-    if (availableTimes.includes(currentTime)) return;
-
-    const dateKey = toScheduleDateKey(parsedMeetingDate, scheduleTimezone);
-    if (!dateKey) return;
-
-    const nextDate = parseDateKeyAndTimeToUtc(dateKey, availableTimes[0], scheduleTimezone);
-    if (!isValidScheduleDate(nextDate)) return;
-
-    form.setValue("meetingDate", nextDate.toISOString(), {
-      shouldDirty: form.getFieldState("meetingDate").isDirty,
-    });
-  }, [open, watchedMeetingDate, availableTimes, form, scheduleTimezone]);
-
-  useEffect(() => {
-    if (!open || !lead) return;
-    if (form.getFieldState("extraGuests").isDirty) return;
-    form.setValue("extraGuests", scheduleGuests.join(", "), { shouldDirty: false });
-  }, [open, lead, scheduleGuests, form]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2255,19 +2017,24 @@ export default function LeadDialog({
                     )}
                   </div>
                   <div className="ml-4 flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setStatusDialogOpen(true)}
-                      disabled={!lead}
-                    >
-                      {statusLabel}
-                    </Button>
-                    {canMarkNoShow && (
-                      <Button size="sm" variant="outline" onClick={handleNoShow}>
-                        Marcar No-show
-                      </Button>
-                    )}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setStatusSelection(lead?.status || "");
+                              setStatusDialogOpen(true);
+                            }}
+                            disabled={!lead}
+                          >
+                            {statusLabel}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>clique para atualizar o status</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -2331,20 +2098,31 @@ export default function LeadDialog({
                     closersError={closersError}
                     sdrsLoading={sdrsLoading}
                     sdrsError={sdrsError}
-                    availableTimes={availableTimes}
-                    availabilityLoading={availabilityLoading}
-                    availabilityError={availabilityError}
-                    hasLoadedAvailability={hasLoadedAvailability}
                     leadId={lead?.id}
                     onUploadStateChange={setIsAttachmentUploading}
-                    showMeetingHeald={canShowMeetingHeald}
-                    meetingHealdReadOnly={false}
+                    scheduleSummary={
+                      lead
+                        ? {
+                            status: lead.status,
+                            meetingDate: lead.meetingDate,
+                            closerName:
+                              lead.closer?.fullName ||
+                              lead.closer?.email ||
+                              null,
+                            meetingTitle: lead.meetingTitle,
+                            meetingNotes: lead.meetingNotes,
+                            meetingLink: lead.meetingLink,
+                            meetingHeald: lead.meetingHeald,
+                          }
+                        : undefined
+                    }
+                    onManageSchedule={lead ? () => setShowScheduleDialog(true) : undefined}
+                    canToggleMeetingHeald={canEditMeetingHeald}
                     meetingHealdSaving={meetingHealdSaving}
                     onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
-                    showMeetingLink={showMeetingLink}
+                    canMarkNoShow={canMarkNoShow}
+                    onMarkNoShow={handleNoShow}
                     isEditMode={!!lead}
-                    scheduleChangeWarning={highlightedScheduleFields.length > 0}
-                    changedScheduleFields={highlightedScheduleFields}
                     currentProfileId={user.id}
                     currentUserIsSdr={activeFunctions.includes("SDR") || user.functions.includes("SDR")}
                   />
@@ -2720,7 +2498,13 @@ export default function LeadDialog({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={statusDialogOpen} onOpenChange={setStatusDialogOpen}>
+      <Dialog
+        open={statusDialogOpen}
+        onOpenChange={(nextOpen) => {
+          setStatusDialogOpen(nextOpen);
+          if (!nextOpen) setStatusSelection("");
+        }}
+      >
         <DialogContent className="sm:max-w-105">
           <DialogHeader>
             <DialogTitle>Alterar status</DialogTitle>
@@ -2790,9 +2574,85 @@ export default function LeadDialog({
           onScheduleSuccess={handleScheduleStatusSuccess}
           closers={closersByTeam}
           teamMembers={usersToAssign}
-          mode={lead.status === "no_show" ? "reschedule" : "create"}
+          mode={lead.meetingDate ? "reschedule" : "create"}
+          initialExtraGuests={scheduleGuests}
         />
       )}
+
+      {lead && statusSelection && needsStatusTriggerDialog(statusSelection) && (
+        <LeadStatusTriggerDialog
+          open={showStatusTriggerDialog}
+          onOpenChange={setShowStatusTriggerDialog}
+          mode={statusSelection === "future_sale" ? "future_sale" : "loss_reason"}
+          leadName={lead.name}
+          statusLabel={COLUMNS.find((column) => column.key === statusSelection)?.title || statusSelection}
+          confirmationMessage={
+            pendingStatusConfirmation?.status === statusSelection
+              ? pendingStatusConfirmation.message
+              : null
+          }
+          confirmationRuleId={
+            pendingStatusConfirmation?.status === statusSelection
+              ? pendingStatusConfirmation.confirmationRuleId
+              : null
+          }
+          onConfirm={handleStatusTriggerConfirm}
+        />
+      )}
+
+      <AlertDialog
+        open={!!pendingStatusConfirmation && !needsStatusTriggerDialog(pendingStatusConfirmation?.status || "")}
+        onOpenChange={(open) => {
+          if (!open) setPendingStatusConfirmation(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmação necessária</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingStatusConfirmation?.message || "Deseja confirmar esta transição de status?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleConfirmPendingStatusRule();
+              }}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <MeetingHealdConfirmDialog
+        open={meetingHealdGateOpen}
+        onOpenChange={(open) => {
+          setMeetingHealdGateOpen(open);
+          if (!open) setPendingMeetingHealdGate(null);
+        }}
+        onConfirm={async () => {
+          if (!pendingMeetingHealdGate) return;
+          const mergedTrigger = {
+            ...(pendingMeetingHealdGate.trigger ?? {}),
+            meetingHeald: "yes" as const,
+          };
+          const updated = await updateLeadStatus(pendingMeetingHealdGate.status, mergedTrigger, false);
+          if (updated) {
+            setMeetingHealdGateOpen(false);
+            setPendingMeetingHealdGate(null);
+            setStatusDialogOpen(false);
+            setShowStatusTriggerDialog(false);
+          }
+        }}
+      />
+
+      <MeetingHealdBlockedDialog
+        open={meetingHealdBlockedOpen}
+        onOpenChange={setMeetingHealdBlockedOpen}
+      />
 
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
         <DialogContent className="sm:max-w-130">
@@ -2859,20 +2719,6 @@ export default function LeadDialog({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={rescheduleConfirmOpen} onOpenChange={setRescheduleConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reagendar convite?</AlertDialogTitle>
-            <AlertDialogDescription>
-              A data/hora ou o closer foram alterados. Deseja salvar e reagendar o convite para os participantes?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelReschedule}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSaveWithReschedule}>Confirmar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

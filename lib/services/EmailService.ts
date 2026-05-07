@@ -129,6 +129,36 @@ export interface CloserScheduleNotificationEmailData {
   timezone?: string | null;
 }
 
+export interface AddOnPendingPaymentEmailData {
+  masterName: string;
+  masterEmail: string;
+  addonType: "user" | "team";
+  addonLabel: string;
+  addonDetail?: string;
+  totalCharge: number;
+  remainingMonths: number;
+  checkoutUrl: string;
+  requesterName?: string;
+  requesterEmail?: string;
+}
+
+export interface AddOnConfirmedEmailData {
+  masterName: string;
+  masterEmail: string;
+  addonType: "user" | "team";
+  addonLabel: string;
+  addonDetail?: string;
+  requesterName?: string;
+  requesterEmail?: string;
+}
+
+export interface BackofficeAdhesionCheckoutEmailData {
+  userName: string;
+  userEmail: string;
+  checkoutUrl: string;
+  expiresAt: Date;
+}
+
 export class EmailService {
   private resend?: ReturnType<typeof assertResend>;
 
@@ -157,6 +187,120 @@ export class EmailService {
       .replace(/\n/g, "\\n")
       .replace(/;/g, "\\;")
       .replace(/,/g, "\\,");
+  }
+
+  private buildCheckoutLinkEmailHtml(input: {
+    title: string;
+    subtitle: string;
+    recipientName: string;
+    checkoutUrl: string;
+    expiresAtLabel: string;
+    expiresAtValue: string;
+    details?: Array<{ label: string; value: string }>;
+  }) {
+    const detailsRows = (input.details ?? [])
+      .filter((row) => row.label && row.value)
+      .map(
+        (row) => `
+          <tr>
+            <td style="padding: 10px 0; border-top: 1px solid #e5e7eb; color: #111827; font-size: 14px; font-weight: 600;">
+              ${row.label}
+            </td>
+            <td style="padding: 10px 0; border-top: 1px solid #e5e7eb; color: #111827; font-size: 14px; text-align: right;">
+              ${row.value}
+            </td>
+          </tr>
+        `
+      )
+      .join("");
+
+    const detailsBlock = detailsRows
+      ? `
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 14px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0 0 12px 0; color: #111827; font-size: 14px; font-weight: 700;">Resumo</p>
+          <table role="presentation" style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 0 0 10px 0; color: #111827; font-size: 14px; font-weight: 600;">
+                ${input.expiresAtLabel}
+              </td>
+              <td style="padding: 0 0 10px 0; color: #111827; font-size: 14px; text-align: right;">
+                ${input.expiresAtValue}
+              </td>
+            </tr>
+            ${detailsRows}
+          </table>
+        </div>
+      `
+      : `
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 14px; padding: 20px; margin: 24px 0;">
+          <table role="presentation" style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 0; color: #111827; font-size: 14px; font-weight: 600;">
+                ${input.expiresAtLabel}
+              </td>
+              <td style="padding: 0; color: #111827; font-size: 14px; text-align: right;">
+                ${input.expiresAtValue}
+              </td>
+            </tr>
+          </table>
+        </div>
+      `;
+
+    return `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);">
+                <tr>
+                  <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Corretor Studio</h1>
+                    <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.92); font-size: 15px;">${input.subtitle}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 36px 32px;">
+                    <h2 style="margin: 0 0 14px 0; color: #171717; font-size: 24px; font-weight: 600;">Olá, ${input.recipientName}</h2>
+                    <p style="margin: 0 0 18px 0; color: #525252; font-size: 16px; line-height: 1.7;">
+                      ${input.title}
+                    </p>
+
+                    <div style="text-align: center; margin: 24px 0;">
+                      <a href="${input.checkoutUrl}" target="_blank" rel="noreferrer" style="display: inline-block; background: #ff6900; color: #ffffff; text-decoration: none; padding: 12px 22px; border-radius: 12px; font-weight: 700;">
+                        Abrir checkout
+                      </a>
+                    </div>
+
+                    ${detailsBlock}
+
+                    <p style="margin: 0; color: #737373; font-size: 13px; line-height: 1.6;">
+                      Se você não solicitou isso, pode ignorar este e-mail.
+                    </p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background-color: #f9fafb; padding: 20px 32px; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="margin: 0; color: #737373; font-size: 12px;">
+                      Este é um e-mail automático do Corretor Studio
+                    </p>
+                    <p style="margin: 8px 0 0 0; color: #a3a3a3; font-size: 11px;">
+                      © ${new Date().getFullYear()} Corretor Studio. Todos os direitos reservados.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
   }
 
   private formatDateOnlyString(value?: string | null, timezone?: string | null) {
@@ -1407,6 +1551,139 @@ export class EmailService {
       subject: "Conta encerrada — Corretor Studio",
       html,
     });
+  }
+
+  async sendAddOnPendingPaymentEmail(data: AddOnPendingPaymentEmailData) {
+    const requesterInfo =
+      data.requesterName && data.requesterEmail && data.requesterEmail !== data.masterEmail
+        ? ` por ${data.requesterName}`
+        : "";
+
+    const formatCurrency = (value: number) =>
+      new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+
+    const html = this.buildCheckoutLinkEmailHtml({
+      title: `Foi solicitado um novo ${data.addonLabel.toLowerCase()}${requesterInfo} para sua conta. Existe uma cobrança adicional pendente.`,
+      subtitle: `Pagamento pendente para adicionar ${data.addonLabel}`,
+      recipientName: data.masterName,
+      checkoutUrl: data.checkoutUrl,
+      expiresAtLabel: "Atenção",
+      expiresAtValue: "O link é válido por 24 horas.",
+      details: [
+        { label: "Item", value: data.addonLabel },
+        ...(data.addonDetail ? [{ label: "Detalhe", value: data.addonDetail }] : []),
+        { label: "Total", value: formatCurrency(data.totalCharge) },
+        {
+          label: "Período",
+          value: `${data.remainingMonths} mês${data.remainingMonths > 1 ? "es" : ""}`,
+        },
+      ],
+    });
+
+    return this.sendEmail({
+      to: [data.masterEmail],
+      subject: `${data.addonLabel} pendente de pagamento — Corretor Studio`,
+      html,
+    });
+  }
+
+  async sendAddOnConfirmedEmail(data: AddOnConfirmedEmailData) {
+    const requesterInfo =
+      data.requesterName && data.requesterEmail && data.requesterEmail !== data.masterEmail
+        ? ` solicitado por ${data.requesterName}`
+        : "";
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);">
+                <tr>
+                  <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 32px; text-align: center;">
+                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;">Corretor Studio</h1>
+                    <p style="margin: 8px 0 0 0; color: rgba(255,255,255,0.92); font-size: 15px;">✅ ${data.addonLabel} ativado com sucesso!</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 36px 32px;">
+                    <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 24px; font-weight: 600;">Excelente, ${data.masterName}!</h2>
+                    <p style="margin: 0 0 20px 0; color: #525252; font-size: 16px; line-height: 1.7;">
+                      Seu novo ${data.addonLabel.toLowerCase()}${requesterInfo} foi ativado com sucesso e está pronto para uso.
+                    </p>
+
+                    <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 14px; padding: 20px; margin-bottom: 24px;">
+                      <p style="margin: 0 0 8px 0; color: #166534; font-size: 15px;">✓ <strong>${data.addonLabel}:</strong> ${data.addonDetail || "Novo add-on"}</p>
+                      <p style="margin: 0 0 8px 0; color: #166534; font-size: 15px;">✓ <strong>Status:</strong> Ativo e pronto para uso</p>
+                      ${
+                        data.requesterName && data.requesterEmail && data.requesterEmail !== data.masterEmail
+                          ? `<p style="margin: 0; color: #166534; font-size: 15px;">✓ <strong>Solicitado por:</strong> ${data.requesterName}</p>`
+                          : ""
+                      }
+                    </div>
+
+                    <p style="margin: 0 0 16px 0; color: #525252; font-size: 16px; line-height: 1.7;">
+                      Agora você pode começar a usar os novos recursos. Acesse sua conta para visualizar todas as mudanças.
+                    </p>
+
+                    <div style="text-align: center;">
+                      <a href="${getAppUrl({ removeTrailingSlash: true })}/sign-in" style="display: inline-block; background: #111827; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 600;">
+                        Acessar minha conta
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const recipientsList = [data.masterEmail];
+    if (
+      data.requesterEmail &&
+      data.requesterEmail !== data.masterEmail &&
+      data.requesterName &&
+      data.requesterEmail
+    ) {
+      recipientsList.push(data.requesterEmail);
+    }
+
+    return this.sendEmail({
+      to: recipientsList,
+      subject: `${data.addonLabel} ativado com sucesso — Corretor Studio`,
+      html,
+    });
+  }
+
+  async sendBackofficeAdhesionCheckoutEmail(data: BackofficeAdhesionCheckoutEmailData) {
+    const timezone = DEFAULT_TZ
+    const expiresAt = formatIntimezone(data.expiresAt, "dd/MM/yyyy 'às' HH:mm", timezone)
+
+    const html = this.buildCheckoutLinkEmailHtml({
+      title: "Seu link para finalizar a adesão está pronto.",
+      subtitle: "Finalize sua adesão no Corretor Studio",
+      recipientName: data.userName,
+      checkoutUrl: data.checkoutUrl,
+      expiresAtLabel: "Validade",
+      expiresAtValue: expiresAt,
+    })
+
+    await this.sendEmail({
+      to: [data.userEmail],
+      subject: "Finalize sua adesão no Corretor Studio",
+      html,
+      text: `Olá, ${data.userName}.\n\nSeu link para finalizar a adesão está pronto: ${data.checkoutUrl}\n\nValidade: ${expiresAt}\n`,
+      from: "Corretor Studio <no-reply@corretorstudio.com>",
+    })
   }
 }
 

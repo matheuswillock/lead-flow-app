@@ -66,6 +66,7 @@ interface ScheduleMeetingDialogProps {
   closers: UserAssociated[];
   teamMembers?: UserAssociated[];
   mode?: "create" | "reschedule";
+  initialExtraGuests?: string[];
 }
 
 export function ScheduleMeetingDialog({
@@ -76,6 +77,7 @@ export function ScheduleMeetingDialog({
   closers,
   teamMembers,
   mode = "create",
+  initialExtraGuests,
 }: ScheduleMeetingDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
@@ -201,9 +203,13 @@ export function ScheduleMeetingDialog({
     setNotes(lead.meetingNotes || "");
     setMeetingLink(lead.meetingLink || "");
     setCloserId(lead.closerId || "");
-    setExtraGuests([]);
+    setExtraGuests(
+      Array.isArray(initialExtraGuests)
+        ? Array.from(new Set(initialExtraGuests.map((item) => item.trim().toLowerCase()).filter(Boolean)))
+        : []
+    );
     setExtraGuestsDraft("");
-  }, [open, lead, mode]);
+  }, [open, lead, mode, initialExtraGuests]);
 
   useEffect(() => {
     if (!open || closerId) return;

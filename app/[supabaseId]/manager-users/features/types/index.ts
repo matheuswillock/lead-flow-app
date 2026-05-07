@@ -28,6 +28,8 @@ export interface ManagerUser {
     paymentStatus: 'PENDING' | 'CONFIRMED' | 'FAILED' | 'RECEIVED' | 'APPROVED' | 'RECEIVED_IN_CASH';
     paymentMethod: 'PIX' | 'BOLETO' | 'CREDIT_CARD' | 'UNDEFINED';
     operatorCreated: boolean;
+    pendingActionId?: string | null;
+    checkoutUrl?: string | null;
   };
 }
 
@@ -42,6 +44,8 @@ export interface PendingOperator {
   paymentMethod: 'PIX' | 'BOLETO' | 'CREDIT_CARD' | 'UNDEFINED';
   operatorCreated: boolean;
   operatorId?: string;
+  pendingActionId?: string | null;
+  checkoutUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -81,6 +85,7 @@ export const CreateManagerUserSchema = z.object({
   functions: z.array(z.enum(["SDR", "CLOSER"]))
     .max(2, "Selecione no máximo 2 funções")
     .optional(),
+  billingType: z.enum(["PIX", "CREDIT_CARD"]).optional().default("PIX"),
   canCreateAccountUsers: z.boolean().optional(),
   canManageAccountTeams: z.boolean().optional(),
 });

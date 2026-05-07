@@ -1,8 +1,18 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Copy, Edit, MailCheck, MoreHorizontal, RefreshCw, Search } from "lucide-react"
+import { Copy, Edit, MailCheck, MoreHorizontal, RefreshCw, Search, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -101,7 +111,10 @@ export function BackofficeAdhesionsContainer() {
   const [editingAdhesion, setEditingAdhesion] = useState<BackofficeAdhesionItem | null>(null)
   const [resendResult, setResendResult] = useState<BackofficeAdhesionCreationResult | null>(null)
   const [resendingId, setResendingId] = useState<string | null>(null)
+  const [copyingId, setCopyingId] = useState<string | null>(null)
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<BackofficeAdhesionItem | null>(null)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -145,6 +158,36 @@ export function BackofficeAdhesionsContainer() {
       toast.error(err instanceof Error ? err.message : "Erro ao reenviar convite")
     } finally {
       setResendingInviteId(null)
+    }
+  }
+
+  async function handleCopyPublicLink(adhesion: BackofficeAdhesionItem) {
+    if (copyingId) return
+    setCopyingId(adhesion.id)
+    try {
+      const result = await service.getPublicUrl(adhesion.id)
+      await copyLink(result.publicUrl)
+    } catch (err) {
+      console.error("[BackofficeAdhesionsContainer][copyPublicUrl]", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao copiar link de adesão")
+    } finally {
+      setCopyingId(null)
+    }
+  }
+
+  async function handleDeletePending(adhesion: BackofficeAdhesionItem) {
+    if (deletingId) return
+    setDeletingId(adhesion.id)
+    try {
+      await service.deletePending(adhesion.id)
+      toast.success("Adesão excluída")
+      await fetchAdhesions({ page: pagination.page })
+    } catch (err) {
+      console.error("[BackofficeAdhesionsContainer][deletePending]", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao excluir adesão")
+    } finally {
+      setDeletingId(null)
+      setDeleteTarget(null)
     }
   }
 
@@ -225,7 +268,7 @@ export function BackofficeAdhesionsContainer() {
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
-              <TableHead>Lead</TableHead>
+              <TableHead>E-mail</TableHead>
               <TableHead>Documento</TableHead>
               <TableHead>Vencimento</TableHead>
               <TableHead>Data da adesão</TableHead>
@@ -254,7 +297,7 @@ export function BackofficeAdhesionsContainer() {
               adhesions.map((adhesion) => (
                 <TableRow key={adhesion.id}>
                   <TableCell className="font-medium">{adhesion.fullName}</TableCell>
-                  <TableCell>{adhesion.leadName}</TableCell>
+                  <TableCell>{adhesion.email}</TableCell>
                   <TableCell>{formatDocumentInput(adhesion.cpfCnpj)}</TableCell>
                   <TableCell>{formatDate(adhesion.expiresAt, tz)}</TableCell>
                   <TableCell>{formatDate(adhesion.createdAt, tz)}</TableCell>
@@ -306,6 +349,13 @@ export function BackofficeAdhesionsContainer() {
                             Reenviar adesão
                           </DropdownMenuItem>
                           <DropdownMenuItem
+                            disabled={copyingId === adhesion.id || adhesion.status === "paid"}
+                            onSelect={() => void handleCopyPublicLink(adhesion)}
+                          >
+                            <Copy data-icon="inline-start" />
+                            Copiar link de adesão
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
                             disabled={
                               resendingInviteId === adhesion.id || adhesion.status !== "paid"
                             }
@@ -313,6 +363,13 @@ export function BackofficeAdhesionsContainer() {
                           >
                             <MailCheck data-icon="inline-start" />
                             Reenviar convite
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={adhesion.status !== "pending"}
+                            onSelect={() => setDeleteTarget(adhesion)}
+                          >
+                            <Trash2 data-icon="inline-start" />
+                            Deletar adesão
                           </DropdownMenuItem>
                         </DropdownMenuGroup>
                       </DropdownMenuContent>
@@ -383,6 +440,27 @@ export function BackofficeAdhesionsContainer() {
         }}
         onSaved={() => fetchAdhesions({ page: pagination.page })}
       />
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deletar adesão pendente</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação remove a adesão pendente e libera o lead para uma nova adesão.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(deletingId)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteTarget && void handleDeletePending(deleteTarget)}
+              disabled={!deleteTarget || Boolean(deletingId)}
+              className={cn("bg-destructive text-destructive-foreground hover:bg-destructive/90")}
+            >
+              {deletingId ? "Deletando..." : "Deletar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={Boolean(resendResult)} onOpenChange={(open) => !open && setResendResult(null)}>
         <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-xl">

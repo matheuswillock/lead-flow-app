@@ -1,0 +1,3 @@
+# Keep Prisma migration SQL stable across OSes.
+prisma/migrations/**/migration.sql text eol=lf
+

@@ -454,6 +454,7 @@ unsubscribed unsubscribed
     String tokenPreview 
     DateTime expiresAt 
     BackofficeAdhesionStatus status 
+    String tokenPlain "❓"
     String asaasCustomerId "❓"
     String asaasPaymentId "❓"
     String asaasInstallmentId "❓"

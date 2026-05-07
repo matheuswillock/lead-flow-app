@@ -13,6 +13,7 @@ export interface BackofficeAdhesionCreateInput {
   cycle: BackofficeAdhesionBillingCycle
   extraTeams: number
   extraUsers: number
+  billingType?: "PIX" | "CREDIT_CARD" | "EXTERNAL" | null
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   activationMode?: "checkout" | "external_paid"
@@ -21,9 +22,13 @@ export interface BackofficeAdhesionCreateInput {
 export interface BackofficeAdhesionUpdateInput {
   fullName?: string
   phone?: string
+  email?: string | null
+  cpfCnpj?: string | null
   cycle?: BackofficeAdhesionBillingCycle
   extraTeams?: number
   extraUsers?: number
+  billingType?: "PIX" | "CREDIT_CARD" | "EXTERNAL" | null
+  activationMode?: "checkout" | "external_paid"
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
 }
@@ -85,6 +90,7 @@ export interface BackofficeAdhesionPublicDTO {
   phone: string
   cpfCnpj: string | null
   email: string | null
+  billingType: "PIX" | "CREDIT_CARD" | null
   status: BackofficeAdhesionStatus
   cycle: BackofficeAdhesionBillingCycle
   cycleLabel: string
@@ -92,6 +98,9 @@ export interface BackofficeAdhesionPublicDTO {
   modules: string[]
   extraTeams: number
   extraUsers: number
+  monthlyBaseAmount: number
+  monthlyExtraTeamsAmount: number
+  monthlyExtraUsersAmount: number
   monthlyTotalAmount: number
   totalAmount: number
   maxInstallments: number
@@ -100,6 +109,8 @@ export interface BackofficeAdhesionPublicDTO {
   creditCardMonthlyTotalAmount: number
   creditCardTotalAmount: number
   maxCardInstallments: number
+  createdAt: string
+  paidAt: string | null
   expiresAt: string
 }
 
@@ -170,6 +181,7 @@ export interface BackofficeAdhesionCreationResult {
   activationMode?: "checkout" | "external_paid"
 }
 
+
 export interface BackofficeAdhesionTokenError {
   tokenStatus: Exclude<BackofficeAdhesionTokenValidationStatus, "valid">
 }
@@ -202,8 +214,10 @@ export interface IBackofficeAdhesionService {
     createdByBackofficeUserId: string | null
   ): Promise<BackofficeAdhesionCreationResult>
   update(id: string, input: BackofficeAdhesionUpdateInput): Promise<BackofficeAdhesionDTO>
+  deletePending(id: string): Promise<void>
   resend(id: string): Promise<BackofficeAdhesionCreationResult>
   resendInvite(id: string): Promise<{ email: string }>
+  getPublicUrl(id: string): Promise<{ publicUrl: string; expiresAt: string }>
   getPublicDetails(token: string): Promise<BackofficeAdhesionPublicDTO | BackofficeAdhesionTokenError>
   createCheckout(
     token: string,

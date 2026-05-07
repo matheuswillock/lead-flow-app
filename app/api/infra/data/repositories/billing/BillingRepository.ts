@@ -120,6 +120,21 @@ class PrismaBillingRepository implements IBillingRepository {
       data: subData,
     });
   }
+
+  async getSubscriptionEndDate(profileId: string): Promise<Date | null> {
+    const [profileSub, profile] = await Promise.all([
+      prisma.profileSubscription.findUnique({
+        where: { profileId },
+        select: { subscriptionEndDate: true },
+      }),
+      prisma.profile.findUnique({
+        where: { id: profileId },
+        select: { subscriptionNextDueDate: true },
+      }),
+    ]);
+
+    return profileSub?.subscriptionEndDate ?? profile?.subscriptionNextDueDate ?? null;
+  }
 }
 
 export const billingRepository = new PrismaBillingRepository();

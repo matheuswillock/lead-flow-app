@@ -14,6 +14,7 @@ import { CopyIcon } from "@/components/ui/copy";
 import { toast } from "sonner";
 import useBoardContext from "../context/BoardHook";
 import { cn } from "@/lib/utils";
+import { isMeetingOverdue } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { formatIntimezone } from "@/lib/dates"
 
@@ -60,6 +61,8 @@ function LeadCardComponent({
     const canScheduleMeeting = columnKey === 'new_opportunity';
     const isScheduled = columnKey === 'scheduled';
     const isNoShow = columnKey === 'no_show';
+    const canMarkNoShow =
+        isScheduled && isMeetingOverdue(lead.meetingDate) && lead.meetingHeald !== "yes";
 
     const handleFinalizeClick = (e: React.MouseEvent) => {
         e.stopPropagation(); // Evita que o card seja clicado
@@ -177,7 +180,7 @@ function LeadCardComponent({
                         Reagendar Reunião
                     </Button>
                 )}
-                {isScheduled && (
+                {canMarkNoShow && (
                     <div className="flex flex-col gap-2">
                         <Button
                             size="sm"

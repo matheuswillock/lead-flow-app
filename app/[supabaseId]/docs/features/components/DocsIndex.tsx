@@ -3,6 +3,7 @@
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { DocsChapter } from "../context/DocsTypes"
+import { Button } from "@/components/ui/button";
 
 interface DocsIndexProps {
   chapters: DocsChapter[]
@@ -127,7 +128,7 @@ export function DocsIndex({ chapters, activeChapterId, className, onSelect }: Do
                 const isDisabled = chapter.availability === "comingSoon"
 
                 return (
-                  <button
+                  <Button
                     key={chapter.id}
                     type="button"
                     aria-pressed={isActive}
@@ -173,7 +174,7 @@ export function DocsIndex({ chapters, activeChapterId, className, onSelect }: Do
                         {availability.label}
                       </Badge>
                     ) : null}
-                  </button>
+                  </Button>
                 )
               })}
             </div>

@@ -7,11 +7,6 @@ function parsePrice(value: string): number | null {
 }
 
 const BILLING_CYCLES = ["monthly", "quarterly", "semiannual"] as const
-const CYCLE_MAX_INSTALLMENTS: Record<string, number> = {
-  monthly: 1,
-  quarterly: 3,
-  semiannual: 6,
-}
 
 function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProductFormData>) {
   const payload: Record<string, unknown> = {}

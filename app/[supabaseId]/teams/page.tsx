@@ -4,10 +4,9 @@ import * as React from "react";
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
-import { Check, RefreshCw, Settings, ShieldAlert, Trash2, UserPlus } from "lucide-react";
+import { Check, ShieldAlert, Trash2, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,10 +18,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUser } from "@/app/context/UserContext";
-import { TeamCheckoutStep } from "./features/checkout/TeamCheckoutStep";
+import { useBillingSlots } from "@/app/hooks/useBillingSlots";
 import { cn } from "@/lib/utils";
+import { ManagerTeamsContainer } from "./features/container/ManagerTeamsContainer";
+import { PendingPaymentEditDialog } from "./features/container/PendingPaymentEditDialog";
+import type { ManagerTeamTableRow } from "./features/types";
 
 type TeamMember = {
   id: string;
@@ -136,14 +139,11 @@ const buildTeamStatusRulesSnapshot = (input: {
 export default function TeamsPage() {
   const { user } = useUser();
   const { teams, activeTeamId, activeRole, setActiveTeamId, refreshTeams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
-  const [teamSearchQuery, setTeamSearchQuery] = useState("");
-  const [teamsPage, setTeamsPage] = useState(1);
-  const teamsPerPage = 6;
   const [switchingTeamId, setSwitchingTeamId] = useState<string | null>(null);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
+  const [createTeamBillingType, setCreateTeamBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX");
   const [isCreatingTeam, setIsCreatingTeam] = useState(false);
-  const [teamCheckout, setTeamCheckout] = useState<{ teamName: string; amount: number } | null>(null);
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [manageTeamId, setManageTeamId] = useState<string | null>(null);
   const [manageTeamName, setManageTeamName] = useState("");
@@ -171,12 +171,24 @@ export default function TeamsPage() {
   );
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesSaving, setRulesSaving] = useState(false);
+  const [isEditPendingPaymentOpen, setIsEditPendingPaymentOpen] = useState(false);
+  const [pendingPaymentLoading, setPendingPaymentLoading] = useState(false);
+  const [pendingPaymentSubmitting, setPendingPaymentSubmitting] = useState(false);
+  const [pendingPaymentBillingType, setPendingPaymentBillingType] = useState<"PIX" | "CREDIT_CARD">("PIX");
+  const [pendingPaymentTarget, setPendingPaymentTarget] = useState<ManagerTeamTableRow | null>(null);
+  const [pendingPaymentSummary, setPendingPaymentSummary] = useState({
+    addonLabel: "",
+    addonDetail: "",
+    totalCharge: 0,
+    remainingMonths: 1,
+  });
   const addMemberFieldRef = React.useRef<HTMLDivElement | null>(null);
   const addMemberOptionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   const params = useParams();
   const supabaseId = params.supabaseId as string;
   const canManageTeams = !!(user?.isMaster || (activeRole === "manager" && user?.canManageAccountTeams));
+  const { hasAvailableTeamSlot } = useBillingSlots(supabaseId, !!user?.isMaster);
   const isOnlyMasterTeam = user?.id
     ? teams.filter((team) => team.masterId === user.id).length <= 1
     : false;
@@ -189,23 +201,6 @@ export default function TeamsPage() {
       profile.email.toLowerCase().includes(normalizedQuery)
     );
   });
-  const filteredTeams = teams.filter((team) => {
-    const q = teamSearchQuery.trim().toLowerCase();
-    if (!q) return true;
-    const roleLabel =
-      team.role === "manager" ? "manager" : team.role === "backoffice" ? "backoffice" : "operator";
-    return (
-      team.name.toLowerCase().includes(q) ||
-      roleLabel.includes(q) ||
-      (team.functions || []).join(",").toLowerCase().includes(q)
-    );
-  });
-  const teamsTotalPages = Math.max(1, Math.ceil(filteredTeams.length / teamsPerPage));
-  const teamsCurrentPage = Math.min(teamsPage, teamsTotalPages);
-  const paginatedTeams = filteredTeams.slice(
-    (teamsCurrentPage - 1) * teamsPerPage,
-    teamsCurrentPage * teamsPerPage
-  );
   const currentRulesSnapshot = React.useMemo(
     () => buildTeamStatusRulesSnapshot({ disabledStatuses, leadTimeRules, combinedRules }),
     [disabledStatuses, leadTimeRules, combinedRules]
@@ -234,10 +229,6 @@ export default function TeamsPage() {
   }, [isAddMemberDropdownOpen]);
 
   React.useEffect(() => {
-    setTeamsPage(1);
-  }, [teamSearchQuery]);
-
-  React.useEffect(() => {
     if (!isAddMemberDropdownOpen) {
       setHighlightedEligibleProfileIndex(-1);
       return;
@@ -262,6 +253,21 @@ export default function TeamsPage() {
       block: "nearest",
     });
   }, [highlightedEligibleProfileIndex, isAddMemberDropdownOpen]);
+
+  React.useEffect(() => {
+    const hasPendingTeamPayment = teams.some((team) => {
+      const status = (team.pendingPayment?.paymentStatus ?? "").toUpperCase();
+      return status === "PENDING" || status === "FAILED";
+    });
+
+    if (!hasPendingTeamPayment) return;
+
+    const intervalId = setInterval(() => {
+      void refreshTeams();
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [teams, refreshTeams]);
 
   const handleSetActiveTeam = async (teamId: string) => {
     if (!teamId || teamId === activeTeamId) {
@@ -289,13 +295,13 @@ export default function TeamsPage() {
 
     setIsCreatingTeam(true);
     try {
-      const response = await fetch("/api/v1/teams", {
+      const response = await fetch("/api/v1/teams/payments/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
         },
-        body: JSON.stringify({ name: trimmedName }),
+        body: JSON.stringify({ name: trimmedName, billingType: createTeamBillingType }),
       });
 
       const result = await response.json();
@@ -305,17 +311,27 @@ export default function TeamsPage() {
 
       const payload = result?.result as any;
 
-      if (payload?.requiresPayment) {
+      if (payload?.created === true) {
+        toast.success("Time criado com sucesso!");
         setIsCreateTeamOpen(false);
         setNewTeamName("");
-        setTeamCheckout({
-          teamName: payload.teamName || trimmedName,
-          amount: Number(payload.amount ?? 0),
-        });
+        await refreshTeams();
         return;
       }
 
-      toast.success("Time criado com sucesso!");
+      if (payload?.checkoutUrl) {
+        toast.success("Checkout gerado com sucesso!");
+        if (user?.isMaster) {
+          window.open(payload.checkoutUrl as string, "_blank", "noopener,noreferrer");
+        } else {
+          toast.message("O master recebeu o e-mail com o link de pagamento.");
+        }
+        setIsCreateTeamOpen(false);
+        setNewTeamName("");
+        return;
+      }
+
+      toast.success("Solicitação processada com sucesso!");
       setIsCreateTeamOpen(false);
       setNewTeamName("");
       await refreshTeams();
@@ -324,6 +340,76 @@ export default function TeamsPage() {
       toast.error(error?.message || "Erro ao criar time.");
     } finally {
       setIsCreatingTeam(false);
+    }
+  };
+
+  const handleViewPendingCheckout = (team: ManagerTeamTableRow) => {
+    const checkoutUrl = team.pendingPayment?.checkoutUrl;
+    if (!checkoutUrl) {
+      toast.error("Checkout indisponível para este pagamento.");
+      return;
+    }
+    window.open(checkoutUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const handleOpenEditPendingPayment = async (team: ManagerTeamTableRow) => {
+    const pendingActionId = team.pendingPayment?.id;
+    if (!pendingActionId) {
+      toast.error("Pagamento pendente não encontrado.");
+      return;
+    }
+
+    setPendingPaymentTarget(team);
+    setIsEditPendingPaymentOpen(true);
+    setPendingPaymentLoading(true);
+
+    try {
+      const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}`);
+      const result = await response.json();
+      if (!response.ok || !result?.isValid || !result?.result) {
+        throw new Error(result?.errorMessages?.[0] || "Erro ao carregar pagamento pendente.");
+      }
+      const details = result.result as any;
+      setPendingPaymentBillingType(details.presetBillingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX");
+      setPendingPaymentSummary({
+        addonLabel: details.addonLabel ?? "Time adicional",
+        addonDetail: details.addonDetail ?? team.name,
+        totalCharge: Number(details.pricing?.totalCharge ?? 0),
+        remainingMonths: Number(details.pricing?.remainingMonths ?? 1),
+      });
+    } catch (error: any) {
+      toast.error(error?.message || "Erro ao carregar pagamento pendente.");
+      setIsEditPendingPaymentOpen(false);
+      setPendingPaymentTarget(null);
+    } finally {
+      setPendingPaymentLoading(false);
+    }
+  };
+
+  const handleSubmitEditPendingPayment = async () => {
+    const pendingActionId = pendingPaymentTarget?.pendingPayment?.id;
+    if (!pendingActionId) return;
+
+    setPendingPaymentSubmitting(true);
+    try {
+      const response = await fetch(`/api/v1/addon-checkout/${pendingActionId}/billing-type`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ billingType: pendingPaymentBillingType }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.[0] || "Erro ao atualizar forma de pagamento.");
+      }
+
+      toast.success("Forma de pagamento atualizada.");
+      setIsEditPendingPaymentOpen(false);
+      setPendingPaymentTarget(null);
+      await refreshTeams();
+    } catch (error: any) {
+      toast.error(error?.message || "Erro ao atualizar forma de pagamento.");
+    } finally {
+      setPendingPaymentSubmitting(false);
     }
   };
 
@@ -732,209 +818,34 @@ export default function TeamsPage() {
     }
   };
 
-  if (teamCheckout) {
-    return (
-      <TeamCheckoutStep
-        supabaseId={supabaseId}
-        teamName={teamCheckout.teamName}
-        amount={teamCheckout.amount}
-        onCancel={() => setTeamCheckout(null)}
-        onComplete={() => {
-          setTeamCheckout(null);
-          void refreshTeams();
-        }}
-      />
-    );
-  }
-
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
-      <div className="w-full py-6 px-6 space-y-6">
-        <Card className="border-border/60 shadow-sm">
-          <CardHeader className="space-y-2">
-            <CardTitle className="text-2xl">Gerenciar times</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Gerencie os times aos quais voce pertence e defina o time ativo.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-[240px] flex-1 items-center gap-3">
-                <Input
-                  value={teamSearchQuery}
-                  onChange={(event) => setTeamSearchQuery(event.target.value)}
-                  placeholder="Filtrar times por nome..."
-                  className="h-9 max-w-[320px]"
-                />
-                <div className="text-sm text-muted-foreground">
-                  {filteredTeams.length} time(s) encontrado(s).
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={refreshTeams}
-                      disabled={teamsLoading}
-                      aria-label="Atualizar"
-                    >
-                      <RefreshCw className={teamsLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Atualizar</TooltipContent>
-                </Tooltip>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setIsCreateTeamOpen(true)}
-                  disabled={!canManageTeams}
-                >
-                  Criar time
-                </Button>
-              </div>
-            </div>
-
-            {teamsError ? (
-              <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-                {teamsError}
-              </div>
-            ) : teamsLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, idx) => (
-                  <div
-                    key={idx}
-                    className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-border/60 p-4"
-                  >
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Skeleton className="h-4 w-52" />
-                        <Skeleton className="h-5 w-16 rounded-full" />
-                        <Skeleton className="h-5 w-20 rounded-full" />
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Skeleton className="h-3 w-32" />
-                        <Skeleton className="h-3 w-48" />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="h-9 w-28" />
-                      <Skeleton className="h-9 w-9" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : filteredTeams.length === 0 ? (
-              <div className="rounded-lg border border-border/60 p-4 text-sm text-muted-foreground">
-                Nenhum time encontrado para este filtro.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {paginatedTeams.map((team) => {
-                  const isActive = team.id === activeTeamId
-                  const isMaster = user?.id && team.masterId === user.id
-                  return (
-                    <div
-                      key={team.id}
-                      className="flex flex-wrap items-start justify-between gap-4 rounded-lg border border-border/60 p-4"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm font-medium">{team.name}</p>
-                          {isActive ? (
-                            <Badge className="rounded-full px-3 py-1 text-xs">Ativo</Badge>
-                          ) : null}
-                          {team.isDefault ? (
-                            <Badge variant="outline" className="rounded-full px-3 py-1 text-xs">
-                              Time padrao
-                            </Badge>
-                          ) : null}
-                          {isMaster ? (
-                            <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs">
-                              Master
-                            </Badge>
-                          ) : null}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <span>
-                            Papel: {team.role === "manager" ? "Manager" : team.role === "backoffice" ? "Backoffice" : "Operator"}
-                          </span>
-                          {team.functions?.length ? (
-                            <span>Funcoes: {team.functions.join(", ")}</span>
-                          ) : (
-                            <span>Sem funcoes</span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant={isActive ? "outline" : "default"}
-                          disabled={isActive || switchingTeamId === team.id}
-                          onClick={() => handleSetActiveTeam(team.id)}
-                        >
-                          {switchingTeamId === team.id
-                            ? "Alterando..."
-                            : isActive
-                              ? "Time ativo"
-                              : "Definir ativo"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenManageTeam(team.id, team.name)}
-                          aria-label={`Gerenciar ${team.name}`}
-                        >
-                          <Settings className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                })}
-                {teamsTotalPages > 1 ? (
-                  <div className="flex items-center justify-end gap-2 pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setTeamsPage((prev) => Math.max(1, prev - 1))}
-                      disabled={teamsCurrentPage <= 1}
-                    >
-                      Anterior
-                    </Button>
-                    <span className="text-xs text-muted-foreground">
-                      Página {teamsCurrentPage} de {teamsTotalPages}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setTeamsPage((prev) => Math.min(teamsTotalPages, prev + 1))}
-                      disabled={teamsCurrentPage >= teamsTotalPages}
-                    >
-                      Próxima
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <ManagerTeamsContainer
+        teams={teams}
+        activeTeamId={activeTeamId}
+        switchingTeamId={switchingTeamId}
+        onSetActiveTeam={(teamId) => {
+          void handleSetActiveTeam(teamId);
+        }}
+        onManageTeam={handleOpenManageTeam}
+        onViewPendingCheckout={handleViewPendingCheckout}
+        onEditPendingPayment={handleOpenEditPendingPayment}
+        onRefreshTeams={refreshTeams}
+        onOpenCreateTeam={() => setIsCreateTeamOpen(true)}
+        canManageTeams={canManageTeams}
+        loading={teamsLoading}
+        error={teamsError}
+      />
 
       <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle>Criar novo time</DialogTitle>
             <DialogDescription>
-              Informe um nome para o time. Se houver cobranca adicional, voce sera direcionado ao
-              pagamento para concluir a ativacao.
+              Informe um nome para o time e escolha a forma de pagamento para gerar o checkout.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             <Label htmlFor="teamName">Nome do time</Label>
             <Input
               id="teamName"
@@ -944,6 +855,28 @@ export default function TeamsPage() {
               disabled={isCreatingTeam}
             />
           </div>
+          {!hasAvailableTeamSlot && (
+            <div className="flex flex-col gap-2">
+              <Label>Forma de pagamento</Label>
+              <RadioGroup
+                value={createTeamBillingType}
+                onValueChange={(value) =>
+                  setCreateTeamBillingType(value === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX")
+                }
+                className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"
+                disabled={isCreatingTeam}
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="PIX" id="create-team-pix" />
+                  <Label htmlFor="create-team-pix">PIX</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="CREDIT_CARD" id="create-team-card" />
+                  <Label htmlFor="create-team-card">Cartão de crédito</Label>
+                </div>
+              </RadioGroup>
+            </div>
+          )}
           <DialogFooter className="gap-2">
             <Button
               type="button"
@@ -959,6 +892,25 @@ export default function TeamsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PendingPaymentEditDialog
+        open={isEditPendingPaymentOpen}
+        loading={pendingPaymentLoading}
+        submitting={pendingPaymentSubmitting}
+        billingType={pendingPaymentBillingType}
+        addonLabel={pendingPaymentSummary.addonLabel}
+        addonDetail={pendingPaymentSummary.addonDetail}
+        totalCharge={pendingPaymentSummary.totalCharge}
+        remainingMonths={pendingPaymentSummary.remainingMonths}
+        onBillingTypeChange={setPendingPaymentBillingType}
+        onSubmit={handleSubmitEditPendingPayment}
+        onOpenChange={(open) => {
+          setIsEditPendingPaymentOpen(open);
+          if (!open) {
+            setPendingPaymentTarget(null);
+          }
+        }}
+      />
 
       <Dialog
         open={isManageOpen}

@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
+import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
 
 interface BoardContainerProps {
   title?: string;
@@ -51,6 +52,9 @@ export function BoardContainer({
     pendingStatusTriggerDrop,
     clearPendingStatusTriggerDrop,
     applyPendingStatusTriggerTransition,
+    pendingMeetingHealdGateDrop,
+    clearPendingMeetingHealdGateDrop,
+    applyPendingMeetingHealdGateTransition,
     data,
   } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
@@ -103,8 +107,8 @@ export function BoardContainer({
   }, [pendingDropLead, pendingScheduledDrop]);
 
   useEffect(() => {
-    if (!pendingStatusTriggerDrop || !pendingStatusTriggerLead) return;
-    setSelectedLead(pendingStatusTriggerLead);
+    if (!pendingStatusTriggerDrop) return;
+    setSelectedLead(pendingStatusTriggerLead ?? null);
     if (pendingNeedsTriggerDialog) {
       setShowStatusTriggerDialog(true);
     }
@@ -182,17 +186,19 @@ export function BoardContainer({
     if (!pendingStatusTriggerDrop) return;
 
     if (payload.kind === "future_sale") {
-      await applyPendingStatusTriggerTransition({
+      const updated = await applyPendingStatusTriggerTransition({
         followUpAt: payload.followUpAt,
         followUpNotes: payload.followUpNotes,
         confirmRuleId: payload.confirmRuleId,
       });
+      if (!updated) return;
     } else {
-      await applyPendingStatusTriggerTransition({
+      const updated = await applyPendingStatusTriggerTransition({
         reason: payload.reason,
         reasonDetails: payload.reasonDetails,
         confirmRuleId: payload.confirmRuleId,
       });
+      if (!updated) return;
     }
 
     setShowStatusTriggerDialog(false);
@@ -201,9 +207,10 @@ export function BoardContainer({
 
   const handleConfirmPendingRule = async () => {
     if (!pendingStatusTriggerDrop?.confirmationRuleId) return;
-    await applyPendingStatusTriggerTransition({
+    const updated = await applyPendingStatusTriggerTransition({
       confirmRuleId: pendingStatusTriggerDrop.confirmationRuleId,
     });
+    if (!updated) return;
     setSelectedLead(null);
   };
 
@@ -272,58 +279,85 @@ export function BoardContainer({
             teamMembers={[]}
             mode={scheduleDialogMode}
           />
-
-          {pendingStatusTriggerDrop && pendingNeedsTriggerDialog && (
-            <LeadStatusTriggerDialog
-              open={showStatusTriggerDialog}
-              onOpenChange={(open) => {
-                setShowStatusTriggerDialog(open);
-                if (!open) {
-                  clearPendingStatusTriggerDrop();
-                  setSelectedLead(null);
-                }
-              }}
-              mode={pendingStatusTriggerDrop.to === "future_sale" ? "future_sale" : "loss_reason"}
-              leadName={selectedLead?.name || ""}
-              statusLabel={statusTriggerLabel}
-              confirmationMessage={pendingStatusTriggerDrop.confirmationMessage || null}
-              confirmationRuleId={pendingStatusTriggerDrop.confirmationRuleId || null}
-              onConfirm={handleStatusTriggerSuccess}
-            />
-          )}
-
-          <AlertDialog
-            open={!!pendingStatusTriggerDrop && !pendingNeedsTriggerDialog}
-            onOpenChange={(open) => {
-              if (!open) {
-                clearPendingStatusTriggerDrop();
-                setSelectedLead(null);
-              }
-            }}
-          >
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Confirmação necessária</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {pendingStatusTriggerDrop?.confirmationMessage ||
-                    "Deseja confirmar esta transição de status?"}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={(event) => {
-                    event.preventDefault();
-                    void handleConfirmPendingRule();
-                  }}
-                >
-                  Confirmar
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
         </>
       )}
+
+      {pendingStatusTriggerDrop && pendingNeedsTriggerDialog && (
+        <LeadStatusTriggerDialog
+          open={showStatusTriggerDialog}
+          onOpenChange={(open) => {
+            setShowStatusTriggerDialog(open);
+            if (!open) {
+              clearPendingStatusTriggerDrop();
+              setSelectedLead(null);
+            }
+          }}
+          mode={pendingStatusTriggerDrop.to === "future_sale" ? "future_sale" : "loss_reason"}
+          leadName={selectedLead?.name || "Lead selecionado"}
+          statusLabel={statusTriggerLabel}
+          confirmationMessage={pendingStatusTriggerDrop.confirmationMessage || null}
+          confirmationRuleId={pendingStatusTriggerDrop.confirmationRuleId || null}
+          onConfirm={handleStatusTriggerSuccess}
+        />
+      )}
+
+      <AlertDialog
+        open={!!pendingStatusTriggerDrop && !pendingNeedsTriggerDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            clearPendingStatusTriggerDrop();
+            setSelectedLead(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmação necessária</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingStatusTriggerDrop?.confirmationMessage ||
+                "Deseja confirmar esta transição de status?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleConfirmPendingRule();
+              }}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <MeetingHealdConfirmDialog
+        open={!!pendingMeetingHealdGateDrop && pendingMeetingHealdGateDrop.canConfirmMeetingHeald}
+        onOpenChange={(open) => {
+          if (!open) {
+            clearPendingMeetingHealdGateDrop();
+            setSelectedLead(null);
+          }
+        }}
+        onConfirm={async () => {
+          const updated = await applyPendingMeetingHealdGateTransition();
+          if (updated) {
+            clearPendingMeetingHealdGateDrop();
+            setSelectedLead(null);
+          }
+        }}
+      />
+
+      <MeetingHealdBlockedDialog
+        open={!!pendingMeetingHealdGateDrop && !pendingMeetingHealdGateDrop.canConfirmMeetingHeald}
+        onOpenChange={(open) => {
+          if (!open) {
+            clearPendingMeetingHealdGateDrop();
+            setSelectedLead(null);
+          }
+        }}
+      />
     </div>
   );
 }

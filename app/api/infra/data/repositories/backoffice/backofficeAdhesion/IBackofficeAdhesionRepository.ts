@@ -28,6 +28,7 @@ export type BackofficeAdhesionLeadRelation = Pick<
 >
 
 export type BackofficeAdhesionWithRelations = BackofficeAdhesion & {
+  tokenPlain?: string | null
   lead: BackofficeAdhesionLeadRelation
   sdrBackofficeUser: BackofficeAdhesionUserRelation | null
   closerBackofficeUser: BackofficeAdhesionUserRelation | null
@@ -38,6 +39,7 @@ export interface CreateBackofficeAdhesionInput {
   fullName: string
   phone: string
   cpfCnpj?: string | null
+  billingType?: string | null
   plan: BackofficeAdhesionPlan
   cycle: BackofficeAdhesionBillingCycle
   modules: string[]
@@ -50,6 +52,7 @@ export interface CreateBackofficeAdhesionInput {
   totalAmount: number
   tokenHash: string
   tokenPreview: string
+  tokenPlain?: string | null
   expiresAt: Date
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
@@ -57,9 +60,10 @@ export interface CreateBackofficeAdhesionInput {
 }
 
 export interface UpdateBackofficeAdhesionInput {
-  cpfCnpj: undefined
   fullName?: string
   phone?: string
+  email?: string | null
+  cpfCnpj?: string | null
   cycle?: BackofficeAdhesionBillingCycle
   modules?: string[]
   extraTeams?: number
@@ -71,9 +75,11 @@ export interface UpdateBackofficeAdhesionInput {
   totalAmount?: number
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
+  billingType?: string | null
   status?: BackofficeAdhesionStatus
   tokenHash?: string
   tokenPreview?: string
+  tokenPlain?: string | null
   expiresAt?: Date
 }
 
@@ -90,7 +96,7 @@ export interface UpdateBackofficeAdhesionCheckoutInput {
   city?: string
   state?: string
   asaasCustomerId?: string
-  asaasPaymentId?: string
+  asaasPaymentId?: string | null
   asaasInstallmentId?: string | null
   installmentCount?: number | null
   billingType?: string
@@ -107,6 +113,7 @@ export interface MarkBackofficeAdhesionExternalPaidInput {
   email: string
   cpfCnpj?: string | null
   paidAt: Date
+  asaasCustomerId?: string | null
 }
 
 export interface CreateBackofficeAdhesionManagerProfileInput {
@@ -116,6 +123,7 @@ export interface CreateBackofficeAdhesionManagerProfileInput {
   email: string
   asaasCustomerId?: string | null
   cpfCnpj?: string | null
+  subscriptionId?: string | null
   operatorCount: number
   subscriptionStartDate: Date
   postalCode?: string | null
@@ -201,4 +209,8 @@ export interface IBackofficeAdhesionRepository {
   }): Promise<void>
   clearPaymentArtifacts(id: string): Promise<BackofficeAdhesionWithRelations>
   getOptions(): Promise<BackofficeAdhesionOptions>
+  cancelAdhesionAndRestoreLead(
+    adhesionId: string,
+    previousLeadStatus: import("@prisma/client").BackofficeLeadStatus
+  ): Promise<void>
 }

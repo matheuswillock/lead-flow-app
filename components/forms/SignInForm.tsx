@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "../ui/form"
 import Link from "next/link"
 import Image from "next/image"
-import { Badge } from "@/components/ui/badge"
 import { useState } from "react"
 import { createSupabaseBrowser } from "@/lib/supabase/browser"
 import { Separator } from "@/components/ui/separator"
@@ -18,7 +17,6 @@ interface SignInFormProps {
   form: UseFormReturn<loginFormData>;
   errors: Record<string, string>;
   onSubmit: (data: loginFormData) => void | Promise<void>;
-  fromSubscribe?: boolean;
 }
 
 export function SignInForm({
@@ -26,7 +24,6 @@ export function SignInForm({
   form,
   errors,
   onSubmit,
-  fromSubscribe = false,
   ...divProps
 }: Omit<React.ComponentProps<"form">, "onSubmit"> & SignInFormProps) {
   const [showPassword, setShowPassword] = useState(false);
@@ -71,40 +68,7 @@ export function SignInForm({
               />
               <span className="sr-only">Corretor Studio</span>
             </Link>
-            {fromSubscribe && (
-              <>
-                <Badge variant="outline" className="mt-1 border-primary/30 text-primary">Assinatura</Badge>
-                {/* <TooltipProvider>
-                  <div className="mt-1 flex items-start gap-2 p-2 rounded-md border border-primary/20 bg-primary/5">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button type="button" className="pt-0.5 text-primary" aria-label="Mais detalhes">
-                          <Info className="h-4 w-4" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        Você será redirecionado para a página de assinatura após entrar.
-                      </TooltipContent>
-                    </Tooltip>
-                    <p className="text-sm text-muted-foreground">
-                      Fluxo de assinatura ativo.
-                    </p>
-                  </div>
-                </TooltipProvider> */}
-              </>
-            )}
             <h1 className="text-xl font-bold">Bem-vindo ao Corretor Studio</h1>
-            {fromSubscribe && (
-              <p className="text-center text-sm text-muted-foreground max-w-sm">
-                Para assinar a plataforma, entre com sua conta. Se ainda não tiver uma, crie seu cadastro para seguir para a assinatura.
-              </p>
-            )}
-            <div className="text-center text-sm">
-              Não tem uma conta?{" "}
-              <Link href={fromSubscribe ? "/sign-up?from=subscribe" : "/sign-up"} className="underline underline-offset-4">
-                Criar conta
-              </Link>
-            </div>
           </div>
           <div className="flex flex-col gap-6">
             <FormField
