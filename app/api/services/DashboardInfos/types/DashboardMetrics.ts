@@ -3,6 +3,12 @@ import { LeadStatus } from "@prisma/client";
 export type DashboardMetrics = {
   // Métricas básicas
   agendamentos: number;
+  totalLeads: number;
+  scheduledCount: number;
+  noShowCount: number;
+  salesCount: number;
+  salesCountCrm: number;
+  salesCountFinancial: number;
   negociacao: number;
   implementacao: number;
   vendas: number;
@@ -11,9 +17,14 @@ export type DashboardMetrics = {
   
   // Métricas calculadas
   taxaConversao: number; // (vendas / agendamentos) * 100
+  conversionRate: number; // (salesCount / totalLeads) * 100
+  conversionRateCrm: number;
+  conversionRateFinancial: number;
   receitaTotal: number; // Soma de 'ticket' dos leads finalizados
   ticket: number; // Soma de 'ticket' de todos os leads (intenção de compra)
   churnRate: number; // (negada operadora / vendas) * 100
+  churnRateCrm: number;
+  churnRateFinancial: number;
   noShowRate: number; // (NoShow / agendamentos) * 100
   cadencia: number; // Soma de 'currentValue' de todos os leads
   

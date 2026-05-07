@@ -367,7 +367,7 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
           {
             title: "Cards de métricas",
             description:
-              "Total de leads, reuniões realizadas, taxa de conversão e ticket médio com filtros por 7d, 30d, 3m, 6m ou 1 ano.",
+              "Visão operacional e financeira com fórmulas explícitas para vendas, conversão, churn, no-show e valores consolidados.",
           },
           {
             title: "Gráfico de funil",
@@ -392,6 +392,119 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
         title: "Filtro de período",
         content:
           "Use os atalhos 7d, 30d, 3m, 6m e 1a para ajustar o recorte das métricas. O padrão inicial é os últimos 30 dias.",
+      },
+      {
+        type: "callout",
+        tone: "info",
+        title: "Sub-índices dos cards",
+        content:
+          "Cada card abaixo tem sua explicação e fórmula. Todos os valores respeitam o filtro de período aplicado no topo do Dashboard.",
+      },
+      {
+        type: "panel",
+        title: "Receita Total",
+        lines: [
+          "O que é: valor de contrato efetivamente pago no período.",
+          "Como funciona: considera apenas vendas que tiveram confirmação financeira.",
+          "Fórmula: soma dos valores pagos no período.",
+        ],
+      },
+      {
+        type: "panel",
+        title: "Valor da Venda",
+        lines: [
+          "O que é: valor de ticket quando o contrato é firmado no CRM.",
+          "Como funciona: considera o ticket registrado nos leads fechados.",
+          "Fórmula: soma dos tickets dos leads fechados no período.",
+        ],
+      },
+      {
+        type: "callout",
+        tone: "warning",
+        title: "Quando os dois ficam iguais",
+        content:
+          "Valor da Venda e Receita Total podem ficar com o mesmo número quando todos os contratos firmados também já foram pagos no período analisado. Nesse caso, o valor é igual, mas o momento de medição é diferente.",
+      },
+      {
+        type: "panel",
+        title: "Taxa de Conversão",
+        lines: [
+          "O que é: percentual de leads que viraram venda no CRM.",
+          "Como funciona: compara fechamentos com o total de leads.",
+          "Fórmula: (vendas no CRM / total de leads) x 100.",
+        ],
+      },
+      {
+        type: "panel",
+        title: "Potencial de Receita",
+        lines: [
+          "O que é: valor potencial da base de leads.",
+          "Como funciona: soma o valor atual informado em cada lead.",
+          "Fórmula: soma do valor potencial atual de todos os leads.",
+        ],
+      },
+      {
+        type: "panel",
+        title: "Agendamentos",
+        lines: [
+          "O que é: total de leads que já tiveram agendamento no período.",
+          "Como funciona: não depende do status atual do lead.",
+          "Fórmula: contagem de leads que tiveram agendamento no período.",
+        ],
+      },
+      {
+        type: "panel",
+        title: "Negociação",
+        lines: [
+          "O que é: volume de leads em fase de cotação ou negociação.",
+          "Como funciona: soma os leads dessas etapas do funil.",
+          "Fórmula: contagem de leads em Cotação + Negociação.",
+        ],
+      },
+      {
+        type: "panel",
+        title: "Implementação",
+        lines: [
+          "O que é: volume de leads em etapas finais do processo.",
+          "Como funciona: inclui proposta, contrato, boleto e documentos.",
+          "Fórmula: contagem de leads nessas etapas de implementação.",
+        ],
+      },
+      {
+        type: "panel",
+        title: "Vendas",
+        lines: [
+          "O que é: quantidade de negócios fechados no CRM.",
+          "Como funciona: considera status de Negócio fechado.",
+          "Fórmula: contagem de leads com status de venda fechada.",
+        ],
+      },
+      {
+        type: "panel",
+        title: "Taxa de No-show",
+        lines: [
+          "O que é: percentual de ausência em reuniões.",
+          "Como funciona: compara faltas com a base de quem foi agendado.",
+          "Fórmula: (no-show / (agendamentos + no-show)) x 100.",
+        ],
+      },
+      {
+        type: "panel",
+        title: "Taxa de Churn Rate",
+        lines: [
+          "O que é: percentual de perda sobre a base agendada.",
+          "Como funciona: soma negado operadora e perdido.",
+          "Fórmula: ((negado operadora + perdido) / agendamentos) x 100.",
+        ],
+      },
+      {
+        type: "panel",
+        title: "Leads por Período",
+        lines: [
+          "O que é: evolução de entrada e fechamento de leads no tempo.",
+          "Como funciona: compara leads criados e conversões no mesmo período.",
+          "Fórmula: para cada período, exibir leads criados e leads fechados.",
+        ],
       },
     ],
   },

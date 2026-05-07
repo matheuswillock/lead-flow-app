@@ -193,7 +193,7 @@ export function DashboardMetricsWithContext() {
             {metrics.leadsPorPeriodo.slice(0, 20).map((item: any, index: number) => (
               <div key={index} className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">{item.periodo}</span>
-                <span className="font-medium">{item.total}</span>
+                <span className="font-medium">{item.leads}</span>
               </div>
             ))}
           </div>

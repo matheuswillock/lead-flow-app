@@ -20,7 +20,7 @@ import {
   resolveLeadTimeState,
   type TeamStatusRulesResponse,
 } from "@/lib/teamStatusRules";
-import { formatIntimezone } from "@/lib/dates";
+import { formatIntimezone, formatLocalDateValue } from "@/lib/dates";
 
 interface IPipelineProviderProps {
   children: ReactNode;
@@ -139,6 +139,14 @@ function formatDate(iso: string, tz: string) {
     return formatIntimezone(new Date(iso), "dd/MM/yyyy", tz);
   } catch {
     return iso;
+  }
+}
+
+function formatDateKey(iso: string, tz: string) {
+  try {
+    return formatLocalDateValue(new Date(iso), tz);
+  } catch {
+    return "";
   }
 }
 
@@ -638,17 +646,18 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       const matchesCloser =
         activeClosers.length === 0 || activeClosers.includes((lead.closerId ?? "") as string);
 
-      // Filtro por período
-      const d = lead.createdAt;
-      const afterStart = !activeStart || d >= activeStart;
-      const beforeEnd = !activeEnd || d <= activeEnd;
+      // Filtro por período (compara por chave local yyyy-MM-dd para evitar exclusão do mesmo dia)
+      const createdKey = formatDateKey(lead.createdAt, tz);
+      if (!createdKey) return false;
+      const afterStart = !activeStart || createdKey >= activeStart;
+      const beforeEnd = !activeEnd || createdKey <= activeEnd;
       const matchesPeriod = afterStart && beforeEnd;
 
       const matchesMeetingsHeld = !activeMeetingsHeld || lead.meetingHeald === "yes";
 
       return matchesQuery && matchesStatus && matchesResponsible && matchesCloser && matchesMeetingsHeld && matchesPeriod;
     });
-  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, periodStart, periodEnd]);
+  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, periodStart, periodEnd, tz]);
 
   // Extrair lista de responsáveis únicos
   const taskOwners = useMemo(() => {
