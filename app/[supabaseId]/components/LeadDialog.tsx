@@ -137,9 +137,13 @@ export default function LeadDialog({
   finalizeContract,
 }: LeadDialogProps) {
   const { tz: scheduleTimezone } = useTimezone();
+  const [localLead, setLocalLead] = useState<Lead | null>(lead);
+  const currentLead = localLead ?? lead;
+  const currentLeadId = currentLead?.id ?? "";
   const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
-  const { lead: leadDetails, loading: leadDetailsLoading, error: leadDetailsError, fetchLead } = useLead(lead?.id ?? "");
+  const { lead: leadDetails, loading: leadDetailsLoading, error: leadDetailsError, fetchLead } =
+    useLead(currentLeadId);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const [meetingHealdSaving, setMeetingHealdSaving] = useState(false);
@@ -151,7 +155,7 @@ export default function LeadDialog({
   const [newParticipantDraft, setNewParticipantDraft] = useState("");
   const [newParticipants, setNewParticipants] = useState<string[]>([]);
   const [scheduleGuests, setScheduleGuests] = useState<string[]>([]);
-  const [pendingSubmitData, setPendingSubmitData] = useState<leadFormData | null>(null);
+  const [_pendingSubmitData, setPendingSubmitData] = useState<leadFormData | null>(null);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [origin, setOrigin] = useState("");
@@ -168,6 +172,10 @@ export default function LeadDialog({
   const [statusSelection, setStatusSelection] = useState<string>("");
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [pendingStatusConfirmation, setPendingStatusConfirmation] = useState<PendingStatusConfirmation | null>(null);
+
+  useEffect(() => {
+    setLocalLead(lead);
+  }, [lead?.id]);
   const [meetingHealdGateOpen, setMeetingHealdGateOpen] = useState(false);
   const [meetingHealdBlockedOpen, setMeetingHealdBlockedOpen] = useState(false);
   const [pendingMeetingHealdGate, setPendingMeetingHealdGate] = useState<
@@ -208,8 +216,8 @@ export default function LeadDialog({
   } = useTeamSdrs(supabaseId, activeTeamId);
   const sharedLeadCode = searchParams.get("leadCode");
   const sharedActivityId = searchParams.get("activityId");
-  const currentActivitiesLead = leadDetails?.id === lead?.id ? leadDetails : null;
-  const isActivityLoading = leadDetailsLoading || (!!lead && leadDetails?.id !== lead.id);
+  const currentActivitiesLead = leadDetails?.id === currentLead?.id ? leadDetails : null;
+  const isActivityLoading = leadDetailsLoading || (!!currentLead && leadDetails?.id !== currentLead.id);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -218,10 +226,10 @@ export default function LeadDialog({
   }, []);
 
   useEffect(() => {
-    if (lead?.id && open) {
+    if (currentLead?.id && open) {
       void fetchLead();
     }
-  }, [lead?.id, open, fetchLead]);
+  }, [currentLead?.id, open, fetchLead]);
 
   useEffect(() => {
     if (!open || !activeTeamId || !supabaseId) return;
@@ -254,7 +262,7 @@ export default function LeadDialog({
     setReactionPickerOpenId(null);
     setSelectedMentions([]);
     setHighlightedActivityId(null);
-  }, [lead?.id]);
+  }, [currentLead?.id]);
 
   useEffect(() => {
     if (!open || !activeTeamId || !supabaseId) return;
@@ -340,22 +348,22 @@ export default function LeadDialog({
   }, [open, activeTeamId, supabaseId]);
 
   useEffect(() => {
-    if (lead?.status) {
-      setStatusSelection(lead.status);
+    if (currentLead?.status) {
+      setStatusSelection(currentLead.status);
     }
-  }, [lead?.status]);
+  }, [currentLead?.status]);
 
   const shareUrl = useMemo(() => {
-    if (!lead || !origin || !lead.leadCode) return "";
+    if (!currentLead || !origin || !currentLead.leadCode) return "";
     const url = new URL("/crm", origin);
-    url.searchParams.set("leadCode", lead.leadCode);
+    url.searchParams.set("leadCode", currentLead.leadCode);
     return url.toString();
-  }, [lead, origin]);
+  }, [currentLead, origin]);
 
   const shareMessage = useMemo(() => {
-    if (!lead) return shareUrl;
-    return `Lead: ${lead.name}\n${shareUrl}`;
-  }, [lead, shareUrl]);
+    if (!currentLead) return shareUrl;
+    return `Lead: ${currentLead.name}\n${shareUrl}`;
+  }, [currentLead, shareUrl]);
 
   const whatsappShare = useMemo(() => {
     if (!shareUrl) return "#";
@@ -373,24 +381,24 @@ export default function LeadDialog({
     return `mailto:?subject=${subject}&body=${encodeURIComponent(shareMessage)}`;
   }, [shareMessage, shareUrl]);
 
-  const canFinalizeContract = lead && (
-    lead.status === "invoicePayment" ||
-    lead.status === "dps_agreement" ||
-    lead.status === "offerSubmission"
+  const canFinalizeContract = currentLead && (
+    currentLead.status === "invoicePayment" ||
+    currentLead.status === "dps_agreement" ||
+    currentLead.status === "offerSubmission"
   );
-  const shouldShowMeetingHeald = !!lead && lead.status === "scheduled";
-  const isAssignedCloser = !!(lead && user && lead.closerId && lead.closerId === user.id);
+  const shouldShowMeetingHeald = !!currentLead && currentLead.status === "scheduled";
+  const isAssignedCloser = !!(currentLead && user && currentLead.closerId && currentLead.closerId === user.id);
   const canEditMeetingHeald =
     shouldShowMeetingHeald && (isTeamMaster || isAssignedCloser);
   const canMarkNoShow =
-    !!lead &&
-    lead.status === "scheduled" &&
-    isMeetingOverdue(lead.meetingDate) &&
-    lead.meetingHeald !== "yes";
+    !!currentLead &&
+    currentLead.status === "scheduled" &&
+    isMeetingOverdue(currentLead.meetingDate) &&
+    currentLead.meetingHeald !== "yes";
   const canReactToActivity =
     !!user && (isManagerLikeRole(user.role) || activeFunctions.includes("SDR") || activeFunctions.includes("CLOSER"));
-  const statusLabel = lead
-    ? COLUMNS.find((column) => column.key === lead.status)?.title || lead.status
+  const statusLabel = currentLead
+    ? COLUMNS.find((column) => column.key === currentLead.status)?.title || currentLead.status
     : "Status";
   const leadOriginBadge = useMemo<LeadOriginBadge | null>(() => {
     const activities = currentActivitiesLead?.activities ?? [];
@@ -528,7 +536,7 @@ export default function LeadDialog({
   }, []);
 
   const scheduleSilentLeadSync = useCallback(() => {
-    if (!lead?.id || !open) return;
+    if (!currentLead?.id || !open) return;
 
     clearSilentLeadSyncTimer();
 
@@ -538,7 +546,7 @@ export default function LeadDialog({
         setReactionOverrides({});
       });
     }, 500);
-  }, [lead?.id, open, fetchLead, clearSilentLeadSyncTimer]);
+  }, [currentLead?.id, open, fetchLead, clearSilentLeadSyncTimer]);
 
   useEffect(() => {
     return () => {
@@ -550,7 +558,7 @@ export default function LeadDialog({
     return () => {
       clearSilentLeadSyncTimer();
     };
-  }, [lead?.id, open, clearSilentLeadSyncTimer]);
+  }, [currentLead?.id, open, clearSilentLeadSyncTimer]);
 
   const applyLocalLeadPatch = useCallback(
     async (leadId: string, patch: Partial<Lead>) => {
@@ -604,7 +612,7 @@ export default function LeadDialog({
   }, [teamMembers, user]);
 
   const upsertRealtimeActivity = useCallback((activityRow: LeadActivityRealtimeRow) => {
-    if (!lead?.id || activityRow.leadId !== lead.id) return;
+    if (!currentLead?.id || activityRow.leadId !== currentLead.id) return;
 
     const normalizedActivity: LeadActivityResponseDTO = {
       id: activityRow.id,
@@ -631,7 +639,7 @@ export default function LeadDialog({
       }
       return [normalizedActivity, ...withoutMatchedOptimistic];
     });
-  }, [lead?.id, resolveActivityAuthor, user?.id]);
+  }, [currentLead?.id, resolveActivityAuthor, user?.id]);
 
   const applyRealtimeReactionChange = useCallback((
     reactionRow: LeadActivityReactionRealtimeRow,
@@ -745,13 +753,13 @@ export default function LeadDialog({
 
   const buildParticipantOptions = () => {
     const options: { label: string; email: string }[] = [];
-    if (lead?.email) {
-      options.push({ label: `${lead.name} (Lead)`, email: lead.email });
+    if (currentLead?.email) {
+      options.push({ label: `${currentLead.name} (Lead)`, email: currentLead.email });
     }
-    if (lead?.closer?.email) {
+    if (currentLead?.closer?.email) {
       options.push({
-        label: `${lead.closer.fullName || lead.closer.email} (Closer)`,
-        email: lead.closer.email,
+        label: `${currentLead.closer.fullName || currentLead.closer.email} (Closer)`,
+        email: currentLead.closer.email,
       });
     }
     if (user?.email) {
@@ -796,7 +804,7 @@ export default function LeadDialog({
   };
 
   const handleAddActivity = async () => {
-    if (!lead?.id || !supabaseId) return;
+    if (!currentLead?.id || !supabaseId) return;
     const trimmed = activityBody.trim();
     if (!trimmed) {
       toast.error("Informe uma mensagem para registrar a atividade");
@@ -848,7 +856,7 @@ export default function LeadDialog({
           label: mention.label,
         }));
 
-      const response = await fetch(`/api/v1/leads/${lead.id}/activities`, {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}/activities`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1003,8 +1011,8 @@ export default function LeadDialog({
   );
 
   useLeadActivitiesRealtime({
-    enabled: open && !!lead?.id,
-    leadId: lead?.id ?? null,
+    enabled: open && !!currentLead?.id,
+    leadId: currentLead?.id ?? null,
     activeActivityIds,
     onActivityInserted: (activity) => {
       upsertRealtimeActivity(activity);
@@ -1021,8 +1029,8 @@ export default function LeadDialog({
   const shouldScrollToSharedActivity =
     open &&
     !!sharedActivityId &&
-    !!lead?.leadCode &&
-    sharedLeadCode === lead.leadCode;
+    !!currentLead?.leadCode &&
+    sharedLeadCode === currentLead.leadCode;
 
   useEffect(() => {
     if (!shouldScrollToSharedActivity || !sharedActivityId) return;
@@ -1086,7 +1094,7 @@ export default function LeadDialog({
   };
 
   const handleToggleReaction = async (activityId: string, emoji: string, unified: string) => {
-    if (!lead?.id || !supabaseId || !activeTeamId) return;
+    if (!currentLead?.id || !supabaseId || !activeTeamId) return;
     if (!canReactToActivity) return;
 
     const ownOpKey = `${activityId}:${unified}`;
@@ -1101,7 +1109,7 @@ export default function LeadDialog({
 
     try {
       const response = await fetch(
-        `/api/v1/leads/${lead.id}/activities/${activityId}/reactions`,
+        `/api/v1/leads/${currentLead.id}/activities/${activityId}/reactions`,
         {
           method: "POST",
           headers: {
@@ -1373,18 +1381,21 @@ export default function LeadDialog({
   };
 
   const handleMeetingHealdChange = async (next: "yes" | "no") => {
-    if (!lead || !supabaseId || !activeTeamId) return;
-    if (lead.status !== "scheduled") return;
+    if (!currentLead || !supabaseId || !activeTeamId) return;
+    if (currentLead.status !== "scheduled") return;
     if (!canEditMeetingHeald) return;
 
-    const previous = (lead.meetingHeald ?? "no") as "yes" | "no";
+    const previous = (currentLead.meetingHeald ?? "no") as "yes" | "no";
 
     // Optimistic UI update (board/pipeline selected lead + lists).
-    patchLead?.(lead.id, { meetingHeald: next });
+    patchLead?.(currentLead.id, { meetingHeald: next });
+    setLocalLead((prev) =>
+      prev && prev.id === currentLead.id ? ({ ...prev, meetingHeald: next } as Lead) : prev,
+    );
     setMeetingHealdSaving(true);
 
     try {
-      const response = await fetch(`/api/v1/leads/${lead.id}`, {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1401,10 +1412,20 @@ export default function LeadDialog({
 
       // Keep local state aligned with server response.
       const serverValue = (result?.result?.meetingHeald ?? next) as "yes" | "no";
-      patchLead?.(lead.id, { meetingHeald: serverValue });
+      if (currentLead) {
+        patchLead?.(currentLead.id, { meetingHeald: serverValue });
+        setLocalLead((prev) =>
+          prev && prev.id === currentLead.id ? ({ ...prev, meetingHeald: serverValue } as Lead) : prev,
+        );
+      }
       form.setValue("meetingHeald", serverValue, { shouldDirty: false });
     } catch (error) {
-      patchLead?.(lead.id, { meetingHeald: previous });
+      if (currentLead) {
+        patchLead?.(currentLead.id, { meetingHeald: previous });
+        setLocalLead((prev) =>
+          prev && prev.id === currentLead.id ? ({ ...prev, meetingHeald: previous } as Lead) : prev,
+        );
+      }
       form.setValue("meetingHeald", previous, { shouldDirty: false });
       toast.warning(error instanceof Error ? error.message : "Nao foi possivel atualizar a reuniao.");
     } finally {
@@ -1416,12 +1437,12 @@ export default function LeadDialog({
     setIsSubmitting(true);
 
     try {
-      if (lead) {
+      if (currentLead) {
         setPendingSubmitData(null);
         const loadingToast = toast.loading("Atualizando lead...");
 
         const updateData = transformToUpdateRequest(data);
-        const result = await updateLead(lead.id, updateData);
+        const result = await updateLead(currentLead.id, updateData);
 
         if (result.success) {
           toast.success(`Lead "${data.name}" atualizado com sucesso!`, {
@@ -1429,11 +1450,13 @@ export default function LeadDialog({
             duration: 3000,
           });
           if (result.lead) {
-            await applyLocalLeadPatch(lead.id, result.lead);
+            await applyLocalLeadPatch(currentLead.id, result.lead);
+            setLocalLead((prev) =>
+              prev && prev.id === currentLead.id ? ({ ...prev, ...result.lead } as Lead) : prev,
+            );
           } else {
             await refreshLeads();
           }
-          setOpen(false);
         } else {
           toast.error(result.message || "Erro ao atualizar lead", {
             id: loadingToast,
@@ -1452,7 +1475,9 @@ export default function LeadDialog({
               id: loadingToast,
               duration: 4000,
             });
-            setOpen(false);
+            if (result.lead) {
+              setLocalLead(result.lead as Lead);
+            }
             await refreshLeads();
           } else {
             toast.error(result.message || "Erro ao criar lead", {
@@ -1501,10 +1526,10 @@ export default function LeadDialog({
   };
 
   const handleFinalizeSubmit = async (data: FinalizeContractData) => {
-    if (!lead) return;
+    if (!currentLead) return;
 
     try {
-      await finalizeContract(lead.id, data);
+      await finalizeContract(currentLead.id, data);
       toast.success("Contrato finalizado com sucesso!");
       setFinalizeCompleted(true);
       setShowFinalizeDialog(false);
@@ -1516,14 +1541,14 @@ export default function LeadDialog({
   };
 
   const handleNoShow = async () => {
-    if (!lead) return;
+    if (!currentLead) return;
     if (!supabaseId) {
       toast.error("Usuario nao identificado");
       return;
     }
 
     try {
-      const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}/status`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1542,7 +1567,10 @@ export default function LeadDialog({
         result.result && typeof result.result === "object"
           ? (result.result as Partial<Lead>)
           : {};
-      await applyLocalLeadPatch(lead.id, { ...payload, status: "no_show" });
+      await applyLocalLeadPatch(currentLead.id, { ...payload, status: "no_show" });
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id ? ({ ...prev, ...payload, status: "no_show" } as Lead) : prev,
+      );
       toast.success("Lead marcado como no-show");
       setOpen(false);
     } catch (error) {
@@ -1562,13 +1590,13 @@ export default function LeadDialog({
     },
     allowAutoConfirmation = false
   ) => {
-    if (!lead || !supabaseId) return false;
+    if (!currentLead || !supabaseId) return false;
 
     const loadingToast = toast.loading("Atualizando status...");
 
     setStatusUpdating(true);
     try {
-      const response = await fetch(`/api/v1/leads/${lead.id}/status`, {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}/status`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -1637,10 +1665,15 @@ export default function LeadDialog({
 
       const payload =
         result.result && typeof result.result === "object" ? (result.result as Partial<Lead>) : {};
-      await applyLocalLeadPatch(lead.id, {
+      await applyLocalLeadPatch(currentLead.id, {
         ...payload,
         status: newStatus as Lead["status"],
       });
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id
+          ? ({ ...prev, ...payload, status: newStatus as Lead["status"] } as Lead)
+          : prev,
+      );
       toast.success("Status atualizado", { id: loadingToast });
       return true;
     } catch (error) {
@@ -1652,10 +1685,10 @@ export default function LeadDialog({
   };
 
   const handleStatusUpdate = async () => {
-    if (!lead || !supabaseId) return;
-    const nextStatus = statusSelection || lead.status;
+    if (!currentLead || !supabaseId) return;
+    const nextStatus = statusSelection || currentLead.status;
     setPendingStatusConfirmation(null);
-    if (!nextStatus || nextStatus === lead.status) {
+    if (!nextStatus || nextStatus === currentLead.status) {
       setStatusDialogOpen(false);
       return;
     }
@@ -1678,8 +1711,8 @@ export default function LeadDialog({
   };
 
   const handleStatusTriggerConfirm = async (payload: LeadStatusTriggerPayload) => {
-    if (!lead) return;
-    const nextStatus = statusSelection || lead.status;
+    if (!currentLead) return;
+    const nextStatus = statusSelection || currentLead.status;
     if (!nextStatus || !needsStatusTriggerDialog(nextStatus)) return;
 
     if (payload.kind === "future_sale") {
@@ -1726,15 +1759,28 @@ export default function LeadDialog({
   };
 
   const handleScheduleStatusSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
-    if (!lead) return;
+    if (!currentLead) return;
 
     if (payload) {
       await applySchedulePayload(payload);
+      setLocalLead((prev) =>
+        prev && prev.id === payload.leadId
+          ? ({
+              ...prev,
+              status: payload.status,
+              meetingDate: payload.meetingDate,
+              meetingTitle: payload.meetingTitle,
+              meetingNotes: payload.meetingNotes,
+              meetingLink: payload.meetingLink,
+              closerId: payload.closerId,
+            } as Lead)
+          : prev,
+      );
     }
   };
 
   useEffect(() => {
-    if (lead && open) {
+    if (currentLead && open) {
       const formatCurrency = (value: number): string => {
         if (value === null || value === undefined) return "";
         return `R$ ${value.toFixed(2).replace(".", ",")}`;
@@ -1750,29 +1796,29 @@ export default function LeadDialog({
       };
 
       form.reset({
-        name: lead.name || "",
-        phone: normalizeLeadPhoneDigits(lead.phone || ""),
-        email: lead.email || "",
-        cnpj: formatCNPJ(lead.cnpj || ""),
-        closerId: lead.closerId || "",
-        age: lead.age || "",
-        currentHealthPlan: lead.currentHealthPlan || undefined,
-        currentValue: lead.currentValue ? formatCurrency(lead.currentValue) : "",
-        referenceHospital: lead.referenceHospital || "",
-        ongoingTreatment: lead.currentTreatment || "",
-        additionalNotes: lead.notes || "",
-        meetingDate: lead.meetingDate || "",
-        meetingTitle: lead.meetingTitle || "",
-        meetingNotes: lead.meetingNotes || "",
-        meetingLink: lead.meetingLink || "",
-        meetingHeald: lead.meetingHeald === "yes" ? "yes" : "no",
+        name: currentLead.name || "",
+        phone: normalizeLeadPhoneDigits(currentLead.phone || ""),
+        email: currentLead.email || "",
+        cnpj: formatCNPJ(currentLead.cnpj || ""),
+        closerId: currentLead.closerId || "",
+        age: currentLead.age || "",
+        currentHealthPlan: currentLead.currentHealthPlan || undefined,
+        currentValue: currentLead.currentValue ? formatCurrency(currentLead.currentValue) : "",
+        referenceHospital: currentLead.referenceHospital || "",
+        ongoingTreatment: currentLead.currentTreatment || "",
+        additionalNotes: currentLead.notes || "",
+        meetingDate: currentLead.meetingDate || "",
+        meetingTitle: currentLead.meetingTitle || "",
+        meetingNotes: currentLead.meetingNotes || "",
+        meetingLink: currentLead.meetingLink || "",
+        meetingHeald: currentLead.meetingHeald === "yes" ? "yes" : "no",
         extraGuests: "",
-        responsible: lead.assignedTo || "",
-        ticket: lead.ticket ? formatCurrency(lead.ticket) : "",
-        contractDueDate: lead.contractDueDate || "",
-        soldPlan: lead.soldPlan || undefined,
+        responsible: currentLead.assignedTo || "",
+        ticket: currentLead.ticket ? formatCurrency(currentLead.ticket) : "",
+        contractDueDate: currentLead.contractDueDate || "",
+        soldPlan: currentLead.soldPlan || undefined,
       });
-    } else if (!lead && open) {
+    } else if (!currentLead && open) {
       form.reset({
         name: "",
         phone: "",
@@ -1797,23 +1843,23 @@ export default function LeadDialog({
         soldPlan: undefined,
       });
     }
-  }, [lead, open, form]);
+  }, [currentLead, open, form]);
 
   useEffect(() => {
     const controller = new AbortController();
     let isActive = true;
 
     const fetchScheduleGuests = async () => {
-      if (!lead || !open) {
+      if (!currentLead || !open) {
         setScheduleGuests([]);
         return;
       }
       if (!supabaseId) return;
-      if (!lead.id) {
+      if (!currentLead.id) {
         setScheduleGuests([]);
         return;
       }
-      if (!lead.meetingDate && !lead.meetingTitle && !lead.meetingLink) {
+      if (!currentLead.meetingDate && !currentLead.meetingTitle && !currentLead.meetingLink) {
         setScheduleGuests([]);
         return;
       }
@@ -1821,7 +1867,7 @@ export default function LeadDialog({
         setScheduleLoading(true);
       }
       try {
-        const response = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
+        const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule`, {
           headers: {
             "Content-Type": "application/json",
             "x-supabase-user-id": supabaseId,
@@ -1845,10 +1891,13 @@ export default function LeadDialog({
           setScheduleGuests(latest?.extraGuests || []);
           const latestMeetingLink =
             typeof latest?.meetingLink === "string" ? latest.meetingLink.trim() : "";
-          const currentLeadMeetingLink = (lead.meetingLink || "").trim();
+          const currentLeadMeetingLink = (currentLead.meetingLink || "").trim();
           const currentFormMeetingLink = (form.getValues("meetingLink") || "").trim();
           if (latestMeetingLink && !currentLeadMeetingLink && !currentFormMeetingLink) {
-            patchLead?.(lead.id, { meetingLink: latestMeetingLink });
+            patchLead?.(currentLead.id, { meetingLink: latestMeetingLink });
+            setLocalLead((prev) =>
+              prev && prev.id === currentLead.id ? ({ ...prev, meetingLink: latestMeetingLink } as Lead) : prev,
+            );
             form.setValue("meetingLink", latestMeetingLink, { shouldDirty: false });
           }
         }
@@ -1873,10 +1922,10 @@ export default function LeadDialog({
       isActive = false;
       controller.abort();
     };
-  }, [lead, open, supabaseId, activeTeamId, form, patchLead]);
+  }, [currentLead?.id, open, supabaseId, activeTeamId, form, patchLead]);
 
   const handleResendInvite = async () => {
-    if (!lead || !supabaseId) return;
+    if (!currentLead || !supabaseId) return;
     if (resendTarget === "single" && !resendEmail) {
       toast.error("Selecione um participante para reenviar o convite");
       return;
@@ -1888,7 +1937,7 @@ export default function LeadDialog({
 
     const loadingToast = toast.loading("Reenviando convite...");
     try {
-      const response = await fetch(`/api/v1/leads/${lead.id}/schedule/resend`, {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}/schedule/resend`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1985,22 +2034,22 @@ export default function LeadDialog({
                 <div className="flex items-center justify-between">
                   <div>
                     <DialogTitle>
-                      {lead ? "Editar Lead" : "Novo Lead"}
+                      {currentLead ? "Editar Lead" : "Novo Lead"}
                     </DialogTitle>
                     <DialogDescription>
-                      {lead
+                      {currentLead
                         ? "Faça as alterações necessárias nos dados do lead."
                         : "Preencha os dados para criar um novo lead."
                       }
                     </DialogDescription>
-                    {(lead?.leadCode || leadOriginBadge) && (
+                    {(currentLead?.leadCode || leadOriginBadge) && (
                       <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                        {lead?.leadCode && (
+                        {currentLead?.leadCode && (
                           <div className="flex items-center gap-2">
-                            <span>ID: {lead.leadCode}</span>
+                            <span>ID: {currentLead.leadCode}</span>
                             <button
                               type="button"
-                              onClick={() => handleCopyLeadCode(lead.leadCode)}
+                              onClick={() => handleCopyLeadCode(currentLead.leadCode)}
                               className="rounded-md p-1 transition-colors hover:bg-accent/60"
                               aria-label="Copiar ID do lead"
                             >
@@ -2024,10 +2073,10 @@ export default function LeadDialog({
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              setStatusSelection(lead?.status || "");
+                              setStatusSelection(currentLead?.status || "");
                               setStatusDialogOpen(true);
                             }}
-                            disabled={!lead}
+                            disabled={!currentLead}
                           >
                             {statusLabel}
                           </Button>
@@ -2043,7 +2092,7 @@ export default function LeadDialog({
                             size="icon"
                             variant="ghost"
                             onClick={() => setShareOpen(true)}
-                            disabled={!lead}
+                            disabled={!currentLead}
                             className="h-9 w-9"
                             aria-label="Compartilhar lead"
                           >
@@ -2084,48 +2133,48 @@ export default function LeadDialog({
                     <p className="text-sm text-destructive">Erro ao carregar dados do usuário</p>
                   </div>
                 ) : (
-                  <LeadForm
-                    form={form}
-                    onSubmit={onSubmit}
-                    isLoading={isSubmitting}
+                    <LeadForm
+                      form={form}
+                      onSubmit={onSubmit}
+                      isLoading={isSubmitting}
                     healthPlanOptions={healthPlans}
                     healthPlanOptionsLoading={healthPlansLoading}
                     onCancel={() => setOpen(false)}
                     usersToAssign={usersToAssign}
                     closersToAssign={availableScheduleClosers}
                     sdrsToAssign={sdrsByTeam}
-                    closersLoading={teamMembersLoading || closersLoading}
-                    closersError={closersError}
+                      closersLoading={teamMembersLoading || closersLoading}
+                      closersError={closersError}
                     sdrsLoading={sdrsLoading}
                     sdrsError={sdrsError}
-                    leadId={lead?.id}
-                    onUploadStateChange={setIsAttachmentUploading}
-                    scheduleSummary={
-                      lead
-                        ? {
-                            status: lead.status,
-                            meetingDate: lead.meetingDate,
-                            closerName:
-                              lead.closer?.fullName ||
-                              lead.closer?.email ||
-                              null,
-                            meetingTitle: lead.meetingTitle,
-                            meetingNotes: lead.meetingNotes,
-                            meetingLink: lead.meetingLink,
-                            meetingHeald: lead.meetingHeald,
-                          }
-                        : undefined
-                    }
-                    onManageSchedule={lead ? () => setShowScheduleDialog(true) : undefined}
-                    canToggleMeetingHeald={canEditMeetingHeald}
-                    meetingHealdSaving={meetingHealdSaving}
-                    onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
-                    canMarkNoShow={canMarkNoShow}
-                    onMarkNoShow={handleNoShow}
-                    isEditMode={!!lead}
-                    currentProfileId={user.id}
-                    currentUserIsSdr={activeFunctions.includes("SDR") || user.functions.includes("SDR")}
-                  />
+                      leadId={currentLead?.id}
+                      onUploadStateChange={setIsAttachmentUploading}
+                      scheduleSummary={
+                        currentLead
+                          ? {
+                              status: currentLead.status,
+                              meetingDate: currentLead.meetingDate,
+                              closerName:
+                                currentLead.closer?.fullName ||
+                                currentLead.closer?.email ||
+                                null,
+                              meetingTitle: currentLead.meetingTitle,
+                              meetingNotes: currentLead.meetingNotes,
+                              meetingLink: currentLead.meetingLink,
+                              meetingHeald: currentLead.meetingHeald,
+                            }
+                          : undefined
+                      }
+                      onManageSchedule={currentLead ? () => setShowScheduleDialog(true) : undefined}
+                      canToggleMeetingHeald={canEditMeetingHeald}
+                      meetingHealdSaving={meetingHealdSaving}
+                      onMeetingHealdChange={canEditMeetingHeald ? handleMeetingHealdChange : undefined}
+                      canMarkNoShow={canMarkNoShow}
+                      onMarkNoShow={handleNoShow}
+                      isEditMode={!!currentLead}
+                      currentProfileId={user.id}
+                      currentUserIsSdr={activeFunctions.includes("SDR") || user.functions.includes("SDR")}
+                    />
                 )}
               </div>
             </div>
@@ -2144,7 +2193,7 @@ export default function LeadDialog({
               </p>
 
               <div className="mt-4 flex-1 min-h-0 w-full">
-                {!lead ? (
+                {!currentLead ? (
                   <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground">
                     Atividades disponíveis após criar o lead.
                   </div>
@@ -2315,9 +2364,9 @@ export default function LeadDialog({
                       placeholder="Descreva a atividade..."
                       rows={3}
                       className="resize-none pr-10"
-                      disabled={!lead}
+                      disabled={!currentLead}
                     />
-                    {mentionOpen && lead && (
+                    {mentionOpen && currentLead && (
                       <div className="absolute bottom-full left-0 mb-2 w-full rounded-md border border-border/60 bg-background shadow-sm z-50">
                         {teamMembersLoading ? (
                           <div className="px-3 py-2 text-xs text-muted-foreground">
@@ -2364,7 +2413,7 @@ export default function LeadDialog({
                           variant="ghost"
                           size="icon"
                           className="absolute right-2 top-2 h-7 w-7"
-                          disabled={!lead}
+                          disabled={!currentLead}
                           aria-label="Adicionar emoji"
                         >
                           <Smile className="h-4 w-4" />
@@ -2389,7 +2438,7 @@ export default function LeadDialog({
                   type="button"
                   variant="default"
                   className="mt-4 w-full"
-                  disabled={!lead || activitySubmitting || !activityBody.trim()}
+                  disabled={!currentLead || activitySubmitting || !activityBody.trim()}
                   onClick={handleAddActivity}
                 >
                   {activitySubmitting ? "Salvando..." : "Adicionar atividade"}
@@ -2552,7 +2601,7 @@ export default function LeadDialog({
         </DialogContent>
       </Dialog>
 
-      {lead && (
+      {currentLead && (
         <FinalizeContractDialog
           open={showFinalizeDialog}
           onOpenChange={(nextOpen) => {
@@ -2561,30 +2610,30 @@ export default function LeadDialog({
               setOpen(true);
             }
           }}
-          leadName={lead.name}
+          leadName={currentLead.name}
           onFinalize={handleFinalizeSubmit}
         />
       )}
 
-      {lead && (
+      {currentLead && (
         <ScheduleMeetingDialog
           open={showScheduleDialog}
           onOpenChange={setShowScheduleDialog}
-          lead={lead}
+          lead={currentLead}
           onScheduleSuccess={handleScheduleStatusSuccess}
           closers={closersByTeam}
           teamMembers={usersToAssign}
-          mode={lead.meetingDate ? "reschedule" : "create"}
+          mode={currentLead.meetingDate ? "reschedule" : "create"}
           initialExtraGuests={scheduleGuests}
         />
       )}
 
-      {lead && statusSelection && needsStatusTriggerDialog(statusSelection) && (
+      {currentLead && statusSelection && needsStatusTriggerDialog(statusSelection) && (
         <LeadStatusTriggerDialog
           open={showStatusTriggerDialog}
           onOpenChange={setShowStatusTriggerDialog}
           mode={statusSelection === "future_sale" ? "future_sale" : "loss_reason"}
-          leadName={lead.name}
+          leadName={currentLead.name}
           statusLabel={COLUMNS.find((column) => column.key === statusSelection)?.title || statusSelection}
           confirmationMessage={
             pendingStatusConfirmation?.status === statusSelection

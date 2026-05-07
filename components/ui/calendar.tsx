@@ -43,7 +43,7 @@ function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn(
-        "bg-background group/calendar p-4 [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
+        "bg-background group/calendar p-4 text-foreground [color-scheme:light] dark:[color-scheme:dark] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent [&_.rdp-dropdown]:text-foreground [&_.rdp-dropdown_root]:bg-background [&_.rdp-dropdown_root]:text-foreground [&_.rdp-dropdown_root]:border-input [&_option]:bg-background [&_option]:text-foreground",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
         String.raw`rtl:**:[.rdp-button\_previous>svg]:rotate-180`,
         className
@@ -87,10 +87,10 @@ function Calendar({
           defaultClassNames.dropdowns
         ),
         dropdown_root: cn(
-          "has-focus:border-ring border-input shadow-xs has-focus:ring-ring/50 has-focus:ring-[3px] relative rounded-md border px-3 py-2",
+          "has-focus:border-ring bg-background text-foreground border-input shadow-xs has-focus:ring-ring/50 has-focus:ring-[3px] relative rounded-md border px-3 py-2",
           defaultClassNames.dropdown_root
         ),
-        dropdown: cn("absolute inset-0 opacity-0", defaultClassNames.dropdown),
+        dropdown: cn("absolute inset-0 opacity-0 text-foreground", defaultClassNames.dropdown),
         caption_label: cn(
           "select-none font-medium text-base",
           captionLayout === "label"
