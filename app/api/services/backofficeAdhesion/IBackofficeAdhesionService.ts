@@ -13,7 +13,7 @@ export interface BackofficeAdhesionCreateInput {
   cycle: BackofficeAdhesionBillingCycle
   extraTeams: number
   extraUsers: number
-  billingType?: "PIX" | "CREDIT_CARD" | null
+  billingType?: "PIX" | "CREDIT_CARD" | "EXTERNAL" | null
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   activationMode?: "checkout" | "external_paid"
@@ -27,7 +27,8 @@ export interface BackofficeAdhesionUpdateInput {
   cycle?: BackofficeAdhesionBillingCycle
   extraTeams?: number
   extraUsers?: number
-  billingType?: "PIX" | "CREDIT_CARD" | null
+  billingType?: "PIX" | "CREDIT_CARD" | "EXTERNAL" | null
+  activationMode?: "checkout" | "external_paid"
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
 }

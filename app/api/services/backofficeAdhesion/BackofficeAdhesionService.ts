@@ -453,7 +453,15 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     const currentBillingType =
-      existing.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX"
+      existing.billingType === "CREDIT_CARD"
+        ? "CREDIT_CARD"
+        : existing.billingType === "EXTERNAL"
+          ? "EXTERNAL"
+          : "PIX"
+    const activationMode =
+      input.activationMode === "external_paid" || input.billingType === "EXTERNAL"
+        ? "external_paid"
+        : "checkout"
     const next = this.normalizeCommercialInput({
       leadId: existing.leadId,
       fullName: input.fullName ?? existing.fullName,
@@ -472,7 +480,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         input.closerBackofficeUserId !== undefined
           ? input.closerBackofficeUserId
           : existing.closerBackofficeUserId,
-      activationMode: "checkout",
+      activationMode,
     })
     const prices = await this.resolvePrices(next.cycle)
     const crmWithRules = await this.productRepo.findBySlugWithPaymentRules(CRM_PRODUCT_SLUG)
@@ -496,7 +504,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const shouldResetPaymentData =
       hadExistingPayment &&
       (existing.billingType !== next.billingType ||
-        decimalToNumber(existing.totalAmount) !== resolvedTotalAmount)
+        decimalToNumber(existing.totalAmount) !== resolvedTotalAmount ||
+        next.activationMode === "external_paid")
 
     if (shouldResetPaymentData && existing.asaasPaymentId) {
       try {
@@ -539,6 +548,39 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           paymentDueDate: null,
         })
       : updated
+
+    if (next.activationMode === "external_paid") {
+      if (!next.email) {
+        throw new Error("E-mail é obrigatório para pagamento por fora")
+      }
+      const normalizedCpfCnpj = (next.cpfCnpj ?? "").replace(/\D/g, "")
+      if (!normalizedCpfCnpj || !/^\d{11}$|^\d{14}$/.test(normalizedCpfCnpj)) {
+        throw new Error("CPF/CNPJ inválido para pagamento por fora")
+      }
+      const existingProfileId = await this.repo.findProfileIdByEmail(next.email)
+      if (existingProfileId && existing.createdProfileId !== existingProfileId) {
+        throw new Error("Já existe uma conta cadastrada com este e-mail")
+      }
+
+      const paidAt = new Date()
+      const asaasCustomerId = await this.createExternalAsaasCustomer({
+        adhesionId: persisted.id,
+        fullName: next.fullName,
+        email: next.email,
+        cpfCnpj: normalizedCpfCnpj,
+        phone: next.phone,
+      })
+      const paidAdhesion = await this.repo.markExternalPaid(persisted.id, {
+        fullName: next.fullName,
+        phone: next.phone,
+        email: next.email,
+        cpfCnpj: normalizedCpfCnpj,
+        paidAt,
+        asaasCustomerId,
+      })
+      await this.ensureAccountForPaidAdhesion(paidAdhesion)
+      return mapAdhesion(paidAdhesion)
+    }
 
     return mapAdhesion(persisted)
   }
@@ -859,7 +901,12 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const extraTeams = Math.max(0, Math.trunc(input.extraTeams || 0))
     const extraUsers = Math.max(0, Math.trunc(input.extraUsers || 0))
     const activationMode = input.activationMode ?? "checkout"
-    const billingType = input.billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX"
+    const billingType =
+      activationMode === "external_paid"
+        ? "EXTERNAL"
+        : input.billingType === "CREDIT_CARD"
+          ? "CREDIT_CARD"
+          : "PIX"
     const email = normalizeText(input.email)?.toLowerCase() ?? null
     const cpfCnpj = normalizeDigits(input.cpfCnpj, 14)
 

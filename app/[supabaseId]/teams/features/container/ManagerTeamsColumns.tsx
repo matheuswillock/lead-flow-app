@@ -18,7 +18,6 @@ interface CreateColumnsProps {
   tz: string;
   activeTeamId: string | null;
   switchingTeamId: string | null;
-  currentUserId: string | null;
   onSetActiveTeam: (teamId: string) => void;
   onManageTeam: (teamId: string, teamName: string) => void;
   onViewPendingCheckout: (team: ManagerTeamTableRow) => void;
@@ -30,7 +29,6 @@ export function createColumns({
   tz,
   activeTeamId,
   switchingTeamId,
-  currentUserId,
   onSetActiveTeam,
   onManageTeam,
   onViewPendingCheckout,
@@ -190,7 +188,6 @@ export function createColumns({
       cell: ({ row }) => {
         const team = row.original;
         const isActive = team.id === activeTeamId;
-        const isMaster = !!(currentUserId && team.masterId === currentUserId);
         const hasPendingPayment =
           (team.pendingPayment?.paymentStatus ?? "").toUpperCase() !== "" &&
           ["PENDING", "FAILED"].includes((team.pendingPayment?.paymentStatus ?? "").toUpperCase());
@@ -233,7 +230,7 @@ export function createColumns({
                 ) : null}
                 <DropdownMenuItem
                   onClick={() => onManageTeam(team.id, team.name)}
-                  disabled={!isMaster}
+                  disabled={!canManageTeams}
                   className="flex items-center gap-2"
                 >
                   <Settings className="h-4 w-4" />
