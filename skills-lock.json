@@ -18,6 +18,18 @@
       "sourceType": "local",
       "skillPath": "skills/corretor-studio-design/SKILL.md",
       "computedHash": "3dca9b9e7a5b7c137c4202a4d9b1fa4387bc324a6e78fed7364d6c2f76d9fbb5"
+    },
+    "corretor-studio-frontend": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/corretor-studio-frontend/SKILL.md",
+      "computedHash": "b19d2641b52fcd655a5a23a54da7b9fd1b13ca9d5d1545b8b9edc7c3aa6f89d4"
+    },
+    "corretor-studio-backend": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/corretor-studio-backend/SKILL.md",
+      "computedHash": "653fb4bd7b12b8c941b72b3e57402607559fe25b5535fc9c8f9fc705f644a6ea"
     }
   }
 }
