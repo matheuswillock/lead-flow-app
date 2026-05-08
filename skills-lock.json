@@ -6,6 +6,36 @@
       "sourceType": "github",
       "skillPath": "skills/shadcn/SKILL.md",
       "computedHash": "f0fdd03f4755cbb3b57e20fe6fd4a97c00d34e6780187b6559316986e8d848db"
+    },
+    "project-context-doc": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": ".agents/skills/project-context-doc/SKILL.md",
+      "computedHash": "84b101a717a94e49237575f00cf51c7ca870b7366eeb4350314132d4e35b3cbb"
+    },
+    "corretor-studio-design": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/corretor-studio-design/SKILL.md",
+      "computedHash": "3dca9b9e7a5b7c137c4202a4d9b1fa4387bc324a6e78fed7364d6c2f76d9fbb5"
+    },
+    "corretor-studio-frontend": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/corretor-studio-frontend/SKILL.md",
+      "computedHash": "b19d2641b52fcd655a5a23a54da7b9fd1b13ca9d5d1545b8b9edc7c3aa6f89d4"
+    },
+    "corretor-studio-backend": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/corretor-studio-backend/SKILL.md",
+      "computedHash": "653fb4bd7b12b8c941b72b3e57402607559fe25b5535fc9c8f9fc705f644a6ea"
+    },
+    "ai-agents-sync": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/ai-agents-sync/SKILL.md",
+      "computedHash": "5abb594d1cf1897bba64a799d995f0dc1913f8159ea957db9f2b86d806a2501e"
     }
   }
 }
