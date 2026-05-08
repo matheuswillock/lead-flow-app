@@ -146,6 +146,7 @@ export class PerformanceService implements IPerformanceService {
           id: true,
           assignedTo: true,
           closerId: true,
+          meetingDate: true,
         },
       }),
       prisma.lead.findMany({
@@ -158,6 +159,7 @@ export class PerformanceService implements IPerformanceService {
           id: true,
           assignedTo: true,
           closerId: true,
+          statusEnteredAt: true,
         },
       }),
       prisma.leadsSchedule.findMany({
@@ -167,6 +169,7 @@ export class PerformanceService implements IPerformanceService {
         },
         select: {
           leadId: true,
+          date: true,
           lead: {
             select: {
               assignedTo: true,
@@ -318,13 +321,66 @@ export class PerformanceService implements IPerformanceService {
     const noShowCount = noShowRows.length;
     const scheduledLeads = scheduledLeadIds.size;
 
+    // Calculate sparkline data for 7 days
+    const sparklineByDate = new Map<string, { sales: number; meetings: number; scheduled: number; noShow: number }>();
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(endDate);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      sparklineByDate.set(dateStr, { sales: 0, meetings: 0, scheduled: 0, noShow: 0 });
+    }
+
+    for (const row of finalizedRows) {
+      const dateStr = row.finalizedDateAt ? new Date(row.finalizedDateAt).toISOString().split('T')[0] : null;
+      if (dateStr && sparklineByDate.has(dateStr)) {
+        const data = sparklineByDate.get(dateStr)!;
+        data.sales += 1;
+      }
+    }
+
+    for (const row of heldMeetingRows) {
+      const dateStr = row.meetingDate ? new Date(row.meetingDate).toISOString().split('T')[0] : null;
+      if (dateStr && sparklineByDate.has(dateStr)) {
+        const data = sparklineByDate.get(dateStr)!;
+        data.meetings += 1;
+      }
+    }
+
+    for (const row of scheduledRows) {
+      const dateStr = row.date ? new Date(row.date).toISOString().split('T')[0] : null;
+      if (dateStr && sparklineByDate.has(dateStr)) {
+        const data = sparklineByDate.get(dateStr)!;
+        data.scheduled += 1;
+      }
+    }
+
+    for (const row of noShowRows) {
+      const dateStr = row.statusEnteredAt ? new Date(row.statusEnteredAt).toISOString().split('T')[0] : null;
+      if (dateStr && sparklineByDate.has(dateStr)) {
+        const data = sparklineByDate.get(dateStr)!;
+        data.noShow += 1;
+      }
+    }
+
+    const closedSalesSparkline = Array.from(sparklineByDate.values()).map(d => ({ value: d.sales }));
+    const meetingsHeldSparkline = Array.from(sparklineByDate.values()).map(d => ({ value: d.meetings }));
+    const scheduledLeadsSparkline = Array.from(sparklineByDate.values()).map(d => ({ value: d.scheduled }));
+    const noShowRateSparkline = Array.from(sparklineByDate.values()).map(d => {
+      const total = d.scheduled;
+      return { value: total > 0 ? Math.round((d.noShow / total) * 10000) / 100 : 0 };
+    });
+
     return {
       kpis: {
         closedSales: finalizedRows.length,
+        closedSalesSparkline,
         meetingsHeld: heldMeetingRows.length,
+        meetingsHeldSparkline,
         scheduledLeads,
+        scheduledLeadsSparkline,
         noShowRate: scheduledLeads > 0 ? Math.round((noShowCount / scheduledLeads) * 10000) / 100 : 0,
         noShowCount,
+        noShowRateSparkline,
       },
       highlights: {
         topCloser,

@@ -59,12 +59,20 @@ export interface PerformanceSaleRow {
   saleValue: number;
 }
 
+export interface SparklineDataPoint {
+  value: number;
+}
+
 export interface PerformanceKpis {
   closedSales: number;
+  closedSalesSparkline: SparklineDataPoint[];
   meetingsHeld: number;
+  meetingsHeldSparkline: SparklineDataPoint[];
   scheduledLeads: number;
+  scheduledLeadsSparkline: SparklineDataPoint[];
   noShowRate: number;
   noShowCount: number;
+  noShowRateSparkline: SparklineDataPoint[];
 }
 
 export interface PerformanceHighlight {

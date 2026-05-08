@@ -19,7 +19,7 @@ interface KpiCardProps {
   title: string;
   value: string;
   helper: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   accentColor: string;
   delta?: number;
   sparklineData?: Array<{ value: number }>;
@@ -34,20 +34,21 @@ function KpiCard({
   delta,
   sparklineData,
 }: KpiCardProps) {
-  // Generate mock sparkline data if not provided
+  // Use real sparkline data from backend
   const data = useMemo(() => {
-    if (sparklineData) return sparklineData;
-    // Generate 7 random points for sparkline visualization
-    const baseValue = parseInt(value) || 0;
-    return Array.from({ length: 7 }, (_, i) => ({
-      value: Math.max(0, baseValue * (0.6 + Math.random() * 0.8)),
-    }));
-  }, [sparklineData, value]);
+    return sparklineData || [];
+  }, [sparklineData]);
 
   const deltaColor = delta === undefined ? 'text-muted-foreground' : delta >= 0 ? 'text-[var(--semantic-success)]' : 'text-[var(--semantic-danger)]';
 
   return (
-    <Card className="overflow-hidden border-l-4" style={{ borderLeftColor: accentColor }}>
+    <Card 
+      className="overflow-hidden border-l-4" 
+      style={{ 
+        borderLeftColor: accentColor,
+        boxShadow: `inset 0 0 20px ${accentColor}15, -4px 0 12px ${accentColor}30`
+      }}
+    >
       <CardHeader className="flex flex-row items-start justify-between pb-3">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         <div
@@ -57,7 +58,7 @@ function KpiCard({
           <Icon className="w-4 h-4" style={{ color: accentColor }} />
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2">
         <div className="flex items-baseline gap-2">
           <p className="text-4xl font-bold leading-none">{value}</p>
           {delta !== undefined && (
@@ -68,7 +69,7 @@ function KpiCard({
         </div>
 
         {/* Sparkline */}
-        <div className="h-8 w-full">
+        <div className="h-8 w-full mt-1">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data}>
               <defs>
@@ -90,7 +91,7 @@ function KpiCard({
           </ResponsiveContainer>
         </div>
 
-        <p className="text-xs text-muted-foreground">{helper}</p>
+        <p className="text-xs text-muted-foreground mt-1">{helper}</p>
       </CardContent>
     </Card>
   );
@@ -120,6 +121,7 @@ export function PerformanceSummaryCards() {
         icon={Handshake}
         accentColor="var(--primary)"
         delta={8.2}
+        sparklineData={kpis?.closedSalesSparkline}
       />
       <KpiCard
         title="Reuniões realizadas"
@@ -128,6 +130,7 @@ export function PerformanceSummaryCards() {
         icon={CalendarCheck2}
         accentColor="var(--semantic-info)"
         delta={-1.5}
+        sparklineData={kpis?.meetingsHeldSparkline}
       />
       <KpiCard
         title="Agendamentos realizados"
@@ -136,6 +139,7 @@ export function PerformanceSummaryCards() {
         icon={TrendingUp}
         accentColor="var(--semantic-success)"
         delta={5.6}
+        sparklineData={kpis?.scheduledLeadsSparkline}
       />
       <KpiCard
         title="Taxa de no-show"
@@ -144,6 +148,7 @@ export function PerformanceSummaryCards() {
         icon={UserRoundX}
         accentColor="var(--semantic-warning)"
         delta={-3.1}
+        sparklineData={kpis?.noShowRateSparkline}
       />
     </div>
   );

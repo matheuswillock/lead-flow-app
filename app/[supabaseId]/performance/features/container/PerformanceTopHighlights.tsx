@@ -36,13 +36,19 @@ function TopHighlightCard({
   accentColor,
 }: TopHighlightCardProps) {
   return (
-    <Card className="border-l-4" style={{ borderLeftColor: accentColor }}>
+    <Card 
+      className="border-l-4" 
+      style={{ 
+        borderLeftColor: accentColor,
+        boxShadow: `inset 0 0 20px ${accentColor}15, -4px 0 12px ${accentColor}30`
+      }}
+    >
       <CardHeader className="pb-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {title}
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3">
         <div className="flex items-center gap-3">
           <Avatar className="h-12 w-12">
             <AvatarFallback className="text-sm font-semibold">{initials(name)}</AvatarFallback>
@@ -54,7 +60,7 @@ function TopHighlightCard({
         </div>
 
         <div className="space-y-2">
-          <div className="flex items-baseline gap-1">
+          <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold">{value}</span>
             <span className="text-sm text-muted-foreground">{suffix}</span>
           </div>
@@ -93,7 +99,13 @@ export function PerformanceTopHighlights() {
           accentColor="var(--primary)"
         />
       ) : (
-        <Card className="border-l-4" style={{ borderLeftColor: 'var(--primary)' }}>
+        <Card 
+        className="border-l-4" 
+        style={{ 
+          borderLeftColor: 'var(--primary)',
+          boxShadow: `inset 0 0 20px var(--primary)15, -4px 0 12px var(--primary)30`
+        }}
+      >
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Sem dados de Top Closer</p>
           </CardContent>
@@ -111,7 +123,13 @@ export function PerformanceTopHighlights() {
           accentColor="var(--semantic-info)"
         />
       ) : (
-        <Card className="border-l-4" style={{ borderLeftColor: 'var(--semantic-info)' }}>
+        <Card 
+        className="border-l-4" 
+        style={{ 
+          borderLeftColor: 'var(--semantic-info)',
+          boxShadow: `inset 0 0 20px var(--semantic-info)15, -4px 0 12px var(--semantic-info)30`
+        }}
+      >
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Sem dados de Top SDR</p>
           </CardContent>
