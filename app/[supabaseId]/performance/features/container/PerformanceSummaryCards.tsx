@@ -49,8 +49,8 @@ function KpiCard({
         boxShadow: `inset 0 0 20px ${accentColor}15, -4px 0 12px ${accentColor}30`
       }}
     >
-      <CardHeader className="flex flex-row items-start justify-between pb-3">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+      <CardHeader className="flex flex-row items-start justify-between pb-2">
+        <CardTitle className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{title}</CardTitle>
         <div
           className="p-2 rounded-lg"
           style={{ backgroundColor: `color-mix(in srgb, ${accentColor} 15%, transparent)` }}
@@ -58,9 +58,9 @@ function KpiCard({
           <Icon className="w-4 h-4" style={{ color: accentColor }} />
         </div>
       </CardHeader>
-      <CardContent className="space-y-2">
-        <div className="flex items-baseline gap-2">
-          <p className="text-4xl font-bold leading-none">{value}</p>
+      <CardContent className="space-y-1.5 pt-1">
+        <div className="flex items-baseline gap-1.5">
+          <p className="text-5xl font-bold leading-none">{value}</p>
           {delta !== undefined && (
             <p className={`text-xs font-semibold ${deltaColor}`}>
               {delta >= 0 ? '+' : ''}{delta.toFixed(1)}%
@@ -68,22 +68,16 @@ function KpiCard({
           )}
         </div>
 
-        {/* Sparkline */}
-        <div className="h-8 w-full mt-1">
+        {/* Sparkline - Line only, no fill */}
+        <div className="h-8 w-full mt-2">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data}>
-              <defs>
-                <linearGradient id={`gradient-${title}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={accentColor} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={accentColor} stopOpacity={0} />
-                </linearGradient>
-              </defs>
               <Area
                 type="monotone"
                 dataKey="value"
                 stroke={accentColor}
-                strokeWidth={2}
-                fill={`url(#gradient-${title})`}
+                strokeWidth={1.5}
+                fill="none"
                 isAnimationActive={false}
                 dot={false}
               />
@@ -91,7 +85,7 @@ function KpiCard({
           </ResponsiveContainer>
         </div>
 
-        <p className="text-xs text-muted-foreground mt-1">{helper}</p>
+        <p className="text-[10px] text-muted-foreground mt-1">{helper}</p>
       </CardContent>
     </Card>
   );

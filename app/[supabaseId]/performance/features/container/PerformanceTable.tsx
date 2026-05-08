@@ -94,7 +94,7 @@ export function PerformanceTable() {
       </div>
 
       <div className="px-4 py-3 border-t bg-muted/30 text-xs text-muted-foreground">
-        Dados sincronizados do CRM • Apenas vendas e reuniões marcadas como realizadas no período selecionado
+        Dados sincronizados com CRM · Apenas vendas e reuniões marcadas como realizadas no período selecionado
       </div>
 
       {pagination && pagination.totalPages > 1 && (

@@ -76,7 +76,7 @@ function RankingRow({
       </div>
 
       {/* Avatar */}
-      <Avatar className="h-9 w-9 flex-shrink-0">
+      <Avatar className="h-9 w-9 flex-shrink-0 border border-border">
         <AvatarFallback className="text-xs font-semibold">{initials(entry.name)}</AvatarFallback>
       </Avatar>
 
@@ -142,7 +142,7 @@ function RankingCard({
         </Button>
       </div>
       <Separator />
-      <div className="flex flex-col gap-1 p-3">
+      <div className="flex flex-col gap-2 p-3">
         {entries.length === 0 ? (
           <div className="p-6 text-sm text-muted-foreground text-center">Sem dados no período.</div>
         ) : (
