@@ -33,8 +33,8 @@ function SaleRow({ row }: { row: PerformanceSaleRow }) {
   return (
     <TableRow>
       <TableCell>
-        <div>
-          <p className="font-medium text-sm">{row.leadName}</p>
+        <div className="flex flex-col gap-0.5">
+          <p className="text-sm font-medium">{row.leadName}</p>
           <p className="text-xs text-muted-foreground">{row.leadCode}</p>
         </div>
       </TableCell>
@@ -55,7 +55,7 @@ export function PerformanceTable() {
 
   if (isLoading && !data) {
     return (
-      <div className="space-y-2">
+      <div className="flex flex-col gap-2">
         <Skeleton className="h-10 w-full" />
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className="h-12 w-full" />
@@ -65,8 +65,8 @@ export function PerformanceTable() {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-md border">
+    <div className="flex flex-col gap-3">
+      <div className="rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -102,7 +102,7 @@ export function PerformanceTable() {
             onClick={() => setPage(filters.page - 1)}
             disabled={filters.page <= 1}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft />
           </Button>
           <span className="text-sm text-muted-foreground">
             Página {pagination.page} de {pagination.totalPages}
@@ -114,7 +114,7 @@ export function PerformanceTable() {
             onClick={() => setPage(filters.page + 1)}
             disabled={filters.page >= pagination.totalPages}
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight />
           </Button>
         </div>
       )}

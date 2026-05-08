@@ -17,6 +17,9 @@ export interface PerformanceRankingEntry {
   name: string;
   count: number;
   totalSalesValue: number;
+  meetingsHeld: number;
+  noShowCount: number;
+  attendanceRate: number;
 }
 
 export interface PerformanceSaleRow {
@@ -34,13 +37,49 @@ export interface PerformanceSaleRow {
   saleValue: number;
 }
 
+export interface PerformanceKpis {
+  closedSales: number;
+  meetingsHeld: number;
+  scheduledLeads: number;
+  noShowRate: number;
+  noShowCount: number;
+}
+
+export interface PerformanceHighlight {
+  profileId: string;
+  name: string;
+  roleLabel: 'Closer' | 'SDR';
+  value: number;
+  suffix: 'vendas' | 'agend.';
+  attendanceRate: number;
+  totalSalesValue: number;
+}
+
+export interface PerformanceDrilldownEntry {
+  profileId: string;
+  name: string;
+  roleLabel: 'Closer' | 'SDR';
+  email: string;
+  salesCount: number;
+  scheduledLeads: number;
+  meetingsHeld: number;
+  noShowCount: number;
+  noShowRate: number;
+  attendanceRate: number;
+  totalSalesValue: number;
+}
+
 export interface PerformanceSalesResult {
-  summary: {
-    soldLeads: number;
-    totalSalesValue: number;
+  kpis: PerformanceKpis;
+  highlights: {
+    topCloser: PerformanceHighlight | null;
+    topSdr: PerformanceHighlight | null;
   };
-  sdrRanking: PerformanceRankingEntry[];
-  closerRanking: PerformanceRankingEntry[];
+  rankings: {
+    sdr: PerformanceRankingEntry[];
+    closer: PerformanceRankingEntry[];
+  };
+  drilldown: PerformanceDrilldownEntry[];
   rows: PerformanceSaleRow[];
   pagination: {
     page: number;

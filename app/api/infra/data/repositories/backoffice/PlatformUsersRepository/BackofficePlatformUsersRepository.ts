@@ -111,6 +111,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           hasPermanentSubscription: true,
           subscriptionPlan: true,
           operatorCount: true,
+          googleCalendarConnected: true,
           teamsOwned: {
             select: {
               id: true,
@@ -179,6 +180,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       hasPermanentSubscription: master.hasPermanentSubscription,
       subscriptionPlan: master.subscriptionPlan,
       operatorCount: master.operatorCount,
+      googleCalendarConnected: master.googleCalendarConnected,
       linkedUsersCount: membersByMaster.get(master.id)?.size ?? 0,
       teamsCount: master.teamsOwned.length,
       teams: master.teamsOwned.map((team) => ({
@@ -228,6 +230,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         hasPermanentSubscription: true,
         subscriptionPlan: true,
         operatorCount: true,
+        googleCalendarConnected: true,
       },
     })
 
@@ -302,6 +305,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
                   fullName: true,
                   email: true,
                   phone: true,
+                  googleCalendarConnected: true,
                 },
               },
             },
@@ -351,6 +355,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       hasPermanentSubscription: master.hasPermanentSubscription,
       subscriptionPlan: master.subscriptionPlan,
       operatorCount: master.operatorCount,
+      googleCalendarConnected: master.googleCalendarConnected,
       linkedUsersCount: linkedUsers.size,
       teamsTotalItems,
       teams: teams.map((team) => ({
@@ -365,6 +370,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           phone: member.profile.phone,
           addedAt: member.createdAt,
           role: member.role,
+          googleCalendarConnected: member.profile.googleCalendarConnected,
           functions: member.functions,
         })),
       })),

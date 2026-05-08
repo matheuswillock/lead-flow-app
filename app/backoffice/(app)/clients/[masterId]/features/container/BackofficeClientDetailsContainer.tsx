@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
 import { CalendarDays, Crown, DollarSign, Eye, Pencil, Search, Tag, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { CircleX, CircleCheckBig } from "lucide-react"
 import {
   Accordion,
   AccordionContent,
@@ -347,17 +348,18 @@ export function BackofficeClientDetailsContainer() {
                             <Table>
                               <TableHeader>
                                 <TableRow>
-                                  <TableHead>Nome</TableHead>
-                                  <TableHead>E-mail</TableHead>
-                                  <TableHead>Telefone</TableHead>
-                                  <TableHead>Papel</TableHead>
-                                  <TableHead>Funções</TableHead>
-                                  <TableHead>Data de inclusão</TableHead>
+                                  <TableHead className="text-center">Nome</TableHead>
+                                  <TableHead className="text-center">E-mail</TableHead>
+                                  <TableHead className="text-center">Telefone</TableHead>
+                                  <TableHead className="text-center">Papel</TableHead>
+                                  <TableHead className="text-center">Funções</TableHead>
+                                  <TableHead className="text-center">Conta Google Conectada</TableHead>
+                                  <TableHead className="text-center">Data de inclusão</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
                                 {team.members.map((member) => (
-                                  <TableRow key={`${member.id}-${member.addedAt}`}>
+                                  <TableRow key={`${member.id}-${member.addedAt}`} className="text-center">
                                     <TableCell className="font-medium">
                                       {member.fullName || "Sem nome"}
                                     </TableCell>
@@ -370,6 +372,9 @@ export function BackofficeClientDetailsContainer() {
                                       {member.functions.length > 0
                                         ? member.functions.join(", ")
                                         : "—"}
+                                    </TableCell>
+                                    <TableCell className="flex justify-center">
+                                      {member.googleCalendarConnected ? <CircleCheckBig className="text-green-500" /> : <CircleX className="text-red-500" />}
                                     </TableCell>
                                     <TableCell>{formatDate(member.addedAt, tz)}</TableCell>
                                   </TableRow>

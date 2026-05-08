@@ -97,6 +97,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
     { title: "CRM", url: `/${supabaseId}/crm`, icon: KanbanSquare },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays },
+    { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, closerOrManager: true },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true, status: "comingSoon" },
     {
       title: "Integrações",

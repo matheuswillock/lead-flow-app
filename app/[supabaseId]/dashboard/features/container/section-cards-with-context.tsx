@@ -112,6 +112,18 @@ export function SectionCardsWithContext() {
   } = useDashboardContext();
   const { tz } = useTimezone();
 
+  const [startDateInput, setStartDateInput] = React.useState(
+    customDateRange?.startDate ?? ""
+  );
+  const [endDateInput, setEndDateInput] = React.useState(
+    customDateRange?.endDate ?? ""
+  );
+
+  React.useEffect(() => {
+    setStartDateInput(customDateRange?.startDate ?? "");
+    setEndDateInput(customDateRange?.endDate ?? "");
+  }, [customDateRange]);
+
   if (isLoading) {
     return <DashboardCardsSkeleton />;
   }
@@ -151,13 +163,6 @@ export function SectionCardsWithContext() {
   };
 
   const periodText = getPeriodText();
-  const [startDateInput, setStartDateInput] = React.useState(customDateRange?.startDate ?? "");
-  const [endDateInput, setEndDateInput] = React.useState(customDateRange?.endDate ?? "");
-
-  React.useEffect(() => {
-    setStartDateInput(customDateRange?.startDate ?? "");
-    setEndDateInput(customDateRange?.endDate ?? "");
-  }, [customDateRange]);
 
   const applyCustomDateRange = () => {
     if (startDateInput && endDateInput) {
