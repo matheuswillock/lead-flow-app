@@ -41,6 +41,13 @@ Confirmar domínios de API com `ls app/api/v1/` e páginas autenticadas com `ls 
 
 ## Passo 3 — Consultar preços no Supabase
 
+> **Compatibilidade de ambiente:**
+> Os comandos `manus-mcp-cli` abaixo funcionam **exclusivamente no ambiente Manus AI**, onde o utilitário está pré-instalado em `/usr/local/bin/manus-mcp-cli`.
+> Em outros agentes (Codex, Claude Code, Cursor), use o servidor MCP Supabase configurado em `.mcp.json` com a ferramenta equivalente do seu ambiente:
+> - **Claude Code / Cursor**: chame `mcp__supabase__execute_sql` diretamente via interface MCP nativa.
+> - **Codex (OpenAI)**: use a integração MCP configurada no seu workspace com o mesmo endpoint `supabase` de `.mcp.json`.
+> O servidor MCP Supabase está configurado em `.mcp.json` com `project_ref=wcnxwdcoambpfwxwubka`.
+
 Identificar o projeto `corretor-studio` via MCP Supabase:
 
 ```bash
