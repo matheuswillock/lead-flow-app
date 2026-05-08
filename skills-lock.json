@@ -12,6 +12,12 @@
       "sourceType": "local",
       "skillPath": ".agents/skills/project-context-doc/SKILL.md",
       "computedHash": "84b101a717a94e49237575f00cf51c7ca870b7366eeb4350314132d4e35b3cbb"
+    },
+    "corretor-studio-design": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/corretor-studio-design/SKILL.md",
+      "computedHash": "3dca9b9e7a5b7c137c4202a4d9b1fa4387bc324a6e78fed7364d6c2f76d9fbb5"
     }
   }
 }
