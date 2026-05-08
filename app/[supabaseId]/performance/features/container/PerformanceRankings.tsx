@@ -36,20 +36,22 @@ function RankingRow({
   maxValue,
   entry,
   suffix,
+  roleLabel,
   onOpen,
 }: {
   index: number;
   maxValue: number;
   entry: PerformanceRankingEntry;
   suffix: 'vendas' | 'agend.';
-  onOpen: (profileId: string) => void;
+  roleLabel: 'Closer' | 'SDR';
+  onOpen: (profileId: string, roleLabel: 'Closer' | 'SDR') => void;
 }) {
   const progress = maxValue > 0 ? (entry.count / maxValue) * 100 : 0;
 
   return (
     <button
       type="button"
-      onClick={() => onOpen(entry.profileId)}
+      onClick={() => onOpen(entry.profileId, roleLabel)}
       className="flex items-center gap-3 rounded-lg border border-transparent px-3 py-2 hover:border-border hover:bg-muted/30"
     >
       <div className="w-6 text-center text-sm text-muted-foreground">{index + 1}</div>
@@ -80,13 +82,15 @@ function RankingCard({
   subtitle,
   suffix,
   entries,
+  roleLabel,
   onOpen,
 }: {
   title: string;
   subtitle: string;
   suffix: 'vendas' | 'agend.';
   entries: PerformanceRankingEntry[];
-  onOpen: (profileId: string) => void;
+  roleLabel: 'Closer' | 'SDR';
+  onOpen: (profileId: string, roleLabel: 'Closer' | 'SDR') => void;
 }) {
   const maxValue = useMemo(() => Math.max(...entries.map((entry) => entry.count), 0), [entries]);
 
@@ -115,11 +119,12 @@ function RankingCard({
         ) : (
           entries.map((entry, index) => (
             <RankingRow
-              key={entry.profileId}
+              key={`${roleLabel}:${entry.profileId}`}
               index={index}
               maxValue={maxValue}
               entry={entry}
               suffix={suffix}
+              roleLabel={roleLabel}
               onOpen={onOpen}
             />
           ))
@@ -200,12 +205,12 @@ export function PerformanceRankings() {
 
   const drilldownByProfile = useMemo(() => {
     const map = new Map<string, PerformanceDrilldownEntry>();
-    (data?.drilldown ?? []).forEach((item) => map.set(item.profileId, item));
+    (data?.drilldown ?? []).forEach((item) => map.set(`${item.roleLabel}:${item.profileId}`, item));
     return map;
   }, [data]);
 
-  const handleOpen = (profileId: string) => {
-    const item = drilldownByProfile.get(profileId) ?? null;
+  const handleOpen = (profileId: string, roleLabel: 'Closer' | 'SDR') => {
+    const item = drilldownByProfile.get(`${roleLabel}:${profileId}`) ?? null;
     setSelected(item);
   };
 
@@ -225,6 +230,7 @@ export function PerformanceRankings() {
           title="Ranking de Closers"
           subtitle="Por vendas fechadas"
           suffix="vendas"
+          roleLabel="Closer"
           entries={data?.rankings.closer ?? []}
           onOpen={handleOpen}
         />
@@ -232,6 +238,7 @@ export function PerformanceRankings() {
           title="Ranking de SDRs"
           subtitle="Por agendamentos realizados"
           suffix="agend."
+          roleLabel="SDR"
           entries={data?.rankings.sdr ?? []}
           onOpen={handleOpen}
         />
