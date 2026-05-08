@@ -69,15 +69,40 @@ export class MetricsRepository implements IMetricsRepository {
     const dateFilter =
       startDate && endDate ? { [dateField]: { gte: startDate, lte: endDate } } : {};
 
+    const extraWhereWithoutDateField = extraWhere
+      ? Object.fromEntries(
+          Object.entries(extraWhere).filter(([key]) => key !== dateField)
+        )
+      : {};
+
+    const extraDateFilter =
+      extraWhere && dateField in extraWhere
+        ? (extraWhere as Record<string, unknown>)[dateField]
+        : undefined;
+
+    const mergedDateFilter =
+      dateFilter[dateField] && extraDateFilter
+        ? {
+            [dateField]: {
+              ...(dateFilter[dateField] as object),
+              ...(extraDateFilter as object),
+            },
+          }
+        : dateFilter[dateField]
+        ? dateFilter
+        : extraDateFilter
+        ? { [dateField]: extraDateFilter }
+        : {};
+
     if (isManagerLikeRole(ctx.teamMember.role)) {
-      return { teamId, ...dateFilter, ...extraWhere };
+      return { teamId, ...extraWhereWithoutDateField, ...mergedDateFilter };
     }
 
     return {
       OR: [{ assignedTo: ctx.profileId }, { createdBy: ctx.profileId }],
       teamId,
-      ...dateFilter,
-      ...extraWhere,
+      ...extraWhereWithoutDateField,
+      ...mergedDateFilter,
     };
   }
 
