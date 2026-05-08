@@ -7,9 +7,9 @@ import { Input } from "@/components/ui/input";
 interface PerfFiltersBarProps {
   sdrPicks?: any[]
   closerPicks?: any[]
-  presets: ["1d","7d","15d","1m","3m"]
+  presets: ["1d", "7d", "15d", "1m", "3m"]
   datePick?: any
-  preset?: string
+  preset: string
   onClearAll: () => void
   setPreset: (preset: string) => void
 }
