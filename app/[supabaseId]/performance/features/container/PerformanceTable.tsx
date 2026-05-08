@@ -66,17 +66,17 @@ export function PerformanceTable() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-xl border bg-card">
+      <div className="rounded-xl border bg-card overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Cliente</TableHead>
-              <TableHead>Data da venda</TableHead>
-              <TableHead>SDR</TableHead>
-              <TableHead>Closer</TableHead>
-              <TableHead>Plano</TableHead>
-              <TableHead className="text-right">Valor da venda</TableHead>
-              <TableHead>Vigência</TableHead>
+            <TableRow className="border-b">
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cliente</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Data da venda</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">SDR</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Closer</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plano</TableHead>
+              <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Valor da venda</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vigência</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -93,6 +93,10 @@ export function PerformanceTable() {
         </Table>
       </div>
 
+      <div className="px-4 py-3 border-t bg-muted/30 text-xs text-muted-foreground">
+        Dados sincronizados do CRM • Apenas vendas e reuniões marcadas como realizadas no período selecionado
+      </div>
+
       {pagination && pagination.totalPages > 1 && (
         <div className="flex items-center justify-end gap-2">
           <Button
@@ -102,7 +106,7 @@ export function PerformanceTable() {
             onClick={() => setPage(filters.page - 1)}
             disabled={filters.page <= 1}
           >
-            <ChevronLeft />
+            <ChevronLeft className="w-4 h-4" />
           </Button>
           <span className="text-sm text-muted-foreground">
             Página {pagination.page} de {pagination.totalPages}
@@ -114,7 +118,7 @@ export function PerformanceTable() {
             onClick={() => setPage(filters.page + 1)}
             disabled={filters.page >= pagination.totalPages}
           >
-            <ChevronRight />
+            <ChevronRight className="w-4 h-4" />
           </Button>
         </div>
       )}

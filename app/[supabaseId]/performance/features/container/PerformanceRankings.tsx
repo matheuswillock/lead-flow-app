@@ -31,12 +31,26 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
+function getMedalColor(position: number): { bg: string; text: string } {
+  switch (position) {
+    case 0:
+      return { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-600 dark:text-yellow-400' };
+    case 1:
+      return { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400' };
+    case 2:
+      return { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-600 dark:text-orange-400' };
+    default:
+      return { bg: 'bg-muted', text: 'text-muted-foreground' };
+  }
+}
+
 function RankingRow({
   index,
   maxValue,
   entry,
   suffix,
   roleLabel,
+  barColor,
   onOpen,
 }: {
   index: number;
@@ -44,33 +58,47 @@ function RankingRow({
   entry: PerformanceRankingEntry;
   suffix: 'vendas' | 'agend.';
   roleLabel: 'Closer' | 'SDR';
+  barColor: string;
   onOpen: (profileId: string, roleLabel: 'Closer' | 'SDR') => void;
 }) {
   const progress = maxValue > 0 ? (entry.count / maxValue) * 100 : 0;
+  const medalColor = getMedalColor(index);
 
   return (
     <button
       type="button"
       onClick={() => onOpen(entry.profileId, roleLabel)}
-      className="flex items-center gap-3 rounded-lg border border-transparent px-3 py-2 hover:border-border hover:bg-muted/30"
+      className="flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 hover:border-border hover:bg-muted/30 transition-colors w-full"
     >
-      <div className="w-6 text-center text-sm text-muted-foreground">{index + 1}</div>
-      <Avatar className="size-9">
-        <AvatarFallback>{initials(entry.name)}</AvatarFallback>
+      {/* Medal Position */}
+      <div className={`flex items-center justify-center w-7 h-7 rounded-full font-bold text-sm ${medalColor.bg} ${medalColor.text}`}>
+        {index + 1}
+      </div>
+
+      {/* Avatar */}
+      <Avatar className="h-9 w-9 flex-shrink-0">
+        <AvatarFallback className="text-xs font-semibold">{initials(entry.name)}</AvatarFallback>
       </Avatar>
+
+      {/* Name and Details */}
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
-        <p className="truncate text-sm font-medium">{entry.name}</p>
+        <p className="truncate text-sm font-semibold">{entry.name}</p>
         <p className="text-xs text-muted-foreground">
-          {entry.meetingsHeld} reuniões realizadas · {entry.attendanceRate.toFixed(1)}% presença
+          {entry.meetingsHeld} reuniões · {entry.attendanceRate.toFixed(1)}% presença
         </p>
       </div>
-      <div className="flex w-40 flex-col items-end gap-1">
-        <p className="text-2xl font-semibold leading-none">
+
+      {/* Value and Progress Bar */}
+      <div className="flex w-48 flex-col items-end gap-1.5">
+        <p className="text-2xl font-bold leading-none">
           {entry.count}
-          <span className="ml-1 text-sm text-muted-foreground">{suffix}</span>
+          <span className="ml-1 text-xs text-muted-foreground font-normal">{suffix}</span>
         </p>
-        <div className="h-2 w-full rounded-full bg-muted">
-          <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
+        <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-300"
+            style={{ width: `${progress}%`, backgroundColor: barColor }}
+          />
         </div>
       </div>
     </button>
@@ -83,6 +111,7 @@ function RankingCard({
   suffix,
   entries,
   roleLabel,
+  barColor,
   onOpen,
 }: {
   title: string;
@@ -90,32 +119,32 @@ function RankingCard({
   suffix: 'vendas' | 'agend.';
   entries: PerformanceRankingEntry[];
   roleLabel: 'Closer' | 'SDR';
+  barColor: string;
   onOpen: (profileId: string, roleLabel: 'Closer' | 'SDR') => void;
 }) {
   const maxValue = useMemo(() => Math.max(...entries.map((entry) => entry.count), 0), [entries]);
 
   return (
-    <div className="rounded-xl border bg-card">
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="px-2 py-1 text-xs">
-            <Award />
-            Ranking
-          </Badge>
+    <div className="rounded-xl border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg" style={{ backgroundColor: `color-mix(in srgb, ${barColor} 15%, transparent)` }}>
+            <Award className="w-4 h-4" style={{ color: barColor }} />
+          </div>
           <div className="flex flex-col gap-0.5">
-            <p className="text-lg font-semibold leading-none">{title}</p>
-            <p className="text-sm text-muted-foreground">{subtitle}</p>
+            <p className="text-lg font-bold leading-none">{title}</p>
+            <p className="text-xs text-muted-foreground">{subtitle}</p>
           </div>
         </div>
         <Button variant="outline" size="sm">
-          <Download data-icon="inline-start" />
+          <Download className="w-4 h-4" />
           Exportar
         </Button>
       </div>
       <Separator />
-      <div className="flex flex-col gap-1 p-2">
+      <div className="flex flex-col gap-1 p-3">
         {entries.length === 0 ? (
-          <div className="p-6 text-sm text-muted-foreground">Sem dados no período.</div>
+          <div className="p-6 text-sm text-muted-foreground text-center">Sem dados no período.</div>
         ) : (
           entries.map((entry, index) => (
             <RankingRow
@@ -125,6 +154,7 @@ function RankingCard({
               entry={entry}
               suffix={suffix}
               roleLabel={roleLabel}
+              barColor={barColor}
               onOpen={onOpen}
             />
           ))
@@ -188,7 +218,7 @@ function DrilldownDialog({
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={onClose}>
-                <X data-icon="inline-start" />
+                <X className="w-4 h-4" />
                 Fechar
               </Button>
             </DialogFooter>
@@ -231,6 +261,7 @@ export function PerformanceRankings() {
           subtitle="Por vendas fechadas"
           suffix="vendas"
           roleLabel="Closer"
+          barColor="var(--primary)"
           entries={data?.rankings.closer ?? []}
           onOpen={handleOpen}
         />
@@ -239,6 +270,7 @@ export function PerformanceRankings() {
           subtitle="Por agendamentos realizados"
           suffix="agend."
           roleLabel="SDR"
+          barColor="var(--semantic-info)"
           entries={data?.rankings.sdr ?? []}
           onOpen={handleOpen}
         />

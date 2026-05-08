@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { LeadsDateFilter } from '@/app/[supabaseId]/components/leads-filters/LeadsDateFilter';
-import { LeadsFiltersLayout } from '@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout';
 import { useTeamContext } from '@/app/context/TeamContext';
 import { useTeamSdrs, useTeamClosers } from '@/hooks/useTeamMembersByFunction';
 import { usePerformanceContext } from '../context/PerformanceContext';
@@ -89,85 +88,102 @@ export function PerformanceFiltersBar() {
   const showClear = isPerformanceFiltersChanged(filters);
 
   return (
-    <LeadsFiltersLayout>
-      {/* Period presets */}
-      <div className="flex items-center gap-1">
-        {PRESETS.map((p) => (
-          <Button
-            key={p.value}
-            variant={isActivePreset(p.value) ? 'default' : 'outline'}
-            size="sm"
-            className="h-8 px-3 text-xs"
-            onClick={() => setPreset(p.value)}
-          >
-            {p.label}
-          </Button>
-        ))}
+    <div className="flex flex-col gap-4">
+      {/* Presets Container */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex items-center gap-1 p-2 rounded-lg border bg-card/50">
+          {PRESETS.map((p) => (
+            <Button
+              key={p.value}
+              variant={isActivePreset(p.value) ? 'default' : 'ghost'}
+              size="sm"
+              className={`h-8 px-3 text-xs font-medium transition-all ${
+                isActivePreset(p.value)
+                  ? 'shadow-[0_4px_14px_-6px_rgba(245,73,0,0.6)]'
+                  : 'hover:bg-muted'
+              }`}
+              onClick={() => setPreset(p.value)}
+            >
+              {p.label}
+            </Button>
+          ))}
+        </div>
+
+        {/* Custom date range */}
+        <LeadsDateFilter
+          title="Período"
+          value={dateRangeValue}
+          onChange={handleDateRangeChange}
+        />
       </div>
 
-      {/* Custom date range */}
-      <LeadsDateFilter
-        title="Período"
-        value={dateRangeValue}
-        onChange={handleDateRangeChange}
-      />
+      {/* Filters Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        {/* SDR filter */}
+        {sdrs.length > 0 && (
+          <Select
+            value={filters.sdrId || '__all__'}
+            onValueChange={(v) => setFilter('sdrId', v === '__all__' ? '' : v)}
+          >
+            <SelectTrigger className="h-9 w-full sm:w-40 border-dashed text-xs">
+              <SelectValue placeholder="SDR" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos SDRs</SelectItem>
+              {sdrs.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
-      {/* SDR filter */}
-      {sdrs.length > 0 && (
-        <Select
-          value={filters.sdrId || '__all__'}
-          onValueChange={(v) => setFilter('sdrId', v === '__all__' ? '' : v)}
-        >
-          <SelectTrigger className="h-8 w-40 border-dashed text-xs">
-            <SelectValue placeholder="SDR" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">Todos SDRs</SelectItem>
-            {sdrs.map((s) => (
-              <SelectItem key={s.id} value={s.id}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
+        {/* Closer filter */}
+        {closers.length > 0 && (
+          <Select
+            value={filters.closerId || '__all__'}
+            onValueChange={(v) => setFilter('closerId', v === '__all__' ? '' : v)}
+          >
+            <SelectTrigger className="h-9 w-full sm:w-40 border-dashed text-xs">
+              <SelectValue placeholder="Closer" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Todos closers</SelectItem>
+              {closers.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
-      {/* Closer filter */}
-      {closers.length > 0 && (
-        <Select
-          value={filters.closerId || '__all__'}
-          onValueChange={(v) => setFilter('closerId', v === '__all__' ? '' : v)}
-        >
-          <SelectTrigger className="h-8 w-40 border-dashed text-xs">
-            <SelectValue placeholder="Closer" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">Todos closers</SelectItem>
-            {closers.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
+        {/* Search */}
+        <div className="relative flex-1 sm:flex-none">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <Input
+            ref={searchRef}
+            placeholder="Buscar cliente..."
+            defaultValue={filters.search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="h-9 pl-9 text-xs"
+          />
+        </div>
 
-      {/* Search */}
-      <Input
-        ref={searchRef}
-        placeholder="Buscar cliente..."
-        defaultValue={filters.search}
-        onChange={(e) => handleSearchChange(e.target.value)}
-        className="h-8 w-48 text-xs"
-      />
-
-      {/* Clear */}
-      {showClear && (
-        <Button variant="ghost" size="sm" className="h-8 px-2" onClick={clearFilters}>
-          <X className="h-4 w-4" />
-          Limpar
-        </Button>
-      )}
-    </LeadsFiltersLayout>
+        {/* Clear */}
+        {showClear && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 px-2 text-xs"
+            onClick={clearFilters}
+          >
+            <X className="h-4 w-4" />
+            Limpar
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
