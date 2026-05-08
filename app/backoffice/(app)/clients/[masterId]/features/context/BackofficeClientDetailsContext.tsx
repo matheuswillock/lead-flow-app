@@ -94,13 +94,13 @@ const BackofficeClientDetailsContext = createContext<BackofficeClientDetailsCont
   undefined
 )
 
-interface Props {
+interface BackofficeClientDetailsProviderProps {
   children: ReactNode
   masterId: string
   service: IBackofficeClientDetailsService
 }
 
-export function BackofficeClientDetailsProvider({ children, masterId, service }: Props) {
+export function BackofficeClientDetailsProvider({ children, masterId, service }: BackofficeClientDetailsProviderProps) {
   const { tz } = useTimezone()
   const [details, setDetails] = useState<BackofficeClientDetails | null>(null)
   const [teamsPagination, setTeamsPagination] = useState<BackofficePagination>(

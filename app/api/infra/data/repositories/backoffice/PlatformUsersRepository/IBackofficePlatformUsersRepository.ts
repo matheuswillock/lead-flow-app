@@ -14,6 +14,7 @@ export interface TeamMemberRecord {
   phone: string | null
   addedAt: Date
   role: string
+  googleCalendarConnected: boolean
   functions: string[]
 }
 
@@ -27,6 +28,7 @@ export interface MasterPlatformUserRecord {
   hasPermanentSubscription: boolean
   subscriptionPlan: SubscriptionPlan | null
   operatorCount: number
+  googleCalendarConnected: boolean
   linkedUsersCount: number
   teamsCount: number
   teams: TeamSummaryRecord[]
@@ -51,6 +53,7 @@ export interface MasterPlatformUserDetailsRecord {
   hasPermanentSubscription: boolean
   subscriptionPlan: SubscriptionPlan | null
   operatorCount: number
+  googleCalendarConnected: boolean
   linkedUsersCount: number
   teamsTotalItems: number
   teams: Array<{

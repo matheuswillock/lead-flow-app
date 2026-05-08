@@ -5,6 +5,7 @@ export interface BackofficeClientTeamMember {
   phone: string | null
   addedAt: string
   role: string
+  googleCalendarConnected: boolean
   functions: string[]
 }
 
