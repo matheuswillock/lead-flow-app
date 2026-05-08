@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -33,17 +33,21 @@ function SaleRow({ row }: { row: PerformanceSaleRow }) {
   return (
     <TableRow>
       <TableCell>
-        <div className="flex flex-col gap-0.5">
-          <p className="text-sm font-medium">{row.leadName}</p>
-          <p className="text-xs text-muted-foreground">{row.leadCode}</p>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '2px'
+        }}>
+          <p style={{ fontSize: '14px', fontWeight: '500' }}>{row.leadName}</p>
+          <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)' }}>{row.leadCode}</p>
         </div>
       </TableCell>
-      <TableCell className="text-sm">{formatDate(row.saleDate)}</TableCell>
-      <TableCell className="text-sm">{row.sdr?.name ?? '—'}</TableCell>
-      <TableCell className="text-sm">{row.closer?.name ?? '—'}</TableCell>
-      <TableCell className="text-sm">{row.soldPlan ?? '—'}</TableCell>
-      <TableCell className="text-right text-sm font-medium">{formatBRL(row.saleValue)}</TableCell>
-      <TableCell className="text-sm">{formatDate(row.contractDueDate)}</TableCell>
+      <TableCell style={{ fontSize: '14px' }}>{formatDate(row.saleDate)}</TableCell>
+      <TableCell style={{ fontSize: '14px' }}>{row.sdr?.name ?? '—'}</TableCell>
+      <TableCell style={{ fontSize: '14px' }}>{row.closer?.name ?? '—'}</TableCell>
+      <TableCell style={{ fontSize: '14px' }}>{row.soldPlan ?? '—'}</TableCell>
+      <TableCell style={{ textAlign: 'right', fontSize: '14px', fontWeight: '500' }}>{formatBRL(row.saleValue)}</TableCell>
+      <TableCell style={{ fontSize: '14px' }}>{formatDate(row.contractDueDate)}</TableCell>
     </TableRow>
   );
 }
@@ -55,7 +59,11 @@ export function PerformanceTable() {
 
   if (isLoading && !data) {
     return (
-      <div className="flex flex-col gap-2">
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}>
         <Skeleton className="h-10 w-full" />
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className="h-12 w-full" />
@@ -65,24 +73,94 @@ export function PerformanceTable() {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="rounded-xl border bg-card overflow-hidden">
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '12px'
+    }}>
+      <div style={{
+        borderRadius: '0.65rem',
+        border: '1px solid var(--border)',
+        backgroundColor: 'var(--card)',
+        overflow: 'hidden'
+      }}>
         <Table>
           <TableHeader>
-            <TableRow className="border-b">
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Cliente</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Data da venda</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>SDR</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Closer</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Plano</TableHead>
-              <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Valor da venda</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Vigência</TableHead>
+            <TableRow style={{ borderBottom: '1px solid var(--border)' }}>
+              <TableHead style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'rgba(255,255,255,0.55)'
+              }}>
+                Cliente
+              </TableHead>
+              <TableHead style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'rgba(255,255,255,0.55)'
+              }}>
+                Data da venda
+              </TableHead>
+              <TableHead style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'rgba(255,255,255,0.55)'
+              }}>
+                SDR
+              </TableHead>
+              <TableHead style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'rgba(255,255,255,0.55)'
+              }}>
+                Closer
+              </TableHead>
+              <TableHead style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'rgba(255,255,255,0.55)'
+              }}>
+                Plano
+              </TableHead>
+              <TableHead style={{
+                textAlign: 'right',
+                fontSize: '11px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'rgba(255,255,255,0.55)'
+              }}>
+                Valor da venda
+              </TableHead>
+              <TableHead style={{
+                fontSize: '11px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'rgba(255,255,255,0.55)'
+              }}>
+                Vigência
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={7} style={{
+                  height: '96px',
+                  textAlign: 'center',
+                  color: 'rgba(255,255,255,0.55)'
+                }}>
                   Nenhuma venda encontrada no período selecionado.
                 </TableCell>
               </TableRow>
@@ -93,29 +171,41 @@ export function PerformanceTable() {
         </Table>
       </div>
 
-      <div className="px-4 py-3 border-t bg-muted/30 text-xs text-muted-foreground">
+      <div style={{
+        paddingLeft: '1rem',
+        paddingRight: '1rem',
+        paddingTop: '12px',
+        paddingBottom: '12px',
+        borderTop: '1px solid var(--border)',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        fontSize: '11px',
+        color: 'rgba(255,255,255,0.55)'
+      }}>
         Dados sincronizados com CRM · Apenas vendas e reuniões marcadas como realizadas no período selecionado
       </div>
 
       {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-end gap-2">
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'flex-end',
+          gap: '8px'
+        }}>
           <Button
             variant="outline"
             size="sm"
-            className="h-8"
-            onClick={() => setPage(filters.page - 1)}
+            onClick={() => setPage(Math.max(1, filters.page - 1))}
             disabled={filters.page <= 1}
           >
             <ChevronLeft className="w-4 h-4" />
           </Button>
-          <span className="text-sm text-muted-foreground">
-            Página {pagination.page} de {pagination.totalPages}
+          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)' }}>
+            Página {filters.page} de {pagination.totalPages}
           </span>
           <Button
             variant="outline"
             size="sm"
-            className="h-8"
-            onClick={() => setPage(filters.page + 1)}
+            onClick={() => setPage(Math.min(pagination.totalPages, filters.page + 1))}
             disabled={filters.page >= pagination.totalPages}
           >
             <ChevronRight className="w-4 h-4" />
