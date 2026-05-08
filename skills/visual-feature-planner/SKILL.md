@@ -37,7 +37,7 @@ Antes de qualquer análise, extrair ou confirmar os seguintes campos do usuário
 | Campo | Descrição | Exemplo |
 |---|---|---|
 | `nome_feature` | Nome da feature em PascalCase | `LeadTimeline` |
-| `rota` | Caminho da rota no app | `app/[supabaseId]/leads/timeline/` |
+| `rota` | Segmento de rota, **sem** o prefixo `app/[supabaseId]/` | `leads/timeline` |
 | `tipo_tela` | landing, dashboard, modal, formulário, fluxo | `dashboard` |
 | `objetivo_conversao` | Ação principal que o usuário deve realizar | `Visualizar histórico de atividades do lead` |
 | `publico` | manager, operator, backoffice, lead, visitante | `operator` |
@@ -130,10 +130,11 @@ Registrar no plano: features similares encontradas e o que pode ser reutilizado.
 
 ### 3.2 — Mapear a estrutura de arquivos
 
-Definir a árvore completa de arquivos a criar, seguindo a estrutura canônica:
+Definir a árvore completa de arquivos a criar, seguindo a estrutura canônica.
+O campo `rota` é o segmento coletado no Passo 1 (ex: `leads/timeline`); a raiz completa é `app/[supabaseId]/<rota>/`:
 
 ```
-app/[supabaseId]/[rota]/
+app/[supabaseId]/leads/timeline/      # exemplo com rota = "leads/timeline"
 ├── page.tsx                          # Thin: só Provider + Container
 ├── loading.tsx                       # Loading UI da rota
 └── features/

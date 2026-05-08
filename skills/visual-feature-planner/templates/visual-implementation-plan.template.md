@@ -1,7 +1,7 @@
 # Plano de Implementação Visual — [NomeDaFeature]
 
 **Feature:** [NomeDaFeature]
-**Rota:** `app/[supabaseId]/[rota-da-feature]/`
+**Rota:** `app/[supabaseId]/[segmento-da-rota]/`  *(ex: `leads/timeline` — sem o prefixo `app/[supabaseId]/`)*
 **Público:** [manager | operator | backoffice | lead | visitante]
 **Objetivo de conversão:** [ação principal que o usuário deve realizar]
 **Data do plano:** [YYYY-MM-DD]
@@ -68,7 +68,7 @@
 ## 2. Estrutura de arquivos a criar
 
 ```
-app/[supabaseId]/[rota-da-feature]/
+app/[supabaseId]/[segmento-da-rota]/                # ex: app/[supabaseId]/leads/timeline/
 ├── page.tsx                                    # Thin: Provider + Container
 ├── loading.tsx                                 # Skeleton da rota
 └── features/
