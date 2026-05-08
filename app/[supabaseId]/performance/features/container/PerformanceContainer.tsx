@@ -1,20 +1,13 @@
 "use client";
 
-import { AlertCircle, BarChart, Download, Plus } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { usePerformanceContext } from '../context/PerformanceContext';
-import { PerformanceFiltersBar } from './PerformanceFiltersBar';
-import { PerformanceSummaryCards } from './PerformanceSummaryCards';
-import { PerformanceTopHighlights } from './PerformanceTopHighlights';
-import { PerformanceRankings } from './PerformanceRankings';
-import { PerformanceTable } from './PerformanceTable';
 import { useState } from 'react';
 import { PerfFiltersBar } from './Components/PerfFiltersBar';
 import { PerfKpis } from './Components/PerfKpis';
 import { PerfTopHighlights } from './Components/PerfTopHighlights';
 import { PerfRankings } from './Components/PerfRankings';
 import { Button } from '@/components/ui/button';
+import { Download, Plus } from 'lucide-react';
 
 export function PerformanceContainer() {
   const { data, error } = usePerformanceContext();
