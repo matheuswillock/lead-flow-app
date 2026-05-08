@@ -30,6 +30,12 @@
       "sourceType": "local",
       "skillPath": "skills/corretor-studio-backend/SKILL.md",
       "computedHash": "653fb4bd7b12b8c941b72b3e57402607559fe25b5535fc9c8f9fc705f644a6ea"
+    },
+    "ai-agents-sync": {
+      "source": "local",
+      "sourceType": "local",
+      "skillPath": "skills/ai-agents-sync/SKILL.md",
+      "computedHash": "5abb594d1cf1897bba64a799d995f0dc1913f8159ea957db9f2b86d806a2501e"
     }
   }
 }
