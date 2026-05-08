@@ -47,7 +47,7 @@ function KpiCard({
   const deltaColor = delta === undefined ? 'text-muted-foreground' : delta >= 0 ? 'text-[var(--semantic-success)]' : 'text-[var(--semantic-danger)]';
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden border-l-4" style={{ borderLeftColor: accentColor }}>
       <CardHeader className="flex flex-row items-start justify-between pb-3">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         <div
@@ -68,7 +68,7 @@ function KpiCard({
         </div>
 
         {/* Sparkline */}
-        <div className="h-12 w-full">
+        <div className="h-8 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data}>
               <defs>

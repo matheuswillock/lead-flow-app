@@ -70,13 +70,13 @@ export function PerformanceTable() {
         <Table>
           <TableHeader>
             <TableRow className="border-b">
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cliente</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Data da venda</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">SDR</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Closer</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plano</TableHead>
-              <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Valor da venda</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vigência</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Cliente</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Data da venda</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>SDR</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Closer</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Plano</TableHead>
+              <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Valor da venda</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground" style={{ fontSize: '11px' }}>Vigência</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

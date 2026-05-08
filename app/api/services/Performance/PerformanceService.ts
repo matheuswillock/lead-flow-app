@@ -257,14 +257,14 @@ export class PerformanceService implements IPerformanceService {
         const base = toRankingEntry(item);
         return { ...base, count: item.salesCount };
       })
-      .sort((a, b) => b.count - a.count || b.totalSalesValue - a.totalSalesValue || a.name.localeCompare(b.name));
+      .sort((a, b) => b.totalSalesValue - a.totalSalesValue || b.count - a.count || a.name.localeCompare(b.name));
 
     const topCloser = closerRanking[0]
       ? {
           profileId: closerRanking[0].profileId,
           name: closerRanking[0].name,
           roleLabel: 'Closer' as const,
-          value: closerRanking[0].count,
+          value: closerRanking[0].count,  // count = salesCount for closers
           suffix: 'vendas' as const,
           attendanceRate: closerRanking[0].attendanceRate,
           totalSalesValue: closerRanking[0].totalSalesValue,

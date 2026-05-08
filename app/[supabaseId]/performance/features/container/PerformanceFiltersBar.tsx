@@ -91,7 +91,7 @@ export function PerformanceFiltersBar() {
     <div className="flex flex-col gap-4">
       {/* Presets Container */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-center gap-1 p-2 rounded-lg border bg-card/50">
+        <div className="flex items-center gap-1 p-2 rounded-lg border border-border bg-card/50 shadow-sm">
           {PRESETS.map((p) => (
             <Button
               key={p.value}
