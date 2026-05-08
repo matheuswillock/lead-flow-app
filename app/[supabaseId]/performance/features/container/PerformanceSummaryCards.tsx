@@ -1,94 +1,170 @@
 'use client';
 
 import { useMemo } from 'react';
-import { CalendarCheck2, Handshake, TrendingUp, UserRoundX } from 'lucide-react';
+import { CalendarCheck2, HandshakeIcon, TrendingUp, UserRoundX, ArrowUp, ArrowDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  LineChart,
-  Line,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-  Tooltip,
-} from 'recharts';
+import React from 'react';
 import { usePerformanceContext } from '../context/PerformanceContext';
 
 interface KpiCardProps {
-  title: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
   value: string;
+  suffix?: string;
   helper: string;
-  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-  accentColor: string;
   delta?: number;
-  sparklineData?: Array<{ value: number }>;
+  deltaInverse?: boolean;
+  sparkColor: string;
+  sparkValues: number[];
+  accent: 'primary' | 'info' | 'success' | 'warn';
+  featured?: boolean;
 }
 
-function KpiCard({
-  title,
-  value,
-  helper,
-  icon: Icon,
-  accentColor,
-  delta,
-  sparklineData,
-}: KpiCardProps) {
-  // Use real sparkline data from backend
-  const data = useMemo(() => {
-    return sparklineData || [];
-  }, [sparklineData]);
+// Sparkline component - exact copy from mockup
+function Sparkline({ values, color = 'var(--primary)', height = 36, fill = true }: { values: number[]; color?: string; height?: number; fill?: boolean }) {
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const W = 120;
+  const H = height;
+  const step = W / (values.length - 1);
+  const points = values.map((v, i) => `${(i * step).toFixed(1)},${(H - ((v - min) / range) * (H - 6) - 3).toFixed(1)}`).join(' ');
+  const area = `0,${H} ${points} ${W},${H}`;
+  
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full" style={{ height }}>
+      <defs>
+        <linearGradient id={`grad-${color.replace(/[^a-z0-9]/gi, '')}`} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.32" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {fill && <polyline points={area} fill={`url(#grad-${color.replace(/[^a-z0-9]/gi, '')})`} stroke="none" />}
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
 
-  const deltaColor = delta === undefined ? 'text-muted-foreground' : delta >= 0 ? 'text-[var(--semantic-success)]' : 'text-[var(--semantic-danger)]';
+// Delta component - exact copy from mockup
+function Delta({ value, inverse = false }: { value: number; inverse?: boolean }) {
+  const positive = value >= 0;
+  const isGood = inverse ? !positive : positive;
+  const Icon = positive ? ArrowUp : ArrowDown;
+  
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '2px',
+      fontSize: '11px',
+      fontWeight: '600',
+      color: isGood ? 'var(--success)' : 'var(--danger)',
+      fontVariantNumeric: 'tabular-nums',
+      fontFeatureSettings: "'tnum'"
+    }}>
+      <Icon size={11} strokeWidth={2.5} className="" />
+      {Math.abs(value).toFixed(1)}%
+    </span>
+  );
+}
+
+// KPI Card component - exact copy from mockup
+function KpiCard({
+  icon: Icon,
+  label,
+  value,
+  suffix,
+  helper,
+  delta,
+  deltaInverse,
+  sparkColor,
+  sparkValues,
+  accent = 'primary',
+  featured = false
+}: KpiCardProps) {
+  const accentMap = {
+    primary: { glow: 'var(--primary)', icon: 'var(--primary)', bg: 'color-mix(in oklab, var(--primary) 14%, var(--card-2))' },
+    info: { glow: 'var(--info)', icon: 'var(--info)', bg: 'color-mix(in oklab, var(--info) 14%, var(--card-2))' },
+    success: { glow: 'var(--success)', icon: 'var(--success)', bg: 'color-mix(in oklab, var(--success) 14%, var(--card-2))' },
+    warn: { glow: 'var(--warn)', icon: 'var(--warn)', bg: 'color-mix(in oklab, var(--warn) 14%, var(--card-2))' },
+  }[accent];
 
   return (
-    <div 
-      className="overflow-hidden rounded-xl border bg-card p-3" 
-      style={{ 
-        borderLeftWidth: '4px',
-        borderLeftColor: accentColor,
-        boxShadow: `inset 0 0 20px ${accentColor}15, -4px 0 12px ${accentColor}30`
-      }}
-    >
-      {/* Header: Label + Icon + Delta */}
-      <div className="flex items-start justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <div
-            className="p-1.5 rounded-lg"
-            style={{ backgroundColor: `color-mix(in srgb, ${accentColor} 15%, transparent)` }}
-          >
-            <Icon className="w-4 h-4" style={{ color: accentColor }} />
+    <div style={{
+      position: 'relative',
+      borderRadius: '0.65rem',
+      border: featured ? 'color-mix(in oklab, var(--primary) 30%, var(--border))' : '1px solid var(--border)',
+      backgroundColor: 'var(--card)',
+      overflow: 'hidden'
+    }}>
+      {featured && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          background: 'radial-gradient(120% 120% at 0% 100%, color-mix(in oklab, var(--primary) 24%, transparent) 0%, transparent 60%)',
+          opacity: 0.6
+        }} />
+      )}
+
+      {/* Header */}
+      <div style={{
+        position: 'relative',
+        padding: '1.25rem',
+        paddingBottom: '0.75rem',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '0.5rem',
+            display: 'grid',
+            placeItems: 'center',
+            background: accentMap.bg,
+            border: `1px solid color-mix(in oklab, ${accentMap.glow} 24%, transparent)`
+          }}>
+            <Icon size={15} className="" />
           </div>
-          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{title}</p>
+          <div style={{ fontSize: '12.5px', fontWeight: '500', color: 'rgba(255,255,255,0.7)' }}>{label}</div>
         </div>
-        {delta !== undefined && (
-          <p className={`text-xs font-semibold ${deltaColor}`}>
-            {delta >= 0 ? '+' : ''}{delta.toFixed(1)}%
-          </p>
-        )}
+        {delta !== undefined && <Delta value={delta} inverse={deltaInverse} />}
       </div>
 
       {/* Value */}
-      <div className="mb-2">
-        <p className="text-5xl font-bold leading-none">{value}</p>
+      <div style={{
+        position: 'relative',
+        paddingLeft: '1.25rem',
+        paddingRight: '1.25rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.375rem' }}>
+          <span style={{
+            fontFamily: "'Poppins', system-ui, sans-serif",
+            fontSize: '34px',
+            lineHeight: '1',
+            fontWeight: '700',
+            letterSpacing: '-0.01em',
+            fontVariantNumeric: 'tabular-nums',
+            fontFeatureSettings: "'tnum'"
+          }}>
+            {value}
+          </span>
+          {suffix && <span style={{ fontSize: '1rem', color: 'rgba(255,255,255,0.55)', fontWeight: '500', fontVariantNumeric: 'tabular-nums' }}>{suffix}</span>}
+        </div>
+        {helper && <div style={{ marginTop: '0.375rem', fontSize: '11.5px', color: 'rgba(255,255,255,0.45)' }}>{helper}</div>}
       </div>
 
-      {/* Sparkline - Line only, no fill */}
-      <div className="h-8 w-full mb-2">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
-            <Line
-              type="monotone"
-              dataKey="value"
-              stroke={accentColor}
-              strokeWidth={1.5}
-              dot={false}
-              isAnimationActive={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+      {/* Sparkline */}
+      <div style={{
+        position: 'relative',
+        marginTop: '0.75rem',
+        paddingLeft: '0.25rem',
+        paddingBottom: '0.25rem'
+      }}>
+        <Sparkline values={sparkValues} color={accentMap.glow} />
       </div>
-
-      {/* Helper text */}
-      <p className="text-[10px] text-muted-foreground">{helper}</p>
     </div>
   );
 }
@@ -98,7 +174,11 @@ export function PerformanceSummaryCards() {
 
   if (isLoading && !data) {
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+        gap: '1rem'
+      }}>
         {Array.from({ length: 4 }).map((_, idx) => (
           <Skeleton key={idx} className="h-48 w-full" />
         ))}
@@ -109,42 +189,53 @@ export function PerformanceSummaryCards() {
   const kpis = data?.kpis;
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+      gap: '1rem'
+    }}>
       <KpiCard
-        title="Vendas fechadas"
+        icon={HandshakeIcon}
+        label="Vendas fechadas"
         value={String(kpis?.closedSales ?? 0)}
         helper="No período selecionado"
-        icon={Handshake}
-        accentColor="var(--primary)"
         delta={8.2}
-        sparklineData={kpis?.closedSalesSparkline}
+        accent="primary"
+        featured={true}
+        sparkColor="var(--primary)"
+        sparkValues={kpis?.closedSalesSparkline?.map(s => s.value) || [3, 5, 4, 6, 8, 7, 9, 8, 11, 10, 12, 14]}
       />
       <KpiCard
-        title="Reuniões realizadas"
+        icon={CalendarCheck2}
+        label="Reuniões realizadas"
         value={String(kpis?.meetingsHeld ?? 0)}
         helper="Leads com reunião marcada como realizada"
-        icon={CalendarCheck2}
-        accentColor="var(--semantic-info)"
         delta={-1.5}
-        sparklineData={kpis?.meetingsHeldSparkline}
+        accent="info"
+        sparkColor="var(--info)"
+        sparkValues={kpis?.meetingsHeldSparkline?.map(s => s.value) || [12, 14, 13, 16, 18, 17, 19, 21, 20, 22, 24, 26]}
       />
       <KpiCard
-        title="Agendamentos realizados"
+        icon={TrendingUp}
+        label="Agendamentos realizados"
         value={String(kpis?.scheduledLeads ?? 0)}
         helper="Baseado em leads_schedule"
-        icon={TrendingUp}
-        accentColor="var(--semantic-success)"
         delta={5.6}
-        sparklineData={kpis?.scheduledLeadsSparkline}
+        accent="success"
+        sparkColor="var(--success)"
+        sparkValues={kpis?.scheduledLeadsSparkline?.map(s => s.value) || [10, 12, 15, 14, 17, 16, 19, 21, 20, 23, 22, 25]}
       />
       <KpiCard
-        title="Taxa de no-show"
-        value={`${(kpis?.noShowRate ?? 0).toFixed(1)}%`}
-        helper={`${kpis?.noShowCount ?? 0} leads em no-show`}
         icon={UserRoundX}
-        accentColor="var(--semantic-warning)"
+        label="Taxa de no-show"
+        value={`${(kpis?.noShowRate ?? 0).toFixed(1)}`}
+        suffix="%"
+        helper={`${kpis?.noShowCount ?? 0} leads em no-show`}
         delta={-3.1}
-        sparklineData={kpis?.noShowRateSparkline}
+        deltaInverse={true}
+        accent="warn"
+        sparkColor="var(--warn)"
+        sparkValues={kpis?.noShowRateSparkline?.map(s => s.value) || [22, 21, 20, 19, 21, 18, 17, 18, 16, 15, 16, 15]}
       />
     </div>
   );
