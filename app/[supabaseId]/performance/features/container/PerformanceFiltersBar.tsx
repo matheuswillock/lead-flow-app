@@ -88,102 +88,97 @@ export function PerformanceFiltersBar() {
   const showClear = isPerformanceFiltersChanged(filters);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Presets Container */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex items-center gap-1 p-2 rounded-lg border border-border bg-card/50 shadow-sm">
-          {PRESETS.map((p) => (
-            <Button
-              key={p.value}
-              variant={isActivePreset(p.value) ? 'default' : 'ghost'}
-              size="sm"
-              className={`h-8 px-3 text-xs font-medium transition-all ${
-                isActivePreset(p.value)
-                  ? 'shadow-[0_4px_14px_-6px_rgba(245,73,0,0.6)]'
-                  : 'hover:bg-muted'
-              }`}
-              onClick={() => setPreset(p.value)}
-            >
-              {p.label}
-            </Button>
-          ))}
-        </div>
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+      {/* Presets */}
+      <div className="flex items-center gap-1">
+        {PRESETS.map((p) => (
+          <Button
+            key={p.value}
+            variant={isActivePreset(p.value) ? 'default' : 'ghost'}
+            size="sm"
+            className={`h-8 px-3 text-xs font-medium transition-all ${
+              isActivePreset(p.value)
+                ? 'shadow-[0_4px_14px_-6px_rgba(245,73,0,0.6)]'
+                : 'hover:bg-muted'
+            }`}
+            onClick={() => setPreset(p.value)}
+          >
+            {p.label}
+          </Button>
+        ))}
+      </div>
 
-        {/* Custom date range */}
-        <LeadsDateFilter
-          title="Período"
-          value={dateRangeValue}
-          onChange={handleDateRangeChange}
+      {/* Custom date range */}
+      <LeadsDateFilter
+        title="Período"
+        value={dateRangeValue}
+        onChange={handleDateRangeChange}
+      />
+
+      {/* SDR filter */}
+      {sdrs.length > 0 && (
+        <Select
+          value={filters.sdrId || '__all__'}
+          onValueChange={(v) => setFilter('sdrId', v === '__all__' ? '' : v)}
+        >
+          <SelectTrigger className="h-9 w-full sm:w-40 border-dashed text-xs">
+            <SelectValue placeholder="SDR" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos SDRs</SelectItem>
+            {sdrs.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {/* Closer filter */}
+      {closers.length > 0 && (
+        <Select
+          value={filters.closerId || '__all__'}
+          onValueChange={(v) => setFilter('closerId', v === '__all__' ? '' : v)}
+        >
+          <SelectTrigger className="h-9 w-full sm:w-40 border-dashed text-xs">
+            <SelectValue placeholder="Closer" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos closers</SelectItem>
+            {closers.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {/* Search */}
+      <div className="relative flex-1 sm:flex-none">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <Input
+          ref={searchRef}
+          placeholder="Buscar cliente..."
+          defaultValue={filters.search}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="h-9 pl-9 text-xs"
         />
       </div>
 
-      {/* Filters Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-        {/* SDR filter */}
-        {sdrs.length > 0 && (
-          <Select
-            value={filters.sdrId || '__all__'}
-            onValueChange={(v) => setFilter('sdrId', v === '__all__' ? '' : v)}
-          >
-            <SelectTrigger className="h-9 w-full sm:w-40 border-dashed text-xs">
-              <SelectValue placeholder="SDR" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Todos SDRs</SelectItem>
-              {sdrs.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {/* Closer filter */}
-        {closers.length > 0 && (
-          <Select
-            value={filters.closerId || '__all__'}
-            onValueChange={(v) => setFilter('closerId', v === '__all__' ? '' : v)}
-          >
-            <SelectTrigger className="h-9 w-full sm:w-40 border-dashed text-xs">
-              <SelectValue placeholder="Closer" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Todos closers</SelectItem>
-              {closers.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
-        {/* Search */}
-        <div className="relative flex-1 sm:flex-none">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-          <Input
-            ref={searchRef}
-            placeholder="Buscar cliente..."
-            defaultValue={filters.search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="h-9 pl-9 text-xs"
-          />
-        </div>
-
-        {/* Clear */}
-        {showClear && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-9 px-2 text-xs"
-            onClick={clearFilters}
-          >
-            <X className="h-4 w-4" />
-            Limpar
-          </Button>
-        )}
-      </div>
+      {/* Clear */}
+      {showClear && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 px-2 text-xs"
+          onClick={clearFilters}
+        >
+          <X className="h-4 w-4" />
+          Limpar
+        </Button>
+      )}
     </div>
   );
 }
