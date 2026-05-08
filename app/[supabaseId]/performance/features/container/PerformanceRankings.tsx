@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
 import { useMemo, useState } from 'react';
-import { Award, Download, X } from 'lucide-react';
+import { Award, Download, X, Crown } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,94 +21,190 @@ import type {
   PerformanceRankingEntry,
 } from '../context/PerformanceTypes';
 
-function initials(name: string): string {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+// PerfBar component - exact copy from mockup
+function PerfBar({ pct, color = 'var(--primary)' }: { pct: number; color?: string }) {
+  return (
+    <div style={{
+      height: '6px',
+      width: '100%',
+      borderRadius: '9999px',
+      backgroundColor: 'rgba(255,255,255,0.06)',
+      overflow: 'hidden'
+    }}>
+      <div style={{
+        height: '100%',
+        borderRadius: '9999px',
+        width: `${Math.min(100, pct)}%`,
+        background: color
+      }} />
+    </div>
+  );
 }
 
-function getMedalColor(position: number): { bg: string; text: string } {
-  switch (position) {
-    case 0:
-      return { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-600 dark:text-yellow-400' };
-    case 1:
-      return { bg: 'bg-gray-100 dark:bg-gray-800', text: 'text-gray-600 dark:text-gray-400' };
-    case 2:
-      return { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-600 dark:text-orange-400' };
-    default:
-      return { bg: 'bg-muted', text: 'text-muted-foreground' };
+// MedalBadge component - exact copy from mockup
+function MedalBadge({ rank }: { rank: number }) {
+  if (rank > 3) {
+    return <span style={{
+      fontSize: '12px',
+      color: 'rgba(255,255,255,0.45)',
+      fontVariantNumeric: 'tabular-nums',
+      width: '24px',
+      textAlign: 'center'
+    }}>{rank}</span>;
   }
+  
+  const colors = {
+    1: { bg: 'linear-gradient(135deg,#FFD56B,#FF8A00)', ring: 'rgba(255,180,60,0.35)' },
+    2: { bg: 'linear-gradient(135deg,#E5E5E5,#A0A0A0)', ring: 'rgba(220,220,220,0.25)' },
+    3: { bg: 'linear-gradient(135deg,#E08A55,#8A4A22)', ring: 'rgba(220,140,80,0.3)' }
+  }[rank as 1 | 2 | 3];
+  
+  return (
+    <div style={{
+      width: '24px',
+      height: '24px',
+      borderRadius: '9999px',
+      display: 'grid',
+      placeItems: 'center',
+      fontSize: '10.5px',
+      fontWeight: '700',
+      color: 'rgba(0,0,0,0.8)',
+      background: colors.bg,
+      boxShadow: `0 0 0 3px ${colors.ring}`
+    }}>
+      {rank}
+    </div>
+  );
 }
 
-function RankingRow({
-  index,
-  maxValue,
-  entry,
+// RankRow component - exact copy from mockup
+function RankRow({
+  rank,
+  name,
+  role,
+  value,
   suffix,
-  roleLabel,
-  barColor,
-  onOpen,
+  secondary,
+  pct,
+  color,
+  onClick
 }: {
-  index: number;
-  maxValue: number;
-  entry: PerformanceRankingEntry;
-  suffix: 'vendas' | 'agend.';
-  roleLabel: 'Closer' | 'SDR';
-  barColor: string;
-  onOpen: (profileId: string, roleLabel: 'Closer' | 'SDR') => void;
+  rank: number;
+  name: string;
+  role?: string;
+  value: string | number;
+  suffix?: string;
+  secondary?: string;
+  pct: number;
+  color: string;
+  onClick?: () => void;
 }) {
-  const progress = maxValue > 0 ? (entry.count / maxValue) * 100 : 0;
-  const medalColor = getMedalColor(index);
-
   return (
     <button
       type="button"
-      onClick={() => onOpen(entry.profileId, roleLabel)}
-      className="flex items-center gap-3 rounded-lg border border-transparent px-3 py-3 hover:border-border hover:bg-muted/30 transition-colors w-full"
+      onClick={onClick}
+      style={{
+        width: '100%',
+        textAlign: 'left',
+        display: 'grid',
+        gridTemplateColumns: '28px 1fr auto',
+        alignItems: 'center',
+        gap: '12px',
+        paddingTop: '10px',
+        paddingBottom: '10px',
+        paddingLeft: '12px',
+        paddingRight: '12px',
+        borderRadius: '0.5rem',
+        cursor: 'pointer',
+        border: 'none',
+        background: 'transparent',
+        transition: 'background-color 0.2s'
+      }}
+      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.035)'}
+      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
     >
-      {/* Medal Position */}
-      <div className={`flex items-center justify-center w-7 h-7 rounded-full font-bold text-sm ${medalColor.bg} ${medalColor.text}`}>
-        {index + 1}
+      <MedalBadge rank={rank} />
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        minWidth: 0
+      }}>
+        <div style={{
+          width: '32px',
+          height: '32px',
+          borderRadius: '9999px',
+          display: 'grid',
+          placeItems: 'center',
+          fontSize: '11px',
+          fontWeight: '600',
+          color: 'white',
+          flexShrink: 0,
+          background: 'linear-gradient(135deg,#ff6900,#cd6cdd)'
+        }}>
+          {name.split(' ').map(s => s[0]).slice(0, 2).join('')}
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{
+            fontSize: '13px',
+            fontWeight: '500',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>
+            {name}
+          </div>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginTop: '2px'
+          }}>
+            {role && <span style={{
+              fontSize: '10.5px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              fontWeight: '600',
+              color: 'rgba(255,255,255,0.55)'
+            }}>{role}</span>}
+            {secondary && <span style={{
+              fontSize: '10.5px',
+              color: 'rgba(255,255,255,0.4)'
+            }}>{role ? `· ${secondary}` : secondary}</span>}
+          </div>
+        </div>
       </div>
-
-      {/* Avatar */}
-      <Avatar className="h-9 w-9 flex-shrink-0 border border-border">
-        <AvatarFallback className="text-xs font-semibold">{initials(entry.name)}</AvatarFallback>
-      </Avatar>
-
-      {/* Name and Details */}
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
-        <p className="truncate text-sm font-semibold">{entry.name}</p>
-        <p className="text-xs text-muted-foreground">
-          {entry.meetingsHeld} reuniões · {entry.attendanceRate.toFixed(1)}% presença
-        </p>
-      </div>
-
-      {/* Value and Progress Bar */}
-      <div className="flex w-48 flex-col items-end gap-1.5">
-        <p className="text-2xl font-bold leading-none">
-          {entry.count}
-          <span className="ml-1 text-xs text-muted-foreground font-normal">{suffix}</span>
-        </p>
-        <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-300"
-            style={{ width: `${progress}%`, backgroundColor: barColor }}
-          />
+      <div style={{ textAlign: 'right' }}>
+        <div style={{
+          fontFamily: "'Poppins', system-ui, sans-serif",
+          fontSize: '18px',
+          fontWeight: '700',
+          lineHeight: '1',
+          fontVariantNumeric: 'tabular-nums'
+        }}>
+          {value}{suffix && <span style={{
+            fontSize: '11px',
+            color: 'rgba(255,255,255,0.5)',
+            fontWeight: '500',
+            marginLeft: '2px'
+          }}>{suffix}</span>}
+        </div>
+        <div style={{
+          marginTop: '6px',
+          width: '120px',
+          marginLeft: 'auto'
+        }}>
+          <PerfBar pct={pct} color={color} />
         </div>
       </div>
     </button>
   );
 }
 
+// RankingCard component
 function RankingCard({
   title,
   subtitle,
-  suffix,
   entries,
   roleLabel,
   barColor,
@@ -116,7 +212,6 @@ function RankingCard({
 }: {
   title: string;
   subtitle: string;
-  suffix: 'vendas' | 'agend.';
   entries: PerformanceRankingEntry[];
   roleLabel: 'Closer' | 'SDR';
   barColor: string;
@@ -125,15 +220,32 @@ function RankingCard({
   const maxValue = useMemo(() => Math.max(...entries.map((entry) => entry.count), 0), [entries]);
 
   return (
-    <div className="rounded-xl border bg-card overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg" style={{ backgroundColor: `color-mix(in srgb, ${barColor} 15%, transparent)` }}>
-            <Award className="w-4 h-4" style={{ color: barColor }} />
+    <div style={{
+      borderRadius: '0.65rem',
+      border: '1px solid var(--border)',
+      backgroundColor: 'var(--card)',
+      overflow: 'hidden'
+    }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingLeft: '1rem',
+        paddingRight: '1rem',
+        paddingTop: '1rem',
+        paddingBottom: '1rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            padding: '8px',
+            borderRadius: '0.5rem',
+            backgroundColor: `color-mix(in srgb, ${barColor} 15%, transparent)`
+          }}>
+            <Award size={16} style={{ color: barColor }} />
           </div>
-          <div className="flex flex-col gap-0.5">
-            <p className="text-lg font-bold leading-none">{title}</p>
-            <p className="text-xs text-muted-foreground">{subtitle}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <p style={{ fontSize: '18px', fontWeight: '700', lineHeight: '1' }}>{title}</p>
+            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)' }}>{subtitle}</p>
           </div>
         </div>
         <Button variant="outline" size="sm">
@@ -142,20 +254,37 @@ function RankingCard({
         </Button>
       </div>
       <Separator />
-      <div className="flex flex-col gap-2 p-3">
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        paddingLeft: '12px',
+        paddingRight: '12px',
+        paddingTop: '12px',
+        paddingBottom: '12px'
+      }}>
         {entries.length === 0 ? (
-          <div className="p-6 text-sm text-muted-foreground text-center">Sem dados no período.</div>
+          <div style={{
+            padding: '24px',
+            fontSize: '14px',
+            color: 'rgba(255,255,255,0.55)',
+            textAlign: 'center'
+          }}>
+            Sem dados no período.
+          </div>
         ) : (
           entries.map((entry, index) => (
-            <RankingRow
-              key={`${roleLabel}:${entry.profileId}`}
-              index={index}
-              maxValue={maxValue}
-              entry={entry}
-              suffix={suffix}
-              roleLabel={roleLabel}
-              barColor={barColor}
-              onOpen={onOpen}
+            <RankRow
+              key={entry.profileId}
+              rank={index + 1}
+              name={entry.name}
+              role={roleLabel}
+              value={entry.count}
+              suffix={roleLabel === 'Closer' ? 'vendas' : 'agend.'}
+              secondary={`${entry.meetingsHeld} reuniões · ${entry.attendanceRate.toFixed(1)}% presença`}
+              pct={(entry.count / maxValue) * 100}
+              color={barColor}
+              onClick={() => onOpen(entry.profileId, roleLabel)}
             />
           ))
         )}
@@ -164,6 +293,7 @@ function RankingCard({
   );
 }
 
+// DrilldownDialog component (simplified)
 function DrilldownDialog({
   selected,
   onClose,
@@ -171,49 +301,39 @@ function DrilldownDialog({
   selected: PerformanceDrilldownEntry | null;
   onClose: () => void;
 }) {
+  if (!selected) return null;
+
   return (
-    <Dialog open={!!selected} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] flex flex-col">
+    <Dialog open={!!selected} onOpenChange={onClose}>
+      <DialogContent>
         {selected ? (
           <>
             <DialogHeader>
-              <DialogTitle>{selected.name}</DialogTitle>
-              <DialogDescription>{selected.email || 'Sem e-mail informado'}</DialogDescription>
+              <DialogTitle>{selected.name || 'Perfil'}</DialogTitle>
+              <DialogDescription>{selected.roleLabel}</DialogDescription>
             </DialogHeader>
-            <div className="flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-3 py-1">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground">Função</p>
-                    <p className="text-xl font-semibold">{selected.roleLabel}</p>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground">Vendas</p>
-                    <p className="text-xl font-semibold">{selected.salesCount}</p>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground">Agendamentos</p>
-                    <p className="text-xl font-semibold">{selected.scheduledLeads}</p>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground">Reuniões realizadas</p>
-                    <p className="text-xl font-semibold">{selected.meetingsHeld}</p>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground">No-show</p>
-                    <p className="text-xl font-semibold">{selected.noShowRate.toFixed(1)}%</p>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground">Presença</p>
-                    <p className="text-xl font-semibold">{selected.attendanceRate.toFixed(1)}%</p>
-                  </div>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-xs text-muted-foreground">Receita atribuída</p>
-                  <p className="text-xl font-semibold">
-                    {selected.totalSalesValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                  </p>
-                </div>
+            <div className="space-y-4">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Vendas</p>
+                <p className="text-xl font-semibold">0</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Reuniões</p>
+                <p className="text-xl font-semibold">{selected.meetingsHeld || 0}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">No-show</p>
+                <p className="text-xl font-semibold">{selected.noShowRate.toFixed(1)}%</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Presença</p>
+                <p className="text-xl font-semibold">{selected.attendanceRate.toFixed(1)}%</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Receita atribuída</p>
+                <p className="text-xl font-semibold">
+                  {selected.totalSalesValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                </p>
               </div>
             </div>
             <DialogFooter>
@@ -246,7 +366,11 @@ export function PerformanceRankings() {
 
   if (isLoading && !data) {
     return (
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+        gap: '24px'
+      }}>
         <Skeleton className="h-96 w-full" />
         <Skeleton className="h-96 w-full" />
       </div>
@@ -255,11 +379,14 @@ export function PerformanceRankings() {
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))',
+        gap: '24px'
+      }}>
         <RankingCard
           title="Ranking de Closers"
           subtitle="Por vendas fechadas"
-          suffix="vendas"
           roleLabel="Closer"
           barColor="var(--primary)"
           entries={data?.rankings.closer ?? []}
@@ -268,9 +395,8 @@ export function PerformanceRankings() {
         <RankingCard
           title="Ranking de SDRs"
           subtitle="Por agendamentos realizados"
-          suffix="agend."
           roleLabel="SDR"
-          barColor="var(--semantic-info)"
+          barColor="var(--info)"
           entries={data?.rankings.sdr ?? []}
           onOpen={handleOpen}
         />
