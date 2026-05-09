@@ -48,24 +48,25 @@ export function PerfFiltersBar({
       <DashedFilterButton label="Closer" count={closerPicks?.length || 0} picks={closerPicks} />
 
       {/* Search */}
-      <div className="h-8 inline-flex items-center gap-2 px-2.5 rounded-md border border-border bg-(--card)/40 min-w-50">
+      <div className="h-8 inline-flex items-center gap-2 px-2.5 rounded-md border border-border bg-card/40 min-w-50">
         <Search size={13} className="text-white/45" />
         <Input
           placeholder="Buscar cliente..."
-          className="bg-transparent outline-none text-xs placeholder:text-white/40 w-full"
+          className="h-full bg-transparent border-0 outline-none text-xs placeholder:text-white/40 w-full p-0 shadow-none focus-visible:ring-0"
         />
       </div>
 
       {/* Presets saved */}
-      <Button className="h-8 px-2.5 inline-flex items-center gap-1.5 text-xs rounded-md border border-border hover:bg-white/4 text-white/85">
+      <Button variant="outline" className="h-8 px-2.5 inline-flex items-center gap-1.5 text-xs rounded-md hover:bg-white/4 text-white/85">
         <Heart size={13} className="text-white/60" /> Presets
       </Button>
 
       {/* Clear */}
       {isFiltered && (
         <Button
+          variant="ghost"
           onClick={onClearAll}
-          className="h-8 px-2 inline-flex items-center gap-1 text-xs text-white/70 hover:text-white"
+          className="h-8 px-2 inline-flex items-center gap-1 text-xs text-white/70 hover:text-white hover:bg-transparent"
         >
           <X size={13} /> Limpar
         </Button>

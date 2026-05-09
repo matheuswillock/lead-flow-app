@@ -18,9 +18,10 @@ export function DashedFilterButton({
 }: DashedFilterButtonProps) {
   return (
     <div
-      className={`h-8 inline-flex items-center text-xs rounded-md border chip-dashed border-(--border-strong) hover:bg-white/4 transition-colors ${count ? "" : ""}`}
+      className={`h-8 inline-flex items-center text-xs rounded-md border chip-dashed hover:bg-white/4 transition-colors ${count ? "" : ""}`}
+      style={{ borderColor: 'var(--border-strong)' }}
     >
-      <Button className="px-2.5 h-full inline-flex items-center gap-1.5 text-white/85">
+      <Button variant="ghost" size="sm" className="px-2.5 h-full inline-flex items-center gap-1.5 text-white/85 hover:bg-transparent border-0 shadow-none">
         {calendar ? (
           <Calendar size={14} className="text-white/60" />
         ) : (
@@ -48,8 +49,10 @@ export function DashedFilterButton({
             )}
             {onClear && (
               <Button
+                variant="ghost"
+                size="sm"
                 onClick={onClear}
-                className="ml-0.5 size-4 grid place-items-center text-white/50 hover:text-white"
+                className="ml-0.5 size-4 grid place-items-center text-white/50 hover:text-white hover:bg-transparent border-0 shadow-none p-0"
               >
                 <X size={10} />
               </Button>
