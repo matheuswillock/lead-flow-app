@@ -137,6 +137,12 @@
   --semantic-info-foreground: #ffffff;
   --semantic-info-surface: color-mix(in oklab, var(--semantic-info) 15%, var(--card));
   --semantic-info-border: color-mix(in oklab, var(--semantic-info) 36%, var(--border));
+  --info: var(--semantic-info);
+  --success: var(--semantic-success);
+  --danger: var(--semantic-danger);
+  --warn: var(--semantic-warning);
+  --card-2: oklch(0.274 0.006 286.033);
+  --border-strong: color-mix(in oklab, var(--border) 60%, #7170ff);
   --semantic-new: #533afd;
   --semantic-new-foreground: #ffffff;
   --semantic-new-surface: color-mix(in oklab, var(--semantic-new) 14%, var(--card));
@@ -154,13 +160,6 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.705 0.213 47.604);
-  /* Performance component tokens */
-  --info: var(--semantic-info);
-  --success: var(--semantic-success);
-  --danger: var(--semantic-danger);
-  --warn: var(--semantic-warning);
-  --card-2: oklch(0.274 0.006 286.033);
-  --border-strong: color-mix(in oklab, var(--border) 60%, #7170ff);
 }
 /* TOKENS:ROOT:END */
 
@@ -222,6 +221,12 @@
   --semantic-info-foreground: #071b32;
   --semantic-info-surface: color-mix(in oklab, var(--semantic-info) 22%, var(--card));
   --semantic-info-border: color-mix(in oklab, var(--semantic-info) 44%, var(--border));
+  --info: var(--semantic-info);
+  --success: var(--semantic-success);
+  --danger: var(--semantic-danger);
+  --warn: var(--semantic-warning);
+  --card-2: oklch(0.21 0.006 285.885);
+  --border-strong: color-mix(in oklab, var(--border) 55%, #b9b9f9);
   --semantic-new: #7f7bff;
   --semantic-new-foreground: #0f0e34;
   --semantic-new-surface: color-mix(in oklab, var(--semantic-new) 22%, var(--card));
@@ -239,13 +244,6 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.646 0.222 41.116);
-  /* Performance component tokens */
-  --info: var(--semantic-info);
-  --success: var(--semantic-success);
-  --danger: var(--semantic-danger);
-  --warn: var(--semantic-warning);
-  --card-2: oklch(0.21 0.006 285.885);
-  --border-strong: color-mix(in oklab, var(--border) 55%, #b9b9f9);
 }
 /* TOKENS:DARK:END */
 
