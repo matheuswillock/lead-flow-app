@@ -1,87 +1,27 @@
 "use client";
 
 import { usePerformanceContext } from '../context/PerformanceContext';
-import { useState } from 'react';
 import { PerfFiltersBar } from './Components/PerfFiltersBar';
 import { PerfKpis } from './Components/PerfKpis';
 import { PerfTopHighlights } from './Components/PerfTopHighlights';
 import { PerfRankings } from './Components/PerfRankings';
 import { Button } from '@/components/ui/button';
 import { Download, Plus } from 'lucide-react';
+import type { PerformancePreset } from '../context/PerformanceTypes';
 
 export function PerformanceContainer() {
-  const { data, error } = usePerformanceContext();
-    const [preset, setPreset] = useState("7d")
-    const [sdrPicks, setSdrPicks] = useState([])
-    const [closerPicks, setCloserPicks] = useState(["Ana Souza"])
-    const [datePick, setDatePick] = useState("")
+  const { data, error, filters, setFilter, setPreset, clearFilters } = usePerformanceContext();
 
-    const periodLabel =
-      {
-        "1d": "ultimas 24h",
-        "7d": "ultimos 7 dias",
-        "15d": "ultimos 15 dias",
-        "1m": "ultimo mes",
-        "3m": "ultimos 3 meses",
-      }[preset] || "ultimos 7 dias"
+  const periodLabel =
+    {
+      "1d": "ultimas 24h",
+      "7d": "ultimos 7 dias",
+      "15d": "ultimos 15 dias",
+      "1m": "ultimo mes",
+      "3m": "ultimos 3 meses",
+    }[filters.preset] || "ultimos 7 dias";
 
   return (
-    // Compoenentes Errados e com visual desconfigurado, apenas para exemplificar a estrutura da página
-    // <div className="flex flex-col gap-8 p-6">
-    //   {/* Header Section */}
-    //   <div className="flex flex-col gap-6">
-    //     {/* Section 1: Title + Subtitle */}
-    //     <div className="flex flex-col gap-2">
-    //       <h1 className="text-4xl md:text-5xl font-bold font-[Poppins] leading-tight">
-    //         Performance
-    //       </h1>
-    //       <p className="text-base text-muted-foreground">
-    //         Indicadores comerciais e ranking de SDRs e Closers — últimos 7 dias
-    //       </p>
-    //     </div>
-
-    //     {/* Section 2: Badge + Action Buttons */}
-    //     <div className="flex items-center justify-between gap-4">
-    //       <Badge variant="outline" className="w-fit">
-    //         Última atualização: há 2 min
-    //       </Badge>
-    //       <div className="flex gap-2">
-    //         <Button variant="outline" size="sm">
-    //           <Download className="w-4 h-4" />
-    //           Exportar relatório
-    //         </Button>
-    //         <Button size="sm">
-    //           <Plus className="w-4 h-4" />
-    //           Nova meta
-    //         </Button>
-    //       </div>
-    //     </div>
-    //   </div>
-
-    //   {/* Filters */}
-    //   <PerformanceFiltersBar />
-
-    //   {/* Error Alert */}
-    //   {error && (
-    //     <Alert variant="destructive">
-    //       <AlertCircle className="h-4 w-4" />
-    //       <AlertDescription>{error}</AlertDescription>
-    //     </Alert>
-    //   )}
-
-    //   {/* KPI Summary Cards */}
-    //   <PerformanceSummaryCards />
-
-    //   {/* Top Highlights */}
-    //   <PerformanceTopHighlights />
-
-    //   {/* Rankings */}
-    //   <PerformanceRankings />
-
-    //   {/* Table */}
-    //   <PerformanceTable />
-    // </div>
-
     <div className="flex-1 min-w-0 flex flex-col">
       <div className="bg-grid">
         <div className="px-6 py-6 max-w-370 mx-auto w-full flex flex-col gap-6">
@@ -111,20 +51,24 @@ export function PerformanceContainer() {
           </div>
           <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/40 px-3 py-3">
             <PerfFiltersBar
-              preset={preset}
-              setPreset={setPreset}
-              sdrPicks={sdrPicks}
-              closerPicks={closerPicks}
-              datePick={datePick}
+              preset={filters.preset}
+              setPreset={(p: string) => setPreset(p as PerformancePreset)}
+              sdrPicks={filters.sdrId ? [filters.sdrId] : []}
+              closerPicks={filters.closerId ? [filters.closerId] : []}
+              datePick={filters.startDate || ""}
               presets={["1d", "7d", "15d", "1m", "3m"]}
-              onClearAll={() => {
-                setPreset("7d")
-                setSdrPicks([])
-                setCloserPicks([])
-                setDatePick("")
-              }}
+              onClearAll={clearFilters}
+              search={filters.search}
+              onSearchChange={(value: string) => setFilter('search', value)}
             />
           </div>
+
+          {error && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {error}
+            </div>
+          )}
+
           <PerfKpis />
           <PerfTopHighlights />
           <PerfRankings />
@@ -135,5 +79,5 @@ export function PerformanceContainer() {
         </div>
       </div>
     </div>
-  )
+  );
 }

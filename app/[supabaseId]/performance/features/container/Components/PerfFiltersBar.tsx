@@ -1,17 +1,22 @@
+"use client";
+
 import { Heart, Search, X } from "lucide-react";
 import { PresetButton } from "./PresetButton";
 import { Button } from "@/components/ui/button";
 import { DashedFilterButton } from "./DashedFilterButton";
 import { Input } from "@/components/ui/input";
+import { useState, useCallback } from "react";
 
 interface PerfFiltersBarProps {
-  sdrPicks?: any[]
-  closerPicks?: any[]
-  presets: ["1d", "7d", "15d", "1m", "3m"]
-  datePick?: any
-  preset: string
-  onClearAll: () => void
-  setPreset: (preset: string) => void
+  sdrPicks?: string[];
+  closerPicks?: string[];
+  presets: ["1d", "7d", "15d", "1m", "3m"];
+  datePick?: string;
+  preset: string;
+  onClearAll: () => void;
+  setPreset: (preset: string) => void;
+  search?: string;
+  onSearchChange?: (value: string) => void;
 }
 
 export function PerfFiltersBar({
@@ -21,9 +26,28 @@ export function PerfFiltersBar({
   datePick,
   preset,
   onClearAll,
-  setPreset
+  setPreset,
+  search = "",
+  onSearchChange,
 }: PerfFiltersBarProps) {
-  const isFiltered = sdrPicks?.length || closerPicks?.length || datePick || preset !== "7d"
+  const [localSearch, setLocalSearch] = useState(search);
+  const isFiltered = sdrPicks?.length || closerPicks?.length || datePick || preset !== "7d" || localSearch;
+
+  const handleSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" && onSearchChange) {
+        onSearchChange(localSearch);
+      }
+    },
+    [localSearch, onSearchChange]
+  );
+
+  const handleSearchBlur = useCallback(() => {
+    if (onSearchChange && localSearch !== search) {
+      onSearchChange(localSearch);
+    }
+  }, [localSearch, search, onSearchChange]);
+
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {/* Period presets */}
@@ -52,6 +76,10 @@ export function PerfFiltersBar({
         <Search size={13} className="text-white/45" />
         <Input
           placeholder="Buscar cliente..."
+          value={localSearch}
+          onChange={(e) => setLocalSearch(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
+          onBlur={handleSearchBlur}
           className="h-full bg-transparent border-0 outline-none text-xs placeholder:text-white/40 w-full p-0 shadow-none focus-visible:ring-0"
         />
       </div>
@@ -65,12 +93,15 @@ export function PerfFiltersBar({
       {isFiltered && (
         <Button
           variant="ghost"
-          onClick={onClearAll}
+          onClick={() => {
+            setLocalSearch("");
+            onClearAll();
+          }}
           className="h-8 px-2 inline-flex items-center gap-1 text-xs text-white/70 hover:text-white hover:bg-transparent"
         >
           <X size={13} /> Limpar
         </Button>
       )}
     </div>
-  )
+  );
 }

@@ -1,62 +1,92 @@
+"use client";
+
 import { Calendar, Handshake, Target, UserX } from "lucide-react";
 import { KpiCard } from "./KpiCard";
-
-type CardData = {
-  icon: React.ComponentType<{ size: number; style?: React.CSSProperties }>;
-  label: string;
-  value: number | string;
-  suffix?: string;
-  helper?: string;
-  delta?: number;
-  deltaInverse?: boolean;
-  sparkValues: number[];
-  sparkColor?: string;
-  accent?: "primary" | "info" | "success" | "danger" | "warn";
-  featured?: boolean;
-};
+import { usePerformanceContext } from "../../context/PerformanceContext";
 
 export function PerfKpis({ density = "comfortable" }) {
-  const cards: CardData[] = [
+  const { data, isLoading } = usePerformanceContext();
+
+  if (isLoading || !data) {
+    return (
+      <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4`}>
+        {[...Array(4)].map((_, i) => (
+          <div
+            key={i}
+            className="rounded-xl border border-border bg-card h-[180px] animate-pulse"
+          />
+        ))}
+      </div>
+    );
+  }
+
+  const { kpis } = data;
+
+  // Calculate delta (percentage change) from sparkline data
+  function calcDelta(sparkline: { value: number }[]): number | undefined {
+    if (!sparkline || sparkline.length < 2) return undefined;
+    const mid = Math.floor(sparkline.length / 2);
+    const firstHalf = sparkline.slice(0, mid).reduce((s, p) => s + p.value, 0);
+    const secondHalf = sparkline.slice(mid).reduce((s, p) => s + p.value, 0);
+    if (firstHalf === 0) return secondHalf > 0 ? 100 : 0;
+    return Math.round(((secondHalf - firstHalf) / firstHalf) * 1000) / 10;
+  }
+
+  // Format currency helper
+  function formatCurrency(value: number): string {
+    if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toFixed(3).replace('.', '.')} em receita`;
+    if (value >= 1_000) return `R$ ${(value / 1_000).toFixed(0)}k em receita`;
+    return `R$ ${value.toFixed(2)} em receita`;
+  }
+
+  // Calculate total sales value from rankings
+  const totalSalesValue = data.rankings.closer.reduce((sum, r) => sum + r.totalSalesValue, 0);
+
+  // Calculate meetings from scheduled (for helper text)
+  const totalScheduled = kpis.scheduledLeads;
+  const avgPerDay = totalScheduled > 0 ? (totalScheduled / 7).toFixed(1) : "0";
+
+  const cards = [
     {
       icon: Handshake,
       label: "Vendas fechadas",
-      value: "47",
-      helper: "R$ 3.124.500 em receita",
-      delta: 12.4,
-      accent: "primary",
+      value: String(kpis.closedSales),
+      helper: formatCurrency(totalSalesValue),
+      delta: calcDelta(kpis.closedSalesSparkline),
+      accent: "primary" as const,
       featured: true,
-      sparkValues: [3, 5, 4, 6, 8, 7, 9, 8, 11, 10, 12, 14],
+      sparkValues: kpis.closedSalesSparkline.map((p) => p.value),
     },
     {
       icon: Target,
       label: "Reuniões realizadas",
-      value: "182",
-      helper: "de 214 agendadas",
-      delta: 8.2,
-      accent: "info",
-      sparkValues: [12, 14, 13, 16, 18, 17, 19, 21, 20, 22, 24, 26],
+      value: String(kpis.meetingsHeld),
+      helper: `de ${kpis.scheduledLeads} agendadas`,
+      delta: calcDelta(kpis.meetingsHeldSparkline),
+      accent: "info" as const,
+      sparkValues: kpis.meetingsHeldSparkline.map((p) => p.value),
     },
     {
       icon: Calendar,
       label: "Agendamentos realizados",
-      value: "214",
-      helper: "média 7,1/dia",
-      delta: 5.6,
-      accent: "success",
-      sparkValues: [10, 12, 15, 14, 17, 16, 19, 21, 20, 23, 22, 25],
+      value: String(kpis.scheduledLeads),
+      helper: `média ${avgPerDay}/dia`,
+      delta: calcDelta(kpis.scheduledLeadsSparkline),
+      accent: "success" as const,
+      sparkValues: kpis.scheduledLeadsSparkline.map((p) => p.value),
     },
     {
       icon: UserX,
       label: "Taxa de no-show",
-      value: "14,9",
+      value: kpis.noShowRate.toFixed(1).replace(".", ","),
       suffix: "%",
-      helper: "32 reuniões perdidas",
-      delta: -3.1,
-      deltaInverse: true, // negative = good
-      accent: "warn",
-      sparkValues: [22, 21, 20, 19, 21, 18, 17, 18, 16, 15, 16, 15],
+      helper: `${kpis.noShowCount} reuniões perdidas`,
+      delta: calcDelta(kpis.noShowRateSparkline),
+      deltaInverse: true,
+      accent: "warn" as const,
+      sparkValues: kpis.noShowRateSparkline.map((p) => p.value),
     },
-  ]
+  ];
 
   return (
     <div
@@ -66,5 +96,5 @@ export function PerfKpis({ density = "comfortable" }) {
         <KpiCard key={i} {...c} />
       ))}
     </div>
-  )
+  );
 }
