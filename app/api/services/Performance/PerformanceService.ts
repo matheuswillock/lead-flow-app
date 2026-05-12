@@ -267,16 +267,6 @@ export class PerformanceService implements IPerformanceService {
       }),
     ]);
 
-    // Fetch confirmed amounts for finalized leads
-    const finalizedLeadIds = finalizedRows.map((l) => l.id);
-    const leadFinalizedRecords = finalizedLeadIds.length > 0
-      ? await prisma.leadFinalized.findMany({
-          where: { leadId: { in: finalizedLeadIds } },
-          select: { leadId: true, amount: true },
-        })
-      : [];
-    const leadFinalizedMap = new Map(leadFinalizedRecords.map((r) => [r.leadId, r]));
-
     const profileById = new Map(profileRows.map((p) => [p.id, p]));
 
     const sdrMap = new Map<string, PersonAccumulator>();
@@ -331,14 +321,8 @@ export class PerformanceService implements IPerformanceService {
     }
 
     for (const row of finalizedRows) {
-      const confirmed = leadFinalizedMap.get(row.id);
-      const saleValue = confirmed?.amount
-        ? Number(confirmed.amount)
-        : row.ticket
-          ? Number(row.ticket)
-          : row.currentValue
-            ? Number(row.currentValue)
-            : 0;
+      // ticket = valor do boleto (receita da venda); sem fallback — currentValue é o plano atual do lead, não o valor da venda
+      const saleValue = row.ticket ? Number(row.ticket) : 0;
 
       const sdr = ensureSdr(row.assignedTo);
       if (sdr) {
@@ -423,12 +407,7 @@ export class PerformanceService implements IPerformanceService {
     const paginatedRows = finalizedRows.slice(skip, skip + pageSize);
 
     const rows: PerformanceSaleRow[] = paginatedRows.map((row) => {
-      const confirmed = leadFinalizedMap.get(row.id);
-      const ticket = row.ticket ? Number(row.ticket) : 0;
-      const currentValue = row.currentValue ? Number(row.currentValue) : 0;
-      const saleValue = confirmed?.amount
-        ? Number(confirmed.amount)
-        : ticket > 0 ? ticket : currentValue;
+      const saleValue = row.ticket ? Number(row.ticket) : 0;
       return {
         leadId: row.id,
         leadCode: row.leadCode,
