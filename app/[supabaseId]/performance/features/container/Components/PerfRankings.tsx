@@ -1,16 +1,64 @@
 "use client";
 
-import { Medal, Trophy } from "lucide-react";
+import { ArrowUp, Calendar, Check, Handshake, Medal, Trophy, UserPlus, UserX } from "lucide-react";
 import { useState } from "react";
 import { PerfPersonModal, type PerfPersonModalPerson } from "./PerfPersonModal";
 import { RankRow } from "./RankRow";
 import { usePerformanceContext } from "../../context/PerformanceContext";
-import type { PerformanceDrilldownEntry, PerformanceRankingEntry } from "../../context/PerformanceTypes";
+import type {
+  PerformanceActivityKind,
+  PerformanceDrilldownEntry,
+  PerformanceRankingEntry,
+  PerformanceRecentActivity,
+} from "../../context/PerformanceTypes";
 
 function formatCurrencyShort(value: number): string {
   if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toFixed(1).replace(".", ",")}M receita`;
   if (value >= 1_000) return `R$ ${Math.round(value / 1_000)}k receita`;
   return `R$ ${value.toFixed(0)} receita`;
+}
+
+function kindToTone(kind: PerformanceActivityKind): "good" | "bad" | "neutral" {
+  if (kind === "sale" || kind === "meeting_held" || kind === "scheduled") return "good";
+  if (kind === "no_show") return "bad";
+  return "neutral";
+}
+
+function kindToIcon(kind: PerformanceActivityKind): React.ReactNode {
+  switch (kind) {
+    case "sale":          return <Handshake size={12} />;
+    case "meeting_held":  return <Check size={12} />;
+    case "proposal_sent": return <ArrowUp size={12} />;
+    case "no_show":       return <UserX size={12} />;
+    case "scheduled":     return <Calendar size={12} />;
+    case "new_lead":      return <UserPlus size={12} />;
+  }
+}
+
+function formatRelativeTime(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  const hours   = Math.floor(diff / 3_600_000);
+  const days    = Math.floor(diff / 86_400_000);
+
+  if (minutes < 60) return `há ${minutes}min`;
+  if (hours < 24)   return `há ${hours}h`;
+  if (days === 1) {
+    const t = new Date(isoString);
+    return `ontem · ${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+  }
+  return `há ${days}d`;
+}
+
+function mapActivities(
+  activities: PerformanceRecentActivity[]
+): PerfPersonModalPerson["activity"] {
+  return activities.map((a) => ({
+    text: a.text || `${a.leadName} (${a.leadCode})`,
+    when: formatRelativeTime(a.createdAt),
+    tone: kindToTone(a.kind),
+    icon: kindToIcon(a.kind),
+  }));
 }
 
 function buildPersonFromDrilldown(
@@ -47,7 +95,7 @@ function buildPersonFromDrilldown(
           noshow: entry.noShowCount,
           faltas: entry.noShowCount,
         },
-    activity: [],
+    activity: mapActivities(entry.recentActivities ?? []),
   };
 }
 
@@ -128,12 +176,12 @@ export function PerfRankings() {
           ) : (
             closersFormatted.map((r, i) => (
               <RankRow
-                key={rankings.closer[i].profileId}
+                key={rankings.closer[i]!.profileId}
                 rank={i + 1}
                 {...r}
                 suffix="vendas"
                 color="var(--primary)"
-                onClick={() => handleCloserClick(rankings.closer[i], i)}
+                onClick={() => handleCloserClick(rankings.closer[i]!, i)}
               />
             ))
           )}
@@ -161,12 +209,12 @@ export function PerfRankings() {
           ) : (
             sdrsFormatted.map((r, i) => (
               <RankRow
-                key={rankings.sdr[i].profileId}
+                key={rankings.sdr[i]!.profileId}
                 rank={i + 1}
                 {...r}
                 suffix="agend."
                 color="var(--info)"
-                onClick={() => handleSdrClick(rankings.sdr[i], i)}
+                onClick={() => handleSdrClick(rankings.sdr[i]!, i)}
               />
             ))
           )}

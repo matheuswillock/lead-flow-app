@@ -7,6 +7,8 @@ import type {
   PerformanceRankingEntry,
   PerformanceSaleRow,
   PerformanceDrilldownEntry,
+  PerformanceRecentActivity,
+  PerformanceActivityKind,
 } from './IPerformanceService';
 
 type PersonAccumulator = {
@@ -49,7 +51,11 @@ function toRankingEntry(item: PersonAccumulator): PerformanceRankingEntry {
   };
 }
 
-function toDrilldownEntry(item: PersonAccumulator, roleLabel: 'Closer' | 'SDR'): PerformanceDrilldownEntry {
+function toDrilldownEntry(
+  item: PersonAccumulator,
+  roleLabel: 'Closer' | 'SDR',
+  recentActivities: PerformanceRecentActivity[]
+): PerformanceDrilldownEntry {
   const scheduledLeads = item.scheduledLeadIds.size;
   const noShowRate = scheduledLeads > 0 ? (item.noShowCount / scheduledLeads) * 100 : 0;
   const attendanceBase = item.meetingsHeld + item.noShowCount;
@@ -67,7 +73,32 @@ function toDrilldownEntry(item: PersonAccumulator, roleLabel: 'Closer' | 'SDR'):
     noShowRate: Math.round(noShowRate * 100) / 100,
     attendanceRate: Math.round(attendanceRate * 100) / 100,
     totalSalesValue: item.totalSalesValue,
+    recentActivities,
   };
+}
+
+function calcDelta(current: number, previous: number): number {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}
+
+function resolveActivityKind(
+  type: string,
+  payload: Record<string, unknown> | null
+): PerformanceActivityKind | null {
+  if (type === 'status_change') {
+    const to = payload?.to as string | undefined;
+    if (to === 'contract_finalized') return 'sale';
+    if (to === 'offerSubmission') return 'proposal_sent';
+    if (to === 'no_show') return 'no_show';
+    if (to === 'new_opportunity') return 'new_lead';
+  }
+  if (type === 'note') {
+    const p = payload as Record<string, unknown> | null;
+    if (p?.meetingHeald === 'yes') return 'meeting_held';
+    if (p?.kind === 'schedule') return 'scheduled';
+  }
+  return null;
 }
 
 export class PerformanceService implements IPerformanceService {
@@ -94,91 +125,154 @@ export class PerformanceService implements IPerformanceService {
       ...(search ? { name: { contains: search, mode: Prisma.QueryMode.insensitive } } : {}),
     };
 
+    // Previous period: mirror the same duration before startDate
+    const durationMs = endDate.getTime() - startDate.getTime();
+    const prevStartDate = new Date(startDate.getTime() - durationMs);
+    const prevEndDate = startDate;
+
     const [
       profileRows,
       finalizedRows,
       heldMeetingRows,
       noShowRows,
       scheduledRows,
+      activityRows,
+      prevFinalizedRows,
+      prevHeldMeetingRows,
+      prevNoShowRows,
+      prevScheduledRows,
     ] = await Promise.all([
+      // All team profiles
       prisma.profile.findMany({
+        where: { teamMemberships: { some: { teamId } } },
+        select: { id: true, fullName: true, email: true },
+      }),
+
+      // Current: contract_finalized leads
+      prisma.lead.findMany({
         where: {
-          teamMemberships: { some: { teamId } },
+          ...leadScope,
+          status: 'contract_finalized',
+          statusEnteredAt: { gte: startDate, lte: endDate },
         },
         select: {
           id: true,
-          fullName: true,
-          email: true,
+          leadCode: true,
+          name: true,
+          ticket: true,
+          currentValue: true,
+          soldPlan: true,
+          contractDueDate: true,
+          meetingHeald: true,
+          assignedTo: true,
+          closerId: true,
+          statusEnteredAt: true,
+          assignee: { select: { id: true, fullName: true, email: true } },
+          closer: { select: { id: true, fullName: true, email: true } },
         },
+        orderBy: { statusEnteredAt: 'desc' },
       }),
-      prisma.leadFinalized.findMany({
-        where: {
-          finalizedDateAt: { gte: startDate, lte: endDate },
-          lead: leadScope,
-        },
-        include: {
-          lead: {
-            select: {
-              id: true,
-              leadCode: true,
-              name: true,
-              ticket: true,
-              currentValue: true,
-              soldPlan: true,
-              contractDueDate: true,
-              meetingHeald: true,
-              assignedTo: true,
-              closerId: true,
-              assignee: { select: { id: true, fullName: true, email: true } },
-              closer: { select: { id: true, fullName: true, email: true } },
-            },
-          },
-        },
-        orderBy: { finalizedDateAt: 'desc' },
-      }),
+
+      // Current: meetings held
       prisma.lead.findMany({
         where: {
           ...leadScope,
           meetingHeald: 'yes',
           meetingDate: { gte: startDate, lte: endDate },
         },
-        select: {
-          id: true,
-          assignedTo: true,
-          closerId: true,
-          meetingDate: true,
-        },
+        select: { id: true, assignedTo: true, closerId: true, meetingDate: true },
       }),
+
+      // Current: no-shows
       prisma.lead.findMany({
         where: {
           ...leadScope,
           status: 'no_show',
           statusEnteredAt: { gte: startDate, lte: endDate },
         },
+        select: { id: true, assignedTo: true, closerId: true, statusEnteredAt: true },
+      }),
+
+      // Current: scheduled leads (via meetingDate)
+      prisma.lead.findMany({
+        where: {
+          ...leadScope,
+          status: { in: ['scheduled', 'no_show'] },
+          meetingDate: { gte: startDate, lte: endDate },
+        },
+        select: { id: true, meetingDate: true, assignedTo: true, closerId: true },
+      }),
+
+      // Recent activities for drilldown
+      prisma.leadActivity.findMany({
+        where: {
+          createdAt: { gte: startDate, lte: endDate },
+          lead: leadScope,
+          type: { in: ['note', 'status_change'] },
+        },
         select: {
           id: true,
-          assignedTo: true,
-          closerId: true,
-          statusEnteredAt: true,
+          type: true,
+          body: true,
+          payload: true,
+          createdBy: true,
+          createdAt: true,
+          lead: { select: { id: true, leadCode: true, name: true } },
         },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
       }),
-      prisma.leadsSchedule.findMany({
+
+      // Previous period: contract_finalized
+      prisma.lead.findMany({
         where: {
-          date: { gte: startDate, lte: endDate },
-          lead: leadScope,
+          ...leadScope,
+          status: 'contract_finalized',
+          statusEnteredAt: { gte: prevStartDate, lte: prevEndDate },
         },
-        select: {
-          leadId: true,
-          date: true,
-          lead: {
-            select: {
-              assignedTo: true,
-              closerId: true,
-            },
-          },
+        select: { id: true },
+      }),
+
+      // Previous period: meetings held
+      prisma.lead.findMany({
+        where: {
+          ...leadScope,
+          meetingHeald: 'yes',
+          meetingDate: { gte: prevStartDate, lte: prevEndDate },
         },
+        select: { id: true },
+      }),
+
+      // Previous period: no-shows
+      prisma.lead.findMany({
+        where: {
+          ...leadScope,
+          status: 'no_show',
+          statusEnteredAt: { gte: prevStartDate, lte: prevEndDate },
+        },
+        select: { id: true },
+      }),
+
+      // Previous period: scheduled
+      prisma.lead.findMany({
+        where: {
+          ...leadScope,
+          status: { in: ['scheduled', 'no_show'] },
+          meetingDate: { gte: prevStartDate, lte: prevEndDate },
+        },
+        select: { id: true },
       }),
     ]);
+
+    // Fetch confirmed amounts for finalized leads
+    const finalizedLeadIds = finalizedRows.map((l) => l.id);
+    const leadFinalizedRecords = finalizedLeadIds.length > 0
+      ? await prisma.leadFinalized.findMany({
+          where: { leadId: { in: finalizedLeadIds } },
+          select: { leadId: true, amount: true },
+        })
+      : [];
+    const leadFinalizedMap = new Map(leadFinalizedRecords.map((r) => [r.leadId, r]));
 
     const profileById = new Map(profileRows.map((p) => [p.id, p]));
 
@@ -212,11 +306,11 @@ export class PerformanceService implements IPerformanceService {
     const scheduledLeadIds = new Set<string>();
 
     for (const row of scheduledRows) {
-      scheduledLeadIds.add(row.leadId);
-      const sdr = ensureSdr(row.lead.assignedTo);
-      if (sdr) sdr.scheduledLeadIds.add(row.leadId);
-      const closer = ensureCloser(row.lead.closerId);
-      if (closer) closer.scheduledLeadIds.add(row.leadId);
+      scheduledLeadIds.add(row.id);
+      const sdr = ensureSdr(row.assignedTo);
+      if (sdr) sdr.scheduledLeadIds.add(row.id);
+      const closer = ensureCloser(row.closerId);
+      if (closer) closer.scheduledLeadIds.add(row.id);
     }
 
     for (const row of heldMeetingRows) {
@@ -234,20 +328,46 @@ export class PerformanceService implements IPerformanceService {
     }
 
     for (const row of finalizedRows) {
-      const ticket = row.lead.ticket ? Number(row.lead.ticket) : 0;
-      const currentValue = row.lead.currentValue ? Number(row.lead.currentValue) : 0;
-      const saleValue = ticket > 0 ? ticket : currentValue;
+      const confirmed = leadFinalizedMap.get(row.id);
+      const saleValue = confirmed?.amount
+        ? Number(confirmed.amount)
+        : row.ticket
+          ? Number(row.ticket)
+          : row.currentValue
+            ? Number(row.currentValue)
+            : 0;
 
-      const sdr = ensureSdr(row.lead.assignedTo);
+      const sdr = ensureSdr(row.assignedTo);
       if (sdr) {
         sdr.salesCount += 1;
         sdr.totalSalesValue += saleValue;
       }
 
-      const closer = ensureCloser(row.lead.closerId);
+      const closer = ensureCloser(row.closerId);
       if (closer) {
         closer.salesCount += 1;
         closer.totalSalesValue += saleValue;
+      }
+    }
+
+    // Build per-person recent activities map
+    const activitiesByProfile = new Map<string, PerformanceRecentActivity[]>();
+    for (const row of activityRows) {
+      if (!row.createdBy || !row.lead) continue;
+      const payload = row.payload as Record<string, unknown> | null;
+      const kind = resolveActivityKind(row.type, payload);
+      if (!kind) continue;
+
+      const existing = activitiesByProfile.get(row.createdBy) ?? [];
+      if (existing.length < 10) {
+        existing.push({
+          kind,
+          text: row.body ?? '',
+          leadCode: row.lead.leadCode,
+          leadName: row.lead.name,
+          createdAt: row.createdAt.toISOString(),
+        });
+        activitiesByProfile.set(row.createdBy, existing);
       }
     }
 
@@ -267,7 +387,7 @@ export class PerformanceService implements IPerformanceService {
           profileId: closerRanking[0].profileId,
           name: closerRanking[0].name,
           roleLabel: 'Closer' as const,
-          value: closerRanking[0].count,  // count = salesCount for closers
+          value: closerRanking[0].count,
           suffix: 'vendas' as const,
           attendanceRate: closerRanking[0].attendanceRate,
           totalSalesValue: closerRanking[0].totalSalesValue,
@@ -287,8 +407,12 @@ export class PerformanceService implements IPerformanceService {
       : null;
 
     const drilldown: PerformanceDrilldownEntry[] = [
-      ...Array.from(closerMap.values()).map((entry) => toDrilldownEntry(entry, 'Closer')),
-      ...Array.from(sdrMap.values()).map((entry) => toDrilldownEntry(entry, 'SDR')),
+      ...Array.from(closerMap.values()).map((entry) =>
+        toDrilldownEntry(entry, 'Closer', activitiesByProfile.get(entry.profileId) ?? [])
+      ),
+      ...Array.from(sdrMap.values()).map((entry) =>
+        toDrilldownEntry(entry, 'SDR', activitiesByProfile.get(entry.profileId) ?? [])
+      ),
     ];
 
     const totalRows = finalizedRows.length;
@@ -296,76 +420,85 @@ export class PerformanceService implements IPerformanceService {
     const paginatedRows = finalizedRows.slice(skip, skip + pageSize);
 
     const rows: PerformanceSaleRow[] = paginatedRows.map((row) => {
-      const ticket = row.lead.ticket ? Number(row.lead.ticket) : 0;
-      const currentValue = row.lead.currentValue ? Number(row.lead.currentValue) : 0;
+      const confirmed = leadFinalizedMap.get(row.id);
+      const ticket = row.ticket ? Number(row.ticket) : 0;
+      const currentValue = row.currentValue ? Number(row.currentValue) : 0;
+      const saleValue = confirmed?.amount
+        ? Number(confirmed.amount)
+        : ticket > 0 ? ticket : currentValue;
       return {
-        leadId: row.lead.id,
-        leadCode: row.lead.leadCode,
-        leadName: row.lead.name,
-        saleDate: row.finalizedDateAt,
-        meetingHeald: row.lead.meetingHeald,
-        sdr: row.lead.assignee
-          ? { id: row.lead.assignee.id, name: row.lead.assignee.fullName ?? row.lead.assignee.email ?? 'Usuário' }
+        leadId: row.id,
+        leadCode: row.leadCode,
+        leadName: row.name,
+        saleDate: row.statusEnteredAt,
+        meetingHeald: row.meetingHeald,
+        sdr: row.assignee
+          ? { id: row.assignee.id, name: row.assignee.fullName ?? row.assignee.email ?? 'Usuário' }
           : null,
-        closer: row.lead.closer
-          ? { id: row.lead.closer.id, name: row.lead.closer.fullName ?? row.lead.closer.email ?? 'Usuário' }
+        closer: row.closer
+          ? { id: row.closer.id, name: row.closer.fullName ?? row.closer.email ?? 'Usuário' }
           : null,
-        soldPlan: row.lead.soldPlan,
-        contractDueDate: row.lead.contractDueDate,
-        ticket: row.lead.ticket ? Number(row.lead.ticket) : null,
-        currentValue: row.lead.currentValue ? Number(row.lead.currentValue) : null,
-        saleValue: ticket > 0 ? ticket : currentValue,
+        soldPlan: row.soldPlan,
+        contractDueDate: row.contractDueDate,
+        ticket: row.ticket ? Number(row.ticket) : null,
+        currentValue: row.currentValue ? Number(row.currentValue) : null,
+        saleValue,
       };
     });
 
     const noShowCount = noShowRows.length;
     const scheduledLeads = scheduledLeadIds.size;
+    const noShowRate = scheduledLeads > 0 ? Math.round((noShowCount / scheduledLeads) * 10000) / 100 : 0;
 
-    // Calculate sparkline data for 7 days
+    // Previous period metrics for delta
+    const prevScheduledCount = prevScheduledRows.length;
+    const prevNoShowCount = prevNoShowRows.length;
+    const prevNoShowRate = prevScheduledCount > 0
+      ? Math.round((prevNoShowCount / prevScheduledCount) * 10000) / 100
+      : 0;
+
+    // Sparkline: always last 7 days within the selected window
     const sparklineByDate = new Map<string, { sales: number; meetings: number; scheduled: number; noShow: number }>();
     for (let i = 6; i >= 0; i--) {
       const date = new Date(endDate);
       date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = date.toISOString().split('T')[0]!;
       sparklineByDate.set(dateStr, { sales: 0, meetings: 0, scheduled: 0, noShow: 0 });
     }
 
     for (const row of finalizedRows) {
-      const dateStr = row.finalizedDateAt ? new Date(row.finalizedDateAt).toISOString().split('T')[0] : null;
+      const dateStr = row.statusEnteredAt ? new Date(row.statusEnteredAt).toISOString().split('T')[0] : null;
       if (dateStr && sparklineByDate.has(dateStr)) {
-        const data = sparklineByDate.get(dateStr)!;
-        data.sales += 1;
+        sparklineByDate.get(dateStr)!.sales += 1;
       }
     }
 
     for (const row of heldMeetingRows) {
       const dateStr = row.meetingDate ? new Date(row.meetingDate).toISOString().split('T')[0] : null;
       if (dateStr && sparklineByDate.has(dateStr)) {
-        const data = sparklineByDate.get(dateStr)!;
-        data.meetings += 1;
+        sparklineByDate.get(dateStr)!.meetings += 1;
       }
     }
 
     for (const row of scheduledRows) {
-      const dateStr = row.date ? new Date(row.date).toISOString().split('T')[0] : null;
+      const dateStr = row.meetingDate ? new Date(row.meetingDate).toISOString().split('T')[0] : null;
       if (dateStr && sparklineByDate.has(dateStr)) {
-        const data = sparklineByDate.get(dateStr)!;
-        data.scheduled += 1;
+        sparklineByDate.get(dateStr)!.scheduled += 1;
       }
     }
 
     for (const row of noShowRows) {
       const dateStr = row.statusEnteredAt ? new Date(row.statusEnteredAt).toISOString().split('T')[0] : null;
       if (dateStr && sparklineByDate.has(dateStr)) {
-        const data = sparklineByDate.get(dateStr)!;
-        data.noShow += 1;
+        sparklineByDate.get(dateStr)!.noShow += 1;
       }
     }
 
-    const closedSalesSparkline = Array.from(sparklineByDate.values()).map(d => ({ value: d.sales }));
-    const meetingsHeldSparkline = Array.from(sparklineByDate.values()).map(d => ({ value: d.meetings }));
-    const scheduledLeadsSparkline = Array.from(sparklineByDate.values()).map(d => ({ value: d.scheduled }));
-    const noShowRateSparkline = Array.from(sparklineByDate.values()).map(d => {
+    const sparkValues = Array.from(sparklineByDate.values());
+    const closedSalesSparkline = sparkValues.map((d) => ({ value: d.sales }));
+    const meetingsHeldSparkline = sparkValues.map((d) => ({ value: d.meetings }));
+    const scheduledLeadsSparkline = sparkValues.map((d) => ({ value: d.scheduled }));
+    const noShowRateSparkline = sparkValues.map((d) => {
       const total = d.scheduled;
       return { value: total > 0 ? Math.round((d.noShow / total) * 10000) / 100 : 0 };
     });
@@ -374,13 +507,17 @@ export class PerformanceService implements IPerformanceService {
       kpis: {
         closedSales: finalizedRows.length,
         closedSalesSparkline,
+        closedSalesDelta: calcDelta(finalizedRows.length, prevFinalizedRows.length),
         meetingsHeld: heldMeetingRows.length,
         meetingsHeldSparkline,
+        meetingsHeldDelta: calcDelta(heldMeetingRows.length, prevHeldMeetingRows.length),
         scheduledLeads,
         scheduledLeadsSparkline,
-        noShowRate: scheduledLeads > 0 ? Math.round((noShowCount / scheduledLeads) * 10000) / 100 : 0,
+        scheduledLeadsDelta: calcDelta(scheduledLeads, prevScheduledRows.length),
+        noShowRate,
         noShowCount,
         noShowRateSparkline,
+        noShowRateDelta: calcDelta(noShowRate, prevNoShowRate),
       },
       highlights: {
         topCloser,
