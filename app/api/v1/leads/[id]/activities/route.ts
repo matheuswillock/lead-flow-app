@@ -20,6 +20,10 @@ const baseActivitySchema = z.object({
 
 const taskActivitySchema = z.object({
   type: z.literal("task"),
+  title: z.string().min(1, "Título da tarefa é obrigatório").max(200),
+  taskType: z.enum(["call", "documentation", "email", "proposal", "other"], {
+    error: "Tipo de tarefa inválido",
+  }),
   body: z.string().min(1, "Descrição da tarefa é obrigatória"),
   isUrgent: z.boolean().optional().default(false),
   startAt: z.string().datetime({ offset: true }).optional().nullable(),
@@ -70,6 +74,8 @@ export async function POST(
         leadId,
         teamId: teamAccess.access.teamId,
         creatorProfileId: teamAccess.access.profileId,
+        title: data.title,
+        taskType: data.taskType,
         body: data.body,
         isUrgent: data.isUrgent,
         startAt: data.startAt ? new Date(data.startAt) : null,

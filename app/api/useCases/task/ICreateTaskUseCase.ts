@@ -4,6 +4,8 @@ export type CreateTaskInput = {
   leadId: string;
   teamId: string;
   creatorProfileId: string;
+  title: string;
+  taskType: string;
   body: string;
   isUrgent: boolean;
   startAt: Date | null;

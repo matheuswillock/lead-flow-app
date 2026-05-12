@@ -2221,6 +2221,22 @@ export default function LeadDialog({
                         </div>
                       ) : (
                         mergedActivities.map((activity) => {
+                          const taskPayload =
+                            activity.type === "task" && activity.payload && typeof activity.payload === "object"
+                              ? (activity.payload as {
+                                  title?: string;
+                                  isUrgent?: boolean;
+                                  assigneeMentions?: Array<{ profileId?: string; label?: string }>;
+                                })
+                              : null;
+                          const taskTitle = taskPayload?.title?.trim() || "Sem título";
+                          const taskMentions = (taskPayload?.assigneeMentions ?? [])
+                            .map((entry) => entry?.label?.trim())
+                            .filter((value): value is string => Boolean(value));
+                          const taskAssignedText =
+                            taskMentions.length > 0
+                              ? `Nova task atribuída para ${taskMentions.join(", ")}`
+                              : "Nova task atribuída";
                           const authorName =
                             activity.author?.fullName ||
                             activity.author?.email ||
@@ -2268,11 +2284,26 @@ export default function LeadDialog({
                                     </span>
                                   </div>
                                 </div>
-                        {activity.body && (
-                          <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
-                                    {renderActivityBodyWithMentions(activity.body)}
-                          </p>
-                        )}
+                              {activity.type === "task" ? (
+                                <div className="col-span-2 flex flex-col gap-1">
+                                  <p className="text-xs font-medium text-primary">{taskAssignedText}</p>
+                                  <p className="text-sm font-semibold text-foreground">{taskTitle}</p>
+                                  {taskPayload?.isUrgent ? (
+                                    <Badge variant="destructive" className="w-fit">
+                                      Urgente
+                                    </Badge>
+                                  ) : null}
+                                  {activity.body && (
+                                    <p className="text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
+                                      {renderActivityBodyWithMentions(activity.body)}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : activity.body ? (
+                                <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
+                                  {renderActivityBodyWithMentions(activity.body)}
+                                </p>
+                              ) : null}
                                 {(reactions.length > 0 || canReactToActivity) && (
                                   <div className="col-span-2 flex flex-wrap items-center gap-2">
                                     {reactions.map((reaction) => (

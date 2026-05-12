@@ -23,9 +23,14 @@ export class CreateTaskUseCase implements ICreateTaskUseCase {
 
     const creator = await taskRepository.findCreatorProfile(input.creatorProfileId);
     const actorName = creator?.fullName || creator?.email || "Usuário";
+    if (input.startAt && input.endAt && input.endAt.getTime() < input.startAt.getTime()) {
+      return new Output(false, [], ["A data de fim não pode ser anterior ao início."], null);
+    }
 
     const task = await taskRepository.createActivityAndTask({
       leadId: input.leadId,
+      title: input.title.trim(),
+      taskType: input.taskType,
       body: input.body.trim(),
       isUrgent: input.isUrgent,
       startAt: input.startAt,
@@ -34,6 +39,8 @@ export class CreateTaskUseCase implements ICreateTaskUseCase {
       assigneeProfileIds: validAssigneeIds,
       activityDto: {
         leadId: input.leadId,
+        title: input.title.trim(),
+        taskType: input.taskType,
         body: input.body.trim(),
         createdBy: input.creatorProfileId,
         isUrgent: input.isUrgent,
@@ -41,15 +48,26 @@ export class CreateTaskUseCase implements ICreateTaskUseCase {
       },
     });
 
-    const googleResults = await taskGoogleCalendarService.createEventsForAssignees({
-      taskId: task.id,
-      body: task.body,
-      isUrgent: task.isUrgent,
-      startAt: task.startAt,
-      endAt: task.endAt,
-      leadName: lead.name,
-      assigneeProfileIds: validAssigneeIds,
-    });
+    let googleResults;
+    try {
+      googleResults = await taskGoogleCalendarService.createEventsForAssignees({
+        taskId: task.id,
+        body: task.body,
+        isUrgent: task.isUrgent,
+        startAt: task.startAt,
+        endAt: task.endAt,
+        leadName: lead.name,
+        assigneeProfileIds: validAssigneeIds,
+      });
+    } catch (err) {
+      console.error("[CreateTaskUseCase] Erro ao sincronizar tarefa com Google Calendar:", err);
+      googleResults = validAssigneeIds.map((profileId) => ({
+        profileId,
+        googleSynced: false,
+        googleEventId: null,
+        reason: "GOOGLE_SYNC_ERROR",
+      }));
+    }
 
     const notifyRecipients = validAssigneeIds.filter((id) => id !== input.creatorProfileId);
     if (notifyRecipients.length > 0) {

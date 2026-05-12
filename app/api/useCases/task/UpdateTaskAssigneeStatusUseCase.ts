@@ -24,6 +24,16 @@ export class UpdateTaskAssigneeStatusUseCase implements IUpdateTaskAssigneeStatu
       input.status
     );
 
+    if (input.status === "DONE") {
+      await taskRepository.createTaskStatusActivity({
+        leadId: task.leadId,
+        actorProfileId: input.requestingProfileId,
+        taskId: task.id,
+        taskTitle: task.title,
+        status: input.status,
+      });
+    }
+
     return new Output(true, ["Status atualizado com sucesso"], [], updated);
   }
 }

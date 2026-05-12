@@ -12,6 +12,8 @@ export type TaskWithRelations = Task & {
 
 export type CreateTaskDTO = {
   leadId: string;
+  title: string;
+  taskType: string;
   body: string;
   isUrgent: boolean;
   startAt: Date | null;
@@ -23,6 +25,8 @@ export type CreateTaskDTO = {
 export type CreateActivityDTO = {
   leadId: string;
   body: string;
+  title: string;
+  taskType: string;
   createdBy: string;
   isUrgent: boolean;
   assigneeProfileIds: string[];
@@ -46,6 +50,13 @@ export interface ITaskRepository {
   findByIdWithAssignees(taskId: string): Promise<(Task & { lead: { teamId: string | null }; assignees: TaskAssignee[] }) | null>;
   findAssignee(taskId: string, profileId: string): Promise<AssigneeWithGoogleSync | null>;
   updateAssigneeStatus(taskId: string, profileId: string, status: TaskAssigneeStatus): Promise<AssigneeWithGoogleSync>;
+  createTaskStatusActivity(input: {
+    leadId: string;
+    actorProfileId: string;
+    taskId: string;
+    taskTitle: string;
+    status: TaskAssigneeStatus;
+  }): Promise<void>;
   updateAssigneeGoogleSync(taskId: string, profileId: string, data: { googleEventId: string; googleCalendarId: string; googleSynced: boolean }): Promise<void>;
   cancelAllAssignees(taskId: string): Promise<void>;
   findConnectedAssigneesForTask(taskId: string): Promise<Array<{ profileId: string; googleEventId: string | null; googleSynced: boolean }>>;

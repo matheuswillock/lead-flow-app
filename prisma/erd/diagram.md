@@ -141,6 +141,16 @@ task task
     
 
 
+        task_type {
+            call call
+documentation documentation
+email email
+proposal proposal
+other other
+        }
+    
+
+
         task_assignee_status {
             PENDING PENDING
 IN_PROGRESS IN_PROGRESS
@@ -606,6 +616,8 @@ unsubscribed unsubscribed
 
   "tasks" {
     String id "🗝️"
+    String title 
+    TaskType taskType 
     String body 
     Boolean isUrgent 
     DateTime startAt "❓"
@@ -1019,6 +1031,7 @@ unsubscribed unsubscribed
     "lead_activities" }o--|o profiles : "author"
     "lead_activity_reactions" }o--|| lead_activities : "activity"
     "lead_activity_reactions" }o--|| profiles : "profile"
+    "tasks" |o--|| "TaskType" : "enum:taskType"
     "tasks" }o--|| leads : "lead"
     "tasks" }o--|| profiles : "creator"
     "tasks" |o--|o lead_activities : "activity"

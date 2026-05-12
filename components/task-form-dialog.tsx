@@ -2,19 +2,19 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import { Check, ChevronsUpDown, Loader2 } from "lucide-react"
+import { Loader2, Phone, FileText, Mail, FileSignature, MoreHorizontal, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { DateTimePicker } from "@/components/ui/date-time-picker"
-import { cn } from "@/lib/utils"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO"
+import { compareInTz, detectBrowserTimezone } from "@/lib/dates"
 
 type TaskGoogleSyncResult = {
   profileId: string
@@ -28,6 +28,16 @@ export type TaskCreatedPayload = {
   activityId: string
   googleSync: TaskGoogleSyncResult[]
 }
+
+const TASK_TYPE_OPTIONS = [
+  { value: "call", label: "Ligação", icon: Phone },
+  { value: "documentation", label: "Documentação", icon: FileText },
+  { value: "email", label: "E-mail", icon: Mail },
+  { value: "proposal", label: "Proposta", icon: FileSignature },
+  { value: "other", label: "Outros", icon: MoreHorizontal },
+] as const
+
+type TaskTypeValue = typeof TASK_TYPE_OPTIONS[number]["value"]
 
 interface TaskFormDialogProps {
   open: boolean
@@ -58,33 +68,50 @@ export function TaskFormDialog({
   activeTeamId,
   onSuccess,
 }: TaskFormDialogProps) {
+  const [title, setTitle] = React.useState("")
+  const [taskType, setTaskType] = React.useState<TaskTypeValue | "">("")
   const [body, setBody] = React.useState("")
   const [isUrgent, setIsUrgent] = React.useState(false)
   const [startAt, setStartAt] = React.useState<Date | undefined>(undefined)
   const [endAt, setEndAt] = React.useState<Date | undefined>(undefined)
   const [assigneeIds, setAssigneeIds] = React.useState<string[]>([])
-  const [popoverOpen, setPopoverOpen] = React.useState(false)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const browserTz = React.useMemo(() => detectBrowserTimezone(), [])
 
   const selectedMembers = teamMembers.filter((m) => assigneeIds.includes(m.id))
+  const unselectedMembers = teamMembers.filter((m) => !assigneeIds.includes(m.id))
 
-  const handleToggleAssignee = (memberId: string) => {
-    setAssigneeIds((prev) =>
-      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
-    )
+  const handleAddAssignee = (memberId: string) => {
+    if (!memberId || assigneeIds.includes(memberId)) return
+    setAssigneeIds((prev) => [...prev, memberId])
+  }
+
+  const handleRemoveAssignee = (memberId: string) => {
+    setAssigneeIds((prev) => prev.filter((id) => id !== memberId))
   }
 
   const handleReset = () => {
+    setTitle("")
+    setTaskType("")
     setBody("")
     setIsUrgent(false)
     setStartAt(undefined)
     setEndAt(undefined)
     setAssigneeIds([])
-    setPopoverOpen(false)
   }
+
+  const isFormValid = title.trim().length > 0 && taskType !== "" && body.trim().length > 0 && assigneeIds.length > 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!title.trim()) {
+      toast.error("Título da tarefa é obrigatório.")
+      return
+    }
+    if (!taskType) {
+      toast.error("Selecione o tipo da tarefa.")
+      return
+    }
     if (!body.trim()) {
       toast.error("Descrição da tarefa é obrigatória.")
       return
@@ -93,11 +120,17 @@ export function TaskFormDialog({
       toast.error("Selecione ao menos um responsável.")
       return
     }
+    if (startAt && endAt && compareInTz(endAt, startAt, browserTz, "minute") < 0) {
+      toast.error("A data de fim não pode ser anterior ao início.")
+      return
+    }
 
     setIsSubmitting(true)
     try {
       const payload: Record<string, unknown> = {
         type: "task",
+        title: title.trim(),
+        taskType,
         body: body.trim(),
         isUrgent,
         assigneeProfileIds: assigneeIds,
@@ -148,15 +181,78 @@ export function TaskFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!isSubmitting) { handleReset(); onOpenChange(next) } }}>
-      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-[520px]">
+      <DialogContent hideClose className="max-h-[90vh] flex flex-col sm:max-w-130">
         <DialogHeader>
-          <DialogTitle>Nova tarefa</DialogTitle>
-          <DialogDescription>Lead: {leadName}</DialogDescription>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <DialogTitle>Nova tarefa</DialogTitle>
+              <DialogDescription>Lead: {leadName}</DialogDescription>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Switch
+                id="task-urgent"
+                checked={isUrgent}
+                onCheckedChange={setIsUrgent}
+                disabled={isSubmitting}
+              />
+              <Label htmlFor="task-urgent" className="cursor-pointer text-sm">
+                Urgente
+              </Label>
+            </div>
+          </div>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 overflow-y-auto flex-1 dialog-scrollbar pr-1">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="task-body">Descrição</Label>
+            <Label htmlFor="task-title">Título *</Label>
+            <Input
+              id="task-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Título da tarefa"
+              disabled={isSubmitting}
+              required
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="task-type">Tipo *</Label>
+            <Select
+              value={taskType}
+              onValueChange={(v) => setTaskType(v as TaskTypeValue)}
+              disabled={isSubmitting}
+            >
+              <SelectTrigger id="task-type" className="w-full" aria-required>
+                {taskType ? (() => {
+                  const selected = TASK_TYPE_OPTIONS.find((o) => o.value === taskType)
+                  if (!selected) return <SelectValue placeholder="Selecione o tipo..." />
+                  const Icon = selected.icon
+                  return (
+                    <div className="flex items-center gap-2">
+                      <Icon className="size-4 text-muted-foreground" />
+                      <span>{selected.label}</span>
+                    </div>
+                  )
+                })() : <SelectValue placeholder="Selecione o tipo..." />}
+              </SelectTrigger>
+              <SelectContent>
+                {TASK_TYPE_OPTIONS.map((opt) => {
+                  const Icon = opt.icon
+                  return (
+                    <SelectItem key={opt.value} value={opt.value} className="items-center">
+                      <div className="flex items-center gap-2">
+                        <Icon className="size-4 text-muted-foreground" />
+                        <span>{opt.label}</span>
+                      </div>
+                    </SelectItem>
+                  )
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="task-body">Descrição *</Label>
             <Textarea
               id="task-body"
               value={body}
@@ -169,108 +265,81 @@ export function TaskFormDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label>Responsáveis</Label>
-            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={popoverOpen}
-                  disabled={isSubmitting}
-                  className="w-full justify-between"
-                >
-                  {selectedMembers.length === 0
-                    ? "Selecionar responsáveis..."
-                    : `${selectedMembers.length} selecionado(s)`}
-                  <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                <Command>
-                  <CommandInput placeholder="Buscar membro..." />
-                  <CommandList>
-                    <CommandEmpty>Nenhum membro encontrado.</CommandEmpty>
-                    <CommandGroup>
-                      {teamMembers.map((member) => {
-                        const isSelected = assigneeIds.includes(member.id)
-                        return (
-                          <CommandItem
-                            key={member.id}
-                            value={member.name + member.email}
-                            onSelect={() => handleToggleAssignee(member.id)}
-                          >
-                            <Check
-                              className={cn("mr-2 size-4", isSelected ? "opacity-100" : "opacity-0")}
-                            />
-                            <Avatar className="mr-2 size-6">
-                              <AvatarImage src={member.avatarImageUrl} />
-                              <AvatarFallback className="text-[10px]">
-                                {getInitials(member.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="truncate">{member.name || member.email}</span>
-                          </CommandItem>
-                        )
-                      })}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            {selectedMembers.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {selectedMembers.map((m) => (
-                  <Badge key={m.id} variant="secondary" className="gap-1.5 pr-1">
-                    <Avatar className="size-4">
-                      <AvatarImage src={m.avatarImageUrl} />
-                      <AvatarFallback className="text-[8px]">{getInitials(m.name)}</AvatarFallback>
-                    </Avatar>
-                    <span>{m.name || m.email}</span>
-                    <button
-                      type="button"
-                      className="ml-0.5 rounded-full hover:text-destructive"
-                      onClick={() => handleToggleAssignee(m.id)}
-                      disabled={isSubmitting}
-                    >
-                      ×
-                    </button>
-                  </Badge>
+            <Label htmlFor="task-assignee">Responsáveis *</Label>
+            <Select
+              value=""
+              onValueChange={handleAddAssignee}
+              disabled={isSubmitting || unselectedMembers.length === 0}
+            >
+              <SelectTrigger id="task-assignee" className="w-full min-h-10 h-auto py-1.5" aria-required>
+                {selectedMembers.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1.5 pr-6">
+                    {selectedMembers.map((m) => (
+                      <Badge key={m.id} variant="secondary" className="gap-1.5 pl-1 pr-1 max-w-full">
+                        <Avatar className="size-4">
+                          <AvatarImage src={m.avatarImageUrl} />
+                          <AvatarFallback className="text-[8px]">{getInitials(m.name)}</AvatarFallback>
+                        </Avatar>
+                        <span className="truncate">{m.name || m.email}</span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="rounded-full hover:text-destructive focus:outline-none"
+                          onPointerDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleRemoveAssignee(m.id)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter" && e.key !== " ") return
+                            e.preventDefault()
+                            e.stopPropagation()
+                            handleRemoveAssignee(m.id)
+                          }}
+                          aria-label={`Remover responsável ${m.name || m.email}`}
+                          aria-disabled={isSubmitting}
+                        >
+                          <X className="size-3" />
+                        </span>
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <SelectValue placeholder={
+                    unselectedMembers.length === 0
+                      ? "Todos os membros selecionados"
+                      : "Adicionar responsável..."
+                  } />
+                )}
+              </SelectTrigger>
+              <SelectContent>
+                {unselectedMembers.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    <span className="flex items-center gap-2">
+                      <Avatar className="size-5 shrink-0">
+                        <AvatarImage src={member.avatarImageUrl} />
+                        <AvatarFallback className="text-[10px]">{getInitials(member.name)}</AvatarFallback>
+                      </Avatar>
+                      <span className="truncate">{member.name || member.email}</span>
+                    </span>
+                  </SelectItem>
                 ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Switch
-              id="task-urgent"
-              checked={isUrgent}
-              onCheckedChange={setIsUrgent}
-              disabled={isSubmitting}
-            />
-            <Label htmlFor="task-urgent" className="cursor-pointer">
-              Urgente
-            </Label>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex flex-col gap-3">
             <DateTimePicker
-              label="Início (opcional)"
+              label="Início"
               date={startAt}
               onDateChange={setStartAt}
               disabled={isSubmitting}
               disablePastDates={false}
             />
             <DateTimePicker
-              label="Fim (opcional)"
+              label="Fim"
               date={endAt}
-              onDateChange={(d) => {
-                if (d && startAt && d < startAt) {
-                  toast.error("A data de fim não pode ser anterior ao início.")
-                  return
-                }
-                setEndAt(d)
-              }}
+              onDateChange={setEndAt}
               disabled={isSubmitting}
               disablePastDates={false}
             />
@@ -288,7 +357,7 @@ export function TaskFormDialog({
           </Button>
           <Button
             type="submit"
-            disabled={isSubmitting || !body.trim() || assigneeIds.length === 0}
+            disabled={isSubmitting || !isFormValid}
             onClick={handleSubmit}
           >
             {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}

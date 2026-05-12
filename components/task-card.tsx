@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import { MoreVertical, Loader2, AlertTriangle, Clock } from "lucide-react"
+import { MoreVertical, Loader2, Clock } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -202,8 +202,7 @@ export function TaskCard({
           <div className="flex items-start justify-between gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
               {task.isUrgent && (
-                <Badge variant="outline" className="border-warning text-warning gap-1">
-                  <AlertTriangle className="size-3" />
+                <Badge variant="destructive" className="w-fit">
                   Urgente
                 </Badge>
               )}
@@ -261,6 +260,20 @@ export function TaskCard({
           </div>
 
           <p className="text-sm font-medium leading-snug">{task.body}</p>
+
+          {myAssignee && myAssignee.status !== "DONE" && myAssignee.status !== "CANCELED" && (
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={updatingStatus || canceling}
+                onClick={() => handleUpdateMyStatus("DONE")}
+              >
+                {updatingStatus ? <Loader2 className="size-4 animate-spin" /> : "Concluído"}
+              </Button>
+            </div>
+          )}
 
           <div className="text-xs text-muted-foreground">
             Lead: {task.lead.name}{" "}

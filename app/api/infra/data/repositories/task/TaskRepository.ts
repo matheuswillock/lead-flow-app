@@ -1,4 +1,4 @@
-import type { TaskAssigneeStatus } from "@prisma/client";
+import type { TaskAssigneeStatus, TaskType } from "@prisma/client";
 import { prisma } from "../../prisma";
 import type {
   ITaskRepository,
@@ -35,6 +35,9 @@ class TaskRepository implements ITaskRepository {
         body: dto.activityDto.body.trim(),
         createdBy: dto.activityDto.createdBy,
         payload: {
+          kind: "task",
+          title: dto.activityDto.title.trim(),
+          taskType: dto.activityDto.taskType,
           isUrgent: dto.activityDto.isUrgent,
           assigneeProfileIds: dto.activityDto.assigneeProfileIds,
         },
@@ -45,6 +48,8 @@ class TaskRepository implements ITaskRepository {
       data: {
         leadId: dto.leadId,
         activityId: activity.id,
+        title: dto.title.trim(),
+        taskType: dto.taskType as TaskType,
         body: dto.body.trim(),
         isUrgent: dto.isUrgent,
         startAt: dto.startAt,
@@ -55,6 +60,23 @@ class TaskRepository implements ITaskRepository {
         },
       },
       include: TASK_INCLUDE,
+    });
+
+    await prisma.leadActivity.update({
+      where: { id: activity.id },
+      data: {
+        payload: {
+          kind: "task",
+          title: task.title,
+          taskType: task.taskType,
+          isUrgent: task.isUrgent,
+          assigneeProfileIds: dto.activityDto.assigneeProfileIds,
+          assigneeMentions: task.assignees.map((assignee) => ({
+            profileId: assignee.profile.id,
+            label: `@${assignee.profile.fullName || assignee.profile.email}`,
+          })),
+        },
+      },
     });
 
     return task as TaskWithRelations;
@@ -123,6 +145,29 @@ class TaskRepository implements ITaskRepository {
       data: { status },
       include: { profile: { select: ASSIGNEE_PROFILE_SELECT } },
     }) as Promise<AssigneeWithGoogleSync>;
+  }
+
+  async createTaskStatusActivity(input: {
+    leadId: string;
+    actorProfileId: string;
+    taskId: string;
+    taskTitle: string;
+    status: TaskAssigneeStatus;
+  }): Promise<void> {
+    await prisma.leadActivity.create({
+      data: {
+        leadId: input.leadId,
+        type: "task",
+        body: `Task "${input.taskTitle}" marcada como ${input.status === "DONE" ? "concluída" : "pendente"}.`,
+        createdBy: input.actorProfileId,
+        payload: {
+          kind: "task_status_update",
+          taskId: input.taskId,
+          title: input.taskTitle,
+          status: input.status,
+        },
+      },
+    });
   }
 
   async updateAssigneeGoogleSync(

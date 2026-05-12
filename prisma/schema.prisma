@@ -155,6 +155,16 @@ enum ActivityType {
   task
 }
 
+enum TaskType {
+  call
+  documentation
+  email
+  proposal
+  other
+
+  @@map("task_type")
+}
+
 enum TaskAssigneeStatus {
   PENDING
   IN_PROGRESS
@@ -856,6 +866,8 @@ model Task {
   id         String    @id @default(uuid()) @db.Uuid
   leadId     String    @db.Uuid
   activityId String?   @unique @db.Uuid
+  title      String    @db.Text
+  taskType   TaskType
   body       String    @db.Text
   isUrgent   Boolean   @default(false)
   startAt    DateTime? @db.Timestamptz(6)
