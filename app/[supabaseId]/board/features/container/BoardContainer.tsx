@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
+import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
 
 interface BoardContainerProps {
@@ -69,6 +70,7 @@ export function BoardContainer({
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
   const { members: closers } = useTeamClosers(supabaseId, activeTeamId);
+  const { healthPlans } = useHealthPlans(supabaseId, activeTeamId);
   const pendingDropLead = useMemo(() => {
     if (!pendingScheduledDrop) return null;
     return data[pendingScheduledDrop.from]?.find((item) => item.id === pendingScheduledDrop.leadId) ?? null;
@@ -167,14 +169,31 @@ export function BoardContainer({
   const handleFinalizeSubmit = async (data: FinalizeContractData) => {
     if (!selectedLead) return;
 
+    let contractFileUrl: string | undefined;
+    let contractStoragePath: string | undefined;
+
+    if (data.contractFile && supabaseId) {
+      const formData = new FormData();
+      formData.append('file', data.contractFile);
+      const uploadRes = await fetch(`/api/v1/leads/${selectedLead.id}/attachments`, {
+        method: 'POST',
+        headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': activeTeamId ?? '' },
+        body: formData,
+      });
+      const uploadResult = await uploadRes.json().catch(() => null);
+      if (!uploadRes.ok || !uploadResult?.isValid) {
+        throw new Error(uploadResult?.errorMessages?.[0] ?? 'Erro ao fazer upload do contrato');
+      }
+      contractFileUrl = uploadResult.result?.fileUrl;
+      contractStoragePath = uploadResult.result?.storagePath;
+    }
+
     try {
-      await finalizeContract(selectedLead.id, data);
-      toast.success('Contrato finalizado com sucesso!');
+      await finalizeContract(selectedLead.id, { ...data, contractFileUrl, contractStoragePath } as FinalizeContractData);
       setShowFinalizeDialog(false);
       setSelectedLead(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao finalizar contrato');
-      throw error; // Re-throw para o dialog poder mostrar o erro
+      throw error;
     }
   };
 
@@ -277,7 +296,10 @@ export function BoardContainer({
               }
             }}
             leadName={selectedLead.name}
+            leadCloserId={selectedLead.closerId ?? undefined}
             onFinalize={handleFinalizeSubmit}
+            closers={closers}
+            healthPlans={healthPlans}
           />
           
           <ScheduleMeetingDialog

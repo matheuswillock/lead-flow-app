@@ -899,13 +899,24 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const finalizeContract = useCallback(
     async (leadId: string, contractData: FinalizeContractData) => {
       try {
+        const { contractFile: _contractFile, ...rest } = contractData;
+        const apiPayload = {
+          ...rest,
+          leadBirthDate: rest.leadBirthDate instanceof Date ? rest.leadBirthDate.toISOString() : rest.leadBirthDate,
+          dependents: rest.dependents.map((d) => ({
+            name: d.name,
+            birthDate: d.birthDate instanceof Date ? d.birthDate.toISOString() : d.birthDate,
+            parentesco: d.parentesco,
+            document: d.document,
+          })),
+        };
         const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'x-supabase-user-id': supabaseId
           },
-          body: JSON.stringify(contractData)
+          body: JSON.stringify(apiPayload)
         });
 
         const result = await response.json().catch(() => null);

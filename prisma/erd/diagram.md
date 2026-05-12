@@ -619,6 +619,22 @@ unsubscribed unsubscribed
     Int duration 
     Decimal amount 
     String notes "❓"
+    DateTime leadBirthDate 
+    String operadora 
+    String productName "❓"
+    String contractFileUrl "❓"
+    String contractStoragePath "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "lead_finalized_dependents" {
+    String id "🗝️"
+    String name 
+    DateTime birthDate 
+    String parentesco 
+    String document 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -973,6 +989,8 @@ unsubscribed unsubscribed
     "leads_schedule" |o--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
     "leads_schedule" }o--|| leads : "lead"
     "lead_finalized" }o--|| leads : "lead"
+    "lead_finalized" }o--|o profiles : "closer"
+    "lead_finalized_dependents" }o--|| lead_finalized : "leadFinalized"
     "lead_portfolio" |o--|| "PortfolioStatus" : "enum:portfolioStatus"
     "lead_portfolio" |o--|| leads : "lead"
     "lead_portfolio" }o--|| teams : "team"

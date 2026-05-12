@@ -11,7 +11,7 @@ export class LeadFinalizedRepository implements ILeadFinalizedRepository {
    * Cria um registro de venda finalizada
    */
   async create(data: CreateLeadFinalizedDTO): Promise<LeadFinalized> {
-    return await prisma.leadFinalized.create({
+    return await (prisma.leadFinalized.create as (arg: unknown) => Promise<LeadFinalized>)({
       data: {
         leadId: data.leadId,
         finalizedDateAt: data.finalizedAt,
