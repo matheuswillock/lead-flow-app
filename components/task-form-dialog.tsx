@@ -6,13 +6,13 @@ import { Check, ChevronsUpDown, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { DateTimePicker } from "@/components/ui/date-time-picker"
 import { cn } from "@/lib/utils"
 import type { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO"
 
@@ -60,8 +60,8 @@ export function TaskFormDialog({
 }: TaskFormDialogProps) {
   const [body, setBody] = React.useState("")
   const [isUrgent, setIsUrgent] = React.useState(false)
-  const [startAt, setStartAt] = React.useState("")
-  const [endAt, setEndAt] = React.useState("")
+  const [startAt, setStartAt] = React.useState<Date | undefined>(undefined)
+  const [endAt, setEndAt] = React.useState<Date | undefined>(undefined)
   const [assigneeIds, setAssigneeIds] = React.useState<string[]>([])
   const [popoverOpen, setPopoverOpen] = React.useState(false)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -77,8 +77,8 @@ export function TaskFormDialog({
   const handleReset = () => {
     setBody("")
     setIsUrgent(false)
-    setStartAt("")
-    setEndAt("")
+    setStartAt(undefined)
+    setEndAt(undefined)
     setAssigneeIds([])
     setPopoverOpen(false)
   }
@@ -102,8 +102,8 @@ export function TaskFormDialog({
         isUrgent,
         assigneeProfileIds: assigneeIds,
       }
-      if (startAt) payload.startAt = new Date(startAt).toISOString()
-      if (endAt) payload.endAt = new Date(endAt).toISOString()
+      if (startAt) payload.startAt = startAt.toISOString()
+      if (endAt) payload.endAt = endAt.toISOString()
 
       const response = await fetch(`/api/v1/leads/${leadId}/activities`, {
         method: "POST",
@@ -253,28 +253,27 @@ export function TaskFormDialog({
             </Label>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="task-start">Início (opcional)</Label>
-              <Input
-                id="task-start"
-                type="datetime-local"
-                value={startAt}
-                onChange={(e) => setStartAt(e.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="task-end">Fim (opcional)</Label>
-              <Input
-                id="task-end"
-                type="datetime-local"
-                value={endAt}
-                min={startAt || undefined}
-                onChange={(e) => setEndAt(e.target.value)}
-                disabled={isSubmitting}
-              />
-            </div>
+          <div className="flex flex-col gap-3">
+            <DateTimePicker
+              label="Início (opcional)"
+              date={startAt}
+              onDateChange={setStartAt}
+              disabled={isSubmitting}
+              disablePastDates={false}
+            />
+            <DateTimePicker
+              label="Fim (opcional)"
+              date={endAt}
+              onDateChange={(d) => {
+                if (d && startAt && d < startAt) {
+                  toast.error("A data de fim não pode ser anterior ao início.")
+                  return
+                }
+                setEndAt(d)
+              }}
+              disabled={isSubmitting}
+              disablePastDates={false}
+            />
           </div>
         </form>
 
