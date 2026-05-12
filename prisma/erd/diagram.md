@@ -619,8 +619,8 @@ unsubscribed unsubscribed
     Int duration 
     Decimal amount 
     String notes "❓"
-    DateTime leadBirthDate 
-    String operadora 
+    DateTime leadBirthDate "❓"
+    String operadora "❓"
     String productName "❓"
     String contractFileUrl "❓"
     String contractStoragePath "❓"
@@ -634,7 +634,7 @@ unsubscribed unsubscribed
     String name 
     DateTime birthDate 
     String parentesco 
-    String document 
+    String document "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
