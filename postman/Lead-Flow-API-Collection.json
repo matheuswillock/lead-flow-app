@@ -5937,8 +5937,7 @@
             },
             {
               "name": "users",
-              "item": [
-              ]
+              "item": []
             }
           ]
         },
@@ -9188,6 +9187,163 @@
             "description": "Polling do status. Retorna pendingActionStatus: pending | applied | failed | canceled."
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Tasks",
+      "description": "Endpoints de tarefas (atividade tipo task)",
+      "item": [
+        {
+          "name": "POST Create Task (via Lead Activity)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/activities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads",
+                "{{leadId}}",
+                "activities"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"task\",\n  \"body\": \"Entrar em contato com o lead para confirmar documentos\",\n  \"isUrgent\": true,\n  \"startAt\": \"2026-05-13T09:00:00.000Z\",\n  \"endAt\": \"2026-05-13T17:00:00.000Z\",\n  \"assigneeProfileIds\": [\n    \"{{profileId}}\"\n  ]\n}"
+            },
+            "description": "Cria uma tarefa via endpoint de atividades do lead. Retorna task, activity e googleSync por responsável."
+          }
+        },
+        {
+          "name": "GET Tasks by Date",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks?dateFrom=2026-05-13T00:00:00.000Z&dateTo=2026-05-13T23:59:59.999Z",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks"
+              ],
+              "query": [
+                {
+                  "key": "dateFrom",
+                  "value": "2026-05-13T00:00:00.000Z"
+                },
+                {
+                  "key": "dateTo",
+                  "value": "2026-05-13T23:59:59.999Z"
+                },
+                {
+                  "key": "leadId",
+                  "value": "{{leadId}}",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Lista tarefas do time filtradas por intervalo de data (startAt/endAt). Suporta filtro opcional por leadId."
+          }
+        },
+        {
+          "name": "PATCH Update Task Assignee Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}/assignees/{{profileId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks",
+                "{{taskId}}",
+                "assignees",
+                "{{profileId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_PROGRESS\"\n}"
+            },
+            "description": "Atualiza o status do responsável na tarefa. status: PENDING | IN_PROGRESS | DONE | CANCELED | OVERDUE. Apenas o próprio responsável pode atualizar."
+          }
+        },
+        {
+          "name": "POST Cancel Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tasks/{{taskId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tasks",
+                "{{taskId}}",
+                "cancel"
+              ]
+            },
+            "description": "Cancela a tarefa (todos os assignees ficam CANCELED). Apenas o criador pode cancelar. Remove eventos do Google Calendar para assignees sincronizados."
+          }
         }
       ]
     }

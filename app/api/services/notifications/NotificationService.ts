@@ -75,6 +75,18 @@ type CountUnreadInput = {
   teamId: string;
 };
 
+type TaskAssignmentNotificationInput = {
+  teamId: string;
+  actorProfileId: string;
+  actorName: string;
+  leadId: string;
+  leadCode: string | null;
+  leadName: string;
+  taskId: string;
+  body: string;
+  recipientProfileIds: string[];
+};
+
 type SystemNotificationInput = {
   recipientProfileId: string;
   teamId: string;
@@ -84,6 +96,43 @@ type SystemNotificationInput = {
 };
 
 class NotificationService {
+  async createTaskAssignmentNotifications(input: TaskAssignmentNotificationInput) {
+    const uniqueRecipients = Array.from(
+      new Set(
+        input.recipientProfileIds.filter(
+          (profileId) => profileId && profileId !== input.actorProfileId
+        )
+      )
+    );
+
+    if (uniqueRecipients.length === 0) {
+      return { createdCount: 0 };
+    }
+
+    const preview = input.body.trim().slice(0, 120);
+    const message = `${input.actorName} atribuiu uma tarefa a você no lead ${input.leadName}.`;
+
+    const result = await prisma.notification.createMany({
+      data: uniqueRecipients.map((recipientProfileId) => ({
+        recipientProfileId,
+        actorProfileId: input.actorProfileId,
+        teamId: input.teamId,
+        type: NotificationType.ACTIVITY_MENTION,
+        message,
+        metadata: {
+          leadId: input.leadId,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          taskId: input.taskId,
+          preview,
+        },
+      })),
+      skipDuplicates: false,
+    });
+
+    return { createdCount: result.count };
+  }
+
   async createSystemNotification(input: SystemNotificationInput) {
     return prisma.notification.create({
       data: {

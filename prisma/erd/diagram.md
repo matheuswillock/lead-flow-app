@@ -136,6 +136,17 @@ call call
 whatsapp whatsapp
 email email
 status_change status_change
+task task
+        }
+    
+
+
+        task_assignee_status {
+            PENDING PENDING
+IN_PROGRESS IN_PROGRESS
+DONE DONE
+CANCELED CANCELED
+OVERDUE OVERDUE
         }
     
 
@@ -593,6 +604,28 @@ unsubscribed unsubscribed
     }
   
 
+  "tasks" {
+    String id "🗝️"
+    String body 
+    Boolean isUrgent 
+    DateTime startAt "❓"
+    DateTime endAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "task_assignees" {
+    String id "🗝️"
+    TaskAssigneeStatus status 
+    String googleEventId "❓"
+    String googleCalendarId "❓"
+    Boolean googleSynced 
+    DateTime assignedAt 
+    DateTime updatedAt 
+    }
+  
+
   "leads_schedule" {
     String id "🗝️"
     DateTime date 
@@ -986,6 +1019,12 @@ unsubscribed unsubscribed
     "lead_activities" }o--|o profiles : "author"
     "lead_activity_reactions" }o--|| lead_activities : "activity"
     "lead_activity_reactions" }o--|| profiles : "profile"
+    "tasks" }o--|| leads : "lead"
+    "tasks" }o--|| profiles : "creator"
+    "tasks" |o--|o lead_activities : "activity"
+    "task_assignees" |o--|| "TaskAssigneeStatus" : "enum:status"
+    "task_assignees" }o--|| tasks : "task"
+    "task_assignees" }o--|| profiles : "profile"
     "leads_schedule" |o--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
     "leads_schedule" }o--|| leads : "lead"
     "lead_finalized" }o--|| leads : "lead"

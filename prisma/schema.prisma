@@ -152,6 +152,17 @@ enum ActivityType {
   whatsapp
   email
   status_change
+  task
+}
+
+enum TaskAssigneeStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  CANCELED
+  OVERDUE
+
+  @@map("task_assignee_status")
 }
 
 enum InviteDispatchStatus {
@@ -397,6 +408,8 @@ model Profile {
   createdTeamFilterPresets    TeamFilterPreset[]        @relation("TeamFilterPresetCreator")
   createdTeamStatusRules      TeamStatusRule[]          @relation("TeamStatusRuleCreator")
   finalizedContracts          LeadFinalized[]           @relation("LeadFinalizedCloser")
+  createdTasks                Task[]                    @relation("TaskCreator")
+  taskAssignments             TaskAssignee[]            @relation("TaskAssigneeProfile")
 
   // Email campaigns relations
   emailCreditSubscription  EmailCreditSubscription? @relation("EmailCreditSubscriptionOwner")
@@ -775,6 +788,7 @@ model Lead {
   creator       Profile?         @relation("LeadCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater       Profile?         @relation("LeadUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
   activities    LeadActivity[]
+  tasks         Task[]
   LeadsSchedule LeadsSchedule[]
   LeadFinalized LeadFinalized[]
   portfolio     LeadPortfolio?
@@ -810,6 +824,7 @@ model LeadActivity {
   lead      Lead                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
   author    Profile?               @relation(fields: [createdBy], references: [id], onDelete: SetNull)
   reactions LeadActivityReaction[]
+  task      Task?
 
   @@index([leadId])
   @@index([createdBy])
@@ -831,6 +846,55 @@ model LeadActivityReaction {
   @@index([activityId])
   @@index([profileId])
   @@map("lead_activity_reactions")
+}
+
+// -----------------------------
+// TASKS (public.tasks)
+// -----------------------------
+
+model Task {
+  id         String    @id @default(uuid()) @db.Uuid
+  leadId     String    @db.Uuid
+  activityId String?   @unique @db.Uuid
+  body       String    @db.Text
+  isUrgent   Boolean   @default(false)
+  startAt    DateTime? @db.Timestamptz(6)
+  endAt      DateTime? @db.Timestamptz(6)
+  createdBy  String    @db.Uuid
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+
+  lead      Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  creator   Profile        @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  activity  LeadActivity?  @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  assignees TaskAssignee[]
+
+  @@index([leadId])
+  @@index([createdBy])
+  @@index([startAt])
+  @@index([endAt])
+  @@map("tasks")
+}
+
+model TaskAssignee {
+  id             String             @id @default(uuid()) @db.Uuid
+  taskId         String             @db.Uuid
+  profileId      String             @db.Uuid
+  status         TaskAssigneeStatus @default(PENDING)
+  googleEventId  String?            @db.Text
+  googleCalendarId String?          @db.Text
+  googleSynced   Boolean            @default(false)
+  assignedAt     DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime           @updatedAt @db.Timestamptz(6)
+
+  task    Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  profile Profile @relation("TaskAssigneeProfile", fields: [profileId], references: [id], onDelete: Restrict)
+
+  @@unique([taskId, profileId])
+  @@index([taskId])
+  @@index([profileId])
+  @@index([status])
+  @@map("task_assignees")
 }
 
 model LeadsSchedule {

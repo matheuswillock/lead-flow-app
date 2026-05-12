@@ -22,7 +22,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { CirclePlus } from "@/components/animate-ui/icons/circle-plus"
 import { CheckCircle2, XCircle, HelpCircle, Clock } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog"
+import { TaskFormDialog, type TaskCreatedPayload } from "@/components/task-form-dialog"
+import { TaskCard, type TaskItem } from "@/components/task-card"
 import useBoardContext from "@/app/[supabaseId]/board/features/context/BoardHook"
 import {
   ScheduleMeetingDialog,
@@ -253,6 +256,12 @@ export default function CalendarStudio() {
   const [meetingHealdSavingId, setMeetingHealdSavingId] = React.useState<string | null>(null)
   const [attendeesByLead, setAttendeesByLead] = React.useState<AttendeesByLead>({})
   const [attendeesLoading, setAttendeesLoading] = React.useState(false)
+  const [showMeetings, setShowMeetings] = React.useState(true)
+  const [showTasks, setShowTasks] = React.useState(true)
+  const [taskDialogOpen, setTaskDialogOpen] = React.useState(false)
+  const [taskDialogLead, setTaskDialogLead] = React.useState<Lead | null>(null)
+  const [tasks, setTasks] = React.useState<TaskItem[]>([])
+  const [tasksLoading, setTasksLoading] = React.useState(false)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext()
@@ -566,6 +575,42 @@ export default function CalendarStudio() {
     }
   }, [attendeesFetchKey, supabaseId, activeTeamId])
 
+  // Fetch tasks for the selected date range (full day)
+  React.useEffect(() => {
+    if (!selectedDateKey || !supabaseId || !activeTeamId) {
+      setTasks([])
+      return
+    }
+
+    let cancelled = false
+    setTasksLoading(true)
+
+    const dateFrom = `${selectedDateKey}T00:00:00.000Z`
+    const dateTo = `${selectedDateKey}T23:59:59.999Z`
+    const url = `/api/v1/tasks?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`
+
+    fetch(url, {
+      headers: {
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": activeTeamId,
+      },
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return
+        setTasks(Array.isArray(json?.result) ? json.result : [])
+        setTasksLoading(false)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setTasksLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedDateKey, supabaseId, activeTeamId])
+
   return (
     <div className="flex min-h-0 h-full w-full max-w-full flex-1 flex-col gap-4 overflow-x-hidden p-4">
       <div className="grid w-full min-w-0 max-w-full gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:h-full">
@@ -748,29 +793,70 @@ export default function CalendarStudio() {
                   {selectedTime ? `Horario: ${selectedTime}` : "Sem horario selecionado"}
                 </div>
               </div>
-              <Button variant="outline" onClick={() => setLeadPickerOpen(true)} className="group">
-                <CirclePlus
-                  className="mr-2 transition-transform duration-300 group-hover:rotate-90"
-                  size={16}
-                />
-                Agendar Reunião
-              </Button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Switch
+                    id="show-meetings"
+                    checked={showMeetings}
+                    onCheckedChange={setShowMeetings}
+                    className="scale-75"
+                  />
+                  <Label htmlFor="show-meetings" className="text-xs cursor-pointer">Reuniões</Label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Switch
+                    id="show-tasks"
+                    checked={showTasks}
+                    onCheckedChange={setShowTasks}
+                    className="scale-75"
+                  />
+                  <Label htmlFor="show-tasks" className="text-xs cursor-pointer">Tarefas</Label>
+                </div>
+                <Button variant="outline" onClick={() => setLeadPickerOpen(true)} className="group">
+                  <CirclePlus
+                    className="mr-2 transition-transform duration-300 group-hover:rotate-90"
+                    size={16}
+                  />
+                  Agendar Reunião
+                </Button>
+              </div>
             </div>
 
             <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-              {isLoading ? (
+              {isLoading || tasksLoading ? (
                 Array.from({ length: 6 }).map((_, idx) => (
                   <Skeleton key={idx} className="h-28 w-full rounded-md" />
                 ))
-              ) : filteredEvents.length === 0 ? (
+              ) : filteredEvents.filter(() => showMeetings).length === 0 && (tasks.length === 0 || !showTasks) ? (
                 <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 rounded-md border border-dashed p-6 text-center">
                   <p className="text-sm text-muted-foreground">
-                    Nenhuma agenda ou lembrete para este dia e horário.
+                    Nenhuma agenda, tarefa ou lembrete para este dia e horário.
                   </p>
                   <Button onClick={() => setLeadPickerOpen(true)}>Agendar nova reunião</Button>
                 </div>
               ) : (
-                filteredEvents.map((event) => {
+                <>
+                {showTasks && tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    currentProfileId={user?.id ?? ""}
+                    supabaseId={supabaseId ?? ""}
+                    activeTeamId={activeTeamId ?? ""}
+                    tz={tz}
+                    onStatusUpdated={() => {
+                      setTasks((prev) =>
+                        prev.map((t) =>
+                          t.id === task.id
+                            ? { ...t, assignees: t.assignees.map((a) => a.profileId === user?.id ? { ...a, status: a.status } : a) }
+                            : t
+                        )
+                      )
+                    }}
+                    onCanceled={() => setTasks((prev) => prev.filter((t) => t.id !== task.id))}
+                  />
+                ))}
+                {showMeetings && filteredEvents.map((event) => {
                   const lead = event.lead
                   const closerLabel = getCloserLabel(lead, closersById)
                   const isMeeting = event.type === "meeting"
@@ -982,7 +1068,8 @@ export default function CalendarStudio() {
                       </div>
                     </div>
                   )
-                })
+                })}
+                </>
               )}
             </div>
           </CardContent>
@@ -1001,9 +1088,10 @@ export default function CalendarStudio() {
       />
 
       <Dialog open={leadPickerOpen} onOpenChange={setLeadPickerOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-130">
           <DialogHeader>
-            <DialogTitle>Selecionar lead para agendar</DialogTitle>
+            <DialogTitle>Selecionar lead</DialogTitle>
+            <DialogDescription>Agendar reunião ou criar tarefa</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <Input
@@ -1011,23 +1099,16 @@ export default function CalendarStudio() {
               onChange={(event) => setLeadPickerQuery(event.target.value)}
               placeholder="Buscar por nome ou ID"
             />
-            <div className="max-h-[360px] overflow-y-auto rounded-md border">
+            <div className="max-h-90 overflow-y-auto rounded-md border">
               {leadPickerCandidates.length === 0 ? (
                 <div className="p-4 text-sm text-muted-foreground">Nenhum lead encontrado.</div>
               ) : (
                 leadPickerCandidates.map((lead) => {
                   const closerLabel = getCloserLabel(lead, closersById)
                   return (
-                    <button
+                    <div
                       key={lead.id}
-                      type="button"
-                      onClick={() => {
-                        setLeadToSchedule(lead)
-                        setScheduleDialogMode("create")
-                        setLeadPickerOpen(false)
-                        setScheduleDialogOpen(true)
-                      }}
-                      className="flex w-full items-center justify-between gap-3 border-b px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
+                      className="flex w-full items-center justify-between gap-3 border-b px-4 py-2 text-sm"
                     >
                       <div>
                         <div className="font-medium">{lead.name}</div>
@@ -1035,10 +1116,32 @@ export default function CalendarStudio() {
                           ID: {lead.leadCode} • Closer: {closerLabel}
                         </div>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {getStatusLabel(lead.status)}
-                      </span>
-                    </button>
+                      <div className="flex shrink-0 gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setLeadToSchedule(lead)
+                            setScheduleDialogMode("create")
+                            setLeadPickerOpen(false)
+                            setScheduleDialogOpen(true)
+                          }}
+                        >
+                          Reunião
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setTaskDialogLead(lead)
+                            setLeadPickerOpen(false)
+                            setTaskDialogOpen(true)
+                          }}
+                        >
+                          Tarefa
+                        </Button>
+                      </div>
+                    </div>
                   )
                 })
               )}
@@ -1103,6 +1206,36 @@ export default function CalendarStudio() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {taskDialogLead && supabaseId && activeTeamId && (
+        <TaskFormDialog
+          open={taskDialogOpen}
+          onOpenChange={(next) => {
+            setTaskDialogOpen(next)
+            if (!next) setTaskDialogLead(null)
+          }}
+          leadId={taskDialogLead.id}
+          leadName={taskDialogLead.name}
+          teamMembers={user?.usersAssociated ?? []}
+          supabaseId={supabaseId}
+          activeTeamId={activeTeamId}
+          onSuccess={(_payload: TaskCreatedPayload) => {
+            if (selectedDateKey) {
+              const dateFrom = `${selectedDateKey}T00:00:00.000Z`
+              const dateTo = `${selectedDateKey}T23:59:59.999Z`
+              fetch(`/api/v1/tasks?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`, {
+                headers: {
+                  "x-supabase-user-id": supabaseId,
+                  "x-team-id": activeTeamId,
+                },
+              })
+                .then((res) => res.json())
+                .then((json) => setTasks(Array.isArray(json?.result) ? json.result : []))
+                .catch(() => undefined)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }
