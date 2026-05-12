@@ -1,11 +1,11 @@
 "use client";
 
 import { Medal, Trophy } from "lucide-react";
-import { PerfPersonModal } from "./PerfPersonModal";
+import { useState } from "react";
+import { PerfPersonModal, type PerfPersonModalPerson } from "./PerfPersonModal";
 import { RankRow } from "./RankRow";
 import { usePerformanceContext } from "../../context/PerformanceContext";
-import { useEffect, useState } from "react";
-import type { PerformanceRankingEntry, PerformanceDrilldownEntry } from "../../context/PerformanceTypes";
+import type { PerformanceDrilldownEntry, PerformanceRankingEntry } from "../../context/PerformanceTypes";
 
 function formatCurrencyShort(value: number): string {
   if (value >= 1_000_000) return `R$ ${(value / 1_000_000).toFixed(1).replace(".", ",")}M receita`;
@@ -16,8 +16,13 @@ function formatCurrencyShort(value: number): string {
 function buildPersonFromDrilldown(
   entry: PerformanceDrilldownEntry,
   rank: number
-) {
+): PerfPersonModalPerson {
   const isCloser = entry.roleLabel === "Closer";
+  const conversao =
+    isCloser && entry.meetingsHeld > 0
+      ? Math.round((entry.salesCount / entry.meetingsHeld) * 100)
+      : 0;
+
   return {
     name: entry.name,
     email: entry.email,
@@ -30,39 +35,25 @@ function buildPersonFromDrilldown(
       ? {
           vendas: entry.salesCount,
           receita: entry.totalSalesValue,
-          conversao: entry.attendanceRate,
+          conversao,
           reunioes: entry.meetingsHeld,
-          faltas: 0,
           noshow: entry.noShowCount,
+          faltas: entry.noShowCount,
         }
       : {
           agendamentos: entry.scheduledLeads,
           realizadas: entry.meetingsHeld,
           show: entry.attendanceRate,
-          tentativas: 0,
-          conexoes: 0,
-          faltas: 0,
           noshow: entry.noShowCount,
+          faltas: entry.noShowCount,
         },
-    trend: [],
-    trendPct: 0,
-    funnel: [],
     activity: [],
   };
 }
 
 export function PerfRankings() {
   const { data, isLoading } = usePerformanceContext();
-  const [selected, setSelected] = useState<ReturnType<typeof buildPersonFromDrilldown> | null>(null);
-
-  useEffect(() => {
-    if (!selected) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelected(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selected]);
+  const [selected, setSelected] = useState<PerfPersonModalPerson | null>(null);
 
   if (isLoading || !data) {
     return (
@@ -70,7 +61,7 @@ export function PerfRankings() {
         {[...Array(2)].map((_, i) => (
           <div
             key={i}
-            className="rounded-xl border border-border bg-card h-[300px] animate-pulse"
+            className="rounded-xl border border-border bg-card h-75 animate-pulse"
           />
         ))}
       </div>
@@ -79,7 +70,6 @@ export function PerfRankings() {
 
   const { rankings, drilldown } = data;
 
-  // Map ranking entries to RankRow props
   const closerMax = rankings.closer.length > 0 ? Math.max(...rankings.closer.map((r) => r.count)) : 1;
   const sdrMax = rankings.sdr.length > 0 ? Math.max(...rankings.sdr.map((r) => r.count)) : 1;
 
@@ -102,21 +92,17 @@ export function PerfRankings() {
   }));
 
   function handleCloserClick(rankingEntry: PerformanceRankingEntry, idx: number) {
-    const drilldownEntry = drilldown.find(
+    const entry = drilldown.find(
       (d) => d.profileId === rankingEntry.profileId && d.roleLabel === "Closer"
     );
-    if (drilldownEntry) {
-      setSelected(buildPersonFromDrilldown(drilldownEntry, idx + 1));
-    }
+    if (entry) setSelected(buildPersonFromDrilldown(entry, idx + 1));
   }
 
   function handleSdrClick(rankingEntry: PerformanceRankingEntry, idx: number) {
-    const drilldownEntry = drilldown.find(
+    const entry = drilldown.find(
       (d) => d.profileId === rankingEntry.profileId && d.roleLabel === "SDR"
     );
-    if (drilldownEntry) {
-      setSelected(buildPersonFromDrilldown(drilldownEntry, idx + 1));
-    }
+    if (entry) setSelected(buildPersonFromDrilldown(entry, idx + 1));
   }
 
   return (
@@ -130,13 +116,13 @@ export function PerfRankings() {
             </div>
             <div>
               <div className="text-[14px] font-semibold">Ranking de Closers</div>
-              <div className="text-[11px] text-white/45">por vendas fechadas no período</div>
+              <div className="text-[11px] text-foreground/45">por vendas fechadas no período</div>
             </div>
           </div>
         </div>
         <div className="p-2.5">
           {closersFormatted.length === 0 ? (
-            <div className="text-center text-white/40 text-sm py-6">
+            <div className="text-center text-foreground/40 text-sm py-6">
               Nenhum closer com vendas no período
             </div>
           ) : (
@@ -163,13 +149,13 @@ export function PerfRankings() {
             </div>
             <div>
               <div className="text-[14px] font-semibold">Ranking de SDRs</div>
-              <div className="text-[11px] text-white/45">por agendamentos realizados</div>
+              <div className="text-[11px] text-foreground/45">por agendamentos realizados</div>
             </div>
           </div>
         </div>
         <div className="p-2.5">
           {sdrsFormatted.length === 0 ? (
-            <div className="text-center text-white/40 text-sm py-6">
+            <div className="text-center text-foreground/40 text-sm py-6">
               Nenhum SDR com agendamentos no período
             </div>
           ) : (
@@ -187,7 +173,11 @@ export function PerfRankings() {
         </div>
       </div>
 
-      <PerfPersonModal person={selected} onClose={() => setSelected(null)} />
+      <PerfPersonModal
+        open={selected !== null}
+        onOpenChange={(open) => { if (!open) setSelected(null); }}
+        person={selected}
+      />
     </div>
   );
 }

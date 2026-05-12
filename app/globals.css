@@ -285,6 +285,24 @@ html {
   background: radial-gradient(120% 120% at 0% 100%, color-mix(in oklab, var(--warn) 24%, transparent) 0%, transparent 60%);
 }
 
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.bg-grid {
+  background-image: radial-gradient(color-mix(in oklab, var(--border) 80%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -1px -1px;
+}
+
+.avatar-1 { background: linear-gradient(135deg, var(--primary), #cd6cdd); }
+.avatar-2 { background: linear-gradient(135deg, #62b6ff, #7f7bff); }
+.avatar-3 { background: linear-gradient(135deg, #22c08a, #62b6ff); }
+.avatar-4 { background: linear-gradient(135deg, #f2a236, #f06572); }
+.avatar-5 { background: linear-gradient(135deg, #7f7bff, #f06572); }
+.avatar-6 { background: linear-gradient(135deg, #22c08a, #f2a236); }
+
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Poppins', sans-serif;
 }

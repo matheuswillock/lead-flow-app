@@ -18,7 +18,7 @@ export function PerfTopHighlights() {
         {[...Array(2)].map((_, i) => (
           <div
             key={i}
-            className="rounded-xl border border-border bg-card h-[120px] animate-pulse"
+            className="rounded-xl border border-border bg-card h-30 animate-pulse"
           />
         ))}
       </div>
@@ -58,7 +58,7 @@ export function PerfTopHighlights() {
       )}
 
       {!highlights.topCloser && !highlights.topSdr && (
-        <div className="col-span-2 text-center text-white/40 text-sm py-6">
+        <div className="col-span-2 text-center text-foreground/40 text-sm py-6">
           Nenhum destaque disponível para o período selecionado
         </div>
       )}

@@ -28,11 +28,11 @@ export function TopPerformerCard({ title, subtitle, name, role, avatar, value, s
       <div className="relative p-4 pb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Crown size={14} className={c.text} />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-white/65">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-foreground/65">
             {title}
           </span>
         </div>
-        <span className="text-[10.5px] text-white/40">{subtitle}</span>
+        <span className="text-[10.5px] text-foreground/40">{subtitle}</span>
       </div>
       <div className="relative px-4 pb-4 flex items-center gap-3">
         <div
@@ -46,14 +46,14 @@ export function TopPerformerCard({ title, subtitle, name, role, avatar, value, s
         </div>
         <div className="min-w-0 flex-1">
           <div className="font-display text-[17px] font-bold truncate">{name}</div>
-          <div className="text-[11px] text-white/50">{role}</div>
+          <div className="text-[11px] text-foreground/50">{role}</div>
         </div>
         <div className="text-right">
           <div className="font-display text-[26px] font-bold leading-none num">
             {value}
-            <span className="text-[12px] text-white/55 font-medium ml-0.5">{suffix}</span>
+            <span className="text-[12px] text-foreground/55 font-medium ml-0.5">{suffix}</span>
           </div>
-          <div className="text-[11px] text-white/45 mt-1">{helper}</div>
+          <div className="text-[11px] text-foreground/45 mt-1">{helper}</div>
         </div>
       </div>
     </div>

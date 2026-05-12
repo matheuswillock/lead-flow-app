@@ -19,7 +19,7 @@ export function RankRow({ rank, name, role, avatar, value, suffix, secondary, pc
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left grid grid-cols-[28px_1fr_auto] items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-white/[0.035] transition-colors cursor-pointer focus:outline-none focus:bg-white/4"
+      className="w-full text-left grid grid-cols-[28px_1fr_auto] items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-foreground/[0.035] transition-colors cursor-pointer focus:outline-none focus:bg-foreground/[0.04]"
     >
       <MedalBadge rank={rank} />
       <div className="flex items-center gap-2.5 min-w-0">
@@ -36,12 +36,12 @@ export function RankRow({ rank, name, role, avatar, value, suffix, secondary, pc
           <div className="text-[13px] font-medium truncate">{name}</div>
           <div className="flex items-center gap-2 mt-0.5">
             {role && (
-              <span className="text-[10.5px] uppercase tracking-wider font-semibold text-white/55">
+              <span className="text-[10.5px] uppercase tracking-wider font-semibold text-foreground/55">
                 {role}
               </span>
             )}
             {secondary && (
-              <span className="text-[10.5px] text-white/40">
+              <span className="text-[10.5px] text-foreground/40">
                 {role ? `· ${secondary}` : secondary}
               </span>
             )}
@@ -51,7 +51,7 @@ export function RankRow({ rank, name, role, avatar, value, suffix, secondary, pc
       <div className="text-right">
         <div className="font-display text-[18px] font-bold leading-none num">
           {value}
-          {suffix && <span className="text-[11px] text-white/50 font-medium ml-0.5">{suffix}</span>}
+          {suffix && <span className="text-[11px] text-foreground/50 font-medium ml-0.5">{suffix}</span>}
         </div>
         <div className="mt-1.5 w-30 ml-auto">
           <PerfBar pct={pct} color={color} />
