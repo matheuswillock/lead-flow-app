@@ -203,10 +203,13 @@ export class PerformanceService implements IPerformanceService {
         select: { id: true, meetingDate: true, assignedTo: true, closerId: true },
       }),
 
-      // Recent activities for drilldown
+      // Recent activities for drilldown — last 5 days only
       prisma.leadActivity.findMany({
         where: {
-          createdAt: { gte: startDate, lte: endDate },
+          createdAt: {
+            gte: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+            lte: endDate,
+          },
           lead: leadScope,
           type: { in: ['note', 'status_change'] },
         },

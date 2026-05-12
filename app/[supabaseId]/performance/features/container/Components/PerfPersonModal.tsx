@@ -1,13 +1,10 @@
 "use client";
 
-import { toast } from "sonner";
-import { ArrowRight, Calendar, Check, Handshake, Target, TrendingUp, UserX } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Calendar, Check, Handshake, Target, TrendingUp, UserX } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -64,6 +61,7 @@ export function PerfPersonModal({ open, onOpenChange, person }: PerfPersonModalP
 
   const isCloser = person.kind === "closer";
   const accent = isCloser ? "var(--primary)" : "var(--info)";
+  const accentToken = isCloser ? "primary" as const : "info" as const;
   const { stats } = person;
 
   const initials = person.name
@@ -74,7 +72,7 @@ export function PerfPersonModal({ open, onOpenChange, person }: PerfPersonModalP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-2xl p-0 gap-0 overflow-hidden">
+      <DialogContent className="flex flex-col sm:max-w-2xl p-0 gap-0 overflow-hidden [&>button]:hidden">
         {/* Visually hidden accessible title/description */}
         <DialogHeader className="sr-only">
           <DialogTitle>{person.name}</DialogTitle>
@@ -120,7 +118,7 @@ export function PerfPersonModal({ open, onOpenChange, person }: PerfPersonModalP
                 {person.joined && ` · entrou em ${person.joined}`}
               </div>
             </div>
-            <div className="shrink-0 text-right pr-1">
+            <div className="shrink-0 text-right">
               <div className="text-[10.5px] text-foreground/45 uppercase tracking-wider">Posição</div>
               <div className="font-display text-[20px] font-bold num">#{person.rank}</div>
             </div>
@@ -140,8 +138,8 @@ export function PerfPersonModal({ open, onOpenChange, person }: PerfPersonModalP
                 <StatTile
                   label="Vendas"
                   value={stats.vendas ?? 0}
-                  suffix="fechadas"
-                  accent={accent}
+                  sub="fechadas"
+                  accent={accentToken}
                   icon={<Handshake size={12} />}
                 />
                 <StatTile
@@ -174,7 +172,7 @@ export function PerfPersonModal({ open, onOpenChange, person }: PerfPersonModalP
                 <StatTile
                   label="Agendamentos"
                   value={stats.agendamentos ?? 0}
-                  accent={accent}
+                  accent={accentToken}
                   icon={<Calendar size={12} />}
                 />
                 <StatTile
@@ -203,11 +201,11 @@ export function PerfPersonModal({ open, onOpenChange, person }: PerfPersonModalP
                 Nenhuma atividade recente neste período.
               </p>
             ) : (
-              <div className="flex flex-col gap-2.5">
+              <div className="flex flex-col gap-2.5 max-h-150.5 overflow-y-auto">
                 {person.activity.map((a, i) => (
-                  <div key={i} className="flex items-start gap-3">
+                  <div key={i} className="flex items-center gap-3">
                     <div
-                      className="size-7 rounded-md grid place-items-center bg-card border border-border shrink-0 mt-0.5"
+                      className="size-7 rounded-md grid place-items-center bg-card border border-border shrink-0"
                       style={{
                         color:
                           a.tone === "good"
@@ -230,24 +228,10 @@ export function PerfPersonModal({ open, onOpenChange, person }: PerfPersonModalP
           </div>
         </div>
 
-        {/* Fixed footer */}
-        <DialogFooter className="px-5 py-3.5 border-t border-border bg-muted/20">
-          <span className="text-[11px] text-foreground/45 mr-auto">Período: últimos 7 dias</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-          >
-            Fechar
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => toast.info("Perfil completo em breve.")}
-          >
-            <ArrowRight data-icon="inline-start" size={12} />
-            Abrir perfil
-          </Button>
-        </DialogFooter>
+        {/* Period label */}
+        <div className="px-5 py-3 border-t border-border bg-muted/20">
+          <span className="text-[11px] text-foreground/45">Período: últimos 7 dias</span>
+        </div>
       </DialogContent>
     </Dialog>
   );
