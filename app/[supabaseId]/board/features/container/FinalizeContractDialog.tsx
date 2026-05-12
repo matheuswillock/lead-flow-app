@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTimezone } from '@/app/context/TimezoneContext';
@@ -50,12 +51,23 @@ export function FinalizeContractDialog({
 }: FinalizeContractDialogProps) {
   const { tz } = useTimezone();
   const [amount, setAmount] = useState<string>('');
-  const [startDate, setStartDate] = useState<Date>();
-  const [finalizedDate, setFinalizedDate] = useState<Date>();
+  const [startDate, setStartDate] = useState<Date | undefined>(() => new Date());
+  const [finalizedDate, setFinalizedDate] = useState<Date | undefined>();
   const [notes, setNotes] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [amountError, setAmountError] = useState<string>('');
+
+  useEffect(() => {
+    if (open) {
+      setStartDate(new Date());
+      setFinalizedDate(undefined);
+      setAmount('');
+      setNotes('');
+      setError('');
+      setAmountError('');
+    }
+  }, [open]);
 
   // Formatar valor como moeda brasileira
   const formatCurrencyDisplay = (value: string): string => {
@@ -80,11 +92,24 @@ export function FinalizeContractDialog({
     return parseInt(numbers || '0') / 100;
   };
 
+  const isFormValid =
+    parseFormattedValue(amount) > 0 &&
+    !amountError &&
+    !!startDate &&
+    !!finalizedDate &&
+    finalizedDate >= startDate;
+
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatCurrencyDisplay(e.target.value);
     const numericValue = parseFormattedValue(formatted);
     if (numericValue > MAX_CURRENCY_VALUE) {
       setAmountError(`O valor deve ser menor que ${MAX_CURRENCY_LABEL}`);
+      setAmount(formatted);
+      return;
+    }
+    if (formatted && numericValue === 0) {
+      setAmountError('O valor do contrato deve ser maior que R$ 0,00');
+      setAmount(formatted);
       return;
     }
     setAmountError('');
@@ -213,9 +238,12 @@ export function FinalizeContractDialog({
                   value={amount}
                   onChange={handleAmountChange}
                   disabled={isLoading}
-                  className="pl-10"
+                  className={cn("pl-10", amountError && "border-destructive focus-visible:ring-destructive")}
                 />
               </div>
+              {amountError && (
+                <p className="text-[12px] text-destructive">{amountError}</p>
+              )}
             </div>
 
             {/* Data de Início */}
@@ -232,15 +260,20 @@ export function FinalizeContractDialog({
                     disabled={isLoading}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {startDate ? format(startDate, 'PPP') : 'Selecione a data'}
+                    {startDate ? format(startDate, 'PPP', { locale: ptBR }) : 'Selecione a data'}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
                   <Calendar
                     mode="single"
+                    required={false}
                     selected={startDate}
                     onSelect={setStartDate}
                     weekdayLabelFormat="short"
+                    locale={ptBR}
+                    captionLayout="dropdown"
+                    fromYear={2020}
+                    toYear={new Date().getFullYear() + 5}
                     initialFocus
                   />
                 </PopoverContent>
@@ -261,15 +294,20 @@ export function FinalizeContractDialog({
                     disabled={isLoading}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {finalizedDate ? format(finalizedDate, 'PPP') : 'Selecione a data'}
+                    {finalizedDate ? format(finalizedDate, 'PPP', { locale: ptBR }) : 'Selecione a data'}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
                   <Calendar
                     mode="single"
+                    required={false}
                     selected={finalizedDate}
                     onSelect={setFinalizedDate}
                     weekdayLabelFormat="short"
+                    locale={ptBR}
+                    captionLayout="dropdown"
+                    fromYear={2020}
+                    toYear={new Date().getFullYear() + 5}
                     initialFocus
                     disabled={(date: Date) => startDate ? date < startDate : false}
                   />
@@ -290,9 +328,9 @@ export function FinalizeContractDialog({
             </div>
 
             {/* Mensagem de Erro */}
-            {(error || amountError) && (
+            {error && (
               <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
-                {amountError || error}
+                {error}
               </div>
             )}
           </div>
@@ -306,7 +344,7 @@ export function FinalizeContractDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isLoading} className='cursor-pointer'>
+            <Button type="submit" disabled={isLoading || !isFormValid} className='cursor-pointer'>
               {isLoading ? 'Finalizando...' : 'Fechar Contrato'}
             </Button>
           </DialogFooter>

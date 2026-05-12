@@ -55,6 +55,11 @@ type PendingStatusTriggerDrop = {
   confirmationMessage?: string | null;
 };
 
+type PendingFinalizeDrop = {
+  leadId: string;
+  from: ColumnKey;
+};
+
 type PendingMeetingHealdGateDrop = {
   leadId: string;
   from: ColumnKey;
@@ -122,6 +127,8 @@ interface IBoardContextState {
   pendingMeetingHealdGateDrop: PendingMeetingHealdGateDrop | null;
   clearPendingMeetingHealdGateDrop: () => void;
   applyPendingMeetingHealdGateTransition: () => Promise<boolean>;
+  pendingFinalizeDrop: PendingFinalizeDrop | null;
+  clearPendingFinalizeDrop: () => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
@@ -210,6 +217,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pendingScheduledDrop, setPendingScheduledDrop] = useState<PendingScheduledDrop | null>(null);
   const [pendingStatusTriggerDrop, setPendingStatusTriggerDrop] = useState<PendingStatusTriggerDrop | null>(null);
+  const [pendingFinalizeDrop, setPendingFinalizeDrop] = useState<PendingFinalizeDrop | null>(null);
   const [pendingMeetingHealdGateDrop, setPendingMeetingHealdGateDrop] =
     useState<PendingMeetingHealdGateDrop | null>(null);
 
@@ -868,6 +876,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         return;
       }
 
+      if (to === "contract_finalized") {
+        setPendingFinalizeDrop({ leadId, from });
+        return;
+      }
+
       void (async () => {
         const result = await updateLeadStatusInAPI(leadId, to, undefined, { from, to });
         if (!result?.isValid) return;
@@ -943,6 +956,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
   const clearPendingMeetingHealdGateDrop = useCallback(() => {
     setPendingMeetingHealdGateDrop(null);
+  }, []);
+
+  const clearPendingFinalizeDrop = useCallback(() => {
+    setPendingFinalizeDrop(null);
   }, []);
 
   const applyPendingMeetingHealdGateTransition = useCallback(async (): Promise<boolean> => {
@@ -1130,6 +1147,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingMeetingHealdGateDrop,
       clearPendingMeetingHealdGateDrop,
       applyPendingMeetingHealdGateTransition,
+      pendingFinalizeDrop,
+      clearPendingFinalizeDrop,
       finalizeContract,
     }),
     [
@@ -1170,6 +1189,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingMeetingHealdGateDrop,
       clearPendingMeetingHealdGateDrop,
       applyPendingMeetingHealdGateTransition,
+      pendingFinalizeDrop,
+      clearPendingFinalizeDrop,
       finalizeContract,
     ]
   );

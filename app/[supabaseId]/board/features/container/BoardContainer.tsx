@@ -55,6 +55,8 @@ export function BoardContainer({
     pendingMeetingHealdGateDrop,
     clearPendingMeetingHealdGateDrop,
     applyPendingMeetingHealdGateTransition,
+    pendingFinalizeDrop,
+    clearPendingFinalizeDrop,
     data,
   } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
@@ -113,6 +115,17 @@ export function BoardContainer({
       setShowStatusTriggerDialog(true);
     }
   }, [pendingNeedsTriggerDialog, pendingStatusTriggerDrop, pendingStatusTriggerLead]);
+
+  const pendingFinalizeLead = useMemo(() => {
+    if (!pendingFinalizeDrop) return null;
+    return data[pendingFinalizeDrop.from]?.find((item) => item.id === pendingFinalizeDrop.leadId) ?? null;
+  }, [data, pendingFinalizeDrop]);
+
+  useEffect(() => {
+    if (!pendingFinalizeDrop || !pendingFinalizeLead) return;
+    setSelectedLead(pendingFinalizeLead);
+    setShowFinalizeDialog(true);
+  }, [pendingFinalizeDrop, pendingFinalizeLead]);
 
   const handleNoShow = useCallback(
     async (lead: Lead) => {
@@ -256,7 +269,13 @@ export function BoardContainer({
         <>
           <FinalizeContractDialog
             open={showFinalizeDialog}
-            onOpenChange={setShowFinalizeDialog}
+            onOpenChange={(open) => {
+              setShowFinalizeDialog(open);
+              if (!open) {
+                clearPendingFinalizeDrop();
+                setSelectedLead(null);
+              }
+            }}
             leadName={selectedLead.name}
             onFinalize={handleFinalizeSubmit}
           />
