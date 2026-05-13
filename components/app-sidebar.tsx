@@ -6,7 +6,6 @@ import Image from "next/image"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
-  KanbanSquare,
   Users,
   CalendarDays,
   Users2,
@@ -82,7 +81,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const pathname = usePathname();
   const { user } = useUserContext();
   const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster } = useTeamContext();
-  const { hasAccess } = useFeatureAccess();
+  const { hasAccess, isBeta } = useFeatureAccess();
   const isMaster = user?.isMaster === true;
   const isManager = isManagerLikeRole(user?.role);
   const isCloser = user?.functions?.includes("CLOSER") === true;
@@ -97,27 +96,18 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
 
   const navigationItems: SidebarItem[] = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard, featureSlug: FEATURE_SLUGS.CRM_DASHBOARD },
-    { title: "CRM", url: `/${supabaseId}/crm`, icon: KanbanSquare, featureSlug: FEATURE_SLUGS.CRM_CRM },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays, featureSlug: FEATURE_SLUGS.CRM_CALENDAR },
     { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, closerOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
     { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
-    { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true, status: "comingSoon" },
-    {
-      title: "Integrações",
-      url: `/${supabaseId}/integrations`,
-      icon: Plug,
-      managerOnly: true,
-      requiresIntegrationsAccess: true,
-      status: "beta",
-    },
+    { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_WALLET },
   ];
 
   const emailItems: SidebarItem[] = [
-    { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL, status: "comingSoon" },
-    { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL, status: "comingSoon" },
-    { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL, status: "comingSoon" },
-    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, featureSlug: FEATURE_SLUGS.EMAIL, status: "comingSoon" },
-    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL, status: "comingSoon" },
+    { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_TEMPLATES },
+    { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CONTACTS },
+    { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_CAMPAIGNS },
+    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, featureSlug: FEATURE_SLUGS.EMAIL_HISTORY },
+    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL_ANALYTICS },
   ];
 
   const teamItems: SidebarItem[] = [
@@ -212,6 +202,15 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       .toUpperCase()
       .slice(0, 2);
 
+  const getItemBadge = (item: SidebarItem) => {
+    if (item.featureSlug && isBeta(item.featureSlug)) return getSidebarStatusBadge("beta")
+    return getSidebarStatusBadge(item.status)
+  }
+
+  const visibleNavigationItems = navigationItems.filter(canShowItem)
+  const visibleEmailItems = emailItems.filter(canShowItem)
+  const visibleTeamItems = teamItems.filter(canShowItem)
+
   return (
     <Sidebar collapsible="offcanvas" {...sidebarProps}>
       <SidebarHeader>
@@ -242,16 +241,13 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
         </div>
       </SidebarHeader>
         <SidebarContent>
+            {visibleNavigationItems.length > 0 && (
             <SidebarGroup>
                 <SidebarGroupLabel>Navegação</SidebarGroupLabel>
                 <SidebarGroupContent>
                     <SidebarMenu>
-                        {navigationItems.map((item) => {
-                          if (!canShowItem(item)) {
-                            return null;
-                          }
-
-                          const statusBadge = getSidebarStatusBadge(item.status);
+                        {visibleNavigationItems.map((item) => {
+                          const statusBadge = getItemBadge(item);
 
                           return (
                             <SidebarMenuItem key={item.title}>
@@ -274,19 +270,18 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                     </SidebarMenu>
                 </SidebarGroupContent>
             </SidebarGroup>
-            {(isManager || isMaster || isCloser) && hasAccess(FEATURE_SLUGS.EMAIL) && (
+            )}
+            {(isManager || isMaster || isCloser) &&
+              hasAccess(FEATURE_SLUGS.EMAIL) &&
+              visibleEmailItems.length > 0 && (
               <SidebarGroup>
                 <SidebarGroupLabel>
                   Email
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {emailItems.map((item) => {
-                      if (!canShowItem(item)) {
-                        return null;
-                      }
-
-                      const statusBadge = getSidebarStatusBadge(item.status);
+                    {visibleEmailItems.map((item) => {
+                      const statusBadge = getItemBadge(item)
 
                         return (
                         <SidebarMenuItem key={item.title}>
@@ -311,14 +306,10 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
               </SidebarGroup>
             )}
             <SidebarGroup>
-              <SidebarGroupLabel>Time</SidebarGroupLabel>
+              {visibleTeamItems.length > 0 && <SidebarGroupLabel>Time</SidebarGroupLabel>}
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {teamItems.map((item) => {
-                    if (!canShowItem(item)) {
-                      return null;
-                    }
-
+                  {visibleTeamItems.map((item) => {
                     return (
                       <SidebarMenuItem key={item.title}>
                         <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
@@ -424,6 +415,33 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 )}
               </SidebarGroupContent>
             </SidebarGroup>
+            {hasAccess(FEATURE_SLUGS.CONFIGURATION) && (
+              <SidebarGroup>
+                <SidebarGroupLabel>Configuração</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild isActive={isItemActive(`/${supabaseId}/integrations`)}>
+                        <Link href={`/${supabaseId}/integrations`} className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2">
+                            <Plug className="size-4 shrink-0" />
+                            <span>Integrações</span>
+                          </span>
+                          {isBeta(FEATURE_SLUGS.CONFIGURATION) && (() => {
+                            const badge = getSidebarStatusBadge("beta")
+                            return badge ? (
+                              <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            ) : null
+                          })()}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
         </SidebarContent>
         <SidebarFooter>
             <SidebarMenu>
