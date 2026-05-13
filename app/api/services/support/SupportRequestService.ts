@@ -7,13 +7,13 @@ export class SupportRequestService implements ISupportRequestService {
       const supportEmail = process.env.SUPPORT_EMAIL;
 
       if (!supportEmail) {
-        return { success: false, error: "SUPPORT_EMAIL nao configurado nas variaveis de ambiente" };
+        return { success: false, error: "SUPPORT_EMAIL não configurado nas variáveis de ambiente" };
       }
 
       const safeSubject = data.subject.trim();
       const safeMessage = data.message.trim();
-      const safeName = data.requesterName.trim() || "Usuario";
-      const safeEmail = data.requesterEmail.trim() || "Email nao informado";
+      const safeName = data.requesterName.trim() || "Usuário";
+      const safeEmail = data.requesterEmail.trim() || "E-mail não informado";
       const supportId = data.supportId;
 
       const html = `

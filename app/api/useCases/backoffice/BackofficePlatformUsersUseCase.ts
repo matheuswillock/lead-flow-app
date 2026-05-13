@@ -573,7 +573,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
 
       const subject = isOverdue
         ? "Corretor Studio - Sua assinatura está vencida"
-        : "Corretor Studio - Sua assinatura está a vencer"
+        : "Corretor Studio - Sua assinatura está prestes a vencer"
 
       const html = `
         <!DOCTYPE html>
@@ -595,7 +595,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
                     <tr>
                       <td style="padding:28px 24px;">
                         <h2 style="margin:0 0 12px 0;color:#171717;font-size:20px;">
-                          ${isOverdue ? "Sua assinatura está vencida" : "Sua assinatura está a vencer"}
+                          ${isOverdue ? "Sua assinatura está vencida" : "Sua assinatura está prestes a vencer"}
                         </h2>
                         <p style="margin:0 0 16px 0;color:#525252;line-height:1.5;">
                           Olá, <strong>${customerName}</strong>. Identificamos a fatura <strong>${invoiceNumber}</strong>
@@ -642,7 +642,7 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         [
           isOverdue
             ? "Notificação de assinatura vencida enviada com sucesso"
-            : "Notificação de assinatura a vencer enviada com sucesso",
+            : "Notificação de assinatura prestes a vencer enviada com sucesso",
         ],
         [],
         {

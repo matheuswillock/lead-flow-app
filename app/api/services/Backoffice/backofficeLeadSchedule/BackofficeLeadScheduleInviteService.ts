@@ -300,7 +300,7 @@ export class BackofficeLeadScheduleInviteService
         to: [closerRecipient],
         subject: `Corretor Studio: ${input.leadName}`,
         html: buildEmailShell(
-          `Agendada uma apresentação para ${input.leadName}`,
+          `Foi agendada uma apresentação para ${input.leadName}`,
           "Confirmação de agendamento",
           `
             <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
