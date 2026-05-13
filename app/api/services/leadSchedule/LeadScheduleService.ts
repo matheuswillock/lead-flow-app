@@ -49,6 +49,7 @@ const STATUS_LABELS: Record<LeadStatus, string> = {
 };
 
 const LOG_PREFIX = "[LeadScheduleService]";
+const NO_SHOW_SCHEDULE_CONFIRMATION_THRESHOLD = 3;
 
 const formatMeetingDate = (date: Date, tz: string) => formatIntimezone(date, "dd/MM/yyyy HH:mm", tz);
 
@@ -173,6 +174,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       extraGuests,
       createdByProfileId,
       transitionStatusToScheduled,
+      confirmNoShowSchedule,
     } = params;
 
     const meetingDate = new Date(meetingDateISO);
@@ -180,6 +182,26 @@ export class LeadScheduleService implements ILeadScheduleService {
 
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
     const scheduleId = existingSchedule?.id ?? randomUUID();
+    const noShowCount = existingSchedule?.noShowCount ?? 0;
+
+    if (
+      leadStatus === LeadStatus.no_show &&
+      noShowCount >= NO_SHOW_SCHEDULE_CONFIRMATION_THRESHOLD &&
+      !confirmNoShowSchedule
+    ) {
+      return new Output(
+        false,
+        [],
+        [
+          `Este lead já teve no-show ${noShowCount} vezes. Confirme para continuar com o agendamento.`,
+        ],
+        {
+          requiresNoShowConfirmation: true,
+          noShowCount,
+          threshold: NO_SHOW_SCHEDULE_CONFIRMATION_THRESHOLD,
+        }
+      );
+    }
 
     const closerProfile = await prisma.profile.findUnique({
       where: { id: closerId },

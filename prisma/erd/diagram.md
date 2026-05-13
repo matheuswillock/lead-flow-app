@@ -678,6 +678,7 @@ unsubscribed unsubscribed
   "leads_schedule" {
     String id "🗝️"
     DateTime date 
+    Int noShowCount 
     String meetingTitle "❓"
     String notes "❓"
     String meetingLink "❓"

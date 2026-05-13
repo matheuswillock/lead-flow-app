@@ -951,6 +951,7 @@ model LeadsSchedule {
   id                          String                @id @default(uuid()) @db.Uuid
   leadId                      String                @db.Uuid
   date                        DateTime              @db.Timestamptz(6)
+  noShowCount                 Int                   @default(0) @map("noShowCount")
   meetingTitle                String?               @db.Text
   notes                       String?               @db.Text
   meetingLink                 String?               @db.Text
