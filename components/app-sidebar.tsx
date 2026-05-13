@@ -348,6 +348,33 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 )}
               </SidebarGroup>
             )}
+            {hasAccess(FEATURE_SLUGS.CONFIGURATION) && (
+              <SidebarGroup>
+                <SidebarGroupLabel>Integrações</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton asChild isActive={isItemActive(`/${supabaseId}/integrations`)}>
+                        <Link href={`/${supabaseId}/integrations`} className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-2">
+                            <Plug className="size-4 shrink-0" />
+                            <span>Webhooks & Formulários</span>
+                          </span>
+                          {isBeta(FEATURE_SLUGS.CONFIGURATION) && (() => {
+                            const badge = getSidebarStatusBadge("beta")
+                            return badge ? (
+                              <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            ) : null
+                          })()}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            )}
             <SidebarGroup>
               {visibleTeamItems.length > 0 && <SidebarGroupLabel>Time</SidebarGroupLabel>}
               <SidebarGroupContent>
@@ -458,33 +485,6 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                 )}
               </SidebarGroupContent>
             </SidebarGroup>
-            {hasAccess(FEATURE_SLUGS.CONFIGURATION) && (
-              <SidebarGroup>
-                <SidebarGroupLabel>Integrações</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton asChild isActive={isItemActive(`/${supabaseId}/integrations`)}>
-                        <Link href={`/${supabaseId}/integrations`} className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2">
-                            <Plug className="size-4 shrink-0" />
-                            <span>Webhooks & Formulários</span>
-                          </span>
-                          {isBeta(FEATURE_SLUGS.CONFIGURATION) && (() => {
-                            const badge = getSidebarStatusBadge("beta")
-                            return badge ? (
-                              <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${badge.className}`}>
-                                {badge.label}
-                              </span>
-                            ) : null
-                          })()}
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            )}
         </SidebarContent>
         <SidebarFooter>
             <SidebarMenu>
