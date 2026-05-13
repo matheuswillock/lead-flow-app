@@ -67,6 +67,8 @@ const normalizeFiltersForComparison = (filters: CrmFiltersState): CrmFiltersStat
   closerFilter: [...filters.closerFilter].sort(),
   periodStart: filters.periodStart || "",
   periodEnd: filters.periodEnd || "",
+  scheduledPeriodStart: filters.scheduledPeriodStart || "",
+  scheduledPeriodEnd: filters.scheduledPeriodEnd || "",
   onlyMeetingsHeld: filters.onlyMeetingsHeld === true,
 });
 
@@ -131,7 +133,7 @@ export function CrmFiltersBar() {
     [closerMembers]
   );
 
-  const dateRange = useMemo<DateRange | undefined>(() => {
+  const createdDateRange = useMemo<DateRange | undefined>(() => {
     if (!crmFilters.periodStart) return undefined;
     return {
       from: parseDateKey(crmFilters.periodStart),
@@ -139,7 +141,15 @@ export function CrmFiltersBar() {
     };
   }, [crmFilters.periodStart, crmFilters.periodEnd]);
 
-  const handleDateChange = (range: DateRange | undefined) => {
+  const scheduledDateRange = useMemo<DateRange | undefined>(() => {
+    if (!crmFilters.scheduledPeriodStart) return undefined;
+    return {
+      from: parseDateKey(crmFilters.scheduledPeriodStart),
+      to: parseDateKey(crmFilters.scheduledPeriodEnd),
+    };
+  }, [crmFilters.scheduledPeriodStart, crmFilters.scheduledPeriodEnd]);
+
+  const handleCreatedDateChange = (range: DateRange | undefined) => {
     if (!range?.from) {
       setCrmFilters({ ...crmFilters, periodStart: "", periodEnd: "" });
       return;
@@ -148,6 +158,22 @@ export function CrmFiltersBar() {
       ...crmFilters,
       periodStart: format(range.from, "yyyy-MM-dd"),
       periodEnd: range.to ? format(range.to, "yyyy-MM-dd") : "",
+    });
+  };
+
+  const handleScheduledDateChange = (range: DateRange | undefined) => {
+    if (!range?.from) {
+      setCrmFilters({
+        ...crmFilters,
+        scheduledPeriodStart: "",
+        scheduledPeriodEnd: "",
+      });
+      return;
+    }
+    setCrmFilters({
+      ...crmFilters,
+      scheduledPeriodStart: format(range.from, "yyyy-MM-dd"),
+      scheduledPeriodEnd: range.to ? format(range.to, "yyyy-MM-dd") : "",
     });
   };
 
@@ -207,6 +233,11 @@ export function CrmFiltersBar() {
     if (queryJson.periodStart) {
       parts.push(
         `Período: ${queryJson.periodStart}${queryJson.periodEnd ? ` até ${queryJson.periodEnd}` : ""}`
+      );
+    }
+    if (queryJson.scheduledPeriodStart) {
+      parts.push(
+        `Agendamento: ${queryJson.scheduledPeriodStart}${queryJson.scheduledPeriodEnd ? ` até ${queryJson.scheduledPeriodEnd}` : ""}`
       );
     }
     if (queryJson.onlyMeetingsHeld) parts.push("Reuniões realizadas");
@@ -338,8 +369,13 @@ export function CrmFiltersBar() {
       )}
       <LeadsDateFilter
         title="Data de Criação"
-        value={dateRange}
-        onChange={handleDateChange}
+        value={createdDateRange}
+        onChange={handleCreatedDateChange}
+      />
+      <LeadsDateFilter
+        title="Data de Agendamento"
+        value={scheduledDateRange}
+        onChange={handleScheduledDateChange}
       />
       <Sheet
         open={presetsOpen}

@@ -176,7 +176,7 @@ export class FeatureAccessService implements IFeatureAccessService {
       }
     }
 
-    return { slugs: Array.from(allowedSlugs), betaSlugs }
+    return { slugs: Array.from(allowedSlugs), betaSlugs, userRole: safeUserRole }
   }
 }
 

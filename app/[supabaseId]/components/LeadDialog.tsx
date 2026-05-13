@@ -69,6 +69,10 @@ import {
   formatIntimezone,
   parseLocalToUtc,
 } from "@/lib/dates";
+import {
+  leadStatusTransitionClient,
+  type LeadStatusTransitionTrigger,
+} from "@/lib/services/leadStatusTransitionClient";
 
 interface LeadDialogProps {
   open: boolean;
@@ -89,14 +93,7 @@ type PendingStatusConfirmation = {
 
 type PendingSalesInfoGate = {
   status: string;
-  trigger?: {
-    followUpAt?: string;
-    followUpNotes?: string;
-    reason?: string;
-    reasonDetails?: string;
-    confirmRuleId?: string;
-    meetingHeald?: "yes" | "no" | null;
-  };
+  trigger?: LeadStatusTransitionTrigger;
   missingFields: MissingSalesField[];
   currentSalesInfo: SalesInfoInitialValues;
 };
@@ -204,7 +201,7 @@ export default function LeadDialog({
   const [meetingHealdGateOpen, setMeetingHealdGateOpen] = useState(false);
   const [meetingHealdBlockedOpen, setMeetingHealdBlockedOpen] = useState(false);
   const [pendingMeetingHealdGate, setPendingMeetingHealdGate] = useState<
-    { status: string; trigger?: Record<string, unknown> } | null
+    { status: string; trigger?: LeadStatusTransitionTrigger } | null
   >(null);
   const [teamMembers, setTeamMembers] = useState<MentionMember[]>([]);
   const [teamMembersLoading, setTeamMembersLoading] = useState(false);
@@ -1578,24 +1575,20 @@ export default function LeadDialog({
     }
 
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId || "",
-        },
-        body: JSON.stringify({ status: "no_show" }),
+      const transitionResult = await leadStatusTransitionClient.executeStatusTransition({
+        leadId: currentLead.id,
+        targetStatus: "no_show",
+        supabaseId,
+        teamId: activeTeamId,
       });
-
-      const result = await response.json().catch(() => null);
-      if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.join(", ") || "Erro ao marcar no-show");
+      const { output, transition } = transitionResult;
+      if (!transition.allowed || !output.isValid) {
+        throw new Error(output.errorMessages?.[0] || "Erro ao marcar no-show");
       }
 
       const payload =
-        result.result && typeof result.result === "object"
-          ? (result.result as Partial<Lead>)
+        output.result && typeof output.result === "object"
+          ? (output.result as Partial<Lead>)
           : {};
       await applyLocalLeadPatch(currentLead.id, { ...payload, status: "no_show" });
       setLocalLead((prev) =>
@@ -1610,14 +1603,7 @@ export default function LeadDialog({
 
   const updateLeadStatus = async (
     newStatus: string,
-    trigger?: {
-      followUpAt?: string;
-      followUpNotes?: string;
-      reason?: string;
-      reasonDetails?: string;
-      confirmRuleId?: string;
-      meetingHeald?: "yes" | "no" | null;
-    },
+    trigger?: LeadStatusTransitionTrigger,
     allowAutoConfirmation = false
   ) => {
     if (!currentLead || !supabaseId) return false;
@@ -1626,69 +1612,53 @@ export default function LeadDialog({
 
     setStatusUpdating(true);
     try {
-      const response = await fetch(`/api/v1/leads/${currentLead.id}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId || "",
-        },
-        body: JSON.stringify({
-          status: newStatus,
-          ...(trigger ? { trigger } : {}),
-        }),
+      const transitionResult = await leadStatusTransitionClient.executeStatusTransition({
+        leadId: currentLead.id,
+        targetStatus: newStatus,
+        supabaseId,
+        teamId: activeTeamId,
+        trigger,
       });
 
-      const result = await response.json().catch(() => null);
+      const { transition, output } = transitionResult;
+      if (!transition.allowed) {
+        const transitionMessage =
+          output.errorMessages?.[0] || "Não foi possível concluir a mudança de status.";
 
-      if (!response.ok || !result?.isValid) {
-        const requiresMeetingHeald = !!result?.result?.requiresMeetingHeald;
-        const canConfirmMeetingHealdResult = !!result?.result?.canConfirmMeetingHeald;
-
-        if (requiresMeetingHeald) {
+        if (transition.blockerType === "meeting_heald") {
           setPendingStatusConfirmation(null);
-          if (canConfirmMeetingHealdResult) {
+          if (transition.canConfirmMeetingHeald) {
             setPendingMeetingHealdGate({
               status: newStatus,
-              trigger: trigger ? (trigger as unknown as Record<string, unknown>) : undefined,
+              trigger: trigger ? { ...trigger } : undefined,
             });
             setMeetingHealdGateOpen(true);
           } else {
             setMeetingHealdBlockedOpen(true);
           }
-          toast.info(result?.errorMessages?.[0] || "Reuniao nao marcada como realizada.", {
+          toast.info(transitionMessage, {
             id: loadingToast,
             duration: 5000,
           });
           return false;
         }
 
-        const requiresConfirmation = !!result?.result?.requiresConfirmation;
-        const requiresSalesInfo = !!result?.result?.requiresSalesInfo;
-        const confirmationRuleId =
-          typeof result?.result?.confirmationRuleId === "string" ? result.result.confirmationRuleId : null;
-        const confirmationMessage =
-          result?.errorMessages?.[0] || "Confirmação adicional é necessária para concluir esta transição.";
-
-        if (requiresSalesInfo) {
-          const missingFields = Array.isArray(result?.result?.missingFields)
-            ? (result.result.missingFields.filter((field: unknown) =>
-                field === "ticket" || field === "contractDueDate" || field === "soldPlan"
-              ) as MissingSalesField[])
+        if (transition.blockerType === "sales_info") {
+          const missingFields = Array.isArray(transition.missingFields)
+            ? transition.missingFields
             : [];
-          const currentSalesInfoRaw = result?.result?.currentSalesInfo;
           const currentSalesInfo: SalesInfoInitialValues = {
             ticket:
-              currentSalesInfoRaw && typeof currentSalesInfoRaw.ticket === "number"
-                ? currentSalesInfoRaw.ticket
+              typeof transition.currentSalesInfo?.ticket === "number"
+                ? transition.currentSalesInfo.ticket
                 : currentLead.ticket ?? null,
             contractDueDate:
-              currentSalesInfoRaw && typeof currentSalesInfoRaw.contractDueDate === "string"
-                ? currentSalesInfoRaw.contractDueDate
+              typeof transition.currentSalesInfo?.contractDueDate === "string"
+                ? transition.currentSalesInfo.contractDueDate
                 : currentLead.contractDueDate ?? null,
             soldPlan:
-              currentSalesInfoRaw && typeof currentSalesInfoRaw.soldPlan === "string"
-                ? currentSalesInfoRaw.soldPlan
+              typeof transition.currentSalesInfo?.soldPlan === "string"
+                ? transition.currentSalesInfo.soldPlan
                 : currentLead.soldPlan ?? null,
           };
 
@@ -1699,16 +1669,22 @@ export default function LeadDialog({
             currentSalesInfo,
           });
           setSalesInfoDialogOpen(true);
-          toast.info(
-            result?.errorMessages?.[0] ||
-              "Preencha as informações de venda para continuar a mudança de status.",
-            { id: loadingToast, duration: 5000 }
-          );
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
           return false;
         }
 
-        if (requiresConfirmation && confirmationRuleId) {
+        if (transition.blockerType === "confirmation") {
+          const confirmationRuleId =
+            typeof transition.confirmationRuleId === "string" ? transition.confirmationRuleId : null;
+          const confirmationMessage =
+            transition.confirmationMessage ||
+            transitionMessage ||
+            "Confirmação adicional é necessária para concluir esta transição.";
+
           if (allowAutoConfirmation) {
+            if (!confirmationRuleId) {
+              throw new Error(confirmationMessage);
+            }
             return updateLeadStatus(
               newStatus,
               {
@@ -1719,20 +1695,54 @@ export default function LeadDialog({
             );
           }
 
-          setPendingStatusConfirmation({
-            status: newStatus,
-            confirmationRuleId,
-            message: confirmationMessage,
-          });
-          toast.info(confirmationMessage, { id: loadingToast, duration: 5000 });
+          if (confirmationRuleId) {
+            setPendingStatusConfirmation({
+              status: newStatus,
+              confirmationRuleId,
+              message: confirmationMessage,
+            });
+            if (needsStatusTriggerDialog(newStatus)) {
+              setStatusDialogOpen(false);
+              setShowStatusTriggerDialog(true);
+            }
+            toast.info(confirmationMessage, { id: loadingToast, duration: 5000 });
+            return false;
+          }
+        }
+
+        if (transition.blockerType === "finalize_contract") {
+          setStatusDialogOpen(false);
+          setShowFinalizeDialog(true);
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
           return false;
         }
 
-        throw new Error(result?.errorMessages?.join(", ") || "Erro ao atualizar status");
+        if (transition.blockerType === "schedule_required") {
+          setStatusDialogOpen(false);
+          setShowScheduleDialog(true);
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
+        if (
+          transition.blockerType === "future_sale_trigger" ||
+          transition.blockerType === "loss_reason_trigger"
+        ) {
+          setStatusDialogOpen(false);
+          setShowStatusTriggerDialog(true);
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
+        throw new Error(transitionMessage);
+      }
+
+      if (!output.isValid) {
+        throw new Error(output.errorMessages?.join(", ") || "Erro ao atualizar status");
       }
 
       const payload =
-        result.result && typeof result.result === "object" ? (result.result as Partial<Lead>) : {};
+        output.result && typeof output.result === "object" ? (output.result as Partial<Lead>) : {};
       await applyLocalLeadPatch(currentLead.id, {
         ...payload,
         status: newStatus as Lead["status"],
@@ -1763,12 +1773,6 @@ export default function LeadDialog({
     if (nextStatus === "scheduled") {
       setStatusDialogOpen(false);
       setShowScheduleDialog(true);
-      return;
-    }
-
-    if (needsStatusTriggerDialog(nextStatus)) {
-      setStatusDialogOpen(false);
-      setShowStatusTriggerDialog(true);
       return;
     }
 

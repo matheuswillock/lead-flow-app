@@ -33,6 +33,8 @@ import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { MetricsFilters } from '../services/IDashboardMetricsService';
 import { useTimezone } from '@/app/context/TimezoneContext';
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
 import {
   addDaysInTz,
   addMonthsInTz,
@@ -40,7 +42,7 @@ import {
   parseDateKeyToUtc,
   startOfDayInTz,
 } from '@/lib/dates';
-import { Input } from "@/components/ui/input";
+import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 
 function InfoTooltip({ text }: { text: string }) {
   return (
@@ -100,6 +102,14 @@ function formatDatePtBr(date: Date, tz: string): string {
   return formatIntimezone(date, 'dd/MM/yyyy', tz);
 }
 
+function parseDateKey(value: string): Date | undefined {
+  if (!value) return undefined;
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return undefined;
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 export function SectionCardsWithContext() {
   const {
     metrics,
@@ -114,18 +124,24 @@ export function SectionCardsWithContext() {
     clearCustomDateRange,
   } = useDashboardContext();
   const { tz } = useTimezone();
-
-  const [startDateInput, setStartDateInput] = React.useState(
-    customDateRange?.startDate ?? ""
-  );
-  const [endDateInput, setEndDateInput] = React.useState(
-    customDateRange?.endDate ?? ""
+  const [customDateRangeDraft, setCustomDateRangeDraft] = React.useState<DateRange | undefined>(
+    undefined
   );
 
   React.useEffect(() => {
-    setStartDateInput(customDateRange?.startDate ?? "");
-    setEndDateInput(customDateRange?.endDate ?? "");
+    setCustomDateRangeDraft(
+      customDateRange?.startDate
+        ? {
+            from: parseDateKey(customDateRange.startDate),
+            to: parseDateKey(customDateRange.endDate ?? ""),
+          }
+        : undefined
+    );
   }, [customDateRange]);
+
+  const customDateFilterRange = React.useMemo<DateRange | undefined>(() => {
+    return customDateRangeDraft;
+  }, [customDateRangeDraft]);
 
   if (isLoading) {
     return <DashboardCardsSkeleton />;
@@ -167,10 +183,19 @@ export function SectionCardsWithContext() {
 
   const periodText = getPeriodText();
 
-  const applyCustomDateRange = () => {
-    if (startDateInput && endDateInput) {
-      setCustomDateRange(startDateInput, endDateInput);
+  const handleCustomDateRangeChange = (range: DateRange | undefined) => {
+    setCustomDateRangeDraft(range);
+
+    if (!range?.from) {
+      clearCustomDateRange();
+      return;
     }
+
+    if (!range.to) {
+      return;
+    }
+
+    setCustomDateRange(format(range.from, "yyyy-MM-dd"), format(range.to, "yyyy-MM-dd"));
   };
   const filterDateRangeText = (() => {
     let startDate: Date | null = null;
@@ -198,32 +223,30 @@ export function SectionCardsWithContext() {
           {filterDateRangeText}
         </div>
         <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-          {(['7d', '30d', '3m', '6m', '1y'] as const).map((period) => (
+          {(
+            [
+              { value: "7d", label: "7 dias" },
+              { value: "30d", label: "30 dias" },
+              { value: "3m", label: "3 meses" },
+              { value: "6m", label: "6 meses" },
+              { value: "1y", label: "1 ano" },
+            ] as const
+          ).map((period) => (
             <Button
-              key={period}
+              key={period.value}
               size="sm"
-              variant={filters.period === period && !customDateRange ? "default" : "outline"}
-              onClick={() => setPeriod(period)}
+              variant={filters.period === period.value && !customDateRange ? "default" : "outline"}
+              onClick={() => setPeriod(period.value)}
               className="text-xs"
             >
-              {period}
+              {period.label}
             </Button>
           ))}
-          <Input
-            type="date"
-            value={startDateInput}
-            onChange={(event) => setStartDateInput(event.target.value)}
-            className="h-9 w-[170px] rounded-md border border-input bg-background px-2 text-xs sm:w-[190px]"
+          <LeadsDateFilter
+            title="Período customizado"
+            value={customDateFilterRange}
+            onChange={handleCustomDateRangeChange}
           />
-          <Input
-            type="date"
-            value={endDateInput}
-            onChange={(event) => setEndDateInput(event.target.value)}
-            className="h-9 w-[170px] rounded-md border border-input bg-background px-2 text-xs sm:w-[190px]"
-          />
-          <Button size="sm" variant="outline" onClick={applyCustomDateRange} className="text-xs">
-            Aplicar
-          </Button>
           <Button size="sm" variant="outline" onClick={clearCustomDateRange} className="text-xs">
             Limpar
           </Button>
@@ -307,7 +330,7 @@ export function SectionCardsWithContext() {
             <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
                 🎯 Taxa de Conversão
-                <InfoTooltip text="Quantidade de vendas dividida pelo total de leads no período selecionado." />
+                <InfoTooltip text="Leads convertidos (Boleto gerado + DPS + Contrato fechado) dividido pelo total de leads no período." />
                 </CardTitle>
               <div className="rounded-full bg-blue-500/10 p-2">
                 <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />

@@ -7,6 +7,8 @@ export interface CrmFiltersState {
   closerFilter: string[];
   periodStart: string;
   periodEnd: string;
+  scheduledPeriodStart: string;
+  scheduledPeriodEnd: string;
   onlyMeetingsHeld: boolean;
 }
 
@@ -17,6 +19,8 @@ export const DEFAULT_CRM_FILTERS: CrmFiltersState = {
   closerFilter: [],
   periodStart: "",
   periodEnd: "",
+  scheduledPeriodStart: "",
+  scheduledPeriodEnd: "",
   onlyMeetingsHeld: false,
 };
 
@@ -27,6 +31,8 @@ export const isCrmFiltersEmpty = (filters: CrmFiltersState): boolean =>
   filters.closerFilter.length === 0 &&
   !filters.periodStart &&
   !filters.periodEnd &&
+  !filters.scheduledPeriodStart &&
+  !filters.scheduledPeriodEnd &&
   !filters.onlyMeetingsHeld;
 
 export const CRM_DEFAULT_VIEW_MODE: CrmViewMode = "pipeline";

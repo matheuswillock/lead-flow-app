@@ -22,6 +22,8 @@ export interface UpdateLeadStatusTriggerInput {
   meetingHeald?: MeetingHeald | null;
 }
 
+export type LeadStatusTransitionMode = "validate" | "apply";
+
 export interface ILeadUseCase {
   createLead(
     supabaseId: string,
@@ -62,7 +64,8 @@ export interface ILeadUseCase {
     supabaseId: string,
     id: string,
     status: LeadStatus,
-    trigger?: UpdateLeadStatusTriggerInput
+    trigger?: UpdateLeadStatusTriggerInput,
+    mode?: LeadStatusTransitionMode
   ): Promise<Output>;
   assignLeadToOperator(supabaseId: string, id: string, operatorId: string): Promise<Output>;
   transferLead(supabaseId: string, id: string, data: TransferLeadRequest): Promise<Output>;

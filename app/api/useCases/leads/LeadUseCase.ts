@@ -2,6 +2,7 @@ import { ILeadUseCase } from "./ILeadUseCase";
 import type {
   LeadCreateOptions,
   LeadCreationActivityContext,
+  LeadStatusTransitionMode,
   UpdateLeadStatusTriggerInput,
 } from "./ILeadUseCase";
 import { ILeadRepository } from "../../infra/data/repositories/lead/ILeadRepository";
@@ -53,6 +54,18 @@ const SALES_INFO_REQUIRED_TARGET_STATUSES: LeadStatus[] = [
   LeadStatus.invoicePayment,
   LeadStatus.contract_finalized,
 ];
+
+type LeadStatusTransitionBlockerType =
+  | "sales_info"
+  | "confirmation"
+  | "meeting_heald"
+  | "schedule_required"
+  | "finalize_contract"
+  | "future_sale_trigger"
+  | "loss_reason_trigger"
+  | "disabled_status"
+  | "validation_error"
+  | "none";
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -690,7 +703,8 @@ export class LeadUseCase implements ILeadUseCase {
     supabaseId: string,
     id: string,
     status: LeadStatus,
-    trigger?: UpdateLeadStatusTriggerInput
+    trigger?: UpdateLeadStatusTriggerInput,
+    mode: LeadStatusTransitionMode = "apply"
   ): Promise<Output> {
     try {
       // Verificar se o usuário existe e tem permissão
@@ -706,6 +720,32 @@ export class LeadUseCase implements ILeadUseCase {
       
       if (!existingLead) {
         return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      const createTransition = (
+        allowed: boolean,
+        blockerType: LeadStatusTransitionBlockerType,
+        extra: Record<string, unknown> = {}
+      ) => ({
+        allowed,
+        blockerType,
+        sourceStatus: existingLead.status,
+        targetStatus: status,
+        ...extra,
+      });
+
+      if (mode === "validate" && status === LeadStatus.contract_finalized) {
+        return new Output(
+          false,
+          [],
+          ["Para concluir como Negócio fechado, use o fluxo de fechamento de contrato."],
+          {
+            requiresFinalizeContract: true,
+            sourceStatus: existingLead.status,
+            targetStatus: status,
+            transition: createTransition(false, "finalize_contract"),
+          }
+        );
       }
 
       const requiresSalesInfoBeforeTransition =
@@ -731,6 +771,13 @@ export class LeadUseCase implements ILeadUseCase {
         }
 
         if (missingFields.length > 0) {
+          const currentSalesInfo = {
+            ticket: existingLead.ticket ? Number(existingLead.ticket) : null,
+            contractDueDate: existingLead.contractDueDate
+              ? existingLead.contractDueDate.toISOString()
+              : null,
+            soldPlan: existingLead.soldPlan || null,
+          };
           return new Output(
             false,
             [],
@@ -742,13 +789,11 @@ export class LeadUseCase implements ILeadUseCase {
               missingFields,
               sourceStatus: existingLead.status,
               targetStatus: status,
-              currentSalesInfo: {
-                ticket: existingLead.ticket ? Number(existingLead.ticket) : null,
-                contractDueDate: existingLead.contractDueDate
-                  ? existingLead.contractDueDate.toISOString()
-                  : null,
-                soldPlan: existingLead.soldPlan || null,
-              },
+              currentSalesInfo,
+              transition: createTransition(false, "sales_info", {
+                missingFields,
+                currentSalesInfo,
+              }),
             }
           );
         }
@@ -771,6 +816,7 @@ export class LeadUseCase implements ILeadUseCase {
               requiresFinalizeContract: true,
               sourceStatus: LeadStatus.offerSubmission,
               targetStatus: status,
+              transition: createTransition(false, "finalize_contract"),
             }
           );
         }
@@ -780,10 +826,24 @@ export class LeadUseCase implements ILeadUseCase {
 
       if (status === LeadStatus.no_show) {
         if (!existingLead.meetingDate) {
-          return new Output(false, [], ["Lead precisa ter um agendamento para marcar no-show."], null);
+          return new Output(
+            false,
+            [],
+            ["Lead precisa ter um agendamento para marcar no-show."],
+            {
+              transition: createTransition(false, "validation_error"),
+            }
+          );
         }
         if (existingLead.meetingDate.getTime() > Date.now()) {
-          return new Output(false, [], ["Não é possível marcar no-show antes do horário agendado."], null);
+          return new Output(
+            false,
+            [],
+            ["Não é possível marcar no-show antes do horário agendado."],
+            {
+              transition: createTransition(false, "validation_error"),
+            }
+          );
         }
       }
 
@@ -817,6 +877,11 @@ export class LeadUseCase implements ILeadUseCase {
               canConfirmMeetingHeald,
               allowNoShow,
               meetingDate: existingLead.meetingDate ? existingLead.meetingDate.toISOString() : null,
+              transition: createTransition(false, "meeting_heald", {
+                canConfirmMeetingHeald,
+                allowNoShow,
+                meetingDate: existingLead.meetingDate ? existingLead.meetingDate.toISOString() : null,
+              }),
             }
           );
         }
@@ -831,6 +896,11 @@ export class LeadUseCase implements ILeadUseCase {
               canConfirmMeetingHeald: false,
               allowNoShow,
               meetingDate: existingLead.meetingDate ? existingLead.meetingDate.toISOString() : null,
+              transition: createTransition(false, "meeting_heald", {
+                canConfirmMeetingHeald: false,
+                allowNoShow,
+                meetingDate: existingLead.meetingDate ? existingLead.meetingDate.toISOString() : null,
+              }),
             }
           );
         }
@@ -850,7 +920,9 @@ export class LeadUseCase implements ILeadUseCase {
           false,
           [],
           [`O status ${getStatusLabel(status)} está desabilitado para este time.`],
-          null
+          {
+            transition: createTransition(false, "disabled_status"),
+          }
         );
       }
 
@@ -892,6 +964,10 @@ export class LeadUseCase implements ILeadUseCase {
                 targetStatus: status,
                 requiredStatus: ruleToSurface.requiredStatus,
                 confirmationMessage: ruleToSurface.confirmationMessage || null,
+                transition: createTransition(false, "confirmation", {
+                  confirmationRuleId: ruleToSurface.id,
+                  confirmationMessage: ruleToSurface.confirmationMessage || null,
+                }),
               });
             }
 
@@ -899,6 +975,7 @@ export class LeadUseCase implements ILeadUseCase {
               requiresConfirmation: false,
               targetStatus: status,
               requiredStatus: ruleToSurface.requiredStatus,
+              transition: createTransition(false, "validation_error"),
             });
           }
         }
@@ -921,7 +998,9 @@ export class LeadUseCase implements ILeadUseCase {
             false,
             [],
             ["Lead precisa de um agendamento válido antes de mudar para Agendado. Use o fluxo de agendamento."],
-            null
+            {
+              transition: createTransition(false, "schedule_required"),
+            }
           );
         }
       }
@@ -937,7 +1016,9 @@ export class LeadUseCase implements ILeadUseCase {
             false,
             [],
             ["Venda Futura exige data válida para entrar em contato."],
-            null
+            {
+              transition: createTransition(false, "future_sale_trigger"),
+            }
           );
         }
 
@@ -953,12 +1034,25 @@ export class LeadUseCase implements ILeadUseCase {
             false,
             [],
             ["Informe o motivo para concluir a mudança de status."],
-            null
+            {
+              transition: createTransition(false, "loss_reason_trigger"),
+            }
           );
         }
 
         statusUpdateExtraData.lossReason = reason;
         statusUpdateExtraData.lossReasonDetails = trigger?.reasonDetails?.trim() || null;
+      }
+
+      if (mode === "validate") {
+        return new Output(
+          true,
+          ["Transição validada com sucesso."],
+          [],
+          {
+            transition: createTransition(true, "none"),
+          }
+        );
       }
 
       // Atualizar o status do lead
@@ -1079,10 +1173,29 @@ export class LeadUseCase implements ILeadUseCase {
         });
       }
 
-      return new Output(true, ["Status do lead atualizado com sucesso"], [], this.transformToDTO(lead));
+      return new Output(
+        true,
+        ["Status do lead atualizado com sucesso"],
+        [],
+        {
+          ...this.transformToDTO(lead),
+          transition: createTransition(true, "none"),
+        }
+      );
     } catch (error) {
       console.error("Erro ao atualizar status do lead:", error);
-      return new Output(false, [], ["Erro interno do servidor ao atualizar status do lead"], null);
+      return new Output(
+        false,
+        [],
+        ["Erro interno do servidor ao atualizar status do lead"],
+        {
+          transition: {
+            allowed: false,
+            blockerType: "validation_error",
+            targetStatus: status,
+          },
+        }
+      );
     }
   }
 

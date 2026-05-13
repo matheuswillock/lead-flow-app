@@ -637,6 +637,10 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     const activeClosers = externalFilters?.closerFilter ?? [];
     const activeStart = externalFilters !== undefined ? externalFilters.periodStart : periodStart;
     const activeEnd = externalFilters !== undefined ? externalFilters.periodEnd : periodEnd;
+    const activeScheduledStart =
+      externalFilters !== undefined ? externalFilters.scheduledPeriodStart : "";
+    const activeScheduledEnd =
+      externalFilters !== undefined ? externalFilters.scheduledPeriodEnd : "";
     const activeMeetingsHeld =
       externalFilters !== undefined ? externalFilters.onlyMeetingsHeld : onlyMeetingsHeld;
 
@@ -668,9 +672,35 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       const beforeEnd = !activeEnd || createdKey <= activeEnd;
       const matchesPeriod = afterStart && beforeEnd;
 
+      let matchesScheduledPeriod = true;
+      if (activeScheduledStart || activeScheduledEnd) {
+        if (!lead.meetingDate) {
+          matchesScheduledPeriod = false;
+        } else {
+          const meetingDateKey = formatDateKey(lead.meetingDate, tz);
+          if (!meetingDateKey) {
+            matchesScheduledPeriod = false;
+          } else {
+            const afterScheduledStart =
+              !activeScheduledStart || meetingDateKey >= activeScheduledStart;
+            const beforeScheduledEnd =
+              !activeScheduledEnd || meetingDateKey <= activeScheduledEnd;
+            matchesScheduledPeriod = afterScheduledStart && beforeScheduledEnd;
+          }
+        }
+      }
+
       const matchesMeetingsHeld = !activeMeetingsHeld || lead.meetingHeald === "yes";
 
-      return matchesQuery && matchesStatus && matchesResponsible && matchesCloser && matchesMeetingsHeld && matchesPeriod;
+      return (
+        matchesQuery &&
+        matchesStatus &&
+        matchesResponsible &&
+        matchesCloser &&
+        matchesMeetingsHeld &&
+        matchesPeriod &&
+        matchesScheduledPeriod
+      );
     });
   }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, periodStart, periodEnd, tz]);
 

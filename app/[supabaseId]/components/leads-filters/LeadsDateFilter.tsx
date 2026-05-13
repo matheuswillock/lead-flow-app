@@ -25,6 +25,7 @@ interface LeadsDateFilterProps {
 
 export function LeadsDateFilter({ title, value, onChange }: LeadsDateFilterProps) {
   const { tz } = useTimezone();
+  const currentYear = nowInTz(tz).getFullYear();
   const handleClear = () => {
     onChange(undefined);
   };
@@ -60,6 +61,9 @@ export function LeadsDateFilter({ title, value, onChange }: LeadsDateFilterProps
           mode="range"
           selected={value}
           onSelect={onChange}
+          captionLayout="dropdown"
+          fromYear={2000}
+          toYear={currentYear}
           weekdayLabelFormat="short"
           locale={ptBR}
           numberOfMonths={1}
