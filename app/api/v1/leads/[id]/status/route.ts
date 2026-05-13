@@ -83,8 +83,18 @@ export async function PUT(
       "requiresMeetingHeald" in output.result &&
       (output.result as { requiresMeetingHeald?: boolean }).requiresMeetingHeald
     );
+    const requiresSalesInfo = !!(
+      output.result &&
+      typeof output.result === "object" &&
+      "requiresSalesInfo" in output.result &&
+      (output.result as { requiresSalesInfo?: boolean }).requiresSalesInfo
+    );
 
-    const responseStatus = output.isValid ? 200 : needsConfirmation || requiresMeetingHeald ? 409 : 400;
+    const responseStatus = output.isValid
+      ? 200
+      : needsConfirmation || requiresMeetingHeald || requiresSalesInfo
+        ? 409
+        : 400;
     return NextResponse.json(output, { status: responseStatus });
 
   } catch (error) {

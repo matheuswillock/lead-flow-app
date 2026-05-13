@@ -60,6 +60,12 @@ import { isMeetingOverdue } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
 import {
+  SalesInfoRequirementDialog,
+  type MissingSalesField,
+  type SalesInfoInitialValues,
+  type SalesInfoPayload,
+} from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
+import {
   formatIntimezone,
   parseLocalToUtc,
 } from "@/lib/dates";
@@ -79,6 +85,20 @@ type PendingStatusConfirmation = {
   status: string;
   confirmationRuleId: string;
   message: string;
+};
+
+type PendingSalesInfoGate = {
+  status: string;
+  trigger?: {
+    followUpAt?: string;
+    followUpNotes?: string;
+    reason?: string;
+    reasonDetails?: string;
+    confirmRuleId?: string;
+    meetingHeald?: "yes" | "no" | null;
+  };
+  missingFields: MissingSalesField[];
+  currentSalesInfo: SalesInfoInitialValues;
 };
 
 const needsStatusTriggerDialog = (status: string) =>
@@ -174,6 +194,9 @@ export default function LeadDialog({
   const [statusSelection, setStatusSelection] = useState<string>("");
   const [statusUpdating, setStatusUpdating] = useState(false);
   const [pendingStatusConfirmation, setPendingStatusConfirmation] = useState<PendingStatusConfirmation | null>(null);
+  const [salesInfoDialogOpen, setSalesInfoDialogOpen] = useState(false);
+  const [salesInfoSaving, setSalesInfoSaving] = useState(false);
+  const [pendingSalesInfoGate, setPendingSalesInfoGate] = useState<PendingSalesInfoGate | null>(null);
 
   useEffect(() => {
     setLocalLead(lead);
@@ -1641,10 +1664,48 @@ export default function LeadDialog({
         }
 
         const requiresConfirmation = !!result?.result?.requiresConfirmation;
+        const requiresSalesInfo = !!result?.result?.requiresSalesInfo;
         const confirmationRuleId =
           typeof result?.result?.confirmationRuleId === "string" ? result.result.confirmationRuleId : null;
         const confirmationMessage =
           result?.errorMessages?.[0] || "Confirmação adicional é necessária para concluir esta transição.";
+
+        if (requiresSalesInfo) {
+          const missingFields = Array.isArray(result?.result?.missingFields)
+            ? (result.result.missingFields.filter((field: unknown) =>
+                field === "ticket" || field === "contractDueDate" || field === "soldPlan"
+              ) as MissingSalesField[])
+            : [];
+          const currentSalesInfoRaw = result?.result?.currentSalesInfo;
+          const currentSalesInfo: SalesInfoInitialValues = {
+            ticket:
+              currentSalesInfoRaw && typeof currentSalesInfoRaw.ticket === "number"
+                ? currentSalesInfoRaw.ticket
+                : currentLead.ticket ?? null,
+            contractDueDate:
+              currentSalesInfoRaw && typeof currentSalesInfoRaw.contractDueDate === "string"
+                ? currentSalesInfoRaw.contractDueDate
+                : currentLead.contractDueDate ?? null,
+            soldPlan:
+              currentSalesInfoRaw && typeof currentSalesInfoRaw.soldPlan === "string"
+                ? currentSalesInfoRaw.soldPlan
+                : currentLead.soldPlan ?? null,
+          };
+
+          setPendingSalesInfoGate({
+            status: newStatus,
+            trigger: trigger ? { ...trigger } : undefined,
+            missingFields,
+            currentSalesInfo,
+          });
+          setSalesInfoDialogOpen(true);
+          toast.info(
+            result?.errorMessages?.[0] ||
+              "Preencha as informações de venda para continuar a mudança de status.",
+            { id: loadingToast, duration: 5000 }
+          );
+          return false;
+        }
 
         if (requiresConfirmation && confirmationRuleId) {
           if (allowAutoConfirmation) {
@@ -1762,6 +1823,53 @@ export default function LeadDialog({
     if (updated) {
       setPendingStatusConfirmation(null);
       setStatusDialogOpen(false);
+    }
+  };
+
+  const handleSalesInfoRequirementSave = async (payload: SalesInfoPayload) => {
+    if (!currentLead || !supabaseId || !pendingSalesInfoGate) return;
+
+    setSalesInfoSaving(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Erro ao salvar informações de venda");
+      }
+
+      const salesPatch =
+        result.result && typeof result.result === "object"
+          ? (result.result as Partial<Lead>)
+          : {};
+      await applyLocalLeadPatch(currentLead.id, salesPatch);
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id ? ({ ...prev, ...salesPatch } as Lead) : prev,
+      );
+
+      const updated = await updateLeadStatus(
+        pendingSalesInfoGate.status,
+        pendingSalesInfoGate.trigger,
+        false
+      );
+      if (!updated) return;
+
+      setSalesInfoDialogOpen(false);
+      setPendingSalesInfoGate(null);
+      setStatusDialogOpen(false);
+      setShowStatusTriggerDialog(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao salvar informações de venda");
+    } finally {
+      setSalesInfoSaving(false);
     }
   };
 
@@ -2690,7 +2798,14 @@ export default function LeadDialog({
             }
           }}
           leadName={currentLead.name}
+          leadCloserId={currentLead.closerId ?? undefined}
           onFinalize={handleFinalizeSubmit}
+          closers={availableScheduleClosers}
+          healthPlans={healthPlans}
+          initialAmount={currentLead.ticket}
+          initialStartDate={currentLead.contractDueDate}
+          initialOperadora={currentLead.soldPlan}
+          initialHolderCnpj={currentLead.cnpj}
         />
       )}
 
@@ -2781,6 +2896,24 @@ export default function LeadDialog({
         open={meetingHealdBlockedOpen}
         onOpenChange={setMeetingHealdBlockedOpen}
       />
+
+      {currentLead && (
+        <SalesInfoRequirementDialog
+          open={salesInfoDialogOpen}
+          onOpenChange={(nextOpen) => {
+            setSalesInfoDialogOpen(nextOpen);
+            if (!nextOpen) {
+              setPendingSalesInfoGate(null);
+            }
+          }}
+          onSave={handleSalesInfoRequirementSave}
+          healthPlans={healthPlans}
+          leadName={currentLead.name}
+          isSaving={salesInfoSaving}
+          initialValues={pendingSalesInfoGate?.currentSalesInfo}
+          missingFields={pendingSalesInfoGate?.missingFields}
+        />
+      )}
 
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
         <DialogContent className="sm:max-w-130">

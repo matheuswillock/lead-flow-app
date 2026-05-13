@@ -55,6 +55,16 @@ const formatMeetingDate = (date: Date, tz: string) => formatIntimezone(date, "dd
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
+const toUserFacingGoogleCalendarError = (rawError: string): string => {
+  const normalized = rawError.toLowerCase();
+
+  if (normalized.includes("insufficient authentication scopes")) {
+    return "a conta Google do closer está conectada sem as permissões necessárias para criar eventos. Peça para reconectar o Google Calendar em Conta e tente novamente.";
+  }
+
+  return rawError;
+};
+
 const extractResendMessageId = (data: unknown): string | null => {
   if (!data || typeof data !== "object") return null;
   const maybeId = (data as { id?: unknown }).id;
@@ -302,10 +312,15 @@ export class LeadScheduleService implements ILeadScheduleService {
           metadata: inviteDispatchLastPayload,
         });
       } catch (calendarError) {
-        googleDispatchError = getErrorMessage(calendarError, "Falha ao criar evento no Google Calendar");
+        const rawGoogleDispatchError = getErrorMessage(
+          calendarError,
+          "Falha ao criar evento no Google Calendar"
+        );
+        googleDispatchError = toUserFacingGoogleCalendarError(rawGoogleDispatchError);
         inviteDispatchLastError = googleDispatchError;
         inviteDispatchLastPayload = {
           provider: "google",
+          rawError: rawGoogleDispatchError,
           error: googleDispatchError,
           ...participantDispatchMetadata,
         };
@@ -314,7 +329,8 @@ export class LeadScheduleService implements ILeadScheduleService {
           {
             leadId,
             scheduleId,
-            errorMessage: googleDispatchError,
+            errorMessage: rawGoogleDispatchError,
+            userMessage: googleDispatchError,
             googleRecipients,
           },
           calendarError

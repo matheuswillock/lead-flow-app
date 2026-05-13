@@ -38,6 +38,12 @@ import { UserAssociated } from '@/app/api/v1/profiles/DTO/profileResponseDTO';
 import { useParams } from 'next/navigation';
 import { useTeamContext } from '@/app/context/TeamContext';
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from '@/app/[supabaseId]/components/MeetingHealdGateDialog';
+import {
+  SalesInfoRequirementDialog,
+  type MissingSalesField,
+  type SalesInfoInitialValues,
+  type SalesInfoPayload,
+} from '@/app/[supabaseId]/components/SalesInfoRequirementDialog';
 
 interface ChangeStatusDialogProps {
   open: boolean;
@@ -46,6 +52,7 @@ interface ChangeStatusDialogProps {
   statusLabels: Record<string, string>;
   onStatusChanged: (leadId: string, patch: Partial<Lead>) => void | Promise<void>;
   closers: UserAssociated[];
+  healthPlans: { id: string; name: string }[];
   teamMembers?: UserAssociated[];
   onSchedulePatched?: (payload: ScheduleMeetingSuccessPayload) => void;
 }
@@ -54,6 +61,20 @@ type PendingConfirmation = {
   status: string;
   confirmationRuleId: string;
   message: string;
+};
+
+type PendingSalesInfoGate = {
+  status: string;
+  trigger?: {
+    followUpAt?: string;
+    followUpNotes?: string;
+    reason?: string;
+    reasonDetails?: string;
+    confirmRuleId?: string;
+    meetingHeald?: 'yes' | 'no' | null;
+  };
+  missingFields: MissingSalesField[];
+  currentSalesInfo: SalesInfoInitialValues;
 };
 
 const needsTriggerDialog = (status: string) =>
@@ -66,6 +87,7 @@ export function ChangeStatusDialog({
   statusLabels,
   onStatusChanged,
   closers,
+  healthPlans,
   teamMembers,
   onSchedulePatched,
 }: ChangeStatusDialogProps) {
@@ -77,6 +99,9 @@ export function ChangeStatusDialog({
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showStatusTriggerDialog, setShowStatusTriggerDialog] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [pendingSalesInfoGate, setPendingSalesInfoGate] = useState<PendingSalesInfoGate | null>(null);
+  const [showSalesInfoDialog, setShowSalesInfoDialog] = useState(false);
+  const [salesInfoSaving, setSalesInfoSaving] = useState(false);
   const [meetingHealdGateOpen, setMeetingHealdGateOpen] = useState(false);
   const [meetingHealdBlockedOpen, setMeetingHealdBlockedOpen] = useState(false);
   const [pendingMeetingHealdGate, setPendingMeetingHealdGate] = useState<
@@ -138,6 +163,7 @@ export function ChangeStatusDialog({
         }
 
         const requiresConfirmation = !!result?.result?.requiresConfirmation;
+        const requiresSalesInfo = !!result?.result?.requiresSalesInfo;
         const confirmationRuleId =
           typeof result?.result?.confirmationRuleId === 'string'
             ? result.result.confirmationRuleId
@@ -145,6 +171,42 @@ export function ChangeStatusDialog({
         const confirmationMessage =
           result?.errorMessages?.[0] ||
           'Confirmação adicional é necessária para concluir esta transição.';
+
+        if (requiresSalesInfo) {
+          const missingFields = Array.isArray(result?.result?.missingFields)
+            ? (result.result.missingFields.filter((field: unknown) =>
+                field === 'ticket' || field === 'contractDueDate' || field === 'soldPlan'
+              ) as MissingSalesField[])
+            : [];
+          const currentSalesInfoRaw = result?.result?.currentSalesInfo;
+          const currentSalesInfo: SalesInfoInitialValues = {
+            ticket:
+              currentSalesInfoRaw && typeof currentSalesInfoRaw.ticket === 'number'
+                ? currentSalesInfoRaw.ticket
+                : lead.ticket ?? null,
+            contractDueDate:
+              currentSalesInfoRaw && typeof currentSalesInfoRaw.contractDueDate === 'string'
+                ? currentSalesInfoRaw.contractDueDate
+                : lead.contractDueDate ?? null,
+            soldPlan:
+              currentSalesInfoRaw && typeof currentSalesInfoRaw.soldPlan === 'string'
+                ? currentSalesInfoRaw.soldPlan
+                : lead.soldPlan ?? null,
+          };
+          setPendingSalesInfoGate({
+            status: newStatus,
+            trigger: trigger ? { ...trigger } : undefined,
+            missingFields,
+            currentSalesInfo,
+          });
+          setShowSalesInfoDialog(true);
+          toast.info(
+            result?.errorMessages?.[0] ||
+              'Preencha as informações de venda para continuar a mudança de status.',
+            { id: loadingToast, duration: 5000 }
+          );
+          return false;
+        }
 
         if (requiresConfirmation && confirmationRuleId) {
           if (allowAutoConfirmation) {
@@ -252,6 +314,48 @@ export function ChangeStatusDialog({
     setShowFinalizeDialog(false);
   };
 
+  const handleSalesInfoSave = async (payload: SalesInfoPayload) => {
+    if (!lead || !pendingSalesInfoGate) return;
+
+    setSalesInfoSaving(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const salesResult = await response.json().catch(() => null);
+      if (!response.ok || !salesResult?.isValid) {
+        throw new Error(salesResult?.errorMessages?.[0] || 'Erro ao salvar informações de venda');
+      }
+
+      const salesPatch =
+        salesResult.result && typeof salesResult.result === 'object'
+          ? (salesResult.result as Partial<Lead>)
+          : {};
+      await onStatusChanged(lead.id, salesPatch);
+
+      const updated = await updateLeadStatus(
+        pendingSalesInfoGate.status,
+        pendingSalesInfoGate.trigger,
+        false
+      );
+      if (!updated) return;
+
+      setShowSalesInfoDialog(false);
+      setPendingSalesInfoGate(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar informações de venda');
+    } finally {
+      setSalesInfoSaving(false);
+    }
+  };
+
   const handleStatusTriggerConfirm = async (payload: LeadStatusTriggerPayload) => {
     if (!selectedStatus) return;
 
@@ -344,7 +448,14 @@ export function ChangeStatusDialog({
           open={showFinalizeDialog}
           onOpenChange={setShowFinalizeDialog}
           leadName={lead.name}
+          leadCloserId={lead.closerId ?? undefined}
           onFinalize={handleFinalizeContract}
+          closers={closers}
+          healthPlans={healthPlans}
+          initialAmount={lead.ticket}
+          initialStartDate={lead.contractDueDate}
+          initialOperadora={lead.soldPlan}
+          initialHolderCnpj={lead.cnpj}
         />
       )}
 
@@ -412,6 +523,24 @@ export function ChangeStatusDialog({
         open={meetingHealdBlockedOpen}
         onOpenChange={setMeetingHealdBlockedOpen}
       />
+
+      {lead && pendingSalesInfoGate && (
+        <SalesInfoRequirementDialog
+          open={showSalesInfoDialog}
+          onOpenChange={(open) => {
+            setShowSalesInfoDialog(open);
+            if (!open) {
+              setPendingSalesInfoGate(null);
+            }
+          }}
+          onSave={handleSalesInfoSave}
+          healthPlans={healthPlans}
+          leadName={lead.name}
+          isSaving={salesInfoSaving}
+          initialValues={pendingSalesInfoGate.currentSalesInfo}
+          missingFields={pendingSalesInfoGate.missingFields}
+        />
+      )}
     </>
   );
 }

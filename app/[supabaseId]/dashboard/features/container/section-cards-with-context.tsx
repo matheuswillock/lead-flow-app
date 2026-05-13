@@ -11,20 +11,23 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { 
-  TrendingUp, 
-  Calendar, 
-  UserX, 
-  Handshake, 
-  Target, 
-  DollarSign, 
-  Settings, 
+import {
+  TrendingUp,
+  Calendar,
+  CalendarClock,
+  UserX,
+  Handshake,
+  Target,
+  DollarSign,
+  Settings,
   TrendingDown,
   Wallet,
   Eye,
   EyeOff,
-  Info
+  Info,
+  CheckCircle2,
 } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -275,7 +278,7 @@ export function SectionCardsWithContext() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                📊 Valor da Venda
+                📊 Intenção de Compra
                 <InfoTooltip text="Soma de ticket dos leads do CRM no período selecionado." />
               </CardTitle>
               <div className="rounded-full bg-amber-500/10 p-2">
@@ -358,10 +361,10 @@ export function SectionCardsWithContext() {
       {/* SEÇÃO 2: FUNIL DE VENDAS */}
       <div>
         <h3 className="mb-3 text-sm font-semibold text-muted-foreground">📊 Funil de Vendas</h3>
-        <div className="grid grid-cols-2 gap-4 @xl/main:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 @xl/main:grid-cols-3">
           {/* Agendamentos */}
-          <Card className="@container/card">
-            <CardHeader className="pb-3">
+          <Card className="@container/card row-span-2 flex flex-col">
+            <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-blue-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
@@ -371,16 +374,44 @@ export function SectionCardsWithContext() {
               </div>
               <CardDescription
                 className={cn(
-                  "text-2xl font-bold text-foreground transition-all duration-200",
+                  "text-4xl font-bold text-foreground transition-all duration-200 mt-1",
                   isBlurred && "blur-sm select-none",
                 )}
               >
                 {metrics.agendamentos}
               </CardDescription>
+              <p className="text-xs text-muted-foreground">Já agendados no período</p>
             </CardHeader>
-            <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">Já agendados no período</CardAction>
-            </CardFooter>
+            <div className="px-6"><Separator /></div>
+            <div className="flex flex-col gap-4 p-6 flex-1 justify-center">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <span className="text-xs text-muted-foreground">Reuniões realizadas</span>
+                </div>
+                <span className={cn("text-sm font-semibold tabular-nums", isBlurred && "blur-sm select-none")}>
+                  {Math.max(metrics.reunioesRealizadasCloser, metrics.reunioesRealizadasSdr)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserX className="h-4 w-4 text-amber-500" />
+                  <span className="text-xs text-muted-foreground">No-show</span>
+                </div>
+                <span className={cn("text-sm font-semibold tabular-nums", isBlurred && "blur-sm select-none")}>
+                  {metrics.noShowCount}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="h-4 w-4 text-blue-500" />
+                  <span className="text-xs text-muted-foreground">Com data marcada</span>
+                </div>
+                <span className={cn("text-sm font-semibold tabular-nums", isBlurred && "blur-sm select-none")}>
+                  {metrics.scheduledCount}
+                </span>
+              </div>
+            </div>
           </Card>
 
           {/* Negociação */}
@@ -431,14 +462,38 @@ export function SectionCardsWithContext() {
             </CardFooter>
           </Card>
 
-          {/* Vendas - BG SÓBRIO PADRÃO */}
+          {/* Vendas realizadas */}
           <Card className="@container/card">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-green-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Vendas
-                  <InfoTooltip text="Quantidade de leads com status Negócio fechado (CRM) no período selecionado." />
+                  Vendas realizadas
+                  <InfoTooltip text="Leads com boleto gerado aguardando fechamento do contrato." />
+                </CardTitle>
+              </div>
+              <CardDescription
+                className={cn(
+                  "text-2xl font-bold text-green-600 dark:text-green-400 transition-all duration-200",
+                  isBlurred && "blur-sm select-none",
+                )}
+              >
+                {metrics.vendasRealizadas}
+              </CardDescription>
+            </CardHeader>
+            <CardFooter className="pt-0">
+              <CardAction className="text-xs text-muted-foreground">Boleto gerado</CardAction>
+            </CardFooter>
+          </Card>
+
+          {/* Vendas fechadas */}
+          <Card className="@container/card">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-green-500" />
+                <CardTitle className="text-xs font-medium text-muted-foreground">
+                  Vendas fechadas
+                  <InfoTooltip text="Leads com contrato fechado no período selecionado." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -451,7 +506,7 @@ export function SectionCardsWithContext() {
               </CardDescription>
             </CardHeader>
             <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">Concluídas</CardAction>
+              <CardAction className="text-xs text-muted-foreground">Contrato fechado</CardAction>
             </CardFooter>
           </Card>
         </div>
@@ -551,8 +606,8 @@ export function SectionCardsWithContext() {
               <div className="flex items-center gap-2">
                 <TrendingDown className="h-4 w-4 text-red-500" />
                 <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Taxa de Churn Rate
-                  <InfoTooltip text="(Negado operadora + perdido) dividido por agendamentos no período selecionado." />
+                  Perdidos e desqualificados
+                  <InfoTooltip text="(Perdidos + desqualificados) dividido pelo total de leads criados no período selecionado." />
                 </CardTitle>
               </div>
               <CardDescription
@@ -566,7 +621,7 @@ export function SectionCardsWithContext() {
             </CardHeader>
             <CardFooter className="pt-0">
               <CardAction className="text-xs text-muted-foreground">
-                Taxa de cancelamento
+                Perdidos e desqualificados no período
               </CardAction>
             </CardFooter>
           </Card>

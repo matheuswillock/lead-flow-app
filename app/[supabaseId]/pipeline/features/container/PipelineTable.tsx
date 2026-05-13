@@ -62,6 +62,7 @@ import { LeadsStatusFilter } from "@/app/[supabaseId]/components/leads-filters/L
 import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter";
 import { LeadsDateFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsDateFilter";
 import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import {
   AlertDialog,
@@ -104,6 +105,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
   } = usePipelineContext();
   const { members: closerMembers } = useTeamClosers(supabaseId, activeTeamId);
   const { members: sdrMembers } = useTeamSdrs(supabaseId, activeTeamId);
+  const { healthPlans } = useHealthPlans(supabaseId, activeTeamId);
 
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
@@ -698,6 +700,7 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
           statusLabels={statusLabels}
           onStatusChanged={handleStatusChanged}
           closers={closers}
+          healthPlans={healthPlans}
           teamMembers={[]}
           onSchedulePatched={applyScheduledPatch}
         />
@@ -711,7 +714,14 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
             if (!open) setSelectedLead(null);
           }}
           leadName={selectedLead.name}
+          leadCloserId={selectedLead.closerId ?? undefined}
           onFinalize={handleFinalizeSubmit}
+          closers={closers}
+          healthPlans={healthPlans}
+          initialAmount={selectedLead.ticket}
+          initialStartDate={selectedLead.contractDueDate}
+          initialOperadora={selectedLead.soldPlan}
+          initialHolderCnpj={selectedLead.cnpj}
         />
       )}
 

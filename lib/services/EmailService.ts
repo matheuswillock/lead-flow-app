@@ -761,7 +761,7 @@ export class EmailService {
 
     return this.sendEmail({
       to: [data.userEmail],
-      subject: "Corretor Studio — Adesao concluida com sucesso",
+      subject: "Corretor Studio — Adesão concluída com sucesso",
       html,
     })
   }
@@ -793,7 +793,7 @@ export class EmailService {
         <p>Entre na plataforma para visualizar e gerenciar este novo lead.</p>
         
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;">
-          <p>Este é um email automático do Corretor Studio.</p>
+          <p>Este é um e-mail automático do Corretor Studio.</p>
         </div>
       </div>
     `;
@@ -807,13 +807,13 @@ export class EmailService {
 
   async sendLeadProposalPendingUrgentEmail(data: LeadProposalPendingUrgentEmailData) {
     const leadName = data.leadName || "Lead sem nome";
-    const leadEmail = data.leadEmail || "Nao informado";
-    const leadPhone = data.leadPhone || "Nao informado";
-    const sdrName = data.sdrName || "Nao informado";
-    const closerName = data.closerName || "Nao informado";
-    const notes = (data.notes || "Sem observacoes adicionais").trim();
+    const leadEmail = data.leadEmail || "Não informado";
+    const leadPhone = data.leadPhone || "Não informado";
+    const sdrName = data.sdrName || "Não informado";
+    const closerName = data.closerName || "Não informado";
+    const notes = (data.notes || "Sem observações adicionais").trim();
     const leadUrl = getFullUrl(`/crm?leadCode=${encodeURIComponent(data.leadCode)}`);
-    const proposalPendingTitle = `Voce tem uma proposta pendente no Corretor Studio - ID: ${data.leadCode}`;
+    const proposalPendingTitle = `Você tem uma proposta pendente no Corretor Studio - ID: ${data.leadCode}`;
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
@@ -837,7 +837,7 @@ export class EmailService {
           </div>
 
           <div style="background: #fff7ed; border-left: 4px solid #ff6900; padding: 12px; border-radius: 6px;">
-            <p style="margin: 0 0 4px;"><strong>Observacoes</strong></p>
+            <p style="margin: 0 0 4px;"><strong>Observações</strong></p>
             <p style="margin: 0; white-space: pre-wrap;">${notes}</p>
           </div>
         </div>

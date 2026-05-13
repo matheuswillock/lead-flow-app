@@ -26,6 +26,10 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
 import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
+import {
+  SalesInfoRequirementDialog,
+  type SalesInfoPayload,
+} from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
 
 interface BoardContainerProps {
   title?: string;
@@ -56,6 +60,9 @@ export function BoardContainer({
     pendingMeetingHealdGateDrop,
     clearPendingMeetingHealdGateDrop,
     applyPendingMeetingHealdGateTransition,
+    pendingSalesInfoGateDrop,
+    clearPendingSalesInfoGateDrop,
+    applyPendingSalesInfoGateTransition,
     pendingFinalizeDrop,
     clearPendingFinalizeDrop,
     data,
@@ -63,6 +70,8 @@ export function BoardContainer({
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showStatusTriggerDialog, setShowStatusTriggerDialog] = useState(false);
+  const [showSalesInfoDialog, setShowSalesInfoDialog] = useState(false);
+  const [salesInfoSaving, setSalesInfoSaving] = useState(false);
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const scheduleSucceededRef = useRef(false);
@@ -128,6 +137,20 @@ export function BoardContainer({
     setSelectedLead(pendingFinalizeLead);
     setShowFinalizeDialog(true);
   }, [pendingFinalizeDrop, pendingFinalizeLead]);
+
+  const pendingSalesInfoLead = useMemo(() => {
+    if (!pendingSalesInfoGateDrop) return null;
+    return (
+      data[pendingSalesInfoGateDrop.from]?.find((item) => item.id === pendingSalesInfoGateDrop.leadId) ??
+      null
+    );
+  }, [data, pendingSalesInfoGateDrop]);
+
+  useEffect(() => {
+    if (!pendingSalesInfoGateDrop || !pendingSalesInfoLead) return;
+    setSelectedLead(pendingSalesInfoLead);
+    setShowSalesInfoDialog(true);
+  }, [pendingSalesInfoGateDrop, pendingSalesInfoLead]);
 
   const handleNoShow = useCallback(
     async (lead: Lead) => {
@@ -237,6 +260,17 @@ export function BoardContainer({
     setSelectedLead(null);
   };
 
+  const handleSalesInfoSave = async (payload: SalesInfoPayload) => {
+    setSalesInfoSaving(true);
+    const updated = await applyPendingSalesInfoGateTransition(payload);
+    setSalesInfoSaving(false);
+    if (!updated) return;
+
+    setShowSalesInfoDialog(false);
+    clearPendingSalesInfoGateDrop();
+    setSelectedLead(null);
+  };
+
   const handleConfirmPendingRule = async () => {
     if (!pendingStatusTriggerDrop?.confirmationRuleId) return;
     const updated = await applyPendingStatusTriggerTransition({
@@ -300,6 +334,10 @@ export function BoardContainer({
             onFinalize={handleFinalizeSubmit}
             closers={closers}
             healthPlans={healthPlans}
+            initialAmount={selectedLead.ticket}
+            initialStartDate={selectedLead.contractDueDate}
+            initialOperadora={selectedLead.soldPlan}
+            initialHolderCnpj={selectedLead.cnpj}
           />
           
           <ScheduleMeetingDialog
@@ -399,6 +437,25 @@ export function BoardContainer({
           }
         }}
       />
+
+      {pendingSalesInfoGateDrop && selectedLead && (
+        <SalesInfoRequirementDialog
+          open={showSalesInfoDialog}
+          onOpenChange={(open) => {
+            setShowSalesInfoDialog(open);
+            if (!open) {
+              clearPendingSalesInfoGateDrop();
+              setSelectedLead(null);
+            }
+          }}
+          onSave={handleSalesInfoSave}
+          healthPlans={healthPlans}
+          leadName={selectedLead.name}
+          isSaving={salesInfoSaving}
+          initialValues={pendingSalesInfoGateDrop.currentSalesInfo}
+          missingFields={pendingSalesInfoGateDrop.missingFields}
+        />
+      )}
     </div>
   );
 }

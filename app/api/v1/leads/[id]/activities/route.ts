@@ -21,7 +21,7 @@ const baseActivitySchema = z.object({
 const taskActivitySchema = z.object({
   type: z.literal("task"),
   title: z.string().min(1, "Título da tarefa é obrigatório").max(200),
-  taskType: z.enum(["call", "documentation", "email", "proposal", "other"], {
+  taskType: z.enum(["call", "documentation", "email", "proposal", "whatsapp", "meeting", "other"], {
     error: "Tipo de tarefa inválido",
   }),
   body: z.string().min(1, "Descrição da tarefa é obrigatória"),

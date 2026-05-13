@@ -160,6 +160,8 @@ enum TaskType {
   documentation
   email
   proposal
+  whatsapp
+  meeting
   other
 
   @@map("task_type")
@@ -979,7 +981,6 @@ model LeadFinalized {
   amount              Decimal  @db.Decimal(12, 2)
   notes               String?  @db.Text
   closerId            String?  @db.Uuid
-  leadBirthDate       DateTime? @db.Date
   operadora           String?  @db.Text
   productName         String?  @db.Text
   contractFileUrl     String?  @db.Text
@@ -990,10 +991,26 @@ model LeadFinalized {
   // Relations
   lead       Lead                     @relation(fields: [leadId], references: [id], onDelete: Cascade)
   closer     Profile?                 @relation("LeadFinalizedCloser", fields: [closerId], references: [id])
+  holder     LeadFinalizedHolder?
   dependents LeadFinalizedDependent[]
 
   @@index([leadId])
   @@map("lead_finalized")
+}
+
+model LeadFinalizedHolder {
+  id              String   @id @default(uuid()) @db.Uuid
+  leadFinalizedId String   @unique @db.Uuid
+  name            String   @db.Text
+  birthDate       DateTime @db.Date
+  document        String   @db.Text
+  cnpj            String?  @db.Text
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
+
+  leadFinalized LeadFinalized @relation(fields: [leadFinalizedId], references: [id], onDelete: Cascade)
+
+  @@map("lead_finalized_holders")
 }
 
 model LeadFinalizedDependent {
@@ -1611,3 +1628,4 @@ model ProfileSubscription {
   @@index([subscriptionStatus], map: "profile_subscriptions_status_idx")
   @@map("profile_subscriptions")
 }
+

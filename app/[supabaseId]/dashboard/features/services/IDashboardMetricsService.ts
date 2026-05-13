@@ -9,6 +9,7 @@ export interface DashboardMetricsData {
   negociacao: number;
   implementacao: number;
   vendas: number;
+  vendasRealizadas: number;
   reunioesRealizadasCloser: number;
   reunioesRealizadasSdr: number;
   noShowRate: number;

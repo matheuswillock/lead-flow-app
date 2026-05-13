@@ -91,11 +91,22 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     () => `sidebar-team-activity-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
     [supabaseId, activeTeamId]
   );
+  const navStorageKey = useMemo(
+    () => `sidebar-nav-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
+    [supabaseId, activeTeamId]
+  );
+  const emailStorageKey = useMemo(
+    () => `sidebar-email-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
+    [supabaseId, activeTeamId]
+  );
   const [isTeamActivityCollapsed, setIsTeamActivityCollapsed] = useState(false);
+  const [isNavCollapsed, setIsNavCollapsed] = useState(false);
+  const [isEmailCollapsed, setIsEmailCollapsed] = useState(false);
   const docsUrl = `/${supabaseId}/docs`;
 
   const navigationItems: SidebarItem[] = [
     { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard, featureSlug: FEATURE_SLUGS.CRM_DASHBOARD },
+    { title: "CRM", url: `/${supabaseId}/crm`, icon: Users, featureSlug: FEATURE_SLUGS.CRM },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays, featureSlug: FEATURE_SLUGS.CRM_CALENDAR },
     { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, closerOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
     { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
@@ -179,16 +190,31 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const persistedValue = window.localStorage.getItem(teamActivityStorageKey);
-    setIsTeamActivityCollapsed(persistedValue === "true");
-  }, [teamActivityStorageKey]);
+    setIsTeamActivityCollapsed(window.localStorage.getItem(teamActivityStorageKey) === "true");
+    setIsNavCollapsed(window.localStorage.getItem(navStorageKey) === "true");
+    setIsEmailCollapsed(window.localStorage.getItem(emailStorageKey) === "true");
+  }, [teamActivityStorageKey, navStorageKey, emailStorageKey]);
 
   const toggleTeamActivityVisibility = () => {
     setIsTeamActivityCollapsed((previous) => {
       const next = !previous;
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(teamActivityStorageKey, String(next));
-      }
+      if (typeof window !== "undefined") window.localStorage.setItem(teamActivityStorageKey, String(next));
+      return next;
+    });
+  };
+
+  const toggleNavVisibility = () => {
+    setIsNavCollapsed((previous) => {
+      const next = !previous;
+      if (typeof window !== "undefined") window.localStorage.setItem(navStorageKey, String(next));
+      return next;
+    });
+  };
+
+  const toggleEmailVisibility = () => {
+    setIsEmailCollapsed((previous) => {
+      const next = !previous;
+      if (typeof window !== "undefined") window.localStorage.setItem(emailStorageKey, String(next));
       return next;
     });
   };
@@ -243,66 +269,83 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
         <SidebarContent>
             {visibleNavigationItems.length > 0 && (
             <SidebarGroup>
-                <SidebarGroupLabel>Navegação</SidebarGroupLabel>
-                <SidebarGroupContent>
-                    <SidebarMenu>
-                        {visibleNavigationItems.map((item) => {
-                          const statusBadge = getItemBadge(item);
+                <SidebarGroupLabel
+                  className="cursor-pointer select-none hover:text-sidebar-foreground transition-colors"
+                  onClick={toggleNavVisibility}
+                >
+                  <span className="flex items-center justify-between w-full">
+                    Navegação
+                    {isNavCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </span>
+                </SidebarGroupLabel>
+                {!isNavCollapsed && (
+                  <SidebarGroupContent>
+                      <SidebarMenu>
+                          {visibleNavigationItems.map((item) => {
+                            const statusBadge = getItemBadge(item);
 
-                          return (
-                            <SidebarMenuItem key={item.title}>
-                              <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
-                                <Link href={item.url} className="flex items-center justify-between gap-2">
-                                  <span className="flex items-center gap-2">
-                                    <item.icon className="size-4 shrink-0" />
-                                    <span>{item.title}</span>
-                                  </span>
-                                  {statusBadge && (
-                                    <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
-                                      {statusBadge.label}
+                            return (
+                              <SidebarMenuItem key={item.title}>
+                                <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
+                                  <Link href={item.url} className="flex items-center justify-between gap-2">
+                                    <span className="flex items-center gap-2">
+                                      <item.icon className="size-4 shrink-0" />
+                                      <span>{item.title}</span>
                                     </span>
-                                  )}
-                                </Link>
-                              </SidebarMenuButton>
-                            </SidebarMenuItem>
-                          );
-                        })}
-                    </SidebarMenu>
-                </SidebarGroupContent>
+                                    {statusBadge && (
+                                      <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
+                                        {statusBadge.label}
+                                      </span>
+                                    )}
+                                  </Link>
+                                </SidebarMenuButton>
+                              </SidebarMenuItem>
+                            );
+                          })}
+                      </SidebarMenu>
+                  </SidebarGroupContent>
+                )}
             </SidebarGroup>
             )}
             {(isManager || isMaster || isCloser) &&
               hasAccess(FEATURE_SLUGS.EMAIL) &&
               visibleEmailItems.length > 0 && (
               <SidebarGroup>
-                <SidebarGroupLabel>
-                  Email
+                <SidebarGroupLabel
+                  className="cursor-pointer select-none hover:text-sidebar-foreground transition-colors"
+                  onClick={toggleEmailVisibility}
+                >
+                  <span className="flex items-center justify-between w-full">
+                    Email
+                    {isEmailCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </span>
                 </SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {visibleEmailItems.map((item) => {
-                      const statusBadge = getItemBadge(item)
-
+                {!isEmailCollapsed && (
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {visibleEmailItems.map((item) => {
+                        const statusBadge = getItemBadge(item)
                         return (
-                        <SidebarMenuItem key={item.title}>
-                          <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
-                            <Link href={item.url} className="flex items-center justify-between gap-2">
-                              <span className="flex items-center gap-2">
-                                <item.icon className="size-4 shrink-0" />
-                                <span>{item.title}</span>
-                              </span>
-                              {statusBadge && (
-                                <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
-                                  {statusBadge.label}
+                          <SidebarMenuItem key={item.title}>
+                            <SidebarMenuButton asChild isActive={isItemActive(item.url)}>
+                              <Link href={item.url} className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2">
+                                  <item.icon className="size-4 shrink-0" />
+                                  <span>{item.title}</span>
                                 </span>
-                              )}
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
+                                {statusBadge && (
+                                  <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadge.className}`}>
+                                    {statusBadge.label}
+                                  </span>
+                                )}
+                              </Link>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                )}
               </SidebarGroup>
             )}
             <SidebarGroup>
@@ -417,7 +460,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
             </SidebarGroup>
             {hasAccess(FEATURE_SLUGS.CONFIGURATION) && (
               <SidebarGroup>
-                <SidebarGroupLabel>Configuração</SidebarGroupLabel>
+                <SidebarGroupLabel>Integrações</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
                     <SidebarMenuItem>
@@ -425,7 +468,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                         <Link href={`/${supabaseId}/integrations`} className="flex items-center justify-between gap-2">
                           <span className="flex items-center gap-2">
                             <Plug className="size-4 shrink-0" />
-                            <span>Integrações</span>
+                            <span>Webhooks & Formulários</span>
                           </span>
                           {isBeta(FEATURE_SLUGS.CONFIGURATION) && (() => {
                             const badge = getSidebarStatusBadge("beta")

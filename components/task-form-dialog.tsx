@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import { Loader2, Phone, FileText, Mail, FileSignature, MoreHorizontal, X } from "lucide-react"
+import { Loader2, Phone, FileText, Mail, FileSignature, MessageCircle, CalendarClock, MoreHorizontal, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -45,6 +45,8 @@ const TASK_TYPE_OPTIONS = [
   { value: "documentation", label: "Documentação", icon: FileText },
   { value: "email", label: "E-mail", icon: Mail },
   { value: "proposal", label: "Proposta", icon: FileSignature },
+  { value: "whatsapp", label: "Whatsapp", icon: MessageCircle },
+  { value: "meeting", label: "Reunião", icon: CalendarClock },
   { value: "other", label: "Outros", icon: MoreHorizontal },
 ] as const
 
@@ -400,3 +402,4 @@ export function TaskFormDialog({
     </Dialog>
   )
 }
+

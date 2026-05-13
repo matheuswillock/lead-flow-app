@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import { Download, FileSpreadsheet, FileText, Table } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -23,11 +25,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useTeamContext } from "@/app/context/TeamContext";
 import { cn } from "@/lib/utils";
+import { performanceService } from "../../services/PerformanceService";
 import { usePerformanceContext } from "../../context/PerformanceContext";
 import type { ExportSectionFlags } from "../../utils/exportPerformanceCsv";
-import { exportPerformanceCsv } from "../../utils/exportPerformanceCsv";
+import { exportPerformanceFileDownload } from "../../utils/exportPerformanceCsv";
 
 type ExportFormat = "pdf" | "excel" | "csv";
 type ExportDelivery = "download" | "email";
@@ -40,7 +43,7 @@ interface ExportarRelatorioModalProps {
 
 const FORMATS: { value: ExportFormat; label: string; description: string; icon: React.ReactNode; comingSoon?: boolean }[] = [
   { value: "pdf", label: "PDF", description: "Relatório com layout pronto para imprimir", icon: <FileText size={16} />, comingSoon: true },
-  { value: "excel", label: "Excel", description: "Planilha com tabelas dinâmicas", icon: <FileSpreadsheet size={16} />, comingSoon: true },
+  { value: "excel", label: "Excel", description: "Planilha com abas por página", icon: <FileSpreadsheet size={16} /> },
   { value: "csv", label: "CSV", description: "Dados brutos para BI ou ETL", icon: <Table size={16} /> },
 ];
 
@@ -54,30 +57,31 @@ const PERIOD_OPTIONS: { value: ExportPeriod; label: string }[] = [
 
 const SECTIONS: { key: keyof ExportSectionFlags; label: string; description: string }[] = [
   { key: "kpis", label: "KPIs principais", description: "Vendas, reuniões, agendamentos e no-show" },
-  { key: "rankings", label: "Rankings", description: "Closers e SDRs no período" },
-  { key: "funnelPessoal", label: "Funil pessoal", description: "Conversão por etapa de cada pessoa" },
-  { key: "activities", label: "Atividades detalhadas", description: "Lista completa de eventos (pode aumentar muito o arquivo)" },
+  { key: "rankingClosers", label: "Ranking de Closers", description: "Desempenho individual e total consolidado" },
+  { key: "rankingSdrs", label: "Ranking de SDRs", description: "Agendamentos, presença e total consolidado" },
   { key: "comparison", label: "Comparativo com período anterior", description: "Variação % vs. janela anterior" },
 ];
 
 function defaultSections(): ExportSectionFlags {
-  return { kpis: true, rankings: true, funnelPessoal: true, activities: false, comparison: true };
+  return { kpis: true, rankingClosers: true, rankingSdrs: true, comparison: true };
 }
 
 function estimatePages(sections: ExportSectionFlags): number {
-  let pages = 1;
+  let pages = 0;
   if (sections.kpis) pages += 1;
-  if (sections.rankings) pages += 2;
-  if (sections.funnelPessoal) pages += 1;
-  if (sections.activities) pages += 3;
+  if (sections.rankingClosers) pages += 1;
+  if (sections.rankingSdrs) pages += 1;
   if (sections.comparison) pages += 1;
   return pages;
 }
 
 export function ExportarRelatorioModal({ open, onOpenChange }: ExportarRelatorioModalProps) {
-  const { data, filters } = usePerformanceContext();
+  const params = useParams();
+  const supabaseId = params.supabaseId as string;
+  const { activeTeamId } = useTeamContext();
+  const { filters } = usePerformanceContext();
   const [format, setFormat] = useState<ExportFormat>("csv");
-  const [period, setPeriod] = useState<ExportPeriod>(filters.preset as ExportPeriod || "7d");
+  const [period, setPeriod] = useState<ExportPeriod>((filters.preset as ExportPeriod) || "7d");
   const [delivery, setDelivery] = useState<ExportDelivery>("download");
   const [sections, setSections] = useState<ExportSectionFlags>(defaultSections);
   const [isExporting, setIsExporting] = useState(false);
@@ -104,26 +108,51 @@ export function ExportarRelatorioModal({ open, onOpenChange }: ExportarRelatorio
     if (isExporting) return;
 
     if (format !== "csv") {
-      toast.info("Formato em breve disponível.");
+      if (format !== "excel") {
+        toast.info("Formato em breve disponível.");
+        return;
+      }
+    }
+
+    if (!supabaseId || !activeTeamId) {
+      toast.error("Não foi possível identificar o usuário para exportação.");
       return;
     }
 
-    if (delivery === "email") {
-      toast.info("Envio por e-mail em breve disponível.");
-      return;
-    }
-
-    if (!data) {
-      toast.error("Nenhum dado disponível para exportar.");
+    if (selectedCount === 0) {
+      toast.error("Selecione ao menos uma seção para exportar.");
       return;
     }
 
     setIsExporting(true);
     try {
+      const exportData = await performanceService.getSalesPerformance(supabaseId, activeTeamId, {
+        ...filters,
+        preset: period,
+        startDate: "",
+        endDate: "",
+        page: 1,
+        pageSize: 100,
+      });
+
       const now = new Date();
       const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-      exportPerformanceCsv(data, sections, `performance-${period}-${dateStr}`);
-      toast.success("Relatório exportado com sucesso!");
+
+      if (delivery === "email") {
+        await performanceService.sendPerformanceExportEmail(supabaseId, activeTeamId, {
+          format,
+          preset: period,
+          sdrId: filters.sdrId || undefined,
+          closerId: filters.closerId || undefined,
+          search: filters.search || undefined,
+          sections,
+        });
+        toast.success("Relatório enviado para seu e-mail.");
+      } else {
+        await exportPerformanceFileDownload(exportData, sections, `performance-${period}-${dateStr}`, format);
+        toast.success("Relatório exportado com sucesso!");
+      }
+
       handleOpenChange(false);
     } catch (err) {
       console.error("[ExportarRelatorioModal] export error", err);
@@ -208,15 +237,20 @@ export function ExportarRelatorioModal({ open, onOpenChange }: ExportarRelatorio
               <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Entrega
               </Label>
-              <ToggleGroup
-                type="single"
+              <RadioGroup
                 value={delivery}
-                onValueChange={(v) => v && setDelivery(v as ExportDelivery)}
-                className="justify-start gap-1"
+                onValueChange={(v) => setDelivery(v as ExportDelivery)}
+                className="flex items-center gap-6 pt-1"
               >
-                <ToggleGroupItem value="download" className="text-xs px-3">Download</ToggleGroupItem>
-                <ToggleGroupItem value="email" className="text-xs px-3">E-mail</ToggleGroupItem>
-              </ToggleGroup>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <RadioGroupItem value="download" id="delivery-download" />
+                  <span>Download</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <RadioGroupItem value="email" id="delivery-email" />
+                  <span>E-mail</span>
+                </label>
+              </RadioGroup>
             </div>
           </div>
 
@@ -226,11 +260,11 @@ export function ExportarRelatorioModal({ open, onOpenChange }: ExportarRelatorio
               <span>Seções</span>
               <span className="normal-case font-normal text-muted-foreground">({selectedCount}/{SECTIONS.length})</span>
             </Label>
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1.5">
               {SECTIONS.map(({ key, label, description }) => (
                 <label
                   key={key}
-                  className="flex items-start gap-3 rounded-lg border border-border bg-card/30 px-3 py-2.5 cursor-pointer hover:bg-card/50 transition-colors"
+                  className="flex items-start gap-3 px-0.5 py-2 cursor-pointer"
                 >
                   <Checkbox
                     checked={sections[key]}
@@ -255,11 +289,11 @@ export function ExportarRelatorioModal({ open, onOpenChange }: ExportarRelatorio
           <Button variant="ghost" onClick={() => handleOpenChange(false)} disabled={isExporting}>
             Cancelar
           </Button>
-          <Button onClick={handleExport} disabled={isExporting || selectedCount === 0 || !data}>
+          <Button onClick={handleExport} disabled={isExporting || selectedCount === 0}>
             {isExporting ? "Exportando..." : (
               <>
                 <Download data-icon="inline-start" size={14} />
-                Baixar
+                {delivery === "email" ? "Enviar por e-mail" : "Baixar"}
               </>
             )}
           </Button>

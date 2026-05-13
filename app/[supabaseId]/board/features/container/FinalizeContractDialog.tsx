@@ -29,6 +29,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
+import { Separator } from '@/components/ui/separator';
+import { formatDocumentInput, formatRgCpfInput, sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
 import { AddDependentModal } from './AddDependentModal';
 import type { UserAssociated } from '@/app/api/v1/profiles/DTO/profileResponseDTO';
 
@@ -52,13 +54,20 @@ export interface FinalizeContractDependent {
   document?: string;
 }
 
+export interface FinalizeContractHolder {
+  name: string;
+  birthDate: Date;
+  document: string;
+  cnpj?: string;
+}
+
 export interface FinalizeContractData {
   amount: number;
   startDateAt: Date;
   finalizedDateAt: Date;
   notes?: string;
   closerId: string;
-  leadBirthDate: Date;
+  contractHolder: FinalizeContractHolder;
   operadora: string;
   productName?: string;
   contractFile?: File;
@@ -70,9 +79,13 @@ interface FinalizeContractDialogProps {
   onOpenChange: (open: boolean) => void;
   leadName: string;
   leadCloserId?: string;
+  initialHolderCnpj?: string | null;
   onFinalize: (data: FinalizeContractData) => Promise<void>;
   closers?: UserAssociated[];
   healthPlans?: { id: string; name: string }[];
+  initialAmount?: number | null;
+  initialStartDate?: string | Date | null;
+  initialOperadora?: string | null;
 }
 
 export function FinalizeContractDialog({
@@ -80,9 +93,13 @@ export function FinalizeContractDialog({
   onOpenChange,
   leadName,
   leadCloserId,
+  initialHolderCnpj,
   onFinalize,
   closers = [],
   healthPlans = [],
+  initialAmount,
+  initialStartDate,
+  initialOperadora,
 }: FinalizeContractDialogProps) {
   const { tz } = useTimezone();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -91,7 +108,10 @@ export function FinalizeContractDialog({
   const [closerId, setCloserId]       = useState('');
   const [operadora, setOperadora]     = useState('');
   const [productName, setProductName] = useState('');
-  const [leadBirthDate, setLeadBirthDate] = useState<Date | undefined>();
+  const [holderName, setHolderName] = useState('');
+  const [holderBirthDate, setHolderBirthDate] = useState<Date | undefined>();
+  const [holderDocument, setHolderDocument] = useState('');
+  const [holderCnpj, setHolderCnpj] = useState('');
   const [startDate, setStartDate]     = useState<Date | undefined>(() => new Date());
   const [finalizedDate, setFinalizedDate] = useState<Date | undefined>();
   const [contractFile, setContractFile]   = useState<File | undefined>();
@@ -103,14 +123,32 @@ export function FinalizeContractDialog({
   const [error, setError]             = useState('');
   const [amountError, setAmountError] = useState('');
 
+  const toDisplayCurrency = (value: number | null | undefined): string => {
+    if (value === null || value === undefined || Number.isNaN(value)) return '';
+    return value.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const parseInitialDate = (value: string | Date | null | undefined): Date | undefined => {
+    if (!value) return undefined;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return undefined;
+    return date;
+  };
+
   useEffect(() => {
     if (open) {
-      setAmount('');
+      setAmount(toDisplayCurrency(initialAmount));
       setCloserId(leadCloserId ?? '');
-      setOperadora('');
+      setOperadora(initialOperadora ?? '');
       setProductName('');
-      setLeadBirthDate(undefined);
-      setStartDate(new Date());
+      setHolderName('');
+      setHolderBirthDate(undefined);
+      setHolderDocument('');
+      setHolderCnpj(sanitizeDocumentDigits(initialHolderCnpj ?? ''));
+      setStartDate(parseInitialDate(initialStartDate) ?? new Date());
       setFinalizedDate(undefined);
       setContractFile(undefined);
       setNotes('');
@@ -118,7 +156,7 @@ export function FinalizeContractDialog({
       setError('');
       setAmountError('');
     }
-  }, [open, leadCloserId]);
+  }, [open, leadCloserId, initialAmount, initialOperadora, initialStartDate, initialHolderCnpj]);
 
   const formatCurrencyDisplay = (value: string): string => {
     const numbers = value.replace(/\D/g, '');
@@ -190,7 +228,9 @@ export function FinalizeContractDialog({
     !amountError &&
     !!closerId &&
     !!operadora &&
-    !!leadBirthDate &&
+    holderName.trim().length > 0 &&
+    !!holderBirthDate &&
+    sanitizeRgCpfDigits(holderDocument).length > 0 &&
     !!startDate &&
     !!finalizedDate &&
     finalizedDate >= startDate;
@@ -198,7 +238,7 @@ export function FinalizeContractDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!isFormValid || !startDate || !finalizedDate || !leadBirthDate) return;
+    if (!isFormValid || !startDate || !finalizedDate || !holderBirthDate) return;
 
     const loadingToast = toast.loading('Finalizando contrato...');
     setIsLoading(true);
@@ -211,7 +251,12 @@ export function FinalizeContractDialog({
         finalizedDateAt: startOfDayInTz(finalizedDate, tz),
         notes: notes.trim() || undefined,
         closerId,
-        leadBirthDate,
+        contractHolder: {
+          name: holderName.trim(),
+          birthDate: holderBirthDate,
+          document: sanitizeRgCpfDigits(holderDocument),
+          cnpj: sanitizeDocumentDigits(holderCnpj) || undefined,
+        },
         operadora,
         productName: productName.trim() || undefined,
         contractFile,
@@ -255,6 +300,10 @@ export function FinalizeContractDialog({
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
             <div className="flex-1 overflow-y-auto px-6 py-4">
               <div className="grid gap-5">
+                <div className="grid gap-2">
+                  <p className="text-sm font-semibold">Dados do contrato</p>
+                  <Separator />
+                </div>
 
                 {/* Valor do Contrato */}
                 <div className="grid gap-2">
@@ -315,37 +364,6 @@ export function FinalizeContractDialog({
                     onChange={(e) => setProductName(e.target.value)}
                     disabled={isLoading}
                   />
-                </div>
-
-                {/* Data de Nascimento do Lead */}
-                <div className="grid gap-2">
-                  <Label>Data de Nascimento do Lead *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className={cn('justify-start text-left font-normal', !leadBirthDate && 'text-muted-foreground')}
-                        disabled={isLoading}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {leadBirthDate ? format(leadBirthDate, 'PPP', { locale: ptBR }) : 'Selecione a data'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        required={false}
-                        selected={leadBirthDate}
-                        onSelect={setLeadBirthDate}
-                        locale={ptBR}
-                        captionLayout="dropdown"
-                        fromYear={1920}
-                        toYear={new Date().getFullYear()}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
                 </div>
 
                 {/* Data de Início */}
@@ -465,6 +483,79 @@ export function FinalizeContractDialog({
                   />
                 </div>
 
+                <div className="grid gap-2 pt-1">
+                  <p className="text-sm font-semibold">Dados do titular</p>
+                  <Separator />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="holder-name">Nome do Titular *</Label>
+                  <Input
+                    id="holder-name"
+                    placeholder="Nome completo do titular"
+                    value={holderName}
+                    onChange={(e) => setHolderName(e.target.value)}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label>Data de Nascimento do Titular *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn('justify-start text-left font-normal', !holderBirthDate && 'text-muted-foreground')}
+                        disabled={isLoading}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {holderBirthDate ? format(holderBirthDate, 'PPP', { locale: ptBR }) : 'Selecione a data'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        required={false}
+                        selected={holderBirthDate}
+                        onSelect={setHolderBirthDate}
+                        locale={ptBR}
+                        captionLayout="dropdown"
+                        fromYear={1920}
+                        toYear={new Date().getFullYear()}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="holder-document">Documento (RG/CPF) *</Label>
+                  <Input
+                    id="holder-document"
+                    placeholder="CPF ou RG"
+                    value={formatRgCpfInput(holderDocument)}
+                    onChange={(e) => setHolderDocument(sanitizeRgCpfDigits(e.target.value))}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="holder-cnpj">CNPJ</Label>
+                  <Input
+                    id="holder-cnpj"
+                    placeholder="00.000.000/0000-00"
+                    value={formatDocumentInput(holderCnpj)}
+                    onChange={(e) => setHolderCnpj(sanitizeDocumentDigits(e.target.value))}
+                    disabled={isLoading}
+                  />
+                </div>
+
+                <div className="grid gap-2 pt-1">
+                  <p className="text-sm font-semibold">Dados de dependentes</p>
+                  <Separator />
+                </div>
+
                 {/* Dependentes */}
                 <div className="grid gap-3">
                   <div className="flex items-center justify-between">
@@ -482,7 +573,7 @@ export function FinalizeContractDialog({
                               {PARENTESCO_LABELS[dep.parentesco] ?? dep.parentesco}
                               {' · '}
                               {format(dep.birthDate, 'dd/MM/yyyy')}
-                              {dep.document ? ` · ${dep.document}` : ''}
+                              {dep.document ? ` · ${formatRgCpfInput(dep.document)}` : ''}
                             </p>
                           </div>
                           <Button

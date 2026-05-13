@@ -12,6 +12,8 @@ import {
   FileText,
   Mail,
   FileSignature,
+  MessageCircle,
+  CalendarClock,
   MoreHorizontal,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -60,7 +62,7 @@ export type TaskItem = {
   id: string
   leadId: string
   title: string
-  taskType: "call" | "documentation" | "email" | "proposal" | "other"
+  taskType: "call" | "documentation" | "email" | "proposal" | "whatsapp" | "meeting" | "other"
   body: string
   isUrgent: boolean
   startAt: string | null
@@ -106,6 +108,8 @@ const TASK_TYPE_ICON: Record<TaskItem["taskType"], React.ComponentType<{ classNa
   documentation: FileText,
   email: Mail,
   proposal: FileSignature,
+  whatsapp: MessageCircle,
+  meeting: CalendarClock,
   other: MoreHorizontal,
 }
 
@@ -402,3 +406,4 @@ export function TaskCard({
     </>
   )
 }
+

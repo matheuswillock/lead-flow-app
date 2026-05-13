@@ -50,7 +50,7 @@ export interface ITaskRepository {
   updateTaskDetails(input: {
     taskId: string;
     title: string;
-    taskType: "call" | "documentation" | "email" | "proposal" | "other";
+    taskType: "call" | "documentation" | "email" | "proposal" | "whatsapp" | "meeting" | "other";
     body: string;
     isUrgent: boolean;
     startAt: Date | null;
@@ -69,7 +69,7 @@ export interface ITaskRepository {
   }): Promise<void>;
   updateAssigneeGoogleSync(taskId: string, profileId: string, data: { googleEventId: string; googleCalendarId: string; googleSynced: boolean }): Promise<void>;
   cancelAllAssignees(taskId: string): Promise<void>;
-  findConnectedAssigneesForTask(taskId: string): Promise<Array<{ profileId: string; googleEventId: string | null; googleSynced: boolean }>>;
+  findConnectedAssigneesForTask(taskId: string): Promise<Array<{ profileId: string; googleEventId: string | null; googleCalendarId: string | null; googleSynced: boolean }>>;
   validateTeamMembers(teamId: string, profileIds: string[]): Promise<string[]>;
   findLeadInTeam(leadId: string, teamId: string): Promise<{ id: string; teamId: string | null; leadCode: string; name: string } | null>;
   findCreatorProfile(profileId: string): Promise<{ id: string; fullName: string | null; email: string } | null>;

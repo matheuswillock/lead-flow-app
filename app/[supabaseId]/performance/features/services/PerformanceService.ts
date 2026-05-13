@@ -1,4 +1,4 @@
-import type { IPerformanceService } from './IPerformanceService';
+import type { IPerformanceService, SendPerformanceExportEmailInput } from './IPerformanceService';
 import type { PerformanceData, PerformanceFiltersState } from '../context/PerformanceTypes';
 
 const CACHE_VERSION = 1;
@@ -99,6 +99,27 @@ class PerformanceService implements IPerformanceService {
       localStorage.removeItem(key);
     } catch {
       // ignore
+    }
+  }
+
+  async sendPerformanceExportEmail(
+    supabaseId: string,
+    teamId: string,
+    input: SendPerformanceExportEmailInput
+  ): Promise<void> {
+    const res = await fetch('/api/v1/performance/sales/export/email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-supabase-user-id': supabaseId,
+        'x-team-id': teamId,
+      },
+      body: JSON.stringify(input),
+    });
+
+    const json = await res.json();
+    if (!res.ok || !json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? 'Erro ao enviar exportação por e-mail');
     }
   }
 }

@@ -12,6 +12,7 @@ export type DashboardMetrics = {
   negociacao: number;
   implementacao: number;
   vendas: number;
+  vendasRealizadas: number; // leads em status invoicePayment (boleto gerado, contrato pendente)
   reunioesRealizadasCloser: number;
   reunioesRealizadasSdr: number;
   
@@ -22,7 +23,7 @@ export type DashboardMetrics = {
   conversionRateFinancial: number;
   receitaTotal: number; // Soma de 'ticket' dos leads finalizados
   ticket: number; // Soma de 'ticket' de todos os leads (intenção de compra)
-  churnRate: number; // (negada operadora / vendas) * 100
+  churnRate: number; // (perdidos + desqualificados) / total criados * 100
   churnRateCrm: number;
   churnRateFinancial: number;
   noShowRate: number; // (NoShow / agendamentos) * 100

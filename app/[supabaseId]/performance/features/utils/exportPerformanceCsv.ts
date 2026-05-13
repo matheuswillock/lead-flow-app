@@ -1,77 +1,40 @@
-import Papa from 'papaparse';
-import type { PerformanceData } from '../context/PerformanceTypes';
+import type { PerformanceData } from "../context/PerformanceTypes";
+import {
+  buildCsvFiles,
+  buildExcelFile,
+  buildZipBufferFromFiles,
+  type PerformanceExportFormat,
+  type PerformanceExportSectionFlags,
+} from "@/lib/performance/exportPerformanceFiles";
 
-export interface ExportSectionFlags {
-  kpis: boolean;
-  rankings: boolean;
-  funnelPessoal: boolean;
-  activities: boolean;
-  comparison: boolean;
-}
+export type ExportSectionFlags = PerformanceExportSectionFlags;
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-}
-
-export function exportPerformanceCsv(
-  data: PerformanceData,
-  sections: ExportSectionFlags,
-  fileName: string
-): void {
-  const parts: string[] = [];
-
-  if (sections.kpis) {
-    const kpiRows = [
-      { Indicador: 'Vendas fechadas', Valor: data.kpis.closedSales, Unidade: 'vendas' },
-      { Indicador: 'Reuniões realizadas', Valor: data.kpis.meetingsHeld, Unidade: 'reuniões' },
-      { Indicador: 'Agendamentos', Valor: data.kpis.scheduledLeads, Unidade: 'agendamentos' },
-      { Indicador: 'Taxa de no-show', Valor: data.kpis.noShowRate.toFixed(1), Unidade: '%' },
-      { Indicador: 'No-shows', Valor: data.kpis.noShowCount, Unidade: 'reuniões perdidas' },
-    ];
-    parts.push('## KPIs Principais');
-    parts.push(Papa.unparse(kpiRows));
-    parts.push('');
-  }
-
-  if (sections.rankings) {
-    if (data.rankings.closer.length > 0) {
-      const closerRows = data.rankings.closer.map((r, i) => ({
-        Posição: i + 1,
-        Nome: r.name,
-        Vendas: r.count,
-        Receita: formatCurrency(r.totalSalesValue),
-        'Reuniões realizadas': r.meetingsHeld,
-        'No-shows': r.noShowCount,
-        'Taxa de presença': `${r.attendanceRate.toFixed(0)}%`,
-      }));
-      parts.push('## Ranking de Closers');
-      parts.push(Papa.unparse(closerRows));
-      parts.push('');
-    }
-
-    if (data.rankings.sdr.length > 0) {
-      const sdrRows = data.rankings.sdr.map((r, i) => ({
-        Posição: i + 1,
-        Nome: r.name,
-        Agendamentos: r.count,
-        'Reuniões realizadas': r.meetingsHeld,
-        'No-shows': r.noShowCount,
-        'Taxa de presença': `${r.attendanceRate.toFixed(0)}%`,
-      }));
-      parts.push('## Ranking de SDRs');
-      parts.push(Papa.unparse(sdrRows));
-      parts.push('');
-    }
-  }
-
-  const csv = parts.join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', `${fileName}.csv`);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", fileName);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+export async function exportPerformanceFileDownload(
+  data: PerformanceData,
+  sections: ExportSectionFlags,
+  fileNameBase: string,
+  format: PerformanceExportFormat
+): Promise<void> {
+  if (format === "excel") {
+    const excelFile = buildExcelFile(data, sections);
+    const excelBlob = new Blob([excelFile.content], { type: excelFile.contentType });
+    downloadBlob(excelBlob, `${fileNameBase}.xlsx`);
+    return;
+  }
+
+  const csvFiles = buildCsvFiles(data, sections);
+  const zipBuffer = await buildZipBufferFromFiles(csvFiles);
+  const zipBlob = new Blob([zipBuffer], { type: "application/zip" });
+  downloadBlob(zipBlob, `${fileNameBase}.zip`);
 }
