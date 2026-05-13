@@ -6,7 +6,7 @@ import { updateTaskUseCase } from "@/app/api/useCases/task/UpdateTaskUseCase";
 
 const bodySchema = z.object({
   title: z.string().min(1).max(200),
-  taskType: z.enum(["call", "documentation", "email", "proposal", "other"]),
+  taskType: z.enum(["call", "documentation", "email", "proposal", "whatsapp", "meeting", "other"]),
   body: z.string().min(1),
   isUrgent: z.boolean(),
   startAt: z.string().datetime({ offset: true }).optional().nullable(),
@@ -60,3 +60,4 @@ export async function PATCH(
     return NextResponse.json(new Output(false, [], ["Erro interno do servidor"], null), { status: 500 });
   }
 }
+

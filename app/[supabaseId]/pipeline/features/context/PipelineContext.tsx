@@ -565,6 +565,21 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   // Função para finalizar contrato
   const finalizeContract = useCallback(async (leadId: string, contractData: FinalizeContractData) => {
     try {
+      const apiPayload = {
+        ...contractData,
+        contractHolder: {
+          ...contractData.contractHolder,
+          birthDate:
+            contractData.contractHolder.birthDate instanceof Date
+              ? contractData.contractHolder.birthDate.toISOString()
+              : contractData.contractHolder.birthDate,
+        },
+        dependents: contractData.dependents.map((dep) => ({
+          ...dep,
+          birthDate: dep.birthDate instanceof Date ? dep.birthDate.toISOString() : dep.birthDate,
+        })),
+      };
+
       const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
         method: 'POST',
         headers: {
@@ -572,7 +587,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
           'x-supabase-user-id': supabaseId,
           'x-team-id': activeTeamId || ''
         },
-        body: JSON.stringify(contractData)
+        body: JSON.stringify(apiPayload)
       });
 
       const result = await response.json().catch(() => null);

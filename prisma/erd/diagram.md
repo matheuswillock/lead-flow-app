@@ -146,6 +146,8 @@ task task
 documentation documentation
 email email
 proposal proposal
+whatsapp whatsapp
+meeting meeting
 other other
         }
     
@@ -699,11 +701,21 @@ unsubscribed unsubscribed
     Int duration 
     Decimal amount 
     String notes "❓"
-    DateTime leadBirthDate "❓"
     String operadora "❓"
     String productName "❓"
     String contractFileUrl "❓"
     String contractStoragePath "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "lead_finalized_holders" {
+    String id "🗝️"
+    String name 
+    DateTime birthDate 
+    String document 
+    String cnpj "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1112,6 +1124,7 @@ unsubscribed unsubscribed
     "leads_schedule" }o--|| leads : "lead"
     "lead_finalized" }o--|| leads : "lead"
     "lead_finalized" }o--|o profiles : "closer"
+    "lead_finalized_holders" |o--|| lead_finalized : "leadFinalized"
     "lead_finalized_dependents" }o--|| lead_finalized : "leadFinalized"
     "lead_portfolio" |o--|| "PortfolioStatus" : "enum:portfolioStatus"
     "lead_portfolio" |o--|| leads : "lead"

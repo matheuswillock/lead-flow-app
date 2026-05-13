@@ -3,6 +3,7 @@ import { prisma } from '@/app/api/infra/data/prisma';
 import { Output } from '@/lib/output';
 import { getTeamAccess, hasLeadAccess } from '@/app/api/v1/utils/teamAccess';
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from '../../DTO/leadValueLimits';
+import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
 
 export async function POST(
   request: NextRequest,
@@ -27,7 +28,7 @@ export async function POST(
       finalizedDateAt,
       notes,
       closerId,
-      leadBirthDate,
+      contractHolder,
       operadora,
       productName,
       contractFileUrl,
@@ -70,9 +71,9 @@ export async function POST(
       );
     }
 
-    if (!leadBirthDate) {
+    if (!contractHolder || typeof contractHolder !== 'object') {
       return NextResponse.json(
-        new Output(false, [], ['A data de nascimento do lead é obrigatória'], null),
+        new Output(false, [], ['Os dados do titular do contrato são obrigatórios'], null),
         { status: 400 }
       );
     }
@@ -86,6 +87,37 @@ export async function POST(
 
     const dependentsList: { name: string; birthDate: string; parentesco: string; document?: string }[] =
       Array.isArray(dependents) ? dependents : [];
+
+    const holderName =
+      typeof contractHolder.name === 'string' ? contractHolder.name.trim() : '';
+    const holderBirthDate = new Date(contractHolder.birthDate);
+    const holderDocument = sanitizeRgCpfDigits(
+      typeof contractHolder.document === 'string' ? contractHolder.document : ''
+    );
+    const holderCnpj = sanitizeDocumentDigits(
+      typeof contractHolder.cnpj === 'string' ? contractHolder.cnpj : ''
+    );
+
+    if (!holderName) {
+      return NextResponse.json(
+        new Output(false, [], ['O nome do titular é obrigatório'], null),
+        { status: 400 }
+      );
+    }
+
+    if (Number.isNaN(holderBirthDate.getTime())) {
+      return NextResponse.json(
+        new Output(false, [], ['A data de nascimento do titular é obrigatória'], null),
+        { status: 400 }
+      );
+    }
+
+    if (!holderDocument) {
+      return NextResponse.json(
+        new Output(false, [], ['O documento do titular é obrigatório'], null),
+        { status: 400 }
+      );
+    }
 
     for (const dep of dependentsList) {
       if (!dep.name || !dep.birthDate || !dep.parentesco) {
@@ -121,11 +153,20 @@ export async function POST(
           duration: durationInDays,
           notes: notes || null,
           closerId: closerId || null,
-          leadBirthDate: new Date(leadBirthDate),
           operadora: operadora || null,
           productName: productName || null,
           contractFileUrl: contractFileUrl || null,
           contractStoragePath: contractStoragePath || null,
+        },
+      });
+
+      await tx.leadFinalizedHolder.create({
+        data: {
+          leadFinalizedId: leadFinalized.id,
+          name: holderName,
+          birthDate: holderBirthDate,
+          document: holderDocument,
+          cnpj: holderCnpj || null,
         },
       });
 
@@ -136,7 +177,7 @@ export async function POST(
             name: dep.name,
             birthDate: new Date(dep.birthDate),
             parentesco: dep.parentesco,
-            document: dep.document ?? '',
+            document: dep.document ? sanitizeRgCpfDigits(dep.document) : '',
           })),
         });
       }

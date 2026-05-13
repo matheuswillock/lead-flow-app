@@ -7,10 +7,12 @@ export type TaskGoogleSyncResult = {
 
 export type CreateTaskCalendarEventInput = {
   taskId: string;
+  taskTitle: string;
   body: string;
   isUrgent: boolean;
   startAt: Date | null;
   endAt: Date | null;
+  leadCode: string;
   leadName: string;
   assigneeProfileIds: string[];
 };
@@ -29,6 +31,7 @@ export type UpdateTaskCalendarEventInput = {
 export type CancelTaskCalendarEventInput = {
   assigneeProfileId: string;
   googleEventId: string;
+  googleCalendarId?: string | null;
 };
 
 export interface ITaskGoogleCalendarService {

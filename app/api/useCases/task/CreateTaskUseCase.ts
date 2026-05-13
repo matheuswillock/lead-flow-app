@@ -52,15 +52,17 @@ export class CreateTaskUseCase implements ICreateTaskUseCase {
     try {
       googleResults = await taskGoogleCalendarService.createEventsForAssignees({
         taskId: task.id,
+        taskTitle: task.title,
         body: task.body,
         isUrgent: task.isUrgent,
         startAt: task.startAt,
         endAt: task.endAt,
+        leadCode: lead.leadCode,
         leadName: lead.name,
         assigneeProfileIds: validAssigneeIds,
       });
     } catch (err) {
-      console.error("[CreateTaskUseCase] Erro ao sincronizar tarefa com Google Calendar:", err);
+      console.error("[CreateTaskUseCase] Erro ao sincronizar tarefa com Google Tasks:", err);
       googleResults = validAssigneeIds.map((profileId) => ({
         profileId,
         googleSynced: false,
@@ -88,7 +90,15 @@ export class CreateTaskUseCase implements ICreateTaskUseCase {
       }
     }
 
-    return new Output(true, ["Tarefa criada com sucesso"], [], {
+    const successMessages = ["Tarefa criada com sucesso"];
+    const failedGoogleSyncCount = googleResults.filter((result) => !result.googleSynced).length;
+    if (failedGoogleSyncCount > 0) {
+      successMessages.push(
+        `Aviso: ${failedGoogleSyncCount} responsável(eis) sem sincronização no Google Tasks.`
+      );
+    }
+
+    return new Output(true, successMessages, [], {
       task,
       googleSync: googleResults,
     });

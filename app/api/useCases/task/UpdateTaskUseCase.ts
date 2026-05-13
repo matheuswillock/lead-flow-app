@@ -5,7 +5,7 @@ type UpdateTaskInput = {
   taskId: string;
   teamId: string;
   title: string;
-  taskType: "call" | "documentation" | "email" | "proposal" | "other";
+  taskType: "call" | "documentation" | "email" | "proposal" | "whatsapp" | "meeting" | "other";
   body: string;
   isUrgent: boolean;
   startAt: Date | null;

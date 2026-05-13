@@ -25,6 +25,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import { formatRgCpfInput, sanitizeRgCpfDigits } from '@/lib/masks';
 import type { FinalizeContractDependent } from './FinalizeContractDialog';
 
 const PARENTESCO_OPTIONS = [
@@ -80,9 +81,7 @@ export function AddDependentModal({ open, onOpenChange, onSave, initialData }: A
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{initialData ? 'Editar dependente' : 'Adicionar dependente'}</DialogTitle>
-          <DialogDescription>
-            Preencha os dados do dependente. Documento é opcional.
-          </DialogDescription>
+          <DialogDescription>Preencha os dados do dependente.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
@@ -142,12 +141,12 @@ export function AddDependentModal({ open, onOpenChange, onSave, initialData }: A
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="dep-doc">Documento (opcional)</Label>
+            <Label htmlFor="dep-doc">Documento</Label>
             <Input
               id="dep-doc"
-              placeholder="CPF, RG..."
-              value={document}
-              onChange={(e) => setDocument(e.target.value)}
+              placeholder="CPF ou RG"
+              value={formatRgCpfInput(document)}
+              onChange={(e) => setDocument(sanitizeRgCpfDigits(e.target.value))}
             />
           </div>
         </div>

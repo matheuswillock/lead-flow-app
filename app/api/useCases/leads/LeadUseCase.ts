@@ -46,6 +46,13 @@ const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
 
 const getStatusLabel = (status: LeadStatus) => LEAD_STATUS_LABELS[status] ?? status;
 const SCHEDULED_INVITE_SUCCESS_STATUSES: InviteDispatchStatus[] = ["sent_google", "sent_resend"];
+const SALES_INFO_REQUIRED_TARGET_STATUSES: LeadStatus[] = [
+  LeadStatus.pending_documents,
+  LeadStatus.offerSubmission,
+  LeadStatus.dps_agreement,
+  LeadStatus.invoicePayment,
+  LeadStatus.contract_finalized,
+];
 
 export class LeadUseCase implements ILeadUseCase {
   constructor(
@@ -699,6 +706,52 @@ export class LeadUseCase implements ILeadUseCase {
       
       if (!existingLead) {
         return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      const requiresSalesInfoBeforeTransition =
+        existingLead.status === LeadStatus.offerNegotiation &&
+        SALES_INFO_REQUIRED_TARGET_STATUSES.includes(status);
+
+      if (requiresSalesInfoBeforeTransition) {
+        const missingFields: Array<"ticket" | "contractDueDate" | "soldPlan"> = [];
+        const hasValidTicket =
+          existingLead.ticket !== null &&
+          existingLead.ticket !== undefined &&
+          !Number.isNaN(Number(existingLead.ticket)) &&
+          Number(existingLead.ticket) > 0;
+
+        if (!hasValidTicket) {
+          missingFields.push("ticket");
+        }
+        if (!existingLead.contractDueDate) {
+          missingFields.push("contractDueDate");
+        }
+        if (!existingLead.soldPlan?.trim()) {
+          missingFields.push("soldPlan");
+        }
+
+        if (missingFields.length > 0) {
+          return new Output(
+            false,
+            [],
+            [
+              "Preencha ticket, data de vigência e plano vendido para continuar a mudança de status.",
+            ],
+            {
+              requiresSalesInfo: true,
+              missingFields,
+              sourceStatus: existingLead.status,
+              targetStatus: status,
+              currentSalesInfo: {
+                ticket: existingLead.ticket ? Number(existingLead.ticket) : null,
+                contractDueDate: existingLead.contractDueDate
+                  ? existingLead.contractDueDate.toISOString()
+                  : null,
+                soldPlan: existingLead.soldPlan || null,
+              },
+            }
+          );
+        }
       }
 
       const requiresFinalizeContractBeforeTransition =

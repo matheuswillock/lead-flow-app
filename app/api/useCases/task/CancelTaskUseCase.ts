@@ -22,6 +22,7 @@ export class CancelTaskUseCase implements ICancelTaskUseCase {
         await taskGoogleCalendarService.cancelEventForAssignee({
           assigneeProfileId: assignee.profileId,
           googleEventId: assignee.googleEventId,
+          googleCalendarId: assignee.googleCalendarId,
         });
       }
     }

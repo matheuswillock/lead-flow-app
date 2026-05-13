@@ -121,7 +121,7 @@ class TaskRepository implements ITaskRepository {
   async updateTaskDetails(input: {
     taskId: string;
     title: string;
-    taskType: "call" | "documentation" | "email" | "proposal" | "other";
+    taskType: "call" | "documentation" | "email" | "proposal" | "whatsapp" | "meeting" | "other";
     body: string;
     isUrgent: boolean;
     startAt: Date | null;
@@ -132,7 +132,7 @@ class TaskRepository implements ITaskRepository {
       where: { id: input.taskId },
       data: {
         title: input.title.trim(),
-        taskType: input.taskType,
+        taskType: input.taskType as TaskType,
         body: input.body.trim(),
         isUrgent: input.isUrgent,
         startAt: input.startAt,
@@ -144,18 +144,19 @@ class TaskRepository implements ITaskRepository {
       },
       include: TASK_INCLUDE,
     });
+    const taskWithRelations = updatedTask as TaskWithRelations;
 
     await prisma.leadActivity.updateMany({
-      where: { id: updatedTask.activityId ?? "" },
+      where: { id: taskWithRelations.activityId ?? "" },
       data: {
         body: input.body.trim(),
         payload: {
           kind: "task",
-          title: updatedTask.title,
-          taskType: updatedTask.taskType,
-          isUrgent: updatedTask.isUrgent,
+          title: taskWithRelations.title,
+          taskType: taskWithRelations.taskType,
+          isUrgent: taskWithRelations.isUrgent,
           assigneeProfileIds: input.assigneeProfileIds,
-          assigneeMentions: updatedTask.assignees.map((assignee) => ({
+          assigneeMentions: taskWithRelations.assignees.map((assignee) => ({
             profileId: assignee.profile.id,
             label: `@${assignee.profile.fullName || assignee.profile.email}`,
           })),
@@ -163,7 +164,7 @@ class TaskRepository implements ITaskRepository {
       },
     });
 
-    return updatedTask as TaskWithRelations;
+    return taskWithRelations;
   }
 
   async findByIdWithAssignees(taskId: string) {
@@ -239,7 +240,7 @@ class TaskRepository implements ITaskRepository {
   async findConnectedAssigneesForTask(taskId: string) {
     const assignees = await prisma.taskAssignee.findMany({
       where: { taskId },
-      select: { profileId: true, googleEventId: true, googleSynced: true },
+      select: { profileId: true, googleEventId: true, googleCalendarId: true, googleSynced: true },
     });
     return assignees;
   }
@@ -282,3 +283,4 @@ class TaskRepository implements ITaskRepository {
 }
 
 export const taskRepository = new TaskRepository();
+
