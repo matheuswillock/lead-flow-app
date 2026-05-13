@@ -76,6 +76,10 @@ const ERROR_PATTERNS: Array<{ match: RegExp; message: string }> = [
     message: "Apenas o master do time pode realizar esta ação.",
   },
   {
+    match: /apenas o master pode|permissões delegadas|você não pode editar o master/i,
+    message: "Você não tem permissão para realizar esta ação.",
+  },
+  {
     match: /forma de pagamento inv[aá]lida|forma de pagamento invalida/i,
     message: "Forma de pagamento inválida. Verifique os dados e tente novamente.",
   },

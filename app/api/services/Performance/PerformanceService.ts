@@ -193,11 +193,11 @@ export class PerformanceService implements IPerformanceService {
         select: { id: true, assignedTo: true, closerId: true, statusEnteredAt: true },
       }),
 
-      // Current: scheduled leads (via meetingDate)
+      // Current: scheduled leads (via meetingDate, any status)
+      // Inclui leads que avançaram no funil após o agendamento (ex: contract_finalized)
       prisma.lead.findMany({
         where: {
           ...leadScope,
-          status: { in: ['scheduled', 'no_show'] },
           meetingDate: { gte: startDate, lte: endDate },
         },
         select: { id: true, meetingDate: true, assignedTo: true, closerId: true },
@@ -256,11 +256,10 @@ export class PerformanceService implements IPerformanceService {
         select: { id: true },
       }),
 
-      // Previous period: scheduled
+      // Previous period: scheduled (any status, via meetingDate)
       prisma.lead.findMany({
         where: {
           ...leadScope,
-          status: { in: ['scheduled', 'no_show'] },
           meetingDate: { gte: prevStartDate, lte: prevEndDate },
         },
         select: { id: true },

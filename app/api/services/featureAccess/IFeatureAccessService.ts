@@ -1,3 +1,5 @@
+import type { UserRoleInfo } from "@/app/api/infra/data/repositories/featureAccess/IFeatureAccessRepository"
+
 export interface ResolveFeatureAccessInput {
   profileId: string
   managerId: string
@@ -6,6 +8,7 @@ export interface ResolveFeatureAccessInput {
 export interface FeatureAccessResult {
   slugs: string[]
   betaSlugs: string[]
+  userRole: UserRoleInfo
 }
 
 export interface IFeatureAccessService {

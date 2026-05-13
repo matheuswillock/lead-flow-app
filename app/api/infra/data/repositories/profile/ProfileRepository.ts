@@ -787,13 +787,6 @@ class PrismaProfileRepository implements IProfileRepository {
                 data: updateData,
             });
             
-            console.info("✅ [updateProfileById] Profile atualizado com sucesso no banco:", {
-                profileId: profile.id,
-                newFullName: profile.fullName,
-                newEmail: profile.email,
-                newRole: profile.role
-            });
-            
             return profile;
         } catch (error) {
             console.error("❌ [updateProfileById] Erro ao atualizar profile:", error);

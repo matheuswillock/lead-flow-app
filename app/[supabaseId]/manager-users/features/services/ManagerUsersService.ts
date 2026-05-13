@@ -39,6 +39,10 @@ class ManagerUsersService {
     });
 
     if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      if (body && body.isValid === false) {
+        return body as T;
+      }
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 

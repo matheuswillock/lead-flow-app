@@ -429,9 +429,9 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
         type: "panel",
         title: "Taxa de Conversão",
         lines: [
-          "O que é: percentual de leads que viraram venda no CRM.",
-          "Como funciona: compara fechamentos com o total de leads.",
-          "Fórmula: (vendas no CRM / total de leads) x 100.",
+          "O que é: percentual de leads que avançaram para as etapas de conversão no período.",
+          "Como funciona: considera leads com Boleto gerado, DPS e Contrato fechado.",
+          "Fórmula: (Boleto + DPS + Contrato fechado) / total de leads x 100.",
         ],
       },
       {
@@ -472,11 +472,20 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
       },
       {
         type: "panel",
-        title: "Vendas",
+        title: "Vendas realizadas",
         lines: [
-          "O que é: quantidade de negócios fechados no CRM.",
-          "Como funciona: considera status de Negócio fechado.",
-          "Fórmula: contagem de leads com status de venda fechada.",
+          "O que é: leads que geraram boleto mas ainda não tiveram o contrato fechado.",
+          "Como funciona: considera o status de Boleto gerado.",
+          "Fórmula: contagem de leads com status de boleto gerado no período.",
+        ],
+      },
+      {
+        type: "panel",
+        title: "Vendas fechadas",
+        lines: [
+          "O que é: quantidade de negócios com contrato firmado no CRM.",
+          "Como funciona: considera o status de Contrato fechado.",
+          "Fórmula: contagem de leads com status de contrato fechado no período.",
         ],
       },
       {
@@ -490,11 +499,11 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
       },
       {
         type: "panel",
-        title: "Taxa de Churn Rate",
+        title: "Perdidos e desqualificados",
         lines: [
-          "O que é: percentual de perda sobre a base agendada.",
-          "Como funciona: soma negado operadora e perdido.",
-          "Fórmula: ((negado operadora + perdido) / agendamentos) x 100.",
+          "O que é: percentual de leads perdidos ou desqualificados sobre o total.",
+          "Como funciona: soma leads com status Perdido e Desqualificado.",
+          "Fórmula: ((perdidos + desqualificados) / total de leads criados) x 100.",
         ],
       },
       {

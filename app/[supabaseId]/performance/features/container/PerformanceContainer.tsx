@@ -1,19 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Plus } from "lucide-react";
+import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePerformanceContext } from "../context/PerformanceContext";
 import { PerfFiltersBar } from "./Components/PerfFiltersBar";
 import { PerfKpis } from "./Components/PerfKpis";
 import { PerfTopHighlights } from "./Components/PerfTopHighlights";
 import { PerfRankings } from "./Components/PerfRankings";
-import { NovaMetaModal } from "./Components/NovaMetaModal";
 import { ExportarRelatorioModal } from "./Components/ExportarRelatorioModal";
 
 export function PerformanceContainer() {
   const { error, filters } = usePerformanceContext();
-  const [isNovaMetaOpen, setIsNovaMetaOpen] = useState(false);
   const [isExportarOpen, setIsExportarOpen] = useState(false);
 
   const periodLabel = (
@@ -54,6 +52,10 @@ export function PerformanceContainer() {
                 <Download data-icon="inline-start" size={13} />
                 Exportar relatorio
               </Button>
+              {/*
+                TODO(performance): implementar serviço de Metas e reativar o fluxo de "Nova meta".
+              */}
+              {/*
               <Button
                 size="sm"
                 onClick={() => setIsNovaMetaOpen(true)}
@@ -61,6 +63,7 @@ export function PerformanceContainer() {
                 <Plus data-icon="inline-start" size={14} strokeWidth={2.5} />
                 Nova meta
               </Button>
+              */}
             </div>
           </div>
           <div className="rounded-xl border border-border bg-card/40 px-3 py-3">
@@ -83,7 +86,12 @@ export function PerformanceContainer() {
         </div>
       </div>
 
+      {/*
+        TODO(performance): implementar serviço de Metas e reativar modal de criação de meta.
+      */}
+      {/*
       <NovaMetaModal open={isNovaMetaOpen} onOpenChange={setIsNovaMetaOpen} />
+      */}
       <ExportarRelatorioModal open={isExportarOpen} onOpenChange={setIsExportarOpen} />
     </div>
   );

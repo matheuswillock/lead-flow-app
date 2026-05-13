@@ -21,10 +21,17 @@ interface LeadsDateFilterProps {
   title: string;
   value: DateRange | undefined;
   onChange: (range: DateRange | undefined) => void;
+  allowFutureDates?: boolean;
 }
 
-export function LeadsDateFilter({ title, value, onChange }: LeadsDateFilterProps) {
+export function LeadsDateFilter({
+  title,
+  value,
+  onChange,
+  allowFutureDates = false,
+}: LeadsDateFilterProps) {
   const { tz } = useTimezone();
+  const currentYear = nowInTz(tz).getFullYear();
   const handleClear = () => {
     onChange(undefined);
   };
@@ -60,10 +67,13 @@ export function LeadsDateFilter({ title, value, onChange }: LeadsDateFilterProps
           mode="range"
           selected={value}
           onSelect={onChange}
+          captionLayout="dropdown"
+          fromYear={2000}
+          toYear={allowFutureDates ? currentYear + 10 : currentYear}
           weekdayLabelFormat="short"
           locale={ptBR}
           numberOfMonths={1}
-          disabled={(date) => date > nowInTz(tz)}
+          disabled={allowFutureDates ? undefined : (date) => date > nowInTz(tz)}
         />
         {(value?.from || value?.to) && (
           <div className="border-t p-2">

@@ -13,6 +13,8 @@ export type DashboardMetrics = {
   implementacao: number;
   vendas: number;
   vendasRealizadas: number; // leads em status invoicePayment (boleto gerado, contrato pendente)
+  dpsCount: number; // leads em status dps_agreement
+  convertedCount: number; // leads em invoicePayment + dps_agreement + contract_finalized
   reunioesRealizadasCloser: number;
   reunioesRealizadasSdr: number;
   

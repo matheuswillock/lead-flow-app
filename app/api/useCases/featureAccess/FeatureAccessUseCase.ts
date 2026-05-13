@@ -12,8 +12,8 @@ export class FeatureAccessUseCase {
 
   async execute(input: ResolveFeatureAccessUseCaseInput): Promise<Output> {
     try {
-      const { slugs, betaSlugs } = await this.service.resolveAllowedSlugs(input)
-      return new Output(true, [], [], { slugs, betaSlugs })
+      const { slugs, betaSlugs, userRole } = await this.service.resolveAllowedSlugs(input)
+      return new Output(true, [], [], { slugs, betaSlugs, userRole })
     } catch (error) {
       console.error("[FeatureAccessUseCase][execute]", error)
       return new Output(false, [], ["Erro ao resolver acesso de funcionalidades"], null)

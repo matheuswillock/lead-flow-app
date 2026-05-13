@@ -19,6 +19,7 @@ export interface CreateScheduleParams {
   extraGuests?: string[];
   createdByProfileId: string;
   transitionStatusToScheduled?: boolean;
+  confirmNoShowSchedule?: boolean;
 }
 
 export interface ILeadScheduleService {

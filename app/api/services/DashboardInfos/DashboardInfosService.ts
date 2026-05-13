@@ -26,6 +26,8 @@ const STATUS_GROUPS = {
     "pending_documents"   // Pending Documents
   ] as LeadStatus[],
   SALES: ["contract_finalized"] as LeadStatus[],
+  CONVERTED: ["contract_finalized", "invoicePayment", "dps_agreement"] as LeadStatus[],
+  DPS: ["dps_agreement"] as LeadStatus[],
   CHURN: ["operator_denied"] as LeadStatus[],
   OPPORTUNITY_LOST: ["opportunityLost"] as LeadStatus[],
   DISQUALIFIED: ["disqualified"] as LeadStatus[],
@@ -156,8 +158,10 @@ export class DashboardInfosService implements IDashboardInfosService {
     const salesCountCrm = this.countByStatusGroup(statusCount, STATUS_GROUPS.SALES);
     const salesCount = salesCountCrm;
     const vendasRealizadas = this.countByStatusGroup(statusCount, STATUS_GROUPS.INVOICE_PAYMENT);
+    const dpsCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.DPS);
+    const convertedCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.CONVERTED);
     const noShowBase = agendamentos + noShowCount;
-    const conversionRateCrm = totalLeads > 0 ? (salesCountCrm / totalLeads) * 100 : 0;
+    const conversionRateCrm = totalLeads > 0 ? (convertedCount / totalLeads) * 100 : 0;
     const conversionRateFinancial = totalLeads > 0 ? (salesCountFinancial / totalLeads) * 100 : 0;
     const perdidosDesqualificados = opportunityLost + disqualified;
     const churnRateCrm = totalLeads > 0 ? (perdidosDesqualificados / totalLeads) * 100 : 0;
@@ -183,6 +187,8 @@ export class DashboardInfosService implements IDashboardInfosService {
       implementacao,
       vendas: salesCountCrm,
       vendasRealizadas,
+      dpsCount,
+      convertedCount,
       reunioesRealizadasCloser,
       reunioesRealizadasSdr,
       conversionRate: Math.round(conversionRateCrm * 100) / 100,
@@ -292,7 +298,7 @@ export class DashboardInfosService implements IDashboardInfosService {
     const grouped = new Map<string, number>();
 
     leads
-      .filter((lead) => lead.status === LeadStatus.contract_finalized)
+      .filter((lead) => (STATUS_GROUPS.CONVERTED as readonly string[]).includes(lead.status))
       .forEach((lead) => {
       const key =
         period === "7d" || period === "30d"

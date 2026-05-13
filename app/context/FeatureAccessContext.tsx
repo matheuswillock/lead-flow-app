@@ -5,9 +5,26 @@ import type { ReactNode } from "react"
 import { useUserContext } from "./UserContext"
 import { useTeamContext } from "./TeamContext"
 
+interface UserRoleData {
+  isMaster: boolean
+  role: string
+  functions: string[]
+  canCreateAccountUsers: boolean
+  canManageAccountTeams: boolean
+}
+
+const DEFAULT_USER_ROLE: UserRoleData = {
+  isMaster: false,
+  role: "operator",
+  functions: [],
+  canCreateAccountUsers: false,
+  canManageAccountTeams: false,
+}
+
 interface FeatureAccessContextValue {
   slugs: string[]
   betaSlugs: string[]
+  userRole: UserRoleData
   isLoading: boolean
   hasAccess: (slug: string) => boolean
   isBeta: (slug: string) => boolean
@@ -25,6 +42,7 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
   const { activeTeamId } = useTeamContext()
   const [slugs, setSlugs] = useState<string[]>([])
   const [betaSlugs, setBetaSlugs] = useState<string[]>([])
+  const [userRole, setUserRole] = useState<UserRoleData>(DEFAULT_USER_ROLE)
   const [isLoading, setIsLoading] = useState(true)
   const lastRequestKeyRef = useRef<string>("")
   const inFlightRef = useRef(false)
@@ -34,6 +52,7 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
       if (!user?.supabaseId) {
         setSlugs([])
         setBetaSlugs([])
+        setUserRole(DEFAULT_USER_ROLE)
         setIsLoading(false)
         return
       }
@@ -56,16 +75,20 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
         if (!output.isValid) {
           setSlugs([])
           setBetaSlugs([])
+          setUserRole(DEFAULT_USER_ROLE)
           return
         }
 
         setSlugs(Array.isArray(output.result?.slugs) ? output.result.slugs : [])
         setBetaSlugs(Array.isArray(output.result?.betaSlugs) ? output.result.betaSlugs : [])
+        const rawRole = output.result?.userRole
+        setUserRole(rawRole && typeof rawRole === "object" ? (rawRole as UserRoleData) : DEFAULT_USER_ROLE)
         lastRequestKeyRef.current = requestKey
       } catch (error) {
         console.error("[FeatureAccessContext] Erro ao carregar acesso:", error)
         setSlugs([])
         setBetaSlugs([])
+        setUserRole(DEFAULT_USER_ROLE)
       } finally {
         setIsLoading(false)
         inFlightRef.current = false
@@ -85,6 +108,7 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
     () => ({
       slugs,
       betaSlugs,
+      userRole,
       isLoading,
       hasAccess,
       isBeta,
@@ -92,7 +116,7 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
         await fetchAccess(true)
       },
     }),
-    [slugs, betaSlugs, isLoading, hasAccess, isBeta, fetchAccess]
+    [slugs, betaSlugs, userRole, isLoading, hasAccess, isBeta, fetchAccess]
   )
 
   return <FeatureAccessContext.Provider value={value}>{children}</FeatureAccessContext.Provider>
