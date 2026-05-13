@@ -26,6 +26,7 @@ import {
   EyeOff,
   Info,
   CheckCircle2,
+  BanknoteArrowUp,
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
@@ -34,7 +35,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { MetricsFilters } from '../services/IDashboardMetricsService';
 import { useTimezone } from '@/app/context/TimezoneContext';
 import { DateRange } from "react-day-picker";
-import { format } from "date-fns";
+import { format, isSameDay } from "date-fns";
 import {
   addDaysInTz,
   addMonthsInTz,
@@ -184,18 +185,29 @@ export function SectionCardsWithContext() {
   const periodText = getPeriodText();
 
   const handleCustomDateRangeChange = (range: DateRange | undefined) => {
-    setCustomDateRangeDraft(range);
-
     if (!range?.from) {
+      setCustomDateRangeDraft(undefined);
       clearCustomDateRange();
       return;
     }
+    const rangeStart = range.from;
 
-    if (!range.to) {
+    const normalizedRange: DateRange = {
+      from: rangeStart,
+      to: range.to && isSameDay(rangeStart, range.to) ? undefined : range.to,
+    };
+
+    setCustomDateRangeDraft(normalizedRange);
+
+    const rangeEnd = normalizedRange.to;
+    if (!rangeEnd) {
       return;
     }
 
-    setCustomDateRange(format(range.from, "yyyy-MM-dd"), format(range.to, "yyyy-MM-dd"));
+    setCustomDateRange(
+      format(rangeStart, "yyyy-MM-dd"),
+      format(rangeEnd, "yyyy-MM-dd")
+    );
   };
   const filterDateRangeText = (() => {
     let startDate: Date | null = null;
@@ -384,7 +396,7 @@ export function SectionCardsWithContext() {
       {/* SEÇÃO 2: FUNIL DE VENDAS */}
       <div>
         <h3 className="mb-3 text-sm font-semibold text-muted-foreground">📊 Funil de Vendas</h3>
-        <div className="grid grid-cols-2 gap-4 @xl/main:grid-cols-3">
+        <div className="grid grid-cols-3 gap-4">
           {/* Agendamentos */}
           <Card className="@container/card row-span-2 flex flex-col">
             <CardHeader className="pb-2">
@@ -437,7 +449,7 @@ export function SectionCardsWithContext() {
             </div>
           </Card>
 
-          {/* Negociação */}
+          {/* Negociação — col 2, row 1 */}
           <Card className="@container/card">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
@@ -461,7 +473,61 @@ export function SectionCardsWithContext() {
             </CardFooter>
           </Card>
 
-          {/* Implementação */}
+          {/* Vendas — col 3, row-span-2 (boleto + DPS + contrato) */}
+          <Card className="@container/card row-span-2 flex flex-col">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-green-500" />
+                <CardTitle className="text-sm font-medium text-muted-foreground">
+                  Vendas
+                  <InfoTooltip text="Total de leads convertidos: boleto gerado, DPS e contrato fechado." />
+                </CardTitle>
+              </div>
+              <CardDescription
+                className={cn(
+                  "text-4xl font-bold text-green-600 dark:text-green-400 transition-all duration-200",
+                  isBlurred && "blur-sm select-none",
+                )}
+              >
+                {metrics.convertedCount}
+              </CardDescription>
+              <p className="text-xs text-muted-foreground">Conversões no período</p>
+            </CardHeader>
+            <div className="px-6">
+              <Separator />
+            </div>
+            <CardFooter className="flex flex-col gap-2 pt-3 pb-4 px-6 flex-1 justify-end">
+              <div className="flex w-full items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                  Vendas realizadas
+                </span>
+                <span className={cn("font-semibold", isBlurred && "blur-sm select-none")}>
+                  {metrics.salesCount}
+                </span>
+              </div>
+              <div className="flex w-full items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <TrendingUp className="h-3.5 w-3.5 text-green-500" />
+                  Vendas fechadas
+                </span>
+                <span className={cn("font-semibold", isBlurred && "blur-sm select-none")}>
+                  {metrics.dpsCount}
+                </span>
+              </div>
+              <div className="flex w-full items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <BanknoteArrowUp className="h-3.5 w-3.5 text-blue-500" />
+                  Boletos gerados
+                </span>
+                <span className={cn("font-semibold", isBlurred && "blur-sm select-none")}>
+                  {metrics.vendasRealizadas}
+                </span>
+              </div>
+            </CardFooter>
+          </Card>
+
+          {/* Implementação — col 2, row 2 */}
           <Card className="@container/card">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
@@ -482,54 +548,6 @@ export function SectionCardsWithContext() {
             </CardHeader>
             <CardFooter className="pt-0">
               <CardAction className="text-xs text-muted-foreground">Em implementação</CardAction>
-            </CardFooter>
-          </Card>
-
-          {/* Vendas realizadas */}
-          <Card className="@container/card">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-green-500" />
-                <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Vendas realizadas
-                  <InfoTooltip text="Leads com boleto gerado aguardando fechamento do contrato." />
-                </CardTitle>
-              </div>
-              <CardDescription
-                className={cn(
-                  "text-2xl font-bold text-green-600 dark:text-green-400 transition-all duration-200",
-                  isBlurred && "blur-sm select-none",
-                )}
-              >
-                {metrics.vendasRealizadas}
-              </CardDescription>
-            </CardHeader>
-            <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">Boleto gerado</CardAction>
-            </CardFooter>
-          </Card>
-
-          {/* Vendas fechadas */}
-          <Card className="@container/card">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-green-500" />
-                <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Vendas fechadas
-                  <InfoTooltip text="Leads com contrato fechado no período selecionado." />
-                </CardTitle>
-              </div>
-              <CardDescription
-                className={cn(
-                  "text-2xl font-bold text-green-600 dark:text-green-400 transition-all duration-200",
-                  isBlurred && "blur-sm select-none",
-                )}
-              >
-                {metrics.salesCount}
-              </CardDescription>
-            </CardHeader>
-            <CardFooter className="pt-0">
-              <CardAction className="text-xs text-muted-foreground">Contrato fechado</CardAction>
             </CardFooter>
           </Card>
         </div>

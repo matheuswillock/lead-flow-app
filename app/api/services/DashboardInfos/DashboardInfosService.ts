@@ -27,6 +27,7 @@ const STATUS_GROUPS = {
   ] as LeadStatus[],
   SALES: ["contract_finalized"] as LeadStatus[],
   CONVERTED: ["contract_finalized", "invoicePayment", "dps_agreement"] as LeadStatus[],
+  DPS: ["dps_agreement"] as LeadStatus[],
   CHURN: ["operator_denied"] as LeadStatus[],
   OPPORTUNITY_LOST: ["opportunityLost"] as LeadStatus[],
   DISQUALIFIED: ["disqualified"] as LeadStatus[],
@@ -157,6 +158,7 @@ export class DashboardInfosService implements IDashboardInfosService {
     const salesCountCrm = this.countByStatusGroup(statusCount, STATUS_GROUPS.SALES);
     const salesCount = salesCountCrm;
     const vendasRealizadas = this.countByStatusGroup(statusCount, STATUS_GROUPS.INVOICE_PAYMENT);
+    const dpsCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.DPS);
     const convertedCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.CONVERTED);
     const noShowBase = agendamentos + noShowCount;
     const conversionRateCrm = totalLeads > 0 ? (convertedCount / totalLeads) * 100 : 0;
@@ -185,6 +187,8 @@ export class DashboardInfosService implements IDashboardInfosService {
       implementacao,
       vendas: salesCountCrm,
       vendasRealizadas,
+      dpsCount,
+      convertedCount,
       reunioesRealizadasCloser,
       reunioesRealizadasSdr,
       conversionRate: Math.round(conversionRateCrm * 100) / 100,
