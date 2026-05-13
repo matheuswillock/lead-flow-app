@@ -64,6 +64,74 @@ function InfoTooltip({ text }: { text: string }) {
   );
 }
 
+interface FunnelCardItem {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+}
+
+interface FunnelCardProps {
+  icon: React.ReactNode;
+  title: string;
+  tooltip: string;
+  total: React.ReactNode;
+  totalColor?: string;
+  subtitle: string;
+  items: FunnelCardItem[];
+  className?: string;
+  isBlurred: boolean;
+}
+
+function FunnelCard({
+  icon,
+  title,
+  tooltip,
+  total,
+  totalColor = "text-foreground",
+  subtitle,
+  items,
+  className,
+  isBlurred,
+}: FunnelCardProps) {
+  return (
+    <Card className={cn("@container/card flex flex-col", className)}>
+      <CardHeader className="pb-2">
+        <div className="flex items-center gap-2">
+          {icon}
+          <CardTitle className="text-xs font-medium text-muted-foreground">
+            {title}
+            <InfoTooltip text={tooltip} />
+          </CardTitle>
+        </div>
+        <CardDescription
+          className={cn(
+            "text-4xl font-bold transition-all duration-200 mt-1",
+            totalColor,
+            isBlurred && "blur-sm select-none",
+          )}
+        >
+          {total}
+        </CardDescription>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </CardHeader>
+      <div className="px-6"><Separator /></div>
+      <div className="flex flex-col gap-4 p-6 flex-1 justify-center">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {item.icon}
+              <span className="text-xs text-muted-foreground">{item.label}</span>
+            </div>
+            <span className={cn("text-sm font-semibold tabular-nums", isBlurred && "blur-sm select-none")}>
+              {item.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function parseDateInput(value: string, tz: string): Date | null {
   const ymdMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (ymdMatch) {
@@ -398,56 +466,32 @@ export function SectionCardsWithContext() {
         <h3 className="mb-3 text-sm font-semibold text-muted-foreground">📊 Funil de Vendas</h3>
         <div className="grid grid-cols-3 gap-4">
           {/* Agendamentos */}
-          <Card className="@container/card row-span-2 flex flex-col">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-blue-500" />
-                <CardTitle className="text-xs font-medium text-muted-foreground">
-                  Agendamentos
-                  <InfoTooltip text="Quantidade de leads que tiveram agendamento no período selecionado, mesmo que o status tenha mudado depois." />
-                </CardTitle>
-              </div>
-              <CardDescription
-                className={cn(
-                  "text-4xl font-bold text-foreground transition-all duration-200 mt-1",
-                  isBlurred && "blur-sm select-none",
-                )}
-              >
-                {metrics.agendamentos}
-              </CardDescription>
-              <p className="text-xs text-muted-foreground">Já agendados no período</p>
-            </CardHeader>
-            <div className="px-6"><Separator /></div>
-            <div className="flex flex-col gap-4 p-6 flex-1 justify-center">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  <span className="text-xs text-muted-foreground">Reuniões realizadas</span>
-                </div>
-                <span className={cn("text-sm font-semibold tabular-nums", isBlurred && "blur-sm select-none")}>
-                  {Math.max(metrics.reunioesRealizadasCloser, metrics.reunioesRealizadasSdr)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <UserX className="h-4 w-4 text-amber-500" />
-                  <span className="text-xs text-muted-foreground">No-show</span>
-                </div>
-                <span className={cn("text-sm font-semibold tabular-nums", isBlurred && "blur-sm select-none")}>
-                  {metrics.noShowCount}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CalendarClock className="h-4 w-4 text-blue-500" />
-                  <span className="text-xs text-muted-foreground">Com data marcada</span>
-                </div>
-                <span className={cn("text-sm font-semibold tabular-nums", isBlurred && "blur-sm select-none")}>
-                  {metrics.scheduledCount}
-                </span>
-              </div>
-            </div>
-          </Card>
+          <FunnelCard
+            className="row-span-2"
+            isBlurred={isBlurred}
+            icon={<Calendar className="h-4 w-4 text-blue-500" />}
+            title="Agendamentos"
+            tooltip="Quantidade de leads que tiveram agendamento no período selecionado, mesmo que o status tenha mudado depois."
+            total={metrics.agendamentos}
+            subtitle="Já agendados no período"
+            items={[
+              {
+                icon: <CheckCircle2 className="h-4 w-4 text-green-500" />,
+                label: "Reuniões realizadas",
+                value: Math.max(metrics.reunioesRealizadasCloser, metrics.reunioesRealizadasSdr),
+              },
+              {
+                icon: <UserX className="h-4 w-4 text-amber-500" />,
+                label: "No-show",
+                value: metrics.noShowCount,
+              },
+              {
+                icon: <CalendarClock className="h-4 w-4 text-blue-500" />,
+                label: "Com data marcada",
+                value: metrics.scheduledCount,
+              },
+            ]}
+          />
 
           {/* Negociação — col 2, row 1 */}
           <Card className="@container/card">
@@ -473,59 +517,34 @@ export function SectionCardsWithContext() {
             </CardFooter>
           </Card>
 
-          {/* Vendas — col 3, row-span-2 (boleto + DPS + contrato) */}
-          <Card className="@container/card row-span-2 flex flex-col">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-green-500" />
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Vendas
-                  <InfoTooltip text="Total de leads convertidos: boleto gerado, DPS e contrato fechado." />
-                </CardTitle>
-              </div>
-              <CardDescription
-                className={cn(
-                  "text-4xl font-bold text-green-600 dark:text-green-400 transition-all duration-200",
-                  isBlurred && "blur-sm select-none",
-                )}
-              >
-                {metrics.convertedCount}
-              </CardDescription>
-              <p className="text-xs text-muted-foreground">Conversões no período</p>
-            </CardHeader>
-            <div className="px-6">
-              <Separator />
-            </div>
-            <CardFooter className="flex flex-col gap-2 pt-3 pb-4 px-6 flex-1 justify-end">
-              <div className="flex w-full items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                  Vendas realizadas
-                </span>
-                <span className={cn("font-semibold", isBlurred && "blur-sm select-none")}>
-                  {metrics.salesCount}
-                </span>
-              </div>
-              <div className="flex w-full items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <TrendingUp className="h-3.5 w-3.5 text-green-500" />
-                  Vendas fechadas
-                </span>
-                <span className={cn("font-semibold", isBlurred && "blur-sm select-none")}>
-                  {metrics.dpsCount}
-                </span>
-              </div>
-              <div className="flex w-full items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <BanknoteArrowUp className="h-3.5 w-3.5 text-blue-500" />
-                  Boletos gerados
-                </span>
-                <span className={cn("font-semibold", isBlurred && "blur-sm select-none")}>
-                  {metrics.vendasRealizadas}
-                </span>
-              </div>
-            </CardFooter>
-          </Card>
+          {/* Vendas — col 3, row-span-2 */}
+          <FunnelCard
+            className="row-span-2"
+            isBlurred={isBlurred}
+            icon={<TrendingUp className="h-4 w-4 text-green-500" />}
+            title="Vendas"
+            tooltip="Total de leads convertidos: boleto gerado, DPS e contrato fechado."
+            total={metrics.convertedCount}
+            totalColor="text-green-600 dark:text-green-400"
+            subtitle="Conversões no período"
+            items={[
+              {
+                icon: <CheckCircle2 className="h-4 w-4 text-green-500" />,
+                label: "Vendas realizadas",
+                value: metrics.salesCount,
+              },
+              {
+                icon: <TrendingUp className="h-4 w-4 text-green-500" />,
+                label: "Vendas fechadas",
+                value: metrics.dpsCount,
+              },
+              {
+                icon: <BanknoteArrowUp className="h-4 w-4 text-blue-500" />,
+                label: "Boletos gerados",
+                value: metrics.vendasRealizadas,
+              },
+            ]}
+          />
 
           {/* Implementação — col 2, row 2 */}
           <Card className="@container/card">

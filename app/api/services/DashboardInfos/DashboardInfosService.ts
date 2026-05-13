@@ -298,7 +298,7 @@ export class DashboardInfosService implements IDashboardInfosService {
     const grouped = new Map<string, number>();
 
     leads
-      .filter((lead) => lead.status === LeadStatus.contract_finalized)
+      .filter((lead) => (STATUS_GROUPS.CONVERTED as readonly string[]).includes(lead.status))
       .forEach((lead) => {
       const key =
         period === "7d" || period === "30d"
