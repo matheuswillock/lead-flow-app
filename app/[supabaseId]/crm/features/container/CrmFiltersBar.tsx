@@ -376,6 +376,7 @@ export function CrmFiltersBar() {
         title="Data de Agendamento"
         value={scheduledDateRange}
         onChange={handleScheduledDateChange}
+        allowFutureDates
       />
       <Sheet
         open={presetsOpen}

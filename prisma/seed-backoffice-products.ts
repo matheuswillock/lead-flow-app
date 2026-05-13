@@ -108,8 +108,8 @@ const FEATURES: Array<{
   { slug: "email-history",       name: "Histórico", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 140, parentSlug: "email", productSlug: "email" },
   { slug: "email-analytics",     name: "Analytics", accessMode: BackofficeFeatureAccessMode.ADDON, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 150, parentSlug: "email", productSlug: "email" },
 
-  // ── Configuração guarda-chuva ─────────────────────────────────────────────
-  { slug: "configuration", name: "Configuração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, sortOrder: 200, productSlug: null },
+  // ── Integração guarda-chuva ───────────────────────────────────────────────
+  { slug: "integration", name: "Integração", accessMode: BackofficeFeatureAccessMode.PUBLIC, defaultAccessLevel: BackofficeFeatureAccessLevel.NONE, betaEnabled: true, sortOrder: 200, productSlug: null },
 ]
 
 const CRM_PAYMENT_RULES: Array<{
@@ -246,7 +246,7 @@ const ACCESS_RULES_BY_SLUG: Record<string, AccessRuleSeed[]> = {
     { principal: "MASTER", accessLevel: "FULL" },
     { principal: "MANAGER", accessLevel: "FULL" },
   ]),
-  configuration: completeRuleSet([{ principal: "MASTER", accessLevel: "FULL" }]),
+  integration: completeRuleSet([{ principal: "MASTER", accessLevel: "FULL" }]),
 }
 
 async function main() {
