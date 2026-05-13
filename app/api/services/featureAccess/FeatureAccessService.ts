@@ -153,13 +153,6 @@ export class FeatureAccessService implements IFeatureAccessService {
       }
     }
 
-    // Propagate parent access to children automatically.
-    for (const feature of features) {
-      if (feature.parentId && allowedSlugs.has(featureById.get(feature.parentId)?.slug ?? "")) {
-        allowedSlugs.add(feature.slug)
-      }
-    }
-
     return { slugs: Array.from(allowedSlugs), betaSlugs }
   }
 }
