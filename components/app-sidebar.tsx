@@ -21,6 +21,7 @@ import {
   Send,
   History,
   BarChart3,
+  Calculator,
 } from "lucide-react"
 
 import {
@@ -53,6 +54,7 @@ type SidebarItem = {
   managerOnly?: boolean
   masterOnly?: boolean
   closerOrManager?: boolean
+  sdrCloserOrManager?: boolean
   requiresIntegrationsAccess?: boolean
   requiresEmailCampaignsAccess?: boolean
   status?: "beta" | "comingSoon"
@@ -82,6 +84,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const isMaster = user?.isMaster === true;
   const isManager = isManagerLikeRole(user?.role);
   const isCloser = user?.functions?.includes("CLOSER") === true;
+  const isSdr = user?.functions?.includes("SDR") === true;
   const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
   const canAccessEmailCampaigns = isTeamAllowedForEmailCampaigns(activeTeam?.id);
   const EMAIL_MODULE_ALLOWED_EMAILS = ["matheuswillock@gmail.com", "bruno@onsidemarketing.com.br"];
@@ -98,6 +101,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "CRM", url: `/${supabaseId}/crm`, icon: KanbanSquare },
     { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays },
     { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, closerOrManager: true },
+    { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true, status: "comingSoon" },
     {
       title: "Integrações",
@@ -166,6 +170,9 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       return false;
     }
     if (item.closerOrManager && !isManager && !isMaster && !isCloser) {
+      return false;
+    }
+    if (item.sdrCloserOrManager && !isManager && !isMaster && !isCloser && !isSdr) {
       return false;
     }
     if (item.requiresIntegrationsAccess && !canAccessIntegrations) {
