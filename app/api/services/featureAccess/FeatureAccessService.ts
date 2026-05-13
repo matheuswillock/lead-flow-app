@@ -94,10 +94,33 @@ export class FeatureAccessService implements IFeatureAccessService {
       return resolveEffectiveFeature(parent.id, visited) ?? feature
     }
 
+    const hasBetaParentInHierarchy = (featureId: string): boolean => {
+      const visited = new Set<string>()
+      let current = featureById.get(featureId)
+
+      while (current?.parentId) {
+        const parent = featureById.get(current.parentId)
+        if (!parent || visited.has(parent.id)) {
+          return false
+        }
+        if (parent.betaEnabled) {
+          return true
+        }
+        visited.add(parent.id)
+        current = parent
+      }
+
+      return false
+    }
+
     const betaSlugs = features
       .filter((feature) => {
         const effectiveFeature = resolveEffectiveFeature(feature.id)
-        return effectiveFeature?.betaEnabled === true
+        if (effectiveFeature?.betaEnabled === true) {
+          return true
+        }
+
+        return hasBetaParentInHierarchy(feature.id)
       })
       .map((feature) => feature.slug)
 
