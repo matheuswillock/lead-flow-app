@@ -2,7 +2,18 @@
 
 import * as React from "react"
 import { toast } from "sonner"
-import { MoreVertical, Loader2, Clock } from "lucide-react"
+import {
+  MoreVertical,
+  Loader2,
+  Clock,
+  BadgeCheck,
+  BadgeIcon,
+  Phone,
+  FileText,
+  Mail,
+  FileSignature,
+  MoreHorizontal,
+} from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -48,6 +59,8 @@ type TaskAssignee = {
 export type TaskItem = {
   id: string
   leadId: string
+  title: string
+  taskType: "call" | "documentation" | "email" | "proposal" | "other"
   body: string
   isUrgent: boolean
   startAt: string | null
@@ -76,6 +89,8 @@ interface TaskCardProps {
   tz: string
   onStatusUpdated?: () => void
   onCanceled?: () => void
+  onEdit?: (task: TaskItem) => void
+  onCardClick?: (task: TaskItem) => void
 }
 
 const STATUS_LABELS: Record<TaskAssigneeStatus, string> = {
@@ -86,10 +101,12 @@ const STATUS_LABELS: Record<TaskAssigneeStatus, string> = {
   OVERDUE: "Vencida",
 }
 
-const NEXT_STATUS_OPTIONS: Partial<Record<TaskAssigneeStatus, TaskAssigneeStatus[]>> = {
-  PENDING: ["IN_PROGRESS", "DONE"],
-  IN_PROGRESS: ["DONE", "PENDING"],
-  OVERDUE: ["IN_PROGRESS", "DONE"],
+const TASK_TYPE_ICON: Record<TaskItem["taskType"], React.ComponentType<{ className?: string }>> = {
+  call: Phone,
+  documentation: FileText,
+  email: Mail,
+  proposal: FileSignature,
+  other: MoreHorizontal,
 }
 
 const getInitials = (name?: string | null) => {
@@ -112,50 +129,56 @@ const deriveOverallStatus = (assignees: TaskAssignee[]): TaskAssigneeStatus => {
 
 export function TaskCard({
   task,
-  currentProfileId,
+  currentProfileId: _currentProfileId,
   supabaseId,
   activeTeamId,
   tz,
   onStatusUpdated,
   onCanceled,
+  onEdit,
+  onCardClick,
 }: TaskCardProps) {
   const [updatingStatus, setUpdatingStatus] = React.useState(false)
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
   const [canceling, setCanceling] = React.useState(false)
 
-  const isCreator = task.createdBy === currentProfileId
-  const myAssignee = task.assignees.find((a) => a.profileId === currentProfileId)
   const overallStatus = deriveOverallStatus(task.assignees)
+  const TaskTypeIcon = TASK_TYPE_ICON[task.taskType]
 
   const now = new Date()
   const endAt = task.endAt ? new Date(task.endAt) : null
   const isOverdue =
     endAt && endAt < now && overallStatus !== "DONE" && overallStatus !== "CANCELED"
+  const canMarkDone = task.assignees.some((a) => a.status !== "DONE" && a.status !== "CANCELED")
 
-  const handleUpdateMyStatus = async (status: TaskAssigneeStatus) => {
-    if (!myAssignee) return
+  const handleMarkDone = async () => {
+    const targets = task.assignees.filter((a) => a.status !== "DONE" && a.status !== "CANCELED")
+
+    if (targets.length === 0) return
     setUpdatingStatus(true)
     try {
-      const response = await fetch(
-        `/api/v1/tasks/${task.id}/assignees/${currentProfileId}/status`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            "x-supabase-user-id": supabaseId,
-            "x-team-id": activeTeamId,
-          },
-          body: JSON.stringify({ status }),
+      for (const assignee of targets) {
+        const response = await fetch(
+          `/api/v1/tasks/${task.id}/assignees/${assignee.profileId}/status`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "x-supabase-user-id": supabaseId,
+              "x-team-id": activeTeamId,
+            },
+            body: JSON.stringify({ status: "DONE" }),
+          }
+        )
+        const result = await response.json().catch(() => null)
+        if (!response.ok || !result?.isValid) {
+          throw new Error(result?.errorMessages?.join(", ") || "Erro ao concluir tarefa.")
         }
-      )
-      const result = await response.json().catch(() => null)
-      if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.join(", ") || "Erro ao atualizar status.")
       }
-      toast.success("Status atualizado!")
+      toast.success("Tarefa concluída!")
       onStatusUpdated?.()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar status.")
+      toast.error(err instanceof Error ? err.message : "Erro ao concluir tarefa.")
     } finally {
       setUpdatingStatus(false)
     }
@@ -185,38 +208,34 @@ export function TaskCard({
     }
   }
 
-  const nextStatuses = myAssignee ? (NEXT_STATUS_OPTIONS[myAssignee.status] ?? []) : []
-
   return (
     <>
       <Card
+        role="button"
+        tabIndex={0}
+        onClick={() => onCardClick?.(task)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            onCardClick?.(task)
+          }
+        }}
         className={cn(
-          "relative border-l-4 shadow-none transition-all",
-          task.isUrgent ? "border-l-warning" : "border-l-primary",
+          "relative border-l-4 border-l-warning shadow-none transition-all cursor-pointer",
           isOverdue && "animate-pulse [animation-duration:2s] motion-reduce:animate-none",
           overallStatus === "CANCELED" && "opacity-60",
           overallStatus === "DONE" && "opacity-75"
         )}
       >
-        <CardContent className="flex flex-col gap-2 p-3">
+        <CardContent className="flex flex-col gap-3 p-3">
           <div className="flex items-start justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <TaskTypeIcon className="size-4 text-muted-foreground" />
+              <p className="text-sm font-semibold leading-snug">{task.title}</p>
               {task.isUrgent && (
                 <Badge variant="destructive" className="w-fit">
                   Urgente
                 </Badge>
-              )}
-              {isOverdue && (
-                <Badge variant="destructive" className="gap-1">
-                  <Clock className="size-3" />
-                  Vencida
-                </Badge>
-              )}
-              {overallStatus === "DONE" && (
-                <Badge variant="secondary">Concluída</Badge>
-              )}
-              {overallStatus === "CANCELED" && (
-                <Badge variant="secondary">Cancelada</Badge>
               )}
             </div>
 
@@ -225,8 +244,10 @@ export function TaskCard({
                 <Button
                   variant="ghost"
                   size="icon"
+                  data-no-card-open="true"
                   className="size-7 shrink-0"
                   disabled={updatingStatus || canceling}
+                  onClick={(e) => e.stopPropagation()}
                 >
                   {updatingStatus ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -237,18 +258,20 @@ export function TaskCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {myAssignee && nextStatuses.length > 0 && (
+                {onEdit && (
                   <>
-                    {nextStatuses.map((s) => (
-                      <DropdownMenuItem key={s} onSelect={() => handleUpdateMyStatus(s)}>
-                        Marcar como: {STATUS_LABELS[s]}
-                      </DropdownMenuItem>
-                    ))}
-                    {isCreator && <DropdownMenuSeparator />}
+                    <DropdownMenuItem
+                      disabled={overallStatus === "DONE"}
+                      onSelect={() => onEdit(task)}
+                    >
+                      Editar tarefa
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                   </>
                 )}
-                {isCreator && overallStatus !== "CANCELED" && (
+                {overallStatus !== "CANCELED" && (
                   <DropdownMenuItem
+                    disabled={overallStatus === "DONE"}
                     className="text-destructive focus:text-destructive"
                     onSelect={() => setCancelDialogOpen(true)}
                   >
@@ -259,25 +282,8 @@ export function TaskCard({
             </DropdownMenu>
           </div>
 
-          <p className="text-sm font-medium leading-snug">{task.body}</p>
-
-          {myAssignee && myAssignee.status !== "DONE" && myAssignee.status !== "CANCELED" && (
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={updatingStatus || canceling}
-                onClick={() => handleUpdateMyStatus("DONE")}
-              >
-                {updatingStatus ? <Loader2 className="size-4 animate-spin" /> : "Concluído"}
-              </Button>
-            </div>
-          )}
-
           <div className="text-xs text-muted-foreground">
-            Lead: {task.lead.name}{" "}
-            <span className="opacity-60">· {task.lead.leadCode}</span>
+            Lead: {task.lead.name} <span className="opacity-60">· {task.lead.leadCode}</span>
           </div>
 
           {(task.startAt || task.endAt) && (
@@ -293,41 +299,81 @@ export function TaskCard({
             </div>
           )}
 
+          <p className="text-sm text-muted-foreground leading-snug">{task.body}</p>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {isOverdue && (
+              <Badge variant="destructive" className="gap-1">
+                <Clock className="size-3" />
+                Vencida
+              </Badge>
+            )}
+            {overallStatus === "DONE" && <Badge variant="secondary">Concluída</Badge>}
+            {overallStatus === "CANCELED" && <Badge variant="secondary">Cancelada</Badge>}
+          </div>
+
           <Separator />
 
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Responsáveis</span>
-            <div className="flex flex-wrap gap-2">
-              {task.assignees.map((assignee) => (
-                <div
-                  key={assignee.id}
-                  className="flex items-center gap-1.5"
-                  title={`${assignee.profile.fullName ?? assignee.profile.email} — ${STATUS_LABELS[assignee.status]}`}
-                >
-                  <Avatar className="size-6">
-                    <AvatarImage src={assignee.profile.profileIconUrl ?? undefined} />
-                    <AvatarFallback className="text-[10px]">
-                      {getInitials(assignee.profile.fullName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="text-xs truncate max-w-[100px]">
-                    {assignee.profile.fullName ?? assignee.profile.email.split("@")[0]}
-                  </span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "text-[10px] px-1.5 py-0",
-                      assignee.status === "DONE" && "border-green-500 text-green-600",
-                      assignee.status === "OVERDUE" && "border-destructive text-destructive",
-                      assignee.status === "IN_PROGRESS" && "border-primary text-primary",
-                      assignee.status === "CANCELED" && "opacity-50"
-                    )}
+          <div className="flex items-end justify-between gap-3">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium text-muted-foreground">Responsáveis</span>
+              <div className="flex flex-wrap gap-2">
+                {task.assignees.map((assignee) => (
+                  <div
+                    key={assignee.id}
+                    className="flex items-center gap-1.5"
+                    title={`${assignee.profile.fullName ?? assignee.profile.email} — ${STATUS_LABELS[assignee.status]}`}
                   >
-                    {STATUS_LABELS[assignee.status]}
-                  </Badge>
-                </div>
-              ))}
+                    <Avatar className="size-6">
+                      <AvatarImage src={assignee.profile.profileIconUrl ?? undefined} />
+                      <AvatarFallback className="text-[10px]">
+                        {getInitials(assignee.profile.fullName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-xs truncate max-w-[100px]">
+                      {assignee.profile.fullName ?? assignee.profile.email.split("@")[0]}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] px-1.5 py-0",
+                        assignee.status === "DONE" && "border-green-500 text-green-600",
+                        assignee.status === "OVERDUE" && "border-destructive text-destructive",
+                        assignee.status === "IN_PROGRESS" && "border-primary text-primary",
+                        assignee.status === "CANCELED" && "opacity-50"
+                      )}
+                    >
+                      {STATUS_LABELS[assignee.status]}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
             </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-no-card-open="true"
+              disabled={updatingStatus || canceling || !canMarkDone}
+              onClick={(e) => {
+                e.stopPropagation()
+                void handleMarkDone()
+              }}
+            >
+              {updatingStatus ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : overallStatus === "DONE" ? (
+                <>
+                  <BadgeCheck className="size-4" />
+                  Concluído
+                </>
+              ) : (
+                <>
+                  <BadgeIcon className="size-4" />
+                  Concluído
+                </>
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>

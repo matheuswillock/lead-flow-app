@@ -7,7 +7,7 @@ export type NotificationTypeValue =
   | "LEAD_PROPOSAL_PENDING";
 
 export type NotificationMetadata = {
-  event?: string;
+  event?: "GOOGLE_CONNECTED" | "GOOGLE_DISCONNECTED" | "TASK_ASSIGNED" | "TASK_COMPLETED" | string;
   googleEmail?: string | null;
   previousGoogleEmail?: string | null;
   leadId?: string;

@@ -87,6 +87,18 @@ type TaskAssignmentNotificationInput = {
   recipientProfileIds: string[];
 };
 
+type TaskCompletedNotificationInput = {
+  teamId: string;
+  actorProfileId: string;
+  actorName: string;
+  recipientProfileId: string;
+  leadId: string;
+  leadCode: string | null;
+  leadName: string;
+  taskId: string;
+  taskTitle: string;
+};
+
 type SystemNotificationInput = {
   recipientProfileId: string;
   teamId: string;
@@ -109,8 +121,14 @@ class NotificationService {
       return { createdCount: 0 };
     }
 
+    const profiles = await prisma.profile.findMany({
+      where: { id: { in: uniqueRecipients } },
+      select: { id: true, fullName: true, email: true },
+    });
+    const profileMap = new Map(
+      profiles.map((profile) => [profile.id, profile.fullName?.trim() || profile.email])
+    );
     const preview = input.body.trim().slice(0, 120);
-    const message = `${input.actorName} atribuiu uma tarefa a você no lead ${input.leadName}.`;
 
     const result = await prisma.notification.createMany({
       data: uniqueRecipients.map((recipientProfileId) => ({
@@ -118,8 +136,9 @@ class NotificationService {
         actorProfileId: input.actorProfileId,
         teamId: input.teamId,
         type: NotificationType.ACTIVITY_MENTION,
-        message,
+        message: `${input.actorName} atribuiu uma tarefa para @${profileMap.get(recipientProfileId) || "usuário"} no lead ${input.leadName}.`,
         metadata: {
+          event: "TASK_ASSIGNED",
           leadId: input.leadId,
           leadCode: input.leadCode,
           leadName: input.leadName,
@@ -131,6 +150,30 @@ class NotificationService {
     });
 
     return { createdCount: result.count };
+  }
+
+  async createTaskCompletedNotification(input: TaskCompletedNotificationInput) {
+    if (!input.recipientProfileId || input.recipientProfileId === input.actorProfileId) {
+      return null;
+    }
+
+    return prisma.notification.create({
+      data: {
+        recipientProfileId: input.recipientProfileId,
+        actorProfileId: input.actorProfileId,
+        teamId: input.teamId,
+        type: NotificationType.ACTIVITY_MENTION,
+        message: `${input.actorName} concluiu a task "${input.taskTitle}" no lead ${input.leadName}.`,
+        metadata: {
+          event: "TASK_COMPLETED",
+          leadId: input.leadId,
+          leadCode: input.leadCode,
+          leadName: input.leadName,
+          taskId: input.taskId,
+          preview: input.taskTitle,
+        },
+      },
+    });
   }
 
   async createSystemNotification(input: SystemNotificationInput) {

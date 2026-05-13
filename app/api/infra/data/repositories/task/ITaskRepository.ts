@@ -47,6 +47,16 @@ export interface ITaskRepository {
   createActivityAndTask(dto: CreateTaskDTO & { activityDto: CreateActivityDTO }): Promise<TaskWithRelations>;
   findByTeamAndDateRange(filter: TaskByDateFilter): Promise<TaskWithRelations[]>;
   findById(taskId: string): Promise<(Task & { lead: { teamId: string | null } }) | null>;
+  updateTaskDetails(input: {
+    taskId: string;
+    title: string;
+    taskType: "call" | "documentation" | "email" | "proposal" | "other";
+    body: string;
+    isUrgent: boolean;
+    startAt: Date | null;
+    endAt: Date | null;
+    assigneeProfileIds: string[];
+  }): Promise<TaskWithRelations>;
   findByIdWithAssignees(taskId: string): Promise<(Task & { lead: { teamId: string | null }; assignees: TaskAssignee[] }) | null>;
   findAssignee(taskId: string, profileId: string): Promise<AssigneeWithGoogleSync | null>;
   updateAssigneeStatus(taskId: string, profileId: string, status: TaskAssigneeStatus): Promise<AssigneeWithGoogleSync>;

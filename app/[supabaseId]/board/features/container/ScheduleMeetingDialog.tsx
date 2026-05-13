@@ -474,13 +474,48 @@ export function ScheduleMeetingDialog({
       <DialogContent className="sm:max-w-125">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Agendar Reunião</DialogTitle>
+            <DialogTitle>{mode === "reschedule" ? "Reagendar Reunião" : "Agendar Reunião"}</DialogTitle>
           <DialogDescription>
-            Agendar reunião com <strong>{lead.name}</strong>
+            {mode === "reschedule" ? "Reagendar reunião com " : "Agendar reunião com "}<strong>{lead.name}</strong>
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
+            {/* Closer */}
+            <div className="grid gap-2">
+              <Label>Closer</Label>
+              <Select value={closerId} onValueChange={setCloserId}>
+                <SelectTrigger disabled={teamMembersLoading}>
+                  <SelectValue
+                    placeholder={
+                      teamMembersLoading
+                        ? "Carregando closers..."
+                        : availableClosers.length
+                          ? "Selecione um closer"
+                          : "Sem closers disponiveis"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableClosers.map((closer) => (
+                    <SelectItem key={closer.id} value={closer.id}>
+                      {closer.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!teamMembersLoading && !availableClosers.length && (
+                <p className="text-xs text-muted-foreground">
+                  Nenhum closer disponível para este time.
+                </p>
+              )}
+              {selectedCloser && !selectedCloser.googleCalendarConnected && (
+                <p className="text-xs text-amber-600">
+                  Este closer está sem Google conectado. O link da reunião deve ser informado manualmente.
+                </p>
+              )}
+            </div>
+
             {/* Data e Hora */}
             <DateTimePicker
               date={meetingDate}
@@ -628,40 +663,6 @@ export function ScheduleMeetingDialog({
               </p>
             </div>
 
-            {/* Closer */}
-            <div className="grid gap-2">
-              <Label>Closer</Label>
-              <Select value={closerId} onValueChange={setCloserId}>
-                <SelectTrigger disabled={teamMembersLoading}>
-                  <SelectValue
-                    placeholder={
-                      teamMembersLoading
-                        ? "Carregando closers..."
-                        : availableClosers.length
-                          ? "Selecione um closer"
-                          : "Sem closers disponiveis"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableClosers.map((closer) => (
-                    <SelectItem key={closer.id} value={closer.id}>
-                      {closer.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!teamMembersLoading && !availableClosers.length && (
-                <p className="text-xs text-muted-foreground">
-                  Nenhum closer disponível para este time.
-                </p>
-              )}
-              {selectedCloser && !selectedCloser.googleCalendarConnected && (
-                <p className="text-xs text-amber-600">
-                  Este closer está sem Google conectado. O link da reunião deve ser informado manualmente.
-                </p>
-              )}
-            </div>
           </div>
 
           <DialogFooter>
@@ -674,7 +675,7 @@ export function ScheduleMeetingDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting || !canSubmit}>
-              {isSubmitting ? "Agendando..." : "Agendar Reunião"}
+              {isSubmitting ? "Salvando..." : mode === "reschedule" ? "Reagendar Reunião" : "Agendar Reunião"}
             </Button>
           </DialogFooter>
         </form>

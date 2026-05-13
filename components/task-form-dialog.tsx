@@ -29,6 +29,17 @@ export type TaskCreatedPayload = {
   googleSync: TaskGoogleSyncResult[]
 }
 
+type TaskFormInitialData = {
+  taskId: string
+  title: string
+  taskType: TaskTypeValue
+  body: string
+  isUrgent: boolean
+  startAt: string | null
+  endAt: string | null
+  assigneeProfileIds: string[]
+}
+
 const TASK_TYPE_OPTIONS = [
   { value: "call", label: "Ligação", icon: Phone },
   { value: "documentation", label: "Documentação", icon: FileText },
@@ -48,6 +59,7 @@ interface TaskFormDialogProps {
   supabaseId: string
   activeTeamId: string
   onSuccess?: (payload: TaskCreatedPayload) => void
+  initialData?: TaskFormInitialData | null
 }
 
 const getInitials = (name?: string | null) => {
@@ -67,6 +79,7 @@ export function TaskFormDialog({
   supabaseId,
   activeTeamId,
   onSuccess,
+  initialData,
 }: TaskFormDialogProps) {
   const [title, setTitle] = React.useState("")
   const [taskType, setTaskType] = React.useState<TaskTypeValue | "">("")
@@ -99,6 +112,21 @@ export function TaskFormDialog({
     setEndAt(undefined)
     setAssigneeIds([])
   }
+
+  React.useEffect(() => {
+    if (!open) return
+    if (!initialData) {
+      handleReset()
+      return
+    }
+    setTitle(initialData.title)
+    setTaskType(initialData.taskType)
+    setBody(initialData.body)
+    setIsUrgent(initialData.isUrgent)
+    setStartAt(initialData.startAt ? new Date(initialData.startAt) : undefined)
+    setEndAt(initialData.endAt ? new Date(initialData.endAt) : undefined)
+    setAssigneeIds(initialData.assigneeProfileIds)
+  }, [open, initialData])
 
   const isFormValid = title.trim().length > 0 && taskType !== "" && body.trim().length > 0 && assigneeIds.length > 0
 
@@ -138,8 +166,10 @@ export function TaskFormDialog({
       if (startAt) payload.startAt = startAt.toISOString()
       if (endAt) payload.endAt = endAt.toISOString()
 
-      const response = await fetch(`/api/v1/leads/${leadId}/activities`, {
-        method: "POST",
+      const response = await fetch(
+        initialData?.taskId ? `/api/v1/tasks/${initialData.taskId}` : `/api/v1/leads/${leadId}/activities`,
+        {
+        method: initialData?.taskId ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
@@ -157,7 +187,7 @@ export function TaskFormDialog({
         (r: TaskGoogleSyncResult) => !r.googleSynced
       )
 
-      toast.success("Tarefa criada com sucesso!")
+      toast.success(initialData?.taskId ? "Tarefa atualizada com sucesso!" : "Tarefa criada com sucesso!")
       if (notSynced.length > 0) {
         toast.info(
           `${notSynced.length} responsável(is) sem Google Calendar conectado — tarefa criada internamente.`
@@ -165,8 +195,8 @@ export function TaskFormDialog({
       }
 
       onSuccess?.({
-        taskId: result.result?.task?.id,
-        activityId: result.result?.activity?.id,
+        taskId: result.result?.task?.id ?? initialData?.taskId ?? "",
+        activityId: result.result?.activity?.id ?? "",
         googleSync: result.result?.googleSync ?? [],
       })
 
@@ -185,7 +215,7 @@ export function TaskFormDialog({
         <DialogHeader>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <DialogTitle>Nova tarefa</DialogTitle>
+              <DialogTitle>{initialData?.taskId ? "Editar tarefa" : "Nova tarefa"}</DialogTitle>
               <DialogDescription>Lead: {leadName}</DialogDescription>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -283,21 +313,23 @@ export function TaskFormDialog({
                         <span className="truncate">{m.name || m.email}</span>
                         <span
                           role="button"
-                          tabIndex={0}
+                          tabIndex={isSubmitting ? -1 : 0}
                           className="rounded-full hover:text-destructive focus:outline-none"
                           onPointerDown={(e) => {
+                            if (isSubmitting) return
                             e.preventDefault()
                             e.stopPropagation()
                             handleRemoveAssignee(m.id)
                           }}
                           onKeyDown={(e) => {
+                            if (isSubmitting) return
                             if (e.key !== "Enter" && e.key !== " ") return
                             e.preventDefault()
                             e.stopPropagation()
                             handleRemoveAssignee(m.id)
                           }}
                           aria-label={`Remover responsável ${m.name || m.email}`}
-                          aria-disabled={isSubmitting}
+                          data-disabled={isSubmitting ? "true" : undefined}
                         >
                           <X className="size-3" />
                         </span>
@@ -361,7 +393,7 @@ export function TaskFormDialog({
             onClick={handleSubmit}
           >
             {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-            Criar tarefa
+            {initialData?.taskId ? "Salvar tarefa" : "Criar tarefa"}
           </Button>
         </DialogFooter>
       </DialogContent>

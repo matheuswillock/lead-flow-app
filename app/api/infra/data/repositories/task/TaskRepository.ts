@@ -118,6 +118,54 @@ class TaskRepository implements ITaskRepository {
     });
   }
 
+  async updateTaskDetails(input: {
+    taskId: string;
+    title: string;
+    taskType: "call" | "documentation" | "email" | "proposal" | "other";
+    body: string;
+    isUrgent: boolean;
+    startAt: Date | null;
+    endAt: Date | null;
+    assigneeProfileIds: string[];
+  }): Promise<TaskWithRelations> {
+    const updatedTask = await prisma.task.update({
+      where: { id: input.taskId },
+      data: {
+        title: input.title.trim(),
+        taskType: input.taskType,
+        body: input.body.trim(),
+        isUrgent: input.isUrgent,
+        startAt: input.startAt,
+        endAt: input.endAt,
+        assignees: {
+          deleteMany: {},
+          create: input.assigneeProfileIds.map((profileId) => ({ profileId })),
+        },
+      },
+      include: TASK_INCLUDE,
+    });
+
+    await prisma.leadActivity.updateMany({
+      where: { id: updatedTask.activityId ?? "" },
+      data: {
+        body: input.body.trim(),
+        payload: {
+          kind: "task",
+          title: updatedTask.title,
+          taskType: updatedTask.taskType,
+          isUrgent: updatedTask.isUrgent,
+          assigneeProfileIds: input.assigneeProfileIds,
+          assigneeMentions: updatedTask.assignees.map((assignee) => ({
+            profileId: assignee.profile.id,
+            label: `@${assignee.profile.fullName || assignee.profile.email}`,
+          })),
+        },
+      },
+    });
+
+    return updatedTask as TaskWithRelations;
+  }
+
   async findByIdWithAssignees(taskId: string) {
     return prisma.task.findUnique({
       where: { id: taskId },

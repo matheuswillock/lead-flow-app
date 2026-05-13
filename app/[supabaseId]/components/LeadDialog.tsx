@@ -2224,19 +2224,25 @@ export default function LeadDialog({
                           const taskPayload =
                             activity.type === "task" && activity.payload && typeof activity.payload === "object"
                               ? (activity.payload as {
+                                  kind?: string;
                                   title?: string;
+                                  status?: string;
                                   isUrgent?: boolean;
                                   assigneeMentions?: Array<{ profileId?: string; label?: string }>;
                                 })
                               : null;
                           const taskTitle = taskPayload?.title?.trim() || "Sem título";
+                          const isTaskStatusUpdate = taskPayload?.kind === "task_status_update";
                           const taskMentions = (taskPayload?.assigneeMentions ?? [])
                             .map((entry) => entry?.label?.trim())
+                            .map((value) => (value && !value.startsWith("@") ? `@${value}` : value))
                             .filter((value): value is string => Boolean(value));
                           const taskAssignedText =
                             taskMentions.length > 0
                               ? `Nova task atribuída para ${taskMentions.join(", ")}`
                               : "Nova task atribuída";
+                          const taskStatusText = taskPayload?.status === "DONE" ? "Task concluída" : "Status da task atualizado";
+                          const taskHeaderText = isTaskStatusUpdate ? taskStatusText : taskAssignedText;
                           const authorName =
                             activity.author?.fullName ||
                             activity.author?.email ||
@@ -2286,7 +2292,7 @@ export default function LeadDialog({
                                 </div>
                               {activity.type === "task" ? (
                                 <div className="col-span-2 flex flex-col gap-1">
-                                  <p className="text-xs font-medium text-primary">{taskAssignedText}</p>
+                                  <p className="text-xs font-medium text-primary">{taskHeaderText}</p>
                                   <p className="text-sm font-semibold text-foreground">{taskTitle}</p>
                                   {taskPayload?.isUrgent ? (
                                     <Badge variant="destructive" className="w-fit">
