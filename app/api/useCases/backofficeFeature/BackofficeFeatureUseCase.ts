@@ -16,6 +16,7 @@ export interface CreateBackofficeFeatureInput {
   accessMode?: BackofficeFeatureAccessMode
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
+  inheritParentSettings?: boolean
   isActive?: boolean
   sortOrder?: number
   accessRules?: Array<{ principal: string; accessLevel: string }>
@@ -29,6 +30,7 @@ export interface UpdateBackofficeFeatureInput {
   accessMode?: BackofficeFeatureAccessMode
   defaultAccessLevel?: BackofficeFeatureAccessLevel
   betaEnabled?: boolean
+  inheritParentSettings?: boolean
   isActive?: boolean
   sortOrder?: number
   accessRules?: Array<{ principal: string; accessLevel: string }>
@@ -60,6 +62,15 @@ export class BackofficeFeatureUseCase {
         }
       }
 
+      if (input.inheritParentSettings && !input.parentId) {
+        return new Output(
+          false,
+          [],
+          ["Herança só pode ser habilitada para sub-funcionalidades com pai definido"],
+          null
+        )
+      }
+
       if (input.productSlug) {
         const productExists = await this.featureRepo.productSlugExists(input.productSlug)
         if (!productExists) {
@@ -78,6 +89,7 @@ export class BackofficeFeatureUseCase {
         accessMode: input.accessMode ?? "PUBLIC",
         defaultAccessLevel: input.defaultAccessLevel ?? "FULL",
         betaEnabled: input.betaEnabled ?? false,
+        inheritParentSettings: input.inheritParentSettings ?? false,
         isActive: input.isActive ?? true,
         sortOrder: input.sortOrder ?? 0,
       })
@@ -117,6 +129,23 @@ export class BackofficeFeatureUseCase {
         if (!productExists) {
           return new Output(false, [], ["Produto associado não encontrado"], null)
         }
+      }
+
+      const effectiveParentId = Object.prototype.hasOwnProperty.call(input, "parentId")
+        ? (input.parentId ?? null)
+        : (existing.parentId ?? null)
+      const effectiveInheritParentSettings =
+        input.inheritParentSettings !== undefined
+          ? input.inheritParentSettings
+          : existing.inheritParentSettings
+
+      if (effectiveInheritParentSettings && !effectiveParentId) {
+        return new Output(
+          false,
+          [],
+          ["Herança só pode ser habilitada para sub-funcionalidades com pai definido"],
+          null
+        )
       }
 
       const updated = await this.featureRepo.update(id, input)

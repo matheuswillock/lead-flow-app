@@ -50,6 +50,8 @@ export function BackofficeFeatureDialog() {
 
   const isEdit = dialogMode === "edit"
   const title = isEdit ? "Editar funcionalidade" : "Nova funcionalidade"
+  const isChildFeature = Boolean(formData.parentId || dialogFeature?.parentId)
+  const isInheritingFromParent = isChildFeature && formData.inheritParentSettings
 
   return (
     <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
@@ -113,12 +115,12 @@ export function BackofficeFeatureDialog() {
                         <td className="px-3 py-2">{principal.label}</td>
                         {ACCESS_LEVELS.map((level) => (
                           <td key={level} className="px-3 py-2 text-center">
-                            <input
+                            <Input
                               type="radio"
                               name={`principal-${principal.principal}`}
                               value={level}
                               checked={currentLevel === level}
-                              disabled={isSaving}
+                              disabled={isSaving || isInheritingFromParent}
                               onChange={() => setAccessRule(principal.principal, level)}
                             />
                           </td>
@@ -129,6 +131,25 @@ export function BackofficeFeatureDialog() {
                 </tbody>
               </table>
             </div>
+            {isInheritingFromParent && (
+              <p className="text-xs text-muted-foreground">
+                Regras herdadas da funcionalidade pai.
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium">Herdar configurações do pai</span>
+              <span className="text-xs text-muted-foreground">
+                Sub-funcionalidades podem usar modo, produto, beta e regras do pai automaticamente.
+              </span>
+            </div>
+            <Switch
+              checked={isChildFeature ? formData.inheritParentSettings : false}
+              onCheckedChange={(value) => setFormField("inheritParentSettings", value)}
+              disabled={isSaving || !isChildFeature}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -137,7 +158,7 @@ export function BackofficeFeatureDialog() {
               <Select
                 value={formData.accessMode}
                 onValueChange={(v) => setFormField("accessMode", v)}
-                disabled={isSaving}
+                disabled={isSaving || isInheritingFromParent}
               >
                 <SelectTrigger id="feature-access-mode">
                   <SelectValue />
@@ -158,7 +179,7 @@ export function BackofficeFeatureDialog() {
               value={formData.productSlug}
               onChange={(e) => setFormField("productSlug", e.target.value)}
               placeholder="Ex: crm"
-              disabled={isSaving}
+              disabled={isSaving || isInheritingFromParent}
               className="font-mono text-xs"
             />
             <p className="text-xs text-muted-foreground">
@@ -188,7 +209,7 @@ export function BackofficeFeatureDialog() {
             <Switch
               checked={formData.betaEnabled}
               onCheckedChange={(v) => setFormField("betaEnabled", v)}
-              disabled={isSaving}
+              disabled={isSaving || isInheritingFromParent}
             />
           </div>
 

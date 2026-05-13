@@ -42,11 +42,7 @@ interface FeatureRowProps {
 function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
   const { openEditDialog, openDeleteDialog } = useBackofficeFeature()
 
-  const inheritsAccess =
-    isChild &&
-    parent &&
-    feature.accessMode === parent.accessMode &&
-    feature.defaultAccessLevel === parent.defaultAccessLevel
+  const inheritsAccess = Boolean(isChild && parent && feature.inheritParentSettings)
 
   return (
     <TableRow className={cn(isChild && "bg-muted/20")}>
@@ -66,7 +62,9 @@ function FeatureRow({ feature, parent, isChild }: FeatureRowProps) {
         </div>
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
-        {feature.accessRules.length > 0 ? (
+        {inheritsAccess ? (
+          <span className="text-muted-foreground/80">Herdadas do pai</span>
+        ) : feature.accessRules.length > 0 ? (
           <span
             className="cursor-help"
             title={feature.accessRules.map((rule) => `${rule.principal}: ${rule.accessLevel}`).join(" | ")}

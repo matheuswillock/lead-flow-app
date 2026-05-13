@@ -13,6 +13,7 @@ export interface BackofficeFeatureItem {
   accessMode: BackofficeFeatureAccessMode
   defaultAccessLevel: BackofficeFeatureAccessLevel
   betaEnabled: boolean
+  inheritParentSettings: boolean
   isActive: boolean
   sortOrder: number
   productSlug: string | null
@@ -36,6 +37,7 @@ export interface BackofficeFeatureFormData {
   accessMode: BackofficeFeatureAccessMode
   defaultAccessLevel: BackofficeFeatureAccessLevel
   betaEnabled: boolean
+  inheritParentSettings: boolean
   isActive: boolean
   sortOrder: string
   productSlug: string
@@ -49,6 +51,7 @@ export const EMPTY_FEATURE_FORM: BackofficeFeatureFormData = {
   accessMode: "PUBLIC",
   defaultAccessLevel: "FULL",
   betaEnabled: false,
+  inheritParentSettings: false,
   isActive: true,
   sortOrder: "0",
   productSlug: "",

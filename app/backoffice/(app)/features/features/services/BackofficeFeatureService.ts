@@ -9,6 +9,9 @@ function formToPayload(data: BackofficeFeatureFormData | Partial<BackofficeFeatu
   if (data.accessMode !== undefined) payload.accessMode = data.accessMode
   if (data.defaultAccessLevel !== undefined) payload.defaultAccessLevel = data.defaultAccessLevel
   if (data.betaEnabled !== undefined) payload.betaEnabled = data.betaEnabled
+  if (data.inheritParentSettings !== undefined) {
+    payload.inheritParentSettings = data.inheritParentSettings
+  }
   if (data.isActive !== undefined) payload.isActive = data.isActive
   if ("sortOrder" in data) payload.sortOrder = parseInt(data.sortOrder ?? "0", 10) || 0
   if ("productSlug" in data) payload.productSlug = data.productSlug || null

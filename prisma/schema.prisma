@@ -1487,6 +1487,7 @@ model BackofficeFeature {
   accessMode         BackofficeFeatureAccessMode  @default(PUBLIC)
   defaultAccessLevel BackofficeFeatureAccessLevel @default(FULL)
   betaEnabled        Boolean                      @default(false)
+  inheritParentSettings Boolean                   @default(false)
   isActive           Boolean                      @default(true)
   sortOrder          Int                          @default(0)
   createdAt          DateTime                     @default(now()) @db.Timestamptz(6)

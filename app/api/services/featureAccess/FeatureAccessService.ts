@@ -69,10 +69,37 @@ export class FeatureAccessService implements IFeatureAccessService {
     const betaFeatureIds = new Set(betaGrants.map((item) => item.featureId))
     const featureById = new Map(features.map((f) => [f.id, f]))
     const allowedSlugs = new Set<string>()
-    const betaParentIds = new Set(features.filter((f) => f.betaEnabled).map((f) => f.id))
+
+    const resolveEffectiveFeature = (
+      featureId: string,
+      visited = new Set<string>()
+    ): (typeof features)[number] | undefined => {
+      const feature = featureById.get(featureId)
+      if (!feature) return undefined
+
+      if (!feature.inheritParentSettings || !feature.parentId) {
+        return feature
+      }
+
+      if (visited.has(feature.id)) {
+        return feature
+      }
+      visited.add(feature.id)
+
+      const parent = featureById.get(feature.parentId)
+      if (!parent) {
+        return feature
+      }
+
+      return resolveEffectiveFeature(parent.id, visited) ?? feature
+    }
+
     const betaSlugs = features
-      .filter((f) => f.betaEnabled || (f.parentId !== null && betaParentIds.has(f.parentId)))
-      .map((f) => f.slug)
+      .filter((feature) => {
+        const effectiveFeature = resolveEffectiveFeature(feature.id)
+        return effectiveFeature?.betaEnabled === true
+      })
+      .map((feature) => feature.slug)
 
     const safeUserRole: UserRoleInfo = currentUserRole ?? {
       isMaster: false,
@@ -84,30 +111,40 @@ export class FeatureAccessService implements IFeatureAccessService {
     const resolvedUserPrincipals = principalsForUser(safeUserRole)
 
     for (const feature of features) {
+      const effectiveFeature = resolveEffectiveFeature(feature.id) ?? feature
       let hasAccess = false
 
-      if (feature.accessMode === "PUBLIC") {
-        if (feature.accessRules.length > 0) {
-          const matchingRules = feature.accessRules.filter((rule) => resolvedUserPrincipals.has(rule.principal))
+      if (effectiveFeature.accessMode === "PUBLIC") {
+        if (effectiveFeature.accessRules.length > 0) {
+          const matchingRules = effectiveFeature.accessRules.filter((rule) =>
+            resolvedUserPrincipals.has(rule.principal)
+          )
           hasAccess = matchingRules.some((rule) => rule.accessLevel !== "NONE")
         } else {
-          hasAccess = roleHasPublicAccess(feature.defaultAccessLevel)
+          hasAccess = roleHasPublicAccess(effectiveFeature.defaultAccessLevel)
         }
-      } else if (feature.accessMode === "PAID" || feature.accessMode === "ADDON") {
-        const effectiveProductSlug = feature.productSlug ?? FEATURE_PRODUCT_SLUG_MAP[feature.slug]
+      } else if (effectiveFeature.accessMode === "PAID" || effectiveFeature.accessMode === "ADDON") {
+        const effectiveProductSlug =
+          effectiveFeature.productSlug ?? FEATURE_PRODUCT_SLUG_MAP[effectiveFeature.slug]
         const hasSubscription =
           hasPermanentAccess ||
           (effectiveProductSlug ? paidProductSlugs.has(effectiveProductSlug) : false)
 
-        if (hasSubscription && feature.accessRules.length > 0) {
-          const matchingRules = feature.accessRules.filter((rule) => resolvedUserPrincipals.has(rule.principal))
+        if (hasSubscription && effectiveFeature.accessRules.length > 0) {
+          const matchingRules = effectiveFeature.accessRules.filter((rule) =>
+            resolvedUserPrincipals.has(rule.principal)
+          )
           hasAccess = matchingRules.some((rule) => rule.accessLevel !== "NONE")
         } else {
           hasAccess = hasSubscription
         }
       }
 
-      if (!hasAccess && feature.betaEnabled && betaFeatureIds.has(feature.id)) {
+      if (
+        !hasAccess &&
+        effectiveFeature.betaEnabled &&
+        (betaFeatureIds.has(feature.id) || betaFeatureIds.has(effectiveFeature.id))
+      ) {
         hasAccess = true
       }
 

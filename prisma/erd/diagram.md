@@ -986,6 +986,7 @@ unsubscribed unsubscribed
     BackofficeFeatureAccessMode accessMode 
     BackofficeFeatureAccessLevel defaultAccessLevel 
     Boolean betaEnabled 
+    Boolean inheritParentSettings 
     Boolean isActive 
     Int sortOrder 
     DateTime createdAt 

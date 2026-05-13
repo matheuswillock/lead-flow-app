@@ -111,6 +111,7 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
         accessMode: data.accessMode,
         defaultAccessLevel: data.defaultAccessLevel,
         betaEnabled: data.betaEnabled ?? false,
+        inheritParentSettings: data.inheritParentSettings ?? false,
         isActive: data.isActive ?? true,
         sortOrder: data.sortOrder ?? 0,
       },
@@ -136,6 +137,9 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
           defaultAccessLevel: data.defaultAccessLevel,
         }),
         ...(data.betaEnabled !== undefined && { betaEnabled: data.betaEnabled }),
+        ...(data.inheritParentSettings !== undefined && {
+          inheritParentSettings: data.inheritParentSettings,
+        }),
         ...(data.isActive !== undefined && { isActive: data.isActive }),
         ...(data.sortOrder !== undefined && { sortOrder: data.sortOrder }),
       },
