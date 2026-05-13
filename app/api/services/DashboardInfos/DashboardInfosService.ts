@@ -28,7 +28,9 @@ const STATUS_GROUPS = {
   SALES: ["contract_finalized"] as LeadStatus[],
   CHURN: ["operator_denied"] as LeadStatus[],
   OPPORTUNITY_LOST: ["opportunityLost"] as LeadStatus[],
+  DISQUALIFIED: ["disqualified"] as LeadStatus[],
   NO_SHOW: ["no_show"] as LeadStatus[],
+  INVOICE_PAYMENT: ["invoicePayment"] as LeadStatus[],
 } as const;
 
 export class DashboardInfosService implements IDashboardInfosService {
@@ -142,6 +144,7 @@ export class DashboardInfosService implements IDashboardInfosService {
     const implementacao = this.countByStatusGroup(statusCount, STATUS_GROUPS.IMPLEMENTATION);
     const churn = this.countByStatusGroup(statusCount, STATUS_GROUPS.CHURN);
     const opportunityLost = this.countByStatusGroup(statusCount, STATUS_GROUPS.OPPORTUNITY_LOST);
+    const disqualified = this.countByStatusGroup(statusCount, STATUS_GROUPS.DISQUALIFIED);
     const noShowCount = this.countByStatusGroup(statusCount, STATUS_GROUPS.NO_SHOW);
 
     const totalLeads = leads.length;
@@ -152,11 +155,12 @@ export class DashboardInfosService implements IDashboardInfosService {
     const agendamentos = scheduledLeadIds.size;
     const salesCountCrm = this.countByStatusGroup(statusCount, STATUS_GROUPS.SALES);
     const salesCount = salesCountCrm;
+    const vendasRealizadas = this.countByStatusGroup(statusCount, STATUS_GROUPS.INVOICE_PAYMENT);
     const noShowBase = agendamentos + noShowCount;
     const conversionRateCrm = totalLeads > 0 ? (salesCountCrm / totalLeads) * 100 : 0;
     const conversionRateFinancial = totalLeads > 0 ? (salesCountFinancial / totalLeads) * 100 : 0;
-    const churnBaseCount = churn + opportunityLost;
-    const churnRateCrm = agendamentos > 0 ? (churnBaseCount / agendamentos) * 100 : 0;
+    const perdidosDesqualificados = opportunityLost + disqualified;
+    const churnRateCrm = totalLeads > 0 ? (perdidosDesqualificados / totalLeads) * 100 : 0;
     const churnRateFinancial = salesCountFinancial > 0 ? (churn / salesCountFinancial) * 100 : 0;
     const noShowRate = noShowBase > 0 ? (noShowCount / noShowBase) * 100 : 0;
 
@@ -178,6 +182,7 @@ export class DashboardInfosService implements IDashboardInfosService {
       negociacao,
       implementacao,
       vendas: salesCountCrm,
+      vendasRealizadas,
       reunioesRealizadasCloser,
       reunioesRealizadasSdr,
       conversionRate: Math.round(conversionRateCrm * 100) / 100,
