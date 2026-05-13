@@ -15,8 +15,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    console.info(`${routeName} Request received`);
-
     const subscriptionRepository = new SubscriptionRepository();
     const subscriptionCheckService = new SubscriptionCheckService(subscriptionRepository);
     const checkSubscriptionUseCase = new CheckSubscriptionUseCase(subscriptionCheckService);
@@ -26,13 +24,6 @@ export async function POST(request: NextRequest) {
       | { hasActiveSubscription?: boolean; userExists?: boolean }
       | null;
     const statusCode = output.isValid ? 200 : 400;
-
-    console.info(`${routeName} Completed`, {
-      isValid: output.isValid,
-      hasActiveSubscription: result?.hasActiveSubscription ?? false,
-      userExists: result?.userExists ?? false,
-      errorMessages: output.errorMessages,
-    });
 
     return NextResponse.json(output, { status: statusCode });
   } catch (error: unknown) {
