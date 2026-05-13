@@ -15,6 +15,7 @@ import { toast } from "sonner"
 
 interface PricingContextValue {
   products: BackofficeProductItem[]
+  availableFeatureSlugs: string[]
   isLoading: boolean
 
   dialogOpen: boolean
@@ -50,6 +51,7 @@ interface Props {
 
 export function BackofficePricingProvider({ children, pricingService }: Props) {
   const [products, setProducts] = useState<BackofficeProductItem[]>([])
+  const [availableFeatureSlugs, setAvailableFeatureSlugs] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -69,8 +71,12 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
     inFlight.current = true
     setIsLoading(true)
     try {
-      const items = await pricingService.list()
+      const [items, slugs] = await Promise.all([
+        pricingService.list(),
+        pricingService.listFeatureSlugs(),
+      ])
       setProducts(items)
+      setAvailableFeatureSlugs(slugs)
     } catch (err) {
       console.error("[BackofficePricingContext]", err)
       toast.error("Erro ao carregar produtos")
@@ -207,6 +213,7 @@ export function BackofficePricingProvider({ children, pricingService }: Props) {
     <BackofficePricingContext.Provider
       value={{
         products,
+        availableFeatureSlugs,
         isLoading,
         dialogOpen,
         dialogMode,

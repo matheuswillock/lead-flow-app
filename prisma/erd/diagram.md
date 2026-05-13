@@ -136,6 +136,27 @@ call call
 whatsapp whatsapp
 email email
 status_change status_change
+task task
+        }
+    
+
+
+        task_type {
+            call call
+documentation documentation
+email email
+proposal proposal
+other other
+        }
+    
+
+
+        task_assignee_status {
+            PENDING PENDING
+IN_PROGRESS IN_PROGRESS
+DONE DONE
+CANCELED CANCELED
+OVERDUE OVERDUE
         }
     
 
@@ -182,6 +203,27 @@ CREDIT_CARD CREDIT_CARD
 suspended suspended
 canceled canceled
 expired expired
+        }
+    
+
+
+        backoffice_feature_access_mode {
+            PUBLIC PUBLIC
+PAID PAID
+        }
+    
+
+
+        backoffice_feature_access_level {
+            NONE NONE
+READ READ
+FULL FULL
+        }
+    
+
+
+        backoffice_feature_grant_type {
+            BETA BETA
         }
     
 
@@ -593,6 +635,30 @@ unsubscribed unsubscribed
     }
   
 
+  "tasks" {
+    String id "🗝️"
+    String title 
+    TaskType taskType 
+    String body 
+    Boolean isUrgent 
+    DateTime startAt "❓"
+    DateTime endAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "task_assignees" {
+    String id "🗝️"
+    TaskAssigneeStatus status 
+    String googleEventId "❓"
+    String googleCalendarId "❓"
+    Boolean googleSynced 
+    DateTime assignedAt 
+    DateTime updatedAt 
+    }
+  
+
   "leads_schedule" {
     String id "🗝️"
     DateTime date 
@@ -619,6 +685,22 @@ unsubscribed unsubscribed
     Int duration 
     Decimal amount 
     String notes "❓"
+    DateTime leadBirthDate "❓"
+    String operadora "❓"
+    String productName "❓"
+    String contractFileUrl "❓"
+    String contractStoragePath "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "lead_finalized_dependents" {
+    String id "🗝️"
+    String name 
+    DateTime birthDate 
+    String parentesco 
+    String document "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -882,6 +964,31 @@ unsubscribed unsubscribed
     }
   
 
+  "backoffice_features" {
+    String id "🗝️"
+    String slug 
+    String name 
+    String description "❓"
+    BackofficeFeatureAccessMode accessMode 
+    BackofficeFeatureAccessLevel defaultAccessLevel 
+    Boolean betaEnabled 
+    Boolean isActive 
+    Int sortOrder 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_feature_grants" {
+    String id "🗝️"
+    BackofficeFeatureGrantType grantType 
+    BackofficeFeatureAccessLevel accessLevel 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_product_payment_rules" {
     String id "🗝️"
     BackofficePaymentMethod paymentMethod 
@@ -970,9 +1077,18 @@ unsubscribed unsubscribed
     "lead_activities" }o--|o profiles : "author"
     "lead_activity_reactions" }o--|| lead_activities : "activity"
     "lead_activity_reactions" }o--|| profiles : "profile"
+    "tasks" |o--|| "TaskType" : "enum:taskType"
+    "tasks" }o--|| leads : "lead"
+    "tasks" }o--|| profiles : "creator"
+    "tasks" |o--|o lead_activities : "activity"
+    "task_assignees" |o--|| "TaskAssigneeStatus" : "enum:status"
+    "task_assignees" }o--|| tasks : "task"
+    "task_assignees" }o--|| profiles : "profile"
     "leads_schedule" |o--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
     "leads_schedule" }o--|| leads : "lead"
     "lead_finalized" }o--|| leads : "lead"
+    "lead_finalized" }o--|o profiles : "closer"
+    "lead_finalized_dependents" }o--|| lead_finalized : "leadFinalized"
     "lead_portfolio" |o--|| "PortfolioStatus" : "enum:portfolioStatus"
     "lead_portfolio" |o--|| leads : "lead"
     "lead_portfolio" }o--|| teams : "team"
@@ -1027,6 +1143,14 @@ unsubscribed unsubscribed
     "email_events" }o--|| email_logs : "log"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
+    "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"
+    "backoffice_features" |o--|| "BackofficeFeatureAccessLevel" : "enum:defaultAccessLevel"
+    "backoffice_features" |o--|o backoffice_features : "parent"
+    "backoffice_features" }o--|o backoffice_products : "product"
+    "backoffice_feature_grants" |o--|| "BackofficeFeatureGrantType" : "enum:grantType"
+    "backoffice_feature_grants" |o--|| "BackofficeFeatureAccessLevel" : "enum:accessLevel"
+    "backoffice_feature_grants" }o--|| backoffice_features : "feature"
+    "backoffice_feature_grants" }o--|| profiles : "profile"
     "backoffice_product_payment_rules" |o--|| "BackofficePaymentMethod" : "enum:paymentMethod"
     "backoffice_product_payment_rules" |o--|| "BackofficeAdhesionBillingCycle" : "enum:billingCycle"
     "backoffice_product_payment_rules" }o--|| backoffice_products : "product"

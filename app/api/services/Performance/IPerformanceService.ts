@@ -37,12 +37,40 @@ export interface PerformanceSaleRow {
   saleValue: number;
 }
 
+export interface SparklineDataPoint {
+  value: number;
+}
+
+export type PerformanceActivityKind =
+  | 'sale'
+  | 'meeting_held'
+  | 'proposal_sent'
+  | 'no_show'
+  | 'scheduled'
+  | 'new_lead';
+
+export interface PerformanceRecentActivity {
+  kind: PerformanceActivityKind;
+  text: string;
+  leadCode: string;
+  leadName: string;
+  createdAt: string;
+}
+
 export interface PerformanceKpis {
   closedSales: number;
+  closedSalesSparkline: SparklineDataPoint[];
+  closedSalesDelta: number;
   meetingsHeld: number;
+  meetingsHeldSparkline: SparklineDataPoint[];
+  meetingsHeldDelta: number;
   scheduledLeads: number;
+  scheduledLeadsSparkline: SparklineDataPoint[];
+  scheduledLeadsDelta: number;
   noShowRate: number;
   noShowCount: number;
+  noShowRateSparkline: SparklineDataPoint[];
+  noShowRateDelta: number;
 }
 
 export interface PerformanceHighlight {
@@ -67,6 +95,7 @@ export interface PerformanceDrilldownEntry {
   noShowRate: number;
   attendanceRate: number;
   totalSalesValue: number;
+  recentActivities: PerformanceRecentActivity[];
 }
 
 export interface PerformanceSalesResult {

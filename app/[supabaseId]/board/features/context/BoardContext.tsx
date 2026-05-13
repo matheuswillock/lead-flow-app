@@ -55,6 +55,11 @@ type PendingStatusTriggerDrop = {
   confirmationMessage?: string | null;
 };
 
+type PendingFinalizeDrop = {
+  leadId: string;
+  from: ColumnKey;
+};
+
 type PendingMeetingHealdGateDrop = {
   leadId: string;
   from: ColumnKey;
@@ -122,6 +127,8 @@ interface IBoardContextState {
   pendingMeetingHealdGateDrop: PendingMeetingHealdGateDrop | null;
   clearPendingMeetingHealdGateDrop: () => void;
   applyPendingMeetingHealdGateTransition: () => Promise<boolean>;
+  pendingFinalizeDrop: PendingFinalizeDrop | null;
+  clearPendingFinalizeDrop: () => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
@@ -210,6 +217,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pendingScheduledDrop, setPendingScheduledDrop] = useState<PendingScheduledDrop | null>(null);
   const [pendingStatusTriggerDrop, setPendingStatusTriggerDrop] = useState<PendingStatusTriggerDrop | null>(null);
+  const [pendingFinalizeDrop, setPendingFinalizeDrop] = useState<PendingFinalizeDrop | null>(null);
   const [pendingMeetingHealdGateDrop, setPendingMeetingHealdGateDrop] =
     useState<PendingMeetingHealdGateDrop | null>(null);
 
@@ -868,6 +876,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         return;
       }
 
+      if (to === "contract_finalized") {
+        setPendingFinalizeDrop({ leadId, from });
+        return;
+      }
+
       void (async () => {
         const result = await updateLeadStatusInAPI(leadId, to, undefined, { from, to });
         if (!result?.isValid) return;
@@ -886,13 +899,24 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const finalizeContract = useCallback(
     async (leadId: string, contractData: FinalizeContractData) => {
       try {
+        const { contractFile: _contractFile, ...rest } = contractData;
+        const apiPayload = {
+          ...rest,
+          leadBirthDate: rest.leadBirthDate instanceof Date ? rest.leadBirthDate.toISOString() : rest.leadBirthDate,
+          dependents: rest.dependents.map((d) => ({
+            name: d.name,
+            birthDate: d.birthDate instanceof Date ? d.birthDate.toISOString() : d.birthDate,
+            parentesco: d.parentesco,
+            document: d.document,
+          })),
+        };
         const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'x-supabase-user-id': supabaseId
           },
-          body: JSON.stringify(contractData)
+          body: JSON.stringify(apiPayload)
         });
 
         const result = await response.json().catch(() => null);
@@ -943,6 +967,10 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
   const clearPendingMeetingHealdGateDrop = useCallback(() => {
     setPendingMeetingHealdGateDrop(null);
+  }, []);
+
+  const clearPendingFinalizeDrop = useCallback(() => {
+    setPendingFinalizeDrop(null);
   }, []);
 
   const applyPendingMeetingHealdGateTransition = useCallback(async (): Promise<boolean> => {
@@ -1130,6 +1158,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingMeetingHealdGateDrop,
       clearPendingMeetingHealdGateDrop,
       applyPendingMeetingHealdGateTransition,
+      pendingFinalizeDrop,
+      clearPendingFinalizeDrop,
       finalizeContract,
     }),
     [
@@ -1170,6 +1200,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingMeetingHealdGateDrop,
       clearPendingMeetingHealdGateDrop,
       applyPendingMeetingHealdGateTransition,
+      pendingFinalizeDrop,
+      clearPendingFinalizeDrop,
       finalizeContract,
     ]
   );

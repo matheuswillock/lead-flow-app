@@ -18,11 +18,16 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { CirclePlus } from "@/components/animate-ui/icons/circle-plus"
-import { CheckCircle2, XCircle, HelpCircle, Clock } from "lucide-react"
+import { CheckCircle2, XCircle, HelpCircle, Clock, MoreVertical, BadgeCheck, BadgeIcon, Loader2, CalendarIcon } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog"
+import { TaskFormDialog, type TaskCreatedPayload } from "@/components/task-form-dialog"
+import { TaskCard, type TaskItem } from "@/components/task-card"
 import useBoardContext from "@/app/[supabaseId]/board/features/context/BoardHook"
 import {
   ScheduleMeetingDialog,
@@ -33,7 +38,7 @@ import { getLeadStatusLabel } from "@/lib/lead-status"
 import { CalendarDayButton } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
 import { useTeamContext } from "@/app/context/TeamContext"
-import { Checkbox } from "@/components/ui/checkbox"
+import { Separator } from "@/components/ui/separator"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import {
   formatIntimezone,
@@ -239,6 +244,7 @@ export default function CalendarStudio() {
   } = useBoardContext()
 
   const [date, setDate] = React.useState<Date | undefined>(new Date())
+  const [calendarMonth, setCalendarMonth] = React.useState<Date>(new Date())
   const [selectedTime, setSelectedTime] = React.useState<string | null>(() => getNextSlotTime(tz))
   const [leadNameFilter, setLeadNameFilter] = React.useState("")
   const [leadIdFilter, setLeadIdFilter] = React.useState("")
@@ -253,6 +259,14 @@ export default function CalendarStudio() {
   const [meetingHealdSavingId, setMeetingHealdSavingId] = React.useState<string | null>(null)
   const [attendeesByLead, setAttendeesByLead] = React.useState<AttendeesByLead>({})
   const [attendeesLoading, setAttendeesLoading] = React.useState(false)
+  const [showMeetings, setShowMeetings] = React.useState(true)
+  const [showTasks, setShowTasks] = React.useState(true)
+  const [taskDialogOpen, setTaskDialogOpen] = React.useState(false)
+  const [taskDialogLead, setTaskDialogLead] = React.useState<Lead | null>(null)
+  const [editingTask, setEditingTask] = React.useState<TaskItem | null>(null)
+  const [tasks, setTasks] = React.useState<TaskItem[]>([])
+  const [tasksLoading, setTasksLoading] = React.useState(false)
+  const [taskDayCounts, setTaskDayCounts] = React.useState<Map<string, number>>(new Map())
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
   const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext()
@@ -455,6 +469,32 @@ export default function CalendarStudio() {
     }
   }
 
+  const handleMarkNoShow = React.useCallback(
+    async (lead: Lead) => {
+      if (!supabaseId || !activeTeamId) return
+      try {
+        const response = await fetch(`/api/v1/leads/${lead.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId,
+          },
+          body: JSON.stringify({ status: "no_show" }),
+        })
+        const result = await response.json().catch(() => null)
+        if (!response.ok || !result?.isValid) {
+          throw new Error(result?.errorMessages?.join(", ") || "Erro ao marcar no-show.")
+        }
+        toast.success("Agenda marcada como no-show.")
+        await refreshLeads()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Erro ao marcar no-show.")
+      }
+    },
+    [supabaseId, activeTeamId, refreshLeads]
+  )
+
   const handleScheduleSuccess = React.useCallback(
     async (payload?: ScheduleMeetingSuccessPayload) => {
       if (payload) {
@@ -566,6 +606,88 @@ export default function CalendarStudio() {
     }
   }, [attendeesFetchKey, supabaseId, activeTeamId])
 
+  const refreshTasks = React.useCallback((cancelled = false) => {
+    if (!selectedDateKey || !supabaseId || !activeTeamId) {
+      setTasks([])
+      return Promise.resolve()
+    }
+    const dateFrom = `${selectedDateKey}T00:00:00.000Z`
+    const dateTo = `${selectedDateKey}T23:59:59.999Z`
+    const url = `/api/v1/tasks?dateFrom=${encodeURIComponent(dateFrom)}&dateTo=${encodeURIComponent(dateTo)}`
+
+    return fetch(url, {
+      headers: {
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": activeTeamId,
+      },
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return
+        setTasks(Array.isArray(json?.result) ? json.result : [])
+        setTasksLoading(false)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setTasksLoading(false)
+      })
+  }, [selectedDateKey, supabaseId, activeTeamId])
+
+  const refreshTaskDayCounts = React.useCallback((cancelled = false) => {
+    if (!supabaseId || !activeTeamId) {
+      setTaskDayCounts(new Map())
+      return Promise.resolve()
+    }
+
+    const monthStart = new Date(Date.UTC(calendarMonth.getUTCFullYear(), calendarMonth.getUTCMonth(), 1, 0, 0, 0, 0))
+    const monthEnd = new Date(Date.UTC(calendarMonth.getUTCFullYear(), calendarMonth.getUTCMonth() + 1, 0, 23, 59, 59, 999))
+    const url = `/api/v1/tasks?dateFrom=${encodeURIComponent(monthStart.toISOString())}&dateTo=${encodeURIComponent(monthEnd.toISOString())}`
+
+    return fetch(url, {
+      headers: {
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": activeTeamId,
+      },
+    })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled) return
+        const list = Array.isArray(json?.result) ? (json.result as TaskItem[]) : []
+        const counts = new Map<string, number>()
+        list.forEach((task) => {
+          const rawDate = task.startAt || task.endAt || task.createdAt
+          if (!rawDate) return
+          const parsedDate = new Date(rawDate)
+          if (Number.isNaN(parsedDate.getTime())) return
+          const key = formatLocalDateValue(parsedDate, tz)
+          counts.set(key, (counts.get(key) ?? 0) + 1)
+        })
+        setTaskDayCounts(counts)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setTaskDayCounts(new Map())
+      })
+  }, [supabaseId, activeTeamId, calendarMonth, tz])
+
+  // Fetch tasks for the selected date range (full day)
+  React.useEffect(() => {
+    let cancelled = false
+    setTasksLoading(true)
+    void refreshTasks(cancelled)
+    return () => {
+      cancelled = true
+    }
+  }, [refreshTasks])
+
+  React.useEffect(() => {
+    let cancelled = false
+    void refreshTaskDayCounts(cancelled)
+    return () => {
+      cancelled = true
+    }
+  }, [refreshTaskDayCounts])
+
   return (
     <div className="flex min-h-0 h-full w-full max-w-full flex-1 flex-col gap-4 overflow-x-hidden p-4">
       <div className="grid w-full min-w-0 max-w-full gap-4 lg:grid-cols-[320px_minmax(0,1fr)] lg:h-full">
@@ -574,7 +696,12 @@ export default function CalendarStudio() {
             <Calendar
               mode="single"
               selected={date}
-              onSelect={setDate}
+              onSelect={(nextDate) => {
+                setDate(nextDate)
+                if (nextDate) setCalendarMonth(nextDate)
+              }}
+              month={calendarMonth}
+              onMonthChange={setCalendarMonth}
               defaultMonth={date}
               locale={ptBR}
               showOutsideDays={false}
@@ -588,7 +715,10 @@ export default function CalendarStudio() {
               }}
               components={{
                 DayButton: (props) => {
-                  const count = dayEventCounts.get(getCalendarDateKey(props.day.date)) ?? 0
+                  const key = getCalendarDateKey(props.day.date)
+                  const scheduleCount = dayEventCounts.get(key) ?? 0
+                  const tasksCount = taskDayCounts.get(key) ?? 0
+                  const count = scheduleCount + tasksCount
                   return (
                     <CalendarDayButton
                       {...props}
@@ -748,29 +878,89 @@ export default function CalendarStudio() {
                   {selectedTime ? `Horario: ${selectedTime}` : "Sem horario selecionado"}
                 </div>
               </div>
-              <Button variant="outline" onClick={() => setLeadPickerOpen(true)} className="group">
-                <CirclePlus
-                  className="mr-2 transition-transform duration-300 group-hover:rotate-90"
-                  size={16}
-                />
-                Agendar Reunião
-              </Button>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <Switch
+                    id="show-meetings"
+                    checked={showMeetings}
+                    onCheckedChange={setShowMeetings}
+                    className="scale-75"
+                  />
+                  <Label htmlFor="show-meetings" className="text-xs cursor-pointer">Reuniões</Label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Switch
+                    id="show-tasks"
+                    checked={showTasks}
+                    onCheckedChange={setShowTasks}
+                    className="scale-75"
+                  />
+                  <Label htmlFor="show-tasks" className="text-xs cursor-pointer">Tarefas</Label>
+                </div>
+                <Button variant="outline" onClick={() => setLeadPickerOpen(true)} className="group">
+                  <CirclePlus
+                    className="mr-2 transition-transform duration-300 group-hover:rotate-90"
+                    size={16}
+                  />
+                  Agendar Reunião
+                </Button>
+              </div>
             </div>
 
             <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-              {isLoading ? (
+              {isLoading || tasksLoading ? (
                 Array.from({ length: 6 }).map((_, idx) => (
                   <Skeleton key={idx} className="h-28 w-full rounded-md" />
                 ))
-              ) : filteredEvents.length === 0 ? (
+              ) : filteredEvents.filter(() => showMeetings).length === 0 && (tasks.length === 0 || !showTasks) ? (
                 <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 rounded-md border border-dashed p-6 text-center">
                   <p className="text-sm text-muted-foreground">
-                    Nenhuma agenda ou lembrete para este dia e horário.
+                    Nenhuma agenda, tarefa ou lembrete para este dia e horário.
                   </p>
                   <Button onClick={() => setLeadPickerOpen(true)}>Agendar nova reunião</Button>
                 </div>
               ) : (
-                filteredEvents.map((event) => {
+                <>
+                {showTasks && tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    currentProfileId={user?.id ?? ""}
+                    supabaseId={supabaseId ?? ""}
+                    activeTeamId={activeTeamId ?? ""}
+                    tz={tz}
+                    onStatusUpdated={() => {
+                      void refreshTasks()
+                      void refreshTaskDayCounts()
+                    }}
+                    onCanceled={() => {
+                      setTasks((prev) => prev.filter((t) => t.id !== task.id))
+                      void refreshTaskDayCounts()
+                    }}
+                    onEdit={(selectedTask) => {
+                      const leadFromTask = allLeads.find((lead) => lead.id === selectedTask.leadId)
+                      if (!leadFromTask) {
+                        toast.error("Lead da tarefa não encontrado.")
+                        return
+                      }
+                      setEditingTask(selectedTask)
+                      setTaskDialogLead(leadFromTask)
+                      setTaskDialogOpen(true)
+                    }}
+                    onCardClick={(selectedTask) => {
+                      const leadFromTask = allLeads.find((lead) => lead.id === selectedTask.leadId)
+                      if (!leadFromTask) {
+                        toast.error("Lead da tarefa não encontrado.")
+                        return
+                      }
+                      handleCardClick(leadFromTask)
+                      setEditingTask(selectedTask)
+                      setTaskDialogLead(leadFromTask)
+                      setTaskDialogOpen(true)
+                    }}
+                  />
+                ))}
+                {showMeetings && filteredEvents.map((event) => {
                   const lead = event.lead
                   const closerLabel = getCloserLabel(lead, closersById)
                   const isMeeting = event.type === "meeting"
@@ -782,7 +972,6 @@ export default function CalendarStudio() {
                     ? new Date(meetingStart.getTime() + 30 * 60 * 1000)
                     : null
                   const meetingTitle = lead.meetingTitle || `Estudo Plano de Saúde: ${lead.name}`
-                  const showLeadName = meetingTitle !== lead.name
                   const isCanceled = isMeeting && lead.status === "no_show"
                   const isOverdue =
                     isMeeting &&
@@ -791,12 +980,165 @@ export default function CalendarStudio() {
                     lead.status === "scheduled" &&
                     lead.meetingHeald !== "yes"
 
+                  if (isMeeting) {
+                    const entry = attendeesByLead[lead.id]
+                    return (
+                      <Card
+                        key={`${event.type}:${lead.id}:${event.date.toISOString()}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => handleCardClick(lead)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault()
+                            handleCardClick(lead)
+                          }
+                        }}
+                        className={cn("shadow-none border-l-4 border-l-orange-500/80 cursor-pointer", isCanceled && "opacity-70")}
+                      >
+                        <CardContent className="flex flex-col gap-3 p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <CalendarIcon className="size-4 text-muted-foreground" />
+                              <p className={cn("text-sm font-semibold", isCanceled && "line-through")}>{meetingTitle}</p>
+                              {isOverdue && <Badge variant="default">Reunião vencida</Badge>}
+                              {isCanceled && (
+                                <Badge className="border-red-500 bg-transparent text-red-500 hover:bg-transparent">
+                                  Reunião cancelada
+                                </Badge>
+                              )}
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  data-no-card-open="true"
+                                  className="size-7 shrink-0"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  <MoreVertical className="size-4" />
+                                  <span className="sr-only">Ações do agendamento</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onSelect={() => {
+                                    setLeadToSchedule(lead)
+                                    setScheduleDialogMode("reschedule")
+                                    setScheduleDialogOpen(true)
+                                  }}
+                                >
+                                  Editar agendamento
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onSelect={() => {
+                                    setLeadToSchedule(lead)
+                                    setScheduleDialogMode("reschedule")
+                                    setScheduleDialogOpen(true)
+                                  }}
+                                >
+                                  Reagendar reunião
+                                </DropdownMenuItem>
+                                <DropdownMenuItem disabled={!isOverdue} onSelect={() => { void handleMarkNoShow(lead) }}>
+                                  No-show
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onSelect={() => {
+                                    setLeadToCancel(lead)
+                                    setCancelDialogOpen(true)
+                                  }}
+                                >
+                                  Cancelar agenda
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+
+                          <div className="text-xs text-muted-foreground">Lead: {lead.name} <span className="opacity-60">· {lead.leadCode}</span></div>
+                          <div className={cn("text-xs text-muted-foreground", isCanceled && "line-through")}>
+                            {meetingStart && meetingEnd
+                              ? formatDateRange(meetingStart, meetingEnd, tz)
+                              : formatIntimezone(event.date, "dd/MM/yyyy HH:mm", tz)}
+                          </div>
+                          <div className={cn("text-xs text-muted-foreground", isCanceled && "line-through")}>Closer: {closerLabel}</div>
+                          <p className="text-sm text-muted-foreground">{lead.meetingNotes || `Reunião agendada com ${lead.name}`}</p>
+
+                          <Separator />
+
+                          <div className="flex items-end justify-between gap-3">
+                            <div className="flex flex-col gap-1.5">
+                              <span className="text-xs font-medium text-muted-foreground">Convites</span>
+                              {attendeesLoading && entry === undefined ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {[1, 2, 3].map((i) => <Skeleton key={i} className="h-5 w-20 rounded-full" />)}
+                                </div>
+                              ) : entry?.attendees?.length ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {entry.attendees.map((a) => {
+                                    const Icon = RSVP_ICON[a.responseStatus]
+                                    return (
+                                      <span
+                                        key={a.email}
+                                        title={a.email}
+                                        className={cn(
+                                          "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium leading-none",
+                                          RSVP_COLOR[a.responseStatus]
+                                        )}
+                                      >
+                                        <Icon className="size-3 shrink-0" />
+                                        <span className="opacity-60">{ROLE_LABEL[a.role]}</span>
+                                        <span>{a.displayName ?? a.email.split("@")[0]}</span>
+                                        <span className="opacity-40">·</span>
+                                        <span>{RSVP_LABEL[a.responseStatus]}</span>
+                                      </span>
+                                    )
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                            {lead.status === "scheduled" && canToggleMeetingHeald && (
+                              <Button
+                                size="sm"
+                                variant={lead.meetingHeald === "yes" ? "default" : "outline"}
+                                data-no-card-open="true"
+                                disabled={meetingHealdSavingId === lead.id || !canToggleMeetingHeald}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  void handleToggleMeetingHeald(lead, lead.meetingHeald !== "yes")
+                                }}
+                              >
+                                {meetingHealdSavingId === lead.id ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Salvando...
+                                  </>
+                                ) : lead.meetingHeald === "yes" ? (
+                                  <>
+                                    <BadgeCheck className="h-4 w-4" />
+                                    Reunião realizada
+                                  </>
+                                ) : (
+                                  <>
+                                    <BadgeIcon className="h-4 w-4" />
+                                    Reunião realizada
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  }
+
                   return (
                     <div
                       key={`${event.type}:${lead.id}:${event.date.toISOString()}`}
                       className={cn(
                         "bg-muted hover:bg-muted/80 after:bg-primary/70 relative rounded-md p-3 pl-6 text-left text-sm transition-colors after:absolute after:inset-y-3 after:left-3 after:w-1 after:rounded-full",
-                        isCanceled && "opacity-70",
                         isFutureSale && "after:bg-orange-500/80",
                         isLeadTimeReminder && "after:bg-red-500/80 animate-pulse"
                       )}
@@ -806,183 +1148,27 @@ export default function CalendarStudio() {
                         onClick={() => handleCardClick(lead)}
                         className="flex w-full flex-col gap-1 text-left"
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className={cn("font-medium", isCanceled && "line-through")}>
-                              {isMeeting
-                                ? meetingTitle
-                                : isFutureSale
-                                ? `Lead a vencer: ${lead.name}`
-                                : `Lead time vencido: ${lead.name}`}
-                            </div>
-                            {isMeeting && isOverdue && <Badge variant="default">Reunião vencida</Badge>}
-                            {isMeeting && isCanceled && (
-                              <Badge className="border-red-500 bg-transparent text-red-500 hover:bg-transparent">
-                                Reunião cancelada
-                              </Badge>
-                            )}
-                            {isFutureSale && (
-                              <Badge className="border-orange-500 bg-orange-500/15 text-orange-600 hover:bg-orange-500/15">
-                                Lead a vencer
-                              </Badge>
-                            )}
-                            {isLeadTimeReminder && (
-                              <Badge className="border-red-500 bg-red-500/15 text-red-600 hover:bg-red-500/15">
-                                Lead time vencido
-                              </Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground">{lead.leadCode}</span>
+                        <div className="font-medium">
+                          {isFutureSale ? `Lead a vencer: ${lead.name}` : `Lead time vencido: ${lead.name}`}
                         </div>
-
-                        {isMeeting && showLeadName && (
-                          <div className="text-xs text-muted-foreground">Lead: {lead.name}</div>
-                        )}
-
-                        <div className={cn("text-xs text-muted-foreground", isCanceled && "line-through")}>
-                          {isMeeting && meetingStart && meetingEnd
-                            ? formatDateRange(meetingStart, meetingEnd, tz)
-                            : formatIntimezone(event.date, "dd/MM/yyyy HH:mm", tz)}
+                        <div className="text-xs text-muted-foreground">
+                          {formatIntimezone(event.date, "dd/MM/yyyy HH:mm", tz)}
                         </div>
-                        <div className={cn("text-xs text-muted-foreground", isCanceled && "line-through")}>
-                          Closer: {closerLabel}
-                        </div>
-
-                        {isMeeting && lead.meetingNotes && (
-                          <div className="text-xs text-muted-foreground">
-                            Observações: {lead.meetingNotes}
-                          </div>
-                        )}
-
-                        {isMeeting && (() => {
-                          const entry = attendeesByLead[lead.id]
-                          if (attendeesLoading && entry === undefined) {
-                            return (
-                              <div className="mt-1 flex flex-wrap gap-1.5">
-                                {[1, 2, 3].map((i) => (
-                                  <Skeleton key={i} className="h-5 w-20 rounded-full" />
-                                ))}
-                              </div>
-                            )
-                          }
-                          if (!entry || !entry.attendees || entry.attendees.length === 0) return null
-                          return (
-                            <div className="mt-1.5 flex flex-col gap-1">
-                              {!entry.hasGoogleData && (
-                                <span className="text-[10px] text-muted-foreground italic">
-                                  Confirmações indisponíveis (envio por e-mail)
-                                </span>
-                              )}
-                              <div className="flex flex-wrap gap-1.5">
-                                {entry.attendees.map((a) => {
-                                  const Icon = RSVP_ICON[a.responseStatus]
-                                  return (
-                                    <span
-                                      key={a.email}
-                                      title={a.email}
-                                      className={cn(
-                                        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium leading-none",
-                                        RSVP_COLOR[a.responseStatus]
-                                      )}
-                                    >
-                                      <Icon className="size-3 shrink-0" />
-                                      <span className="opacity-60">{ROLE_LABEL[a.role]}</span>
-                                      <span>{a.displayName ?? a.email.split("@")[0]}</span>
-                                      <span className="opacity-40">·</span>
-                                      <span>{RSVP_LABEL[a.responseStatus]}</span>
-                                    </span>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )
-                        })()}
-
-                        {isFutureSale && (
+                        {isFutureSale ? (
                           <>
-                            <div className="text-xs text-muted-foreground">
-                              Entrar em contato com o cliente referente ao lead.
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Comentários: {lead.followUpNotes?.trim() || "Sem comentários."}
-                            </div>
+                            <div className="text-xs text-muted-foreground">Entrar em contato com o cliente referente ao lead.</div>
+                            <div className="text-xs text-muted-foreground">Comentários: {lead.followUpNotes?.trim() || "Sem comentários."}</div>
                           </>
-                        )}
-
-                        {isLeadTimeReminder && (
+                        ) : (
                           <div className="text-xs text-muted-foreground">
-                            Este lead ultrapassou o tempo máximo configurado para o status{" "}
-                            <strong>{getStatusLabel(lead.status)}</strong>.
+                            Este lead ultrapassou o tempo máximo configurado para o status <strong>{getStatusLabel(lead.status)}</strong>.
                           </div>
                         )}
                       </button>
-
-                      {isMeeting && lead.status === "scheduled" && canToggleMeetingHeald && (
-                        <div
-                          className="mt-2 flex items-center justify-between gap-2"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <label className="flex items-center gap-2 text-xs font-medium">
-                            <Checkbox
-                              checked={lead.meetingHeald === "yes"}
-                              disabled={meetingHealdSavingId === lead.id || !canToggleMeetingHeald}
-                              onCheckedChange={(checked) => {
-                                void handleToggleMeetingHeald(lead, checked === true)
-                              }}
-                            />
-                            Reunião realizada?
-                          </label>
-                          {meetingHealdSavingId === lead.id && (
-                            <span className="text-xs text-muted-foreground">Salvando...</span>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="mt-2 flex flex-wrap justify-end gap-2">
-                        {isMeeting ? (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setLeadToSchedule(lead)
-                                setScheduleDialogMode("reschedule")
-                                setScheduleDialogOpen(true)
-                              }}
-                            >
-                              Reagendar reunião
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setLeadToCancel(lead)
-                                setCancelDialogOpen(true)
-                              }}
-                              className="border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white cursor-pointer"
-                            >
-                              Cancelar agenda
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              setLeadToSchedule(lead)
-                              setScheduleDialogMode("create")
-                              setScheduleDialogOpen(true)
-                            }}
-                          >
-                            Agendar reunião
-                          </Button>
-                        )}
-                      </div>
                     </div>
                   )
-                })
+                })}
+                </>
               )}
             </div>
           </CardContent>
@@ -1001,9 +1187,10 @@ export default function CalendarStudio() {
       />
 
       <Dialog open={leadPickerOpen} onOpenChange={setLeadPickerOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-130">
           <DialogHeader>
-            <DialogTitle>Selecionar lead para agendar</DialogTitle>
+            <DialogTitle>Selecionar lead</DialogTitle>
+            <DialogDescription>Agendar reunião ou criar tarefa</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <Input
@@ -1011,23 +1198,16 @@ export default function CalendarStudio() {
               onChange={(event) => setLeadPickerQuery(event.target.value)}
               placeholder="Buscar por nome ou ID"
             />
-            <div className="max-h-[360px] overflow-y-auto rounded-md border">
+            <div className="max-h-90 overflow-y-auto rounded-md border">
               {leadPickerCandidates.length === 0 ? (
                 <div className="p-4 text-sm text-muted-foreground">Nenhum lead encontrado.</div>
               ) : (
                 leadPickerCandidates.map((lead) => {
                   const closerLabel = getCloserLabel(lead, closersById)
                   return (
-                    <button
+                    <div
                       key={lead.id}
-                      type="button"
-                      onClick={() => {
-                        setLeadToSchedule(lead)
-                        setScheduleDialogMode("create")
-                        setLeadPickerOpen(false)
-                        setScheduleDialogOpen(true)
-                      }}
-                      className="flex w-full items-center justify-between gap-3 border-b px-4 py-3 text-left text-sm transition-colors hover:bg-accent/40"
+                      className="flex w-full items-center justify-between gap-3 border-b px-4 py-2 text-sm"
                     >
                       <div>
                         <div className="font-medium">{lead.name}</div>
@@ -1035,10 +1215,33 @@ export default function CalendarStudio() {
                           ID: {lead.leadCode} • Closer: {closerLabel}
                         </div>
                       </div>
-                      <span className="text-xs text-muted-foreground">
-                        {getStatusLabel(lead.status)}
-                      </span>
-                    </button>
+                      <div className="flex shrink-0 gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setLeadToSchedule(lead)
+                            setScheduleDialogMode("create")
+                            setLeadPickerOpen(false)
+                            setScheduleDialogOpen(true)
+                          }}
+                        >
+                          Reunião
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingTask(null)
+                            setTaskDialogLead(lead)
+                            setLeadPickerOpen(false)
+                            setTaskDialogOpen(true)
+                          }}
+                        >
+                          Tarefa
+                        </Button>
+                      </div>
+                    </div>
                   )
                 })
               )}
@@ -1103,6 +1306,38 @@ export default function CalendarStudio() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {taskDialogLead && supabaseId && activeTeamId && (
+        <TaskFormDialog
+          open={taskDialogOpen}
+          onOpenChange={(next) => {
+            setTaskDialogOpen(next)
+            if (!next) {
+              setTaskDialogLead(null)
+              setEditingTask(null)
+            }
+          }}
+          leadId={taskDialogLead.id}
+          leadName={taskDialogLead.name}
+          teamMembers={user?.usersAssociated ?? []}
+          supabaseId={supabaseId}
+          activeTeamId={activeTeamId}
+          initialData={editingTask ? {
+            taskId: editingTask.id,
+            title: editingTask.title,
+            taskType: editingTask.taskType,
+            body: editingTask.body,
+            isUrgent: editingTask.isUrgent,
+            startAt: editingTask.startAt,
+            endAt: editingTask.endAt,
+            assigneeProfileIds: editingTask.assignees.map((a) => a.profileId),
+          } : null}
+          onSuccess={(_payload: TaskCreatedPayload) => {
+            void refreshTasks()
+            void refreshTaskDayCounts()
+          }}
+        />
+      )}
     </div>
   )
 }

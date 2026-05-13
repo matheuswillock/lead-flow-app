@@ -19,7 +19,8 @@ import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Calendar, CheckCircle, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
+import { Calendar, CheckCircle, ClipboardList, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
+import { TaskFormDialog } from "@/components/task-form-dialog";
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
 import {
@@ -159,9 +160,10 @@ export default function LeadDialog({
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [origin, setOrigin] = useState("");
-  const [activityType, setActivityType] = useState<"note" | "call" | "whatsapp" | "email">("note");
+  const [activityType, setActivityType] = useState<"note" | "call" | "whatsapp" | "email" | "task">("note");
   const [activityBody, setActivityBody] = useState("");
   const [activitySubmitting, setActivitySubmitting] = useState(false);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [optimisticActivities, setOptimisticActivities] = useState<LeadActivityResponseDTO[]>([]);
   const [reactionOverrides, setReactionOverrides] = useState<Record<string, LeadActivityReactionSummary[]>>({});
   const [reactionPickerOpenId, setReactionPickerOpenId] = useState<string | null>(null);
@@ -939,6 +941,7 @@ export default function LeadDialog({
     { value: "call", label: "Ligação", icon: <Phone className="h-4 w-4 text-primary" /> },
     { value: "whatsapp", label: "WhatsApp", icon: <MessageCircle className="h-4 w-4 text-primary" /> },
     { value: "email", label: "Email", icon: <Mail className="h-4 w-4 text-primary" /> },
+    { value: "task", label: "Tarefa", icon: <ClipboardList className="h-4 w-4 text-primary" /> },
   ];
 
   const getActivityIcon = (type: string) => {
@@ -951,6 +954,8 @@ export default function LeadDialog({
         return <Mail className="h-4 w-4 text-primary" />;
       case "status_change":
         return <CheckCircle className="h-4 w-4 text-primary" />;
+      case "task":
+        return <ClipboardList className="h-4 w-4 text-primary" />;
       case "note":
       default:
         return <MessageSquare className="h-4 w-4 text-primary" />;
@@ -967,6 +972,8 @@ export default function LeadDialog({
         return "Email";
       case "status_change":
         return "Status";
+      case "task":
+        return "Tarefa";
       case "note":
       default:
         return "Comentário";
@@ -2214,6 +2221,28 @@ export default function LeadDialog({
                         </div>
                       ) : (
                         mergedActivities.map((activity) => {
+                          const taskPayload =
+                            activity.type === "task" && activity.payload && typeof activity.payload === "object"
+                              ? (activity.payload as {
+                                  kind?: string;
+                                  title?: string;
+                                  status?: string;
+                                  isUrgent?: boolean;
+                                  assigneeMentions?: Array<{ profileId?: string; label?: string }>;
+                                })
+                              : null;
+                          const taskTitle = taskPayload?.title?.trim() || "Sem título";
+                          const isTaskStatusUpdate = taskPayload?.kind === "task_status_update";
+                          const taskMentions = (taskPayload?.assigneeMentions ?? [])
+                            .map((entry) => entry?.label?.trim())
+                            .map((value) => (value && !value.startsWith("@") ? `@${value}` : value))
+                            .filter((value): value is string => Boolean(value));
+                          const taskAssignedText =
+                            taskMentions.length > 0
+                              ? `Nova task atribuída para ${taskMentions.join(", ")}`
+                              : "Nova task atribuída";
+                          const taskStatusText = taskPayload?.status === "DONE" ? "Task concluída" : "Status da task atualizado";
+                          const taskHeaderText = isTaskStatusUpdate ? taskStatusText : taskAssignedText;
                           const authorName =
                             activity.author?.fullName ||
                             activity.author?.email ||
@@ -2261,11 +2290,26 @@ export default function LeadDialog({
                                     </span>
                                   </div>
                                 </div>
-                        {activity.body && (
-                          <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
-                                    {renderActivityBodyWithMentions(activity.body)}
-                          </p>
-                        )}
+                              {activity.type === "task" ? (
+                                <div className="col-span-2 flex flex-col gap-1">
+                                  <p className="text-xs font-medium text-primary">{taskHeaderText}</p>
+                                  <p className="text-sm font-semibold text-foreground">{taskTitle}</p>
+                                  {taskPayload?.isUrgent ? (
+                                    <Badge variant="destructive" className="w-fit">
+                                      Urgente
+                                    </Badge>
+                                  ) : null}
+                                  {activity.body && (
+                                    <p className="text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
+                                      {renderActivityBodyWithMentions(activity.body)}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : activity.body ? (
+                                <p className="col-span-2 text-sm text-muted-foreground whitespace-pre-line wrap-break-word">
+                                  {renderActivityBodyWithMentions(activity.body)}
+                                </p>
+                              ) : null}
                                 {(reactions.length > 0 || canReactToActivity) && (
                                   <div className="col-span-2 flex flex-wrap items-center gap-2">
                                     {reactions.map((reaction) => (
@@ -2352,98 +2396,133 @@ export default function LeadDialog({
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="mt-3 grid gap-2">
-                  <div className="relative">
-                    <Textarea
-                      ref={activityInputRef}
-                      value={activityBody}
-                      onChange={handleActivityChange}
-                      onKeyUp={handleActivityCursorUpdate}
-                      onClick={handleActivityCursorUpdate}
-                      onKeyDown={handleActivityKeyDown}
-                      placeholder="Descreva a atividade..."
-                      rows={3}
-                      className="resize-none pr-10"
+                {activityType === "task" ? (
+                  <div className="mt-3 rounded-md border border-border/60 bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
+                    <p className="mb-3 text-xs">
+                      Atribua uma tarefa a um ou mais membros do time. Você pode definir urgência, datas de início e fim.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="default"
+                      className="w-full"
                       disabled={!currentLead}
-                    />
-                    {mentionOpen && currentLead && (
-                      <div className="absolute bottom-full left-0 mb-2 w-full rounded-md border border-border/60 bg-background shadow-sm z-50">
-                        {teamMembersLoading ? (
-                          <div className="px-3 py-2 text-xs text-muted-foreground">
-                            Carregando membros...
-                          </div>
-                        ) : teamMembersError ? (
-                          <div className="px-3 py-2 text-xs text-destructive">
-                            {teamMembersError}
-                          </div>
-                        ) : mentionMatches.length === 0 ? (
-                          <div className="px-3 py-2 text-xs text-muted-foreground">
-                            Nenhum usuário encontrado.
-                          </div>
-                        ) : (
-                          <div className="max-h-44 overflow-y-auto py-1">
-                            {mentionMatches.map((member, index) => {
-                              const isActive = index === mentionIndex;
-                              return (
-                                <button
-                                  key={member.profileId}
-                                  type="button"
-                                  className={cn(
-                                    "flex w-full px-3 py-2 text-left text-sm transition",
-                                    isActive
-                                      ? "bg-muted/60 text-foreground"
-                                      : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-                                  )}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onMouseEnter={() => setMentionIndex(index)}
-                                  onClick={() => insertMentionAtCursor(member)}
-                                >
-                                  <span className="font-medium">{member.name}</span>
-                                </button>
-                              );
-                            })}
+                      onClick={() => setTaskDialogOpen(true)}
+                    >
+                      <ClipboardList className="mr-2 h-4 w-4" />
+                      Criar tarefa
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-3 grid gap-2">
+                      <div className="relative">
+                        <Textarea
+                          ref={activityInputRef}
+                          value={activityBody}
+                          onChange={handleActivityChange}
+                          onKeyUp={handleActivityCursorUpdate}
+                          onClick={handleActivityCursorUpdate}
+                          onKeyDown={handleActivityKeyDown}
+                          placeholder="Descreva a atividade..."
+                          rows={3}
+                          className="resize-none pr-10"
+                          disabled={!currentLead}
+                        />
+                        {mentionOpen && currentLead && (
+                          <div className="absolute bottom-full left-0 mb-2 w-full rounded-md border border-border/60 bg-background shadow-sm z-50">
+                            {teamMembersLoading ? (
+                              <div className="px-3 py-2 text-xs text-muted-foreground">
+                                Carregando membros...
+                              </div>
+                            ) : teamMembersError ? (
+                              <div className="px-3 py-2 text-xs text-destructive">
+                                {teamMembersError}
+                              </div>
+                            ) : mentionMatches.length === 0 ? (
+                              <div className="px-3 py-2 text-xs text-muted-foreground">
+                                Nenhum usuário encontrado.
+                              </div>
+                            ) : (
+                              <div className="max-h-44 overflow-y-auto py-1">
+                                {mentionMatches.map((member, index) => {
+                                  const isActive = index === mentionIndex;
+                                  return (
+                                    <button
+                                      key={member.profileId}
+                                      type="button"
+                                      className={cn(
+                                        "flex w-full px-3 py-2 text-left text-sm transition",
+                                        isActive
+                                          ? "bg-muted/60 text-foreground"
+                                          : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                                      )}
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onMouseEnter={() => setMentionIndex(index)}
+                                      onClick={() => insertMentionAtCursor(member)}
+                                    >
+                                      <span className="font-medium">{member.name}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         )}
+                        <Popover open={commentEmojiOpen} onOpenChange={setCommentEmojiOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-2 top-2 h-7 w-7"
+                              disabled={!currentLead}
+                              aria-label="Adicionar emoji"
+                            >
+                              <Smile className="h-4 w-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="end" side="top">
+                            <EmojiPicker
+                              onEmojiClick={(emojiData: EmojiPickerData) => {
+                                if (!emojiData?.emoji) return;
+                                insertEmojiAtCursor(emojiData.emoji);
+                                setCommentEmojiOpen(false);
+                              }}
+                              emojiStyle={EmojiStyle.NATIVE}
+                              theme={Theme.DARK}
+                              lazyLoadEmojis
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
-                    )}
-                    <Popover open={commentEmojiOpen} onOpenChange={setCommentEmojiOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="absolute right-2 top-2 h-7 w-7"
-                          disabled={!currentLead}
-                          aria-label="Adicionar emoji"
-                        >
-                          <Smile className="h-4 w-4" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="end" side="top">
-                        <EmojiPicker
-                          onEmojiClick={(emojiData: EmojiPickerData) => {
-                            if (!emojiData?.emoji) return;
-                            insertEmojiAtCursor(emojiData.emoji);
-                            setCommentEmojiOpen(false);
-                          }}
-                          emojiStyle={EmojiStyle.NATIVE}
-                          theme={Theme.DARK}
-                          lazyLoadEmojis
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="default"
-                  className="mt-4 w-full"
-                  disabled={!currentLead || activitySubmitting || !activityBody.trim()}
-                  onClick={handleAddActivity}
-                >
-                  {activitySubmitting ? "Salvando..." : "Adicionar atividade"}
-                </Button>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="default"
+                      className="mt-4 w-full"
+                      disabled={!currentLead || activitySubmitting || !activityBody.trim()}
+                      onClick={handleAddActivity}
+                    >
+                      {activitySubmitting ? "Salvando..." : "Adicionar atividade"}
+                    </Button>
+                  </>
+                )}
               </div>
+
+              {currentLead && supabaseId && activeTeamId && (
+                <TaskFormDialog
+                  open={taskDialogOpen}
+                  onOpenChange={setTaskDialogOpen}
+                  leadId={currentLead.id}
+                  leadName={currentLead.name}
+                  teamMembers={(user as ProfileResponseDTO | null)?.usersAssociated ?? []}
+                  supabaseId={supabaseId}
+                  activeTeamId={activeTeamId}
+                  onSuccess={() => {
+                    setActivityType("note");
+                  }}
+                />
+              )}
             </div>
           </div>
         </DialogContent>

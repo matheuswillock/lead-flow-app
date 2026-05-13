@@ -21,6 +21,7 @@ import {
   Send,
   History,
   BarChart3,
+  Calculator,
 } from "lucide-react"
 
 import {
@@ -39,12 +40,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { NavUser } from "./nav-user"
 import { useUserContext } from "@/app/context/UserContext"
 import { useTeamContext } from "@/app/context/TeamContext"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
 import { TeamSwitcher } from "@/components/team-switcher"
 import { isManagerLikeRole } from "@/lib/roles"
 import { SupportRequestDialog } from "@/components/support-request-dialog"
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess"
-import { isTeamAllowedForEmailCampaigns } from "@/lib/emailCampaignsAccess"
 import { useTeamPresence } from "@/hooks/useTeamPresence"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 type SidebarItem = {
   title: string
@@ -53,8 +55,9 @@ type SidebarItem = {
   managerOnly?: boolean
   masterOnly?: boolean
   closerOrManager?: boolean
+  sdrCloserOrManager?: boolean
   requiresIntegrationsAccess?: boolean
-  requiresEmailCampaignsAccess?: boolean
+  featureSlug?: string
   status?: "beta" | "comingSoon"
 }
 
@@ -79,13 +82,12 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const pathname = usePathname();
   const { user } = useUserContext();
   const { teams, activeTeamId, activeTeam, setActiveTeamId, isTeamMaster } = useTeamContext();
+  const { hasAccess } = useFeatureAccess();
   const isMaster = user?.isMaster === true;
   const isManager = isManagerLikeRole(user?.role);
   const isCloser = user?.functions?.includes("CLOSER") === true;
+  const isSdr = user?.functions?.includes("SDR") === true;
   const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
-  const canAccessEmailCampaigns = isTeamAllowedForEmailCampaigns(activeTeam?.id);
-  const EMAIL_MODULE_ALLOWED_EMAILS = ["matheuswillock@gmail.com", "bruno@onsidemarketing.com.br"];
-  const canAccessEmailModule = EMAIL_MODULE_ALLOWED_EMAILS.includes(user?.email ?? "");
   const teamActivityStorageKey = useMemo(
     () => `sidebar-team-activity-collapsed:${supabaseId ?? "anonymous"}:${activeTeamId ?? "no-team"}`,
     [supabaseId, activeTeamId]
@@ -94,10 +96,11 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   const docsUrl = `/${supabaseId}/docs`;
 
   const navigationItems: SidebarItem[] = [
-    { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard },
-    { title: "CRM", url: `/${supabaseId}/crm`, icon: KanbanSquare },
-    { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays },
-    { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, closerOrManager: true },
+    { title: "Dashboard", url: `/${supabaseId}/dashboard`, icon: LayoutDashboard, featureSlug: FEATURE_SLUGS.CRM_DASHBOARD },
+    { title: "CRM", url: `/${supabaseId}/crm`, icon: KanbanSquare, featureSlug: FEATURE_SLUGS.CRM_CRM },
+    { title: "Calendario", url: `/${supabaseId}/calendar`, icon: CalendarDays, featureSlug: FEATURE_SLUGS.CRM_CALENDAR },
+    { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, closerOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
+    { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, requiresIntegrationsAccess: true, status: "comingSoon" },
     {
       title: "Integrações",
@@ -110,11 +113,11 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
   ];
 
   const emailItems: SidebarItem[] = [
-    { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, requiresEmailCampaignsAccess: true, status: "comingSoon" },
-    { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, requiresEmailCampaignsAccess: true, status: "comingSoon" },
-    { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, requiresEmailCampaignsAccess: true, status: "comingSoon" },
-    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, requiresEmailCampaignsAccess: true, status: "comingSoon" },
-    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, requiresEmailCampaignsAccess: true, status: "comingSoon" },
+    { title: "Templates", url: `/${supabaseId}/email/templates`, icon: FileText, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL, status: "comingSoon" },
+    { title: "Contatos", url: `/${supabaseId}/email/contatos`, icon: BookUser, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL, status: "comingSoon" },
+    { title: "Campanhas", url: `/${supabaseId}/email/campanhas`, icon: Send, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL, status: "comingSoon" },
+    { title: "Histórico", url: `/${supabaseId}/email/historico`, icon: History, closerOrManager: true, featureSlug: FEATURE_SLUGS.EMAIL, status: "comingSoon" },
+    { title: "Analytics", url: `/${supabaseId}/email/analytics`, icon: BarChart3, managerOnly: true, featureSlug: FEATURE_SLUGS.EMAIL, status: "comingSoon" },
   ];
 
   const teamItems: SidebarItem[] = [
@@ -123,12 +126,14 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
       url: `/${supabaseId}/manager-users`,
       icon: Users,
       managerOnly: true,
+      featureSlug: FEATURE_SLUGS.CRM_TIME_MANAGE_USERS,
     },
     {
       title: "Gerenciar Times",
       url: `/${supabaseId}/teams`,
       icon: Users2,
       masterOnly: true,
+      featureSlug: FEATURE_SLUGS.CRM_TIME_MANAGE_TEAMS,
     },
   ];
 
@@ -168,13 +173,13 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     if (item.closerOrManager && !isManager && !isMaster && !isCloser) {
       return false;
     }
+    if (item.sdrCloserOrManager && !isManager && !isMaster && !isCloser && !isSdr) {
+      return false;
+    }
     if (item.requiresIntegrationsAccess && !canAccessIntegrations) {
       return false;
     }
-    if (item.requiresEmailCampaignsAccess && !canAccessEmailCampaigns) {
-      return false;
-    }
-    if (item.status && !canAccessEmailModule) {
+    if (item.featureSlug && !hasAccess(item.featureSlug)) {
       return false;
     }
     return true;
@@ -269,7 +274,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
                     </SidebarMenu>
                 </SidebarGroupContent>
             </SidebarGroup>
-            {(isManager || isMaster || isCloser) && canAccessEmailCampaigns && canAccessEmailModule && (
+            {(isManager || isMaster || isCloser) && hasAccess(FEATURE_SLUGS.EMAIL) && (
               <SidebarGroup>
                 <SidebarGroupLabel>
                   Email

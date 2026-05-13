@@ -4,6 +4,8 @@
  */
 import {
   BackofficeAdhesionBillingCycle,
+  BackofficeFeatureAccessLevel,
+  BackofficeFeatureAccessMode,
   BackofficePaymentMethod,
   BackofficeProductBillingMode,
   BackofficeProductType,
@@ -61,7 +63,45 @@ const PRODUCTS = [
     priceLifetime: null,
     isActive: true,
   },
+  {
+    slug: "email",
+    name: "Email",
+    description: "Módulo de email para campanhas, contatos, templates e analytics.",
+    type: BackofficeProductType.ADDON,
+    billingMode: BackofficeProductBillingMode.RECURRING,
+    priceMonthly: 29.9,
+    priceQuarterly: 29.9,
+    priceSemiannual: 29.9,
+    priceLifetime: null,
+    isActive: true,
+  },
 ]
+
+const FEATURES = [
+  { slug: "crm", name: "CRM", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 10 },
+  { slug: "crm-dashboard", name: "Dashboard", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 20 },
+  { slug: "crm-crm", name: "CRM", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 30 },
+  { slug: "crm-calendar", name: "Calendário", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 40 },
+  { slug: "crm-performance", name: "Performance", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 50 },
+  { slug: "crm-simulator", name: "Simulador de Planos", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 60 },
+  { slug: "crm-time", name: "Time", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 70 },
+  { slug: "crm-time-manage-teams", name: "Gerenciar Times", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 80 },
+  { slug: "crm-time-manage-users", name: "Gerenciar Usuários", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: false, sortOrder: 90 },
+  { slug: "email", name: "Email", accessMode: BackofficeFeatureAccessMode.PAID, defaultAccessLevel: BackofficeFeatureAccessLevel.FULL, betaEnabled: true, sortOrder: 100 },
+]
+
+const FEATURE_PRODUCT_SLUG_MAP: Record<string, string> = {
+  crm: "crm",
+  "crm-dashboard": "crm",
+  "crm-crm": "crm",
+  "crm-calendar": "crm",
+  "crm-performance": "crm",
+  "crm-simulator": "crm",
+  "crm-time": "crm",
+  "crm-time-manage-teams": "extra-team",
+  "crm-time-manage-users": "extra-user",
+  email: "email",
+}
 
 const CRM_PAYMENT_RULES: Array<{
   paymentMethod: BackofficePaymentMethod
@@ -80,6 +120,30 @@ const CRM_PAYMENT_RULES: Array<{
 
 async function main() {
   console.info("[seed:backoffice-products] Iniciando...")
+
+  for (const feature of FEATURES) {
+    await prisma.backofficeFeature.upsert({
+      where: { slug: feature.slug },
+      create: {
+        slug: feature.slug,
+        name: feature.name,
+        accessMode: feature.accessMode,
+        defaultAccessLevel: feature.defaultAccessLevel,
+        betaEnabled: feature.betaEnabled,
+        sortOrder: feature.sortOrder,
+        isActive: true,
+      },
+      update: {
+        name: feature.name,
+        accessMode: feature.accessMode,
+        defaultAccessLevel: feature.defaultAccessLevel,
+        betaEnabled: feature.betaEnabled,
+        sortOrder: feature.sortOrder,
+        isActive: true,
+      },
+    })
+    console.info(`[seed:backoffice-products] Feature pronta: ${feature.slug}`)
+  }
 
   for (const product of PRODUCTS) {
     await prisma.backofficeProduct.upsert({
@@ -116,6 +180,14 @@ async function main() {
     }
     console.info("[seed:backoffice-products] Regras de pagamento CRM prontas")
   }
+
+  for (const [featureSlug, productSlug] of Object.entries(FEATURE_PRODUCT_SLUG_MAP)) {
+    await prisma.backofficeFeature.updateMany({
+      where: { slug: featureSlug },
+      data: { productSlug },
+    })
+  }
+  console.info("[seed:backoffice-products] Features vinculadas aos produtos")
 
   console.info("[seed:backoffice-products] Concluído.")
 }

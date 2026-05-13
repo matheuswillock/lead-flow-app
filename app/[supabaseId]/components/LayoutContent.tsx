@@ -2,11 +2,14 @@
 
 import { useUserContext } from "@/app/context/UserContext";
 import { useTeamContext } from "@/app/context/TeamContext";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
 import { GlobalLoading } from "@/components/global-loading";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { Users2 } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { getFeatureSlugForAppPath } from "@/lib/features/feature-route-access";
 
 interface LayoutContentProps {
   children: React.ReactNode;
@@ -19,11 +22,13 @@ interface LayoutContentProps {
  * antes de renderizar o layout completo
  */
 export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutContentProps) {
+  const pathname = usePathname();
   const { isLoading, error } = useUserContext();
   const { teams, isLoading: teamsLoading, error: teamsError } = useTeamContext();
+  const { isLoading: featureLoading, hasAccess } = useFeatureAccess();
 
   // Enquanto carrega os dados do usuário, mostra loading global
-  if (isLoading || teamsLoading) {
+  if (isLoading || teamsLoading || featureLoading) {
     return <GlobalLoading />;
   }
 
@@ -65,6 +70,8 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
   }
 
   const shouldShowNoTeamsMessage = teams.length === 0;
+  const requiredFeatureSlug = getFeatureSlugForAppPath(pathname);
+  const shouldBlockByFeature = !shouldShowNoTeamsMessage && !!requiredFeatureSlug && !hasAccess(requiredFeatureSlug);
 
   // Dados carregados, renderiza o layout completo
   return (
@@ -91,6 +98,18 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
                   <h2 className="text-xl font-semibold">Você ainda não faz parte de nenhum time</h2>
                   <p className="text-sm text-muted-foreground">
                     Para usar a plataforma, solicite ao seu manager que inclua você em um time.
+                  </p>
+                </div>
+              </div>
+            ) : shouldBlockByFeature ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+                <div className="text-center space-y-3 max-w-md">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-border bg-muted/40">
+                    <Users2 className="h-7 w-7 text-muted-foreground" />
+                  </div>
+                  <h2 className="text-xl font-semibold">Acesso não liberado</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Esta funcionalidade não está liberada para o seu usuário no momento.
                   </p>
                 </div>
               </div>

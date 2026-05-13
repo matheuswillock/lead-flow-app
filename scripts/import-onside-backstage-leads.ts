@@ -709,7 +709,7 @@ async function run() {
           });
 
           if (row.status === LeadStatus.contract_finalized) {
-            await tx.leadFinalized.create({
+            await (tx.leadFinalized.create as (arg: unknown) => Promise<unknown>)({
               data: {
                 leadId: lead.id,
                 finalizedDateAt: new Date(),
