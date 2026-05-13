@@ -217,6 +217,27 @@ enum BackofficeSubscriptionStatus {
   @@map("backoffice_subscription_status")
 }
 
+enum BackofficeFeatureAccessMode {
+  PUBLIC
+  PAID
+
+  @@map("backoffice_feature_access_mode")
+}
+
+enum BackofficeFeatureAccessLevel {
+  NONE
+  READ
+  FULL
+
+  @@map("backoffice_feature_access_level")
+}
+
+enum BackofficeFeatureGrantType {
+  BETA
+
+  @@map("backoffice_feature_grant_type")
+}
+
 // AgeRange foi alterado para String - formato livre: "36, 32, 13"
 
 enum SubscriptionStatus {
@@ -429,6 +450,7 @@ model Profile {
 
   // Backoffice subscriptions
   backofficeSubscriptions BackofficeUserSubscription[] @relation("BackofficeUserSubscriptions")
+  backofficeFeatureGrants BackofficeFeatureGrant[]     @relation("BackofficeFeatureProfileGrants")
 
   // Product subscription (master only; operators inherit via managerId)
   subscription ProfileSubscription?
@@ -1434,10 +1456,56 @@ model BackofficeProduct {
   paymentRules         BackofficeProductPaymentRule[]
   userSubscriptions    BackofficeUserSubscription[]
   profileSubscriptions ProfileSubscription[]
+  features             BackofficeFeature[]
 
   @@index([slug])
   @@index([type, isActive])
   @@map("backoffice_products")
+}
+
+model BackofficeFeature {
+  id                 String                       @id @default(uuid()) @db.Text
+  slug               String                       @unique @db.Text
+  name               String                       @db.Text
+  description        String?                      @db.Text
+  parentId           String?                      @db.Text
+  productSlug        String?                      @db.Text
+  accessMode         BackofficeFeatureAccessMode  @default(PUBLIC)
+  defaultAccessLevel BackofficeFeatureAccessLevel @default(FULL)
+  betaEnabled        Boolean                      @default(false)
+  isActive           Boolean                      @default(true)
+  sortOrder          Int                          @default(0)
+  createdAt          DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                     @updatedAt @db.Timestamptz(6)
+
+  parent   BackofficeFeature?  @relation("BackofficeFeatureTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children BackofficeFeature[] @relation("BackofficeFeatureTree")
+  product  BackofficeProduct?  @relation(fields: [productSlug], references: [slug], onDelete: SetNull)
+  grants   BackofficeFeatureGrant[]
+
+  @@index([parentId], map: "backoffice_features_parent_id_idx")
+  @@index([productSlug], map: "backoffice_features_product_slug_idx")
+  @@index([isActive, sortOrder], map: "backoffice_features_active_sort_idx")
+  @@map("backoffice_features")
+}
+
+model BackofficeFeatureGrant {
+  id          String                       @id @default(uuid()) @db.Text
+  featureId   String                       @db.Text
+  profileId   String                       @db.Uuid
+  grantType   BackofficeFeatureGrantType   @default(BETA)
+  accessLevel BackofficeFeatureAccessLevel @default(FULL)
+  isActive    Boolean                      @default(true)
+  createdAt   DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime                     @updatedAt @db.Timestamptz(6)
+
+  feature BackofficeFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  profile Profile           @relation("BackofficeFeatureProfileGrants", fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([featureId, profileId, grantType], map: "backoffice_feature_grants_feature_profile_grant_type_key")
+  @@index([profileId, grantType, isActive], map: "backoffice_feature_grants_profile_grant_type_active_idx")
+  @@index([featureId, isActive], map: "backoffice_feature_grants_feature_active_idx")
+  @@map("backoffice_feature_grants")
 }
 
 model BackofficeProductPaymentRule {

@@ -207,6 +207,27 @@ expired expired
     
 
 
+        backoffice_feature_access_mode {
+            PUBLIC PUBLIC
+PAID PAID
+        }
+    
+
+
+        backoffice_feature_access_level {
+            NONE NONE
+READ READ
+FULL FULL
+        }
+    
+
+
+        backoffice_feature_grant_type {
+            BETA BETA
+        }
+    
+
+
         subscription_status {
             trial trial
 active active
@@ -943,6 +964,31 @@ unsubscribed unsubscribed
     }
   
 
+  "backoffice_features" {
+    String id "🗝️"
+    String slug 
+    String name 
+    String description "❓"
+    BackofficeFeatureAccessMode accessMode 
+    BackofficeFeatureAccessLevel defaultAccessLevel 
+    Boolean betaEnabled 
+    Boolean isActive 
+    Int sortOrder 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "backoffice_feature_grants" {
+    String id "🗝️"
+    BackofficeFeatureGrantType grantType 
+    BackofficeFeatureAccessLevel accessLevel 
+    Boolean isActive 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_product_payment_rules" {
     String id "🗝️"
     BackofficePaymentMethod paymentMethod 
@@ -1097,6 +1143,14 @@ unsubscribed unsubscribed
     "email_events" }o--|| email_logs : "log"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
     "backoffice_products" |o--|| "BackofficeProductBillingMode" : "enum:billingMode"
+    "backoffice_features" |o--|| "BackofficeFeatureAccessMode" : "enum:accessMode"
+    "backoffice_features" |o--|| "BackofficeFeatureAccessLevel" : "enum:defaultAccessLevel"
+    "backoffice_features" |o--|o backoffice_features : "parent"
+    "backoffice_features" }o--|o backoffice_products : "product"
+    "backoffice_feature_grants" |o--|| "BackofficeFeatureGrantType" : "enum:grantType"
+    "backoffice_feature_grants" |o--|| "BackofficeFeatureAccessLevel" : "enum:accessLevel"
+    "backoffice_feature_grants" }o--|| backoffice_features : "feature"
+    "backoffice_feature_grants" }o--|| profiles : "profile"
     "backoffice_product_payment_rules" |o--|| "BackofficePaymentMethod" : "enum:paymentMethod"
     "backoffice_product_payment_rules" |o--|| "BackofficeAdhesionBillingCycle" : "enum:billingCycle"
     "backoffice_product_payment_rules" }o--|| backoffice_products : "product"

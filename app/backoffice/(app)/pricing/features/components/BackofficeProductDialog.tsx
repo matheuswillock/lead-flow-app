@@ -80,6 +80,7 @@ export function BackofficeProductDialog() {
     dialogMode,
     closeDialog,
     formData,
+    availableFeatureSlugs,
     isSaving,
     setFormField,
     setPaymentRuleField,
@@ -113,12 +114,24 @@ export function BackofficeProductDialog() {
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="product-slug">Slug *</Label>
-              <Input
-                id="product-slug"
+              <Select
                 value={formData.slug}
                 disabled={isSaving}
-                onChange={(event) => setFormField("slug", event.target.value)}
-              />
+                onValueChange={(value) => setFormField("slug", value)}
+              >
+                <SelectTrigger id="product-slug">
+                  <SelectValue placeholder="Selecione o slug da funcionalidade" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {availableFeatureSlugs.map((slug) => (
+                      <SelectItem key={slug} value={slug}>
+                        {slug}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
