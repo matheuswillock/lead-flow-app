@@ -1,38 +1,72 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
+  BackofficeAccessPrincipal,
   BackofficeFeature,
+  BackofficeFeatureAccessLevel,
+  BackofficeFeatureAccessRule,
   BackofficeFeatureGrant,
 } from "@prisma/client"
 import type {
   BackofficeFeatureWithRelations,
   CreateBackofficeFeatureInput,
   IBackofficeFeatureRepository,
+  PlatformUserSearchResult,
   UpdateBackofficeFeatureInput,
   UpsertBackofficeFeatureBetaGrantInput,
 } from "./IBackofficeFeatureRepository"
 
 export class BackofficeFeatureRepository implements IBackofficeFeatureRepository {
   async findAll(): Promise<BackofficeFeatureWithRelations[]> {
-    return prisma.backofficeFeature.findMany({
-      include: {
-        parent: { select: { id: true, slug: true, name: true } },
-        children: { select: { id: true, slug: true, name: true }, orderBy: { sortOrder: "asc" } },
-        grants: {
-          where: { grantType: "BETA" },
-          include: {
-            profile: {
-              select: {
-                id: true,
-                fullName: true,
-                email: true,
+    try {
+      return await prisma.backofficeFeature.findMany({
+        include: {
+          parent: { select: { id: true, slug: true, name: true } },
+          children: { select: { id: true, slug: true, name: true }, orderBy: { sortOrder: "asc" } },
+          grants: {
+            where: { grantType: "BETA" },
+            include: {
+              profile: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                },
               },
             },
+            orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
           },
-          orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
+          accessRules: true,
         },
-      },
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    })
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      })
+    } catch (error) {
+      if (this.isMissingAccessRulesTable(error)) {
+        const features = await prisma.backofficeFeature.findMany({
+          include: {
+            parent: { select: { id: true, slug: true, name: true } },
+            children: { select: { id: true, slug: true, name: true }, orderBy: { sortOrder: "asc" } },
+            grants: {
+              where: { grantType: "BETA" },
+              include: {
+                profile: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                  },
+                },
+              },
+              orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
+            },
+          },
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        })
+
+        return features.map((feature) => ({ ...feature, accessRules: [] }))
+      }
+
+      throw error
+    }
   }
 
   async findActive(): Promise<BackofficeFeature[]> {
@@ -112,6 +146,31 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
     await prisma.backofficeFeature.delete({ where: { id } })
   }
 
+  async searchUsers(query: string, page: number, pageSize: number): Promise<PlatformUserSearchResult> {
+    const skip = (page - 1) * pageSize
+    const where = query
+      ? {
+          OR: [
+            { fullName: { contains: query, mode: "insensitive" as const } },
+            { email: { contains: query, mode: "insensitive" as const } },
+          ],
+        }
+      : {}
+
+    const [items, totalItems] = await Promise.all([
+      prisma.profile.findMany({
+        where,
+        select: { id: true, fullName: true, email: true, profileIconUrl: true },
+        orderBy: { fullName: "asc" },
+        skip,
+        take: pageSize,
+      }),
+      prisma.profile.count({ where }),
+    ])
+
+    return { items, totalItems }
+  }
+
   async listAvailableSlugs(): Promise<string[]> {
     const rows = await prisma.backofficeFeature.findMany({
       where: { isActive: true },
@@ -143,6 +202,59 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
         accessLevel: data.accessLevel ?? "FULL",
         isActive: true,
       },
+    })
+  }
+
+  async upsertAccessRule(
+    featureId: string,
+    principal: BackofficeAccessPrincipal,
+    accessLevel: BackofficeFeatureAccessLevel
+  ): Promise<BackofficeFeatureAccessRule> {
+    return prisma.backofficeFeatureAccessRule.upsert({
+      where: {
+        featureId_principal: {
+          featureId,
+          principal,
+        },
+      },
+      update: {
+        accessLevel,
+      },
+      create: {
+        featureId,
+        principal,
+        accessLevel,
+      },
+    })
+  }
+
+  async deleteAccessRule(featureId: string, principal: BackofficeAccessPrincipal): Promise<void> {
+    await prisma.backofficeFeatureAccessRule.deleteMany({
+      where: {
+        featureId,
+        principal,
+      },
+    })
+  }
+
+  async replaceAccessRules(
+    featureId: string,
+    rules: Array<{ principal: BackofficeAccessPrincipal; accessLevel: BackofficeFeatureAccessLevel }>
+  ): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.backofficeFeatureAccessRule.deleteMany({
+        where: { featureId },
+      })
+
+      if (rules.length > 0) {
+        await tx.backofficeFeatureAccessRule.createMany({
+          data: rules.map((rule) => ({
+            featureId,
+            principal: rule.principal,
+            accessLevel: rule.accessLevel,
+          })),
+        })
+      }
     })
   }
 
@@ -180,5 +292,13 @@ export class BackofficeFeatureRepository implements IBackofficeFeatureRepository
       },
       select: { featureId: true },
     })
+  }
+
+  private isMissingAccessRulesTable(error: unknown): boolean {
+    const parsed = error as { code?: string; meta?: { table?: string } }
+    return (
+      parsed?.code === "P2021" &&
+      parsed?.meta?.table === "public.backoffice_feature_access_rules"
+    )
   }
 }

@@ -7,8 +7,10 @@ import { useTeamContext } from "./TeamContext"
 
 interface FeatureAccessContextValue {
   slugs: string[]
+  betaSlugs: string[]
   isLoading: boolean
   hasAccess: (slug: string) => boolean
+  isBeta: (slug: string) => boolean
   refresh: () => Promise<void>
 }
 
@@ -22,6 +24,7 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
   const { user } = useUserContext()
   const { activeTeamId } = useTeamContext()
   const [slugs, setSlugs] = useState<string[]>([])
+  const [betaSlugs, setBetaSlugs] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const lastRequestKeyRef = useRef<string>("")
   const inFlightRef = useRef(false)
@@ -30,6 +33,7 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
     async (force = false) => {
       if (!user?.supabaseId) {
         setSlugs([])
+        setBetaSlugs([])
         setIsLoading(false)
         return
       }
@@ -51,14 +55,17 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
         const output = await response.json()
         if (!output.isValid) {
           setSlugs([])
+          setBetaSlugs([])
           return
         }
 
         setSlugs(Array.isArray(output.result?.slugs) ? output.result.slugs : [])
+        setBetaSlugs(Array.isArray(output.result?.betaSlugs) ? output.result.betaSlugs : [])
         lastRequestKeyRef.current = requestKey
       } catch (error) {
         console.error("[FeatureAccessContext] Erro ao carregar acesso:", error)
         setSlugs([])
+        setBetaSlugs([])
       } finally {
         setIsLoading(false)
         inFlightRef.current = false
@@ -72,17 +79,20 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
   }, [fetchAccess])
 
   const hasAccess = useCallback((slug: string) => slugs.includes(slug), [slugs])
+  const isBeta = useCallback((slug: string) => betaSlugs.includes(slug), [betaSlugs])
 
   const value = useMemo<FeatureAccessContextValue>(
     () => ({
       slugs,
+      betaSlugs,
       isLoading,
       hasAccess,
+      isBeta,
       refresh: async () => {
         await fetchAccess(true)
       },
     }),
-    [slugs, isLoading, hasAccess, fetchAccess]
+    [slugs, betaSlugs, isLoading, hasAccess, isBeta, fetchAccess]
   )
 
   return <FeatureAccessContext.Provider value={value}>{children}</FeatureAccessContext.Provider>
@@ -95,4 +105,3 @@ export function useFeatureAccess() {
   }
   return context
 }
-

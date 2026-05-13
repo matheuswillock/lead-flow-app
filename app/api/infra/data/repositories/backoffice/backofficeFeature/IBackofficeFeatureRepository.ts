@@ -2,6 +2,8 @@ import type {
   BackofficeFeature,
   BackofficeFeatureAccessLevel,
   BackofficeFeatureAccessMode,
+  BackofficeFeatureAccessRule,
+  BackofficeAccessPrincipal,
   BackofficeFeatureGrant,
 } from "@prisma/client"
 
@@ -17,6 +19,7 @@ export type BackofficeFeatureWithRelations = BackofficeFeature & {
       }
     }
   >
+  accessRules: BackofficeFeatureAccessRule[]
 }
 
 export interface CreateBackofficeFeatureInput {
@@ -50,6 +53,23 @@ export interface UpsertBackofficeFeatureBetaGrantInput {
   accessLevel?: BackofficeFeatureAccessLevel
 }
 
+export interface ReplaceBackofficeFeatureAccessRuleInput {
+  principal: BackofficeAccessPrincipal
+  accessLevel: BackofficeFeatureAccessLevel
+}
+
+export interface PlatformUserSearchItem {
+  id: string
+  fullName: string | null
+  email: string
+  profileIconUrl: string | null
+}
+
+export interface PlatformUserSearchResult {
+  items: PlatformUserSearchItem[]
+  totalItems: number
+}
+
 export interface IBackofficeFeatureRepository {
   findAll(): Promise<BackofficeFeatureWithRelations[]>
   findActive(): Promise<BackofficeFeature[]>
@@ -61,7 +81,18 @@ export interface IBackofficeFeatureRepository {
   update(id: string, data: UpdateBackofficeFeatureInput): Promise<BackofficeFeature>
   delete(id: string): Promise<void>
   listAvailableSlugs(): Promise<string[]>
+  searchUsers(query: string, page: number, pageSize: number): Promise<PlatformUserSearchResult>
   upsertBetaGrant(data: UpsertBackofficeFeatureBetaGrantInput): Promise<BackofficeFeatureGrant>
+  upsertAccessRule(
+    featureId: string,
+    principal: BackofficeAccessPrincipal,
+    accessLevel: BackofficeFeatureAccessLevel
+  ): Promise<BackofficeFeatureAccessRule>
+  deleteAccessRule(featureId: string, principal: BackofficeAccessPrincipal): Promise<void>
+  replaceAccessRules(
+    featureId: string,
+    rules: ReplaceBackofficeFeatureAccessRuleInput[]
+  ): Promise<void>
   disableBetaGrant(featureId: string, profileId: string): Promise<void>
   listBetaGrants(featureId: string): Promise<BackofficeFeatureWithRelations["grants"]>
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>

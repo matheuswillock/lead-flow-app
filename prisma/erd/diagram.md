@@ -210,6 +210,7 @@ expired expired
         backoffice_feature_access_mode {
             PUBLIC PUBLIC
 PAID PAID
+ADDON ADDON
         }
     
 
@@ -224,6 +225,19 @@ FULL FULL
 
         backoffice_feature_grant_type {
             BETA BETA
+        }
+    
+
+
+        backoffice_access_principal {
+            MASTER MASTER
+MANAGER MANAGER
+BACKOFFICE BACKOFFICE
+OPERATOR OPERATOR
+SDR SDR
+CLOSER CLOSER
+CAN_MANAGE_TEAMS CAN_MANAGE_TEAMS
+CAN_CREATE_USERS CAN_CREATE_USERS
         }
     
 
@@ -979,6 +993,15 @@ unsubscribed unsubscribed
     }
   
 
+  "backoffice_feature_access_rules" {
+    String id "🗝️"
+    BackofficeAccessPrincipal principal 
+    BackofficeFeatureAccessLevel accessLevel 
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_feature_grants" {
     String id "🗝️"
     BackofficeFeatureGrantType grantType 
@@ -1147,6 +1170,9 @@ unsubscribed unsubscribed
     "backoffice_features" |o--|| "BackofficeFeatureAccessLevel" : "enum:defaultAccessLevel"
     "backoffice_features" |o--|o backoffice_features : "parent"
     "backoffice_features" }o--|o backoffice_products : "product"
+    "backoffice_feature_access_rules" |o--|| "BackofficeAccessPrincipal" : "enum:principal"
+    "backoffice_feature_access_rules" |o--|| "BackofficeFeatureAccessLevel" : "enum:accessLevel"
+    "backoffice_feature_access_rules" }o--|| backoffice_features : "feature"
     "backoffice_feature_grants" |o--|| "BackofficeFeatureGrantType" : "enum:grantType"
     "backoffice_feature_grants" |o--|| "BackofficeFeatureAccessLevel" : "enum:accessLevel"
     "backoffice_feature_grants" }o--|| backoffice_features : "feature"

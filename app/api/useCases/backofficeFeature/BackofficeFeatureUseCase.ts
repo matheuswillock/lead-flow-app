@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output"
 import type {
+  BackofficeAccessPrincipal,
   BackofficeFeatureAccessLevel,
   BackofficeFeatureAccessMode,
 } from "@prisma/client"
@@ -17,6 +18,7 @@ export interface CreateBackofficeFeatureInput {
   betaEnabled?: boolean
   isActive?: boolean
   sortOrder?: number
+  accessRules?: Array<{ principal: string; accessLevel: string }>
 }
 
 export interface UpdateBackofficeFeatureInput {
@@ -29,6 +31,7 @@ export interface UpdateBackofficeFeatureInput {
   betaEnabled?: boolean
   isActive?: boolean
   sortOrder?: number
+  accessRules?: Array<{ principal: string; accessLevel: string }>
 }
 
 export class BackofficeFeatureUseCase {
@@ -79,7 +82,13 @@ export class BackofficeFeatureUseCase {
         sortOrder: input.sortOrder ?? 0,
       })
 
-      return new Output(true, ["Funcionalidade criada com sucesso"], [], created)
+      if (input.accessRules && input.accessRules.length > 0) {
+        const normalizedRules = this.normalizeAccessRules(input.accessRules)
+        await this.featureRepo.replaceAccessRules(created.id, normalizedRules)
+      }
+
+      const detailed = (await this.featureRepo.findAll()).find((feature) => feature.id === created.id) ?? created
+      return new Output(true, ["Funcionalidade criada com sucesso"], [], detailed)
     } catch (error) {
       console.error("[BackofficeFeatureUseCase][create]", error)
       return new Output(false, [], ["Erro ao criar funcionalidade"], null)
@@ -111,7 +120,14 @@ export class BackofficeFeatureUseCase {
       }
 
       const updated = await this.featureRepo.update(id, input)
-      return new Output(true, ["Funcionalidade atualizada com sucesso"], [], updated)
+
+      if (input.accessRules) {
+        const normalizedRules = this.normalizeAccessRules(input.accessRules)
+        await this.featureRepo.replaceAccessRules(id, normalizedRules)
+      }
+
+      const detailed = (await this.featureRepo.findAll()).find((feature) => feature.id === updated.id) ?? updated
+      return new Output(true, ["Funcionalidade atualizada com sucesso"], [], detailed)
     } catch (error) {
       console.error("[BackofficeFeatureUseCase][update]", error)
       return new Output(false, [], ["Erro ao atualizar funcionalidade"], null)
@@ -130,6 +146,30 @@ export class BackofficeFeatureUseCase {
     } catch (error) {
       console.error("[BackofficeFeatureUseCase][delete]", error)
       return new Output(false, [], ["Erro ao excluir funcionalidade"], null)
+    }
+  }
+
+  async listUsers(query: string, page: number, pageSize: number): Promise<Output> {
+    try {
+      const normalizedQuery = query.trim()
+      const safePage = Math.max(1, page)
+      const safePageSize = Math.max(5, pageSize)
+      const { items, totalItems } = await this.featureRepo.searchUsers(normalizedQuery, safePage, safePageSize)
+      const totalPages = Math.max(1, Math.ceil(totalItems / safePageSize))
+      return new Output(true, [], [], {
+        items,
+        pagination: {
+          page: safePage,
+          pageSize: safePageSize,
+          totalItems,
+          totalPages,
+          hasNextPage: safePage < totalPages,
+          hasPreviousPage: safePage > 1,
+        },
+      })
+    } catch (error) {
+      console.error("[BackofficeFeatureUseCase][listUsers]", error)
+      return new Output(false, [], ["Erro ao buscar usuários"], null)
     }
   }
 
@@ -200,6 +240,40 @@ export class BackofficeFeatureUseCase {
       candidate = `${base}-${suffix}`
       suffix += 1
     }
+  }
+
+  private normalizeAccessRules(
+    rules: Array<{ principal: string; accessLevel: string }>
+  ): Array<{ principal: BackofficeAccessPrincipal; accessLevel: BackofficeFeatureAccessLevel }> {
+    const validPrincipals: BackofficeAccessPrincipal[] = [
+      "MASTER",
+      "MANAGER",
+      "BACKOFFICE",
+      "OPERATOR",
+      "SDR",
+      "CLOSER",
+      "CAN_MANAGE_TEAMS",
+      "CAN_CREATE_USERS",
+    ]
+    const validLevels: BackofficeFeatureAccessLevel[] = ["NONE", "READ", "FULL"]
+
+    const byPrincipal = new Map<BackofficeAccessPrincipal, BackofficeFeatureAccessLevel>()
+    for (const rule of rules) {
+      if (
+        validPrincipals.includes(rule.principal as BackofficeAccessPrincipal) &&
+        validLevels.includes(rule.accessLevel as BackofficeFeatureAccessLevel)
+      ) {
+        byPrincipal.set(
+          rule.principal as BackofficeAccessPrincipal,
+          rule.accessLevel as BackofficeFeatureAccessLevel
+        )
+      }
+    }
+
+    return Array.from(byPrincipal.entries()).map(([principal, accessLevel]) => ({
+      principal,
+      accessLevel,
+    }))
   }
 }
 

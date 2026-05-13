@@ -6,11 +6,15 @@ import { IntegrationsPageSkeleton } from "../components/IntegrationsPageSkeleton
 import { useTeamContext } from "@/app/context/TeamContext";
 import { isTeamAllowedForIntegrations } from "@/lib/integrationsAccess";
 import { useIntegrationsContext } from "../context/IntegrationsContext";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs";
 
 export function IntegrationsContainer() {
   const { activeTeam, isLoading: isTeamLoading } = useTeamContext();
   const { integrationsBootstrapLoading } = useIntegrationsContext();
-  const canAccessIntegrations = isTeamAllowedForIntegrations(activeTeam?.id);
+  const { hasAccess } = useFeatureAccess();
+  const canAccessIntegrations =
+    isTeamAllowedForIntegrations(activeTeam?.id) || hasAccess(FEATURE_SLUGS.CONFIGURATION);
 
   if (isTeamLoading || (canAccessIntegrations && integrationsBootstrapLoading)) {
     return <IntegrationsPageSkeleton />;

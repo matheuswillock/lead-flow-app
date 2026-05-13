@@ -1,0 +1,222 @@
+"use client"
+
+import { Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { useBackofficeFeature } from "../context/BackofficeFeatureContext"
+
+const ACCESS_PRINCIPALS = [
+  { principal: "MASTER", label: "Master" },
+  { principal: "MANAGER", label: "Manager" },
+  { principal: "BACKOFFICE", label: "Backoffice" },
+  { principal: "OPERATOR", label: "Operator" },
+  { principal: "SDR", label: "SDR" },
+  { principal: "CLOSER", label: "Closer" },
+  { principal: "CAN_MANAGE_TEAMS", label: "Ger. Times" },
+  { principal: "CAN_CREATE_USERS", label: "Cad. Usuários" },
+] as const
+
+const ACCESS_LEVELS = ["NONE", "READ", "FULL"] as const
+
+export function BackofficeFeatureDialog() {
+  const {
+    dialogOpen,
+    dialogMode,
+    dialogFeature,
+    formData,
+    isSaving,
+    closeDialog,
+    setFormField,
+    setAccessRule,
+    submitForm,
+  } = useBackofficeFeature()
+
+  const isEdit = dialogMode === "edit"
+  const title = isEdit ? "Editar funcionalidade" : "Nova funcionalidade"
+
+  return (
+    <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog() }}>
+      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+
+        <div className="overflow-y-auto flex-1 flex flex-col gap-4 px-1 py-2">
+          {isEdit && dialogFeature && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Slug</Label>
+              <Input value={dialogFeature.slug} disabled className="font-mono text-xs" />
+              <p className="text-xs text-muted-foreground">O slug é imutável após a criação.</p>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="feature-name">Nome *</Label>
+            <Input
+              id="feature-name"
+              value={formData.name}
+              onChange={(e) => setFormField("name", e.target.value)}
+              placeholder="Ex: CRM Dashboard"
+              disabled={isSaving}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="feature-description">Descrição</Label>
+            <Textarea
+              id="feature-description"
+              value={formData.description}
+              onChange={(e) => setFormField("description", e.target.value)}
+              placeholder="Descrição opcional da funcionalidade"
+              rows={2}
+              disabled={isSaving}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Regras de acesso</Label>
+            <div className="rounded-md border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Principal</th>
+                    <th className="px-3 py-2 text-center font-medium">NONE</th>
+                    <th className="px-3 py-2 text-center font-medium">READ</th>
+                    <th className="px-3 py-2 text-center font-medium">FULL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ACCESS_PRINCIPALS.map((principal) => {
+                    const currentLevel =
+                      formData.accessRules.find((rule) => rule.principal === principal.principal)
+                        ?.accessLevel ?? "NONE"
+
+                    return (
+                      <tr key={principal.principal} className="border-t">
+                        <td className="px-3 py-2">{principal.label}</td>
+                        {ACCESS_LEVELS.map((level) => (
+                          <td key={level} className="px-3 py-2 text-center">
+                            <input
+                              type="radio"
+                              name={`principal-${principal.principal}`}
+                              value={level}
+                              checked={currentLevel === level}
+                              disabled={isSaving}
+                              onChange={() => setAccessRule(principal.principal, level)}
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="feature-access-mode">Modo de acesso</Label>
+              <Select
+                value={formData.accessMode}
+                onValueChange={(v) => setFormField("accessMode", v)}
+                disabled={isSaving}
+              >
+                <SelectTrigger id="feature-access-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PUBLIC">Público</SelectItem>
+                  <SelectItem value="PAID">Pago</SelectItem>
+                  <SelectItem value="ADDON">Adicional</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="feature-product-slug">Produto (slug)</Label>
+            <Input
+              id="feature-product-slug"
+              value={formData.productSlug}
+              onChange={(e) => setFormField("productSlug", e.target.value)}
+              placeholder="Ex: crm"
+              disabled={isSaving}
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              Slug de um produto cadastrado em Precificação. Deixe vazio para acesso sem produto.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="feature-sort-order">Ordem de exibição</Label>
+            <Input
+              id="feature-sort-order"
+              type="number"
+              min={0}
+              value={formData.sortOrder}
+              onChange={(e) => setFormField("sortOrder", e.target.value)}
+              disabled={isSaving}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium">Beta</span>
+              <span className="text-xs text-muted-foreground">
+                Liberar apenas para usuários com grant de beta
+              </span>
+            </div>
+            <Switch
+              checked={formData.betaEnabled}
+              onCheckedChange={(v) => setFormField("betaEnabled", v)}
+              disabled={isSaving}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium">Ativo</span>
+              <span className="text-xs text-muted-foreground">
+                Funcionalidade desativada não é avaliada no acesso
+              </span>
+            </div>
+            <Switch
+              checked={formData.isActive}
+              onCheckedChange={(v) => setFormField("isActive", v)}
+              disabled={isSaving}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={closeDialog} disabled={isSaving}>
+            Cancelar
+          </Button>
+          <Button onClick={submitForm} disabled={isSaving || !formData.name.trim()}>
+            {isSaving && <Loader2 data-icon="inline-start" className="animate-spin" />}
+            {isEdit ? "Salvar" : "Criar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

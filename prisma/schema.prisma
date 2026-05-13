@@ -220,6 +220,7 @@ enum BackofficeSubscriptionStatus {
 enum BackofficeFeatureAccessMode {
   PUBLIC
   PAID
+  ADDON
 
   @@map("backoffice_feature_access_mode")
 }
@@ -236,6 +237,19 @@ enum BackofficeFeatureGrantType {
   BETA
 
   @@map("backoffice_feature_grant_type")
+}
+
+enum BackofficeAccessPrincipal {
+  MASTER
+  MANAGER
+  BACKOFFICE
+  OPERATOR
+  SDR
+  CLOSER
+  CAN_MANAGE_TEAMS
+  CAN_CREATE_USERS
+
+  @@map("backoffice_access_principal")
 }
 
 // AgeRange foi alterado para String - formato livre: "36, 32, 13"
@@ -1482,11 +1496,27 @@ model BackofficeFeature {
   children BackofficeFeature[] @relation("BackofficeFeatureTree")
   product  BackofficeProduct?  @relation(fields: [productSlug], references: [slug], onDelete: SetNull)
   grants   BackofficeFeatureGrant[]
+  accessRules BackofficeFeatureAccessRule[]
 
   @@index([parentId], map: "backoffice_features_parent_id_idx")
   @@index([productSlug], map: "backoffice_features_product_slug_idx")
   @@index([isActive, sortOrder], map: "backoffice_features_active_sort_idx")
   @@map("backoffice_features")
+}
+
+model BackofficeFeatureAccessRule {
+  id          String                       @id @default(dbgenerated("(gen_random_uuid())::text")) @db.Text
+  featureId   String                       @db.Text
+  principal   BackofficeAccessPrincipal
+  accessLevel BackofficeFeatureAccessLevel
+  createdAt   DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime                     @updatedAt @db.Timestamptz(6)
+
+  feature BackofficeFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([featureId, principal], map: "backoffice_feature_access_rules_feature_principal_key")
+  @@index([featureId], map: "backoffice_feature_access_rules_feature_id_idx")
+  @@map("backoffice_feature_access_rules")
 }
 
 model BackofficeFeatureGrant {

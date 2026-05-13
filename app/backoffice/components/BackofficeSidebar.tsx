@@ -12,6 +12,7 @@ import {
   Plug,
   CalendarDays,
   Tag,
+  Zap,
   EllipsisVertical,
   LogOut,
   UserRound,
@@ -51,6 +52,7 @@ const navigationItems = [
   { title: "Clientes", url: "/backoffice/clients", icon: Users },
   { title: "Pagamentos", url: "/backoffice/payments", icon: CreditCard },
   { title: "Precificação", url: "/backoffice/pricing", icon: Tag },
+  { title: "Funcionalidades", url: "/backoffice/features", icon: Zap },
   { title: "Integrações", url: "/backoffice/integracoes", icon: Plug },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
 ]
@@ -136,6 +138,26 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             isActive={pathname.startsWith("/backoffice/clients/adhesions")}
                           >
                             <Link href="/backoffice/clients/adhesions">Nova adesão</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      </SidebarMenuSub>
+                    ) : null}
+                    {item.url === "/backoffice/features" ? (
+                      <SidebarMenuSub>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname === "/backoffice/features"}
+                          >
+                            <Link href="/backoffice/features">Funcionalidades</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname.startsWith("/backoffice/features/beta")}
+                          >
+                            <Link href="/backoffice/features/beta">Grupo Beta</Link>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                       </SidebarMenuSub>

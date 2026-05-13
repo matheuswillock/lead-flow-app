@@ -114,24 +114,49 @@ export function BackofficeProductDialog() {
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="product-slug">Slug *</Label>
-              <Select
-                value={formData.slug}
-                disabled={isSaving}
-                onValueChange={(value) => setFormField("slug", value)}
-              >
-                <SelectTrigger id="product-slug">
-                  <SelectValue placeholder="Selecione o slug da funcionalidade" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {availableFeatureSlugs.map((slug) => (
-                      <SelectItem key={slug} value={slug}>
-                        {slug}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              {dialogMode === "edit" ? (
+                <>
+                  <Input
+                    id="product-slug"
+                    value={formData.slug}
+                    disabled
+                    className="font-mono text-xs"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    O slug não pode ser alterado após a criação.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Select
+                    value={formData.slug}
+                    disabled={isSaving}
+                    onValueChange={(value) => setFormField("slug", value)}
+                  >
+                    <SelectTrigger id="product-slug">
+                      <SelectValue placeholder="Selecione a funcionalidade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {availableFeatureSlugs.length === 0 ? (
+                          <SelectItem value="__none__" disabled>
+                            Nenhuma funcionalidade sem produto vinculado
+                          </SelectItem>
+                        ) : (
+                          availableFeatureSlugs.map((slug) => (
+                            <SelectItem key={slug} value={slug}>
+                              {slug}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Apenas funcionalidades sem produto vinculado aparecem aqui.
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
