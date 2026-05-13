@@ -367,7 +367,7 @@ export class PerformanceService implements IPerformanceService {
         const base = toRankingEntry(item);
         return { ...base, count: item.salesCount };
       })
-      .sort((a, b) => b.totalSalesValue - a.totalSalesValue || b.count - a.count || a.name.localeCompare(b.name));
+      .sort((a, b) => b.count - a.count || b.totalSalesValue - a.totalSalesValue || a.name.localeCompare(b.name));
 
     const topCloser = closerRanking[0]
       ? {
