@@ -5,7 +5,6 @@ import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 import { format, parseISO } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
-import { useIsMobile } from '@/hooks/use-mobile'
 import {
   Card,
   CardAction,
@@ -22,17 +21,6 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from '@/components/ui/toggle-group'
 import { useDashboardContext } from "../context/DashboardContext"
 
 export const description = "Gráfico de Leads e Conversões por Período"
@@ -49,24 +37,7 @@ const chartConfig = {
 } satisfies ChartConfig
 
 export function ChartAreaInteractive() {
-  const isMobile = useIsMobile()
-  const { metrics, filters, setPeriod } = useDashboardContext()
-  const [timeRange, setTimeRange] = React.useState<'7d' | '30d' | '3m' | '6m' | '1y'>(
-    filters.period || "30d"
-  )
-
-  React.useEffect(() => {
-    if (isMobile && timeRange !== "7d") {
-      setTimeRange("7d")
-      setPeriod("7d")
-    }
-  }, [isMobile, timeRange, setPeriod])
-
-  const handleTimeRangeChange = (value: string) => {
-    const validPeriod = value as '7d' | '30d' | '3m' | '6m' | '1y'
-    setTimeRange(validPeriod)
-    setPeriod(validPeriod)
-  }
+  const { metrics, filters, customDateRange } = useDashboardContext()
 
   // Formatar dados para o gráfico
   const chartData = React.useMemo(() => {
@@ -98,44 +69,13 @@ export function ChartAreaInteractive() {
         <CardTitle>Leads por Período</CardTitle>
         <CardDescription>
           <span className="hidden @[540px]/card:block">
-            {getTimeRangeLabel(timeRange)}
+            {customDateRange ? "Período customizado" : getTimeRangeLabel(filters.period || "30d")}
           </span>
           <span className="@[540px]/card:hidden">
-            {timeRange === '7d' ? '7 dias' : timeRange === '30d' ? '30 dias' : '3 meses'}
+            {customDateRange ? "Customizado" : filters.period === '7d' ? '7 dias' : filters.period === '30d' ? '30 dias' : filters.period === '3m' ? '3 meses' : filters.period === '6m' ? '6 meses' : '1 ano'}
           </span>
         </CardDescription>
-        <CardAction>
-          <ToggleGroup
-            type="single"
-            value={timeRange}
-            onValueChange={handleTimeRangeChange}
-            variant="outline"
-            className="hidden *:data-[slot=toggle-group-item]:px-4! @[767px]/card:flex"
-          >
-            <ToggleGroupItem value="3m">Últimos 3 meses</ToggleGroupItem>
-            <ToggleGroupItem value="30d">Últimos 30 dias</ToggleGroupItem>
-            <ToggleGroupItem value="7d">Últimos 7 dias</ToggleGroupItem>
-          </ToggleGroup>
-          <Select value={timeRange} onValueChange={handleTimeRangeChange}>
-            <SelectTrigger
-              className="flex w-40 **:data-[slot=select-value]:block **:data-[slot=select-value]:truncate @[767px]/card:hidden"
-              aria-label="Selecione um período"
-            >
-              <SelectValue placeholder="Últimos 30 dias" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="7d" className="rounded-lg">
-                Últimos 7 dias
-              </SelectItem>
-              <SelectItem value="30d" className="rounded-lg">
-                Últimos 30 dias
-              </SelectItem>
-              <SelectItem value="3m" className="rounded-lg">
-                Últimos 3 meses
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </CardAction>
+        <CardAction />
       </CardHeader>
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
         <ChartContainer

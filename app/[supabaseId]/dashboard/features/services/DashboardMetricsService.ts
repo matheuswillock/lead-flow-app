@@ -11,7 +11,7 @@ export type { DashboardMetricsData, DetailedMetricsData, MetricsFilters };
 // Configuração de cache
 const CACHE_KEY_PREFIX = 'dashboard_metrics';
 const DETAILED_CACHE_KEY_PREFIX = `${CACHE_KEY_PREFIX}_detailed`;
-const CACHE_VERSION = '4';
+const CACHE_VERSION = '6';
 const CACHE_TTL = 15 * 60 * 1000; // 15 minutos em milissegundos
 const metricsInFlightByCacheKey = new Map<string, Promise<DashboardMetricsData>>();
 const detailedInFlightByCacheKey = new Map<string, Promise<DetailedMetricsData[]>>();

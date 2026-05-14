@@ -3,6 +3,7 @@ import { prisma } from '@/app/api/infra/data/prisma';
 import { Output } from '@/lib/output';
 import { getTeamAccess, hasLeadAccess } from '@/app/api/v1/utils/teamAccess';
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from '../../DTO/leadValueLimits';
+import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
 
 export async function POST(
   request: NextRequest,
@@ -14,16 +15,27 @@ export async function POST(
       return NextResponse.json(teamAccess.error, { status: teamAccess.status });
     }
     if (!hasLeadAccess(teamAccess.access.teamMember)) {
-      const output = new Output(false, [], ["Acesso negado: função SDR necessária para visualizar leads."], null);
+      const output = new Output(false, [], ['Acesso negado: função SDR necessária para visualizar leads.'], null);
       return NextResponse.json(output, { status: 403 });
     }
 
     const { id: leadId } = await params;
     const body = await request.json();
 
-    const { amount, startDateAt, finalizedDateAt, notes } = body;
+    const {
+      amount,
+      startDateAt,
+      finalizedDateAt,
+      notes,
+      closerId,
+      contractHolder,
+      operadora,
+      productName,
+      contractFileUrl,
+      contractStoragePath,
+      dependents,
+    } = body;
 
-    // Validações
     if (!amount || amount <= 0) {
       return NextResponse.json(
         new Output(false, [], ['O valor do contrato deve ser maior que zero'], null),
@@ -52,10 +64,71 @@ export async function POST(
       );
     }
 
-    // Buscar o lead
-    const lead = await prisma.lead.findUnique({
-      where: { id: leadId },
-    });
+    if (!closerId) {
+      return NextResponse.json(
+        new Output(false, [], ['O closer responsável é obrigatório'], null),
+        { status: 400 }
+      );
+    }
+
+    if (!contractHolder || typeof contractHolder !== 'object') {
+      return NextResponse.json(
+        new Output(false, [], ['Os dados do titular do contrato são obrigatórios'], null),
+        { status: 400 }
+      );
+    }
+
+    if (!operadora) {
+      return NextResponse.json(
+        new Output(false, [], ['A operadora é obrigatória'], null),
+        { status: 400 }
+      );
+    }
+
+    const dependentsList: { name: string; birthDate: string; parentesco: string; document?: string }[] =
+      Array.isArray(dependents) ? dependents : [];
+
+    const holderName =
+      typeof contractHolder.name === 'string' ? contractHolder.name.trim() : '';
+    const holderBirthDate = new Date(contractHolder.birthDate);
+    const holderDocument = sanitizeRgCpfDigits(
+      typeof contractHolder.document === 'string' ? contractHolder.document : ''
+    );
+    const holderCnpj = sanitizeDocumentDigits(
+      typeof contractHolder.cnpj === 'string' ? contractHolder.cnpj : ''
+    );
+
+    if (!holderName) {
+      return NextResponse.json(
+        new Output(false, [], ['O nome do titular é obrigatório'], null),
+        { status: 400 }
+      );
+    }
+
+    if (Number.isNaN(holderBirthDate.getTime())) {
+      return NextResponse.json(
+        new Output(false, [], ['A data de nascimento do titular é obrigatória'], null),
+        { status: 400 }
+      );
+    }
+
+    if (!holderDocument) {
+      return NextResponse.json(
+        new Output(false, [], ['O documento do titular é obrigatório'], null),
+        { status: 400 }
+      );
+    }
+
+    for (const dep of dependentsList) {
+      if (!dep.name || !dep.birthDate || !dep.parentesco) {
+        return NextResponse.json(
+          new Output(false, [], ['Cada dependente deve ter nome, data de nascimento e parentesco'], null),
+          { status: 400 }
+        );
+      }
+    }
+
+    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
 
     if (!lead || lead.teamId !== teamAccess.access.teamId) {
       return NextResponse.json(
@@ -64,38 +137,57 @@ export async function POST(
       );
     }
 
-    // Calcular a duração em dias desde a criação do lead até a finalização
     const createdAt = new Date(lead.createdAt);
     const finalizedDate = new Date(finalizedDateAt);
     const durationInDays = Math.floor(
       (finalizedDate.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    // Criar o registro de lead finalizado e atualizar o status do lead em uma transação
-    const result = await prisma.$transaction([
-      // Criar registro na tabela LeadFinalized
-      prisma.leadFinalized.create({
+    const result = await prisma.$transaction(async (tx) => {
+      const leadFinalized = await tx.leadFinalized.create({
         data: {
           leadId,
-          amount: amount,
+          amount,
           startDateAt: new Date(startDateAt),
           finalizedDateAt: new Date(finalizedDateAt),
           duration: durationInDays,
           notes: notes || null,
+          closerId: closerId || null,
+          operadora: operadora || null,
+          productName: productName || null,
+          contractFileUrl: contractFileUrl || null,
+          contractStoragePath: contractStoragePath || null,
         },
-      }),
+      });
 
-      // Atualizar o status do lead para contract_finalized
-      prisma.lead.update({
-        where: { id: leadId },
+      await tx.leadFinalizedHolder.create({
         data: {
-          status: 'contract_finalized',
-          currentValue: amount,
+          leadFinalizedId: leadFinalized.id,
+          name: holderName,
+          birthDate: holderBirthDate,
+          document: holderDocument,
+          cnpj: holderCnpj || null,
         },
-      }),
+      });
 
-      // Criar atividade de mudança de status
-      prisma.leadActivity.create({
+      if (dependentsList.length > 0) {
+        await tx.leadFinalizedDependent.createMany({
+          data: dependentsList.map((dep) => ({
+            leadFinalizedId: leadFinalized.id,
+            name: dep.name,
+            birthDate: new Date(dep.birthDate),
+            parentesco: dep.parentesco,
+            document: dep.document ? sanitizeRgCpfDigits(dep.document) : '',
+          })),
+        });
+      }
+
+      const updatedLead = await tx.lead.update({
+        where: { id: leadId },
+        data: { status: 'contract_finalized', currentValue: amount },
+      });
+
+      await tx.leadActivity.create({
         data: {
           leadId,
           type: 'status_change',
@@ -110,41 +202,25 @@ export async function POST(
           },
           createdBy: teamAccess.access.profileId,
         },
-      }),
+      });
 
-      // Criar entrada na carteira (upsert para ser idempotente)
-      prisma.leadPortfolio.upsert({
+      await tx.leadPortfolio.upsert({
         where: { leadId },
-        create: {
-          leadId,
-          teamId: teamAccess.access.teamId,
-          portfolioStatus: 'active',
-        },
+        create: { leadId, teamId: teamAccess.access.teamId, portfolioStatus: 'active' },
         update: {},
-      }),
-    ]);
+      });
+
+      return { leadFinalized, lead: updatedLead };
+    });
 
     return NextResponse.json(
-      new Output(
-        true,
-        ['Contrato finalizado com sucesso'],
-        [],
-        {
-          leadFinalized: result[0],
-          lead: result[1],
-        }
-      ),
+      new Output(true, ['Contrato finalizado com sucesso'], [], result),
       { status: 200 }
     );
   } catch (error) {
-    console.error('Erro ao finalizar contrato:', error);
+    console.error('[FinalizeLeadRoute][POST] Erro ao finalizar contrato:', error);
     return NextResponse.json(
-      new Output(
-        false,
-        [],
-        ['Erro interno ao finalizar contrato'],
-        null
-      ),
+      new Output(false, [], ['Erro interno ao finalizar contrato'], null),
       { status: 500 }
     );
   }

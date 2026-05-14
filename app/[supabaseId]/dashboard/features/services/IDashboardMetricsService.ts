@@ -1,15 +1,29 @@
 export interface DashboardMetricsData {
   agendamentos: number;
+  totalLeads: number;
+  scheduledCount: number;
+  noShowCount: number;
+  salesCount: number;
+  salesCountCrm: number;
+  salesCountFinancial: number;
   negociacao: number;
   implementacao: number;
   vendas: number;
+  vendasRealizadas: number;
+  dpsCount: number;
+  convertedCount: number;
   reunioesRealizadasCloser: number;
   reunioesRealizadasSdr: number;
   noShowRate: number;
   taxaConversao: number;
+  conversionRate: number;
+  conversionRateCrm: number;
+  conversionRateFinancial: number;
   receitaTotal: number;
   ticket: number;
   churnRate: number;
+  churnRateCrm: number;
+  churnRateFinancial: number;
   cadencia: number;
   leadsPorPeriodo: Array<{
     periodo: string;

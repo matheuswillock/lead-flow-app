@@ -68,8 +68,6 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
     const teamId = request.headers.get('x-team-id') || searchParams.get('teamId');
 
-    console.info('[API /leads] Query params:', { role, status, assignedTo, search, startDate, endDate, teamId });
-
     if (!role) {
       console.warn('[API /leads] No role in query params');
       const output = new Output(false, [], ["Role do usuário é obrigatório"], null);
@@ -91,10 +89,8 @@ export async function GET(request: NextRequest) {
       teamId,
     };
 
-    console.info('[API /leads] Calling LeadUseCase with options:', options);
     const output = await leadUseCase.getAllLeadsByUserRole(supabaseId, options);
-    console.info('[API /leads] LeadUseCase result:', { isValid: output.isValid, resultCount: output.result?.length });
-    
+
     return NextResponse.json(output);
 
   } catch (error) {

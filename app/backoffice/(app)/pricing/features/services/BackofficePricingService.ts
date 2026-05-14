@@ -72,6 +72,13 @@ export class BackofficePricingService implements IBackofficePricingService {
     return data.result ?? []
   }
 
+  async listFeatureSlugs(): Promise<string[]> {
+    const res = await fetch("/api/v1/backoffice/features/slugs", { cache: "no-store" })
+    const data = await res.json()
+    if (!data.isValid) throw new Error(data.errorMessages?.[0] ?? "Erro ao listar slugs")
+    return data.result ?? []
+  }
+
   async create(formData: BackofficeProductFormData): Promise<BackofficeProductItem> {
     const res = await fetch("/api/v1/backoffice/pricing", {
       method: "POST",

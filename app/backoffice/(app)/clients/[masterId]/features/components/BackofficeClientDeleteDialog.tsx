@@ -82,7 +82,7 @@ function getEmailNote(role: string, isMaster: boolean) {
   return null
 }
 
-interface Props {
+interface BackofficeClientDeleteDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   masterId: string
@@ -98,7 +98,7 @@ export function BackofficeClientDeleteDialog({
   details,
   teams,
   service,
-}: Props) {
+}: BackofficeClientDeleteDialogProps) {
   const router = useRouter()
   const [isDeleting, setIsDeleting] = useState(false)
   const inFlight = useRef(false)

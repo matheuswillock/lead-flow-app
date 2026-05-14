@@ -10,6 +10,11 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
+import type {
+  MissingSalesField,
+  SalesInfoInitialValues,
+  SalesInfoPayload,
+} from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
 import type { CrmFiltersState } from "@/app/[supabaseId]/crm/features/context/CrmTypes";
 import {
   createLeadTimeRulesVersion,
@@ -18,6 +23,10 @@ import {
   type TeamStatusRulesResponse,
 } from "@/lib/teamStatusRules";
 import { formatIntimezone, formatLocalDateValue } from "@/lib/dates"
+import {
+  leadStatusTransitionClient,
+  type LeadStatusTransitionTrigger,
+} from "@/lib/services/leadStatusTransitionClient";
 
 interface IBoardProviderProps {
   children: ReactNode;
@@ -55,18 +64,26 @@ type PendingStatusTriggerDrop = {
   confirmationMessage?: string | null;
 };
 
+type PendingFinalizeDrop = {
+  leadId: string;
+  from: ColumnKey;
+};
+
 type PendingMeetingHealdGateDrop = {
   leadId: string;
   from: ColumnKey;
   to: ColumnKey;
   canConfirmMeetingHeald: boolean;
-  trigger?: {
-    followUpAt?: string;
-    followUpNotes?: string;
-    reason?: string;
-    reasonDetails?: string;
-    confirmRuleId?: string;
-  };
+  trigger?: LeadStatusTransitionTrigger;
+};
+
+type PendingSalesInfoGateDrop = {
+  leadId: string;
+  from: ColumnKey;
+  to: ColumnKey;
+  trigger?: LeadStatusTransitionTrigger;
+  missingFields: MissingSalesField[];
+  currentSalesInfo: SalesInfoInitialValues;
 };
 
 interface IBoardContextState {
@@ -122,6 +139,11 @@ interface IBoardContextState {
   pendingMeetingHealdGateDrop: PendingMeetingHealdGateDrop | null;
   clearPendingMeetingHealdGateDrop: () => void;
   applyPendingMeetingHealdGateTransition: () => Promise<boolean>;
+  pendingSalesInfoGateDrop: PendingSalesInfoGateDrop | null;
+  clearPendingSalesInfoGateDrop: () => void;
+  applyPendingSalesInfoGateTransition: (payload: SalesInfoPayload) => Promise<boolean>;
+  pendingFinalizeDrop: PendingFinalizeDrop | null;
+  clearPendingFinalizeDrop: () => void;
   finalizeContract: (leadId: string, data: FinalizeContractData) => Promise<void>;
 }
 
@@ -202,6 +224,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
 
   const [periodStart, setPeriodStart] = useState<string>(""); // yyyy-mm-dd
   const [periodEnd, setPeriodEnd] = useState<string>(""); // yyyy-mm-dd
+  const [scheduledPeriodStart, setScheduledPeriodStart] = useState<string>(""); // yyyy-mm-dd
+  const [scheduledPeriodEnd, setScheduledPeriodEnd] = useState<string>(""); // yyyy-mm-dd
   const [assignedUsers, setAssignedUsers] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<ColumnKey[]>([]);
   const [closerFilter, setCloserFilter] = useState<string[]>([]);
@@ -210,8 +234,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pendingScheduledDrop, setPendingScheduledDrop] = useState<PendingScheduledDrop | null>(null);
   const [pendingStatusTriggerDrop, setPendingStatusTriggerDrop] = useState<PendingStatusTriggerDrop | null>(null);
+  const [pendingFinalizeDrop, setPendingFinalizeDrop] = useState<PendingFinalizeDrop | null>(null);
   const [pendingMeetingHealdGateDrop, setPendingMeetingHealdGateDrop] =
     useState<PendingMeetingHealdGateDrop | null>(null);
+  const [pendingSalesInfoGateDrop, setPendingSalesInfoGateDrop] =
+    useState<PendingSalesInfoGateDrop | null>(null);
 
   // Sync external CRM filters into board filter state whenever they change.
   // Using useEffect (not lazy initializer) is safe because data loads asynchronously;
@@ -224,6 +251,8 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setCloserFilter(externalFilters.closerFilter);
     setPeriodStart(externalFilters.periodStart);
     setPeriodEnd(externalFilters.periodEnd);
+    setScheduledPeriodStart(externalFilters.scheduledPeriodStart);
+    setScheduledPeriodEnd(externalFilters.scheduledPeriodEnd);
     setOnlyMeetingsHeld(externalFilters.onlyMeetingsHeld);
   }, [externalFilters]);
 
@@ -703,80 +732,102 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     async (
       leadId: string,
       newStatus: ColumnKey,
-      trigger?: {
-        followUpAt?: string;
-        followUpNotes?: string;
-        reason?: string;
-        reasonDetails?: string;
-        confirmRuleId?: string;
-        meetingHeald?: "yes" | "no" | null;
-      },
+      trigger?: LeadStatusTransitionTrigger,
       pendingDropContext?: { from: ColumnKey; to: ColumnKey }
     ) => {
       const loadingToast = toast.loading('Atualizando status do lead...');
 
       try {
-        const response = await fetch(`/api/v1/leads/${leadId}/status`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-supabase-user-id': supabaseId,
-            'x-team-id': activeTeamId || ''
-          },
-          body: JSON.stringify({
-            status: newStatus,
-            ...(trigger ? { trigger } : {}),
-          })
+        const transitionResult = await leadStatusTransitionClient.executeStatusTransition({
+          leadId,
+          targetStatus: newStatus,
+          supabaseId,
+          teamId: activeTeamId,
+          trigger,
         });
+        const { output, transition } = transitionResult;
 
-        const result = await response.json().catch(() => null);
+        if (!transition.allowed) {
+          const transitionMessage =
+            output.errorMessages?.[0] || "Não foi possível concluir a mudança de status.";
+          const fallbackContext =
+            pendingDropContext ??
+            (pendingStatusTriggerDrop &&
+            pendingStatusTriggerDrop.leadId === leadId &&
+            pendingStatusTriggerDrop.to === newStatus
+              ? { from: pendingStatusTriggerDrop.from, to: pendingStatusTriggerDrop.to }
+              : null);
 
-        if (!response.ok || !result?.isValid) {
-          const requiresMeetingHeald =
-            !!result?.result &&
-            typeof result.result === "object" &&
-            !!result.result.requiresMeetingHeald;
-
-          if (requiresMeetingHeald) {
-            const canConfirmMeetingHealdResult = !!result?.result?.canConfirmMeetingHeald;
-            const fallbackContext =
-              pendingDropContext ??
-              (pendingStatusTriggerDrop && pendingStatusTriggerDrop.leadId === leadId && pendingStatusTriggerDrop.to === newStatus
-                ? { from: pendingStatusTriggerDrop.from, to: pendingStatusTriggerDrop.to }
-                : null);
-
+          if (transition.blockerType === "meeting_heald") {
             if (fallbackContext) {
               setPendingMeetingHealdGateDrop({
                 leadId,
                 from: fallbackContext.from,
                 to: fallbackContext.to,
-                canConfirmMeetingHeald: canConfirmMeetingHealdResult,
+                canConfirmMeetingHeald: !!transition.canConfirmMeetingHeald,
                 trigger: trigger ? { ...trigger } : undefined,
               });
             } else {
               setPendingMeetingHealdGateDrop(null);
             }
 
-            toast.info(result?.errorMessages?.[0] || "Reuniao nao marcada como realizada.", {
-              id: loadingToast,
-              duration: 5000,
-            });
-            return result;
+            toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+            return output;
           }
 
-          const requiresConfirmation =
-            !!result?.result &&
-            typeof result.result === "object" &&
-            !!result.result.requiresConfirmation;
-
-          if (requiresConfirmation) {
-            const confirmationMessage =
-              result?.errorMessages?.[0] ||
-              "Confirmação adicional é necessária para concluir esta transição.";
-            const confirmationRuleId =
-              typeof result?.result?.confirmationRuleId === "string"
-                ? result.result.confirmationRuleId
+          if (transition.blockerType === "sales_info") {
+            const sourceLead =
+              fallbackContext
+                ? dataRef.current[fallbackContext.from]?.find((lead) => lead.id === leadId) ?? null
                 : null;
+            const missingFields = Array.isArray(transition.missingFields)
+              ? transition.missingFields
+              : [];
+
+            if (fallbackContext) {
+              setPendingSalesInfoGateDrop({
+                leadId,
+                from: fallbackContext.from,
+                to: fallbackContext.to,
+                trigger: trigger ? { ...trigger } : undefined,
+                missingFields,
+                currentSalesInfo: {
+                  ticket:
+                    typeof transition.currentSalesInfo?.ticket === "number"
+                      ? transition.currentSalesInfo.ticket
+                      : sourceLead?.ticket ?? null,
+                  contractDueDate:
+                    typeof transition.currentSalesInfo?.contractDueDate === "string"
+                      ? transition.currentSalesInfo.contractDueDate
+                      : sourceLead?.contractDueDate ?? null,
+                  soldPlan:
+                    typeof transition.currentSalesInfo?.soldPlan === "string"
+                      ? transition.currentSalesInfo.soldPlan
+                      : sourceLead?.soldPlan ?? null,
+                },
+              });
+            } else {
+              setPendingSalesInfoGateDrop(null);
+            }
+
+            toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+            return output;
+          }
+
+          if (
+            transition.blockerType === "confirmation" ||
+            transition.blockerType === "future_sale_trigger" ||
+            transition.blockerType === "loss_reason_trigger"
+          ) {
+            const confirmationRuleId =
+              typeof transition.confirmationRuleId === "string"
+                ? transition.confirmationRuleId
+                : null;
+            const confirmationMessage =
+              transition.confirmationMessage ||
+              (transition.blockerType === "confirmation"
+                ? "Confirmação adicional é necessária para concluir esta transição."
+                : null);
 
             setPendingStatusTriggerDrop((prev) => {
               if (prev && prev.leadId === leadId && prev.to === newStatus) {
@@ -787,24 +838,56 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
                 };
               }
 
-              if (!pendingDropContext) {
+              if (!fallbackContext) {
                 return prev;
               }
 
               return {
                 leadId,
-                from: pendingDropContext.from,
-                to: pendingDropContext.to,
+                from: fallbackContext.from,
+                to: fallbackContext.to,
                 confirmationRuleId,
                 confirmationMessage,
               };
             });
 
-            toast.info(confirmationMessage, { id: loadingToast, duration: 5000 });
-            return result;
+            toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+            return output;
           }
 
-          throw new Error(result?.errorMessages?.[0] || 'Erro ao atualizar status do lead');
+          if (transition.blockerType === "finalize_contract") {
+            if (fallbackContext) {
+              setPendingFinalizeDrop({
+                leadId,
+                from: fallbackContext.from,
+              });
+            } else {
+              setPendingFinalizeDrop(null);
+            }
+
+            toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+            return output;
+          }
+
+          if (transition.blockerType === "schedule_required") {
+            if (fallbackContext) {
+              setPendingScheduledDrop({
+                leadId,
+                from: fallbackContext.from,
+              });
+            } else {
+              setPendingScheduledDrop(null);
+            }
+
+            toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+            return output;
+          }
+
+          throw new Error(transitionMessage);
+        }
+
+        if (!output.isValid) {
+          throw new Error(output.errorMessages?.[0] || 'Erro ao atualizar status do lead');
         }
 
         const statusLabels: Record<ColumnKey, string> = {
@@ -828,7 +911,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
           id: loadingToast,
           duration: 3000,
         });
-        return result;
+        return output;
       } catch (error) {
         // O optimistic update só é aplicado após sucesso, então em caso de erro o
         // estado local permanece inalterado. Não há necessidade de refetch.
@@ -852,22 +935,6 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const { leadId, from } = JSON.parse(raw) as { leadId: string; from: ColumnKey };
       if (from === to) return;
 
-      if (to === "scheduled") {
-        setPendingScheduledDrop({ leadId, from });
-        return;
-      }
-
-      if (to === "future_sale" || to === "opportunityLost" || to === "operator_denied") {
-        setPendingStatusTriggerDrop({
-          leadId,
-          from,
-          to,
-          confirmationRuleId: null,
-          confirmationMessage: null,
-        });
-        return;
-      }
-
       void (async () => {
         const result = await updateLeadStatusInAPI(leadId, to, undefined, { from, to });
         if (!result?.isValid) return;
@@ -886,13 +953,30 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
   const finalizeContract = useCallback(
     async (leadId: string, contractData: FinalizeContractData) => {
       try {
+        const { contractFile: _contractFile, ...rest } = contractData;
+        const apiPayload = {
+          ...rest,
+          contractHolder: {
+            ...rest.contractHolder,
+            birthDate:
+              rest.contractHolder.birthDate instanceof Date
+                ? rest.contractHolder.birthDate.toISOString()
+                : rest.contractHolder.birthDate,
+          },
+          dependents: rest.dependents.map((d) => ({
+            name: d.name,
+            birthDate: d.birthDate instanceof Date ? d.birthDate.toISOString() : d.birthDate,
+            parentesco: d.parentesco,
+            document: d.document,
+          })),
+        };
         const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'x-supabase-user-id': supabaseId
           },
-          body: JSON.stringify(contractData)
+          body: JSON.stringify(apiPayload)
         });
 
         const result = await response.json().catch(() => null);
@@ -945,6 +1029,14 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setPendingMeetingHealdGateDrop(null);
   }, []);
 
+  const clearPendingSalesInfoGateDrop = useCallback(() => {
+    setPendingSalesInfoGateDrop(null);
+  }, []);
+
+  const clearPendingFinalizeDrop = useCallback(() => {
+    setPendingFinalizeDrop(null);
+  }, []);
+
   const applyPendingMeetingHealdGateTransition = useCallback(async (): Promise<boolean> => {
     if (!pendingMeetingHealdGateDrop) return false;
     if (!pendingMeetingHealdGateDrop.canConfirmMeetingHeald) return false;
@@ -973,6 +1065,65 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
     setPendingMeetingHealdGateDrop(null);
     return true;
   }, [moveLeadBetweenColumns, pendingMeetingHealdGateDrop, updateLeadStatusInAPI]);
+
+  const applyPendingSalesInfoGateTransition = useCallback(
+    async (payload: SalesInfoPayload): Promise<boolean> => {
+      if (!pendingSalesInfoGateDrop) return false;
+
+      try {
+        const response = await fetch(`/api/v1/leads/${pendingSalesInfoGateDrop.leadId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId || "",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const salesResult = await response.json().catch(() => null);
+        if (!response.ok || !salesResult?.isValid) {
+          throw new Error(
+            salesResult?.errorMessages?.[0] || "Erro ao salvar informações de venda do lead."
+          );
+        }
+
+        const salesPatch =
+          salesResult.result && typeof salesResult.result === "object"
+            ? (salesResult.result as Partial<Lead>)
+            : {};
+        patchLead(pendingSalesInfoGateDrop.leadId, salesPatch);
+
+        const statusResult = await updateLeadStatusInAPI(
+          pendingSalesInfoGateDrop.leadId,
+          pendingSalesInfoGateDrop.to,
+          pendingSalesInfoGateDrop.trigger,
+          { from: pendingSalesInfoGateDrop.from, to: pendingSalesInfoGateDrop.to }
+        );
+        if (!statusResult?.isValid) return false;
+
+        const statusPatch =
+          statusResult.result && typeof statusResult.result === "object"
+            ? (statusResult.result as Partial<Lead>)
+            : {};
+
+        moveLeadBetweenColumns(
+          pendingSalesInfoGateDrop.leadId,
+          pendingSalesInfoGateDrop.from,
+          pendingSalesInfoGateDrop.to,
+          statusPatch
+        );
+        setPendingSalesInfoGateDrop(null);
+        return true;
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Erro ao salvar informações de venda do lead."
+        );
+        return false;
+      }
+    },
+    [activeTeamId, moveLeadBetweenColumns, patchLead, pendingSalesInfoGateDrop, supabaseId, updateLeadStatusInAPI]
+  );
 
   const applyPendingStatusTriggerTransition = useCallback(
     async (trigger: {
@@ -1051,6 +1202,15 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const beforeEnd = !periodEnd || createdKey <= periodEnd;
       return afterStart && beforeEnd;
     };
+    const inScheduledPeriod = (l: Lead) => {
+      if (!scheduledPeriodStart && !scheduledPeriodEnd) return true;
+      if (!l.meetingDate) return false;
+      const meetingDateKey = formatDateKey(l.meetingDate, tz);
+      if (!meetingDateKey) return false;
+      const afterStart = !scheduledPeriodStart || meetingDateKey >= scheduledPeriodStart;
+      const beforeEnd = !scheduledPeriodEnd || meetingDateKey <= scheduledPeriodEnd;
+      return afterStart && beforeEnd;
+    };
     
     const next: Record<ColumnKey, Lead[]> = {} as Record<ColumnKey, Lead[]>;
     
@@ -1060,13 +1220,31 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       const statusSelected = statusFilter.length === 0 || statusFilter.includes(key);
       next[key] = statusSelected
         ? columnData.filter(
-            (l) => inQuery(l) && inResponsible(l) && inCloser(l) && inMeetingsHeld(l) && inPeriod(l)
+            (l) =>
+              inQuery(l) &&
+              inResponsible(l) &&
+              inCloser(l) &&
+              inMeetingsHeld(l) &&
+              inPeriod(l) &&
+              inScheduledPeriod(l)
           )
         : [];
     });
     
     return next;
-  }, [data, query, assignedUsers, closerFilter, onlyMeetingsHeld, periodStart, periodEnd, statusFilter]);
+  }, [
+    data,
+    query,
+    assignedUsers,
+    closerFilter,
+    onlyMeetingsHeld,
+    periodStart,
+    periodEnd,
+    scheduledPeriodStart,
+    scheduledPeriodEnd,
+    statusFilter,
+    tz,
+  ]);
 
   const responsaveis = useMemo(() => {
     return sdrMembers
@@ -1130,6 +1308,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingMeetingHealdGateDrop,
       clearPendingMeetingHealdGateDrop,
       applyPendingMeetingHealdGateTransition,
+      pendingSalesInfoGateDrop,
+      clearPendingSalesInfoGateDrop,
+      applyPendingSalesInfoGateTransition,
+      pendingFinalizeDrop,
+      clearPendingFinalizeDrop,
       finalizeContract,
     }),
     [
@@ -1170,6 +1353,11 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       pendingMeetingHealdGateDrop,
       clearPendingMeetingHealdGateDrop,
       applyPendingMeetingHealdGateTransition,
+      pendingSalesInfoGateDrop,
+      clearPendingSalesInfoGateDrop,
+      applyPendingSalesInfoGateTransition,
+      pendingFinalizeDrop,
+      clearPendingFinalizeDrop,
       finalizeContract,
     ]
   );

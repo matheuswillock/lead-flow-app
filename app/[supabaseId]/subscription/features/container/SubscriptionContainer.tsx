@@ -3,9 +3,7 @@
 import { useRouter, useParams } from 'next/navigation';
 import { useState } from 'react';
 import { useSubscriptionContext } from '../context/SubscriptionContext';
-import { useUserContext } from '@/app/context/UserContext';
-import { useTeamContext } from '@/app/context/TeamContext';
-import { isTeamAllowedForEmailCampaigns } from '@/lib/emailCampaignsAccess';
+import { useFeatureAccess } from '@/app/context/FeatureAccessContext';
 import { SubscriptionCard } from './SubscriptionCard';
 import { SubscriptionError } from './SubscriptionError';
 import { SubscriptionHeader } from './SubscriptionHeader';
@@ -17,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { EmailCreditsCard } from './EmailCreditsCard';
+import { FEATURE_SLUGS } from '@/lib/features/feature-slugs';
 
 export function SubscriptionContainer() {
   const router = useRouter();
@@ -34,12 +33,7 @@ export function SubscriptionContainer() {
     cancelSubscription
   } = useSubscriptionContext();
 
-  const { user } = useUserContext();
-  const { activeTeam } = useTeamContext();
-
-  const EMAIL_MODULE_ALLOWED_EMAILS = ['matheuswillock@gmail.com', 'bruno@onsidemarketing.com.br'];
-  const canAccessEmailCampaigns = isTeamAllowedForEmailCampaigns(activeTeam?.id);
-  const canAccessEmailModule = EMAIL_MODULE_ALLOWED_EMAILS.includes(user?.email ?? '');
+  const { hasAccess } = useFeatureAccess();
   const isPermanentSubscription = subscription?.hasPermanentSubscription === true;
 
   const handleReactivate = () => {
@@ -134,7 +128,7 @@ export function SubscriptionContainer() {
         <SubscriptionInvoices invoices={invoices} />
       )}
 
-      {canAccessEmailCampaigns && canAccessEmailModule && (
+      {hasAccess(FEATURE_SLUGS.EMAIL) && (
         <div className="space-y-2">
           <h2 className="text-lg font-semibold">Créditos de Email</h2>
           <EmailCreditsCard />

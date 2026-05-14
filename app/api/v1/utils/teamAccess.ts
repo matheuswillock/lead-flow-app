@@ -9,6 +9,8 @@ export type TeamAccess = {
   supabaseId: string;
   teamId: string;
   profileId: string;
+  profileEmail: string | null;
+  profileName: string | null;
   isMaster: boolean;
   managerId: string;
   canCreateAccountUsers: boolean;
@@ -37,6 +39,8 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     where: { supabaseId },
     select: {
       id: true,
+      email: true,
+      fullName: true,
       activeTeamId: true,
       isMaster: true,
       managerId: true,
@@ -96,6 +100,8 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       supabaseId,
       teamId,
       profileId: profile.id,
+      profileEmail: profile.email,
+      profileName: profile.fullName,
       isMaster: teamMember.team.masterId === profile.id || profile.isMaster,
       managerId: profile.managerId ?? teamMember.team.masterId ?? profile.id,
       canCreateAccountUsers:

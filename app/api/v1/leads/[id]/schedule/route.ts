@@ -15,6 +15,7 @@ const scheduleSchema = z.object({
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
   extraGuests: z.array(z.string().email("Email inválido")).optional(),
   transitionStatusToScheduled: z.boolean().optional(),
+  confirmNoShowSchedule: z.boolean().optional(),
 });
 
 export async function POST(
@@ -57,6 +58,7 @@ export async function POST(
       closerId,
       extraGuests,
       transitionStatusToScheduled,
+      confirmNoShowSchedule,
     } = validation.data;
     const meetingLinkValidation = validateMeetingLinkValue(meetingLink, {
       required: false,
@@ -107,6 +109,7 @@ export async function POST(
       extraGuests,
       createdByProfileId: teamAccess.access.profileId,
       transitionStatusToScheduled,
+      confirmNoShowSchedule,
     });
 
     if (!result.isValid) {

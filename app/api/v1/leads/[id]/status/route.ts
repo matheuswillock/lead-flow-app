@@ -6,15 +6,32 @@ import { Output } from "@/lib/output";
 import { LeadStatus } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
-import type { UpdateLeadStatusTriggerInput } from "@/app/api/useCases/leads/ILeadUseCase";
+import type {
+  LeadStatusTransitionMode,
+  UpdateLeadStatusTriggerInput,
+} from "@/app/api/useCases/leads/ILeadUseCase";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
 const leadUseCase = new LeadUseCase(leadRepository, profileUseCase);
 
-export async function PUT(
+const isTransitionConflict = (output: Output): boolean => {
+  const transition = output?.result && typeof output.result === "object"
+    ? (output.result as { transition?: { allowed?: boolean; blockerType?: string } }).transition
+    : null;
+  return !!transition && transition.allowed === false && transition.blockerType !== "validation_error";
+};
+
+type HandleLeadStatusTransitionOptions = {
+  defaultMode: LeadStatusTransitionMode;
+  allowBodyMode?: boolean;
+  logPrefix: string;
+};
+
+export async function handleLeadStatusTransition(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
+  options: HandleLeadStatusTransitionOptions
 ) {
   try {
     const teamAccess = await getTeamAccess(request);
@@ -23,8 +40,12 @@ export async function PUT(
     }
 
     const body = await request.json().catch(() => null);
-    const status = body?.status;
+    const status = body?.targetStatus ?? body?.status;
     const trigger = (body?.trigger ?? undefined) as UpdateLeadStatusTriggerInput | undefined;
+    const mode: LeadStatusTransitionMode =
+      options.allowBodyMode && body?.mode === "validate"
+        ? "validate"
+        : options.defaultMode;
 
     if (!status || !Object.values(LeadStatus).includes(status)) {
       const output = new Output(false, [], ["Status inválido"], null);
@@ -69,27 +90,26 @@ export async function PUT(
       teamAccess.access.supabaseId,
       id,
       status,
-      trigger
+      trigger,
+      mode
     );
-    const needsConfirmation = !!(
-      output.result &&
-      typeof output.result === "object" &&
-      "requiresConfirmation" in output.result &&
-      (output.result as { requiresConfirmation?: boolean }).requiresConfirmation
-    );
-    const requiresMeetingHeald = !!(
-      output.result &&
-      typeof output.result === "object" &&
-      "requiresMeetingHeald" in output.result &&
-      (output.result as { requiresMeetingHeald?: boolean }).requiresMeetingHeald
-    );
-
-    const responseStatus = output.isValid ? 200 : needsConfirmation || requiresMeetingHeald ? 409 : 400;
+    const responseStatus = output.isValid ? 200 : isTransitionConflict(output) ? 409 : 400;
     return NextResponse.json(output, { status: responseStatus });
 
   } catch (error) {
-    console.error("[LeadStatusRoute][PUT] Erro ao atualizar status do lead:", error);
+    console.error(`[${options.logPrefix}] Erro ao atualizar status do lead:`, error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }
+}
+
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  return handleLeadStatusTransition(request, context, {
+    defaultMode: "apply",
+    allowBodyMode: false,
+    logPrefix: "LeadStatusRoute][PUT",
+  });
 }

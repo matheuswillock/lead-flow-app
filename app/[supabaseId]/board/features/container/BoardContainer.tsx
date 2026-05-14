@@ -24,7 +24,12 @@ import { toast } from "sonner";
 import { useParams } from "next/navigation";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useTeamClosers } from "@/hooks/useTeamMembersByFunction";
+import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
+import {
+  SalesInfoRequirementDialog,
+  type SalesInfoPayload,
+} from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
 
 interface BoardContainerProps {
   title?: string;
@@ -55,11 +60,18 @@ export function BoardContainer({
     pendingMeetingHealdGateDrop,
     clearPendingMeetingHealdGateDrop,
     applyPendingMeetingHealdGateTransition,
+    pendingSalesInfoGateDrop,
+    clearPendingSalesInfoGateDrop,
+    applyPendingSalesInfoGateTransition,
+    pendingFinalizeDrop,
+    clearPendingFinalizeDrop,
     data,
   } = useBoardContext();
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [showStatusTriggerDialog, setShowStatusTriggerDialog] = useState(false);
+  const [showSalesInfoDialog, setShowSalesInfoDialog] = useState(false);
+  const [salesInfoSaving, setSalesInfoSaving] = useState(false);
   const [scheduleDialogMode, setScheduleDialogMode] = useState<"create" | "reschedule">("create");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const scheduleSucceededRef = useRef(false);
@@ -67,6 +79,7 @@ export function BoardContainer({
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId } = useTeamContext();
   const { members: closers } = useTeamClosers(supabaseId, activeTeamId);
+  const { healthPlans } = useHealthPlans(supabaseId, activeTeamId);
   const pendingDropLead = useMemo(() => {
     if (!pendingScheduledDrop) return null;
     return data[pendingScheduledDrop.from]?.find((item) => item.id === pendingScheduledDrop.leadId) ?? null;
@@ -114,6 +127,31 @@ export function BoardContainer({
     }
   }, [pendingNeedsTriggerDialog, pendingStatusTriggerDrop, pendingStatusTriggerLead]);
 
+  const pendingFinalizeLead = useMemo(() => {
+    if (!pendingFinalizeDrop) return null;
+    return data[pendingFinalizeDrop.from]?.find((item) => item.id === pendingFinalizeDrop.leadId) ?? null;
+  }, [data, pendingFinalizeDrop]);
+
+  useEffect(() => {
+    if (!pendingFinalizeDrop || !pendingFinalizeLead) return;
+    setSelectedLead(pendingFinalizeLead);
+    setShowFinalizeDialog(true);
+  }, [pendingFinalizeDrop, pendingFinalizeLead]);
+
+  const pendingSalesInfoLead = useMemo(() => {
+    if (!pendingSalesInfoGateDrop) return null;
+    return (
+      data[pendingSalesInfoGateDrop.from]?.find((item) => item.id === pendingSalesInfoGateDrop.leadId) ??
+      null
+    );
+  }, [data, pendingSalesInfoGateDrop]);
+
+  useEffect(() => {
+    if (!pendingSalesInfoGateDrop || !pendingSalesInfoLead) return;
+    setSelectedLead(pendingSalesInfoLead);
+    setShowSalesInfoDialog(true);
+  }, [pendingSalesInfoGateDrop, pendingSalesInfoLead]);
+
   const handleNoShow = useCallback(
     async (lead: Lead) => {
       if (!supabaseId) {
@@ -154,14 +192,31 @@ export function BoardContainer({
   const handleFinalizeSubmit = async (data: FinalizeContractData) => {
     if (!selectedLead) return;
 
+    let contractFileUrl: string | undefined;
+    let contractStoragePath: string | undefined;
+
+    if (data.contractFile && supabaseId) {
+      const formData = new FormData();
+      formData.append('file', data.contractFile);
+      const uploadRes = await fetch(`/api/v1/leads/${selectedLead.id}/attachments`, {
+        method: 'POST',
+        headers: { 'x-supabase-user-id': supabaseId, 'x-team-id': activeTeamId ?? '' },
+        body: formData,
+      });
+      const uploadResult = await uploadRes.json().catch(() => null);
+      if (!uploadRes.ok || !uploadResult?.isValid) {
+        throw new Error(uploadResult?.errorMessages?.[0] ?? 'Erro ao fazer upload do contrato');
+      }
+      contractFileUrl = uploadResult.result?.fileUrl;
+      contractStoragePath = uploadResult.result?.storagePath;
+    }
+
     try {
-      await finalizeContract(selectedLead.id, data);
-      toast.success('Contrato finalizado com sucesso!');
+      await finalizeContract(selectedLead.id, { ...data, contractFileUrl, contractStoragePath } as FinalizeContractData);
       setShowFinalizeDialog(false);
       setSelectedLead(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Erro ao finalizar contrato');
-      throw error; // Re-throw para o dialog poder mostrar o erro
+      throw error;
     }
   };
 
@@ -202,6 +257,17 @@ export function BoardContainer({
     }
 
     setShowStatusTriggerDialog(false);
+    setSelectedLead(null);
+  };
+
+  const handleSalesInfoSave = async (payload: SalesInfoPayload) => {
+    setSalesInfoSaving(true);
+    const updated = await applyPendingSalesInfoGateTransition(payload);
+    setSalesInfoSaving(false);
+    if (!updated) return;
+
+    setShowSalesInfoDialog(false);
+    clearPendingSalesInfoGateDrop();
     setSelectedLead(null);
   };
 
@@ -256,9 +322,22 @@ export function BoardContainer({
         <>
           <FinalizeContractDialog
             open={showFinalizeDialog}
-            onOpenChange={setShowFinalizeDialog}
+            onOpenChange={(open) => {
+              setShowFinalizeDialog(open);
+              if (!open) {
+                clearPendingFinalizeDrop();
+                setSelectedLead(null);
+              }
+            }}
             leadName={selectedLead.name}
+            leadCloserId={selectedLead.closerId ?? undefined}
             onFinalize={handleFinalizeSubmit}
+            closers={closers}
+            healthPlans={healthPlans}
+            initialAmount={selectedLead.ticket}
+            initialStartDate={selectedLead.contractDueDate}
+            initialOperadora={selectedLead.soldPlan}
+            initialHolderCnpj={selectedLead.cnpj}
           />
           
           <ScheduleMeetingDialog
@@ -358,6 +437,25 @@ export function BoardContainer({
           }
         }}
       />
+
+      {pendingSalesInfoGateDrop && selectedLead && (
+        <SalesInfoRequirementDialog
+          open={showSalesInfoDialog}
+          onOpenChange={(open) => {
+            setShowSalesInfoDialog(open);
+            if (!open) {
+              clearPendingSalesInfoGateDrop();
+              setSelectedLead(null);
+            }
+          }}
+          onSave={handleSalesInfoSave}
+          healthPlans={healthPlans}
+          leadName={selectedLead.name}
+          isSaving={salesInfoSaving}
+          initialValues={pendingSalesInfoGateDrop.currentSalesInfo}
+          missingFields={pendingSalesInfoGateDrop.missingFields}
+        />
+      )}
     </div>
   );
 }

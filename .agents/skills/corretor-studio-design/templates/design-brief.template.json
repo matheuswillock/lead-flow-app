@@ -1,0 +1,47 @@
+{
+  "contexto": {
+    "tipo_tela": "",
+    "objetivo_conversao": "",
+    "publico": "",
+    "restricoes": []
+  },
+  "direcao_visual": {
+    "visual_dna": "Hybrid Warm-Precision",
+    "narrativa_interface": "",
+    "hierarquia_cta": ""
+  },
+  "tokens": {
+    "surface": [],
+    "brand": [],
+    "precision": [],
+    "semantic": [],
+    "motion": []
+  },
+  "layout": {
+    "estrutura": "",
+    "grade": "",
+    "espacamento": "",
+    "responsividade": []
+  },
+  "componentes": [
+    {
+      "nome": "",
+      "base": "shadcn",
+      "mcp_consultado": true,
+      "variantes": [],
+      "estados": []
+    }
+  ],
+  "acessibilidade": {
+    "contraste": "",
+    "foco_visivel": true,
+    "touch_target_minimo": "44x44",
+    "reduced_motion": true
+  },
+  "copy_direcao": {
+    "tom": "",
+    "microcopy_cta": [],
+    "mensagens_apoio": []
+  },
+  "assuncoes": []
+}

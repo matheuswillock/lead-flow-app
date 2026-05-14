@@ -184,3 +184,35 @@ export function normalizeLeadPhoneDigits(value: string): string {
   if (digits.length <= 11) return digits;
   return digits.slice(0, 11);
 };
+
+/**
+ * Retorna o documento formatado para RG/CPF (somente dígitos)
+ * @param value - Documento com ou sem máscara
+ * @returns Documento com máscara de RG (até 9) ou CPF (11)
+ */
+export function formatRgCpfInput(value: string | null): string {
+  if (value === null) return "";
+
+  const digits = sanitizeRgCpfDigits(value);
+
+  // CPF
+  if (digits.length > 9) {
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  }
+
+  // RG
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}-${digits.slice(8)}`;
+}
+
+/**
+ * Sanitiza documento RG/CPF (somente dígitos)
+ */
+export function sanitizeRgCpfDigits(value: string): string {
+  return value.replace(/\D/g, "").slice(0, 11);
+}

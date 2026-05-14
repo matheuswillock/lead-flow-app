@@ -20,7 +20,7 @@ import {
   resolveLeadTimeState,
   type TeamStatusRulesResponse,
 } from "@/lib/teamStatusRules";
-import { formatIntimezone } from "@/lib/dates";
+import { formatIntimezone, formatLocalDateValue } from "@/lib/dates";
 
 interface IPipelineProviderProps {
   children: ReactNode;
@@ -139,6 +139,14 @@ function formatDate(iso: string, tz: string) {
     return formatIntimezone(new Date(iso), "dd/MM/yyyy", tz);
   } catch {
     return iso;
+  }
+}
+
+function formatDateKey(iso: string, tz: string) {
+  try {
+    return formatLocalDateValue(new Date(iso), tz);
+  } catch {
+    return "";
   }
 }
 
@@ -557,6 +565,21 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
   // Função para finalizar contrato
   const finalizeContract = useCallback(async (leadId: string, contractData: FinalizeContractData) => {
     try {
+      const apiPayload = {
+        ...contractData,
+        contractHolder: {
+          ...contractData.contractHolder,
+          birthDate:
+            contractData.contractHolder.birthDate instanceof Date
+              ? contractData.contractHolder.birthDate.toISOString()
+              : contractData.contractHolder.birthDate,
+        },
+        dependents: contractData.dependents.map((dep) => ({
+          ...dep,
+          birthDate: dep.birthDate instanceof Date ? dep.birthDate.toISOString() : dep.birthDate,
+        })),
+      };
+
       const response = await fetch(`/api/v1/leads/${leadId}/finalize`, {
         method: 'POST',
         headers: {
@@ -564,7 +587,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
           'x-supabase-user-id': supabaseId,
           'x-team-id': activeTeamId || ''
         },
-        body: JSON.stringify(contractData)
+        body: JSON.stringify(apiPayload)
       });
 
       const result = await response.json().catch(() => null);
@@ -614,6 +637,10 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
     const activeClosers = externalFilters?.closerFilter ?? [];
     const activeStart = externalFilters !== undefined ? externalFilters.periodStart : periodStart;
     const activeEnd = externalFilters !== undefined ? externalFilters.periodEnd : periodEnd;
+    const activeScheduledStart =
+      externalFilters !== undefined ? externalFilters.scheduledPeriodStart : "";
+    const activeScheduledEnd =
+      externalFilters !== undefined ? externalFilters.scheduledPeriodEnd : "";
     const activeMeetingsHeld =
       externalFilters !== undefined ? externalFilters.onlyMeetingsHeld : onlyMeetingsHeld;
 
@@ -638,17 +665,44 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
       const matchesCloser =
         activeClosers.length === 0 || activeClosers.includes((lead.closerId ?? "") as string);
 
-      // Filtro por período
-      const d = lead.createdAt;
-      const afterStart = !activeStart || d >= activeStart;
-      const beforeEnd = !activeEnd || d <= activeEnd;
+      // Filtro por período (compara por chave local yyyy-MM-dd para evitar exclusão do mesmo dia)
+      const createdKey = formatDateKey(lead.createdAt, tz);
+      if (!createdKey) return false;
+      const afterStart = !activeStart || createdKey >= activeStart;
+      const beforeEnd = !activeEnd || createdKey <= activeEnd;
       const matchesPeriod = afterStart && beforeEnd;
+
+      let matchesScheduledPeriod = true;
+      if (activeScheduledStart || activeScheduledEnd) {
+        if (!lead.meetingDate) {
+          matchesScheduledPeriod = false;
+        } else {
+          const meetingDateKey = formatDateKey(lead.meetingDate, tz);
+          if (!meetingDateKey) {
+            matchesScheduledPeriod = false;
+          } else {
+            const afterScheduledStart =
+              !activeScheduledStart || meetingDateKey >= activeScheduledStart;
+            const beforeScheduledEnd =
+              !activeScheduledEnd || meetingDateKey <= activeScheduledEnd;
+            matchesScheduledPeriod = afterScheduledStart && beforeScheduledEnd;
+          }
+        }
+      }
 
       const matchesMeetingsHeld = !activeMeetingsHeld || lead.meetingHeald === "yes";
 
-      return matchesQuery && matchesStatus && matchesResponsible && matchesCloser && matchesMeetingsHeld && matchesPeriod;
+      return (
+        matchesQuery &&
+        matchesStatus &&
+        matchesResponsible &&
+        matchesCloser &&
+        matchesMeetingsHeld &&
+        matchesPeriod &&
+        matchesScheduledPeriod
+      );
     });
-  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, periodStart, periodEnd]);
+  }, [allLeads, externalFilters, query, assignedUser, onlyMeetingsHeld, periodStart, periodEnd, tz]);
 
   // Extrair lista de responsáveis únicos
   const taskOwners = useMemo(() => {

@@ -14,6 +14,16 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { Lead } from "../context/BoardTypes";
 import { useParams } from "next/navigation";
@@ -56,6 +66,11 @@ type ScheduleInviteDispatch = {
   error: string | null;
 };
 
+type NoShowConfirmationPayload = {
+  noShowCount: number;
+  threshold: number;
+};
+
 // SCHEDULE_TIMEZONE now comes from useTimezone() inside the component
 
 interface ScheduleMeetingDialogProps {
@@ -92,6 +107,8 @@ export function ScheduleMeetingDialog({
   const [extraGuests, setExtraGuests] = useState<string[]>([]);
   const [extraGuestsDraft, setExtraGuestsDraft] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingNoShowConfirmation, setPendingNoShowConfirmation] =
+    useState<NoShowConfirmationPayload | null>(null);
   const [availableTimes, setAvailableTimes] = useState<string[]>([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState<string | null>(null);
@@ -209,6 +226,7 @@ export function ScheduleMeetingDialog({
         : []
     );
     setExtraGuestsDraft("");
+    setPendingNoShowConfirmation(null);
   }, [open, lead, mode, initialExtraGuests]);
 
   useEffect(() => {
@@ -320,9 +338,7 @@ export function ScheduleMeetingDialog({
     handleExtraGuestsInput(`${extraGuestsDraft} `);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const submitSchedule = async (confirmNoShowSchedule: boolean) => {
     if (!isValidDate(meetingDate)) {
       toast.error("Selecione uma data e hora para o agendamento");
       return;
@@ -369,12 +385,38 @@ export function ScheduleMeetingDialog({
           closerId: closerId || undefined,
           extraGuests: guests.length ? guests : undefined,
           transitionStatusToScheduled: true,
+          confirmNoShowSchedule: confirmNoShowSchedule || undefined,
         }),
       });
 
       const result = await response.json();
+      const confirmationPayload =
+        result?.result && typeof result.result === "object"
+          ? (result.result as {
+              requiresNoShowConfirmation?: boolean;
+              noShowCount?: number;
+              threshold?: number;
+            })
+          : null;
 
       if (!response.ok || !result.isValid) {
+        if (confirmationPayload?.requiresNoShowConfirmation) {
+          const noShowCount =
+            typeof confirmationPayload.noShowCount === "number" ? confirmationPayload.noShowCount : 0;
+          const threshold =
+            typeof confirmationPayload.threshold === "number" ? confirmationPayload.threshold : 3;
+
+          setPendingNoShowConfirmation({ noShowCount, threshold });
+          toast.info(
+            `Este lead já teve no-show ${noShowCount} vezes. Confirme para continuar com o agendamento.`,
+            {
+              id: loadingToast,
+              duration: 5000,
+            }
+          );
+          return;
+        }
+
         throw new Error(result.errorMessages?.join(", ") || "Erro ao agendar reunião");
       }
 
@@ -469,18 +511,58 @@ export function ScheduleMeetingDialog({
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitSchedule(false);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-125">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Agendar Reunião</DialogTitle>
+            <DialogTitle>{mode === "reschedule" ? "Reagendar Reunião" : "Agendar Reunião"}</DialogTitle>
           <DialogDescription>
-            Agendar reunião com <strong>{lead.name}</strong>
+            {mode === "reschedule" ? "Reagendar reunião com " : "Agendar reunião com "}<strong>{lead.name}</strong>
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
+            {/* Closer */}
+            <div className="grid gap-2">
+              <Label>Closer</Label>
+              <Select value={closerId} onValueChange={setCloserId}>
+                <SelectTrigger disabled={teamMembersLoading}>
+                  <SelectValue
+                    placeholder={
+                      teamMembersLoading
+                        ? "Carregando closers..."
+                        : availableClosers.length
+                          ? "Selecione um closer"
+                          : "Sem closers disponiveis"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableClosers.map((closer) => (
+                    <SelectItem key={closer.id} value={closer.id}>
+                      {closer.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!teamMembersLoading && !availableClosers.length && (
+                <p className="text-xs text-muted-foreground">
+                  Nenhum closer disponível para este time.
+                </p>
+              )}
+              {selectedCloser && !selectedCloser.googleCalendarConnected && (
+                <p className="text-xs text-amber-600">
+                  Este closer está sem Google conectado. O link da reunião deve ser informado manualmente.
+                </p>
+              )}
+            </div>
+
             {/* Data e Hora */}
             <DateTimePicker
               date={meetingDate}
@@ -628,40 +710,6 @@ export function ScheduleMeetingDialog({
               </p>
             </div>
 
-            {/* Closer */}
-            <div className="grid gap-2">
-              <Label>Closer</Label>
-              <Select value={closerId} onValueChange={setCloserId}>
-                <SelectTrigger disabled={teamMembersLoading}>
-                  <SelectValue
-                    placeholder={
-                      teamMembersLoading
-                        ? "Carregando closers..."
-                        : availableClosers.length
-                          ? "Selecione um closer"
-                          : "Sem closers disponiveis"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableClosers.map((closer) => (
-                    <SelectItem key={closer.id} value={closer.id}>
-                      {closer.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!teamMembersLoading && !availableClosers.length && (
-                <p className="text-xs text-muted-foreground">
-                  Nenhum closer disponível para este time.
-                </p>
-              )}
-              {selectedCloser && !selectedCloser.googleCalendarConnected && (
-                <p className="text-xs text-amber-600">
-                  Este closer está sem Google conectado. O link da reunião deve ser informado manualmente.
-                </p>
-              )}
-            </div>
           </div>
 
           <DialogFooter>
@@ -674,11 +722,43 @@ export function ScheduleMeetingDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting || !canSubmit}>
-              {isSubmitting ? "Agendando..." : "Agendar Reunião"}
+              {isSubmitting ? "Salvando..." : mode === "reschedule" ? "Reagendar Reunião" : "Agendar Reunião"}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
+      <AlertDialog
+        open={!!pendingNoShowConfirmation}
+        onOpenChange={(open) => {
+          if (!open && !isSubmitting) {
+            setPendingNoShowConfirmation(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmação de agendamento</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingNoShowConfirmation
+                ? `Este lead já teve no-show ${pendingNoShowConfirmation.noShowCount} vezes (limite: ${pendingNoShowConfirmation.threshold}). Deseja continuar com este agendamento?`
+                : "Deseja continuar com este agendamento?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isSubmitting}
+              onClick={(event) => {
+                event.preventDefault();
+                setPendingNoShowConfirmation(null);
+                void submitSchedule(true);
+              }}
+            >
+              Continuar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

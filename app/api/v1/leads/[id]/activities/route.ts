@@ -5,17 +5,36 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadActivityAccess } from "@/app/api/v1/utils/teamAccess";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { createTaskUseCase } from "@/app/api/useCases/task/CreateTaskUseCase";
 
 const mentionSchema = z.object({
   profileId: z.string().uuid("profileId deve ser um UUID válido"),
   label: z.string().min(1).max(120).optional(),
 });
 
-const activitySchema = z.object({
+const baseActivitySchema = z.object({
   type: z.enum(["note", "call", "whatsapp", "email"]),
   body: z.string().min(1, "Mensagem é obrigatória"),
   mentions: z.array(mentionSchema).max(30).optional(),
 });
+
+const taskActivitySchema = z.object({
+  type: z.literal("task"),
+  title: z.string().min(1, "Título da tarefa é obrigatório").max(200),
+  taskType: z.enum(["call", "documentation", "email", "proposal", "whatsapp", "meeting", "other"], {
+    error: "Tipo de tarefa inválido",
+  }),
+  body: z.string().min(1, "Descrição da tarefa é obrigatória"),
+  isUrgent: z.boolean().optional().default(false),
+  startAt: z.string().datetime({ offset: true }).optional().nullable(),
+  endAt: z.string().datetime({ offset: true }).optional().nullable(),
+  assigneeProfileIds: z.array(z.string().uuid()).min(1, "Ao menos um responsável é obrigatório").max(20),
+});
+
+const activitySchema = z.discriminatedUnion("type", [
+  baseActivitySchema,
+  taskActivitySchema,
+]);
 
 export async function POST(
   request: NextRequest,
@@ -49,6 +68,30 @@ export async function POST(
       return NextResponse.json(output, { status: 400 });
     }
 
+    if (validation.data.type === "task") {
+      const data = validation.data;
+      const result = await createTaskUseCase.execute({
+        leadId,
+        teamId: teamAccess.access.teamId,
+        creatorProfileId: teamAccess.access.profileId,
+        title: data.title,
+        taskType: data.taskType,
+        body: data.body,
+        isUrgent: data.isUrgent,
+        startAt: data.startAt ? new Date(data.startAt) : null,
+        endAt: data.endAt ? new Date(data.endAt) : null,
+        assigneeProfileIds: data.assigneeProfileIds,
+      });
+
+      if (!result.isValid) {
+        const statusCode = result.errorMessages.some((m) => m.includes("não encontrado")) ? 404 : 400;
+        return NextResponse.json(result, { status: statusCode });
+      }
+
+      return NextResponse.json(result, { status: 201 });
+    }
+
+    // Existing note/call/whatsapp/email handling
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
       select: { id: true, teamId: true, leadCode: true, name: true },
@@ -145,7 +188,7 @@ export async function POST(
     const output = new Output(true, ["Atividade adicionada com sucesso"], [], activity);
     return NextResponse.json(output, { status: 201 });
   } catch (error) {
-    console.error("Erro ao adicionar atividade:", error);
+    console.error("[LeadActivitiesRoute][POST] Erro ao adicionar atividade:", error);
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }

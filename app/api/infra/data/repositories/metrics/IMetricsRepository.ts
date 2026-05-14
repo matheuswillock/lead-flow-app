@@ -6,6 +6,8 @@ export interface LeadMetricsData {
   currentValue: any; // Prisma Decimal type
   ticket: any; // Prisma Decimal type
   createdAt: Date;
+  statusEnteredAt: Date | null;
+  meetingDate: Date | null;
   meetingHeald: MeetingHeald | null;
   assignedTo: string | null;
   closerId: string | null;
@@ -43,6 +45,10 @@ export interface ScheduleMetricsData {
   leadId: string;
   date: Date;
   createdAt: Date;
+}
+
+export interface ScheduledLeadIdData {
+  leadId: string;
 }
 
 export interface MeetingHeldLeadMetricsData {
@@ -114,6 +120,16 @@ export interface IMetricsRepository {
    * Busca agendamentos da tabela LeadsSchedule
    */
   getScheduledLeads(filters: MetricsFilters): Promise<ScheduleMetricsData[]>;
+
+  /**
+   * Busca agendamentos com contexto já resolvido
+   */
+  getScheduledLeadsWithCtx(filters: MetricsFiltersWithContext): Promise<ScheduleMetricsData[]>;
+
+  /**
+   * Busca IDs de leads com meetingDate no período com contexto já resolvido
+   */
+  getLeadsWithMeetingDateWithCtx(filters: MetricsFiltersWithContext): Promise<ScheduledLeadIdData[]>;
 
   /**
    * Busca vendas finalizadas da tabela LeadFinalized

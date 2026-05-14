@@ -13,81 +13,62 @@ import type {
 
 export class BackofficePlatformUsersRepository implements IBackofficePlatformUsersRepository {
   private buildMasterFilters(filters?: PlatformUsersFilters): Prisma.ProfileWhereInput {
-    const normalizedName = filters?.name?.trim()
-    const normalizedEmail = filters?.email?.trim()
+    // When the API receives a single query string it sets name=email=team to the same value.
+    // Merge all three into one unified search term so we never AND them together
+    // (which would require a record to match name AND email AND team simultaneously).
+    const q = (filters?.name ?? filters?.email ?? filters?.team ?? "").trim()
     const normalizedTeam = filters?.team?.trim()
 
-    const andFilters: Prisma.ProfileWhereInput[] = []
+    const base: Prisma.ProfileWhereInput = { isMaster: true, role: "manager" }
 
-    if (normalizedEmail) {
-      andFilters.push({
-        OR: [
-          { email: { contains: normalizedEmail, mode: "insensitive" } },
-          {
-            operators: {
-              some: {
-                email: { contains: normalizedEmail, mode: "insensitive" },
-              },
+    if (!q && !normalizedTeam) return base
+
+    const orClauses: Prisma.ProfileWhereInput[] = []
+
+    if (q) {
+      orClauses.push(
+        { fullName: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+        {
+          operators: {
+            some: {
+              OR: [
+                { fullName: { contains: q, mode: "insensitive" } },
+                { email: { contains: q, mode: "insensitive" } },
+              ],
             },
           },
-          {
-            teamsOwned: {
-              some: {
-                members: {
-                  some: {
-                    profile: {
-                      email: { contains: normalizedEmail, mode: "insensitive" },
-                    },
+        },
+        {
+          teamsOwned: {
+            some: {
+              members: {
+                some: {
+                  profile: {
+                    OR: [
+                      { fullName: { contains: q, mode: "insensitive" } },
+                      { email: { contains: q, mode: "insensitive" } },
+                    ],
                   },
                 },
               },
             },
           },
-        ],
-      })
+        }
+      )
     }
 
-    if (normalizedTeam) {
-      andFilters.push({
+    if (normalizedTeam && normalizedTeam !== q) {
+      orClauses.push({
         teamsOwned: {
-          some: {
-            name: { contains: normalizedTeam, mode: "insensitive" },
-          },
+          some: { name: { contains: normalizedTeam, mode: "insensitive" } },
         },
       })
     }
 
     return {
-      isMaster: true,
-      role: "manager",
-      ...(normalizedName
-        ? {
-            OR: [
-              { fullName: { contains: normalizedName, mode: "insensitive" } },
-              {
-                operators: {
-                  some: {
-                    fullName: { contains: normalizedName, mode: "insensitive" },
-                  },
-                },
-              },
-              {
-                teamsOwned: {
-                  some: {
-                    members: {
-                      some: {
-                        profile: {
-                          fullName: { contains: normalizedName, mode: "insensitive" },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            ],
-          }
-        : {}),
-      ...(andFilters.length > 0 ? { AND: andFilters } : {}),
+      ...base,
+      ...(orClauses.length > 0 ? { OR: orClauses } : {}),
     }
   }
 
@@ -111,6 +92,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           hasPermanentSubscription: true,
           subscriptionPlan: true,
           operatorCount: true,
+          googleCalendarConnected: true,
           teamsOwned: {
             select: {
               id: true,
@@ -179,6 +161,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       hasPermanentSubscription: master.hasPermanentSubscription,
       subscriptionPlan: master.subscriptionPlan,
       operatorCount: master.operatorCount,
+      googleCalendarConnected: master.googleCalendarConnected,
       linkedUsersCount: membersByMaster.get(master.id)?.size ?? 0,
       teamsCount: master.teamsOwned.length,
       teams: master.teamsOwned.map((team) => ({
@@ -228,6 +211,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         hasPermanentSubscription: true,
         subscriptionPlan: true,
         operatorCount: true,
+        googleCalendarConnected: true,
       },
     })
 
@@ -302,6 +286,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
                   fullName: true,
                   email: true,
                   phone: true,
+                  googleCalendarConnected: true,
                 },
               },
             },
@@ -351,6 +336,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       hasPermanentSubscription: master.hasPermanentSubscription,
       subscriptionPlan: master.subscriptionPlan,
       operatorCount: master.operatorCount,
+      googleCalendarConnected: master.googleCalendarConnected,
       linkedUsersCount: linkedUsers.size,
       teamsTotalItems,
       teams: teams.map((team) => ({
@@ -365,6 +351,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           phone: member.profile.phone,
           addedAt: member.createdAt,
           role: member.role,
+          googleCalendarConnected: member.profile.googleCalendarConnected,
           functions: member.functions,
         })),
       })),

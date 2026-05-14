@@ -10,6 +10,7 @@ import type {
   LeadsPeriodData,
   MetricsFilters,
   ScheduleMetricsData,
+  ScheduledLeadIdData,
   MeetingHeldLeadMetricsData,
   SaleMetricsData
 } from "./IMetricsRepository";
@@ -68,15 +69,40 @@ export class MetricsRepository implements IMetricsRepository {
     const dateFilter =
       startDate && endDate ? { [dateField]: { gte: startDate, lte: endDate } } : {};
 
+    const extraWhereWithoutDateField = extraWhere
+      ? Object.fromEntries(
+          Object.entries(extraWhere).filter(([key]) => key !== dateField)
+        )
+      : {};
+
+    const extraDateFilter =
+      extraWhere && dateField in extraWhere
+        ? (extraWhere as Record<string, unknown>)[dateField]
+        : undefined;
+
+    const mergedDateFilter =
+      dateFilter[dateField] && extraDateFilter
+        ? {
+            [dateField]: {
+              ...(dateFilter[dateField] as object),
+              ...(extraDateFilter as object),
+            },
+          }
+        : dateFilter[dateField]
+        ? dateFilter
+        : extraDateFilter
+        ? { [dateField]: extraDateFilter }
+        : {};
+
     if (isManagerLikeRole(ctx.teamMember.role)) {
-      return { teamId, ...dateFilter, ...extraWhere };
+      return { teamId, ...extraWhereWithoutDateField, ...mergedDateFilter };
     }
 
     return {
       OR: [{ assignedTo: ctx.profileId }, { createdBy: ctx.profileId }],
       teamId,
-      ...dateFilter,
-      ...extraWhere,
+      ...extraWhereWithoutDateField,
+      ...mergedDateFilter,
     };
   }
 
@@ -87,7 +113,7 @@ export class MetricsRepository implements IMetricsRepository {
     endDate?: Date
   ) {
     const dateFilter =
-      startDate && endDate ? { createdAt: { gte: startDate, lte: endDate } } : {};
+      startDate && endDate ? { finalizedDateAt: { gte: startDate, lte: endDate } } : {};
 
     if (isManagerLikeRole(ctx.teamMember.role)) {
       return { lead: { teamId }, ...dateFilter };
@@ -146,6 +172,8 @@ export class MetricsRepository implements IMetricsRepository {
         currentValue: true,
         ticket: true,
         createdAt: true,
+        statusEnteredAt: true,
+        meetingDate: true,
         meetingHeald: true,
         assignedTo: true,
         closerId: true,
@@ -265,11 +293,16 @@ export class MetricsRepository implements IMetricsRepository {
   // ---------------------------------------------------------------------------
 
   async getScheduledLeads(filters: MetricsFilters): Promise<ScheduleMetricsData[]> {
-    const { supabaseId, teamId, startDate, endDate } = filters;
+    const { supabaseId, teamId } = filters;
     const ctx = await this.getTeamContext(supabaseId, teamId);
+    return this.getScheduledLeadsWithCtx({ ...filters, ctx });
+  }
+
+  async getScheduledLeadsWithCtx(filters: MetricsFiltersWithContext): Promise<ScheduleMetricsData[]> {
+    const { ctx, teamId, startDate, endDate } = filters;
 
     const dateFilter =
-      startDate && endDate ? { createdAt: { gte: startDate, lte: endDate } } : {};
+      startDate && endDate ? { date: { gte: startDate, lte: endDate } } : {};
 
     let whereClause: any;
 
@@ -289,6 +322,20 @@ export class MetricsRepository implements IMetricsRepository {
       where: whereClause,
       select: { id: true, leadId: true, date: true, createdAt: true },
     });
+  }
+
+  async getLeadsWithMeetingDateWithCtx(
+    filters: MetricsFiltersWithContext
+  ): Promise<ScheduledLeadIdData[]> {
+    const { ctx, teamId, startDate, endDate } = filters;
+    const leads = await prisma.lead.findMany({
+      where: this.buildLeadWhere(ctx, teamId, "meetingDate", startDate, endDate, {
+        meetingDate: { not: null },
+      }),
+      select: { id: true },
+    });
+
+    return leads.map((lead) => ({ leadId: lead.id }));
   }
 }
 

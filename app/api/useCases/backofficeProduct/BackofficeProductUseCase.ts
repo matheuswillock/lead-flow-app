@@ -12,6 +12,8 @@ import type {
   BackofficeProductPaymentRule,
   BackofficeProductType,
 } from "@prisma/client"
+import { BackofficeFeatureRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeFeature/BackofficeFeatureRepository"
+import type { IBackofficeFeatureRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeFeature/IBackofficeFeatureRepository"
 
 export interface BackofficeProductPaymentRuleDTO {
   paymentMethod: BackofficePaymentMethod
@@ -67,7 +69,10 @@ export interface UpdateBackofficeProductUseCaseInput {
 }
 
 export class BackofficeProductUseCase {
-  constructor(private productRepo: IBackofficeProductRepository) {}
+  constructor(
+    private productRepo: IBackofficeProductRepository,
+    private featureRepo: IBackofficeFeatureRepository
+  ) {}
 
   async list(): Promise<Output> {
     try {
@@ -86,6 +91,11 @@ export class BackofficeProductUseCase {
       }
       if (!input.slug?.trim()) {
         return new Output(false, [], ["Slug é obrigatório"], null)
+      }
+
+      const feature = await this.featureRepo.findBySlug(input.slug.trim())
+      if (!feature) {
+        return new Output(false, [], ["Slug inválido: selecione um slug de funcionalidade"], null)
       }
 
       const existing = await this.productRepo.findBySlug(input.slug)
@@ -118,6 +128,11 @@ export class BackofficeProductUseCase {
       }
 
       if (input.slug && input.slug !== existing.slug) {
+        const feature = await this.featureRepo.findBySlug(input.slug.trim())
+        if (!feature) {
+          return new Output(false, [], ["Slug inválido: selecione um slug de funcionalidade"], null)
+        }
+
         const slugConflict = await this.productRepo.findBySlug(input.slug)
         if (slugConflict) {
           return new Output(false, [], ["Já existe um produto com este slug"], null)
@@ -258,5 +273,6 @@ export function mapProductWithRulesDTO(product: BackofficeProductWithPaymentRule
 }
 
 export const backofficeProductUseCase = new BackofficeProductUseCase(
-  new BackofficeProductRepository()
+  new BackofficeProductRepository(),
+  new BackofficeFeatureRepository()
 )

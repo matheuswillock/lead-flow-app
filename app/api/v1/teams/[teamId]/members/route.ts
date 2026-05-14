@@ -135,8 +135,6 @@ export async function GET(
     logContext.totalMembers = formattedMembers.length;
     logContext.filteredMembers = filteredMembers.length;
 
-    console.info("[TeamMembersRoute][GET] Membros do time carregados", logContext);
-
     let eligibleProfiles: Array<{ id: string; name: string; email: string | null }> = [];
     let transferCandidates: Array<{ id: string; name: string; email: string | null }> = [];
 

@@ -137,10 +137,30 @@
   --semantic-info-foreground: #ffffff;
   --semantic-info-surface: color-mix(in oklab, var(--semantic-info) 15%, var(--card));
   --semantic-info-border: color-mix(in oklab, var(--semantic-info) 36%, var(--border));
+  --info: var(--semantic-info);
+  --success: var(--semantic-success);
+  --danger: var(--semantic-danger);
+  --warn: var(--semantic-warning);
+  --card-2: oklch(0.274 0.006 286.033);
+  --border-strong: color-mix(in oklab, var(--border) 60%, #7170ff);
   --semantic-new: #533afd;
   --semantic-new-foreground: #ffffff;
   --semantic-new-surface: color-mix(in oklab, var(--semantic-new) 14%, var(--card));
   --semantic-new-border: color-mix(in oklab, var(--semantic-new) 34%, var(--border));
+  --sim-op-alice-bg: color-mix(in oklab, var(--semantic-info) 18%, var(--card));
+  --sim-op-alice-fg: oklch(0.45 0.1 238);
+  --sim-op-amil-bg: color-mix(in oklab, var(--semantic-danger) 16%, var(--card));
+  --sim-op-amil-fg: oklch(0.5 0.16 23);
+  --sim-op-bradesco-bg: color-mix(in oklab, var(--precision-indigo) 16%, var(--card));
+  --sim-op-bradesco-fg: oklch(0.42 0.13 269);
+  --sim-op-hapvida-bg: color-mix(in oklab, var(--semantic-success) 16%, var(--card));
+  --sim-op-hapvida-fg: oklch(0.46 0.13 154);
+  --sim-op-porto-bg: color-mix(in oklab, var(--semantic-warning) 16%, var(--card));
+  --sim-op-porto-fg: oklch(0.52 0.11 64);
+  --sim-op-sulamerica-bg: color-mix(in oklab, var(--semantic-new) 14%, var(--card));
+  --sim-op-sulamerica-fg: oklch(0.48 0.16 319);
+  --sim-op-unimed-bg: color-mix(in oklab, var(--semantic-success) 12%, var(--card));
+  --sim-op-unimed-fg: oklch(0.43 0.11 154);
   --motion-duration-fast: 150ms;
   --motion-duration-base: 220ms;
   --motion-duration-slow: 320ms;
@@ -215,10 +235,30 @@
   --semantic-info-foreground: #071b32;
   --semantic-info-surface: color-mix(in oklab, var(--semantic-info) 22%, var(--card));
   --semantic-info-border: color-mix(in oklab, var(--semantic-info) 44%, var(--border));
+  --info: var(--semantic-info);
+  --success: var(--semantic-success);
+  --danger: var(--semantic-danger);
+  --warn: var(--semantic-warning);
+  --card-2: oklch(0.21 0.006 285.885);
+  --border-strong: color-mix(in oklab, var(--border) 55%, #b9b9f9);
   --semantic-new: #7f7bff;
   --semantic-new-foreground: #0f0e34;
   --semantic-new-surface: color-mix(in oklab, var(--semantic-new) 22%, var(--card));
   --semantic-new-border: color-mix(in oklab, var(--semantic-new) 44%, var(--border));
+  --sim-op-alice-bg: color-mix(in oklab, var(--semantic-info) 26%, var(--card));
+  --sim-op-alice-fg: oklch(0.89 0.04 235);
+  --sim-op-amil-bg: color-mix(in oklab, var(--semantic-danger) 28%, var(--card));
+  --sim-op-amil-fg: oklch(0.9 0.04 20);
+  --sim-op-bradesco-bg: color-mix(in oklab, var(--precision-indigo) 28%, var(--card));
+  --sim-op-bradesco-fg: oklch(0.9 0.04 286);
+  --sim-op-hapvida-bg: color-mix(in oklab, var(--semantic-success) 28%, var(--card));
+  --sim-op-hapvida-fg: oklch(0.9 0.04 154);
+  --sim-op-porto-bg: color-mix(in oklab, var(--semantic-warning) 28%, var(--card));
+  --sim-op-porto-fg: oklch(0.9 0.03 80);
+  --sim-op-sulamerica-bg: color-mix(in oklab, var(--semantic-new) 28%, var(--card));
+  --sim-op-sulamerica-fg: oklch(0.9 0.04 320);
+  --sim-op-unimed-bg: color-mix(in oklab, var(--semantic-success) 24%, var(--card));
+  --sim-op-unimed-fg: oklch(0.9 0.03 150);
   --motion-duration-fast: 150ms;
   --motion-duration-base: 220ms;
   --motion-duration-slow: 320ms;
@@ -247,6 +287,49 @@ body {
 html {
   scroll-behavior: smooth;
 }
+
+/* Performance component utilities */
+.chip-dashed {
+  border-style: dashed;
+}
+
+.glow-primary {
+  background: radial-gradient(120% 120% at 0% 100%, color-mix(in oklab, var(--primary) 24%, transparent) 0%, transparent 60%);
+}
+
+.glow-info {
+  background: radial-gradient(120% 120% at 0% 100%, color-mix(in oklab, var(--info) 24%, transparent) 0%, transparent 60%);
+}
+
+.glow-success {
+  background: radial-gradient(120% 120% at 0% 100%, color-mix(in oklab, var(--success) 24%, transparent) 0%, transparent 60%);
+}
+
+.glow-danger {
+  background: radial-gradient(120% 120% at 0% 100%, color-mix(in oklab, var(--danger) 24%, transparent) 0%, transparent 60%);
+}
+
+.glow-warn {
+  background: radial-gradient(120% 120% at 0% 100%, color-mix(in oklab, var(--warn) 24%, transparent) 0%, transparent 60%);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.bg-grid {
+  background-image: radial-gradient(color-mix(in oklab, var(--border) 80%, transparent) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -1px -1px;
+}
+
+.avatar-1 { background: linear-gradient(135deg, var(--primary), #cd6cdd); }
+.avatar-2 { background: linear-gradient(135deg, #62b6ff, #7f7bff); }
+.avatar-3 { background: linear-gradient(135deg, #22c08a, #62b6ff); }
+.avatar-4 { background: linear-gradient(135deg, #f2a236, #f06572); }
+.avatar-5 { background: linear-gradient(135deg, #7f7bff, #f06572); }
+.avatar-6 { background: linear-gradient(135deg, #22c08a, #f2a236); }
 
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Poppins', sans-serif;

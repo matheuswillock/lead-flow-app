@@ -235,11 +235,11 @@ export function UserFormDialog({
         canCreateAccountUsers:
           currentUser?.isMaster && selectedRole === "manager"
             ? (data as CreateManagerUserFormData | UpdateManagerUserFormData).canCreateAccountUsers === true
-            : false,
+            : undefined,
         canManageAccountTeams:
           currentUser?.isMaster && selectedRole === "manager"
             ? (data as CreateManagerUserFormData | UpdateManagerUserFormData).canManageAccountTeams === true
-            : false,
+            : undefined,
       };
 
       await onSubmit(nextData);
