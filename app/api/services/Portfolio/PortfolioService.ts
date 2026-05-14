@@ -317,10 +317,15 @@ export class PortfolioService implements IPortfolioService {
     });
 
     await prisma.$transaction(async (tx) => {
+      const sharedDueDate =
+        payload.finalizedDateAt !== undefined
+          ? payload.finalizedDateAt
+          : payload.contractDueDate;
+
       // Update Lead fields
       const leadPatch: Prisma.LeadUpdateInput = {};
-      if (payload.contractDueDate !== undefined) {
-        leadPatch.contractDueDate = payload.contractDueDate ? new Date(payload.contractDueDate) : null;
+      if (sharedDueDate !== undefined) {
+        leadPatch.contractDueDate = sharedDueDate ? new Date(sharedDueDate) : null;
       }
       if (payload.soldPlan !== undefined) leadPatch.soldPlan = payload.soldPlan;
       if (Object.keys(leadPatch).length > 0) {
@@ -334,7 +339,7 @@ export class PortfolioService implements IPortfolioService {
         if (payload.productName !== undefined) finalizedPatch.productName = payload.productName;
         if (payload.amount !== undefined) finalizedPatch.amount = payload.amount;
         if (payload.startDateAt) finalizedPatch.startDateAt = new Date(payload.startDateAt);
-        if (payload.finalizedDateAt) finalizedPatch.finalizedDateAt = new Date(payload.finalizedDateAt);
+        if (sharedDueDate) finalizedPatch.finalizedDateAt = new Date(sharedDueDate);
         if (payload.notes !== undefined) finalizedPatch.notes = payload.notes;
         if (Object.keys(finalizedPatch).length > 0) {
           await tx.leadFinalized.update({ where: { id: finalized.id }, data: finalizedPatch });

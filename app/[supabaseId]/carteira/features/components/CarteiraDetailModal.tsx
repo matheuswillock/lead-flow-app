@@ -178,7 +178,6 @@ interface EditForm {
   amount: string;
   startDateAt: string;
   finalizedDateAt: string;
-  contractDueDate: string;
   notes: string;
   holderEnabled: boolean;
   holderName: string;
@@ -194,8 +193,7 @@ function initEditForm(detail: CarteiraDetailData): EditForm {
     productName: detail.contract?.productName ?? detail.soldPlan ?? '',
     amount: detail.contract ? formatCurrencyInput(detail.contract.amount) : '',
     startDateAt: toInputDate(detail.contract?.startDateAt),
-    finalizedDateAt: toInputDate(detail.contract?.finalizedDateAt),
-    contractDueDate: toInputDate(detail.contractDueDate),
+    finalizedDateAt: toInputDate(detail.contract?.finalizedDateAt ?? detail.contractDueDate),
     notes: detail.contract?.notes ?? '',
     holderEnabled: !!detail.holder,
     holderName: detail.holder?.name ?? '',
@@ -220,7 +218,7 @@ function buildPayload(form: EditForm): UpdateCarteiraDetailPayload {
     amount: parseCurrencyInput(form.amount) || undefined,
     startDateAt: form.startDateAt || undefined,
     finalizedDateAt: form.finalizedDateAt || undefined,
-    contractDueDate: form.contractDueDate || null,
+    contractDueDate: form.finalizedDateAt || null,
     soldPlan: form.productName.trim() || null,
     notes: form.notes.trim() || null,
     holder: form.holderEnabled
@@ -388,8 +386,8 @@ export function CarteiraDetailModal({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <DateTimePicker
-                    date={toPickerDate(form.contractDueDate)}
-                    onDateChange={(value) => patchForm('contractDueDate', fromPickerDate(value))}
+                    date={toPickerDate(form.finalizedDateAt)}
+                    onDateChange={(value) => patchForm('finalizedDateAt', fromPickerDate(value))}
                     label="Vencimento"
                     showTime={false}
                     disablePastDates={false}
@@ -404,15 +402,6 @@ export function CarteiraDetailModal({
                     disablePastDates={false}
                   />
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <DateTimePicker
-                    date={toPickerDate(form.finalizedDateAt)}
-                    onDateChange={(value) => patchForm('finalizedDateAt', fromPickerDate(value))}
-                    label="Data de finalização"
-                    showTime={false}
-                    disablePastDates={false}
-                  />
-                </div>
                 <div className="col-span-2 flex flex-col gap-1.5">
                   <Label className="text-xs">Observações</Label>
                   <Textarea value={form.notes} onChange={(e) => patchForm('notes', e.target.value)} className="min-h-16 resize-none text-sm" />
@@ -423,9 +412,8 @@ export function CarteiraDetailModal({
                 <InfoRow label="Operadora" value={detail.contract.operadora} />
                 <InfoRow label="Plano" value={detail.contract.productName ?? detail.soldPlan} />
                 <InfoRow label="Valor" value={formatBRL(detail.contract.amount)} />
-                <InfoRow label="Vencimento" value={formatDate(detail.contractDueDate)} />
+                <InfoRow label="Vencimento" value={formatDate(detail.contract.finalizedDateAt)} />
                 <InfoRow label="Data de início" value={formatDate(detail.contract.startDateAt)} />
-                <InfoRow label="Data de finalização" value={formatDate(detail.contract.finalizedDateAt)} />
                 <InfoRow label="SDR" value={<ProfileBadge person={detail.sdr} />} />
                 <InfoRow label="Closer" value={<ProfileBadge person={detail.closer} />} />
                 {detail.contract.notes && (
