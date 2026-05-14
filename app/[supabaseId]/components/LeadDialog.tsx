@@ -1748,13 +1748,25 @@ export default function LeadDialog({
 
       const payload =
         output.result && typeof output.result === "object" ? (output.result as Partial<Lead>) : {};
+      const scheduleResetPatch: Partial<Lead> =
+        newStatus === "new_opportunity"
+          ? {
+              meetingDate: null,
+              meetingTitle: null,
+              meetingNotes: null,
+              meetingLink: null,
+              meetingHeald: null,
+            }
+          : {};
+
       await applyLocalLeadPatch(currentLead.id, {
         ...payload,
+        ...scheduleResetPatch,
         status: newStatus as Lead["status"],
       });
       setLocalLead((prev) =>
         prev && prev.id === currentLead.id
-          ? ({ ...prev, ...payload, status: newStatus as Lead["status"] } as Lead)
+          ? ({ ...prev, ...payload, ...scheduleResetPatch, status: newStatus as Lead["status"] } as Lead)
           : prev,
       );
       toast.success("Status atualizado", { id: loadingToast });
