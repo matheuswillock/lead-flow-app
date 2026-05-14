@@ -1,4 +1,5 @@
 import { resend } from "@/lib/email"
+import { interpolateEmailTemplate } from "@/lib/email/interpolate"
 import type { IEmailCampaignDispatchService, DispatchBatchResult } from "./IEmailCampaignDispatchService"
 
 const BATCH_SIZE = 50
@@ -6,7 +7,7 @@ const BATCH_SIZE = 50
 export class EmailCampaignDispatchService implements IEmailCampaignDispatchService {
   async dispatchBatch(params: {
     from: string
-    recipients: Array<{ email: string; name?: string }>
+    recipients: Array<{ email: string; name?: string | null; customFields?: Record<string, unknown> | null }>
     subject: string
     html: string
     campaignId: string
@@ -24,8 +25,8 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
         const batchPayload = chunk.map((recipient) => ({
           from: params.from,
           to: recipient.email,
-          subject: this.interpolateVariables(params.subject, recipient),
-          html: this.interpolateVariables(params.html, recipient),
+          subject: interpolateEmailTemplate(params.subject, recipient),
+          html: interpolateEmailTemplate(params.html, recipient),
           tags: [
             { name: "campaignId", value: params.campaignId },
             { name: "teamId", value: params.teamId },
@@ -63,20 +64,6 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       chunks.push(array.slice(i, i + size))
     }
     return chunks
-  }
-
-  /**
-   * Interpola variáveis no formato {{variavel}} com os dados do destinatário
-   */
-  private interpolateVariables(
-    template: string,
-    recipient: { email: string; name?: string }
-  ): string {
-    return template
-      .replace(/\{\{nome_do_lead\}\}/gi, recipient.name ?? "")
-      .replace(/\{\{nome\}\}/gi, recipient.name ?? "")
-      .replace(/\{\{name\}\}/gi, recipient.name ?? "")
-      .replace(/\{\{email\}\}/gi, recipient.email)
   }
 }
 

@@ -4,21 +4,13 @@ import { Output } from "@/lib/output"
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
 import { EmailTemplateUseCase } from "@/app/api/useCases/email/EmailTemplateUseCase"
 import { assertResend } from "@/lib/email"
+import { interpolateEmailTemplate } from "@/lib/email/interpolate"
 
 const bodySchema = z.object({
   to: z.string().email("Endereço de email inválido"),
 })
 
 const FROM = "Corretor Studio <no-reply@corretorstudio.com>"
-
-function interpolateTestVariables(template: string, to: string): string {
-  const fallbackName = to.split("@")[0] ?? ""
-  return template
-    .replace(/\{\{nome_do_lead\}\}/gi, fallbackName)
-    .replace(/\{\{nome\}\}/gi, fallbackName)
-    .replace(/\{\{name\}\}/gi, fallbackName)
-    .replace(/\{\{email\}\}/gi, to)
-}
 
 export async function POST(
   request: NextRequest,
@@ -61,8 +53,8 @@ export async function POST(
     const { error } = await resend.emails.send({
       from: FROM,
       to: validation.data.to,
-      subject: `[Teste] ${interpolateTestVariables(template.subject, validation.data.to)}`,
-      html: interpolateTestVariables(template.html, validation.data.to),
+      subject: `[Teste] ${interpolateEmailTemplate(template.subject, { email: validation.data.to, name: validation.data.to.split("@")[0] })}`,
+      html: interpolateEmailTemplate(template.html, { email: validation.data.to, name: validation.data.to.split("@")[0] }),
     })
 
     if (error) {
