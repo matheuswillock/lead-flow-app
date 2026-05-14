@@ -536,42 +536,39 @@ export class LeadScheduleService implements ILeadScheduleService {
       const inviteDispatchLastPayloadForDb =
         inviteDispatchLastPayload === null ? Prisma.JsonNull : (inviteDispatchLastPayload ?? undefined);
 
-      const schedule = existingSchedule
-        ? await tx.leadsSchedule.update({
-            where: { id: existingSchedule.id },
-            data: {
-              date: meetingDate,
-              meetingTitle: resolvedMeetingTitle,
-              notes: meetingNotes,
-              meetingLink: resolvedMeetingLink,
-              extraGuests: extraGuests ?? existingSchedule.extraGuests ?? [],
-              googleEventId: calendarResult?.eventId ?? existingSchedule.googleEventId ?? undefined,
-              googleCalendarId: calendarResult?.calendarId ?? existingSchedule.googleCalendarId ?? undefined,
-              inviteDispatchStatus,
-              inviteDispatchFallbackUsed,
-              inviteDispatchLastAttemptAt,
-              inviteDispatchLastError,
-              inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
-            },
-          })
-        : await tx.leadsSchedule.create({
-            data: {
-              id: scheduleId,
-              leadId,
-              date: meetingDate,
-              meetingTitle: resolvedMeetingTitle,
-              notes: meetingNotes,
-              meetingLink: resolvedMeetingLink,
-              extraGuests: extraGuests ?? [],
-              googleEventId: calendarResult?.eventId ?? undefined,
-              googleCalendarId: calendarResult?.calendarId ?? undefined,
-              inviteDispatchStatus,
-              inviteDispatchFallbackUsed,
-              inviteDispatchLastAttemptAt,
-              inviteDispatchLastError,
-              inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
-            },
-          });
+      const schedule = await tx.leadsSchedule.upsert({
+        where: { leadId },
+        create: {
+          id: scheduleId,
+          leadId,
+          date: meetingDate,
+          meetingTitle: resolvedMeetingTitle,
+          notes: meetingNotes,
+          meetingLink: resolvedMeetingLink,
+          extraGuests: extraGuests ?? [],
+          googleEventId: calendarResult?.eventId ?? undefined,
+          googleCalendarId: calendarResult?.calendarId ?? undefined,
+          inviteDispatchStatus,
+          inviteDispatchFallbackUsed,
+          inviteDispatchLastAttemptAt,
+          inviteDispatchLastError,
+          inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
+        },
+        update: {
+          date: meetingDate,
+          meetingTitle: resolvedMeetingTitle,
+          notes: meetingNotes,
+          meetingLink: resolvedMeetingLink,
+          extraGuests: extraGuests ?? existingSchedule?.extraGuests ?? [],
+          googleEventId: calendarResult?.eventId ?? existingSchedule?.googleEventId ?? undefined,
+          googleCalendarId: calendarResult?.calendarId ?? existingSchedule?.googleCalendarId ?? undefined,
+          inviteDispatchStatus,
+          inviteDispatchFallbackUsed,
+          inviteDispatchLastAttemptAt,
+          inviteDispatchLastError,
+          inviteDispatchLastPayload: inviteDispatchLastPayloadForDb,
+        },
+      });
 
       const updatedLead = await tx.lead.update({
         where: { id: leadId },

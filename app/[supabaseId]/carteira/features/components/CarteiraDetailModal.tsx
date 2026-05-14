@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DateTimePicker } from '@/components/ui/date-time-picker';
 import {
   Select,
   SelectContent,
@@ -33,7 +34,6 @@ import {
   PORTFOLIO_STATUS_LABELS,
   type CarteiraDetailAttachment,
   type CarteiraDetailData,
-  type CarteiraDetailDependent,
   type UpdateCarteiraDetailPayload,
 } from '../context/CarteiraTypes';
 
@@ -92,6 +92,23 @@ function toInputDate(value: string | null | undefined): string {
   if (!value) return '';
   try {
     return format(new Date(value), 'yyyy-MM-dd');
+  } catch {
+    return '';
+  }
+}
+
+function toPickerDate(value: string): Date | undefined {
+  if (!value) return undefined;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return undefined;
+  const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function fromPickerDate(value: Date | undefined): string {
+  if (!value) return '';
+  try {
+    return format(value, 'yyyy-MM-dd');
   } catch {
     return '';
   }
@@ -321,14 +338,8 @@ export function CarteiraDetailModal({
             </>
           ) : (
             <>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
                 <DialogTitle>{detail?.leadName ?? '—'}</DialogTitle>
-                {!isEditing && detail?.contract && (
-                  <Button variant="outline" size="sm" className="shrink-0" onClick={startEditing}>
-                    <Pencil className="mr-1.5 size-3.5" />
-                    Editar
-                  </Button>
-                )}
               </div>
               <div className="mt-1 flex items-center gap-2">
                 <DialogDescription asChild>
@@ -376,16 +387,31 @@ export function CarteiraDetailModal({
                   <Input value={form.amount} onChange={(e) => patchForm('amount', e.target.value)} className="h-8 text-sm" placeholder="0,00" />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label className="text-xs">Vencimento</Label>
-                  <Input type="date" value={form.contractDueDate} onChange={(e) => patchForm('contractDueDate', e.target.value)} className="h-8 text-sm" />
+                  <DateTimePicker
+                    date={toPickerDate(form.contractDueDate)}
+                    onDateChange={(value) => patchForm('contractDueDate', fromPickerDate(value))}
+                    label="Vencimento"
+                    showTime={false}
+                    disablePastDates={false}
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label className="text-xs">Data de início</Label>
-                  <Input type="date" value={form.startDateAt} onChange={(e) => patchForm('startDateAt', e.target.value)} className="h-8 text-sm" />
+                  <DateTimePicker
+                    date={toPickerDate(form.startDateAt)}
+                    onDateChange={(value) => patchForm('startDateAt', fromPickerDate(value))}
+                    label="Data de início"
+                    showTime={false}
+                    disablePastDates={false}
+                  />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label className="text-xs">Data de finalização</Label>
-                  <Input type="date" value={form.finalizedDateAt} onChange={(e) => patchForm('finalizedDateAt', e.target.value)} className="h-8 text-sm" />
+                  <DateTimePicker
+                    date={toPickerDate(form.finalizedDateAt)}
+                    onDateChange={(value) => patchForm('finalizedDateAt', fromPickerDate(value))}
+                    label="Data de finalização"
+                    showTime={false}
+                    disablePastDates={false}
+                  />
                 </div>
                 <div className="col-span-2 flex flex-col gap-1.5">
                   <Label className="text-xs">Observações</Label>
@@ -447,8 +473,13 @@ export function CarteiraDetailModal({
                     <Input value={form.holderName} onChange={(e) => patchForm('holderName', e.target.value)} className="h-8 text-sm" />
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs">Data de nascimento</Label>
-                    <Input type="date" value={form.holderBirthDate} onChange={(e) => patchForm('holderBirthDate', e.target.value)} className="h-8 text-sm" />
+                    <DateTimePicker
+                      date={toPickerDate(form.holderBirthDate)}
+                      onDateChange={(value) => patchForm('holderBirthDate', fromPickerDate(value))}
+                      label="Data de nascimento"
+                      showTime={false}
+                      disablePastDates={false}
+                    />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <Label className="text-xs">CPF</Label>
@@ -528,12 +559,14 @@ export function CarteiraDetailModal({
                           </Button>
                         </div>
                         <div className="flex flex-col gap-1.5">
-                          <Label className="text-xs">Nascimento</Label>
-                          <Input
-                            type="date"
-                            value={dep.birthDate}
-                            onChange={(e) => patchDependent(dep._key, { birthDate: e.target.value })}
-                            className="h-8 text-sm"
+                          <DateTimePicker
+                            date={toPickerDate(dep.birthDate)}
+                            onDateChange={(value) =>
+                              patchDependent(dep._key, { birthDate: fromPickerDate(value) })
+                            }
+                            label="Nascimento"
+                            showTime={false}
+                            disablePastDates={false}
                           />
                         </div>
                         <div className="flex flex-col gap-1.5">
@@ -618,9 +651,17 @@ export function CarteiraDetailModal({
               </Button>
             </>
           ) : (
-            <Button variant="outline" onClick={handleClose}>
-              Fechar
-            </Button>
+            <>
+              {detail?.contract && (
+                <Button variant="outline" onClick={startEditing}>
+                  <Pencil className="mr-1.5 size-3.5" />
+                  Editar
+                </Button>
+              )}
+              <Button variant="outline" onClick={handleClose}>
+                Fechar
+              </Button>
+            </>
           )}
         </DialogFooter>
       </DialogContent>
