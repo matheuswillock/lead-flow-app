@@ -22,10 +22,10 @@ const AGE_RANGES: PmeAgeRange[] = [
 ];
 
 const HOSPITALS: PmeHospitalOption[] = [
-  { id: "nenhum", label: "Sem Hospital", sub: "Rede padrao da operadora" },
-  { id: "sirio", label: "Sirio-Libanes", sub: "Hospital de referencia premium" },
-  { id: "einstein", label: "Albert Einstein", sub: "Hospital de referencia premium" },
-  { id: "rededor", label: "Rede D'Or", sub: "Rede D'Or / Sao Luiz" },
+  { id: "nenhum", label: "Sem Hospital", sub: "Rede padrão da operadora" },
+  { id: "sirio", label: "Sirio-Libanes", sub: "Hospital de referência premium" },
+  { id: "einstein", label: "Albert Einstein", sub: "Hospital de referência premium" },
+  { id: "rededor", label: "Rede D'Or", sub: "Rede D'Or / São Luiz" },
 ];
 
 // TODO: mover tabela de planos para persistencia em banco e manter catalogo por vigencia de preco.

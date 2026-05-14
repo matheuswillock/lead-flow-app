@@ -8,9 +8,15 @@ import type { PortfolioFilters } from '@/app/api/services/Portfolio/IPortfolioSe
 
 const listSchema = z.object({
   search: z.string().optional(),
-  portfolioStatus: z.enum(['active', 'pending', 'canceled']).optional(),
-  sdrId: z.string().uuid().optional(),
-  closerId: z.string().uuid().optional(),
+  portfolioStatuses: z.string().optional(),
+  sdrIds: z.string().optional(),
+  closerIds: z.string().optional(),
+  operadora: z.string().optional(),
+  contractDateStart: z.string().optional(),
+  contractDateEnd: z.string().optional(),
+  dueDateStart: z.string().optional(),
+  dueDateEnd: z.string().optional(),
+  documentSearch: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -43,7 +49,22 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { search, portfolioStatus, sdrId, closerId, page, pageSize } = parsed.data;
+  const {
+    search,
+    portfolioStatuses: portfolioStatusesRaw,
+    sdrIds: sdrIdsRaw,
+    closerIds: closerIdsRaw,
+    operadora,
+    contractDateStart,
+    contractDateEnd,
+    dueDateStart,
+    dueDateEnd,
+    documentSearch,
+    page,
+    pageSize,
+  } = parsed.data;
+
+  const splitCSV = (val?: string) => val ? val.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
   const result = await portfolioUseCase.listPortfolio({
     teamId,
@@ -51,9 +72,15 @@ export async function GET(request: NextRequest) {
     isManager,
     isCloser,
     search,
-    portfolioStatus: portfolioStatus as PortfolioFilters['portfolioStatus'],
-    sdrId,
-    closerId,
+    portfolioStatuses: splitCSV(portfolioStatusesRaw) as PortfolioFilters['portfolioStatuses'],
+    sdrIds: splitCSV(sdrIdsRaw),
+    closerIds: splitCSV(closerIdsRaw),
+    operadora,
+    contractDateStart: contractDateStart ? new Date(contractDateStart) : undefined,
+    contractDateEnd: contractDateEnd ? new Date(contractDateEnd) : undefined,
+    dueDateStart: dueDateStart ? new Date(dueDateStart) : undefined,
+    dueDateEnd: dueDateEnd ? new Date(dueDateEnd) : undefined,
+    documentSearch,
     page,
     pageSize,
   });

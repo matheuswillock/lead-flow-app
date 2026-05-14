@@ -64,6 +64,15 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
   }
 
   /**
+   * Busca o registro único de agendamento de um lead
+   */
+  async findUniqueByLeadId(leadId: string): Promise<LeadsSchedule | null> {
+    return await prisma.leadsSchedule.findUnique({
+      where: { leadId },
+    });
+  }
+
+  /**
    * Atualiza um agendamento existente
    */
   async update(id: string, data: UpdateLeadScheduleDTO): Promise<LeadsSchedule> {
@@ -78,6 +87,39 @@ export class LeadScheduleRepository implements ILeadScheduleRepository {
     return await prisma.leadsSchedule.update({
       where: { id },
       data: parsedData,
+    });
+  }
+
+  /**
+   * Atualiza ou cria um agendamento usando leadId como chave única
+   */
+  async upsertByLeadId(leadId: string, data: CreateLeadScheduleDTO): Promise<LeadsSchedule> {
+    const parsedData = {
+      date: data.date,
+      meetingTitle: data.meetingTitle,
+      notes: data.notes,
+      meetingLink: data.meetingLink,
+      extraGuests: data.extraGuests ?? [],
+      googleEventId: data.googleEventId ?? undefined,
+      googleCalendarId: data.googleCalendarId ?? undefined,
+      inviteDispatchStatus: data.inviteDispatchStatus ?? undefined,
+      inviteDispatchFallbackUsed: data.inviteDispatchFallbackUsed ?? undefined,
+      inviteDispatchLastAttemptAt: data.inviteDispatchLastAttemptAt ?? undefined,
+      inviteDispatchLastError: data.inviteDispatchLastError ?? undefined,
+      inviteDispatchLastPayload:
+        data.inviteDispatchLastPayload === null
+          ? Prisma.JsonNull
+          : (data.inviteDispatchLastPayload ?? undefined),
+    };
+
+    return await prisma.leadsSchedule.upsert({
+      where: { leadId },
+      create: {
+        id: data.id,
+        leadId,
+        ...parsedData,
+      },
+      update: parsedData,
     });
   }
 

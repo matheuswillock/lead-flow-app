@@ -6,11 +6,41 @@ export interface PortfolioFilters {
   isManager: boolean;
   isCloser: boolean;
   search?: string;
-  portfolioStatus?: PortfolioStatus;
-  sdrId?: string;
-  closerId?: string;
+  portfolioStatuses?: PortfolioStatus[];
+  sdrIds?: string[];
+  closerIds?: string[];
+  operadora?: string;
+  contractDateStart?: Date;
+  contractDateEnd?: Date;
+  dueDateStart?: Date;
+  dueDateEnd?: Date;
+  documentSearch?: string;
   page: number;
   pageSize: number;
+}
+
+export interface UpdatePortfolioDetailPayload {
+  operadora?: string | null;
+  productName?: string | null;
+  amount?: number;
+  startDateAt?: string;
+  finalizedDateAt?: string;
+  contractDueDate?: string | null;
+  soldPlan?: string | null;
+  notes?: string | null;
+  holder?: {
+    name: string;
+    birthDate: string;
+    document: string;
+    cnpj?: string | null;
+  } | null;
+  dependents?: Array<{
+    id?: string;
+    name: string;
+    birthDate: string;
+    parentesco: string;
+    document?: string | null;
+  }>;
 }
 
 export interface UpdatePortfolioData {
@@ -30,6 +60,8 @@ export interface PortfolioRow {
   sdr: { id: string; name: string } | null;
   closer: { id: string; name: string } | null;
   soldPlan: string | null;
+  operadora: string | null;
+  contractStartDate: Date | null;
   ticket: number | null;
   currentValue: number | null;
   saleValue: number;
@@ -40,12 +72,60 @@ export interface PortfolioRow {
 
 export interface PortfolioListResult {
   rows: PortfolioRow[];
+  availableOperadoras: string[];
   pagination: {
     page: number;
     pageSize: number;
     totalRows: number;
     totalPages: number;
   };
+}
+
+export interface PortfolioDetailAttachment {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: string;
+  fileSize: number;
+  uploadedAt: Date;
+  uploaderName: string | null;
+}
+
+export interface PortfolioDetailResult {
+  portfolioId: string;
+  leadId: string;
+  leadCode: string;
+  leadName: string;
+  saleValue: number;
+  portfolioStatus: PortfolioStatus;
+  sdr: { id: string; name: string } | null;
+  closer: { id: string; name: string } | null;
+  soldPlan: string | null;
+  contractDueDate: Date | null;
+  contract: {
+    operadora: string | null;
+    productName: string | null;
+    amount: number;
+    startDateAt: Date;
+    finalizedDateAt: Date;
+    contractFileUrl: string | null;
+    notes: string | null;
+    closerName: string | null;
+  } | null;
+  holder: {
+    name: string;
+    birthDate: Date;
+    document: string;
+    cnpj: string | null;
+  } | null;
+  dependents: Array<{
+    id: string;
+    name: string;
+    birthDate: Date;
+    parentesco: string;
+    document: string | null;
+  }>;
+  attachments: PortfolioDetailAttachment[];
 }
 
 export interface IPortfolioService {
@@ -58,4 +138,19 @@ export interface IPortfolioService {
     isCloser: boolean,
     data: UpdatePortfolioData
   ): Promise<PortfolioRow>;
+  getPortfolioEntryDetail(
+    leadId: string,
+    teamId: string,
+    profileId: string,
+    isManager: boolean,
+    isCloser: boolean
+  ): Promise<PortfolioDetailResult>;
+  updatePortfolioEntryDetail(
+    leadId: string,
+    teamId: string,
+    profileId: string,
+    isManager: boolean,
+    isCloser: boolean,
+    payload: UpdatePortfolioDetailPayload
+  ): Promise<PortfolioDetailResult>;
 }

@@ -7,6 +7,7 @@ import { GlobalLoading } from "@/components/global-loading";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
+import { WhatsNewModal } from "@/components/whats-new-modal";
 import { Users2 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { getFeatureSlugForAppPath } from "@/lib/features/feature-route-access";
@@ -72,6 +73,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
   const shouldShowNoTeamsMessage = teams.length === 0;
   const requiredFeatureSlug = getFeatureSlugForAppPath(pathname);
   const shouldBlockByFeature = !shouldShowNoTeamsMessage && !!requiredFeatureSlug && !hasAccess(requiredFeatureSlug);
+  const canShowWhatsNewModal = !shouldShowNoTeamsMessage && !shouldBlockByFeature;
 
   // Dados carregados, renderiza o layout completo
   return (
@@ -87,6 +89,7 @@ export function LayoutContent({ children, supabaseId, defaultOpen }: LayoutConte
       <AppSidebar supabaseId={supabaseId} />
       <SidebarInset>
         <SiteHeader />
+        <WhatsNewModal supabaseId={supabaseId} enabled={canShowWhatsNewModal} />
         <div className="flex min-h-0 flex-1 flex-col h-[calc(100dvh-var(--header-height))] overflow-auto">
           <div className="@container/main flex min-h-0 flex-1 flex-col gap-2">
             {shouldShowNoTeamsMessage ? (

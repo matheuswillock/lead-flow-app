@@ -430,8 +430,8 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
         title: "Taxa de Conversão",
         lines: [
           "O que é: percentual de leads que avançaram para as etapas de conversão no período.",
-          "Como funciona: considera leads com Boleto gerado, DPS e Contrato fechado.",
-          "Fórmula: (Boleto + DPS + Contrato fechado) / total de leads x 100.",
+          "Como funciona: considera leads com Proposta enviada, Boleto gerado, DPS e Contrato fechado.",
+          "Fórmula: (Proposta + Boleto + DPS + Contrato fechado) / total de leads x 100.",
         ],
       },
       {

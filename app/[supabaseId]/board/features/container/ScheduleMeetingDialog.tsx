@@ -78,6 +78,7 @@ interface ScheduleMeetingDialogProps {
   onOpenChange: (open: boolean) => void;
   lead: Lead;
   onScheduleSuccess: (payload?: ScheduleMeetingSuccessPayload) => void | Promise<void>;
+  currentProfileId?: string;
   closers: UserAssociated[];
   teamMembers?: UserAssociated[];
   mode?: "create" | "reschedule";
@@ -93,10 +94,16 @@ export function ScheduleMeetingDialog({
   teamMembers,
   mode = "create",
   initialExtraGuests,
+  currentProfileId,
 }: ScheduleMeetingDialogProps) {
   const params = useParams();
   const supabaseId = params.supabaseId as string;
-  const { activeTeamId } = useTeamContext();
+  const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const isCloserOperator =
+    activeFunctions.includes("CLOSER") &&
+    !isTeamMaster &&
+    activeRole !== "manager" &&
+    activeRole !== "backoffice";
   const { tz: SCHEDULE_TIMEZONE } = useTimezone();
 
   const [meetingDate, setMeetingDate] = useState<Date>();
@@ -231,10 +238,14 @@ export function ScheduleMeetingDialog({
 
   useEffect(() => {
     if (!open || closerId) return;
+    if (isCloserOperator && currentProfileId) {
+      setCloserId(currentProfileId);
+      return;
+    }
     if (availableClosers.length === 1) {
       setCloserId(availableClosers[0].id);
     }
-  }, [open, closerId, availableClosers]);
+  }, [open, closerId, availableClosers, isCloserOperator, currentProfileId]);
 
   const toDateKey = (date: Date) => (isValidDate(date) ? formatLocalDateValue(date, SCHEDULE_TIMEZONE) : null);
 
@@ -532,7 +543,7 @@ export function ScheduleMeetingDialog({
             <div className="grid gap-2">
               <Label>Closer</Label>
               <Select value={closerId} onValueChange={setCloserId}>
-                <SelectTrigger disabled={teamMembersLoading}>
+                <SelectTrigger disabled={teamMembersLoading || isCloserOperator}>
                   <SelectValue
                     placeholder={
                       teamMembersLoading
@@ -706,7 +717,7 @@ export function ScheduleMeetingDialog({
                 </DropdownMenu>
               </div>
               <p className="text-xs text-muted-foreground">
-                Separe os emails por virgula ou espaco.
+                Separe os emails por vírgula ou espaço.
               </p>
             </div>
 

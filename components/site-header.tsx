@@ -26,7 +26,7 @@ export function SiteHeader() {
     crm: "CRM",
     board: "Board",
     pipeline: "Pipeline",
-    calendar: "Calendario",
+    calendar: "Calendário",
     account: "Account",
     subscription: "Assinatura",
     "manager-users": "Gerenciar Usuários",

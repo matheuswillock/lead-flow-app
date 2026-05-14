@@ -27,6 +27,7 @@ import {
   Info,
   CheckCircle2,
   BanknoteArrowUp,
+  FileText,
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
@@ -410,7 +411,7 @@ export function SectionCardsWithContext() {
             <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
                 🎯 Taxa de Conversão
-                <InfoTooltip text="Leads convertidos (Boleto gerado + DPS + Contrato fechado) dividido pelo total de leads no período." />
+                <InfoTooltip text="Leads convertidos (Proposta + Boleto gerado + DPS + Contrato fechado) dividido pelo total de leads no período." />
                 </CardTitle>
               <div className="rounded-full bg-blue-500/10 p-2">
                 <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -542,6 +543,11 @@ export function SectionCardsWithContext() {
                 icon: <BanknoteArrowUp className="h-4 w-4 text-blue-500" />,
                 label: "Boletos gerados",
                 value: metrics.vendasRealizadas,
+              },
+              {
+                icon: <FileText className="h-4 w-4 text-orange-500" />,
+                label: "Propostas enviadas",
+                value: metrics.proposalCount,
               },
             ]}
           />
