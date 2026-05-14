@@ -2,17 +2,26 @@
 
 import { createContext, ReactNode, useContext } from 'react';
 import { useCarteiraHook } from './CarteiraHook';
-import type { CarteiraData, CarteiraFiltersState, UpdateCarteiraData } from './CarteiraTypes';
+import type {
+  CarteiraData,
+  CarteiraDetailData,
+  CarteiraFiltersState,
+  UpdateCarteiraData,
+  UpdateCarteiraDetailPayload,
+} from './CarteiraTypes';
 
 type CarteiraContextValue = {
   data: CarteiraData | null;
   isLoading: boolean;
   error: string | null;
   filters: CarteiraFiltersState;
+  availableOperadoras: string[];
   setFilter: <K extends keyof CarteiraFiltersState>(key: K, value: CarteiraFiltersState[K]) => void;
   setPage: (page: number) => void;
   clearFilters: () => void;
   updateEntry: (leadId: string, data: UpdateCarteiraData) => Promise<void>;
+  getEntryDetail: (leadId: string) => Promise<CarteiraDetailData>;
+  updateEntryDetail: (leadId: string, payload: UpdateCarteiraDetailPayload) => Promise<CarteiraDetailData>;
 };
 
 const CarteiraContext = createContext<CarteiraContextValue | undefined>(undefined);

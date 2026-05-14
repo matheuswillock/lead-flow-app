@@ -6554,6 +6554,36 @@
                   "disabled": true
                 },
                 {
+                  "key": "contractDateStart",
+                  "value": "2024-01-01",
+                  "disabled": true
+                },
+                {
+                  "key": "contractDateEnd",
+                  "value": "2024-12-31",
+                  "disabled": true
+                },
+                {
+                  "key": "dueDateStart",
+                  "value": "2024-01-01",
+                  "disabled": true
+                },
+                {
+                  "key": "dueDateEnd",
+                  "value": "2025-12-31",
+                  "disabled": true
+                },
+                {
+                  "key": "operadora",
+                  "value": "Hapvida",
+                  "disabled": true
+                },
+                {
+                  "key": "documentSearch",
+                  "value": "",
+                  "disabled": true
+                },
+                {
                   "key": "page",
                   "value": "1"
                 },
@@ -6563,7 +6593,37 @@
                 }
               ]
             },
-            "description": "Lista carteira paginada. Permissão: manager/backoffice (tudo) ou closer (somente próprios clientes)."
+            "description": "Lista carteira paginada. Filtros: portfolioStatus, sdrId, closerId, search (nome), contractDateStart/End (yyyy-MM-dd), dueDateStart/End (yyyy-MM-dd), documentSearch (CPF/CNPJ/RG). Permissão: manager/backoffice (tudo) ou closer (somente próprios clientes)."
+          }
+        },
+        {
+          "name": "GET Portfolio Entry Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-supabase-user-id",
+                "value": "{{supabaseUserId}}"
+              },
+              {
+                "key": "x-team-id",
+                "value": "{{teamId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/portfolio/{{leadId}}/detail",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "portfolio",
+                "{{leadId}}",
+                "detail"
+              ]
+            },
+            "description": "Retorna detalhe completo de uma entrada da carteira: dados do contrato (operadora, plano, valor, datas), titular (nome, CPF, CNPJ, nascimento) e dependentes (nome, parentesco, documento, nascimento). Permissão: manager (tudo) ou closer (somente próprios leads)."
           }
         },
         {

@@ -41,7 +41,7 @@ const SIDEBAR_LABELS: Record<string, string> = {
   "crm-kanban": "CRM / Kanban",
   leads: "Gerenciar Leads",
   reunioes: "Agendar Reunioes",
-  calendar: "Calendario",
+  calendar: "Calendário",
   carteira: "Carteira",
   performance: "Performance",
   equipe: "Gerenciar Equipe",

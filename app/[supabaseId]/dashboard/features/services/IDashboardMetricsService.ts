@@ -11,6 +11,7 @@ export interface DashboardMetricsData {
   vendas: number;
   vendasRealizadas: number;
   dpsCount: number;
+  proposalCount: number;
   convertedCount: number;
   reunioesRealizadasCloser: number;
   reunioesRealizadasSdr: number;

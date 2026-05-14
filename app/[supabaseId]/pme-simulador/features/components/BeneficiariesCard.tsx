@@ -16,7 +16,7 @@ export function BeneficiariesCard(props: BeneficiariesCardProps) {
     <Card className="rounded-2xl border-border bg-card">
       <CardContent className="flex flex-col gap-4 p-6">
         <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-          Beneficiarios
+          Beneficiários
         </span>
         <AgeTagsInput {...props} />
       </CardContent>

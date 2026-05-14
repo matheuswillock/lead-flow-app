@@ -4,10 +4,10 @@ export function PmeSimulatorHeader() {
       <h1 className="text-4xl font-light leading-none tracking-tight text-foreground">
         Simulador de
         <br />
-        <strong className="font-bold">Planos de Saude</strong>
+        <strong className="font-bold">Planos de Saúde</strong>
       </h1>
       <p className="text-sm text-muted-foreground">
-        Digite as idades dos beneficiarios e selecione o hospital de referencia
+        Digite as idades dos beneficiários e selecione o hospital de referência
       </p>
     </header>
   );

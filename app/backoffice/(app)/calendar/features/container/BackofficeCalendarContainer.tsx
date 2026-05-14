@@ -328,14 +328,14 @@ export function BackofficeCalendarContainer() {
             />
 
             <div className="flex items-center justify-between px-2">
-              <div className="text-xs font-medium text-muted-foreground">Horarios</div>
+              <div className="text-xs font-medium text-muted-foreground">Horários</div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setSelectedTime(null)}
                 disabled={!selectedTime}
               >
-                Limpar horario
+                Limpar horário
               </Button>
             </div>
 
@@ -448,7 +448,7 @@ export function BackofficeCalendarContainer() {
                     : "Selecione um dia"}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {selectedTime ? `Horario: ${selectedTime}` : "Sem horario selecionado"}
+                  {selectedTime ? `Horário: ${selectedTime}` : "Sem horário selecionado"}
                 </div>
               </div>
               <Button variant="outline" onClick={openLeadPicker} className="group">

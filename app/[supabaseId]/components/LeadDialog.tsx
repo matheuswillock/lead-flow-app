@@ -222,7 +222,12 @@ export default function LeadDialog({
   const params = useParams();
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
-  const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
+  const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const isCloserOperator =
+    activeFunctions.includes("CLOSER") &&
+    !isTeamMaster &&
+    activeRole !== "manager" &&
+    activeRole !== "backoffice";
   const { healthPlans, loading: healthPlansLoading } = useHealthPlans(supabaseId, activeTeamId);
   const {
     members: closersByTeam,
@@ -2293,6 +2298,7 @@ export default function LeadDialog({
                       isEditMode={!!currentLead}
                       currentProfileId={user.id}
                       currentUserIsSdr={activeFunctions.includes("SDR") || user.functions.includes("SDR")}
+                      currentUserIsCloser={isCloserOperator}
                     />
                 )}
               </div>
@@ -2823,6 +2829,7 @@ export default function LeadDialog({
           teamMembers={usersToAssign}
           mode={currentLead.meetingDate ? "reschedule" : "create"}
           initialExtraGuests={scheduleGuests}
+          currentProfileId={user?.id}
         />
       )}
 

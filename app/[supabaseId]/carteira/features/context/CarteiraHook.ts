@@ -8,9 +8,11 @@ import { carteiraService } from '../services/CarteiraService';
 import {
   DEFAULT_CARTEIRA_FILTERS,
   type CarteiraData,
+  type CarteiraDetailData,
   type CarteiraFiltersState,
   type CarteiraRow,
   type UpdateCarteiraData,
+  type UpdateCarteiraDetailPayload,
 } from './CarteiraTypes';
 
 export function useCarteiraHook() {
@@ -22,6 +24,7 @@ export function useCarteiraHook() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFiltersState] = useState<CarteiraFiltersState>(DEFAULT_CARTEIRA_FILTERS);
+  const [availableOperadoras, setAvailableOperadoras] = useState<string[]>([]);
 
   const lastFetchKey = useRef<string>('');
 
@@ -38,6 +41,9 @@ export function useCarteiraHook() {
     try {
       const result = await carteiraService.listPortfolio(supabaseId, activeTeamId, currentFilters);
       setData(result);
+      if (result.availableOperadoras.length > 0) {
+        setAvailableOperadoras(result.availableOperadoras);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao buscar carteira';
       setError(message);
@@ -72,7 +78,6 @@ export function useCarteiraHook() {
   const updateEntry = useCallback(async (leadId: string, updateData: UpdateCarteiraData) => {
     if (!supabaseId || !activeTeamId) return;
 
-    // Optimistic update
     setData((prev) => {
       if (!prev) return prev;
       return {
@@ -85,7 +90,6 @@ export function useCarteiraHook() {
 
     try {
       const updated = await carteiraService.updateEntry(supabaseId, activeTeamId, leadId, updateData);
-      // Replace with server response
       setData((prev) => {
         if (!prev) return prev;
         return {
@@ -97,21 +101,36 @@ export function useCarteiraHook() {
       });
       toast.success('Carteira atualizada');
     } catch (err) {
-      // Revert optimistic update
       lastFetchKey.current = '';
       fetchData(filters);
       toast.error(err instanceof Error ? err.message : 'Erro ao atualizar carteira');
     }
   }, [supabaseId, activeTeamId, filters, fetchData]);
 
+  const getEntryDetail = useCallback(async (leadId: string): Promise<CarteiraDetailData> => {
+    if (!supabaseId || !activeTeamId) throw new Error('Sessão não disponível');
+    return carteiraService.getEntryDetail(supabaseId, activeTeamId, leadId);
+  }, [supabaseId, activeTeamId]);
+
+  const updateEntryDetail = useCallback(async (
+    leadId: string,
+    payload: UpdateCarteiraDetailPayload
+  ): Promise<CarteiraDetailData> => {
+    if (!supabaseId || !activeTeamId) throw new Error('Sessão não disponível');
+    return carteiraService.updateEntryDetail(supabaseId, activeTeamId, leadId, payload);
+  }, [supabaseId, activeTeamId]);
+
   return {
     data,
     isLoading,
     error,
     filters,
+    availableOperadoras,
     setFilter,
     setPage,
     clearFilters,
     updateEntry,
+    getEntryDetail,
+    updateEntryDetail,
   };
 }

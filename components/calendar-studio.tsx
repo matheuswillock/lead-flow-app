@@ -266,15 +266,19 @@ export default function CalendarStudio() {
   const [editingTask, setEditingTask] = React.useState<TaskItem | null>(null)
   const [tasks, setTasks] = React.useState<TaskItem[]>([])
   const [tasksLoading, setTasksLoading] = React.useState(false)
-  const [taskDayCounts, setTaskDayCounts] = React.useState<Map<string, number>>(new Map())
+  const [monthTasks, setMonthTasks] = React.useState<TaskItem[]>([])
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
-  const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext()
+  const { activeTeamId, activeFunctions, isTeamMaster, activeRole } = useTeamContext()
   const timeListRef = React.useRef<HTMLDivElement | null>(null)
 
   const canToggleMeetingHeald = React.useMemo(() => {
     return isTeamMaster || activeFunctions.includes("CLOSER")
   }, [isTeamMaster, activeFunctions])
+
+  const isRestrictedToOwnEvents = !isTeamMaster
+    && activeRole !== "manager"
+    && activeRole !== "backoffice"
 
   const handleToggleMeetingHeald = React.useCallback(
     async (lead: Lead, checked: boolean) => {
@@ -373,14 +377,21 @@ export default function CalendarStudio() {
     return events
   }, [allLeads])
 
+  const visibleCalendarEvents = React.useMemo(() => {
+    if (!isRestrictedToOwnEvents || !user?.id) return calendarEvents
+    return calendarEvents.filter((event) =>
+      event.lead.closerId === user.id || event.lead.assignee?.id === user.id
+    )
+  }, [calendarEvents, isRestrictedToOwnEvents, user?.id])
+
   const dayEventCounts = React.useMemo(() => {
     const counts = new Map<string, number>()
-    calendarEvents.forEach((event) => {
+    visibleCalendarEvents.forEach((event) => {
       const key = formatLocalDateValue(event.date, tz)
       counts.set(key, (counts.get(key) ?? 0) + 1)
     })
     return counts
-  }, [calendarEvents, tz])
+  }, [visibleCalendarEvents, tz])
 
   const selectedDateKey = React.useMemo(
     () => (date ? getCalendarDateKey(date) : null),
@@ -389,14 +400,14 @@ export default function CalendarStudio() {
 
   const dayEvents = React.useMemo(() => {
     if (!selectedDateKey) return [] as CalendarEventItem[]
-    return calendarEvents
+    return visibleCalendarEvents
       .filter((event) => formatLocalDateValue(event.date, tz) === selectedDateKey)
       .sort((left, right) => {
         const byTime = left.date.getTime() - right.date.getTime()
         if (byTime !== 0) return byTime
         return getEventPriority(left.type) - getEventPriority(right.type)
       })
-  }, [selectedDateKey, calendarEvents, tz])
+  }, [selectedDateKey, visibleCalendarEvents, tz])
 
   const filteredEvents = React.useMemo(() => {
     const nameQuery = leadNameFilter.trim().toLowerCase()
@@ -633,9 +644,14 @@ export default function CalendarStudio() {
       })
   }, [selectedDateKey, supabaseId, activeTeamId])
 
+  const visibleTasks = React.useMemo(() => {
+    if (!isRestrictedToOwnEvents || !user?.id) return tasks
+    return tasks.filter((t) => t.assignees.some((a) => a.profile.id === user.id))
+  }, [tasks, isRestrictedToOwnEvents, user?.id])
+
   const refreshTaskDayCounts = React.useCallback((cancelled = false) => {
     if (!supabaseId || !activeTeamId) {
-      setTaskDayCounts(new Map())
+      setMonthTasks([])
       return Promise.resolve()
     }
 
@@ -652,23 +668,29 @@ export default function CalendarStudio() {
       .then((res) => res.json())
       .then((json) => {
         if (cancelled) return
-        const list = Array.isArray(json?.result) ? (json.result as TaskItem[]) : []
-        const counts = new Map<string, number>()
-        list.forEach((task) => {
-          const rawDate = task.startAt || task.endAt || task.createdAt
-          if (!rawDate) return
-          const parsedDate = new Date(rawDate)
-          if (Number.isNaN(parsedDate.getTime())) return
-          const key = formatLocalDateValue(parsedDate, tz)
-          counts.set(key, (counts.get(key) ?? 0) + 1)
-        })
-        setTaskDayCounts(counts)
+        setMonthTasks(Array.isArray(json?.result) ? (json.result as TaskItem[]) : [])
       })
       .catch(() => {
         if (cancelled) return
-        setTaskDayCounts(new Map())
+        setMonthTasks([])
       })
-  }, [supabaseId, activeTeamId, calendarMonth, tz])
+  }, [supabaseId, activeTeamId, calendarMonth])
+
+  const taskDayCounts = React.useMemo(() => {
+    const filtered = isRestrictedToOwnEvents && user?.id
+      ? monthTasks.filter((t) => t.assignees.some((a) => a.profile.id === user.id))
+      : monthTasks
+    const counts = new Map<string, number>()
+    filtered.forEach((task) => {
+      const rawDate = task.startAt || task.endAt || task.createdAt
+      if (!rawDate) return
+      const parsedDate = new Date(rawDate)
+      if (Number.isNaN(parsedDate.getTime())) return
+      const key = formatLocalDateValue(parsedDate, tz)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
+    return counts
+  }, [monthTasks, isRestrictedToOwnEvents, user?.id, tz])
 
   // Fetch tasks for the selected date range (full day)
   React.useEffect(() => {
@@ -719,15 +741,21 @@ export default function CalendarStudio() {
                   const scheduleCount = dayEventCounts.get(key) ?? 0
                   const tasksCount = taskDayCounts.get(key) ?? 0
                   const count = scheduleCount + tasksCount
+                  const isSelected = selectedDateKey === key
                   return (
                     <CalendarDayButton
                       {...props}
                       className={cn(props.className, count > 0 && "gap-0.5")}
                     >
                       <span>{props.children}</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {count > 0 ? count : ""}
-                      </span>
+                      {count > 0 && (
+                        <span className={cn(
+                          "text-[9px] font-semibold leading-none",
+                          isSelected ? "text-primary-foreground/75" : "text-primary"
+                        )}>
+                          {count}
+                        </span>
+                      )}
                     </CalendarDayButton>
                   )
                 },
@@ -741,14 +769,14 @@ export default function CalendarStudio() {
               }}
             />
             <div className="flex items-center justify-between px-2">
-              <div className="text-xs font-medium text-muted-foreground">Horarios</div>
+              <div className="text-xs font-medium text-muted-foreground">Horários</div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setSelectedTime(null)}
                 disabled={!selectedTime}
               >
-                Limpar horario
+                Limpar horário
               </Button>
             </div>
             <div
@@ -863,48 +891,50 @@ export default function CalendarStudio() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium">
-                  {selectedDateKey
-                    ? formatIntimezone(
-                        parseDateKeyToUtc(selectedDateKey, tz),
-                        "EEEE, dd 'de' MMMM 'de' yyyy",
-                        tz
-                      )
-                    : "Selecione um dia"}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div>
+                  <div className="text-sm font-medium">
+                    {selectedDateKey
+                      ? formatIntimezone(
+                          parseDateKeyToUtc(selectedDateKey, tz),
+                          "EEEE, dd 'de' MMMM 'de' yyyy",
+                          tz
+                        )
+                      : "Selecione um dia"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {selectedTime ? `Horário: ${selectedTime}` : "Sem horário selecionado"}
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  {selectedTime ? `Horario: ${selectedTime}` : "Sem horario selecionado"}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      id="show-meetings"
+                      checked={showMeetings}
+                      onCheckedChange={setShowMeetings}
+                      className="scale-75"
+                    />
+                    <Label htmlFor="show-meetings" className="text-xs cursor-pointer">Reuniões</Label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      id="show-tasks"
+                      checked={showTasks}
+                      onCheckedChange={setShowTasks}
+                      className="scale-75"
+                    />
+                    <Label htmlFor="show-tasks" className="text-xs cursor-pointer">Tarefas</Label>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <Switch
-                    id="show-meetings"
-                    checked={showMeetings}
-                    onCheckedChange={setShowMeetings}
-                    className="scale-75"
-                  />
-                  <Label htmlFor="show-meetings" className="text-xs cursor-pointer">Reuniões</Label>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Switch
-                    id="show-tasks"
-                    checked={showTasks}
-                    onCheckedChange={setShowTasks}
-                    className="scale-75"
-                  />
-                  <Label htmlFor="show-tasks" className="text-xs cursor-pointer">Tarefas</Label>
-                </div>
-                <Button variant="outline" onClick={() => setLeadPickerOpen(true)} className="group">
-                  <CirclePlus
-                    className="mr-2 transition-transform duration-300 group-hover:rotate-90"
-                    size={16}
-                  />
-                  Agendar Reunião
-                </Button>
-              </div>
+              <Button variant="outline" onClick={() => setLeadPickerOpen(true)} className="group shrink-0">
+                <CirclePlus
+                  className="mr-2 transition-transform duration-300 group-hover:rotate-90"
+                  size={16}
+                />
+                Agendar Reunião
+              </Button>
             </div>
 
             <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
@@ -912,7 +942,7 @@ export default function CalendarStudio() {
                 Array.from({ length: 6 }).map((_, idx) => (
                   <Skeleton key={idx} className="h-28 w-full rounded-md" />
                 ))
-              ) : filteredEvents.filter(() => showMeetings).length === 0 && (tasks.length === 0 || !showTasks) ? (
+              ) : filteredEvents.filter(() => showMeetings).length === 0 && (visibleTasks.length === 0 || !showTasks) ? (
                 <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 rounded-md border border-dashed p-6 text-center">
                   <p className="text-sm text-muted-foreground">
                     Nenhuma agenda, tarefa ou lembrete para este dia e horário.
@@ -921,7 +951,7 @@ export default function CalendarStudio() {
                 </div>
               ) : (
                 <>
-                {showTasks && tasks.map((task) => (
+                {showTasks && visibleTasks.map((task) => (
                   <TaskCard
                     key={task.id}
                     task={task}
