@@ -58,4 +58,11 @@ export type CampanhasState = {
   wizardCreating: boolean
   templates: Template[]
   contactLists: ContactList[]
+  // Edit draft state
+  editingCampaign: Campaign | null
+  editName: string
+  editTemplateId: string
+  editContactListId: string
+  editScheduledAt: string
+  editSaving: boolean
 }

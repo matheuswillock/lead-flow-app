@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Send, X, Trash2 } from "lucide-react"
+import { Send, X, Trash2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -90,6 +90,7 @@ export function CampaignList() {
     handleCancel,
     handleDeleteDraft,
     handlePageChange,
+    openEdit,
   } = useCampanhasContext()
 
   return (
@@ -166,16 +167,27 @@ export function CampaignList() {
                         </Button>
                       )}
                       {campaign.status === "draft" && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteDraft(campaign.id)}
-                          disabled={deletingId === campaign.id}
-                          className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="mr-1 h-3 w-3" />
-                          {deletingId === campaign.id ? "..." : "Excluir"}
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void openEdit(campaign)}
+                            className="h-7 px-2 text-xs"
+                          >
+                            <Pencil className="mr-1 h-3 w-3" />
+                            Editar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteDraft(campaign.id)}
+                            disabled={deletingId === campaign.id}
+                            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="mr-1 h-3 w-3" />
+                            {deletingId === campaign.id ? "..." : "Excluir"}
+                          </Button>
+                        </>
                       )}
                     </div>
                   </TableCell>
