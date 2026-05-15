@@ -47,6 +47,7 @@ import {
   nowInTz,
   parseDateKeyToUtc,
 } from "@/lib/dates"
+import { leadStatusTransitionClient } from "@/lib/services/leadStatusTransitionClient"
 
 type AttendeeRole = "closer" | "sdr" | "lead" | "extra"
 
@@ -267,10 +268,31 @@ export default function CalendarStudio() {
   const [tasks, setTasks] = React.useState<TaskItem[]>([])
   const [tasksLoading, setTasksLoading] = React.useState(false)
   const [monthTasks, setMonthTasks] = React.useState<TaskItem[]>([])
+  const [suppressLeadDialogOpen, setSuppressLeadDialogOpen] = React.useState(false)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
   const { activeTeamId, activeFunctions, isTeamMaster, activeRole } = useTeamContext()
   const timeListRef = React.useRef<HTMLDivElement | null>(null)
+  const suppressLeadDialogTimerRef = React.useRef<number | null>(null)
+
+  const blockLeadDialogOpen = React.useCallback(() => {
+    setSuppressLeadDialogOpen(true)
+    if (suppressLeadDialogTimerRef.current) {
+      window.clearTimeout(suppressLeadDialogTimerRef.current)
+    }
+    suppressLeadDialogTimerRef.current = window.setTimeout(() => {
+      setSuppressLeadDialogOpen(false)
+      suppressLeadDialogTimerRef.current = null
+    }, 500)
+  }, [])
+
+  React.useEffect(() => {
+    return () => {
+      if (suppressLeadDialogTimerRef.current) {
+        window.clearTimeout(suppressLeadDialogTimerRef.current)
+      }
+    }
+  }, [])
 
   const canToggleMeetingHeald = React.useMemo(() => {
     return isTeamMaster || activeFunctions.includes("CLOSER")
@@ -445,15 +467,30 @@ export default function CalendarStudio() {
   const handleCancelSchedule = async () => {
     if (!leadToCancel) return
     try {
-      if (!supabaseId) {
-        throw new Error("Usuario nao identificado")
+      if (!supabaseId || !activeTeamId) {
+        throw new Error("Usuário ou time não identificado")
       }
+
+      const transitionValidation = await leadStatusTransitionClient.validateStatusTransition({
+        leadId: leadToCancel.id,
+        targetStatus: "new_opportunity",
+        supabaseId,
+        teamId: activeTeamId,
+      })
+
+      if (!transitionValidation.transition.allowed || !transitionValidation.output.isValid) {
+        throw new Error(
+          transitionValidation.output.errorMessages?.join(", ") ||
+            "Transição de status inválida para cancelar agenda."
+        )
+      }
+
       const response = await fetch(`/api/v1/leads/${leadToCancel.id}/schedule/cancel`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId || "",
+          "x-team-id": activeTeamId,
         },
       })
       const result = await response.json()
@@ -1017,10 +1054,14 @@ export default function CalendarStudio() {
                         key={`${event.type}:${lead.id}:${event.date.toISOString()}`}
                         role="button"
                         tabIndex={0}
-                        onClick={() => handleCardClick(lead)}
+                        onClick={() => {
+                          if (suppressLeadDialogOpen) return
+                          handleCardClick(lead)
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault()
+                            if (suppressLeadDialogOpen) return
                             handleCardClick(lead)
                           }
                         }}
@@ -1054,6 +1095,7 @@ export default function CalendarStudio() {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
                                   onSelect={() => {
+                                    blockLeadDialogOpen()
                                     setLeadToSchedule(lead)
                                     setScheduleDialogMode("reschedule")
                                     setScheduleDialogOpen(true)
@@ -1063,6 +1105,7 @@ export default function CalendarStudio() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onSelect={() => {
+                                    blockLeadDialogOpen()
                                     setLeadToSchedule(lead)
                                     setScheduleDialogMode("reschedule")
                                     setScheduleDialogOpen(true)
@@ -1077,6 +1120,8 @@ export default function CalendarStudio() {
                                 <DropdownMenuItem
                                   className="text-destructive focus:text-destructive"
                                   onSelect={() => {
+                                    blockLeadDialogOpen()
+                                    setOpen(false)
                                     setLeadToCancel(lead)
                                     setCancelDialogOpen(true)
                                   }}
@@ -1206,7 +1251,7 @@ export default function CalendarStudio() {
       </div>
 
       <LeadDialog
-        open={open}
+        open={open && !cancelDialogOpen}
         setOpen={setOpen}
         lead={selected}
         user={user}
@@ -1307,11 +1352,11 @@ export default function CalendarStudio() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[420px]">
+        <DialogContent className="z-[80] sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle>Cancelar agenda</DialogTitle>
             <DialogDescription>
-              Deseja cancelar a agenda atual ou reagendar a reuniao?
+              Deseja cancelar a agenda atual ou reagendar a reuniao? Ao confirmar o cancelamento, o card sera atualizado para o status de Nova oportunidade.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap justify-end gap-2">
