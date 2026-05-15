@@ -49,9 +49,19 @@ export interface ILeadScheduleRepository {
   findLatestByLeadId(leadId: string): Promise<LeadsSchedule | null>;
 
   /**
+   * Busca o registro único de agendamento de um lead
+   */
+  findUniqueByLeadId(leadId: string): Promise<LeadsSchedule | null>;
+
+  /**
    * Atualiza um agendamento existente
    */
   update(id: string, data: UpdateLeadScheduleDTO): Promise<LeadsSchedule>;
+
+  /**
+   * Atualiza ou cria um agendamento usando leadId como chave única
+   */
+  upsertByLeadId(leadId: string, data: CreateLeadScheduleDTO): Promise<LeadsSchedule>;
 
   /**
    * Deleta um agendamento

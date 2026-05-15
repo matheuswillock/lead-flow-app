@@ -101,6 +101,7 @@ export interface ILeadFormProps {
     isEditMode?: boolean;
     currentProfileId?: string;
     currentUserIsSdr?: boolean;
+    currentUserIsCloser?: boolean;
 }
 
 export function LeadForm({
@@ -132,6 +133,7 @@ export function LeadForm({
     isEditMode = false,
     currentProfileId,
     currentUserIsSdr = false,
+    currentUserIsCloser = false,
 }: ILeadFormProps) {
     const { tz } = useTimezone();
     const [hasChanges, setHasChanges] = useState(false);
@@ -149,10 +151,14 @@ export function LeadForm({
         () => sdrsToAssign ?? [],
         [sdrsToAssign]
     );
-    const responsibleUsers = React.useMemo(
-        () => (sdrs.length > 0 ? sdrs : usersToAssign ?? []),
-        [sdrs, usersToAssign]
-    );
+    const responsibleUsers = React.useMemo(() => {
+        const base = sdrs.length > 0 ? sdrs : usersToAssign ?? [];
+        if (currentUserIsSdr && currentProfileId) {
+            const self = base.filter((u) => u.id === currentProfileId);
+            return self.length > 0 ? self : base;
+        }
+        return base;
+    }, [sdrs, usersToAssign, currentUserIsSdr, currentProfileId]);
 
     const buildEmailValue = (emails: string[]) => {
         const unique = Array.from(new Set(emails));
@@ -957,7 +963,9 @@ export function LeadForm({
                                             isLoading ||
                                             isUpdating ||
                                             isLoadingWithoutOptions ||
-                                            !hasResponsibleOptions
+                                            !hasResponsibleOptions ||
+                                            currentUserIsSdr ||
+                                            currentUserIsCloser
                                         }
                                     >
                                         <SelectTrigger className="h-9">

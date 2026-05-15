@@ -47,6 +47,7 @@ import {
   nowInTz,
   parseDateKeyToUtc,
 } from "@/lib/dates"
+import { leadStatusTransitionClient } from "@/lib/services/leadStatusTransitionClient"
 
 type AttendeeRole = "closer" | "sdr" | "lead" | "extra"
 
@@ -266,15 +267,40 @@ export default function CalendarStudio() {
   const [editingTask, setEditingTask] = React.useState<TaskItem | null>(null)
   const [tasks, setTasks] = React.useState<TaskItem[]>([])
   const [tasksLoading, setTasksLoading] = React.useState(false)
-  const [taskDayCounts, setTaskDayCounts] = React.useState<Map<string, number>>(new Map())
+  const [monthTasks, setMonthTasks] = React.useState<TaskItem[]>([])
+  const [suppressLeadDialogOpen, setSuppressLeadDialogOpen] = React.useState(false)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
-  const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext()
+  const { activeTeamId, activeFunctions, isTeamMaster, activeRole } = useTeamContext()
   const timeListRef = React.useRef<HTMLDivElement | null>(null)
+  const suppressLeadDialogTimerRef = React.useRef<number | null>(null)
+
+  const blockLeadDialogOpen = React.useCallback(() => {
+    setSuppressLeadDialogOpen(true)
+    if (suppressLeadDialogTimerRef.current) {
+      window.clearTimeout(suppressLeadDialogTimerRef.current)
+    }
+    suppressLeadDialogTimerRef.current = window.setTimeout(() => {
+      setSuppressLeadDialogOpen(false)
+      suppressLeadDialogTimerRef.current = null
+    }, 500)
+  }, [])
+
+  React.useEffect(() => {
+    return () => {
+      if (suppressLeadDialogTimerRef.current) {
+        window.clearTimeout(suppressLeadDialogTimerRef.current)
+      }
+    }
+  }, [])
 
   const canToggleMeetingHeald = React.useMemo(() => {
     return isTeamMaster || activeFunctions.includes("CLOSER")
   }, [isTeamMaster, activeFunctions])
+
+  const isRestrictedToOwnEvents = !isTeamMaster
+    && activeRole !== "manager"
+    && activeRole !== "backoffice"
 
   const handleToggleMeetingHeald = React.useCallback(
     async (lead: Lead, checked: boolean) => {
@@ -373,14 +399,21 @@ export default function CalendarStudio() {
     return events
   }, [allLeads])
 
+  const visibleCalendarEvents = React.useMemo(() => {
+    if (!isRestrictedToOwnEvents || !user?.id) return calendarEvents
+    return calendarEvents.filter((event) =>
+      event.lead.closerId === user.id || event.lead.assignee?.id === user.id
+    )
+  }, [calendarEvents, isRestrictedToOwnEvents, user?.id])
+
   const dayEventCounts = React.useMemo(() => {
     const counts = new Map<string, number>()
-    calendarEvents.forEach((event) => {
+    visibleCalendarEvents.forEach((event) => {
       const key = formatLocalDateValue(event.date, tz)
       counts.set(key, (counts.get(key) ?? 0) + 1)
     })
     return counts
-  }, [calendarEvents, tz])
+  }, [visibleCalendarEvents, tz])
 
   const selectedDateKey = React.useMemo(
     () => (date ? getCalendarDateKey(date) : null),
@@ -389,14 +422,14 @@ export default function CalendarStudio() {
 
   const dayEvents = React.useMemo(() => {
     if (!selectedDateKey) return [] as CalendarEventItem[]
-    return calendarEvents
+    return visibleCalendarEvents
       .filter((event) => formatLocalDateValue(event.date, tz) === selectedDateKey)
       .sort((left, right) => {
         const byTime = left.date.getTime() - right.date.getTime()
         if (byTime !== 0) return byTime
         return getEventPriority(left.type) - getEventPriority(right.type)
       })
-  }, [selectedDateKey, calendarEvents, tz])
+  }, [selectedDateKey, visibleCalendarEvents, tz])
 
   const filteredEvents = React.useMemo(() => {
     const nameQuery = leadNameFilter.trim().toLowerCase()
@@ -434,15 +467,30 @@ export default function CalendarStudio() {
   const handleCancelSchedule = async () => {
     if (!leadToCancel) return
     try {
-      if (!supabaseId) {
-        throw new Error("Usuario nao identificado")
+      if (!supabaseId || !activeTeamId) {
+        throw new Error("Usuário ou time não identificado")
       }
+
+      const transitionValidation = await leadStatusTransitionClient.validateStatusTransition({
+        leadId: leadToCancel.id,
+        targetStatus: "new_opportunity",
+        supabaseId,
+        teamId: activeTeamId,
+      })
+
+      if (!transitionValidation.transition.allowed || !transitionValidation.output.isValid) {
+        throw new Error(
+          transitionValidation.output.errorMessages?.join(", ") ||
+            "Transição de status inválida para cancelar agenda."
+        )
+      }
+
       const response = await fetch(`/api/v1/leads/${leadToCancel.id}/schedule/cancel`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId || "",
+          "x-team-id": activeTeamId,
         },
       })
       const result = await response.json()
@@ -633,9 +681,14 @@ export default function CalendarStudio() {
       })
   }, [selectedDateKey, supabaseId, activeTeamId])
 
+  const visibleTasks = React.useMemo(() => {
+    if (!isRestrictedToOwnEvents || !user?.id) return tasks
+    return tasks.filter((t) => t.assignees.some((a) => a.profile.id === user.id))
+  }, [tasks, isRestrictedToOwnEvents, user?.id])
+
   const refreshTaskDayCounts = React.useCallback((cancelled = false) => {
     if (!supabaseId || !activeTeamId) {
-      setTaskDayCounts(new Map())
+      setMonthTasks([])
       return Promise.resolve()
     }
 
@@ -652,23 +705,29 @@ export default function CalendarStudio() {
       .then((res) => res.json())
       .then((json) => {
         if (cancelled) return
-        const list = Array.isArray(json?.result) ? (json.result as TaskItem[]) : []
-        const counts = new Map<string, number>()
-        list.forEach((task) => {
-          const rawDate = task.startAt || task.endAt || task.createdAt
-          if (!rawDate) return
-          const parsedDate = new Date(rawDate)
-          if (Number.isNaN(parsedDate.getTime())) return
-          const key = formatLocalDateValue(parsedDate, tz)
-          counts.set(key, (counts.get(key) ?? 0) + 1)
-        })
-        setTaskDayCounts(counts)
+        setMonthTasks(Array.isArray(json?.result) ? (json.result as TaskItem[]) : [])
       })
       .catch(() => {
         if (cancelled) return
-        setTaskDayCounts(new Map())
+        setMonthTasks([])
       })
-  }, [supabaseId, activeTeamId, calendarMonth, tz])
+  }, [supabaseId, activeTeamId, calendarMonth])
+
+  const taskDayCounts = React.useMemo(() => {
+    const filtered = isRestrictedToOwnEvents && user?.id
+      ? monthTasks.filter((t) => t.assignees.some((a) => a.profile.id === user.id))
+      : monthTasks
+    const counts = new Map<string, number>()
+    filtered.forEach((task) => {
+      const rawDate = task.startAt || task.endAt || task.createdAt
+      if (!rawDate) return
+      const parsedDate = new Date(rawDate)
+      if (Number.isNaN(parsedDate.getTime())) return
+      const key = formatLocalDateValue(parsedDate, tz)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    })
+    return counts
+  }, [monthTasks, isRestrictedToOwnEvents, user?.id, tz])
 
   // Fetch tasks for the selected date range (full day)
   React.useEffect(() => {
@@ -719,15 +778,21 @@ export default function CalendarStudio() {
                   const scheduleCount = dayEventCounts.get(key) ?? 0
                   const tasksCount = taskDayCounts.get(key) ?? 0
                   const count = scheduleCount + tasksCount
+                  const isSelected = selectedDateKey === key
                   return (
                     <CalendarDayButton
                       {...props}
                       className={cn(props.className, count > 0 && "gap-0.5")}
                     >
                       <span>{props.children}</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {count > 0 ? count : ""}
-                      </span>
+                      {count > 0 && (
+                        <span className={cn(
+                          "text-[9px] font-semibold leading-none",
+                          isSelected ? "text-primary-foreground/75" : "text-primary"
+                        )}>
+                          {count}
+                        </span>
+                      )}
                     </CalendarDayButton>
                   )
                 },
@@ -741,14 +806,14 @@ export default function CalendarStudio() {
               }}
             />
             <div className="flex items-center justify-between px-2">
-              <div className="text-xs font-medium text-muted-foreground">Horarios</div>
+              <div className="text-xs font-medium text-muted-foreground">Horários</div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setSelectedTime(null)}
                 disabled={!selectedTime}
               >
-                Limpar horario
+                Limpar horário
               </Button>
             </div>
             <div
@@ -863,48 +928,50 @@ export default function CalendarStudio() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium">
-                  {selectedDateKey
-                    ? formatIntimezone(
-                        parseDateKeyToUtc(selectedDateKey, tz),
-                        "EEEE, dd 'de' MMMM 'de' yyyy",
-                        tz
-                      )
-                    : "Selecione um dia"}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div>
+                  <div className="text-sm font-medium">
+                    {selectedDateKey
+                      ? formatIntimezone(
+                          parseDateKeyToUtc(selectedDateKey, tz),
+                          "EEEE, dd 'de' MMMM 'de' yyyy",
+                          tz
+                        )
+                      : "Selecione um dia"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {selectedTime ? `Horário: ${selectedTime}` : "Sem horário selecionado"}
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  {selectedTime ? `Horario: ${selectedTime}` : "Sem horario selecionado"}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      id="show-meetings"
+                      checked={showMeetings}
+                      onCheckedChange={setShowMeetings}
+                      className="scale-75"
+                    />
+                    <Label htmlFor="show-meetings" className="text-xs cursor-pointer">Reuniões</Label>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Switch
+                      id="show-tasks"
+                      checked={showTasks}
+                      onCheckedChange={setShowTasks}
+                      className="scale-75"
+                    />
+                    <Label htmlFor="show-tasks" className="text-xs cursor-pointer">Tarefas</Label>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <Switch
-                    id="show-meetings"
-                    checked={showMeetings}
-                    onCheckedChange={setShowMeetings}
-                    className="scale-75"
-                  />
-                  <Label htmlFor="show-meetings" className="text-xs cursor-pointer">Reuniões</Label>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Switch
-                    id="show-tasks"
-                    checked={showTasks}
-                    onCheckedChange={setShowTasks}
-                    className="scale-75"
-                  />
-                  <Label htmlFor="show-tasks" className="text-xs cursor-pointer">Tarefas</Label>
-                </div>
-                <Button variant="outline" onClick={() => setLeadPickerOpen(true)} className="group">
-                  <CirclePlus
-                    className="mr-2 transition-transform duration-300 group-hover:rotate-90"
-                    size={16}
-                  />
-                  Agendar Reunião
-                </Button>
-              </div>
+              <Button variant="outline" onClick={() => setLeadPickerOpen(true)} className="group shrink-0">
+                <CirclePlus
+                  className="mr-2 transition-transform duration-300 group-hover:rotate-90"
+                  size={16}
+                />
+                Agendar Reunião
+              </Button>
             </div>
 
             <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
@@ -912,7 +979,7 @@ export default function CalendarStudio() {
                 Array.from({ length: 6 }).map((_, idx) => (
                   <Skeleton key={idx} className="h-28 w-full rounded-md" />
                 ))
-              ) : filteredEvents.filter(() => showMeetings).length === 0 && (tasks.length === 0 || !showTasks) ? (
+              ) : filteredEvents.filter(() => showMeetings).length === 0 && (visibleTasks.length === 0 || !showTasks) ? (
                 <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 rounded-md border border-dashed p-6 text-center">
                   <p className="text-sm text-muted-foreground">
                     Nenhuma agenda, tarefa ou lembrete para este dia e horário.
@@ -921,7 +988,7 @@ export default function CalendarStudio() {
                 </div>
               ) : (
                 <>
-                {showTasks && tasks.map((task) => (
+                {showTasks && visibleTasks.map((task) => (
                   <TaskCard
                     key={task.id}
                     task={task}
@@ -987,10 +1054,14 @@ export default function CalendarStudio() {
                         key={`${event.type}:${lead.id}:${event.date.toISOString()}`}
                         role="button"
                         tabIndex={0}
-                        onClick={() => handleCardClick(lead)}
+                        onClick={() => {
+                          if (suppressLeadDialogOpen) return
+                          handleCardClick(lead)
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault()
+                            if (suppressLeadDialogOpen) return
                             handleCardClick(lead)
                           }
                         }}
@@ -1024,6 +1095,7 @@ export default function CalendarStudio() {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
                                   onSelect={() => {
+                                    blockLeadDialogOpen()
                                     setLeadToSchedule(lead)
                                     setScheduleDialogMode("reschedule")
                                     setScheduleDialogOpen(true)
@@ -1033,6 +1105,7 @@ export default function CalendarStudio() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onSelect={() => {
+                                    blockLeadDialogOpen()
                                     setLeadToSchedule(lead)
                                     setScheduleDialogMode("reschedule")
                                     setScheduleDialogOpen(true)
@@ -1047,6 +1120,8 @@ export default function CalendarStudio() {
                                 <DropdownMenuItem
                                   className="text-destructive focus:text-destructive"
                                   onSelect={() => {
+                                    blockLeadDialogOpen()
+                                    setOpen(false)
                                     setLeadToCancel(lead)
                                     setCancelDialogOpen(true)
                                   }}
@@ -1176,7 +1251,7 @@ export default function CalendarStudio() {
       </div>
 
       <LeadDialog
-        open={open}
+        open={open && !cancelDialogOpen}
         setOpen={setOpen}
         lead={selected}
         user={user}
@@ -1277,11 +1352,11 @@ export default function CalendarStudio() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[420px]">
+        <DialogContent className="z-[80] sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle>Cancelar agenda</DialogTitle>
             <DialogDescription>
-              Deseja cancelar a agenda atual ou reagendar a reuniao?
+              Deseja cancelar a agenda atual ou reagendar a reuniao? Ao confirmar o cancelamento, o card sera atualizado para o status de Nova oportunidade.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap justify-end gap-2">

@@ -222,7 +222,12 @@ export default function LeadDialog({
   const params = useParams();
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
-  const { activeTeamId, activeFunctions, isTeamMaster } = useTeamContext();
+  const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const isCloserOperator =
+    activeFunctions.includes("CLOSER") &&
+    !isTeamMaster &&
+    activeRole !== "manager" &&
+    activeRole !== "backoffice";
   const { healthPlans, loading: healthPlansLoading } = useHealthPlans(supabaseId, activeTeamId);
   const {
     members: closersByTeam,
@@ -1743,13 +1748,25 @@ export default function LeadDialog({
 
       const payload =
         output.result && typeof output.result === "object" ? (output.result as Partial<Lead>) : {};
+      const scheduleResetPatch: Partial<Lead> =
+        newStatus === "new_opportunity"
+          ? {
+              meetingDate: null,
+              meetingTitle: null,
+              meetingNotes: null,
+              meetingLink: null,
+              meetingHeald: null,
+            }
+          : {};
+
       await applyLocalLeadPatch(currentLead.id, {
         ...payload,
+        ...scheduleResetPatch,
         status: newStatus as Lead["status"],
       });
       setLocalLead((prev) =>
         prev && prev.id === currentLead.id
-          ? ({ ...prev, ...payload, status: newStatus as Lead["status"] } as Lead)
+          ? ({ ...prev, ...payload, ...scheduleResetPatch, status: newStatus as Lead["status"] } as Lead)
           : prev,
       );
       toast.success("Status atualizado", { id: loadingToast });
@@ -2293,6 +2310,7 @@ export default function LeadDialog({
                       isEditMode={!!currentLead}
                       currentProfileId={user.id}
                       currentUserIsSdr={activeFunctions.includes("SDR") || user.functions.includes("SDR")}
+                      currentUserIsCloser={isCloserOperator}
                     />
                 )}
               </div>
@@ -2823,6 +2841,7 @@ export default function LeadDialog({
           teamMembers={usersToAssign}
           mode={currentLead.meetingDate ? "reschedule" : "create"}
           initialExtraGuests={scheduleGuests}
+          currentProfileId={user?.id}
         />
       )}
 

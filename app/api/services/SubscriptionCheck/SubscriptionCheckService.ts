@@ -26,7 +26,6 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
 
     // Verificar se tem assinatura permanente (BYPASS ASAAS)
     if (profile.hasPermanentSubscription) {
-      console.info('✅ [SubscriptionCheckService] Usuário com assinatura PERMANENTE (bypass Asaas)');
       return {
         success: true,
         hasActiveSubscription: true,

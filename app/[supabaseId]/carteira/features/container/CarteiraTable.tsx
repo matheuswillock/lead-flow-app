@@ -3,17 +3,26 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select';
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  CircleOff,
+  Clock,
+  Eye,
+  MoreHorizontal,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
   TableBody,
@@ -22,9 +31,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { CarteiraDetailModal } from '../components/CarteiraDetailModal';
 import { useCarteiraContext } from '../context/CarteiraContext';
 import {
   PORTFOLIO_STATUS_LABELS,
+  type CarteiraDetailData,
   type CarteiraRow,
   type PortfolioStatusValue,
 } from '../context/CarteiraTypes';
@@ -42,53 +59,66 @@ function formatDate(value: string | null | undefined): string {
   }
 }
 
-const STATUS_BADGE_VARIANT: Record<PortfolioStatusValue, 'default' | 'secondary' | 'destructive'> = {
-  active: 'default',
-  pending: 'secondary',
-  canceled: 'destructive',
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join('');
+}
+
+const STATUS_CONFIG: Record<
+  PortfolioStatusValue,
+  { icon: React.ReactNode; className: string }
+> = {
+  active: {
+    icon: <CheckCircle2 className="size-4" />,
+    className: 'text-[var(--semantic-success)]',
+  },
+  pending: {
+    icon: <Clock className="size-4" />,
+    className: 'text-[var(--semantic-warning)]',
+  },
+  canceled: {
+    icon: <CircleOff className="size-4" />,
+    className: 'text-destructive',
+  },
 };
 
-function NoteCell({ row, onSave }: { row: CarteiraRow; onSave: (note: string | null) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(row.note ?? '');
-
-  if (!editing) {
-    return (
-      <span
-        className="cursor-pointer text-sm text-muted-foreground hover:text-foreground"
-        title="Clique para editar"
-        onClick={() => setEditing(true)}
-      >
-        {row.note || <span className="italic text-xs">Adicionar nota...</span>}
-      </span>
-    );
-  }
-
+function StatusCell({ status }: { status: PortfolioStatusValue }) {
+  const config = STATUS_CONFIG[status];
   return (
-    <Input
-      autoFocus
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={() => {
-        setEditing(false);
-        const trimmed = value.trim();
-        onSave(trimmed || null);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        if (e.key === 'Escape') {
-          setValue(row.note ?? '');
-          setEditing(false);
-        }
-      }}
-      className="h-7 text-xs"
-    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={`inline-flex ${config.className}`}>{config.icon}</span>
+      </TooltipTrigger>
+      <TooltipContent>{PORTFOLIO_STATUS_LABELS[status]}</TooltipContent>
+    </Tooltip>
   );
 }
 
-function CarteiraTableRow({ row }: { row: CarteiraRow }) {
-  const { updateEntry } = useCarteiraContext();
+function ProfileCell({ person }: { person: { id: string; name: string } | null }) {
+  if (!person) return <span className="text-muted-foreground text-sm">—</span>;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Avatar className="size-7 cursor-default">
+          <AvatarFallback className="text-[10px]">{getInitials(person.name)}</AvatarFallback>
+        </Avatar>
+      </TooltipTrigger>
+      <TooltipContent>{person.name}</TooltipContent>
+    </Tooltip>
+  );
+}
 
+function CarteiraTableRow({
+  row,
+  onVisualize,
+}: {
+  row: CarteiraRow;
+  onVisualize: (leadId: string) => void;
+}) {
   return (
     <TableRow>
       <TableCell>
@@ -97,59 +127,67 @@ function CarteiraTableRow({ row }: { row: CarteiraRow }) {
           <p className="text-xs text-muted-foreground">{row.leadCode}</p>
         </div>
       </TableCell>
-      <TableCell className="text-sm">{row.sdr?.name ?? '—'}</TableCell>
-      <TableCell className="text-sm">{row.closer?.name ?? '—'}</TableCell>
-      <TableCell className="text-sm">{row.soldPlan ?? '—'}</TableCell>
+      <TableCell className="text-sm text-muted-foreground">{row.operadora ?? '—'}</TableCell>
+      <TableCell className="text-sm">{formatDate(row.contractStartDate)}</TableCell>
       <TableCell className="text-right text-sm font-medium">{formatBRL(row.saleValue)}</TableCell>
       <TableCell className="text-sm">{formatDate(row.contractDueDate)}</TableCell>
-
-      {/* Status inline */}
       <TableCell>
-        <Select
-          value={row.portfolioStatus}
-          onValueChange={(v) => updateEntry(row.leadId, { portfolioStatus: v as PortfolioStatusValue })}
-        >
-          <SelectTrigger className="h-7 w-28 border-0 bg-transparent p-0 text-xs focus:ring-0">
-            <Badge variant={STATUS_BADGE_VARIANT[row.portfolioStatus]} className="text-xs">
-              {PORTFOLIO_STATUS_LABELS[row.portfolioStatus]}
-            </Badge>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="active">Ativo</SelectItem>
-            <SelectItem value="pending">Pendente</SelectItem>
-            <SelectItem value="canceled">Cancelado</SelectItem>
-          </SelectContent>
-        </Select>
+        <StatusCell status={row.portfolioStatus} />
       </TableCell>
-
-      {/* Note inline */}
-      <TableCell className="max-w-40">
-        <NoteCell
-          row={row}
-          onSave={(note) => updateEntry(row.leadId, { note })}
-        />
-      </TableCell>
-
-      {/* Last contact inline */}
       <TableCell>
-        <Input
-          type="date"
-          defaultValue={row.lastContactAt ? row.lastContactAt.substring(0, 10) : ''}
-          onChange={(e) => {
-            const val = e.target.value;
-            updateEntry(row.leadId, { lastContactAt: val ? new Date(val).toISOString() : null });
-          }}
-          className="h-7 w-36 text-xs"
-        />
+        <ProfileCell person={row.sdr} />
+      </TableCell>
+      <TableCell>
+        <ProfileCell person={row.closer} />
+      </TableCell>
+      <TableCell className="w-10">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+            <Button variant="ghost" size="icon" className="size-7">
+              <MoreHorizontal className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => onVisualize(row.leadId)}>
+              <Eye className="mr-2 size-4" />
+              Visualizar
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </TableCell>
     </TableRow>
   );
 }
 
 export function CarteiraTable() {
-  const { data, isLoading, filters, setPage } = useCarteiraContext();
+  const { data, isLoading, filters, setPage, getEntryDetail, updateEntryDetail } = useCarteiraContext();
   const pagination = data?.pagination;
   const rows = data?.rows ?? [];
+
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [detailData, setDetailData] = useState<CarteiraDetailData | null>(null);
+
+  const handleVisualize = async (leadId: string) => {
+    setIsDetailOpen(true);
+    setIsDetailLoading(true);
+    setDetailData(null);
+    try {
+      const result = await getEntryDetail(leadId);
+      setDetailData(result);
+    } catch (err) {
+      setIsDetailOpen(false);
+      toast.error(err instanceof Error ? err.message : 'Erro ao buscar detalhe');
+    } finally {
+      setIsDetailLoading(false);
+    }
+  };
+
+  const handleDetailSave = async (leadId: string, payload: Parameters<typeof updateEntryDetail>[1]) => {
+    const updated = await updateEntryDetail(leadId, payload);
+    setDetailData(updated);
+  };
 
   if (isLoading && !data) {
     return (
@@ -163,61 +201,77 @@ export function CarteiraTable() {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Cliente</TableHead>
-              <TableHead>SDR</TableHead>
-              <TableHead>Closer</TableHead>
-              <TableHead>Plano</TableHead>
-              <TableHead className="text-right">Valor</TableHead>
-              <TableHead>Vigência</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Nota</TableHead>
-              <TableHead>Último contato</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.length === 0 ? (
+    <TooltipProvider delayDuration={200}>
+      <div className="space-y-3">
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
-                  Nenhum cliente na carteira.
-                </TableCell>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Operadora</TableHead>
+                <TableHead>Data de Contrato</TableHead>
+                <TableHead className="text-right">Valor</TableHead>
+                <TableHead>Vencimento</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>SDR</TableHead>
+                <TableHead>Closer</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
-            ) : (
-              rows.map((row) => <CarteiraTableRow key={row.leadId} row={row} />)
-            )}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                    Nenhum cliente na carteira.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((row) => (
+                  <CarteiraTableRow
+                    key={row.leadId}
+                    row={row}
+                    onVisualize={handleVisualize}
+                  />
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => setPage(filters.page - 1)}
+              disabled={filters.page <= 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Página {pagination.page} de {pagination.totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              onClick={() => setPage(filters.page + 1)}
+              disabled={filters.page >= pagination.totalPages}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
-      {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8"
-            onClick={() => setPage(filters.page - 1)}
-            disabled={filters.page <= 1}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Página {pagination.page} de {pagination.totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8"
-            onClick={() => setPage(filters.page + 1)}
-            disabled={filters.page >= pagination.totalPages}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-    </div>
+      <CarteiraDetailModal
+        open={isDetailOpen}
+        onOpenChange={setIsDetailOpen}
+        detail={detailData}
+        isLoading={isDetailLoading}
+        onSave={handleDetailSave}
+      />
+    </TooltipProvider>
   );
 }

@@ -686,12 +686,6 @@ class PrismaProfileRepository implements IProfileRepository {
                 return null;
             }
 
-            console.info("✅ [updateProfileById] Profile encontrado:", {
-                hasSupabaseId: !!existingProfile.supabaseId,
-                supabaseId: existingProfile.supabaseId || 'null',
-                currentEmail: existingProfile.email,
-                currentRole: existingProfile.role
-            });
 
             // PASSO 2: Verificar se deve atualizar o Supabase Auth
             // Só atualiza se:

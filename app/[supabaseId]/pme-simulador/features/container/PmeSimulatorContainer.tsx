@@ -33,7 +33,7 @@ export function PmeSimulatorContainer() {
         <Alert className="max-w-xl border-semantic-warning-border bg-semantic-warning-surface">
           <AlertTitle className="text-semantic-warning">Acesso restrito</AlertTitle>
           <AlertDescription className="text-foreground">
-            O Simulador de Planos esta disponivel apenas para SDR, Closer e perfis manager.
+            O Simulador de Planos esta disponível apenas para SDR, Closer e perfis manager.
           </AlertDescription>
         </Alert>
       </div>

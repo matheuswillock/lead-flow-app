@@ -181,7 +181,7 @@ interface IMetaWhatsAppService {
   - telefone E.164 valido (`whatsappPhoneE164`).
 - Reagendamento:
   - cancelar dispatch pendente de lembrete antigo;
-  - gerar novo lembrete para novo horario.
+  - gerar novo lembrete para novo horá  rio.
 - Cancelamento de reuniao:
   - cancelar dispatches pendentes da reuniao.
 - Idempotencia:
