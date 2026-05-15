@@ -17,6 +17,7 @@ import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinal
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
 import { leadScheduleService } from "../../services/leadSchedule/LeadScheduleService";
+import { cancelCalendarEvent } from "../../services/googleCalendar/GoogleCalendarService";
 import { prisma } from "../../infra/data/prisma";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "../../v1/leads/DTO/leadValueLimits";
 import { normalizeHealthPlanName } from "@/lib/healthPlans";
@@ -677,18 +678,78 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
+      const existingLead = await this.leadRepository.findById(id);
+      if (!existingLead) {
+        return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
       // Verificar permissões para operators
-      if (profileInfo.role === 'operator') {
-        const existingLead = await this.leadRepository.findById(id);
-        
-        if (!existingLead) {
-          return new Output(false, [], ["Lead não encontrado"], null);
+      if (profileInfo.role === 'operator' && existingLead.createdBy !== profileInfo.id) {
+        return new Output(false, [], ["Você só pode deletar leads que você criou"], null);
+      }
+
+      if (existingLead.status === LeadStatus.scheduled) {
+        const schedule = await leadScheduleRepository.findLatestByLeadId(id);
+
+        if (schedule?.googleEventId) {
+          if (!existingLead.closerId) {
+            return new Output(
+              false,
+              [],
+              ["Não foi possível excluir o lead: closer do agendamento não encontrado para cancelar no Google Calendar."],
+              null
+            );
+          }
+
+          const closerProfile = await prisma.profile.findUnique({
+            where: { id: existingLead.closerId },
+          });
+          const canUseGoogleCalendar =
+            !!closerProfile?.googleCalendarConnected && !!closerProfile.googleRefreshToken;
+
+          if (!closerProfile || !canUseGoogleCalendar) {
+            return new Output(
+              false,
+              [],
+              ["Não foi possível excluir o lead: conta Google do closer não está conectada para cancelar o evento."],
+              null
+            );
+          }
+
+          try {
+            await cancelCalendarEvent({
+              organizer: closerProfile,
+              eventId: schedule.googleEventId,
+              calendarId: schedule.googleCalendarId ?? "primary",
+            });
+          } catch (calendarError) {
+            const calendarErrorMessage =
+              calendarError instanceof Error
+                ? calendarError.message
+                : "Falha ao cancelar evento no Google Calendar";
+
+            return new Output(
+              false,
+              [],
+              [`Não foi possível excluir o lead porque o cancelamento no Google Calendar falhou (${calendarErrorMessage}).`],
+              null
+            );
+          }
         }
-        
-        // Operator só pode deletar se criou o lead
-        if (existingLead.createdBy !== profileInfo.id) {
-          return new Output(false, [], ["Você só pode deletar leads que você criou"], null);
-        }
+
+        await prisma.$transaction(async (tx) => {
+          if (schedule) {
+            await tx.leadsSchedule.delete({
+              where: { id: schedule.id },
+            });
+          }
+
+          await tx.lead.delete({
+            where: { id },
+          });
+        });
+
+        return new Output(true, ["Lead excluído com sucesso"], [], null);
       }
 
       await this.leadRepository.delete(id);
@@ -824,6 +885,24 @@ export class LeadUseCase implements ILeadUseCase {
 
       const statusUpdateExtraData: Prisma.LeadUpdateInput = {};
 
+      const isCurrentStatusScheduled = existingLead.status === LeadStatus.scheduled;
+      const isMeetingHeald = existingLead.meetingHeald === "yes";
+
+      if (
+        isCurrentStatusScheduled &&
+        isMeetingHeald &&
+        (status === LeadStatus.new_opportunity || status === LeadStatus.no_show)
+      ) {
+        return new Output(
+          false,
+          [],
+          ["Lead com reunião realizada não pode voltar para Nova oportunidade ou No-show."],
+          {
+            transition: createTransition(false, "validation_error"),
+          }
+        );
+      }
+
       if (status === LeadStatus.no_show) {
         if (!existingLead.meetingDate) {
           return new Output(
@@ -848,9 +927,10 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const isLeavingScheduled =
-        existingLead.status === LeadStatus.scheduled &&
+        isCurrentStatusScheduled &&
         status !== LeadStatus.scheduled &&
-        status !== LeadStatus.no_show;
+        status !== LeadStatus.no_show &&
+        status !== LeadStatus.new_opportunity;
 
       if (isLeavingScheduled && existingLead.meetingHeald !== "yes") {
         const team = existingLead.teamId
