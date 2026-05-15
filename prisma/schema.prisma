@@ -468,6 +468,9 @@ model Profile {
   backofficeSubscriptions BackofficeUserSubscription[] @relation("BackofficeUserSubscriptions")
   backofficeFeatureGrants BackofficeFeatureGrant[]     @relation("BackofficeFeatureProfileGrants")
 
+  // MCP tokens
+  createdMcpTokens TeamMcpToken[] @relation("McpTokenCreator")
+
   // Product subscription (master only; operators inherit via managerId)
   subscription ProfileSubscription?
 
@@ -1125,6 +1128,7 @@ model Team {
   filterPresets            TeamFilterPreset[]
   statusRules              TeamStatusRule[]
   portfolioEntries         LeadPortfolio[]
+  mcpTokens                TeamMcpToken[]
 
   // Email campaigns relations
   emailTemplates    EmailTemplate[]    @relation("TeamEmailTemplates")
@@ -1216,6 +1220,33 @@ model TeamStudioWebhookRequestLog {
   @@index([teamId, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@map("team_studio_webhook_request_logs")
+}
+
+// -----------------------------
+// MCP TOKENS (public.team_mcp_tokens)
+// -----------------------------
+
+model TeamMcpToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  teamId       String    @db.Uuid
+  createdBy    String    @db.Uuid
+  tokenHash    String    @unique @db.Text
+  tokenPreview String    @db.Text
+  label        String?   @db.Text
+  isActive     Boolean   @default(true)
+  lastUsedAt   DateTime? @db.Timestamptz(6)
+  expiresAt    DateTime? @db.Timestamptz(6)
+  revokedAt    DateTime? @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(6)
+
+  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator Profile @relation("McpTokenCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([teamId])
+  @@index([tokenHash])
+  @@index([createdBy])
+  @@map("team_mcp_tokens")
 }
 
 model Notification {
