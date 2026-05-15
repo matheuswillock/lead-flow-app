@@ -38,6 +38,7 @@ async function verifyToken(
 const mcpHandler = createMcpHandler(
   (server) => {
     // ── LISTAR LEADS ────────────────────────────────────────────────────────
+    // @ts-ignore — TS2589: zod enum + registerTool generic hits instantiation depth limit
     server.registerTool(
       "listar_leads",
       {
@@ -129,6 +130,7 @@ const mcpHandler = createMcpHandler(
     );
 
     // ── ATUALIZAR LEAD ───────────────────────────────────────────────────────
+    // @ts-ignore — TS2589: spread destructure + deep generic hits instantiation depth limit
     server.registerTool(
       "atualizar_lead",
       {
@@ -164,6 +166,7 @@ const mcpHandler = createMcpHandler(
     );
 
     // ── ATUALIZAR STATUS DO LEAD ─────────────────────────────────────────────
+    // @ts-ignore — TS2589: zod enum + registerTool generic hits instantiation depth limit
     server.registerTool(
       "atualizar_status_lead",
       {
@@ -206,6 +209,7 @@ const mcpHandler = createMcpHandler(
     );
 
     // ── CRIAR ATIVIDADE NO LEAD ──────────────────────────────────────────────
+    // @ts-ignore — TS2589: zod enum + registerTool generic hits instantiation depth limit
     server.registerTool(
       "criar_atividade_lead",
       {
