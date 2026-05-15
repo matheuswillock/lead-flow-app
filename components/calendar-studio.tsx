@@ -47,6 +47,7 @@ import {
   nowInTz,
   parseDateKeyToUtc,
 } from "@/lib/dates"
+import { leadStatusTransitionClient } from "@/lib/services/leadStatusTransitionClient"
 
 type AttendeeRole = "closer" | "sdr" | "lead" | "extra"
 
@@ -445,15 +446,30 @@ export default function CalendarStudio() {
   const handleCancelSchedule = async () => {
     if (!leadToCancel) return
     try {
-      if (!supabaseId) {
-        throw new Error("Usuario nao identificado")
+      if (!supabaseId || !activeTeamId) {
+        throw new Error("Usuário ou time não identificado")
       }
+
+      const transitionValidation = await leadStatusTransitionClient.validateStatusTransition({
+        leadId: leadToCancel.id,
+        targetStatus: "new_opportunity",
+        supabaseId,
+        teamId: activeTeamId,
+      })
+
+      if (!transitionValidation.transition.allowed || !transitionValidation.output.isValid) {
+        throw new Error(
+          transitionValidation.output.errorMessages?.join(", ") ||
+            "Transição de status inválida para cancelar agenda."
+        )
+      }
+
       const response = await fetch(`/api/v1/leads/${leadToCancel.id}/schedule/cancel`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-supabase-user-id": supabaseId,
-          "x-team-id": activeTeamId || "",
+          "x-team-id": activeTeamId,
         },
       })
       const result = await response.json()
@@ -1077,6 +1093,7 @@ export default function CalendarStudio() {
                                 <DropdownMenuItem
                                   className="text-destructive focus:text-destructive"
                                   onSelect={() => {
+                                    setOpen(false)
                                     setLeadToCancel(lead)
                                     setCancelDialogOpen(true)
                                   }}
@@ -1307,11 +1324,11 @@ export default function CalendarStudio() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[420px]">
+        <DialogContent className="z-[80] sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle>Cancelar agenda</DialogTitle>
             <DialogDescription>
-              Deseja cancelar a agenda atual ou reagendar a reuniao?
+              Deseja cancelar a agenda atual ou reagendar a reuniao? Ao confirmar o cancelamento, o card sera atualizado para o status de Nova oportunidade.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-wrap justify-end gap-2">
