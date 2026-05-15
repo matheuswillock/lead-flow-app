@@ -690,50 +690,40 @@ export class LeadUseCase implements ILeadUseCase {
 
       if (existingLead.status === LeadStatus.scheduled) {
         const schedule = await leadScheduleRepository.findLatestByLeadId(id);
+        let calendarWarning: string | null = null;
 
         if (schedule?.googleEventId) {
           if (!existingLead.closerId) {
-            return new Output(
-              false,
-              [],
-              ["Não foi possível excluir o lead: closer do agendamento não encontrado para cancelar no Google Calendar."],
-              null
-            );
+            calendarWarning =
+              "Closer do agendamento não encontrado. Evento não foi cancelado no Google Calendar.";
           }
 
-          const closerProfile = await prisma.profile.findUnique({
-            where: { id: existingLead.closerId },
-          });
-          const canUseGoogleCalendar =
-            !!closerProfile?.googleCalendarConnected && !!closerProfile.googleRefreshToken;
-
-          if (!closerProfile || !canUseGoogleCalendar) {
-            return new Output(
-              false,
-              [],
-              ["Não foi possível excluir o lead: conta Google do closer não está conectada para cancelar o evento."],
-              null
-            );
-          }
-
-          try {
-            await cancelCalendarEvent({
-              organizer: closerProfile,
-              eventId: schedule.googleEventId,
-              calendarId: schedule.googleCalendarId ?? "primary",
+          if (existingLead.closerId) {
+            const closerProfile = await prisma.profile.findUnique({
+              where: { id: existingLead.closerId },
             });
-          } catch (calendarError) {
-            const calendarErrorMessage =
-              calendarError instanceof Error
-                ? calendarError.message
-                : "Falha ao cancelar evento no Google Calendar";
+            const canUseGoogleCalendar =
+              !!closerProfile?.googleCalendarConnected && !!closerProfile.googleRefreshToken;
 
-            return new Output(
-              false,
-              [],
-              [`Não foi possível excluir o lead porque o cancelamento no Google Calendar falhou (${calendarErrorMessage}).`],
-              null
-            );
+            if (!closerProfile || !canUseGoogleCalendar) {
+              calendarWarning =
+                "Conta Google do closer não está conectada. Evento não foi cancelado no Google Calendar.";
+            }
+
+            if (closerProfile && canUseGoogleCalendar) {
+              try {
+                await cancelCalendarEvent({
+                  organizer: closerProfile,
+                  eventId: schedule.googleEventId,
+                  calendarId: schedule.googleCalendarId ?? "primary",
+                });
+              } catch (calendarError) {
+                calendarWarning =
+                  calendarError instanceof Error
+                    ? calendarError.message
+                    : "Falha ao cancelar evento no Google Calendar";
+              }
+            }
           }
         }
 
@@ -749,7 +739,11 @@ export class LeadUseCase implements ILeadUseCase {
           });
         });
 
-        return new Output(true, ["Lead excluído com sucesso"], [], null);
+        const successMessages = ["Lead excluído com sucesso"];
+        if (calendarWarning) {
+          successMessages.push("Aviso: evento no Google Calendar não foi removido.");
+        }
+        return new Output(true, successMessages, [], null);
       }
 
       await this.leadRepository.delete(id);
@@ -884,6 +878,7 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const statusUpdateExtraData: Prisma.LeadUpdateInput = {};
+      const transitionWarnings: string[] = [];
 
       const isCurrentStatusScheduled = existingLead.status === LeadStatus.scheduled;
       const isMeetingHeald = existingLead.meetingHeald === "yes";
@@ -1085,6 +1080,58 @@ export class LeadUseCase implements ILeadUseCase {
         }
       }
 
+      const shouldCleanupScheduledOnRevert =
+        existingLead.status === LeadStatus.scheduled &&
+        status === LeadStatus.new_opportunity;
+
+      if (shouldCleanupScheduledOnRevert && mode === "apply") {
+        const schedule = await leadScheduleRepository.findLatestByLeadId(id);
+
+        if (schedule?.googleEventId) {
+          if (!existingLead.closerId) {
+            transitionWarnings.push(
+              "Closer do agendamento não encontrado. Evento não foi cancelado no Google Calendar."
+            );
+          } else {
+            const closerProfile = await prisma.profile.findUnique({
+              where: { id: existingLead.closerId },
+            });
+            const canUseGoogleCalendar =
+              !!closerProfile?.googleCalendarConnected && !!closerProfile.googleRefreshToken;
+
+            if (!closerProfile || !canUseGoogleCalendar) {
+              transitionWarnings.push(
+                "Conta Google do closer não está conectada. Evento não foi cancelado no Google Calendar."
+              );
+            } else {
+              try {
+                await cancelCalendarEvent({
+                  organizer: closerProfile,
+                  eventId: schedule.googleEventId,
+                  calendarId: schedule.googleCalendarId ?? "primary",
+                });
+              } catch (calendarError) {
+                transitionWarnings.push(
+                  calendarError instanceof Error
+                    ? calendarError.message
+                    : "Falha ao cancelar evento no Google Calendar."
+                );
+              }
+            }
+          }
+        }
+
+        if (schedule) {
+          await leadScheduleRepository.delete(schedule.id);
+        }
+
+        statusUpdateExtraData.meetingDate = null;
+        statusUpdateExtraData.meetingTitle = null;
+        statusUpdateExtraData.meetingNotes = null;
+        statusUpdateExtraData.meetingLink = null;
+        statusUpdateExtraData.meetingHeald = null;
+      }
+
       if (status !== existingLead.status) {
         statusUpdateExtraData.statusEnteredAt = new Date();
       }
@@ -1253,13 +1300,20 @@ export class LeadUseCase implements ILeadUseCase {
         });
       }
 
+      const successMessages = ["Status do lead atualizado com sucesso"];
+      if (transitionWarnings.length > 0) {
+        successMessages.push("Aviso: evento no Google Calendar não foi removido.");
+      }
+
       return new Output(
         true,
-        ["Status do lead atualizado com sucesso"],
+        successMessages,
         [],
         {
           ...this.transformToDTO(lead),
-          transition: createTransition(true, "none"),
+          transition: createTransition(true, "none", {
+            warnings: transitionWarnings.length > 0 ? transitionWarnings : undefined,
+          }),
         }
       );
     } catch (error) {
