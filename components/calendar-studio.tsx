@@ -268,10 +268,31 @@ export default function CalendarStudio() {
   const [tasks, setTasks] = React.useState<TaskItem[]>([])
   const [tasksLoading, setTasksLoading] = React.useState(false)
   const [monthTasks, setMonthTasks] = React.useState<TaskItem[]>([])
+  const [suppressLeadDialogOpen, setSuppressLeadDialogOpen] = React.useState(false)
   const params = useParams()
   const supabaseId = params.supabaseId as string | undefined
   const { activeTeamId, activeFunctions, isTeamMaster, activeRole } = useTeamContext()
   const timeListRef = React.useRef<HTMLDivElement | null>(null)
+  const suppressLeadDialogTimerRef = React.useRef<number | null>(null)
+
+  const blockLeadDialogOpen = React.useCallback(() => {
+    setSuppressLeadDialogOpen(true)
+    if (suppressLeadDialogTimerRef.current) {
+      window.clearTimeout(suppressLeadDialogTimerRef.current)
+    }
+    suppressLeadDialogTimerRef.current = window.setTimeout(() => {
+      setSuppressLeadDialogOpen(false)
+      suppressLeadDialogTimerRef.current = null
+    }, 500)
+  }, [])
+
+  React.useEffect(() => {
+    return () => {
+      if (suppressLeadDialogTimerRef.current) {
+        window.clearTimeout(suppressLeadDialogTimerRef.current)
+      }
+    }
+  }, [])
 
   const canToggleMeetingHeald = React.useMemo(() => {
     return isTeamMaster || activeFunctions.includes("CLOSER")
@@ -1033,10 +1054,14 @@ export default function CalendarStudio() {
                         key={`${event.type}:${lead.id}:${event.date.toISOString()}`}
                         role="button"
                         tabIndex={0}
-                        onClick={() => handleCardClick(lead)}
+                        onClick={() => {
+                          if (suppressLeadDialogOpen) return
+                          handleCardClick(lead)
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault()
+                            if (suppressLeadDialogOpen) return
                             handleCardClick(lead)
                           }
                         }}
@@ -1070,6 +1095,7 @@ export default function CalendarStudio() {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
                                   onSelect={() => {
+                                    blockLeadDialogOpen()
                                     setLeadToSchedule(lead)
                                     setScheduleDialogMode("reschedule")
                                     setScheduleDialogOpen(true)
@@ -1079,6 +1105,7 @@ export default function CalendarStudio() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onSelect={() => {
+                                    blockLeadDialogOpen()
                                     setLeadToSchedule(lead)
                                     setScheduleDialogMode("reschedule")
                                     setScheduleDialogOpen(true)
@@ -1093,6 +1120,7 @@ export default function CalendarStudio() {
                                 <DropdownMenuItem
                                   className="text-destructive focus:text-destructive"
                                   onSelect={() => {
+                                    blockLeadDialogOpen()
                                     setOpen(false)
                                     setLeadToCancel(lead)
                                     setCancelDialogOpen(true)
@@ -1223,7 +1251,7 @@ export default function CalendarStudio() {
       </div>
 
       <LeadDialog
-        open={open}
+        open={open && !cancelDialogOpen}
         setOpen={setOpen}
         lead={selected}
         user={user}
