@@ -111,7 +111,7 @@ export class PortfolioService implements IPortfolioService {
         ...(dueDateStart || dueDateEnd ? {
           contractDueDate: {
             ...(dueDateStart ? { gte: dueDateStart } : {}),
-            ...(dueDateEnd ? { lte: dueDateEnd } : {}),
+            ...(dueDateEnd ? { lt: dueDateEnd } : {}),
           },
         } : {}),
         ...(needsLeadFinalizedJoin ? {
@@ -121,7 +121,7 @@ export class PortfolioService implements IPortfolioService {
                 ...(contractDateStart || contractDateEnd ? [{
                   startDateAt: {
                     ...(contractDateStart ? { gte: contractDateStart } : {}),
-                    ...(contractDateEnd ? { lte: contractDateEnd } : {}),
+                    ...(contractDateEnd ? { lt: contractDateEnd } : {}),
                   },
                 }] : []),
                 ...(operadora ? [{
@@ -339,7 +339,6 @@ export class PortfolioService implements IPortfolioService {
         if (payload.productName !== undefined) finalizedPatch.productName = payload.productName;
         if (payload.amount !== undefined) finalizedPatch.amount = payload.amount;
         if (payload.startDateAt) finalizedPatch.startDateAt = new Date(payload.startDateAt);
-        if (sharedDueDate) finalizedPatch.finalizedDateAt = new Date(sharedDueDate);
         if (payload.notes !== undefined) finalizedPatch.notes = payload.notes;
         if (Object.keys(finalizedPatch).length > 0) {
           await tx.leadFinalized.update({ where: { id: finalized.id }, data: finalizedPatch });

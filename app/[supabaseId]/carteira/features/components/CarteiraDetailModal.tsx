@@ -177,7 +177,7 @@ interface EditForm {
   productName: string;
   amount: string;
   startDateAt: string;
-  finalizedDateAt: string;
+  contractDueDate: string;
   notes: string;
   holderEnabled: boolean;
   holderName: string;
@@ -193,7 +193,7 @@ function initEditForm(detail: CarteiraDetailData): EditForm {
     productName: detail.contract?.productName ?? detail.soldPlan ?? '',
     amount: detail.contract ? formatCurrencyInput(detail.contract.amount) : '',
     startDateAt: toInputDate(detail.contract?.startDateAt),
-    finalizedDateAt: toInputDate(detail.contract?.finalizedDateAt ?? detail.contractDueDate),
+    contractDueDate: toInputDate(detail.contractDueDate),
     notes: detail.contract?.notes ?? '',
     holderEnabled: !!detail.holder,
     holderName: detail.holder?.name ?? '',
@@ -212,20 +212,26 @@ function initEditForm(detail: CarteiraDetailData): EditForm {
 }
 
 function buildPayload(form: EditForm): UpdateCarteiraDetailPayload {
+  const holderDocument = sanitizeRgCpfDigits(form.holderDocument);
+  const hasHolderContent =
+    !!form.holderName.trim() ||
+    !!form.holderBirthDate ||
+    !!holderDocument ||
+    !!form.holderCnpj.trim();
+
   return {
     operadora: form.operadora.trim() || null,
     productName: form.productName.trim() || null,
     amount: parseCurrencyInput(form.amount) || undefined,
     startDateAt: form.startDateAt || undefined,
-    finalizedDateAt: form.finalizedDateAt || undefined,
-    contractDueDate: form.finalizedDateAt || null,
+    contractDueDate: form.contractDueDate || null,
     soldPlan: form.productName.trim() || null,
     notes: form.notes.trim() || null,
-    holder: form.holderEnabled
+    holder: (form.holderEnabled || hasHolderContent)
       ? {
           name: form.holderName.trim(),
           birthDate: form.holderBirthDate,
-          document: sanitizeRgCpfDigits(form.holderDocument),
+          document: holderDocument,
           cnpj: form.holderCnpj.trim() || null,
         }
       : undefined,
@@ -386,8 +392,8 @@ export function CarteiraDetailModal({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <DateTimePicker
-                    date={toPickerDate(form.finalizedDateAt)}
-                    onDateChange={(value) => patchForm('finalizedDateAt', fromPickerDate(value))}
+                    date={toPickerDate(form.contractDueDate)}
+                    onDateChange={(value) => patchForm('contractDueDate', fromPickerDate(value))}
                     label="Vencimento"
                     showTime={false}
                     disablePastDates={false}
@@ -412,7 +418,7 @@ export function CarteiraDetailModal({
                 <InfoRow label="Operadora" value={detail.contract.operadora} />
                 <InfoRow label="Plano" value={detail.contract.productName ?? detail.soldPlan} />
                 <InfoRow label="Valor" value={formatBRL(detail.contract.amount)} />
-                <InfoRow label="Vencimento" value={formatDate(detail.contract.finalizedDateAt)} />
+                <InfoRow label="Vencimento" value={formatDate(detail.contractDueDate)} />
                 <InfoRow label="Data de início" value={formatDate(detail.contract.startDateAt)} />
                 <InfoRow label="SDR" value={<ProfileBadge person={detail.sdr} />} />
                 <InfoRow label="Closer" value={<ProfileBadge person={detail.closer} />} />
