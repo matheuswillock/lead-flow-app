@@ -688,66 +688,61 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Você só pode deletar leads que você criou"], null);
       }
 
-      if (existingLead.status === LeadStatus.scheduled) {
-        const schedule = await leadScheduleRepository.findLatestByLeadId(id);
-        let calendarWarning: string | null = null;
+      const schedule = await leadScheduleRepository.findLatestByLeadId(id);
+      let calendarWarning: string | null = null;
 
-        if (schedule?.googleEventId) {
-          if (!existingLead.closerId) {
-            calendarWarning =
-              "Closer do agendamento não encontrado. Evento não foi cancelado no Google Calendar.";
-          }
-
-          if (existingLead.closerId) {
-            const closerProfile = await prisma.profile.findUnique({
-              where: { id: existingLead.closerId },
-            });
-            const canUseGoogleCalendar =
-              !!closerProfile?.googleCalendarConnected && !!closerProfile.googleRefreshToken;
-
-            if (!closerProfile || !canUseGoogleCalendar) {
-              calendarWarning =
-                "Conta Google do closer não está conectada. Evento não foi cancelado no Google Calendar.";
-            }
-
-            if (closerProfile && canUseGoogleCalendar) {
-              try {
-                await cancelCalendarEvent({
-                  organizer: closerProfile,
-                  eventId: schedule.googleEventId,
-                  calendarId: schedule.googleCalendarId ?? "primary",
-                });
-              } catch (calendarError) {
-                calendarWarning =
-                  calendarError instanceof Error
-                    ? calendarError.message
-                    : "Falha ao cancelar evento no Google Calendar";
-              }
-            }
-          }
+      if (schedule?.googleEventId) {
+        if (!existingLead.closerId) {
+          calendarWarning =
+            "Closer do agendamento não encontrado. Evento não foi cancelado no Google Calendar.";
         }
 
-        await prisma.$transaction(async (tx) => {
-          if (schedule) {
-            await tx.leadsSchedule.delete({
-              where: { id: schedule.id },
-            });
-          }
-
-          await tx.lead.delete({
-            where: { id },
+        if (existingLead.closerId) {
+          const closerProfile = await prisma.profile.findUnique({
+            where: { id: existingLead.closerId },
           });
-        });
+          const canUseGoogleCalendar =
+            !!closerProfile?.googleCalendarConnected && !!closerProfile.googleRefreshToken;
 
-        const successMessages = ["Lead excluído com sucesso"];
-        if (calendarWarning) {
-          successMessages.push("Aviso: evento no Google Calendar não foi removido.");
+          if (!closerProfile || !canUseGoogleCalendar) {
+            calendarWarning =
+              "Conta Google do closer não está conectada. Evento não foi cancelado no Google Calendar.";
+          }
+
+          if (closerProfile && canUseGoogleCalendar) {
+            try {
+              await cancelCalendarEvent({
+                organizer: closerProfile,
+                eventId: schedule.googleEventId,
+                calendarId: schedule.googleCalendarId ?? "primary",
+              });
+            } catch (calendarError) {
+              calendarWarning =
+                calendarError instanceof Error
+                  ? calendarError.message
+                  : "Falha ao cancelar evento no Google Calendar";
+            }
+          }
         }
-        return new Output(true, successMessages, [], null);
       }
 
-      await this.leadRepository.delete(id);
-      return new Output(true, ["Lead excluído com sucesso"], [], null);
+      await prisma.$transaction(async (tx) => {
+        if (schedule) {
+          await tx.leadsSchedule.delete({
+            where: { id: schedule.id },
+          });
+        }
+
+        await tx.lead.delete({
+          where: { id },
+        });
+      });
+
+      const successMessages = ["Lead excluído com sucesso"];
+      if (calendarWarning) {
+        successMessages.push("Aviso: evento no Google Calendar não foi removido.");
+      }
+      return new Output(true, successMessages, [], null);
     } catch (error) {
       console.error("Erro ao excluir lead:", error);
       return new Output(false, [], ["Erro interno do servidor ao excluir lead"], null);
