@@ -5,26 +5,24 @@ import { ptBR } from "date-fns/locale"
 
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useParams } from "next/navigation"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
+import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter"
 import { CirclePlus } from "@/components/animate-ui/icons/circle-plus"
 import { CheckCircle2, XCircle, HelpCircle, Clock, MoreVertical, BadgeCheck, BadgeIcon, Loader2, CalendarIcon } from "lucide-react"
-import { Switch } from "@/components/ui/switch"
 import LeadDialog from "@/app/[supabaseId]/components/LeadDialog"
 import { TaskFormDialog, type TaskCreatedPayload } from "@/components/task-form-dialog"
 import { TaskCard, type TaskItem } from "@/components/task-card"
@@ -204,14 +202,6 @@ const getCloserLabel = (lead: Lead, closersById: Map<string, string>) =>
   (lead.closerId ? closersById.get(lead.closerId) : undefined) ||
   "Sem closer"
 
-const getInitials = (name?: string | null) => {
-  const safeName = name?.trim() || ""
-  if (!safeName) return "CS"
-  const words = safeName.split(" ").filter(Boolean)
-  if (words.length === 1) return words[0].charAt(0).toUpperCase()
-  return `${words[0].charAt(0)}${words[words.length - 1].charAt(0)}`.toUpperCase()
-}
-
 const getStatusLabel = (status: Lead["status"]) => getLeadStatusLabel(status)
 
 type CalendarEventType = "meeting" | "future_sale" | "lead_time"
@@ -221,6 +211,10 @@ type CalendarEventItem = {
   lead: Lead
   date: Date
 }
+
+type CalendarSourceFilterValue = "meetings" | "tasks"
+type CalendarPriorityFilterValue = "urgent" | "overdue"
+type CalendarMeetingStatusFilterValue = "scheduled" | "completed" | "canceled" | "overdue"
 
 const getEventPriority = (type: CalendarEventType) => {
   if (type === "meeting") return 0
@@ -247,9 +241,11 @@ export default function CalendarStudio() {
   const [date, setDate] = React.useState<Date | undefined>(new Date())
   const [calendarMonth, setCalendarMonth] = React.useState<Date>(new Date())
   const [selectedTime, setSelectedTime] = React.useState<string | null>(() => getNextSlotTime(tz))
-  const [leadNameFilter, setLeadNameFilter] = React.useState("")
-  const [leadIdFilter, setLeadIdFilter] = React.useState("")
+  const [leadSearchFilter, setLeadSearchFilter] = React.useState("")
   const [closerFilter, setCloserFilter] = React.useState<string[]>([])
+  const [sourceFilter, setSourceFilter] = React.useState<CalendarSourceFilterValue[]>(["meetings", "tasks"])
+  const [priorityFilter, setPriorityFilter] = React.useState<CalendarPriorityFilterValue[]>([])
+  const [meetingStatusFilter, setMeetingStatusFilter] = React.useState<CalendarMeetingStatusFilterValue[]>([])
   const [leadPickerOpen, setLeadPickerOpen] = React.useState(false)
   const [leadToSchedule, setLeadToSchedule] = React.useState<Lead | null>(null)
   const [scheduleDialogMode, setScheduleDialogMode] = React.useState<"create" | "reschedule">("create")
@@ -260,8 +256,6 @@ export default function CalendarStudio() {
   const [meetingHealdSavingId, setMeetingHealdSavingId] = React.useState<string | null>(null)
   const [attendeesByLead, setAttendeesByLead] = React.useState<AttendeesByLead>({})
   const [attendeesLoading, setAttendeesLoading] = React.useState(false)
-  const [showMeetings, setShowMeetings] = React.useState(true)
-  const [showTasks, setShowTasks] = React.useState(true)
   const [taskDialogOpen, setTaskDialogOpen] = React.useState(false)
   const [taskDialogLead, setTaskDialogLead] = React.useState<Lead | null>(null)
   const [editingTask, setEditingTask] = React.useState<TaskItem | null>(null)
@@ -431,25 +425,90 @@ export default function CalendarStudio() {
       })
   }, [selectedDateKey, visibleCalendarEvents, tz])
 
+  const leadById = React.useMemo(() => {
+    return new Map(allLeads.map((lead) => [lead.id, lead] as const))
+  }, [allLeads])
+
+  const nowReference = React.useMemo(() => nowInTz(tz), [tz])
+
+  const isMeetingOverdue = React.useCallback((lead: Lead, meetingDate: Date) => {
+    return (
+      meetingDate.getTime() < nowReference.getTime()
+      && lead.status === "scheduled"
+      && lead.meetingHeald !== "yes"
+    )
+  }, [nowReference])
+
+  const getMeetingStatuses = React.useCallback((lead: Lead, meetingDate: Date): CalendarMeetingStatusFilterValue[] => {
+    const isCompleted = lead.meetingHeald === "yes"
+    const isCanceled = lead.status === "no_show"
+    const isOverdue = isMeetingOverdue(lead, meetingDate)
+    const isScheduled = lead.status === "scheduled" && !isCompleted && !isOverdue
+
+    const statuses: CalendarMeetingStatusFilterValue[] = []
+    if (isScheduled) statuses.push("scheduled")
+    if (isCompleted) statuses.push("completed")
+    if (isCanceled) statuses.push("canceled")
+    if (isOverdue) statuses.push("overdue")
+    return statuses
+  }, [isMeetingOverdue])
+
+  const matchesPriority = React.useCallback((isUrgent: boolean, isOverdue: boolean) => {
+    if (priorityFilter.length === 0) return true
+    return (
+      (priorityFilter.includes("urgent") && isUrgent)
+      || (priorityFilter.includes("overdue") && isOverdue)
+    )
+  }, [priorityFilter])
+
   const filteredEvents = React.useMemo(() => {
-    const nameQuery = leadNameFilter.trim().toLowerCase()
-    const idQuery = leadIdFilter.trim().toLowerCase()
+    const query = leadSearchFilter.trim().toLowerCase()
     return dayEvents.filter((event) => {
       const lead = event.lead
       const eventDate = event.date
+      const leadEmail = (lead.email || "").toLowerCase()
+      const attendeeEmails = (attendeesByLead[lead.id]?.attendees || [])
+        .map((attendee) => attendee.email.toLowerCase())
+      const attendeeNames = (attendeesByLead[lead.id]?.attendees || [])
+        .map((attendee) => (attendee.displayName || "").toLowerCase())
       const matchesTime = !selectedTime || isWithinSlot(eventDate, selectedTime, tz)
-      const matchesName =
-        !nameQuery || lead.name.toLowerCase().includes(nameQuery)
-      const matchesId =
-        !idQuery ||
-        lead.leadCode.toLowerCase().includes(idQuery) ||
-        lead.id.toLowerCase().includes(idQuery)
+      const matchesSearch =
+        !query
+        || lead.name.toLowerCase().includes(query)
+        || lead.leadCode.toLowerCase().includes(query)
+        || lead.id.toLowerCase().includes(query)
+        || leadEmail.includes(query)
+        || attendeeEmails.some((email) => email.includes(query))
+        || attendeeNames.some((name) => name.includes(query))
       const matchesCloser =
         closerFilter.length === 0 ||
         (lead.closerId ? closerFilter.includes(lead.closerId) : false)
-      return matchesTime && matchesName && matchesId && matchesCloser
+      const matchesMeetingStatus =
+        meetingStatusFilter.length === 0
+          ? true
+          : event.type === "meeting"
+            ? getMeetingStatuses(lead, eventDate).some((status) => meetingStatusFilter.includes(status))
+            : false
+      const isUrgent = event.type === "lead_time"
+      const isOverdue = event.type === "meeting"
+        ? isMeetingOverdue(lead, eventDate)
+        : eventDate.getTime() < nowReference.getTime()
+      const priorityMatch = matchesPriority(isUrgent, isOverdue)
+      return matchesTime && matchesSearch && matchesCloser && matchesMeetingStatus && priorityMatch
     })
-  }, [dayEvents, leadNameFilter, leadIdFilter, selectedTime, closerFilter, tz])
+  }, [
+    dayEvents,
+    leadSearchFilter,
+    selectedTime,
+    closerFilter,
+    tz,
+    attendeesByLead,
+    isMeetingOverdue,
+    nowReference,
+    matchesPriority,
+    meetingStatusFilter,
+    getMeetingStatuses,
+  ])
 
   const leadPickerCandidates = React.useMemo(() => {
     const query = leadPickerQuery.trim().toLowerCase()
@@ -560,9 +619,43 @@ export default function CalendarStudio() {
     [patchLead, refreshLeads]
   )
 
-  const selectedClosers = closers.filter((closer) =>
-    closerFilter.includes(closer.id)
+  const closerOptions = React.useMemo(
+    () =>
+      closers.map((closer) => ({
+        value: closer.id,
+        label: closer.name || closer.email || "Sem nome",
+      })),
+    [closers]
   )
+
+  const sourceOptions = React.useMemo(
+    () => [
+      { value: "meetings", label: "Reuniões" },
+      { value: "tasks", label: "Tarefas" },
+    ],
+    []
+  )
+
+  const priorityOptions = React.useMemo(
+    () => [
+      { value: "urgent", label: "Urgentes" },
+      { value: "overdue", label: "Vencidas" },
+    ],
+    []
+  )
+
+  const meetingStatusOptions = React.useMemo(
+    () => [
+      { value: "scheduled", label: "Agendada" },
+      { value: "completed", label: "Concluída" },
+      { value: "canceled", label: "Cancelada" },
+      { value: "overdue", label: "Vencida" },
+    ],
+    []
+  )
+
+  const showMeetings = sourceFilter.includes("meetings")
+  const showTasks = sourceFilter.includes("tasks")
 
   React.useEffect(() => {
     if (!selectedTime) return
@@ -685,6 +778,36 @@ export default function CalendarStudio() {
     if (!isRestrictedToOwnEvents || !user?.id) return tasks
     return tasks.filter((t) => t.assignees.some((a) => a.profile.id === user.id))
   }, [tasks, isRestrictedToOwnEvents, user?.id])
+
+  const filteredTasks = React.useMemo(() => {
+    const query = leadSearchFilter.trim().toLowerCase()
+    return visibleTasks.filter((task) => {
+      const relatedLead = leadById.get(task.leadId)
+      const leadEmail = (relatedLead?.email || "").toLowerCase()
+      const assigneeEmails = task.assignees.map((assignee) => assignee.profile.email.toLowerCase())
+
+      const matchesSearch =
+        !query
+        || task.lead.name.toLowerCase().includes(query)
+        || task.lead.leadCode.toLowerCase().includes(query)
+        || task.leadId.toLowerCase().includes(query)
+        || leadEmail.includes(query)
+        || assigneeEmails.some((email) => email.includes(query))
+
+      const matchesCloser =
+        closerFilter.length === 0
+        || (!!relatedLead?.closerId && closerFilter.includes(relatedLead.closerId))
+
+      const taskEndAt = task.endAt ? new Date(task.endAt) : null
+      const isOverdue =
+        task.assignees.some((assignee) => assignee.status === "OVERDUE")
+        || (!!taskEndAt && taskEndAt.getTime() < nowReference.getTime())
+      const isUrgent = task.isUrgent
+      const priorityMatch = matchesPriority(isUrgent, isOverdue)
+
+      return matchesSearch && matchesCloser && priorityMatch
+    })
+  }, [visibleTasks, leadSearchFilter, leadById, closerFilter, nowReference, matchesPriority])
 
   const refreshTaskDayCounts = React.useCallback((cancelled = false) => {
     if (!supabaseId || !activeTeamId) {
@@ -837,96 +960,76 @@ export default function CalendarStudio() {
 
         <Card className="h-full w-full min-h-0">
           <CardContent className="flex h-full min-h-0 w-full flex-col gap-4 p-4">
-            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
-              <div className="w-full min-w-0">
-                <Label htmlFor="lead-name-filter" className="text-xs">
-                  Nome do lead
-                </Label>
-                <Input
-                  id="lead-name-filter"
-                  value={leadNameFilter}
-                  onChange={(event) => setLeadNameFilter(event.target.value)}
-                  placeholder="Filtrar por nome"
-                  className="w-full max-w-none"
+            <LeadsFiltersLayout
+              actions={
+                <Button onClick={() => setLeadPickerOpen(true)} className="group shrink-0">
+                  <CirclePlus
+                    className="mr-2 transition-transform duration-300 group-hover:rotate-90"
+                    size={16}
+                  />
+                  Agendar Reunião
+                </Button>
+              }
+            >
+              <Input
+                id="lead-search-filter"
+                value={leadSearchFilter}
+                onChange={(event) => setLeadSearchFilter(event.target.value)}
+                placeholder="Nome, ID, código ou e-mail..."
+                className="h-8 w-full max-w-none lg:w-[420px]"
+              />
+            </LeadsFiltersLayout>
+
+            <LeadsFiltersLayout>
+              {closerOptions.length > 0 && (
+                <LeadsMultiFilter
+                  title="Closer"
+                  options={closerOptions}
+                  selectedValues={closerFilter}
+                  onChange={setCloserFilter}
                 />
-              </div>
-              <div className="w-full min-w-0">
-                <Label htmlFor="lead-id-filter" className="text-xs">
-                  ID do lead
-                </Label>
-                <Input
-                  id="lead-id-filter"
-                  value={leadIdFilter}
-                  onChange={(event) => setLeadIdFilter(event.target.value)}
-                  placeholder="ID ou codigo"
-                  className="w-full max-w-none"
-                />
-              </div>
-              <div className="w-full min-w-0">
-                <Label className="text-xs">Closer</Label>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-full justify-between gap-2 px-3">
-                      {selectedClosers.length === 0 && (
-                        <span className="text-muted-foreground">Todos</span>
-                      )}
-                      {selectedClosers.length === 1 && (
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-5 w-5">
-                            <AvatarImage src={selectedClosers[0].avatarImageUrl} />
-                            <AvatarFallback className="text-[10px]">
-                              {getInitials(selectedClosers[0].name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="truncate">{selectedClosers[0].name}</span>
-                        </div>
-                      )}
-                      {selectedClosers.length > 1 && <span>{selectedClosers.length} closers</span>}
-                      <span className="ml-auto text-muted-foreground">▼</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56">
-                    <DropdownMenuCheckboxItem
-                      checked={closerFilter.length === 0}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setCloserFilter([])
-                        }
-                      }}
-                    >
-                      Todos
-                    </DropdownMenuCheckboxItem>
-                    {closers.map((closer) => {
-                      const checked = closerFilter.includes(closer.id)
-                      return (
-                        <DropdownMenuCheckboxItem
-                          key={closer.id}
-                          checked={checked}
-                          onCheckedChange={(nextChecked) => {
-                            setCloserFilter((prev) => {
-                              if (nextChecked) {
-                                return prev.includes(closer.id) ? prev : [...prev, closer.id]
-                              }
-                              return prev.filter((id) => id !== closer.id)
-                            })
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-5 w-5">
-                              <AvatarImage src={closer.avatarImageUrl} />
-                              <AvatarFallback className="text-[10px]">
-                                {getInitials(closer.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="truncate">{closer.name}</span>
-                          </div>
-                        </DropdownMenuCheckboxItem>
-                      )
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
+              )}
+              <LeadsMultiFilter
+                title="Tipo"
+                options={sourceOptions}
+                selectedValues={sourceFilter}
+                onChange={(values) => {
+                  const typedValues = values.filter(
+                    (value): value is CalendarSourceFilterValue => value === "meetings" || value === "tasks"
+                  )
+                  if (typedValues.length === 0) {
+                    setSourceFilter(["meetings", "tasks"])
+                    return
+                  }
+                  setSourceFilter(typedValues)
+                }}
+              />
+              <LeadsMultiFilter
+                title="Prioridade"
+                options={priorityOptions}
+                selectedValues={priorityFilter}
+                onChange={(values) =>
+                  setPriorityFilter(
+                    values.filter(
+                      (value): value is CalendarPriorityFilterValue => value === "urgent" || value === "overdue"
+                    )
+                  )
+                }
+              />
+              <LeadsMultiFilter
+                title="Status reunião"
+                options={meetingStatusOptions}
+                selectedValues={meetingStatusFilter}
+                onChange={(values) =>
+                  setMeetingStatusFilter(
+                    values.filter(
+                      (value): value is CalendarMeetingStatusFilterValue =>
+                        value === "scheduled" || value === "completed" || value === "canceled" || value === "overdue"
+                    )
+                  )
+                }
+              />
+            </LeadsFiltersLayout>
 
             <div className="flex items-start justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
@@ -944,34 +1047,7 @@ export default function CalendarStudio() {
                     {selectedTime ? `Horário: ${selectedTime}` : "Sem horário selecionado"}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <Switch
-                      id="show-meetings"
-                      checked={showMeetings}
-                      onCheckedChange={setShowMeetings}
-                      className="scale-75"
-                    />
-                    <Label htmlFor="show-meetings" className="text-xs cursor-pointer">Reuniões</Label>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Switch
-                      id="show-tasks"
-                      checked={showTasks}
-                      onCheckedChange={setShowTasks}
-                      className="scale-75"
-                    />
-                    <Label htmlFor="show-tasks" className="text-xs cursor-pointer">Tarefas</Label>
-                  </div>
-                </div>
               </div>
-              <Button variant="outline" onClick={() => setLeadPickerOpen(true)} className="group shrink-0">
-                <CirclePlus
-                  className="mr-2 transition-transform duration-300 group-hover:rotate-90"
-                  size={16}
-                />
-                Agendar Reunião
-              </Button>
             </div>
 
             <div className="no-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
@@ -979,7 +1055,7 @@ export default function CalendarStudio() {
                 Array.from({ length: 6 }).map((_, idx) => (
                   <Skeleton key={idx} className="h-28 w-full rounded-md" />
                 ))
-              ) : filteredEvents.filter(() => showMeetings).length === 0 && (visibleTasks.length === 0 || !showTasks) ? (
+              ) : (showMeetings ? filteredEvents.length : 0) === 0 && (showTasks ? filteredTasks.length : 0) === 0 ? (
                 <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 rounded-md border border-dashed p-6 text-center">
                   <p className="text-sm text-muted-foreground">
                     Nenhuma agenda, tarefa ou lembrete para este dia e horário.
@@ -988,7 +1064,7 @@ export default function CalendarStudio() {
                 </div>
               ) : (
                 <>
-                {showTasks && visibleTasks.map((task) => (
+                {showTasks && filteredTasks.map((task) => (
                   <TaskCard
                     key={task.id}
                     task={task}
