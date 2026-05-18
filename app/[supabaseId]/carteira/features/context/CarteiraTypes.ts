@@ -29,6 +29,56 @@ export interface CarteiraFiltersState {
   pageSize: number;
 }
 
+export type CarteiraTableColumnKey =
+  | 'client'
+  | 'operadora'
+  | 'source'
+  | 'contractDate'
+  | 'value'
+  | 'dueDate'
+  | 'status'
+  | 'sdr'
+  | 'closer';
+
+export const CARTEIRA_TABLE_COLUMN_OPTIONS: ReadonlyArray<{
+  key: CarteiraTableColumnKey;
+  label: string;
+}> = [
+  { key: 'client', label: 'Cliente' },
+  { key: 'operadora', label: 'Operadora' },
+  { key: 'source', label: 'Origem' },
+  { key: 'contractDate', label: 'Data de Contrato' },
+  { key: 'value', label: 'Valor' },
+  { key: 'dueDate', label: 'Vencimento' },
+  { key: 'status', label: 'Status' },
+  { key: 'sdr', label: 'SDR' },
+  { key: 'closer', label: 'Closer' },
+];
+
+export const DEFAULT_CARTEIRA_TABLE_COLUMN_VISIBILITY: Record<CarteiraTableColumnKey, boolean> = {
+  client: true,
+  operadora: true,
+  source: true,
+  contractDate: true,
+  value: true,
+  dueDate: true,
+  status: true,
+  sdr: true,
+  closer: true,
+};
+
+export const DEFAULT_CARTEIRA_TABLE_COLUMN_ORDER: CarteiraTableColumnKey[] = [
+  'client',
+  'operadora',
+  'source',
+  'contractDate',
+  'value',
+  'dueDate',
+  'status',
+  'sdr',
+  'closer',
+];
+
 export const DEFAULT_CARTEIRA_FILTERS: CarteiraFiltersState = {
   search: '',
   portfolioStatuses: [],

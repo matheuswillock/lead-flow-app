@@ -992,7 +992,7 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
           {
             title: "Logs recentes de recebimento",
             description:
-              "A tela mostra os ultimos 15 eventos recebidos, com status HTTP, endpoint utilizado, payload da requisicao e resposta.",
+              "A tela mostra os últimos 15 eventos recebidos, com status HTTP, endpoint utilizado, payload da requisicao e resposta.",
           },
         ],
       },
@@ -1050,7 +1050,7 @@ export const DOCS_MANUAL_CHAPTERS: DocsChapter[] = [
         tone: "info",
         title: "Logs e contrato JSON",
         content:
-          "A propria tela concentra o modelo JSON do webhook, os campos obrigatorios e os detalhes completos dos ultimos recebimentos para acelerar validacoes e testes.",
+          "A propria tela concentra o modelo JSON do webhook, os campos obrigatorios e os detalhes completos dos últimos recebimentos para acelerar validacoes e testes.",
       },
     ],
   },

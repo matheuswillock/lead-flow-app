@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { type DragEvent, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -44,8 +45,40 @@ import {
   PORTFOLIO_STATUS_LABELS,
   type CarteiraDetailData,
   type CarteiraRow,
+  type CarteiraTableColumnKey,
   type PortfolioStatusValue,
 } from '../context/CarteiraTypes';
+
+type SortDirection = 'asc' | 'desc';
+
+type SortState = {
+  column: CarteiraTableColumnKey;
+  direction: SortDirection;
+};
+
+const SORTABLE_COLUMNS: ReadonlySet<CarteiraTableColumnKey> = new Set([
+  'client',
+  'operadora',
+  'source',
+  'contractDate',
+  'value',
+  'dueDate',
+  'status',
+  'sdr',
+  'closer',
+]);
+
+const COLUMN_LABELS: Record<CarteiraTableColumnKey, string> = {
+  client: 'Cliente',
+  operadora: 'Operadora',
+  source: 'Origem',
+  contractDate: 'Data de Contrato',
+  value: 'Valor',
+  dueDate: 'Vencimento',
+  status: 'Status',
+  sdr: 'SDR',
+  closer: 'Closer',
+};
 
 function formatBRL(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -67,6 +100,38 @@ function getInitials(name: string): string {
     .slice(0, 2)
     .map((p) => p[0].toUpperCase())
     .join('');
+}
+
+function getSortValue(row: CarteiraRow, column: CarteiraTableColumnKey): string | number {
+  switch (column) {
+    case 'client':
+      return row.leadName.toLowerCase();
+    case 'operadora':
+      return (row.operadora || '').toLowerCase();
+    case 'source':
+      return PORTFOLIO_SOURCE_LABELS[row.source].toLowerCase();
+    case 'contractDate':
+      return row.contractStartDate ? new Date(row.contractStartDate).getTime() : -1;
+    case 'value':
+      return row.saleValue;
+    case 'dueDate':
+      return row.contractDueDate ? new Date(row.contractDueDate).getTime() : -1;
+    case 'status':
+      return PORTFOLIO_STATUS_LABELS[row.portfolioStatus].toLowerCase();
+    case 'sdr':
+      return (row.sdr?.name || '').toLowerCase();
+    case 'closer':
+      return (row.closer?.name || '').toLowerCase();
+    default:
+      return '';
+  }
+}
+
+function compareValues(a: string | number, b: string | number): number {
+  if (typeof a === 'number' && typeof b === 'number') {
+    return a - b;
+  }
+  return String(a).localeCompare(String(b), 'pt-BR', { sensitivity: 'base' });
 }
 
 const STATUS_CONFIG: Record<
@@ -113,71 +178,177 @@ function ProfileCell({ person }: { person: { id: string; name: string } | null }
   );
 }
 
-function CarteiraTableRow({
-  row,
-  onVisualize,
-}: {
-  row: CarteiraRow;
-  onVisualize: (leadId: string) => void;
-}) {
-  return (
-    <TableRow>
-      <TableCell className="text-center">
+function renderDataCell(
+  column: CarteiraTableColumnKey,
+  row: CarteiraRow
+): React.ReactNode {
+  switch (column) {
+    case 'client':
+      return (
         <div className="flex flex-col items-center text-center">
           <p className="font-medium text-sm">{row.leadName}</p>
           <p className="text-xs text-muted-foreground">{row.leadCode}</p>
         </div>
-      </TableCell>
-      <TableCell className="text-center text-sm text-muted-foreground">{row.operadora ?? '—'}</TableCell>
-      <TableCell className="text-center text-sm text-muted-foreground">{PORTFOLIO_SOURCE_LABELS[row.source]}</TableCell>
-      <TableCell className="text-center text-sm">{formatDate(row.contractStartDate)}</TableCell>
-      <TableCell className="text-center text-sm font-medium">{formatBRL(row.saleValue)}</TableCell>
-      <TableCell className="text-center text-sm">{formatDate(row.contractDueDate)}</TableCell>
-      <TableCell className="text-center">
+      );
+    case 'operadora':
+      return <span className="text-sm text-muted-foreground">{row.operadora ?? '—'}</span>;
+    case 'source':
+      return <span className="text-sm text-muted-foreground">{PORTFOLIO_SOURCE_LABELS[row.source]}</span>;
+    case 'contractDate':
+      return <span className="text-sm">{formatDate(row.contractStartDate)}</span>;
+    case 'value':
+      return <span className="text-sm font-medium">{formatBRL(row.saleValue)}</span>;
+    case 'dueDate':
+      return <span className="text-sm">{formatDate(row.contractDueDate)}</span>;
+    case 'status':
+      return (
         <div className="flex justify-center">
           <StatusCell status={row.portfolioStatus} />
         </div>
-      </TableCell>
-      <TableCell className="text-center">
+      );
+    case 'sdr':
+      return (
         <div className="flex justify-center">
           <ProfileCell person={row.sdr} />
         </div>
-      </TableCell>
-      <TableCell className="text-center">
+      );
+    case 'closer':
+      return (
         <div className="flex justify-center">
           <ProfileCell person={row.closer} />
         </div>
-      </TableCell>
+      );
+    default:
+      return null;
+  }
+}
+
+function ActionsCell({ row, onVisualize }: { row: CarteiraRow; onVisualize: (leadId: string) => void }) {
+  return (
+    <div className="flex justify-center">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+          <Button variant="ghost" size="icon" className="size-7">
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Ações</DropdownMenuLabel>
+          <DropdownMenuItem onSelect={() => onVisualize(row.leadId)}>
+            <Eye className="mr-2 size-4" />
+            Visualizar
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+function CarteiraTableRow({
+  row,
+  columnOrder,
+  onVisualize,
+}: {
+  row: CarteiraRow;
+  columnOrder: CarteiraTableColumnKey[];
+  onVisualize: (leadId: string) => void;
+}) {
+  return (
+    <TableRow>
+      {columnOrder.map((column) => (
+        <TableCell key={`${row.leadId}-${column}`} className="text-center">
+          {renderDataCell(column, row)}
+        </TableCell>
+      ))}
       <TableCell className="w-10 text-center">
-        <div className="flex justify-center">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button variant="ghost" size="icon" className="size-7">
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Ações</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => onVisualize(row.leadId)}>
-                <Eye className="mr-2 size-4" />
-                Visualizar
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <ActionsCell row={row} onVisualize={onVisualize} />
       </TableCell>
     </TableRow>
   );
 }
 
 export function CarteiraTable() {
-  const { data, isLoading, filters, setPage, getEntryDetail, updateEntryDetail } = useCarteiraContext();
+  const {
+    data,
+    isLoading,
+    filters,
+    setPage,
+    getEntryDetail,
+    updateEntryDetail,
+    tableColumnVisibility,
+    tableColumnOrder,
+    setTableColumnOrder,
+  } = useCarteiraContext();
   const pagination = data?.pagination;
   const rows = data?.rows ?? [];
 
+  const [sortState, setSortState] = useState<SortState | null>(null);
+  const draggedColumnIdRef = useRef<CarteiraTableColumnKey | null>(null);
+  const [draggingColumnId, setDraggingColumnId] = useState<CarteiraTableColumnKey | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = useState<CarteiraTableColumnKey | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState<CarteiraDetailData | null>(null);
+
+  const visibleColumnOrder = useMemo(() => {
+    return tableColumnOrder.filter((column) => tableColumnVisibility[column] !== false);
+  }, [tableColumnOrder, tableColumnVisibility]);
+
+  const sortedRows = useMemo(() => {
+    if (!sortState) return rows;
+    const sorted = [...rows].sort((a, b) => {
+      const left = getSortValue(a, sortState.column);
+      const right = getSortValue(b, sortState.column);
+      const result = compareValues(left, right);
+      return sortState.direction === 'asc' ? result : -result;
+    });
+    return sorted;
+  }, [rows, sortState]);
+
+  const handleSort = (column: CarteiraTableColumnKey) => {
+    if (!SORTABLE_COLUMNS.has(column)) return;
+    setSortState((current) => {
+      if (!current || current.column !== column) {
+        return { column, direction: 'asc' };
+      }
+      if (current.direction === 'asc') {
+        return { column, direction: 'desc' };
+      }
+      return null;
+    });
+  };
+
+  const getSortIndicator = (column: CarteiraTableColumnKey) => {
+    if (!sortState || sortState.column !== column) return '↕';
+    return sortState.direction === 'asc' ? '↑' : '↓';
+  };
+
+  const handleHeaderDragStart = (event: DragEvent<HTMLElement>, columnId: CarteiraTableColumnKey) => {
+    draggedColumnIdRef.current = columnId;
+    setDraggingColumnId(columnId);
+    setDragOverColumnId(null);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', columnId);
+  };
+
+  const handleHeaderDrop = (targetColumnId: CarteiraTableColumnKey) => {
+    const sourceColumnId = draggedColumnIdRef.current;
+    draggedColumnIdRef.current = null;
+    setDragOverColumnId(null);
+    setDraggingColumnId(null);
+
+    if (!sourceColumnId || sourceColumnId === targetColumnId) return;
+
+    setTableColumnOrder((prev) => {
+      const next = [...prev];
+      const sourceIndex = next.indexOf(sourceColumnId);
+      const targetIndex = next.indexOf(targetColumnId);
+      if (sourceIndex === -1 || targetIndex === -1) return prev;
+      next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, sourceColumnId);
+      return next;
+    });
+  };
 
   const handleVisualize = async (leadId: string) => {
     setIsDetailOpen(true);
@@ -217,30 +388,70 @@ export function CarteiraTable() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-center">Cliente</TableHead>
-                <TableHead className="text-center">Operadora</TableHead>
-                <TableHead className="text-center">Origem</TableHead>
-                <TableHead className="text-center">Data de Contrato</TableHead>
-                <TableHead className="text-center">Valor</TableHead>
-                <TableHead className="text-center">Vencimento</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-                <TableHead className="text-center">SDR</TableHead>
-                <TableHead className="text-center">Closer</TableHead>
+                {visibleColumnOrder.map((column) => {
+                  const sortable = SORTABLE_COLUMNS.has(column);
+                  return (
+                    <TableHead
+                      key={column}
+                      className={cn(
+                        'text-center align-middle',
+                        draggingColumnId === column ? 'opacity-60' : '',
+                        dragOverColumnId === column ? 'bg-muted/50 ring-1 ring-primary/40' : '',
+                        'cursor-move select-none'
+                      )}
+                      draggable
+                      onDragStart={(event) => handleHeaderDragStart(event, column)}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = 'move';
+                        if (draggedColumnIdRef.current && draggedColumnIdRef.current !== column) {
+                          setDragOverColumnId(column);
+                        }
+                      }}
+                      onDragLeave={() => {
+                        setDragOverColumnId((prev) => (prev === column ? null : prev));
+                      }}
+                      onDragEnd={() => {
+                        draggedColumnIdRef.current = null;
+                        setDragOverColumnId(null);
+                        setDraggingColumnId(null);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        handleHeaderDrop(column);
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className={cn(
+                          'inline-flex items-center justify-center gap-1 text-center text-sm font-medium',
+                          sortable ? 'w-full cursor-pointer text-foreground hover:text-foreground/80' : 'w-full cursor-default'
+                        )}
+                        onClick={() => handleSort(column)}
+                        disabled={!sortable}
+                      >
+                        {COLUMN_LABELS[column]}
+                        {sortable ? <span className="text-xs text-muted-foreground">{getSortIndicator(column)}</span> : null}
+                      </button>
+                    </TableHead>
+                  );
+                })}
                 <TableHead className="w-10 text-center" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length === 0 ? (
+              {sortedRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={visibleColumnOrder.length + 1} className="h-24 text-center text-muted-foreground">
                     Nenhum cliente na carteira.
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((row) => (
+                sortedRows.map((row) => (
                   <CarteiraTableRow
                     key={row.leadId}
                     row={row}
+                    columnOrder={visibleColumnOrder}
                     onVisualize={handleVisualize}
                   />
                 ))
