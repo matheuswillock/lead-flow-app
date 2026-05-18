@@ -122,41 +122,49 @@ function CarteiraTableRow({
 }) {
   return (
     <TableRow>
-      <TableCell>
-        <div>
+      <TableCell className="text-center">
+        <div className="flex flex-col items-center text-center">
           <p className="font-medium text-sm">{row.leadName}</p>
           <p className="text-xs text-muted-foreground">{row.leadCode}</p>
         </div>
       </TableCell>
-      <TableCell className="text-sm text-muted-foreground">{row.operadora ?? '—'}</TableCell>
-      <TableCell className="text-sm text-muted-foreground">{PORTFOLIO_SOURCE_LABELS[row.source]}</TableCell>
-      <TableCell className="text-sm">{formatDate(row.contractStartDate)}</TableCell>
-      <TableCell className="text-right text-sm font-medium">{formatBRL(row.saleValue)}</TableCell>
-      <TableCell className="text-sm">{formatDate(row.contractDueDate)}</TableCell>
-      <TableCell>
-        <StatusCell status={row.portfolioStatus} />
+      <TableCell className="text-center text-sm text-muted-foreground">{row.operadora ?? '—'}</TableCell>
+      <TableCell className="text-center text-sm text-muted-foreground">{PORTFOLIO_SOURCE_LABELS[row.source]}</TableCell>
+      <TableCell className="text-center text-sm">{formatDate(row.contractStartDate)}</TableCell>
+      <TableCell className="text-center text-sm font-medium">{formatBRL(row.saleValue)}</TableCell>
+      <TableCell className="text-center text-sm">{formatDate(row.contractDueDate)}</TableCell>
+      <TableCell className="text-center">
+        <div className="flex justify-center">
+          <StatusCell status={row.portfolioStatus} />
+        </div>
       </TableCell>
-      <TableCell>
-        <ProfileCell person={row.sdr} />
+      <TableCell className="text-center">
+        <div className="flex justify-center">
+          <ProfileCell person={row.sdr} />
+        </div>
       </TableCell>
-      <TableCell>
-        <ProfileCell person={row.closer} />
+      <TableCell className="text-center">
+        <div className="flex justify-center">
+          <ProfileCell person={row.closer} />
+        </div>
       </TableCell>
-      <TableCell className="w-10">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon" className="size-7">
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Ações</DropdownMenuLabel>
-            <DropdownMenuItem onSelect={() => onVisualize(row.leadId)}>
-              <Eye className="mr-2 size-4" />
-              Visualizar
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <TableCell className="w-10 text-center">
+        <div className="flex justify-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+              <Button variant="ghost" size="icon" className="size-7">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Ações</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => onVisualize(row.leadId)}>
+                <Eye className="mr-2 size-4" />
+                Visualizar
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </TableCell>
     </TableRow>
   );
@@ -209,16 +217,16 @@ export function CarteiraTable() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Operadora</TableHead>
-                <TableHead>Origem</TableHead>
-                <TableHead>Data de Contrato</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead>Vencimento</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>SDR</TableHead>
-                <TableHead>Closer</TableHead>
-                <TableHead className="w-10" />
+                <TableHead className="text-center">Cliente</TableHead>
+                <TableHead className="text-center">Operadora</TableHead>
+                <TableHead className="text-center">Origem</TableHead>
+                <TableHead className="text-center">Data de Contrato</TableHead>
+                <TableHead className="text-center">Valor</TableHead>
+                <TableHead className="text-center">Vencimento</TableHead>
+                <TableHead className="text-center">Status</TableHead>
+                <TableHead className="text-center">SDR</TableHead>
+                <TableHead className="text-center">Closer</TableHead>
+                <TableHead className="w-10 text-center" />
               </TableRow>
             </TableHeader>
             <TableBody>
