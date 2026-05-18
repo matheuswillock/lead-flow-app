@@ -307,6 +307,14 @@ canceled canceled
     
 
 
+        portfolio_source {
+            crm crm
+manual manual
+brokerage_transfer brokerage_transfer
+        }
+    
+
+
         email_credit_plan {
             starter starter
 plus plus
@@ -736,6 +744,7 @@ unsubscribed unsubscribed
   "lead_portfolio" {
     String id "🗝️"
     PortfolioStatus portfolioStatus 
+    PortfolioSource source 
     String note "❓"
     DateTime lastContactAt "❓"
     DateTime createdAt 
@@ -1128,6 +1137,7 @@ unsubscribed unsubscribed
     "lead_finalized_holders" |o--|| lead_finalized : "leadFinalized"
     "lead_finalized_dependents" }o--|| lead_finalized : "leadFinalized"
     "lead_portfolio" |o--|| "PortfolioStatus" : "enum:portfolioStatus"
+    "lead_portfolio" |o--|| "PortfolioSource" : "enum:source"
     "lead_portfolio" |o--|| leads : "lead"
     "lead_portfolio" }o--|| teams : "team"
     "lead_attachments" }o--|| leads : "lead"

@@ -34,6 +34,7 @@ export async function POST(
       contractFileUrl,
       contractStoragePath,
       dependents,
+      source,
     } = body;
 
     if (!amount || amount <= 0) {
@@ -70,6 +71,9 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    const normalizedSource: 'crm' | 'brokerage_transfer' =
+      source === 'brokerage_transfer' ? 'brokerage_transfer' : 'crm';
 
     if (!contractHolder || typeof contractHolder !== 'object') {
       return NextResponse.json(
@@ -206,8 +210,15 @@ export async function POST(
 
       await tx.leadPortfolio.upsert({
         where: { leadId },
-        create: { leadId, teamId: teamAccess.access.teamId, portfolioStatus: 'active' },
-        update: {},
+        create: {
+          leadId,
+          teamId: teamAccess.access.teamId,
+          portfolioStatus: 'active',
+          source: normalizedSource,
+        },
+        update: {
+          source: normalizedSource,
+        },
       });
 
       return { leadFinalized, lead: updatedLead };

@@ -1,4 +1,4 @@
-import type { PortfolioStatus } from '@prisma/client';
+import type { PortfolioSource, PortfolioStatus } from '@prisma/client';
 
 export interface PortfolioFilters {
   teamId: string;
@@ -9,6 +9,7 @@ export interface PortfolioFilters {
   portfolioStatuses?: PortfolioStatus[];
   sdrIds?: string[];
   closerIds?: string[];
+  sources?: PortfolioSource[];
   operadora?: string;
   contractDateStart?: Date;
   contractDateEnd?: Date;
@@ -17,6 +18,39 @@ export interface PortfolioFilters {
   documentSearch?: string;
   page: number;
   pageSize: number;
+}
+
+export interface CreatePortfolioDependentPayload {
+  name: string;
+  birthDate: string;
+  parentesco: string;
+  document?: string | null;
+}
+
+export interface CreatePortfolioHolderPayload {
+  name: string;
+  birthDate: string;
+  document: string;
+  cnpj?: string | null;
+}
+
+export interface CreatePortfolioEntryPayload {
+  name: string;
+  email: string;
+  phone: string;
+  cnpj?: string | null;
+  source: Exclude<PortfolioSource, 'crm'>;
+  amount: number;
+  startDateAt: string;
+  finalizedDateAt: string;
+  contractDueDate?: string | null;
+  closerId: string;
+  operadora: string;
+  productName?: string | null;
+  soldPlan?: string | null;
+  notes?: string | null;
+  holder: CreatePortfolioHolderPayload;
+  dependents?: CreatePortfolioDependentPayload[];
 }
 
 export interface UpdatePortfolioDetailPayload {
@@ -54,6 +88,7 @@ export interface PortfolioRow {
   leadId: string;
   leadCode: string;
   leadName: string;
+  source: PortfolioSource;
   portfolioStatus: PortfolioStatus;
   note: string | null;
   lastContactAt: Date | null;
@@ -96,6 +131,7 @@ export interface PortfolioDetailResult {
   leadId: string;
   leadCode: string;
   leadName: string;
+  source: PortfolioSource;
   saleValue: number;
   portfolioStatus: PortfolioStatus;
   sdr: { id: string; name: string } | null;
@@ -129,6 +165,11 @@ export interface PortfolioDetailResult {
 }
 
 export interface IPortfolioService {
+  createPortfolioEntry(
+    teamId: string,
+    profileId: string,
+    data: CreatePortfolioEntryPayload
+  ): Promise<PortfolioDetailResult>;
   listPortfolio(filters: PortfolioFilters): Promise<PortfolioListResult>;
   updatePortfolioEntry(
     leadId: string,

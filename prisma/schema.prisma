@@ -319,6 +319,14 @@ enum PortfolioStatus {
   @@map("portfolio_status")
 }
 
+enum PortfolioSource {
+  crm
+  manual
+  brokerage_transfer
+
+  @@map("portfolio_source")
+}
+
 enum EmailCreditPlan {
   starter
   plus
@@ -1035,6 +1043,7 @@ model LeadPortfolio {
   leadId          String          @unique @db.Uuid
   teamId          String          @db.Uuid
   portfolioStatus PortfolioStatus @default(active)
+  source          PortfolioSource @default(crm)
   note            String?         @db.Text
   lastContactAt   DateTime?       @db.Timestamptz(6)
   createdAt       DateTime        @default(now()) @db.Timestamptz(6)
