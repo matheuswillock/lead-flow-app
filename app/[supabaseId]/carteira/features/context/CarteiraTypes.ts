@@ -1,4 +1,5 @@
 export type PortfolioStatusValue = 'active' | 'pending' | 'canceled';
+export type PortfolioSourceValue = 'crm' | 'manual' | 'brokerage_transfer';
 
 export const PORTFOLIO_STATUS_LABELS: Record<PortfolioStatusValue, string> = {
   active: 'Ativo',
@@ -6,9 +7,16 @@ export const PORTFOLIO_STATUS_LABELS: Record<PortfolioStatusValue, string> = {
   canceled: 'Cancelado',
 };
 
+export const PORTFOLIO_SOURCE_LABELS: Record<PortfolioSourceValue, string> = {
+  crm: 'CRM',
+  manual: 'Manual',
+  brokerage_transfer: 'Transferência de corretagem',
+};
+
 export interface CarteiraFiltersState {
   search: string;
   portfolioStatuses: string[];
+  sources: string[];
   sdrIds: string[];
   closerIds: string[];
   operadora: string;
@@ -24,6 +32,7 @@ export interface CarteiraFiltersState {
 export const DEFAULT_CARTEIRA_FILTERS: CarteiraFiltersState = {
   search: '',
   portfolioStatuses: [],
+  sources: [],
   sdrIds: [],
   closerIds: [],
   operadora: '',
@@ -40,6 +49,7 @@ export function isCarteiraFiltersChanged(filters: CarteiraFiltersState): boolean
   return (
     !!filters.search ||
     filters.portfolioStatuses.length > 0 ||
+    filters.sources.length > 0 ||
     filters.sdrIds.length > 0 ||
     filters.closerIds.length > 0 ||
     !!filters.operadora ||
@@ -56,6 +66,7 @@ export interface CarteiraRow {
   leadId: string;
   leadCode: string;
   leadName: string;
+  source: PortfolioSourceValue;
   portfolioStatus: PortfolioStatusValue;
   note: string | null;
   lastContactAt: string | null;
@@ -89,6 +100,37 @@ export interface UpdateCarteiraData {
   portfolioStatus?: PortfolioStatusValue;
   note?: string | null;
   lastContactAt?: string | null;
+}
+
+export interface CreateCarteiraDependentPayload {
+  name: string;
+  birthDate: string;
+  parentesco: string;
+  document?: string | null;
+}
+
+export interface CreateCarteiraPayload {
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  cnpj?: string | null;
+  source: Exclude<PortfolioSourceValue, 'crm'>;
+  amount: number;
+  startDateAt: string;
+  finalizedDateAt: string;
+  contractDueDate?: string | null;
+  closerId: string;
+  operadora: string;
+  productName?: string | null;
+  soldPlan?: string | null;
+  notes?: string | null;
+  holder: {
+    name: string;
+    birthDate: string;
+    document: string;
+    cnpj?: string | null;
+  };
+  dependents?: CreateCarteiraDependentPayload[];
 }
 
 export interface UpdateCarteiraDetailPayload {
@@ -156,6 +198,7 @@ export interface CarteiraDetailData {
   leadId: string;
   leadCode: string;
   leadName: string;
+  source: PortfolioSourceValue;
   saleValue: number;
   portfolioStatus: PortfolioStatusValue;
   sdr: { id: string; name: string } | null;

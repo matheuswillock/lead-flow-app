@@ -40,6 +40,7 @@ import {
 import { CarteiraDetailModal } from '../components/CarteiraDetailModal';
 import { useCarteiraContext } from '../context/CarteiraContext';
 import {
+  PORTFOLIO_SOURCE_LABELS,
   PORTFOLIO_STATUS_LABELS,
   type CarteiraDetailData,
   type CarteiraRow,
@@ -128,6 +129,7 @@ function CarteiraTableRow({
         </div>
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">{row.operadora ?? '—'}</TableCell>
+      <TableCell className="text-sm text-muted-foreground">{PORTFOLIO_SOURCE_LABELS[row.source]}</TableCell>
       <TableCell className="text-sm">{formatDate(row.contractStartDate)}</TableCell>
       <TableCell className="text-right text-sm font-medium">{formatBRL(row.saleValue)}</TableCell>
       <TableCell className="text-sm">{formatDate(row.contractDueDate)}</TableCell>
@@ -209,6 +211,7 @@ export function CarteiraTable() {
               <TableRow>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Operadora</TableHead>
+                <TableHead>Origem</TableHead>
                 <TableHead>Data de Contrato</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
                 <TableHead>Vencimento</TableHead>
@@ -221,7 +224,7 @@ export function CarteiraTable() {
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
                     Nenhum cliente na carteira.
                   </TableCell>
                 </TableRow>

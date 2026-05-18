@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
@@ -65,6 +66,7 @@ export interface FinalizeContractData {
   amount: number;
   startDateAt: Date;
   finalizedDateAt: Date;
+  source: 'crm' | 'brokerage_transfer';
   notes?: string;
   closerId: string;
   contractHolder: FinalizeContractHolder;
@@ -108,6 +110,7 @@ export function FinalizeContractDialog({
   const [closerId, setCloserId]       = useState('');
   const [operadora, setOperadora]     = useState('');
   const [productName, setProductName] = useState('');
+  const [source, setSource] = useState<'crm' | 'brokerage_transfer'>('crm');
   const [holderName, setHolderName] = useState('');
   const [holderBirthDate, setHolderBirthDate] = useState<Date | undefined>();
   const [holderDocument, setHolderDocument] = useState('');
@@ -144,6 +147,7 @@ export function FinalizeContractDialog({
       setCloserId(leadCloserId ?? '');
       setOperadora(initialOperadora ?? '');
       setProductName('');
+      setSource('crm');
       setHolderName('');
       setHolderBirthDate(undefined);
       setHolderDocument('');
@@ -249,6 +253,7 @@ export function FinalizeContractDialog({
         amount: parseFormattedValue(amount),
         startDateAt: startOfDayInTz(startDate, tz),
         finalizedDateAt: startOfDayInTz(finalizedDate, tz),
+        source,
         notes: notes.trim() || undefined,
         closerId,
         contractHolder: {
@@ -306,6 +311,20 @@ export function FinalizeContractDialog({
                 </div>
 
                 {/* Valor do Contrato */}
+                <div className="grid gap-2">
+                  <Label>Origem do cliente *</Label>
+                  <RadioGroup value={source} onValueChange={(value) => setSource(value as 'crm' | 'brokerage_transfer')} className="grid gap-2">
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem id="contract-source-crm" value="crm" />
+                      <Label htmlFor="contract-source-crm">CRM</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem id="contract-source-transfer" value="brokerage_transfer" />
+                      <Label htmlFor="contract-source-transfer">Transferência de corretagem</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+
                 <div className="grid gap-2">
                   <Label htmlFor="amount">Valor do Contrato (R$) *</Label>
                   <div className="relative">

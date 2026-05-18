@@ -2,12 +2,29 @@ import { Output } from '@/lib/output';
 import { portfolioService } from '@/app/api/services/Portfolio/PortfolioService';
 import type { IPortfolioUseCase } from './IPortfolioUseCase';
 import type {
+  CreatePortfolioEntryPayload,
   PortfolioFilters,
   UpdatePortfolioData,
   UpdatePortfolioDetailPayload,
 } from '@/app/api/services/Portfolio/IPortfolioService';
 
 export class PortfolioUseCase implements IPortfolioUseCase {
+  async createPortfolioEntry(
+    teamId: string,
+    profileId: string,
+    data: CreatePortfolioEntryPayload
+  ): Promise<Output> {
+    try {
+      const result = await portfolioService.createPortfolioEntry(teamId, profileId, data);
+      return new Output(true, ['Cliente adicionado na carteira com sucesso'], [], result);
+    } catch (error) {
+      console.error('[PortfolioUseCase] Erro ao criar cliente na carteira:', error);
+      const message =
+        error instanceof Error ? error.message : 'Erro ao criar cliente na carteira';
+      return new Output(false, [], [message], null);
+    }
+  }
+
   async listPortfolio(filters: PortfolioFilters): Promise<Output> {
     try {
       const result = await portfolioService.listPortfolio(filters);

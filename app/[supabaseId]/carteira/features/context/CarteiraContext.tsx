@@ -6,6 +6,7 @@ import type {
   CarteiraData,
   CarteiraDetailData,
   CarteiraFiltersState,
+  CreateCarteiraPayload,
   UpdateCarteiraData,
   UpdateCarteiraDetailPayload,
 } from './CarteiraTypes';
@@ -19,6 +20,7 @@ type CarteiraContextValue = {
   setFilter: <K extends keyof CarteiraFiltersState>(key: K, value: CarteiraFiltersState[K]) => void;
   setPage: (page: number) => void;
   clearFilters: () => void;
+  createEntry: (payload: CreateCarteiraPayload) => Promise<CarteiraDetailData>;
   updateEntry: (leadId: string, data: UpdateCarteiraData) => Promise<void>;
   getEntryDetail: (leadId: string) => Promise<CarteiraDetailData>;
   updateEntryDetail: (leadId: string, payload: UpdateCarteiraDetailPayload) => Promise<CarteiraDetailData>;

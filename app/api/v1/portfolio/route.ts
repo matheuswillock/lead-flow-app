@@ -6,11 +6,45 @@ import { isManagerLikeRole } from '@/lib/roles';
 import { portfolioUseCase } from '@/app/api/useCases/portfolio/PortfolioUseCase';
 import type { PortfolioFilters } from '@/app/api/services/Portfolio/IPortfolioService';
 
+const dependentSchema = z.object({
+  name: z.string().min(1),
+  birthDate: z.string().datetime(),
+  parentesco: z.string().min(1),
+  document: z.string().nullish().transform((val) => val || undefined),
+});
+
+const holderSchema = z.object({
+  name: z.string().min(1),
+  birthDate: z.string().datetime(),
+  document: z.string().min(1),
+  cnpj: z.string().nullish().transform((val) => val || undefined),
+});
+
+const createSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email().nullish().transform((val) => val || undefined),
+  phone: z.string().nullish().transform((val) => val || undefined),
+  cnpj: z.string().nullish().transform((val) => val || undefined),
+  source: z.enum(['manual', 'brokerage_transfer']),
+  amount: z.number().positive(),
+  startDateAt: z.string().datetime(),
+  finalizedDateAt: z.string().datetime(),
+  contractDueDate: z.string().datetime().nullish().transform((val) => val || undefined),
+  closerId: z.string().uuid(),
+  operadora: z.string().min(1),
+  productName: z.string().nullish().transform((val) => val || undefined),
+  soldPlan: z.string().nullish().transform((val) => val || undefined),
+  notes: z.string().nullish().transform((val) => val || undefined),
+  holder: holderSchema,
+  dependents: z.array(dependentSchema).optional(),
+});
+
 const listSchema = z.object({
   search: z.string().optional(),
   portfolioStatuses: z.string().optional(),
   sdrIds: z.string().optional(),
   closerIds: z.string().optional(),
+  sources: z.string().optional(),
   operadora: z.string().optional(),
   contractDateStart: z.string().optional(),
   contractDateEnd: z.string().optional(),
@@ -22,6 +56,7 @@ const listSchema = z.object({
 });
 
 const ISO_DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const VALID_SOURCES = new Set(['crm', 'manual', 'brokerage_transfer']);
 
 function parseDateBound(value: string | undefined, bound: 'start' | 'end'): Date | undefined {
   if (!value) return undefined;
@@ -72,6 +107,7 @@ export async function GET(request: NextRequest) {
     portfolioStatuses: portfolioStatusesRaw,
     sdrIds: sdrIdsRaw,
     closerIds: closerIdsRaw,
+    sources: sourcesRaw,
     operadora,
     contractDateStart,
     contractDateEnd,
@@ -83,6 +119,11 @@ export async function GET(request: NextRequest) {
   } = parsed.data;
 
   const splitCSV = (val?: string) => val ? val.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+  const parseSources = (val?: string) => {
+    const values = splitCSV(val);
+    if (!values || values.length === 0) return undefined;
+    return values.filter((value): value is 'crm' | 'manual' | 'brokerage_transfer' => VALID_SOURCES.has(value));
+  };
 
   const result = await portfolioUseCase.listPortfolio({
     teamId,
@@ -93,6 +134,7 @@ export async function GET(request: NextRequest) {
     portfolioStatuses: splitCSV(portfolioStatusesRaw) as PortfolioFilters['portfolioStatuses'],
     sdrIds: splitCSV(sdrIdsRaw),
     closerIds: splitCSV(closerIdsRaw),
+    sources: parseSources(sourcesRaw) as PortfolioFilters['sources'],
     operadora,
     contractDateStart: parseDateBound(contractDateStart, 'start'),
     contractDateEnd: parseDateBound(contractDateEnd, 'end'),
@@ -104,4 +146,43 @@ export async function GET(request: NextRequest) {
   });
 
   return NextResponse.json(result, { status: result.isValid ? 200 : 500 });
+}
+
+export async function POST(request: NextRequest) {
+  console.info('[PortfolioRoute][POST] Received request');
+
+  const teamAccess = await getTeamAccess(request);
+  if (teamAccess.error) {
+    return NextResponse.json(teamAccess.error, { status: teamAccess.status });
+  }
+
+  const { profileId, teamId, teamMember } = teamAccess.access;
+  const isManager = isManagerLikeRole(teamMember.role);
+  const isCloser = teamMember.functions.includes('CLOSER');
+
+  if (!isManager && !isCloser) {
+    return NextResponse.json(
+      new Output(false, [], ['Acesso negado: somente managers ou closers podem adicionar clientes na carteira'], null),
+      { status: 403 }
+    );
+  }
+
+  const body = await request.json();
+  const parsed = createSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      new Output(false, [], [parsed.error.issues[0]?.message ?? 'Dados inválidos'], null),
+      { status: 400 }
+    );
+  }
+
+  const result = await portfolioUseCase.createPortfolioEntry(teamId, profileId, parsed.data);
+  if (!result.isValid) {
+    const message = result.errorMessages[0] ?? '';
+    const status = message.includes('Acesso negado') ? 403 : 400;
+    return NextResponse.json(result, { status });
+  }
+
+  return NextResponse.json(result, { status: 201 });
 }

@@ -28,6 +28,12 @@ const STATUS_OPTIONS = [
   { value: 'canceled', label: 'Cancelado' },
 ];
 
+const SOURCE_OPTIONS = [
+  { value: 'crm', label: 'CRM' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'brokerage_transfer', label: 'Transferência de corretagem' },
+];
+
 function toDateRange(start: string, end: string): DateRange | undefined {
   if (!start && !end) return undefined;
   return {
@@ -117,6 +123,13 @@ export function CarteiraFiltersBar() {
         options={STATUS_OPTIONS}
         selectedValues={filters.portfolioStatuses}
         onChange={(v) => setFilter('portfolioStatuses', v)}
+      />
+
+      <LeadsMultiFilter
+        title="Origem"
+        options={SOURCE_OPTIONS}
+        selectedValues={filters.sources}
+        onChange={(v) => setFilter('sources', v)}
       />
 
       {/* SDR multi-select */}

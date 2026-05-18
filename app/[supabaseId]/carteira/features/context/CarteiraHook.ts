@@ -11,6 +11,7 @@ import {
   type CarteiraDetailData,
   type CarteiraFiltersState,
   type CarteiraRow,
+  type CreateCarteiraPayload,
   type UpdateCarteiraData,
   type UpdateCarteiraDetailPayload,
 } from './CarteiraTypes';
@@ -107,6 +108,15 @@ export function useCarteiraHook() {
     }
   }, [supabaseId, activeTeamId, filters, fetchData]);
 
+  const createEntry = useCallback(async (payload: CreateCarteiraPayload): Promise<CarteiraDetailData> => {
+    if (!supabaseId || !activeTeamId) throw new Error('Sessão não disponível');
+    const created = await carteiraService.createEntry(supabaseId, activeTeamId, payload);
+    lastFetchKey.current = '';
+    await fetchData(filters);
+    toast.success('Cliente adicionado na carteira');
+    return created;
+  }, [supabaseId, activeTeamId, fetchData, filters]);
+
   const getEntryDetail = useCallback(async (leadId: string): Promise<CarteiraDetailData> => {
     if (!supabaseId || !activeTeamId) throw new Error('Sessão não disponível');
     return carteiraService.getEntryDetail(supabaseId, activeTeamId, leadId);
@@ -129,6 +139,7 @@ export function useCarteiraHook() {
     setFilter,
     setPage,
     clearFilters,
+    createEntry,
     updateEntry,
     getEntryDetail,
     updateEntryDetail,
