@@ -22,8 +22,8 @@ const holderSchema = z.object({
 
 const createSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email().nullish().transform((val) => val || undefined),
-  phone: z.string().nullish().transform((val) => val || undefined),
+  email: z.string().email(),
+  phone: z.string().min(10),
   cnpj: z.string().nullish().transform((val) => val || undefined),
   source: z.enum(['manual', 'brokerage_transfer']),
   amount: z.number().positive(),

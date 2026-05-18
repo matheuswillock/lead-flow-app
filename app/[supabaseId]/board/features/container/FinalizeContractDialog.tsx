@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarIcon, Pencil, Plus, Trash2, UploadCloud } from 'lucide-react';
+import { CalendarIcon, ChevronLeft, Pencil, Plus, Trash2, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTimezone } from '@/app/context/TimezoneContext';
 import { startOfDayInTz } from '@/lib/dates';
@@ -80,6 +80,11 @@ interface FinalizeContractDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   leadName: string;
+  headerTitle?: string;
+  headerDescription?: string;
+  onBackStep?: () => void;
+  submitLabel?: string;
+  submittingLabel?: string;
   leadCloserId?: string;
   initialHolderCnpj?: string | null;
   onFinalize: (data: FinalizeContractData) => Promise<void>;
@@ -87,13 +92,26 @@ interface FinalizeContractDialogProps {
   healthPlans?: { id: string; name: string }[];
   initialAmount?: number | null;
   initialStartDate?: string | Date | null;
+  initialFinalizedDate?: string | Date | null;
   initialOperadora?: string | null;
+  initialProductName?: string | null;
+  initialSource?: 'crm' | 'brokerage_transfer';
+  initialNotes?: string | null;
+  initialHolderName?: string | null;
+  initialHolderBirthDate?: string | Date | null;
+  initialHolderDocument?: string | null;
+  initialDependents?: FinalizeContractDependent[];
 }
 
 export function FinalizeContractDialog({
   open,
   onOpenChange,
   leadName,
+  headerTitle,
+  headerDescription,
+  onBackStep,
+  submitLabel,
+  submittingLabel,
   leadCloserId,
   initialHolderCnpj,
   onFinalize,
@@ -101,7 +119,15 @@ export function FinalizeContractDialog({
   healthPlans = [],
   initialAmount,
   initialStartDate,
+  initialFinalizedDate,
   initialOperadora,
+  initialProductName,
+  initialSource,
+  initialNotes,
+  initialHolderName,
+  initialHolderBirthDate,
+  initialHolderDocument,
+  initialDependents,
 }: FinalizeContractDialogProps) {
   const { tz } = useTimezone();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -146,21 +172,36 @@ export function FinalizeContractDialog({
       setAmount(toDisplayCurrency(initialAmount));
       setCloserId(leadCloserId ?? '');
       setOperadora(initialOperadora ?? '');
-      setProductName('');
-      setSource('crm');
-      setHolderName('');
-      setHolderBirthDate(undefined);
-      setHolderDocument('');
+      setProductName(initialProductName ?? '');
+      setSource(initialSource ?? 'crm');
+      setHolderName(initialHolderName ?? '');
+      setHolderBirthDate(parseInitialDate(initialHolderBirthDate));
+      setHolderDocument(sanitizeRgCpfDigits(initialHolderDocument ?? ''));
       setHolderCnpj(sanitizeDocumentDigits(initialHolderCnpj ?? ''));
       setStartDate(parseInitialDate(initialStartDate) ?? new Date());
-      setFinalizedDate(undefined);
+      setFinalizedDate(parseInitialDate(initialFinalizedDate));
       setContractFile(undefined);
-      setNotes('');
-      setDependents([]);
+      setNotes(initialNotes ?? '');
+      setDependents(initialDependents ?? []);
       setError('');
       setAmountError('');
     }
-  }, [open, leadCloserId, initialAmount, initialOperadora, initialStartDate, initialHolderCnpj]);
+  }, [
+    open,
+    leadCloserId,
+    initialAmount,
+    initialOperadora,
+    initialStartDate,
+    initialFinalizedDate,
+    initialHolderCnpj,
+    initialProductName,
+    initialSource,
+    initialNotes,
+    initialHolderName,
+    initialHolderBirthDate,
+    initialHolderDocument,
+    initialDependents,
+  ]);
 
   const formatCurrencyDisplay = (value: string): string => {
     const numbers = value.replace(/\D/g, '');
@@ -296,10 +337,30 @@ export function FinalizeContractDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-2xl p-0 gap-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-border shrink-0">
-            <DialogTitle>Fechar Contrato</DialogTitle>
-            <DialogDescription>
-              Preencha os detalhes do contrato para o lead: <strong>{leadName}</strong>
-            </DialogDescription>
+            <div className="flex items-start gap-2">
+              {onBackStep && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 -ml-2"
+                  onClick={onBackStep}
+                  aria-label="Voltar para o passo anterior"
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+              )}
+              <div className="grid gap-1">
+                <DialogTitle>{headerTitle ?? 'Fechar Contrato'}</DialogTitle>
+                <DialogDescription>
+                  {headerDescription ?? (
+                    <>
+                      Preencha os detalhes do contrato para o lead: <strong>{leadName}</strong>
+                    </>
+                  )}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
@@ -642,7 +703,7 @@ export function FinalizeContractDialog({
                 Cancelar
               </Button>
               <Button type="submit" disabled={isLoading || !isFormValid}>
-                {isLoading ? 'Finalizando...' : 'Fechar Contrato'}
+                {isLoading ? (submittingLabel ?? 'Finalizando...') : (submitLabel ?? 'Fechar Contrato')}
               </Button>
             </DialogFooter>
           </form>

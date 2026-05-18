@@ -36,8 +36,8 @@ export interface CreatePortfolioHolderPayload {
 
 export interface CreatePortfolioEntryPayload {
   name: string;
-  email?: string | null;
-  phone?: string | null;
+  email: string;
+  phone: string;
   cnpj?: string | null;
   source: Exclude<PortfolioSource, 'crm'>;
   amount: number;

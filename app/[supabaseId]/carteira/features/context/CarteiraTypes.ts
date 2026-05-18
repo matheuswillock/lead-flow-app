@@ -109,10 +109,42 @@ export interface CreateCarteiraDependentPayload {
   document?: string | null;
 }
 
+export interface CreateCarteiraIdentityStepPayload {
+  name: string;
+  email: string;
+  phone: string;
+  cnpj?: string | null;
+  source: Exclude<PortfolioSourceValue, 'crm'>;
+}
+
+export interface CreateCarteiraContractStepPayload {
+  amount: number;
+  startDateAt: string;
+  finalizedDateAt: string;
+  contractDueDate?: string | null;
+  closerId: string;
+  operadora: string;
+  productName?: string | null;
+  soldPlan?: string | null;
+  notes?: string | null;
+  holder: {
+    name: string;
+    birthDate: string;
+    document: string;
+    cnpj?: string | null;
+  };
+  dependents?: CreateCarteiraDependentPayload[];
+}
+
+export interface CreatePortfolioFromStepsPayload {
+  identity: CreateCarteiraIdentityStepPayload;
+  contract: CreateCarteiraContractStepPayload;
+}
+
 export interface CreateCarteiraPayload {
   name: string;
-  email?: string | null;
-  phone?: string | null;
+  email: string;
+  phone: string;
   cnpj?: string | null;
   source: Exclude<PortfolioSourceValue, 'crm'>;
   amount: number;

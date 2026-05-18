@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, UserPlus } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { useCarteiraContext } from '../context/CarteiraContext';
@@ -21,6 +21,7 @@ export function CarteiraContainer() {
           <p className="text-sm text-muted-foreground">Gestão de clientes com negócio fechado</p>
         </div>
         <Button type="button" onClick={() => setIsAddOpen(true)}>
+          <UserPlus data-icon="inline-start" />
           Adicionar cliente
         </Button>
       </div>

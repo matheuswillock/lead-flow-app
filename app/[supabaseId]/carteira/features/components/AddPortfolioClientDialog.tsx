@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { useTeamContext } from '@/app/context/TeamContext';
 import { useTeamClosers } from '@/hooks/useTeamMembersByFunction';
-import { Button } from '@/components/ui/button';
+import { useHealthPlans } from '@/hooks/useHealthPlans';
+import { formatDocumentInput, isValidPhone, maskPhone, normalizeLeadPhoneDigits, sanitizeDocumentDigits } from '@/lib/masks';
 import {
   Dialog,
   DialogContent,
@@ -14,18 +15,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import type { CreateCarteiraPayload } from '../context/CarteiraTypes';
+  FinalizeContractDialog,
+  type FinalizeContractData,
+} from '@/app/[supabaseId]/board/features/container/FinalizeContractDialog';
+import type {
+  CreateCarteiraIdentityStepPayload,
+  CreatePortfolioFromStepsPayload,
+} from '../context/CarteiraTypes';
 import { useCarteiraContext } from '../context/CarteiraContext';
 
 interface AddPortfolioClientDialogProps {
@@ -33,9 +34,17 @@ interface AddPortfolioClientDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function asIsoStartOfDay(value: string): string {
-  return new Date(`${value}T00:00:00`).toISOString();
-}
+type FlowStep = 'identity' | 'contract';
+
+const emptyIdentity: CreateCarteiraIdentityStepPayload = {
+  name: '',
+  email: '',
+  phone: '',
+  cnpj: '',
+  source: 'manual',
+};
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioClientDialogProps) {
   const params = useParams();
@@ -43,233 +52,206 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
   const { activeTeamId } = useTeamContext();
   const { createEntry } = useCarteiraContext();
   const { members: closers } = useTeamClosers(supabaseId, activeTeamId);
+  const { healthPlans } = useHealthPlans(supabaseId, activeTeamId);
 
-  const [isSaving, setIsSaving] = useState(false);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [cnpj, setCnpj] = useState('');
-  const [source, setSource] = useState<'manual' | 'brokerage_transfer'>('manual');
-  const [amount, setAmount] = useState('');
-  const [startDateAt, setStartDateAt] = useState('');
-  const [finalizedDateAt, setFinalizedDateAt] = useState('');
-  const [contractDueDate, setContractDueDate] = useState('');
-  const [closerId, setCloserId] = useState('');
-  const [operadora, setOperadora] = useState('');
-  const [productName, setProductName] = useState('');
-  const [soldPlan, setSoldPlan] = useState('');
-  const [notes, setNotes] = useState('');
-  const [holderName, setHolderName] = useState('');
-  const [holderBirthDate, setHolderBirthDate] = useState('');
-  const [holderDocument, setHolderDocument] = useState('');
-  const [holderCnpj, setHolderCnpj] = useState('');
+  const [step, setStep] = useState<FlowStep>('identity');
+  const [identity, setIdentity] = useState<CreateCarteiraIdentityStepPayload>(emptyIdentity);
 
-  const canSubmit = useMemo(() => {
-    const numericAmount = Number(amount.replace(',', '.'));
-    return (
-      name.trim().length > 0 &&
-      Number.isFinite(numericAmount) &&
-      numericAmount > 0 &&
-      startDateAt &&
-      finalizedDateAt &&
-      closerId &&
-      operadora.trim().length > 0 &&
-      holderName.trim().length > 0 &&
-      holderBirthDate &&
-      holderDocument.trim().length > 0
-    );
-  }, [amount, closerId, finalizedDateAt, holderBirthDate, holderDocument, holderName, name, operadora, startDateAt]);
+  useEffect(() => {
+    if (!open) {
+      setStep('identity');
+      setIdentity(emptyIdentity);
+    }
+  }, [open]);
 
-  const reset = () => {
-    setName('');
-    setEmail('');
-    setPhone('');
-    setCnpj('');
-    setSource('manual');
-    setAmount('');
-    setStartDateAt('');
-    setFinalizedDateAt('');
-    setContractDueDate('');
-    setCloserId('');
-    setOperadora('');
-    setProductName('');
-    setSoldPlan('');
-    setNotes('');
-    setHolderName('');
-    setHolderBirthDate('');
-    setHolderDocument('');
-    setHolderCnpj('');
+  const isIdentityValid = useMemo(() => {
+    const hasName = identity.name.trim().length > 0;
+    const hasEmail = identity.email.trim().length > 0 && EMAIL_REGEX.test(identity.email.trim());
+    const hasPhone = identity.phone.trim().length > 0 && isValidPhone(identity.phone);
+    return hasName && hasEmail && hasPhone;
+  }, [identity.email, identity.name, identity.phone]);
+
+  const isIdentityOpen = open && step === 'identity';
+  const isContractOpen = open && step === 'contract';
+
+  const closeFlow = () => {
+    onOpenChange(false);
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!canSubmit) {
-      toast.error('Preencha os campos obrigatórios.');
-      return;
-    }
-
-    const numericAmount = Number(amount.replace(',', '.'));
-    const payload: CreateCarteiraPayload = {
-      name: name.trim(),
-      email: email.trim() || undefined,
-      phone: phone.trim() || undefined,
-      cnpj: cnpj.trim() || undefined,
-      source,
-      amount: numericAmount,
-      startDateAt: asIsoStartOfDay(startDateAt),
-      finalizedDateAt: asIsoStartOfDay(finalizedDateAt),
-      contractDueDate: contractDueDate ? asIsoStartOfDay(contractDueDate) : undefined,
-      closerId,
-      operadora: operadora.trim(),
-      productName: productName.trim() || undefined,
-      soldPlan: soldPlan.trim() || undefined,
-      notes: notes.trim() || undefined,
-      holder: {
-        name: holderName.trim(),
-        birthDate: asIsoStartOfDay(holderBirthDate),
-        document: holderDocument.trim(),
-        cnpj: holderCnpj.trim() || undefined,
+  const handleFinalizeContract = async (data: FinalizeContractData) => {
+    const composed: CreatePortfolioFromStepsPayload = {
+      identity,
+      contract: {
+        amount: data.amount,
+        startDateAt: data.startDateAt.toISOString(),
+        finalizedDateAt: data.finalizedDateAt.toISOString(),
+        contractDueDate: undefined,
+        closerId: data.closerId,
+        operadora: data.operadora,
+        productName: data.productName ?? null,
+        soldPlan: null,
+        notes: data.notes ?? null,
+        holder: {
+          name: data.contractHolder.name,
+          birthDate: data.contractHolder.birthDate.toISOString(),
+          document: data.contractHolder.document,
+          cnpj: data.contractHolder.cnpj ?? null,
+        },
+        dependents: data.dependents.map((dependent) => ({
+          name: dependent.name,
+          birthDate: dependent.birthDate.toISOString(),
+          parentesco: dependent.parentesco,
+          document: dependent.document ?? null,
+        })),
       },
-      dependents: [],
     };
 
-    setIsSaving(true);
     try {
-      await createEntry(payload);
-      onOpenChange(false);
-      reset();
+      await createEntry({
+        name: composed.identity.name.trim(),
+        email: composed.identity.email.trim(),
+        phone: normalizeLeadPhoneDigits(composed.identity.phone),
+        cnpj: sanitizeDocumentDigits(composed.identity.cnpj || '') || undefined,
+        source: composed.identity.source,
+        amount: composed.contract.amount,
+        startDateAt: composed.contract.startDateAt,
+        finalizedDateAt: composed.contract.finalizedDateAt,
+        contractDueDate: composed.contract.contractDueDate,
+        closerId: composed.contract.closerId,
+        operadora: composed.contract.operadora,
+        productName: composed.contract.productName ?? undefined,
+        soldPlan: composed.contract.soldPlan ?? undefined,
+        notes: composed.contract.notes ?? undefined,
+        holder: {
+          name: composed.contract.holder.name,
+          birthDate: composed.contract.holder.birthDate,
+          document: composed.contract.holder.document,
+          cnpj: composed.contract.holder.cnpj ?? undefined,
+        },
+        dependents: composed.contract.dependents,
+      });
+
+      closeFlow();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao adicionar cliente');
-    } finally {
-      setIsSaving(false);
+      throw error;
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Adicionar cliente na carteira</DialogTitle>
-          <DialogDescription>
-            Cadastre um cliente já fechado com origem Manual ou Transferência de corretagem.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={isIdentityOpen} onOpenChange={closeFlow}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Adicionar cliente na carteira</DialogTitle>
+            <DialogDescription>
+              Informe os dados do cliente para seguir ao fechamento do contrato.
+            </DialogDescription>
+          </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 overflow-y-auto pr-1">
-          <div className="grid gap-2">
-            <Label>Origem do cliente *</Label>
-            <RadioGroup value={source} onValueChange={(value) => setSource(value as 'manual' | 'brokerage_transfer')} className="grid gap-2">
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="manual" id="portfolio-source-manual" />
-                <Label htmlFor="portfolio-source-manual">Manual</Label>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Origem do cliente *</Label>
+              <RadioGroup
+                value={identity.source}
+                onValueChange={(value) =>
+                  setIdentity((prev) => ({
+                    ...prev,
+                    source: value as 'manual' | 'brokerage_transfer',
+                  }))
+                }
+                className="grid gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem id="portfolio-source-manual" value="manual" />
+                  <Label htmlFor="portfolio-source-manual">Manual</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem id="portfolio-source-transfer" value="brokerage_transfer" />
+                  <Label htmlFor="portfolio-source-transfer">Transferência de corretagem</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="portfolio-client-name">Nome *</Label>
+              <Input
+                id="portfolio-client-name"
+                value={identity.name}
+                onChange={(event) =>
+                  setIdentity((prev) => ({ ...prev, name: event.target.value }))
+                }
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="portfolio-client-email">Email *</Label>
+                <Input
+                  id="portfolio-client-email"
+                  type="email"
+                  value={identity.email}
+                  onChange={(event) =>
+                    setIdentity((prev) => ({ ...prev, email: event.target.value }))
+                  }
+                />
               </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem value="brokerage_transfer" id="portfolio-source-transfer" />
-                <Label htmlFor="portfolio-source-transfer">Transferência de corretagem</Label>
+              <div className="grid gap-2">
+                <Label htmlFor="portfolio-client-phone">Telefone *</Label>
+                <Input
+                  id="portfolio-client-phone"
+                  value={identity.phone}
+                  onChange={(event) =>
+                    setIdentity((prev) => ({ ...prev, phone: maskPhone(event.target.value) }))
+                  }
+                />
               </div>
-            </RadioGroup>
-          </div>
+            </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="grid gap-2">
-              <Label htmlFor="portfolio-name">Nome *</Label>
-              <Input id="portfolio-name" value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="portfolio-client-cnpj">CNPJ do cliente</Label>
+              <Input
+                id="portfolio-client-cnpj"
+                value={identity.cnpj ?? ''}
+                onChange={(event) =>
+                  setIdentity((prev) => ({ ...prev, cnpj: formatDocumentInput(event.target.value) }))
+                }
+              />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-email">Email</Label>
-              <Input id="portfolio-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-phone">Telefone</Label>
-              <Input id="portfolio-phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-cnpj">CNPJ do cliente</Label>
-              <Input id="portfolio-cnpj" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-amount">Valor do contrato (R$) *</Label>
-              <Input id="portfolio-amount" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Closer *</Label>
-              <Select value={closerId} onValueChange={setCloserId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o closer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {closers.map((closer) => (
-                    <SelectItem key={closer.id} value={closer.id}>
-                      {closer.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-startDate">Data de início *</Label>
-              <Input id="portfolio-startDate" type="date" value={startDateAt} onChange={(e) => setStartDateAt(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-finalizedDate">Data de finalização *</Label>
-              <Input id="portfolio-finalizedDate" type="date" value={finalizedDateAt} onChange={(e) => setFinalizedDateAt(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-dueDate">Data de vigência</Label>
-              <Input id="portfolio-dueDate" type="date" value={contractDueDate} onChange={(e) => setContractDueDate(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-operadora">Operadora *</Label>
-              <Input id="portfolio-operadora" value={operadora} onChange={(e) => setOperadora(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-productName">Produto</Label>
-              <Input id="portfolio-productName" value={productName} onChange={(e) => setProductName(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-soldPlan">Plano vendido</Label>
-              <Input id="portfolio-soldPlan" value={soldPlan} onChange={(e) => setSoldPlan(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-holder-name">Titular - Nome *</Label>
-              <Input id="portfolio-holder-name" value={holderName} onChange={(e) => setHolderName(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-holder-birthDate">Titular - Nascimento *</Label>
-              <Input id="portfolio-holder-birthDate" type="date" value={holderBirthDate} onChange={(e) => setHolderBirthDate(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-holder-document">Titular - Documento *</Label>
-              <Input id="portfolio-holder-document" value={holderDocument} onChange={(e) => setHolderDocument(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="portfolio-holder-cnpj">Titular - CNPJ</Label>
-              <Input id="portfolio-holder-cnpj" value={holderCnpj} onChange={(e) => setHolderCnpj(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="portfolio-notes">Observações</Label>
-            <Textarea id="portfolio-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
+            <Button type="button" variant="outline" onClick={closeFlow}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={isSaving || !canSubmit}>
-              {isSaving ? 'Salvando...' : 'Adicionar cliente'}
+            <Button
+              type="button"
+              disabled={!isIdentityValid}
+              onClick={() => setStep('contract')}
+            >
+              Continuar
             </Button>
           </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      <FinalizeContractDialog
+        open={isContractOpen}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setStep('identity');
+            closeFlow();
+          }
+        }}
+        onBackStep={() => setStep('identity')}
+        headerTitle="Adicionar cliente na carteira"
+        headerDescription={`Preencha os detalhes do contrato para o cliente: ${identity.name || 'Cliente'}`}
+        leadName={identity.name || 'Cliente'}
+        onFinalize={handleFinalizeContract}
+        closers={closers}
+        healthPlans={healthPlans}
+        initialHolderCnpj={identity.cnpj || null}
+      />
+    </>
   );
 }
-
