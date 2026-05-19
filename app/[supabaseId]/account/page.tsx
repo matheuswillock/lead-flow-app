@@ -15,7 +15,9 @@ import {
   ShieldCheck,
   CheckCircle2,
   XCircle,
+  CircleX,
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -54,6 +56,33 @@ import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth";
 import { getProfileTimezoneOptions, type TimezoneOption } from "@/lib/dates";
 import { useTimezone } from "@/app/context/TimezoneContext";
 
+const ALL_GOOGLE_SCOPES = [
+  {
+    scope: "https://www.googleapis.com/auth/calendar.events.freebusy",
+    label: "Ver a disponibilidade nas agendas do Google a que você tem acesso",
+  },
+  {
+    scope: "https://www.googleapis.com/auth/calendar.events",
+    label: "Ver e editar eventos em todas as suas agendas",
+  },
+  {
+    scope: "https://www.googleapis.com/auth/tasks",
+    label: "Criar, editar, organizar e excluir todas as suas tarefas",
+  },
+  {
+    scope: "profile",
+    label: "Ver suas informações pessoais, inclusive aquelas que você disponibilizou publicamente",
+  },
+  {
+    scope: "email",
+    label: "Ver o endereço de e-mail principal da sua Conta do Google",
+  },
+  {
+    scope: "openid",
+    label: "Associar suas informações pessoais a você no Google",
+  },
+] as const;
+
 export default function AccountProfilePage() {
   const { user, isLoading, updateUser, updatePassword, uploadProfileIcon, deleteProfileIcon, refreshUser } =
     useUser();
@@ -69,7 +98,9 @@ export default function AccountProfilePage() {
   const [isDisconnectingGoogle, setIsDisconnectingGoogle] = useState(false);
   const [isUpdatingTimezone, setIsUpdatingTimezone] = useState(false);
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
-  
+  const [grantedScopes, setGrantedScopes] = useState<string[]>([]);
+  const [isScopesLoading, setIsScopesLoading] = useState(false);
+
   // Estados para deletar conta
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
@@ -183,6 +214,23 @@ export default function AccountProfilePage() {
       setFunctionSelections(user.functions || []);
     }
   }, [user, form]);
+
+  useEffect(() => {
+    if (!user?.googleCalendarConnected) {
+      setGrantedScopes([]);
+      return;
+    }
+    let cancelled = false;
+    setIsScopesLoading(true);
+    fetch("/api/v1/google/scopes", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((json: { isValid?: boolean; result?: { scopes?: string[] } }) => {
+        if (!cancelled && json.isValid) setGrantedScopes(json.result?.scopes ?? []);
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setIsScopesLoading(false); });
+    return () => { cancelled = true; };
+  }, [user?.googleCalendarConnected]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -889,6 +937,37 @@ export default function AccountProfilePage() {
                         </Button>
                       )}
                     </div>
+
+                    {user?.googleCalendarConnected && (
+                      <div className="rounded-lg border border-border/60 p-4 space-y-3">
+                        <p className="text-sm font-medium">Permissões concedidas</p>
+                        {isScopesLoading ? (
+                          <div className="space-y-2">
+                            {Array.from({ length: 6 }).map((_, i) => (
+                              <Skeleton key={i} className="h-5 w-full" />
+                            ))}
+                          </div>
+                        ) : (
+                          <ul className="space-y-2">
+                            {ALL_GOOGLE_SCOPES.map(({ scope, label }) => {
+                              const granted = grantedScopes.includes(scope);
+                              return (
+                                <li key={scope} className="flex items-start gap-2 text-sm">
+                                  {granted ? (
+                                    <CircleCheckBig className="size-4 text-emerald-500 mt-0.5 shrink-0" />
+                                  ) : (
+                                    <CircleX className="size-4 text-destructive mt-0.5 shrink-0" />
+                                  )}
+                                  <span className={granted ? "text-foreground" : "text-muted-foreground"}>
+                                    {label}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </section>
 
                   <Separator />

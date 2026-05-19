@@ -6,6 +6,7 @@ export interface BackofficeClientTeamMember {
   addedAt: string
   role: string
   googleCalendarConnected: boolean
+  googleEmail: string | null
   functions: string[]
 }
 

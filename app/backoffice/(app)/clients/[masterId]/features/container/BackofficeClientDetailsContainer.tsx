@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
-import { CalendarDays, Crown, DollarSign, Eye, Pencil, Search, Tag, X } from "lucide-react"
+import { CalendarDays, Crown, DollarSign, Eye, MoreHorizontal, Pencil, Search, Tag, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { CircleX, CircleCheckBig } from "lucide-react"
 import {
@@ -35,9 +35,17 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useBackofficeClientDetails } from "../context/BackofficeClientDetailsContext"
 import { BackofficeClientEditDialog } from "../components/BackofficeClientEditDialog"
 import { BackofficeClientDeleteDialog } from "../components/BackofficeClientDeleteDialog"
+import { BackofficeMemberProfileSheet } from "../components/BackofficeMemberProfileSheet"
+import type { BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { maskPhone } from "@/lib/masks"
@@ -147,6 +155,8 @@ export function BackofficeClientDetailsContainer() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [isTogglingLifetime, setIsTogglingLifetime] = useState(false)
   const lifetimeInFlight = useRef(false)
+  const [selectedMember, setSelectedMember] = useState<BackofficeClientTeamMember | null>(null)
+  const [memberSheetOpen, setMemberSheetOpen] = useState(false)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -355,6 +365,7 @@ export function BackofficeClientDetailsContainer() {
                                   <TableHead className="text-center">Funções</TableHead>
                                   <TableHead className="text-center">Conta Google Conectada</TableHead>
                                   <TableHead className="text-center">Data de inclusão</TableHead>
+                                  <TableHead className="text-center">Ações</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -377,6 +388,26 @@ export function BackofficeClientDetailsContainer() {
                                       {member.googleCalendarConnected ? <CircleCheckBig className="text-green-500" /> : <CircleX className="text-red-500" />}
                                     </TableCell>
                                     <TableCell>{formatDate(member.addedAt, tz)}</TableCell>
+                                    <TableCell className="text-center">
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm">
+                                            <MoreHorizontal />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem
+                                            onClick={() => {
+                                              setSelectedMember(member)
+                                              setMemberSheetOpen(true)
+                                            }}
+                                          >
+                                            <Eye />
+                                            Visualizar
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </TableCell>
                                   </TableRow>
                                 ))}
                               </TableBody>
@@ -698,6 +729,13 @@ export function BackofficeClientDetailsContainer() {
           />
         </>
       )}
+
+      <BackofficeMemberProfileSheet
+        open={memberSheetOpen}
+        onOpenChange={setMemberSheetOpen}
+        member={selectedMember}
+        service={service}
+      />
     </div>
   )
 }
