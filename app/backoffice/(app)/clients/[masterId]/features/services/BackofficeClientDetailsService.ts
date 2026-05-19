@@ -138,4 +138,15 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       throw new Error(json.errorMessages?.[0] ?? "Erro ao excluir conta do cliente")
     }
   }
+
+  async getMemberGoogleScopes(memberId: string): Promise<{ connected: boolean; scopes: string[] }> {
+    const res = await fetch(`/api/v1/backoffice/members/${memberId}/google-scopes`, {
+      cache: "no-store",
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao buscar escopos Google do membro")
+    }
+    return json.result as { connected: boolean; scopes: string[] }
+  }
 }
