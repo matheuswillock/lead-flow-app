@@ -20,6 +20,7 @@ const routeMatchers: RouteMatcher[] = [
   { prefix: "/email/campanhas", slug: FEATURE_SLUGS.EMAIL_CAMPAIGNS },
   { prefix: "/email/historico", slug: FEATURE_SLUGS.EMAIL_HISTORY },
   { prefix: "/email/analytics", slug: FEATURE_SLUGS.EMAIL_ANALYTICS },
+  { prefix: "/email/configuracoes", slug: FEATURE_SLUGS.EMAIL_SETTINGS },
   { prefix: "/email", slug: FEATURE_SLUGS.EMAIL },
 ]
 

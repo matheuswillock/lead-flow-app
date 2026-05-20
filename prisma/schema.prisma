@@ -1131,6 +1131,7 @@ model Team {
   emailContactLists EmailContactList[] @relation("TeamEmailContactLists")
   emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
+  emailSettings     EmailTeamSettings? @relation("TeamEmailSettings")
 
   @@index([masterId])
   @@map("teams")
@@ -1630,3 +1631,17 @@ model ProfileSubscription {
   @@map("profile_subscriptions")
 }
 
+
+model EmailTeamSettings {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @unique @db.Uuid
+  fromName  String   @default("Corretor Studio") @db.Text
+  fromEmail String   @default("no-reply@corretorstudio.com") @db.Text
+  replyTo   String?  @db.Text
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailSettings", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("email_team_settings")
+}

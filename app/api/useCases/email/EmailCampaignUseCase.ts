@@ -5,7 +5,8 @@ import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDi
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
 
-const DEFAULT_FROM = `Corretor Studio <no-reply@corretorstudio.com>`
+const FALLBACK_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Corretor Studio"
+const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "no-reply@corretorstudio.com"
 
 export interface CreateCampaignInput {
   name: string
@@ -164,14 +165,17 @@ export class EmailCampaignUseCase {
 
   async send(id: string, ctx: TeamContext): Promise<Output> {
     try {
-      const campaign = await prisma.emailCampaign.findFirst({
-        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
-        include: {
-          template: { select: { id: true, subject: true, html: true } },
-          contactList: { select: { id: true, name: true, totalContacts: true } },
-          team: { select: { master: { select: { id: true } } } },
-        },
-      })
+      const [campaign, teamSettings] = await Promise.all([
+        prisma.emailCampaign.findFirst({
+          where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
+          include: {
+            template: { select: { id: true, subject: true, html: true } },
+            contactList: { select: { id: true, name: true, totalContacts: true } },
+            team: { select: { master: { select: { id: true } } } },
+          },
+        }),
+        prisma.emailTeamSettings.findUnique({ where: { teamId: ctx.teamId } }),
+      ])
 
       if (!campaign) {
         return new Output(false, [], ["Campanha não encontrada ou já foi enviada"], null)
@@ -217,9 +221,13 @@ export class EmailCampaignUseCase {
         customFields: c.customFields as Record<string, unknown> | null,
       }))
 
+      const fromName = teamSettings?.fromName ?? FALLBACK_FROM_NAME
+      const fromEmail = teamSettings?.fromEmail ?? FALLBACK_FROM_EMAIL
+      const from = `${fromName} <${fromEmail}>`
+
       // Dispatch
       const dispatchResult = await this.dispatchService.dispatchBatch({
-        from: DEFAULT_FROM,
+        from,
         recipients: recipientsList,
         subject: campaign.template.subject,
         html: campaign.template.html,
