@@ -15,6 +15,7 @@ export interface TeamMemberRecord {
   addedAt: Date
   role: string
   googleCalendarConnected: boolean
+  googleEmail: string | null
   functions: string[]
 }
 

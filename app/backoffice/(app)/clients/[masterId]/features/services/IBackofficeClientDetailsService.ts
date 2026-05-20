@@ -44,4 +44,6 @@ export interface IBackofficeClientDetailsService {
   ): Promise<void>
 
   deleteClient(masterId: string): Promise<void>
+
+  getMemberGoogleScopes(memberId: string): Promise<{ connected: boolean; scopes: string[] }>
 }

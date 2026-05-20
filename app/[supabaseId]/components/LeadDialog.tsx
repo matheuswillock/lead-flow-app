@@ -197,7 +197,7 @@ export default function LeadDialog({
 
   useEffect(() => {
     setLocalLead(lead);
-  }, [lead?.id]);
+  }, [lead?.id, open]);
   const [meetingHealdGateOpen, setMeetingHealdGateOpen] = useState(false);
   const [meetingHealdBlockedOpen, setMeetingHealdBlockedOpen] = useState(false);
   const [pendingMeetingHealdGate, setPendingMeetingHealdGate] = useState<
