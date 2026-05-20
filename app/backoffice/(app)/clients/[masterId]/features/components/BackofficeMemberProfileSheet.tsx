@@ -70,7 +70,6 @@ export function BackofficeMemberProfileSheet({
   const [grantedScopes, setGrantedScopes] = useState<string[]>([])
   const [isScopesLoading, setIsScopesLoading] = useState(false)
   const [scopesError, setScopesError] = useState<string | null>(null)
-  const inFlight = useRef(false)
   const lastFetchedMemberId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -81,26 +80,31 @@ export function BackofficeMemberProfileSheet({
     }
 
     if (lastFetchedMemberId.current === member.id) return
-    if (inFlight.current) return
 
-    inFlight.current = true
+    let stale = false
+    setGrantedScopes([])
     setIsScopesLoading(true)
     setScopesError(null)
 
     service
       .getMemberGoogleScopes(member.id)
       .then((result) => {
+        if (stale) return
         setGrantedScopes(result.scopes)
         lastFetchedMemberId.current = member.id
       })
       .catch(() => {
+        if (stale) return
         setScopesError("Não foi possível carregar os escopos")
       })
       .finally(() => {
-        setIsScopesLoading(false)
-        inFlight.current = false
+        if (!stale) setIsScopesLoading(false)
       })
-  }, [open, member, service])
+
+    return () => {
+      stale = true
+    }
+  }, [open, member?.id, member?.googleCalendarConnected, service])
 
   function handleOpenChange(next: boolean) {
     if (!next) {
