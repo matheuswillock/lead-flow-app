@@ -8130,6 +8130,220 @@
           ]
         },
         {
+          "name": "Backoffice All Users",
+          "item": [
+            {
+              "name": "GET All Users (list)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/clients/all-users?page=1&pageSize=10",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "clients",
+                    "all-users"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "10"
+                    },
+                    {
+                      "key": "q",
+                      "value": "",
+                      "disabled": true
+                    },
+                    {
+                      "key": "role",
+                      "value": "operator",
+                      "description": "master | manager | operator",
+                      "disabled": true
+                    },
+                    {
+                      "key": "plan",
+                      "value": "lifetime",
+                      "description": "lifetime | monthly | trial | none",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Lista paginada de todos os profiles da plataforma (master/manager/operator). Suporta busca textual (q), filtro por papel (role) e filtro por plano do master vinculado (plan)."
+              }
+            },
+            {
+              "name": "GET All Users (detail)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/clients/all-users/:profileId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "clients",
+                    "all-users",
+                    ":profileId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "profileId",
+                      "value": "{{profileId}}"
+                    }
+                  ]
+                },
+                "description": "Detalhes de um profile específico: dados básicos, plano do master vinculado, status do Google Calendar e lista de times em que participa."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Backoffice Members",
+          "item": [
+            {
+              "name": "PATCH Update Member",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Nome Atualizado\",\n  \"phone\": \"11999990000\",\n  \"email\": \"membro@example.com\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Atualiza dados básicos (nome, telefone, e-mail) de um membro do time de um cliente. Quando o e-mail muda, também atualiza o e-mail correspondente no Supabase Auth."
+              }
+            },
+            {
+              "name": "DELETE Member Account",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"password\": \"SENHA_DO_BACKOFFICE_ADMIN\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Exclui permanentemente a conta de um membro não-master. Requer a senha do admin de backoffice no body para reautenticação. Cancela assinaturas Asaas, remove leads atribuídos, exclui o Profile e o usuário do Supabase Auth, e envia e-mail de encerramento ao membro."
+              }
+            },
+            {
+              "name": "DELETE Remove Member From Team",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/members/:memberId/teams/:teamId",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "members",
+                    ":memberId",
+                    "teams",
+                    ":teamId"
+                  ],
+                  "variable": [
+                    {
+                      "key": "memberId",
+                      "value": "{{memberProfileId}}"
+                    },
+                    {
+                      "key": "teamId",
+                      "value": "{{teamId}}"
+                    }
+                  ]
+                },
+                "description": "Remove o vínculo de um membro com um time específico (deleta TeamMember). Não exclui o Profile nem o acesso ao Supabase Auth."
+              }
+            }
+          ]
+        },
+        {
           "name": "GET Meta Integration Config",
           "request": {
             "method": "GET",
