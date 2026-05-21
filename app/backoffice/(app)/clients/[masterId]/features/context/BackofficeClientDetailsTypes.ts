@@ -8,6 +8,7 @@ export interface BackofficeClientTeamMember {
   googleCalendarConnected: boolean
   googleEmail: string | null
   functions: string[]
+  isMaster: boolean
 }
 
 export interface BackofficeClientTeam {
