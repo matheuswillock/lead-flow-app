@@ -1,9 +1,15 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, Crown, Eye, Search } from "lucide-react"
+import { AlertCircle, Crown, Eye, MoreHorizontal, Pencil, Trash2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -22,11 +28,21 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { LeadsFiltersLayout } from "@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout"
+import { LeadsMultiFilter } from "@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates/formatters"
 import { maskPhone } from "@/lib/masks"
+import { toast } from "sonner"
+import { BackofficeMemberDeleteDialog } from "@/app/backoffice/(app)/clients/[masterId]/features/components/BackofficeMemberDeleteDialog"
+import { BackofficeMemberEditDialog } from "@/app/backoffice/(app)/clients/[masterId]/features/components/BackofficeMemberEditDialog"
+import type {
+  BackofficeClientDetails,
+  BackofficeClientTeamMember,
+} from "@/app/backoffice/(app)/clients/[masterId]/features/context/BackofficeClientDetailsTypes"
+import { BackofficeClientDetailsService } from "@/app/backoffice/(app)/clients/[masterId]/features/services/BackofficeClientDetailsService"
 import { useBackofficeAllUsers } from "../context/BackofficeAllUsersContext"
 import type {
+  BackofficeAllUsersItem,
   BackofficeAllUsersFilters,
   BackofficeAllUsersPlanFilter,
   BackofficeAllUsersRoleFilter,
@@ -81,6 +97,7 @@ function getRoleBadge(role: string, isMaster: boolean) {
 
 export function BackofficeAllUsersContainer() {
   const { tz } = useTimezone()
+  const clientDetailsService = useMemo(() => new BackofficeClientDetailsService(), [])
   const {
     items,
     pagination,
@@ -96,10 +113,29 @@ export function BackofficeAllUsersContainer() {
   } = useBackofficeAllUsers()
 
   const [localFilters, setLocalFilters] = useState<BackofficeAllUsersFilters>(filters)
+  const [selectedMember, setSelectedMember] = useState<BackofficeClientTeamMember | null>(null)
+  const [selectedDetails, setSelectedDetails] = useState<BackofficeClientDetails | null>(null)
+  const [memberEditOpen, setMemberEditOpen] = useState(false)
+  const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalFilters(filters)
   }, [filters])
+
+  useEffect(() => {
+    const nextQuery = localFilters.query.trim()
+    const currentQuery = filters.query.trim()
+    if (nextQuery === currentQuery) return
+
+    const debounceId = window.setTimeout(() => {
+      const updated = { ...localFilters, query: localFilters.query }
+      setFilters(updated)
+      void fetchUsers({ filters: updated, page: 1 })
+    }, 300)
+
+    return () => window.clearTimeout(debounceId)
+  }, [fetchUsers, filters.query, localFilters, setFilters])
 
   const roleCounts = useMemo(() => {
     return items.reduce(
@@ -113,29 +149,34 @@ export function BackofficeAllUsersContainer() {
     )
   }, [items])
 
+  const isFiltered = useMemo(() => {
+    return (
+      localFilters.query.trim().length > 0 ||
+      localFilters.role !== "all" ||
+      localFilters.plan !== "all"
+    )
+  }, [localFilters.plan, localFilters.query, localFilters.role])
+
   function handleQueryChange(value: string) {
     setLocalFilters((prev) => ({ ...prev, query: value }))
   }
 
-  function handleRoleChange(value: string) {
-    const next = (value as BackofficeAllUsersRoleFilter | "all")
+  function handleRoleChange(values: string[]) {
+    const selected = values[values.length - 1]
+    const next = (selected ?? "all") as BackofficeAllUsersRoleFilter | "all"
     const updated = { ...localFilters, role: next }
     setLocalFilters(updated)
     setFilters(updated)
     void fetchUsers({ filters: updated, page: 1 })
   }
 
-  function handlePlanChange(value: string) {
-    const next = (value as BackofficeAllUsersPlanFilter | "all")
+  function handlePlanChange(values: string[]) {
+    const selected = values[values.length - 1]
+    const next = (selected ?? "all") as BackofficeAllUsersPlanFilter | "all"
     const updated = { ...localFilters, plan: next }
     setLocalFilters(updated)
     setFilters(updated)
     void fetchUsers({ filters: updated, page: 1 })
-  }
-
-  async function handleSearch() {
-    setFilters(localFilters)
-    await fetchUsers({ filters: localFilters, page: 1 })
   }
 
   async function handleClear() {
@@ -146,6 +187,94 @@ export function BackofficeAllUsersContainer() {
     }
     setLocalFilters(cleared)
     await clearFilters()
+  }
+
+  function buildFallbackMember(item: BackofficeAllUsersItem): BackofficeClientTeamMember {
+    return {
+      id: item.id,
+      fullName: item.fullName,
+      email: item.email,
+      phone: item.phone,
+      addedAt: item.createdAt,
+      role: item.isMaster ? "master" : item.role,
+      googleCalendarConnected: item.googleCalendarConnected,
+      googleEmail: null,
+      functions: [],
+      isMaster: item.isMaster,
+    }
+  }
+
+  function getMasterId(item: BackofficeAllUsersItem) {
+    if (item.isMaster) return item.id
+    return item.master?.id ?? null
+  }
+
+  async function resolveMemberContext(
+    item: BackofficeAllUsersItem,
+    options?: { loadDetails?: boolean }
+  ) {
+    if (actionLoadingId) return null
+
+    setActionLoadingId(item.id)
+    try {
+      const fallbackMember = buildFallbackMember(item)
+      let details: BackofficeClientDetails | null = null
+      let member: BackofficeClientTeamMember = fallbackMember
+
+      if (options?.loadDetails) {
+        const masterId = getMasterId(item)
+        if (!masterId) {
+          toast.info("Usuário sem cliente vinculado no momento. Edição/deleção disponível com dados básicos.")
+        } else {
+          try {
+            details = await clientDetailsService.getByMasterId(masterId, {
+              page: 1,
+              pageSize: 100,
+            })
+            const foundMember = details.teams
+              .flatMap((team) => team.members)
+              .find((teamMember) => teamMember.id === item.id)
+            if (foundMember) {
+              member = foundMember
+            } else {
+              toast.info("Usuário sem vínculo de time no cliente. Edição/deleção disponível com dados básicos.")
+            }
+          } catch (err) {
+            console.error("[BackofficeAllUsersContainer][resolveMemberContext]", err)
+            toast.error("Falha ao carregar contexto do cliente. Você ainda pode editar e deletar este usuário.")
+          }
+        }
+      }
+
+      setSelectedDetails(details)
+      setSelectedMember(member)
+      return { details, member }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar dados do usuário")
+      return null
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  async function handleOpenEdit(item: BackofficeAllUsersItem) {
+    const result = await resolveMemberContext(item, { loadDetails: true })
+    if (!result) return
+    setMemberEditOpen(true)
+  }
+
+  async function handleOpenDelete(item: BackofficeAllUsersItem) {
+    const result = await resolveMemberContext(item, { loadDetails: false })
+    if (!result) return
+    setMemberDeleteOpen(true)
+  }
+
+  async function handleActionSuccess() {
+    await fetchUsers({
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      filters,
+    })
   }
 
   return (
@@ -169,37 +298,24 @@ export function BackofficeAllUsersContainer() {
           onChange={(event) => handleQueryChange(event.target.value)}
           className="h-8 w-[260px] lg:w-[360px]"
         />
-        <Select value={localFilters.role} onValueChange={handleRoleChange} disabled={isLoading}>
-          <SelectTrigger className="h-8 w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {ROLE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={localFilters.plan} onValueChange={handlePlanChange} disabled={isLoading}>
-          <SelectTrigger className="h-8 w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PLAN_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button size="sm" onClick={() => void handleSearch()} disabled={isLoading}>
-          <Search className="mr-1 h-4 w-4" />
-          Buscar
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => void handleClear()} disabled={isLoading}>
-          Limpar
-        </Button>
+        <LeadsMultiFilter
+          title="Papel"
+          options={ROLE_OPTIONS.filter((option) => option.value !== "all")}
+          selectedValues={localFilters.role === "all" ? [] : [localFilters.role]}
+          onChange={handleRoleChange}
+        />
+        <LeadsMultiFilter
+          title="Plano"
+          options={PLAN_OPTIONS.filter((option) => option.value !== "all")}
+          selectedValues={localFilters.plan === "all" ? [] : [localFilters.plan]}
+          onChange={handlePlanChange}
+        />
+        {isFiltered ? (
+          <Button size="sm" variant="ghost" className="h-8 px-2 lg:px-3" onClick={() => void handleClear()} disabled={isLoading}>
+            Limpar
+            <X data-icon="inline-end" />
+          </Button>
+        ) : null}
       </LeadsFiltersLayout>
 
       {error && (
@@ -225,7 +341,7 @@ export function BackofficeAllUsersContainer() {
               <TableHead>Master vinculado</TableHead>
               <TableHead>Plano do master</TableHead>
               <TableHead>Criado em</TableHead>
-              <TableHead className="text-right">Ação</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -258,14 +374,32 @@ export function BackofficeAllUsersContainer() {
                   <TableCell>{item.master ? item.master.plan.label : "—"}</TableCell>
                   <TableCell>{formatDate(item.createdAt, tz)}</TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void openUserSheet(item.id)}
-                    >
-                      <Eye />
-                      Visualizar
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="ghost" disabled={actionLoadingId === item.id}>
+                          <MoreHorizontal />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => void openUserSheet(item.id)}>
+                          <Eye />
+                          Visualizar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => void handleOpenEdit(item)}>
+                          <Pencil />
+                          Editar
+                        </DropdownMenuItem>
+                        {!item.isMaster ? (
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                            onClick={() => void handleOpenDelete(item)}
+                          >
+                            <Trash2 />
+                            Deletar conta
+                          </DropdownMenuItem>
+                        ) : null}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))
@@ -326,6 +460,25 @@ export function BackofficeAllUsersContainer() {
       </div>
 
       <BackofficeAllUsersDetailSheet />
+      <BackofficeMemberEditDialog
+        open={memberEditOpen}
+        onOpenChange={setMemberEditOpen}
+        member={selectedMember}
+        details={selectedDetails}
+        service={clientDetailsService}
+        onSuccess={() => void handleActionSuccess()}
+        onDeleteRequest={() => {
+          setMemberEditOpen(false)
+          setMemberDeleteOpen(true)
+        }}
+      />
+      <BackofficeMemberDeleteDialog
+        open={memberDeleteOpen}
+        onOpenChange={setMemberDeleteOpen}
+        member={selectedMember}
+        service={clientDetailsService}
+        onSuccess={() => void handleActionSuccess()}
+      />
     </div>
   )
 }
