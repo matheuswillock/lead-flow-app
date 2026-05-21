@@ -841,6 +841,20 @@ unsubscribed unsubscribed
     }
   
 
+  "team_mcp_tokens" {
+    String id "🗝️"
+    String tokenHash 
+    String tokenPreview 
+    String label "❓"
+    Boolean isActive 
+    DateTime lastUsedAt "❓"
+    DateTime expiresAt "❓"
+    DateTime revokedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "notifications" {
     String id "🗝️"
     NotificationType type 
@@ -1158,6 +1172,8 @@ unsubscribed unsubscribed
     "team_studio_webhook_configs" |o--|| teams : "team"
     "team_studio_webhook_configs" }o--|| profiles : "updatedBy"
     "team_studio_webhook_request_logs" }o--|| teams : "team"
+    "team_mcp_tokens" }o--|| teams : "team"
+    "team_mcp_tokens" }o--|| profiles : "creator"
     "notifications" |o--|| "NotificationType" : "enum:type"
     "notifications" }o--|| profiles : "recipient"
     "notifications" }o--|o profiles : "actor"
