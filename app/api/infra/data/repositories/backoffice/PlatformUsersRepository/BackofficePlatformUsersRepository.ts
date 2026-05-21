@@ -288,6 +288,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
                   phone: true,
                   googleCalendarConnected: true,
                   googleEmail: true,
+                  isMaster: true,
                 },
               },
             },
@@ -355,6 +356,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           googleCalendarConnected: member.profile.googleCalendarConnected,
           googleEmail: member.profile.googleEmail,
           functions: member.functions,
+          isMaster: member.profile.isMaster,
         })),
       })),
     }

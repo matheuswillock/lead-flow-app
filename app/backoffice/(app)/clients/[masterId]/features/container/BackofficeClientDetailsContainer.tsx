@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
-import { CalendarDays, Crown, DollarSign, Eye, MoreHorizontal, Pencil, Search, Tag, X } from "lucide-react"
+import { CalendarDays, Crown, DollarSign, Eye, MoreHorizontal, Pencil, Search, Tag, Trash2, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { CircleX, CircleCheckBig } from "lucide-react"
 import {
@@ -45,6 +45,8 @@ import { useBackofficeClientDetails } from "../context/BackofficeClientDetailsCo
 import { BackofficeClientEditDialog } from "../components/BackofficeClientEditDialog"
 import { BackofficeClientDeleteDialog } from "../components/BackofficeClientDeleteDialog"
 import { BackofficeMemberProfileSheet } from "../components/BackofficeMemberProfileSheet"
+import { BackofficeMemberEditDialog } from "../components/BackofficeMemberEditDialog"
+import { BackofficeMemberDeleteDialog } from "../components/BackofficeMemberDeleteDialog"
 import type { BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
@@ -157,6 +159,8 @@ export function BackofficeClientDetailsContainer() {
   const lifetimeInFlight = useRef(false)
   const [selectedMember, setSelectedMember] = useState<BackofficeClientTeamMember | null>(null)
   const [memberSheetOpen, setMemberSheetOpen] = useState(false)
+  const [memberEditOpen, setMemberEditOpen] = useState(false)
+  const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -405,6 +409,27 @@ export function BackofficeClientDetailsContainer() {
                                             <Eye />
                                             Visualizar
                                           </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onClick={() => {
+                                              setSelectedMember(member)
+                                              setMemberEditOpen(true)
+                                            }}
+                                          >
+                                            <Pencil />
+                                            Editar
+                                          </DropdownMenuItem>
+                                          {!member.isMaster ? (
+                                            <DropdownMenuItem
+                                              className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                              onClick={() => {
+                                                setSelectedMember(member)
+                                                setMemberDeleteOpen(true)
+                                              }}
+                                            >
+                                              <Trash2 />
+                                              Deletar conta
+                                            </DropdownMenuItem>
+                                          ) : null}
                                         </DropdownMenuContent>
                                       </DropdownMenu>
                                     </TableCell>
@@ -735,6 +760,27 @@ export function BackofficeClientDetailsContainer() {
         onOpenChange={setMemberSheetOpen}
         member={selectedMember}
         service={service}
+      />
+
+      <BackofficeMemberEditDialog
+        open={memberEditOpen}
+        onOpenChange={setMemberEditOpen}
+        member={selectedMember}
+        details={details}
+        service={service}
+        onSuccess={reload}
+        onDeleteRequest={() => {
+          setMemberEditOpen(false)
+          setMemberDeleteOpen(true)
+        }}
+      />
+
+      <BackofficeMemberDeleteDialog
+        open={memberDeleteOpen}
+        onOpenChange={setMemberDeleteOpen}
+        member={selectedMember}
+        service={service}
+        onSuccess={reload}
       />
     </div>
   )

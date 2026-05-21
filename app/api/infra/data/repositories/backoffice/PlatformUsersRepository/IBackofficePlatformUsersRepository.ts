@@ -17,6 +17,7 @@ export interface TeamMemberRecord {
   googleCalendarConnected: boolean
   googleEmail: string | null
   functions: string[]
+  isMaster: boolean
 }
 
 export interface MasterPlatformUserRecord {
