@@ -40,6 +40,8 @@ export function BackofficeMemberDeleteDialog({
     if (!open) {
       setPassword("")
       setShowPassword(false)
+      setIsDeleting(false)
+      inFlight.current = false
     }
   }, [open])
 
@@ -58,6 +60,7 @@ export function BackofficeMemberDeleteDialog({
       onSuccess()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao excluir conta")
+    } finally {
       setIsDeleting(false)
       inFlight.current = false
     }
