@@ -6,7 +6,7 @@ import { BackofficeMemberRepository } from "@/app/api/infra/data/repositories/ba
 import type { IBackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
 
 interface UpdateMemberInput {
-  fullName?: string
+  fullName?: string | null
   phone?: string | null
   email?: string
 }
@@ -60,11 +60,15 @@ export class BackofficeMemberUseCase {
       const payload: UpdateMemberInput = {}
 
       if (data.fullName !== undefined) {
-        const name = data.fullName.trim()
-        if (name.length < 2) {
-          return new Output(false, [], ["Nome completo deve ter pelo menos 2 caracteres"], null)
+        if (data.fullName === null) {
+          payload.fullName = null
+        } else {
+          const name = data.fullName.trim()
+          if (name.length < 2) {
+            return new Output(false, [], ["Nome completo deve ter pelo menos 2 caracteres"], null)
+          }
+          payload.fullName = name
         }
-        payload.fullName = name
       }
 
       if (data.phone !== undefined) {
@@ -87,20 +91,40 @@ export class BackofficeMemberUseCase {
         return new Output(true, ["Nenhuma alteração necessária"], [], { id: memberId })
       }
 
+      const updated = await this.repository.updateMemberProfile(memberId, payload)
+      if (!updated) {
+        return new Output(false, [], ["Não foi possível atualizar o membro"], null)
+      }
+
       if (emailChanged && member.supabaseId) {
         const supabase = createSupabaseAdmin()
         const { error: authError } = await supabase.auth.admin.updateUserById(member.supabaseId, {
           email: payload.email,
         })
+
         if (authError) {
+          const rollbackPayload: UpdateMemberInput = {}
+          if (payload.fullName !== undefined) rollbackPayload.fullName = member.fullName
+          if (payload.phone !== undefined) rollbackPayload.phone = member.phone
+          if (payload.email !== undefined) rollbackPayload.email = member.email
+
+          const rollbackResult = await this.repository.updateMemberProfile(memberId, rollbackPayload)
+          if (!rollbackResult) {
+            console.error(
+              "[BackofficeMemberUseCase][updateMember] Erro ao atualizar e-mail no Auth e falha no rollback:",
+              authError
+            )
+            return new Output(
+              false,
+              [],
+              ["Não foi possível atualizar o e-mail no Supabase Auth e desfazer as alterações locais"],
+              null
+            )
+          }
+
           console.error("[BackofficeMemberUseCase][updateMember] Erro ao atualizar e-mail no Auth:", authError)
           return new Output(false, [], ["Não foi possível atualizar o e-mail no Supabase Auth"], null)
         }
-      }
-
-      const updated = await this.repository.updateMemberProfile(memberId, payload)
-      if (!updated) {
-        return new Output(false, [], ["Não foi possível atualizar o membro"], null)
       }
 
       return new Output(true, ["Membro atualizado com sucesso"], [], { id: updated.id })
@@ -197,6 +221,15 @@ export class BackofficeMemberUseCase {
 
   async removeFromTeam(memberId: string, teamId: string): Promise<Output> {
     try {
+      const member = await this.repository.findMemberForUpdate(memberId)
+      if (!member) {
+        return new Output(false, [], ["Membro não encontrado"], null)
+      }
+
+      if (member.isMaster) {
+        return new Output(false, [], ["Não é permitido remover um usuário master de times"], null)
+      }
+
       const membership = await this.repository.findTeamMembership(teamId, memberId)
       if (!membership) {
         return new Output(false, [], ["Membro não pertence a este time"], null)

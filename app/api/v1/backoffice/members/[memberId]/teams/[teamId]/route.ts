@@ -18,7 +18,14 @@ export async function DELETE(
 
     let status = 200
     if (!output.isValid) {
-      status = output.errorMessages.includes("Membro não pertence a este time") ? 404 : 400
+      if (
+        output.errorMessages.includes("Membro não pertence a este time") ||
+        output.errorMessages.includes("Membro não encontrado")
+      ) {
+        status = 404
+      } else {
+        status = 400
+      }
     }
 
     return NextResponse.json(output, { status })

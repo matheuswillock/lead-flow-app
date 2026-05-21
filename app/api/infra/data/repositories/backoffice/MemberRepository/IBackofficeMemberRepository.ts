@@ -2,6 +2,8 @@ export interface MemberForUpdateRecord {
   id: string
   supabaseId: string | null
   email: string
+  fullName: string | null
+  phone: string | null
   isMaster: boolean
 }
 
@@ -27,7 +29,7 @@ export interface IBackofficeMemberRepository {
 
   updateMemberProfile(
     memberId: string,
-    data: { fullName?: string; phone?: string | null; email?: string }
+    data: { fullName?: string | null; phone?: string | null; email?: string }
   ): Promise<{ id: string } | null>
 
   findMemberForDeletion(memberId: string): Promise<MemberForDeletionRecord | null>
