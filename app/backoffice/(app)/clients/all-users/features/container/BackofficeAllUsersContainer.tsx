@@ -130,12 +130,11 @@ export function BackofficeAllUsersContainer() {
 
     const debounceId = window.setTimeout(() => {
       const updated = { ...localFilters, query: localFilters.query }
-      setFilters(updated)
       void fetchUsers({ filters: updated, page: 1 })
     }, 300)
 
     return () => window.clearTimeout(debounceId)
-  }, [fetchUsers, filters.query, localFilters, setFilters])
+  }, [fetchUsers, filters.query, localFilters])
 
   const roleCounts = useMemo(() => {
     return items.reduce(
