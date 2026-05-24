@@ -37,7 +37,7 @@ export async function DELETE(
       request.headers.get("x-team-id") || new URL(request.url).searchParams.get("teamId");
 
     const { data: profile } = await supabase
-      .from("profiles")
+      .from("corretor_studio_profiles")
       .select("id, activeTeamId")
       .eq("supabaseId", user.id)
       .single();

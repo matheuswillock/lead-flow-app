@@ -178,7 +178,7 @@ export function useLeadActivitiesRealtime({
             {
               event: "INSERT",
               schema: "public",
-              table: "lead_activities",
+              table: "corretor_studio_lead_activities",
               filter: `leadId=eq.${leadId}`,
             },
             (payload) => {

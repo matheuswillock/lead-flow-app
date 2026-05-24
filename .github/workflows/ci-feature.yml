@@ -165,7 +165,7 @@ jobs:
         run: bun run prisma:generate
 
       - name: Check Migration Status
-        run: bun run prisma:migrate:status
+        run: bun run db:migrate:status
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
