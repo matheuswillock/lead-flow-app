@@ -4950,6 +4950,64 @@
                     }
                   },
                   "response": []
+                },
+                {
+                  "name": "POST /api/v1/subscription-management/sync",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/subscription-management/sync",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "subscription-management",
+                        "sync"
+                      ]
+                    },
+                    "description": "Sincroniza assinatura do master pagante com Asaas sem alterar capacidade local."
+                  },
+                  "response": []
+                },
+                {
+                  "name": "POST /api/v1/subscription-management/credits",
+                  "request": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{baseUrl}}/api/v1/subscription-management/credits",
+                      "host": [
+                        "{{baseUrl}}"
+                      ],
+                      "path": [
+                        "api",
+                        "v1",
+                        "subscription-management",
+                        "credits"
+                      ]
+                    },
+                    "description": "Adiciona créditos via checkout incremental ou remove créditos não usados da assinatura.",
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\"action\":\"add\",\"resource\":\"user\",\"quantity\":1,\"billingType\":\"PIX\"}"
+                    }
+                  },
+                  "response": []
                 }
               ]
             },
@@ -9533,7 +9591,7 @@
               "query": [
                 {
                   "key": "dateFrom",
-                  "value": "2026-05-13T00:00:00.000Z"
+                  "value": "2026-05-13T00:00:00Z"
                 },
                 {
                   "key": "dateTo",

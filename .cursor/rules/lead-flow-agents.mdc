@@ -42,47 +42,48 @@ This document defines the implementation governance for AI agents in this reposi
 - **MUST NOT** apply, deploy, push, resolve or reset migration updates in any shared or remote database without explicit authorization from the project owner.
 <!-- - Use `db push` (not migrations) with Supabase. Stop the dev server before running `prisma generate`. -->
 
-## Prisma Migration Policy
+## Migration Policy (Supabase CLI + Prisma ORM)
 
-### Schema-based migrations (MUST)
+The migration workflow uses **Supabase CLI** as the source of truth for migration history. Prisma is used only as an ORM (client generation, schema introspection, local `db push`). The legacy `prisma/migrations/` directory has been archived to `legacy/prisma-migrations/`.
 
-For database changes represented in `prisma/schema.prisma` (tables, columns, enums, indexes and relations), agents **MUST** generate migrations with:
+### Creating migrations (MUST)
 
-```bash
-bun run prisma:migrate -- <migration-name>
-```
-
-This command **MUST** use the project script `scripts/create-prisma-migration-from-diff.ts`, which generates `prisma/migrations/<timestamp>_<migration-name>/migration.sql` via `prisma migrate diff` by comparing the current datasource database with `prisma/schema.prisma`.
-
-Agents **MUST NOT** use `prisma migrate dev` against Supabase remote, production, staging, preview or any shared database. `prisma migrate dev` may only be used through `bun run prisma:migrate:dev` when the datasource points to a disposable local/dev database.
-
-After generating a migration, agents **MUST** review the generated `migration.sql` before considering the database change ready. Empty migration directories are prohibited: every directory inside `prisma/migrations/**` **MUST** contain a `migration.sql` file.
-
-### Applying migrations (MUST)
-
-Shared or remote database migrations **MUST** be applied only with:
+For any database change (schema, RLS, functions, triggers, publications, extensions):
 
 ```bash
-bun run prisma:migrate:deploy
+bun run db:migrate:new <migration-name>
+# Creates: supabase/migrations/<timestamp>_<migration-name>.sql
 ```
 
-Agents **MUST NOT** run `bun run prisma:migrate:deploy`, `bunx prisma migrate deploy`, `bunx prisma migrate resolve`, `bunx prisma migrate reset`, `bunx prisma db push`, or direct Supabase SQL Editor changes without explicit authorization from the project owner.
+Write SQL directly in the generated file. For schema changes driven by `prisma/schema.prisma`, apply the schema to the local DB first (`bun run prisma:db:push`), then use `bun run db:diff` to capture the diff.
 
-After any authorized deploy, agents **MUST** validate with:
+All migrations **MUST** be idempotent when possible (`IF EXISTS`, `IF NOT EXISTS`, `CREATE OR REPLACE`).
+
+### Applying migrations to remote (MUST)
 
 ```bash
-bun run prisma:migrate:status
+bun run db:migrate:push:dry-run   # review first
+bun run db:migrate:push           # apply to linked remote
 ```
 
-### Supabase/Postgres unsupported features (MUST)
+Agents **MUST NOT** run `db:migrate:push` or any SQL Editor change on the remote without explicit authorization from the project owner.
 
-`prisma migrate diff` only covers features represented in `schema.prisma`. For Supabase/Postgres features not represented by Prisma — including RLS policies, functions, triggers, grants/revokes, publications such as `supabase_realtime`, extensions and Auth Hooks — agents **MAY** create or edit SQL manually only inside a new Prisma migration directory:
+After an authorized push, check status with:
 
-```text
-prisma/migrations/<timestamp>_<descriptive_name>/migration.sql
+```bash
+bun run db:migrate:status
 ```
 
-Manual SQL migrations **MUST** be idempotent when possible (`IF EXISTS`, `IF NOT EXISTS`, `CREATE OR REPLACE`, guarded `DO $$ ... $$` blocks) and **MUST** be reviewed before deploy. Direct SQL changes in Supabase SQL Editor are allowed only as an emergency/manual hotfix and **MUST** be reconciled back into `prisma/migrations` before the task is complete.
+### Local development (MUST)
+
+```bash
+bun run db:migrate:reset:local    # reset local Supabase DB and re-apply all migrations
+bun run prisma:db:push            # sync schema.prisma to local DB (no migration history)
+```
+
+### Supabase/Postgres features (MUST)
+
+RLS policies, functions, triggers, grants, publications (`supabase_realtime`), extensions and Auth Hooks **MUST** be written as manual SQL inside a migration file created with `bun run db:migrate:new`. They **MUST NOT** be applied via Supabase SQL Editor except as emergency hotfixes, which must be reconciled into a migration file before the task is complete.
 
 ## Automated Validation (FOR ALL CHANGES)
 

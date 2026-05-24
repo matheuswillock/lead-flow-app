@@ -6,6 +6,9 @@ export interface SubscriptionData {
   value: number;
   nextDueDate: string;
   cycle: string;
+  cycleLabel?: string;
+  subscriptionStartedAt?: string;
+  lastSyncedAt?: string;
   description: string;
   billingType: string;
   hasPermanentSubscription: boolean; // Assinatura vitalícia (sem custo)
@@ -26,8 +29,20 @@ export interface SubscriptionData {
     totalUsersIncludingMaster: number;
     includedExtraTeams: number;
     includedExtraUsers: number;
+    manualAdjustmentExtraTeams: number;
+    manualAdjustmentExtraUsers: number;
+    contractedExtraTeams: number;
+    contractedExtraUsers: number;
+    totalTeamSlots: number;
+    totalUserSlots: number;
+    usedTeamSlots: number;
+    usedUserSlots: number;
     availableExtraTeams: number;
     availableExtraUsers: number;
+    availableTeamSlots: number;
+    availableUserSlots: number;
+    removableTeamSlots: number;
+    removableUserSlots: number;
     billableTeams: number;
     billableUsers: number;
     basePrice: number;
@@ -69,6 +84,8 @@ export interface ISubscriptionState {
 export interface ISubscriptionActions {
   fetchSubscription: () => Promise<void>;
   fetchInvoices: () => Promise<void>;
+  syncSubscription: () => Promise<void>;
+  updateCredits: (data: UpdateSubscriptionCreditsDTO) => Promise<{ checkoutUrl?: string | null }>;
   cancelSubscription: () => Promise<void>;
   updatePaymentMethod: (cardData: UpdatePaymentMethodDTO) => Promise<void>;
   retryPayment: (invoiceId: string) => Promise<void>;
@@ -89,6 +106,13 @@ export interface UpdatePaymentMethodDTO {
   creditCardCcv: string;
 }
 
+export interface UpdateSubscriptionCreditsDTO {
+  action: "add" | "remove";
+  resource: "team" | "user";
+  quantity: number;
+  billingType?: "PIX" | "CREDIT_CARD";
+}
+
 // Hook Props
 export interface UseSubscriptionHookProps {
   supabaseId: string;
@@ -101,6 +125,8 @@ export type UseSubscriptionHookReturn = ISubscriptionContext;
 export interface ISubscriptionService {
   getSubscription(supabaseId: string): Promise<SubscriptionData | null>;
   getInvoices(supabaseId: string): Promise<SubscriptionInvoice[]>;
+  syncSubscription(supabaseId: string): Promise<boolean>;
+  updateCredits(supabaseId: string, data: UpdateSubscriptionCreditsDTO): Promise<{ checkoutUrl?: string | null }>;
   cancelSubscription(supabaseId: string): Promise<boolean>;
   updatePaymentMethod(supabaseId: string, data: UpdatePaymentMethodDTO): Promise<boolean>;
   retryPayment(supabaseId: string, invoiceId: string): Promise<boolean>;

@@ -324,7 +324,7 @@ class NotificationService {
       }
 
       const inserted = await prisma.$queryRaw<Array<{ id: string }>>`
-        INSERT INTO "notifications" (
+        INSERT INTO "corretor_studio_notifications" (
           "recipientProfileId",
           "actorProfileId",
           "teamId",

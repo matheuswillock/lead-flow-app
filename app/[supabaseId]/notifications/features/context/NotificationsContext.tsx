@@ -282,7 +282,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
             {
               event: "INSERT",
               schema: "public",
-              table: "notifications",
+              table: "corretor_studio_notifications",
             },
             (payload) => {
               const row = normalizeRealtimeRow(payload.new as Partial<NotificationRealtimeRow>);
@@ -312,7 +312,7 @@ export function NotificationsProvider({ children, supabaseId }: NotificationsPro
             {
               event: "UPDATE",
               schema: "public",
-              table: "notifications",
+              table: "corretor_studio_notifications",
             },
             (payload) => {
               const oldRow = normalizeRealtimeRow(payload.old as Partial<NotificationRealtimeRow>);

@@ -5,6 +5,7 @@ import type {
   ISubscriptionContext,
   UseSubscriptionHookProps,
   UseSubscriptionHookReturn,
+  UpdateSubscriptionCreditsDTO,
   UpdatePaymentMethodDTO
 } from '../types/subscription.types';
 
@@ -20,6 +21,8 @@ export function useSubscriptionHook({
     error: null,
     fetchSubscription: async () => {},
     fetchInvoices: async () => {},
+    syncSubscription: async () => {},
+    updateCredits: async () => ({}),
     cancelSubscription: async () => {},
     updatePaymentMethod: async () => {},
     retryPayment: async () => {}
@@ -67,6 +70,31 @@ export function useSubscriptionHook({
     }
   }, [service, supabaseId, fetchSubscription]);
 
+  const syncSubscription = useCallback(async () => {
+    setState(prev => ({ ...prev, isLoading: true, error: null }));
+    try {
+      await service.syncSubscription(supabaseId);
+      await fetchSubscription();
+      await fetchInvoices();
+    } catch (error) {
+      setState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Erro ao sincronizar assinatura',
+        isLoading: false
+      }));
+      throw error;
+    }
+  }, [service, supabaseId, fetchSubscription, fetchInvoices]);
+
+  const updateCredits = useCallback(async (data: UpdateSubscriptionCreditsDTO) => {
+    setState(prev => ({ ...prev, error: null }));
+    const result = await service.updateCredits(supabaseId, data);
+    if (data.action === 'remove') {
+      await fetchSubscription();
+    }
+    return result;
+  }, [service, supabaseId, fetchSubscription]);
+
   const updatePaymentMethod = useCallback(async (cardData: UpdatePaymentMethodDTO) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     try {
@@ -96,6 +124,8 @@ export function useSubscriptionHook({
     ...state,
     fetchSubscription,
     fetchInvoices,
+    syncSubscription,
+    updateCredits,
     cancelSubscription,
     updatePaymentMethod,
     retryPayment
