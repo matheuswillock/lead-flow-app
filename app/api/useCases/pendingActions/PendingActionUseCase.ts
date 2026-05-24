@@ -6,6 +6,7 @@ import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link";
 import { getEmailService } from "@/lib/services/EmailService";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
 import type { Prisma, UserFunction, UserRole } from "@prisma/client";
 
@@ -195,6 +196,10 @@ export class PendingActionUseCase {
 
         if (action.actionType === "transfer_team") {
           return this.applyTransferTeam(tx, action, paymentId);
+        }
+
+        if (action.actionType === "update_subscription_credits") {
+          return this.applyUpdateSubscriptionCredits(tx, action, paymentId);
         }
 
         throw new Error(`Tipo de ação não suportado: ${action.actionType}`);
@@ -546,6 +551,39 @@ export class PendingActionUseCase {
     });
 
     return { teamId };
+  }
+
+  private async applyUpdateSubscriptionCredits(
+    tx: Prisma.TransactionClient,
+    action: ResolvedPendingAction,
+    paymentId?: string
+  ): Promise<AppliedPendingActionResult> {
+    const payload = (action.payload as PendingActionPayload) || {};
+    const addedTeamCredits = Math.max(0, Number(payload.addedTeamCredits ?? 0));
+    const addedUserCredits = Math.max(0, Number(payload.addedUserCredits ?? 0));
+
+    if (addedTeamCredits <= 0 && addedUserCredits <= 0) {
+      throw new Error("Quantidade de créditos não informada");
+    }
+
+    await subscriptionCreditService.applyCreditAddition(tx, action.masterId, {
+      teams: addedTeamCredits,
+      users: addedUserCredits,
+    });
+
+    await tx.pendingAction.update({
+      where: { id: action.id },
+      data: {
+        status: "applied",
+        paymentId: paymentId ?? action.paymentId,
+        payload: {
+          ...payload,
+          paymentStatus: "CONFIRMED",
+        },
+      },
+    });
+
+    return { teamId: action.teamId ?? "" };
   }
 
   private async sendInviteForCreatedUser(

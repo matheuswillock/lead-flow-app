@@ -5,6 +5,11 @@ import type {
   IUpdateBillingProfileSubscriptionData,
 } from "./IBillingRepository";
 
+type BillingQuota = Pick<
+  BillingSnapshot,
+  "includedExtraTeams" | "includedExtraUsers" | "manualAdjustmentExtraTeams" | "manualAdjustmentExtraUsers"
+>;
+
 class PrismaBillingRepository implements IBillingRepository {
   async getBillingSnapshot(masterId: string): Promise<BillingSnapshot | null> {
     const master = await prisma.profile.findUnique({
@@ -29,6 +34,23 @@ class PrismaBillingRepository implements IBillingRepository {
     });
 
     const distinctUserCount = teamMembers.filter((member) => member.profileId !== masterId).length;
+    const legacyQuota = await this.getLegacyAdhesionQuota(masterId);
+    const capacityQuota = await this.getCapacityQuota(masterId);
+    const quota = capacityQuota ?? legacyQuota;
+
+    return {
+      hasPermanentSubscription: master.hasPermanentSubscription,
+      teamCount,
+      distinctUserCount,
+      totalUsersIncludingMaster: distinctUserCount + 1,
+      includedExtraTeams: quota.includedExtraTeams,
+      includedExtraUsers: quota.includedExtraUsers,
+      manualAdjustmentExtraTeams: quota.manualAdjustmentExtraTeams,
+      manualAdjustmentExtraUsers: quota.manualAdjustmentExtraUsers,
+    };
+  }
+
+  private async getLegacyAdhesionQuota(masterId: string): Promise<BillingQuota> {
     const paidAdhesions = await prisma.backofficeAdhesion.findMany({
       where: {
         createdProfileId: masterId,
@@ -66,7 +88,7 @@ class PrismaBillingRepository implements IBillingRepository {
             (!subscription.endDate || subscription.endDate >= now),
         ])
     );
-    const quota = paidAdhesions.reduce(
+    return paidAdhesions.reduce(
       (acc, adhesion) => {
         const hasActiveSubscription = activeSubscriptionByAdhesionId.get(adhesion.id);
         if (hasActiveSubscription === false) {
@@ -74,21 +96,41 @@ class PrismaBillingRepository implements IBillingRepository {
         }
 
         return {
+          ...acc,
           includedExtraTeams: acc.includedExtraTeams + Math.max(0, adhesion.extraTeams),
           includedExtraUsers: acc.includedExtraUsers + Math.max(0, adhesion.extraUsers),
         };
       },
-      { includedExtraTeams: 0, includedExtraUsers: 0 }
+      {
+        includedExtraTeams: 0,
+        includedExtraUsers: 0,
+        manualAdjustmentExtraTeams: 0,
+        manualAdjustmentExtraUsers: 0,
+      }
     );
+  }
 
-    return {
-      hasPermanentSubscription: master.hasPermanentSubscription,
-      teamCount,
-      distinctUserCount,
-      totalUsersIncludingMaster: distinctUserCount + 1,
-      includedExtraTeams: quota.includedExtraTeams,
-      includedExtraUsers: quota.includedExtraUsers,
-    };
+  private async getCapacityQuota(masterId: string): Promise<BillingQuota | null> {
+    try {
+      const subscription = await prisma.profileSubscription.findUnique({
+        where: { profileId: masterId },
+        select: {
+          capacity: {
+            select: {
+              includedExtraTeams: true,
+              includedExtraUsers: true,
+              manualAdjustmentExtraTeams: true,
+              manualAdjustmentExtraUsers: true,
+            },
+          },
+        },
+      });
+
+      return subscription?.capacity ?? null;
+    } catch (error) {
+      console.info("[BillingRepository] Capacidade dedicada indisponível, usando fallback legado.", error);
+      return null;
+    }
   }
 
   async updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void> {

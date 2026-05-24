@@ -47,13 +47,18 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         (payload.requesterName as string | undefined) ??
         (payload.requestedByName as string | undefined);
 
-      const inferredAddonType =
-        pendingAction.actionType === "create_team" ? "team" : "user";
-      const inferredAddonLabel =
-        pendingAction.actionType === "create_team" ? "Time adicional" : "Licença Usuário";
-      const inferredAddonDetail =
-        pendingAction.actionType === "create_team"
-          ? ((payload.teamName as string | undefined) ?? "")
+      const isTeamAction = pendingAction.actionType === "create_team";
+      const isCreditAction = pendingAction.actionType === "update_subscription_credits";
+      const inferredAddonType = isTeamAction ? "team" : "user";
+      const inferredAddonLabel = isTeamAction
+        ? "Time adicional"
+        : isCreditAction
+          ? "Créditos de assinatura"
+          : "Licença Usuário";
+      const inferredAddonDetail = isTeamAction
+        ? ((payload.teamName as string | undefined) ?? "")
+        : isCreditAction
+          ? ((payload.addonDetail as string | undefined) ?? "")
           : `${((payload.operatorName as string | undefined) ?? (payload.name as string | undefined) ?? "").trim()} (${((payload.operatorEmail as string | undefined) ?? (payload.email as string | undefined) ?? "").trim()})`;
 
       const addonType = (payload.addonType as "user" | "team" | undefined) ?? inferredAddonType;
@@ -159,9 +164,12 @@ export class AddOnCheckoutUseCase implements IAddOnCheckoutUseCase {
         return new Output(false, [], ["Forma de pagamento invalida para este checkout"], null);
       }
 
-      const addonLabel = pendingAction.actionType === "create_team"
-        ? `Time adicional: ${payload.teamName}`
-        : `Licença Usuário: ${payload.operatorName ?? payload.name ?? ""}`;
+      const addonLabel =
+        pendingAction.actionType === "create_team"
+          ? `Time adicional: ${payload.teamName}`
+          : pendingAction.actionType === "update_subscription_credits"
+            ? `Créditos de assinatura: ${payload.addonDetail ?? ""}`
+            : `Licença Usuário: ${payload.operatorName ?? payload.name ?? ""}`;
 
       const chargeResult = await incrementalBillingService.createIncrementalCharge({
         master: pendingAction.master as any,

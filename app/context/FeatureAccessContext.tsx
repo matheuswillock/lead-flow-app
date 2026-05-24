@@ -20,6 +20,8 @@ const DEFAULT_USER_ROLE: UserRoleData = {
   canCreateAccountUsers: false,
   canManageAccountTeams: false,
 }
+const ACCESS_CACHE_TTL_MS = 60_000
+const ACCESS_POLL_INTERVAL_MS = 60_000
 
 interface FeatureAccessContextValue {
   slugs: string[]
@@ -45,6 +47,8 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
   const [userRole, setUserRole] = useState<UserRoleData>(DEFAULT_USER_ROLE)
   const [isLoading, setIsLoading] = useState(true)
   const lastRequestKeyRef = useRef<string>("")
+  const lastFetchedAtRef = useRef<number>(0)
+  const hasResolvedAccessRef = useRef(false)
   const inFlightRef = useRef(false)
 
   const fetchAccess = useCallback(
@@ -53,18 +57,25 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
         setSlugs([])
         setBetaSlugs([])
         setUserRole(DEFAULT_USER_ROLE)
+        lastRequestKeyRef.current = ""
+        lastFetchedAtRef.current = 0
+        hasResolvedAccessRef.current = false
         setIsLoading(false)
         return
       }
 
       const requestKey = `${user.id}:${activeTeamId ?? "no-team"}`
-      if (!force && lastRequestKeyRef.current === requestKey) {
+      const isSameRequest = lastRequestKeyRef.current === requestKey
+      const isFresh = Date.now() - lastFetchedAtRef.current < ACCESS_CACHE_TTL_MS
+      if (!force && isSameRequest && isFresh) {
         return
       }
 
       if (inFlightRef.current) return
       inFlightRef.current = true
-      setIsLoading(true)
+      if (!hasResolvedAccessRef.current) {
+        setIsLoading(true)
+      }
 
       try {
         const response = await fetch("/api/v1/features/access", {
@@ -72,6 +83,9 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
           cache: "no-store",
         })
         const output = await response.json()
+        lastRequestKeyRef.current = requestKey
+        lastFetchedAtRef.current = Date.now()
+
         if (!output.isValid) {
           setSlugs([])
           setBetaSlugs([])
@@ -83,13 +97,13 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
         setBetaSlugs(Array.isArray(output.result?.betaSlugs) ? output.result.betaSlugs : [])
         const rawRole = output.result?.userRole
         setUserRole(rawRole && typeof rawRole === "object" ? (rawRole as UserRoleData) : DEFAULT_USER_ROLE)
-        lastRequestKeyRef.current = requestKey
       } catch (error) {
         console.error("[FeatureAccessContext] Erro ao carregar acesso:", error)
         setSlugs([])
         setBetaSlugs([])
         setUserRole(DEFAULT_USER_ROLE)
       } finally {
+        hasResolvedAccessRef.current = true
         setIsLoading(false)
         inFlightRef.current = false
       }
@@ -100,6 +114,34 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
   useEffect(() => {
     void fetchAccess()
   }, [fetchAccess])
+
+  useEffect(() => {
+    if (!user?.supabaseId) return
+
+    const refreshAccess = () => {
+      void fetchAccess()
+    }
+
+    const handleFocus = () => {
+      refreshAccess()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshAccess()
+      }
+    }
+
+    const intervalId = window.setInterval(refreshAccess, ACCESS_POLL_INTERVAL_MS)
+    window.addEventListener("focus", handleFocus)
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", handleFocus)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [fetchAccess, user?.supabaseId])
 
   const hasAccess = useCallback((slug: string) => slugs.includes(slug), [slugs])
   const isBeta = useCallback((slug: string) => betaSlugs.includes(slug), [betaSlugs])

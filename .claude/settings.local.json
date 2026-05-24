@@ -61,7 +61,15 @@
       "mcp__asaas__execute-request",
       "mcp__asaas__list-specs",
       "mcp__asaas__fetch",
-      "Bash(claude mcp:*)"
+      "Bash(claude mcp:*)",
+      "mcp__76c33d2b-c8e2-4692-8144-b112e994325b__list_projects",
+      "mcp__76c33d2b-c8e2-4692-8144-b112e994325b__list_tables",
+      "mcp__76c33d2b-c8e2-4692-8144-b112e994325b__execute_sql",
+      "Bash(pg_dump --version)",
+      "Read(//a/develop//**)",
+      "Read(//a/develop/**)",
+      "Bash(mkdir -p \"A:\\\\\\\\develop\\\\\\\\corretor-studio-backup\")",
+      "Bash(python3 -c ' *)"
     ]
   }
 }
