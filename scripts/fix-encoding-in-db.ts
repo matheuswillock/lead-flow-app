@@ -79,19 +79,19 @@ for (let i = 1; i < teamsRows.length; i++) {
 
 // ── notifications ── too many to UPDATE individually; TRUNCATE + re-import
 // We generate the DELETE + INSERT block for notifications below.
-console.log('-- ══════════════════════════════════════════════════════');
-console.log('-- STEP 1: Fix profiles fullName (147 UPDATEs)');
-console.log('-- ══════════════════════════════════════════════════════');
-console.log(profileSql.join('\n'));
+console.info('-- ══════════════════════════════════════════════════════');
+console.info('-- STEP 1: Fix profiles fullName (147 UPDATEs)');
+console.info('-- ══════════════════════════════════════════════════════');
+console.info(profileSql.join('\n'));
 
-console.log('\n-- ══════════════════════════════════════════════════════');
-console.log('-- STEP 2: Fix teams name (50 UPDATEs)');
-console.log('-- ══════════════════════════════════════════════════════');
-console.log(teamsSql.join('\n'));
+console.info('\n-- ══════════════════════════════════════════════════════');
+console.info('-- STEP 2: Fix teams name (50 UPDATEs)');
+console.info('-- ══════════════════════════════════════════════════════');
+console.info(teamsSql.join('\n'));
 
-console.log('\n-- ══════════════════════════════════════════════════════');
-console.log('-- STEP 3: Notifications — TRUNCATE then re-import from fixed CSV');
-console.log('-- Run this SQL first:');
-console.log('-- ══════════════════════════════════════════════════════');
-console.log('TRUNCATE TABLE corretor_studio_notifications;');
-console.log('-- Then re-import: fixed/notifications_rows.csv via Table Editor → Import data');
+console.info('\n-- ══════════════════════════════════════════════════════');
+console.info('-- STEP 3: Notifications — TRUNCATE then re-import from fixed CSV');
+console.info('-- Run this SQL first:');
+console.info('-- ══════════════════════════════════════════════════════');
+console.info('TRUNCATE TABLE corretor_studio_notifications;');
+console.info('-- Then re-import: fixed/notifications_rows.csv via Table Editor → Import data');

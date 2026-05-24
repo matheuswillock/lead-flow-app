@@ -97,17 +97,12 @@ export class BackofficeMemberUseCase {
       }
 
       if (emailChanged && member.supabaseId) {
-        const supabase = createSupabaseAdmin()
-        const { error: authError } = await supabase.auth.admin.updateUserById(member.supabaseId, {
-          email: payload.email,
-        })
+        const rollbackPayload: UpdateMemberInput = {}
+        if (payload.fullName !== undefined) rollbackPayload.fullName = member.fullName
+        if (payload.phone !== undefined) rollbackPayload.phone = member.phone
+        if (payload.email !== undefined) rollbackPayload.email = member.email
 
-        if (authError) {
-          const rollbackPayload: UpdateMemberInput = {}
-          if (payload.fullName !== undefined) rollbackPayload.fullName = member.fullName
-          if (payload.phone !== undefined) rollbackPayload.phone = member.phone
-          if (payload.email !== undefined) rollbackPayload.email = member.email
-
+        const rollbackLocalProfile = async (authError: unknown): Promise<Output> => {
           const rollbackResult = await this.repository.updateMemberProfile(memberId, rollbackPayload)
           if (!rollbackResult) {
             console.error(
@@ -125,6 +120,20 @@ export class BackofficeMemberUseCase {
           console.error("[BackofficeMemberUseCase][updateMember] Erro ao atualizar e-mail no Auth:", authError)
           return new Output(false, [], ["Não foi possível atualizar o e-mail no Supabase Auth"], null)
         }
+
+        try {
+          const supabase = createSupabaseAdmin()
+          const { error: authError } = await supabase.auth.admin.updateUserById(member.supabaseId, {
+            email: payload.email,
+          })
+
+          if (authError) {
+            return await rollbackLocalProfile(authError)
+          }
+        } catch (authError) {
+          return await rollbackLocalProfile(authError)
+        }
+
       }
 
       return new Output(true, ["Membro atualizado com sucesso"], [], { id: updated.id })

@@ -30,7 +30,7 @@ const leadsRows = parseCsv(leadsText);
 const lHeader = leadsRows[0];
 const statusIdx = lHeader.indexOf('status');
 const originIdx = lHeader.indexOf('origin');
-console.log(`\nbackoffice_leads: ${leadsRows.length - 1} data rows`);
+console.info(`\nbackoffice_leads: ${leadsRows.length - 1} data rows`);
 const statuses: Record<string, number> = {};
 const origins: Record<string, number> = {};
 for (let i = 1; i < leadsRows.length; i++) {
@@ -39,17 +39,17 @@ for (let i = 1; i < leadsRows.length; i++) {
   const o = leadsRows[i][originIdx] || '(empty)';
   origins[o] = (origins[o] ?? 0) + 1;
 }
-console.log('  status:', JSON.stringify(statuses));
-console.log('  origin:', JSON.stringify(origins));
+console.info('  status:', JSON.stringify(statuses));
+console.info('  origin:', JSON.stringify(origins));
 
 // --- lead_activities ---
 const actText = await Bun.file(`${FIXED}\\lead_activities_rows.csv`).text();
 const actRows = parseCsv(actText);
 const aHeader = actRows[0];
 const createdAtIdx = aHeader.indexOf('createdAt');
-console.log(`\nlead_activities: ${actRows.length - 1} logical rows`);
+console.info(`\nlead_activities: ${actRows.length - 1} logical rows`);
 let emptyTs = 0;
 for (let i = 1; i < actRows.length; i++) {
   if (!actRows[i][createdAtIdx]?.trim()) emptyTs++;
 }
-console.log(`  empty createdAt values: ${emptyTs}`);
+console.info(`  empty createdAt values: ${emptyTs}`);

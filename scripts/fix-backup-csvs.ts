@@ -85,7 +85,7 @@ const files = readdirSync(BACKUP_DIR).filter((f) => {
   return statSync(join(BACKUP_DIR, f)).isFile();
 });
 
-console.log(`Processing ${files.length} CSV files...\n`);
+console.info(`Processing ${files.length} CSV files...\n`);
 
 for (const file of files) {
   const inputPath = join(BACKUP_DIR, file);
@@ -107,7 +107,7 @@ for (const file of files) {
   const rows = parseCsv(text);
   if (rows.length === 0) {
     await Bun.write(outputPath, '');
-    console.log(`${file}: empty, skipped`);
+    console.info(`${file}: empty, skipped`);
     continue;
   }
 
@@ -155,7 +155,7 @@ for (const file of files) {
   const encodingNote = encoding !== 'utf-8' ? ` [${encoding}→utf-8]` : '';
   const dupNote = duplicateCount > 0 ? ` [removed ${duplicateCount} dup col(s)]` : '';
   const enumNote = enumDefaults.size > 0 ? ` [enum defaults applied: ${[...enumDefaults.values()].join(', ')}]` : '';
-  console.log(`${file}${encodingNote}${dupNote}${enumNote}`);
+  console.info(`${file}${encodingNote}${dupNote}${enumNote}`);
 }
 
-console.log(`\nDone. Fixed files → ${OUTPUT_DIR}`);
+console.info(`\nDone. Fixed files → ${OUTPUT_DIR}`);

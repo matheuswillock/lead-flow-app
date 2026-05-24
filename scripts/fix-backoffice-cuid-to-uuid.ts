@@ -120,15 +120,15 @@ for (const file of backofficeFiles) {
 }
 
 if (cuidMapping.size === 0) {
-  console.log('No CUIDs found in backoffice CSV files. Nothing to do.');
+  console.info('No CUIDs found in backoffice CSV files. Nothing to do.');
   process.exit(0);
 }
 
-console.log(`Found ${cuidMapping.size} unique CUID(s) to replace:\n`);
+console.info(`Found ${cuidMapping.size} unique CUID(s) to replace:\n`);
 for (const [cuid, uuid] of cuidMapping) {
-  console.log(`  ${cuid}  →  ${uuid}`);
+  console.info(`  ${cuid}  →  ${uuid}`);
 }
-console.log('');
+console.info('');
 
 // Step 2: Apply mapping to ALL backoffice files
 let totalReplacements = 0;
@@ -159,13 +159,13 @@ for (const file of backofficeFiles) {
 
   if (fileReplacements > 0) {
     await Bun.write(filePath, newLines.join('\n'));
-    console.log(`${file}: replaced ${fileReplacements} CUID value(s)`);
+    console.info(`${file}: replaced ${fileReplacements} CUID value(s)`);
     totalReplacements += fileReplacements;
   }
 }
 
-console.log(`\nDone. Total replacements: ${totalReplacements}`);
-console.log('Mapping saved below for reference:');
+console.info(`\nDone. Total replacements: ${totalReplacements}`);
+console.info('Mapping saved below for reference:');
 for (const [cuid, uuid] of cuidMapping) {
-  console.log(`  ${cuid} → ${uuid}`);
+  console.info(`  ${cuid} → ${uuid}`);
 }
