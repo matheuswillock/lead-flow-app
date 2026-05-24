@@ -83,8 +83,6 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
           cache: "no-store",
         })
         const output = await response.json()
-        lastRequestKeyRef.current = requestKey
-        lastFetchedAtRef.current = Date.now()
 
         if (!output.isValid) {
           setSlugs([])
@@ -93,6 +91,8 @@ export function FeatureAccessProvider({ children }: FeatureAccessProviderProps) 
           return
         }
 
+        lastRequestKeyRef.current = requestKey
+        lastFetchedAtRef.current = Date.now()
         setSlugs(Array.isArray(output.result?.slugs) ? output.result.slugs : [])
         setBetaSlugs(Array.isArray(output.result?.betaSlugs) ? output.result.betaSlugs : [])
         const rawRole = output.result?.userRole

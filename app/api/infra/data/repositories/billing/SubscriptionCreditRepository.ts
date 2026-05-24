@@ -159,7 +159,7 @@ class PrismaSubscriptionCreditRepository {
   }
 
   private async lockMasterSubscription(tx: TransactionClient, masterId: string): Promise<void> {
-    await tx.$executeRaw`SELECT id FROM profiles WHERE id = ${masterId}::uuid FOR UPDATE`;
+    await tx.$executeRaw`SELECT id FROM corretor_studio_profiles WHERE id = ${masterId}::uuid FOR UPDATE`;
   }
 
   private async ensureProfileSubscription(tx: TransactionClient, masterId: string): Promise<string> {
