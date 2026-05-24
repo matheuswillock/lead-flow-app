@@ -122,6 +122,7 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith('/api')) {
     // API routes don't need protection check - they handle their own auth
     const requestHeaders = new Headers(request.headers)
+    requestHeaders.delete('x-supabase-user-id')
     if (user) {
       requestHeaders.set('x-supabase-user-id', user.id)
     }

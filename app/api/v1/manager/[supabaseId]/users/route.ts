@@ -21,8 +21,10 @@ import { profileRepository } from "@/app/api/infra/data/repositories/profile/Pro
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { isManagerLikeRole } from "@/lib/roles";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
+import type { Prisma } from "@prisma/client";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -110,10 +112,12 @@ async function createUserAndInvite(args: {
     canCreateAccountUsers: boolean;
     canManageAccountTeams: boolean;
   };
+  tx?: Prisma.TransactionClient;
 }) {
   const email = normalizeEmail(args.userData.email);
+  const db = args.tx ?? prisma;
 
-  const profile = await prisma.profile.create({
+  const profile = await db.profile.create({
     data: {
       fullName: args.userData.name,
       email,
@@ -134,7 +138,7 @@ async function createUserAndInvite(args: {
     },
   });
 
-  const teamMemberRecord = await prisma.teamMember.create({
+  const teamMemberRecord = await db.teamMember.create({
     data: {
       teamId: args.teamId,
       profileId: profile.id,
@@ -194,13 +198,13 @@ async function createUserAndInvite(args: {
     const inviteLink = buildSetPasswordEmailAuthLink(data, "invite");
 
     if (supabaseUserId) {
-      await prisma.profile.update({
+      await db.profile.update({
         where: { id: profile.id },
         data: { supabaseId: supabaseUserId },
       });
     }
 
-    const requesterProfile = await prisma.profile.findUnique({
+    const requesterProfile = await db.profile.findUnique({
       where: { id: args.requesterProfileId },
       select: { fullName: true, email: true },
     });
@@ -214,7 +218,7 @@ async function createUserAndInvite(args: {
       inviteUrl: inviteLink,
     });
   } catch (_inviteError) {
-    await prisma.teamMember.delete({
+    await db.teamMember.delete({
       where: {
         teamId_profileId: {
           teamId: args.teamId,
@@ -223,7 +227,7 @@ async function createUserAndInvite(args: {
       },
     });
 
-    await prisma.profile.delete({ where: { id: profile.id } });
+    await db.profile.delete({ where: { id: profile.id } });
     throw new Error("Erro ao enviar convite. Tente novamente.");
   }
 
@@ -402,14 +406,19 @@ export async function POST(
     });
 
     if (projectedBilling.billingDelta <= 0) {
-      const createdUser = await createUserAndInvite({
-        teamId,
-        masterId: managerId,
-        requesterProfileId: profileId,
-        actorName,
-        teamName,
-        userData: validatedData,
-        delegatedPermissions,
+      const createdUser = await prisma.$transaction(async (tx) => {
+        await subscriptionCreditService.assertCapacityAvailable(tx, managerId, { users: 1 });
+
+        return createUserAndInvite({
+          teamId,
+          masterId: managerId,
+          requesterProfileId: profileId,
+          actorName,
+          teamName,
+          userData: validatedData,
+          delegatedPermissions,
+          tx,
+        });
       });
 
       const output = new Output(true, ["Usuário criado com sucesso"], [], createdUser);

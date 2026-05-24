@@ -5,6 +5,8 @@ export interface BillingSnapshot {
   totalUsersIncludingMaster: number;
   includedExtraTeams: number;
   includedExtraUsers: number;
+  manualAdjustmentExtraTeams: number;
+  manualAdjustmentExtraUsers: number;
 }
 
 export interface IUpdateBillingProfileSubscriptionData {

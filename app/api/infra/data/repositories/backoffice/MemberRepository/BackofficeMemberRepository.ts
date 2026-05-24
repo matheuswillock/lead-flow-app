@@ -22,6 +22,8 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
         id: true,
         supabaseId: true,
         email: true,
+        fullName: true,
+        phone: true,
         isMaster: true,
       },
     })
@@ -31,10 +33,10 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
 
   async updateMemberProfile(
     memberId: string,
-    data: { fullName?: string; phone?: string | null; email?: string }
+    data: { fullName?: string | null; phone?: string | null; email?: string }
   ): Promise<{ id: string } | null> {
     const payload: {
-      fullName?: string
+      fullName?: string | null
       phone?: string | null
       email?: string
     } = {}

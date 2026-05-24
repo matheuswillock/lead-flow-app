@@ -93,14 +93,10 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Generate Prisma Client
-        run: bun run prisma:generate
-
       - name: Check Migration Status
-        run: bun run prisma:migrate:status
+        run: bunx supabase migration list --db-url "$DATABASE_URL"
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
   build:
     name: Build

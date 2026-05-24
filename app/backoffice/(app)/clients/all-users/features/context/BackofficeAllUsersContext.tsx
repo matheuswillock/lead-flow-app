@@ -48,7 +48,7 @@ interface BackofficeAllUsersContextValue {
     filters?: Partial<BackofficeAllUsersFilters>
     page?: number
     pageSize?: number
-  }) => Promise<void>
+  }) => Promise<boolean>
   setUsersPage: (page: number) => Promise<void>
   setUsersPageSize: (pageSize: number) => Promise<void>
   clearFilters: () => Promise<void>
@@ -74,14 +74,30 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
   const [detailError, setDetailError] = useState<string | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
   const inFlight = useRef(false)
+  const queuedRequest = useRef<{
+    filters: BackofficeAllUsersFilters
+    page: number
+    pageSize: number
+    requestId: number
+  } | null>(null)
+  const latestRequestId = useRef(0)
   const detailRequestId = useRef(0)
 
   const loadUsers = useCallback(async (
     targetFilters: BackofficeAllUsersFilters,
     targetPage: number,
-    targetPageSize: number
+    targetPageSize: number,
+    requestId: number
   ) => {
-    if (inFlight.current) return
+    if (inFlight.current) {
+      queuedRequest.current = {
+        filters: targetFilters,
+        page: targetPage,
+        pageSize: targetPageSize,
+        requestId,
+      }
+      return false
+    }
 
     inFlight.current = true
     setIsLoading(true)
@@ -93,22 +109,36 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
         page: targetPage,
         pageSize: targetPageSize,
       })
-      setItems(result.items)
-      setPagination(result.pagination)
-      setFilters(targetFilters)
+
+      // Ignore stale responses that are older than the latest requested query.
+      if (requestId === latestRequestId.current) {
+        setItems(result.items)
+        setPagination(result.pagination)
+        setFilters(targetFilters)
+      }
     } catch (err) {
       console.error("[BackofficeAllUsersContext]", err)
-      setError(err instanceof Error ? err.message : "Erro ao carregar usuários")
-      setItems([])
-      setPagination((prev) => ({
-        ...prev,
-        page: targetPage,
-        pageSize: targetPageSize,
-      }))
+      if (requestId === latestRequestId.current) {
+        setError(err instanceof Error ? err.message : "Erro ao carregar usuários")
+        setItems([])
+        setPagination((prev) => ({
+          ...prev,
+          page: targetPage,
+          pageSize: targetPageSize,
+        }))
+      }
     } finally {
-      setIsLoading(false)
       inFlight.current = false
+
+      const queued = queuedRequest.current
+      if (queued) {
+        queuedRequest.current = null
+        void loadUsers(queued.filters, queued.page, queued.pageSize, queued.requestId)
+      } else {
+        setIsLoading(false)
+      }
     }
+    return true
   }, [service])
 
   const fetchUsers = useCallback(async (options?: {
@@ -122,21 +152,29 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
     }
     const page = Math.max(options?.page ?? pagination.page, 1)
     const pageSize = Math.max(options?.pageSize ?? pagination.pageSize, 5)
-    await loadUsers(mergedFilters, page, pageSize)
+    const requestId = latestRequestId.current + 1
+    latestRequestId.current = requestId
+    return loadUsers(mergedFilters, page, pageSize, requestId)
   }, [filters, loadUsers, pagination.page, pagination.pageSize])
 
   const setUsersPage = useCallback(async (page: number) => {
     const nextPage = Math.max(page, 1)
-    await loadUsers(filters, nextPage, pagination.pageSize)
+    const requestId = latestRequestId.current + 1
+    latestRequestId.current = requestId
+    await loadUsers(filters, nextPage, pagination.pageSize, requestId)
   }, [filters, loadUsers, pagination.pageSize])
 
   const setUsersPageSize = useCallback(async (pageSize: number) => {
     const nextPageSize = Math.max(pageSize, 5)
-    await loadUsers(filters, 1, nextPageSize)
+    const requestId = latestRequestId.current + 1
+    latestRequestId.current = requestId
+    await loadUsers(filters, 1, nextPageSize, requestId)
   }, [filters, loadUsers])
 
   const clearFilters = useCallback(async () => {
-    await loadUsers(DEFAULT_FILTERS, 1, pagination.pageSize)
+    const requestId = latestRequestId.current + 1
+    latestRequestId.current = requestId
+    await loadUsers(DEFAULT_FILTERS, 1, pagination.pageSize, requestId)
   }, [loadUsers, pagination.pageSize])
 
   const closeUserSheet = useCallback(() => {
@@ -167,7 +205,9 @@ export function BackofficeAllUsersProvider({ children, service }: Props) {
   }, [service])
 
   useEffect(() => {
-    void loadUsers(DEFAULT_FILTERS, 1, DEFAULT_PAGINATION.pageSize)
+    const requestId = latestRequestId.current + 1
+    latestRequestId.current = requestId
+    void loadUsers(DEFAULT_FILTERS, 1, DEFAULT_PAGINATION.pageSize, requestId)
   }, [loadUsers])
 
   return (

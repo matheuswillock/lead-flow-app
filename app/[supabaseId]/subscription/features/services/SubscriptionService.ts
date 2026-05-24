@@ -1,12 +1,15 @@
 import type { 
   SubscriptionData, 
   SubscriptionInvoice, 
+  UpdateSubscriptionCreditsDTO,
   UpdatePaymentMethodDTO 
 } from '../types/subscription.types';
 
 export interface ISubscriptionService {
   getSubscription(supabaseId: string): Promise<SubscriptionData | null>;
   getInvoices(supabaseId: string): Promise<SubscriptionInvoice[]>;
+  syncSubscription(supabaseId: string): Promise<boolean>;
+  updateCredits(supabaseId: string, data: UpdateSubscriptionCreditsDTO): Promise<{ checkoutUrl?: string | null }>;
   cancelSubscription(supabaseId: string, reason?: string): Promise<boolean>;
   updatePaymentMethod(supabaseId: string, data: UpdatePaymentMethodDTO): Promise<boolean>;
   retryPayment(supabaseId: string, invoiceId: string): Promise<boolean>;
@@ -46,6 +49,50 @@ export class SubscriptionService implements ISubscriptionService {
     }
 
     return result.result || [];
+  }
+
+  async syncSubscription(supabaseId: string): Promise<boolean> {
+    const response = await fetch(`${this.baseUrl}/sync?supabaseId=${supabaseId}`, {
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    if (!result.isValid) {
+      throw new Error(result.errorMessages.join(', '));
+    }
+
+    return true;
+  }
+
+  async updateCredits(
+    supabaseId: string,
+    data: UpdateSubscriptionCreditsDTO
+  ): Promise<{ checkoutUrl?: string | null }> {
+    const response = await fetch(`${this.baseUrl}/credits?supabaseId=${supabaseId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => null);
+      throw new Error(result?.errorMessages?.join(', ') || `HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    if (!result.isValid) {
+      throw new Error(result.errorMessages.join(', '));
+    }
+
+    return {
+      checkoutUrl: result.result?.checkoutUrl ?? null,
+    };
   }
 
   async cancelSubscription(supabaseId: string, reason?: string): Promise<boolean> {
