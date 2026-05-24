@@ -279,6 +279,7 @@ enum PendingActionType {
   add_member
   add_user
   transfer_team
+  update_subscription_credits
 
   @@map("pending_action_type")
 }
@@ -482,7 +483,7 @@ model Profile {
   @@index([role])
   @@index([managerId])
   @@index([cpfCnpj])
-  @@map("profiles")
+  @@map("corretor_studio_profiles")
 }
 
 model HealthPlanOption {
@@ -497,7 +498,7 @@ model HealthPlanOption {
 
   @@index([name])
   @@index([createdBy])
-  @@map("health_plan_options")
+  @@map("corretor_studio_health_plan_options")
 }
 
 // -----------------------------
@@ -505,7 +506,7 @@ model HealthPlanOption {
 // -----------------------------
 
 model BackofficeUser {
-  id                      String    @id @db.Uuid
+  id                      String    @id @default(uuid()) @db.Uuid
   profileId               String    @unique @map("profileId") @db.Uuid
   email                   String    @unique @db.Text
   fullAccess              Boolean   @default(false) @map("fullAccess")
@@ -544,7 +545,7 @@ model BackofficeUser {
 }
 
 model BackofficeClient {
-  id                 String   @id @db.Uuid
+  id                 String   @id @default(uuid()) @db.Uuid
   fullName           String   @map("fullName") @db.Text
   email              String?  @db.Text
   phone              String?  @db.Text
@@ -566,7 +567,7 @@ model BackofficeClient {
 }
 
 model BackofficePayment {
-  id                 String    @id @db.Uuid
+  id                 String    @id @default(uuid()) @db.Uuid
   clientId           String    @map("clientId") @db.Uuid
   asaasPaymentId     String?   @unique @map("asaasPaymentId") @db.Text
   billingType        String    @default("PIX") @map("billingType") @db.Text
@@ -861,7 +862,7 @@ model Lead {
   @@index([meetingDate])
   @@index([followUpAt])
   @@index([statusEnteredAt])
-  @@map("leads")
+  @@map("corretor_studio_leads")
 }
 
 // -----------------------------
@@ -884,7 +885,7 @@ model LeadActivity {
 
   @@index([leadId])
   @@index([createdBy])
-  @@map("lead_activities")
+  @@map("corretor_studio_lead_activities")
 }
 
 model LeadActivityReaction {
@@ -901,7 +902,7 @@ model LeadActivityReaction {
   @@unique([activityId, profileId, emojiUnified])
   @@index([activityId])
   @@index([profileId])
-  @@map("lead_activity_reactions")
+  @@map("corretor_studio_lead_activity_reactions")
 }
 
 // -----------------------------
@@ -931,7 +932,7 @@ model Task {
   @@index([createdBy])
   @@index([startAt])
   @@index([endAt])
-  @@map("tasks")
+  @@map("corretor_studio_tasks")
 }
 
 model TaskAssignee {
@@ -952,7 +953,7 @@ model TaskAssignee {
   @@index([taskId])
   @@index([profileId])
   @@index([status])
-  @@map("task_assignees")
+  @@map("corretor_studio_task_assignees")
 }
 
 model LeadsSchedule {
@@ -978,7 +979,7 @@ model LeadsSchedule {
   lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@unique([leadId])
-  @@map("leads_schedule")
+  @@map("corretor_studio_leads_schedule")
 }
 
 model LeadFinalized {
@@ -1004,7 +1005,7 @@ model LeadFinalized {
   dependents LeadFinalizedDependent[]
 
   @@index([leadId])
-  @@map("lead_finalized")
+  @@map("corretor_studio_lead_finalized")
 }
 
 model LeadFinalizedHolder {
@@ -1019,7 +1020,7 @@ model LeadFinalizedHolder {
 
   leadFinalized LeadFinalized @relation(fields: [leadFinalizedId], references: [id], onDelete: Cascade)
 
-  @@map("lead_finalized_holders")
+  @@map("corretor_studio_lead_finalized_holders")
 }
 
 model LeadFinalizedDependent {
@@ -1035,7 +1036,7 @@ model LeadFinalizedDependent {
   leadFinalized LeadFinalized @relation(fields: [leadFinalizedId], references: [id], onDelete: Cascade)
 
   @@index([leadFinalizedId])
-  @@map("lead_finalized_dependents")
+  @@map("corretor_studio_lead_finalized_dependents")
 }
 
 model LeadPortfolio {
@@ -1054,7 +1055,7 @@ model LeadPortfolio {
 
   @@index([teamId])
   @@index([teamId, portfolioStatus])
-  @@map("lead_portfolio")
+  @@map("corretor_studio_lead_portfolio")
 }
 
 // -----------------------------
@@ -1078,7 +1079,7 @@ model LeadAttachment {
 
   @@index([leadId])
   @@index([uploadedBy])
-  @@map("lead_attachments")
+  @@map("corretor_studio_lead_attachments")
 }
 
 // -----------------------------
@@ -1108,7 +1109,7 @@ model PendingOperator {
   @@index([managerId])
   @@index([subscriptionId])
   @@index([email])
-  @@map("pending_operators")
+  @@map("corretor_studio_pending_operators")
 }
 
 // -----------------------------
@@ -1142,7 +1143,7 @@ model Team {
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
 
   @@index([masterId])
-  @@map("teams")
+  @@map("corretor_studio_teams")
 }
 
 model TeamFilterPreset {
@@ -1161,7 +1162,7 @@ model TeamFilterPreset {
 
   @@index([teamId, createdBy])
   @@index([teamId, lastUsedAt(sort: Desc)])
-  @@map("team_filter_presets")
+  @@map("corretor_studio_team_filter_presets")
 }
 
 model TeamStatusRule {
@@ -1184,7 +1185,7 @@ model TeamStatusRule {
 
   @@index([teamId, isEnabled])
   @@index([teamId, type, targetStatus, isEnabled])
-  @@map("team_status_rules")
+  @@map("corretor_studio_team_status_rules")
 }
 
 model TeamStudioWebhookConfig {
@@ -1205,7 +1206,7 @@ model TeamStudioWebhookConfig {
 
   @@index([updatedByProfileId])
   @@index([expiresAt])
-  @@map("team_studio_webhook_configs")
+  @@map("corretor_studio_team_studio_webhook_configs")
 }
 
 model TeamStudioWebhookRequestLog {
@@ -1224,7 +1225,7 @@ model TeamStudioWebhookRequestLog {
 
   @@index([teamId, createdAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
-  @@map("team_studio_webhook_request_logs")
+  @@map("corretor_studio_team_studio_webhook_request_logs")
 }
 
 model Notification {
@@ -1247,7 +1248,7 @@ model Notification {
   @@index([recipientProfileId, teamId, isRead])
   @@index([recipientProfileId, createdAt])
   @@index([teamId, createdAt])
-  @@map("notifications")
+  @@map("corretor_studio_notifications")
 }
 
 // -----------------------------
@@ -1271,7 +1272,7 @@ model PendingAction {
   @@index([masterId])
   @@index([checkoutId])
   @@index([paymentId])
-  @@map("pending_actions")
+  @@map("corretor_studio_pending_actions")
 }
 
 // -----------------------------
@@ -1292,7 +1293,7 @@ model TeamMember {
 
   @@unique([teamId, profileId])
   @@index([profileId])
-  @@map("team_members")
+  @@map("corretor_studio_team_members")
 }
 
 // -----------------------------
@@ -1315,7 +1316,7 @@ model EmailCreditSubscription {
   usages  EmailCreditUsage[]
 
   @@index([currentPeriodEnd])
-  @@map("email_credit_subscriptions")
+  @@map("corretor_studio_email_credit_subscriptions")
 }
 
 model EmailCreditUsage {
@@ -1332,7 +1333,7 @@ model EmailCreditUsage {
   subscription EmailCreditSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
   @@unique([subscriptionId, periodStart])
-  @@map("email_credit_usages")
+  @@map("corretor_studio_email_credit_usages")
 }
 
 model EmailTemplate {
@@ -1354,7 +1355,7 @@ model EmailTemplate {
 
   @@index([teamId, isArchived])
   @@index([createdBy])
-  @@map("email_templates")
+  @@map("corretor_studio_email_templates")
 }
 
 model EmailContactList {
@@ -1376,7 +1377,7 @@ model EmailContactList {
 
   @@index([teamId, isArchived])
   @@index([createdBy])
-  @@map("email_contact_lists")
+  @@map("corretor_studio_email_contact_lists")
 }
 
 model EmailContact {
@@ -1396,7 +1397,7 @@ model EmailContact {
   @@unique([listId, email])
   @@index([listId, isUnsubscribed])
   @@index([listId, isBounced])
-  @@map("email_contacts")
+  @@map("corretor_studio_email_contacts")
 }
 
 model EmailCampaign {
@@ -1429,7 +1430,7 @@ model EmailCampaign {
   @@index([teamId, status])
   @@index([teamId, scheduledAt])
   @@index([createdBy])
-  @@map("email_campaigns")
+  @@map("corretor_studio_email_campaigns")
 }
 
 model EmailLog {
@@ -1458,7 +1459,7 @@ model EmailLog {
   @@index([teamId, campaignId])
   @@index([recipientEmail])
   @@index([sentAt(sort: Desc)])
-  @@map("email_logs")
+  @@map("corretor_studio_email_logs")
 }
 
 model EmailEvent {
@@ -1472,7 +1473,7 @@ model EmailEvent {
   log EmailLog @relation(fields: [logId], references: [id], onDelete: Cascade)
 
   @@index([logId, occurredAt(sort: Desc)])
-  @@map("email_events")
+  @@map("corretor_studio_email_events")
 }
 
 // -----------------------------
@@ -1480,7 +1481,7 @@ model EmailEvent {
 // -----------------------------
 
 model BackofficeProduct {
-  id              String                       @id @default(uuid()) @db.Text
+  id              String                       @id @default(uuid()) @db.Uuid
   name            String                       @db.Text
   slug            String                       @unique @db.Text
   description     String?                      @db.Text
@@ -1505,11 +1506,11 @@ model BackofficeProduct {
 }
 
 model BackofficeFeature {
-  id                 String                       @id @default(uuid()) @db.Text
+  id                 String                       @id @default(uuid()) @db.Uuid
   slug               String                       @unique @db.Text
   name               String                       @db.Text
   description        String?                      @db.Text
-  parentId           String?                      @db.Text
+  parentId           String?                      @db.Uuid
   productSlug        String?                      @db.Text
   accessMode         BackofficeFeatureAccessMode  @default(PUBLIC)
   defaultAccessLevel BackofficeFeatureAccessLevel @default(FULL)
@@ -1533,8 +1534,8 @@ model BackofficeFeature {
 }
 
 model BackofficeFeatureAccessRule {
-  id          String                       @id @default(dbgenerated("(gen_random_uuid())::text")) @db.Text
-  featureId   String                       @db.Text
+  id          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  featureId   String                       @db.Uuid
   principal   BackofficeAccessPrincipal
   accessLevel BackofficeFeatureAccessLevel
   createdAt   DateTime                     @default(now()) @db.Timestamptz(6)
@@ -1548,8 +1549,8 @@ model BackofficeFeatureAccessRule {
 }
 
 model BackofficeFeatureGrant {
-  id          String                       @id @default(uuid()) @db.Text
-  featureId   String                       @db.Text
+  id          String                       @id @default(uuid()) @db.Uuid
+  featureId   String                       @db.Uuid
   profileId   String                       @db.Uuid
   grantType   BackofficeFeatureGrantType   @default(BETA)
   accessLevel BackofficeFeatureAccessLevel @default(FULL)
@@ -1567,8 +1568,8 @@ model BackofficeFeatureGrant {
 }
 
 model BackofficeProductPaymentRule {
-  id              String                         @id @default(dbgenerated("(gen_random_uuid())::text")) @db.Text
-  productId       String                         @db.Text
+  id              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId       String                         @db.Uuid
   paymentMethod   BackofficePaymentMethod
   billingCycle    BackofficeAdhesionBillingCycle
   price           Decimal                        @db.Decimal(10, 2)
@@ -1585,9 +1586,9 @@ model BackofficeProductPaymentRule {
 }
 
 model BackofficeUserSubscription {
-  id         String                          @id @default(uuid()) @db.Text
+  id         String                          @id @default(uuid()) @db.Uuid
   profileId  String                          @db.Uuid
-  productId  String                          @db.Text
+  productId  String                          @db.Uuid
   status     BackofficeSubscriptionStatus    @default(active)
   cycle      BackofficeAdhesionBillingCycle?
   startDate  DateTime                        @db.Timestamptz(6)
@@ -1615,7 +1616,7 @@ model ProfileSubscription {
   id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   profileId                String              @unique @db.Uuid
   adhesionId               String?             @unique @db.Uuid
-  productId                String?             @db.Text
+  productId                String?             @db.Uuid
   asaasSubscriptionId      String?             @db.Text
   asaasInstallmentId       String?             @db.Text
   subscriptionStatus       SubscriptionStatus?
@@ -1625,6 +1626,7 @@ model ProfileSubscription {
   trialEndDate             DateTime?           @db.Timestamptz(6)
   subscriptionNextDueDate  DateTime?           @db.Timestamptz(6)
   subscriptionCycle        String?             @db.Text
+  subscriptionLastSyncedAt DateTime?           @db.Timestamptz(6)
   hasPermanentSubscription Boolean             @default(false)
   createdAt                DateTime            @default(now()) @db.Timestamptz(6)
   updatedAt                DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
@@ -1632,10 +1634,26 @@ model ProfileSubscription {
   profile  Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscriptions_profileId_fkey")
   adhesion BackofficeAdhesion? @relation(fields: [adhesionId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_adhesionId_fkey")
   product  BackofficeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_productId_fkey")
+  capacity ProfileSubscriptionCapacity?
 
   @@index([adhesionId], map: "profile_subscriptions_adhesion_id_idx")
   @@index([productId], map: "profile_subscriptions_product_id_idx")
   @@index([subscriptionStatus], map: "profile_subscriptions_status_idx")
-  @@map("profile_subscriptions")
+  @@map("corretor_studio_profile_subscriptions")
+}
+
+model ProfileSubscriptionCapacity {
+  id                              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileSubscriptionId           String              @unique @db.Uuid
+  includedExtraTeams              Int                 @default(0)
+  includedExtraUsers              Int                 @default(0)
+  manualAdjustmentExtraTeams      Int                 @default(0)
+  manualAdjustmentExtraUsers      Int                 @default(0)
+  createdAt                       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt                       DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
+
+  profileSubscription ProfileSubscription @relation(fields: [profileSubscriptionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscription_capacities_subscription_id_fkey")
+
+  @@map("corretor_studio_profile_subscription_capacities")
 }
 
