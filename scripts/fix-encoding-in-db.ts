@@ -95,3 +95,5 @@ console.info('-- Run this SQL first:');
 console.info('-- ══════════════════════════════════════════════════════');
 console.info('TRUNCATE TABLE corretor_studio_notifications;');
 console.info('-- Then re-import: fixed/notifications_rows.csv via Table Editor → Import data');
+
+export {}

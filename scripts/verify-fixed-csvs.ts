@@ -53,3 +53,5 @@ for (let i = 1; i < actRows.length; i++) {
   if (!actRows[i][createdAtIdx]?.trim()) emptyTs++;
 }
 console.info(`  empty createdAt values: ${emptyTs}`);
+
+export {}
