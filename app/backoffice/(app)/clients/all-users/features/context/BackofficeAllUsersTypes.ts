@@ -14,12 +14,18 @@ export interface BackofficeAllUsersMasterRef {
   plan: BackofficeAllUsersPlan
 }
 
+export interface BackofficeAllUsersFunction {
+  name: "SDR" | "CLOSER"
+  label: string
+}
+
 export interface BackofficeAllUsersItem {
   id: string
   fullName: string | null
   email: string
   phone: string | null
   role: BackofficeAllUsersRole
+  functions: BackofficeAllUsersFunction[]
   isMaster: boolean
   googleCalendarConnected: boolean
   createdAt: string

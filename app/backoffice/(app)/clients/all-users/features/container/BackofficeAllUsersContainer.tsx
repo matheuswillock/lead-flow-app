@@ -285,7 +285,8 @@ export function BackofficeAllUsersContainer() {
             {pagination.totalItems} no total
           </Badge>
           <Badge variant="outline" className="font-normal">
-            {roleCounts.master} master · {roleCounts.manager} manager · {roleCounts.operator} operador
+            {roleCounts.master} master · {roleCounts.manager} manager · {roleCounts.operator}{" "}
+            operador
           </Badge>
         </div>
       </div>
@@ -310,7 +311,13 @@ export function BackofficeAllUsersContainer() {
           onChange={handlePlanChange}
         />
         {isFiltered ? (
-          <Button size="sm" variant="ghost" className="h-8 px-2 lg:px-3" onClick={() => void handleClear()} disabled={isLoading}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 lg:px-3"
+            onClick={() => void handleClear()}
+            disabled={isLoading}
+          >
             Limpar
             <X data-icon="inline-end" />
           </Button>
@@ -323,7 +330,11 @@ export function BackofficeAllUsersContainer() {
             <AlertCircle className="h-4 w-4" />
             {error}
           </span>
-          <Button size="sm" variant="outline" onClick={() => void fetchUsers({ page: pagination.page })}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void fetchUsers({ page: pagination.page })}
+          >
             Tentar novamente
           </Button>
         </div>
@@ -337,6 +348,7 @@ export function BackofficeAllUsersContainer() {
               <TableHead>E-mail</TableHead>
               <TableHead>Telefone</TableHead>
               <TableHead>Papel</TableHead>
+              <TableHead>Funções</TableHead>
               <TableHead>Master vinculado</TableHead>
               <TableHead>Plano do master</TableHead>
               <TableHead>Criado em</TableHead>
@@ -366,9 +378,12 @@ export function BackofficeAllUsersContainer() {
                   <TableCell>{maskPhone(item.phone ?? "") || "—"}</TableCell>
                   <TableCell>{getRoleBadge(item.role, item.isMaster)}</TableCell>
                   <TableCell>
-                    {item.isMaster
-                      ? "—"
-                      : item.master?.fullName || item.master?.id || "—"}
+                    {item.functions && item.functions.length > 0
+                      ? item.functions.map((func) => func.label || func.name).join(", ")
+                      : "—"}
+                  </TableCell>
+                  <TableCell>
+                    {item.isMaster ? "—" : item.master?.fullName || item.master?.id || "—"}
                   </TableCell>
                   <TableCell>{item.master ? item.master.plan.label : "—"}</TableCell>
                   <TableCell>{formatDate(item.createdAt, tz)}</TableCell>
