@@ -675,16 +675,18 @@ export class LeadUseCase implements ILeadUseCase {
       const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
       
       if (!profileInfo) {
+        console.error("[LeadUseCase][deleteLead] Perfil não encontrado para supabaseId:", supabaseId);
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
       const existingLead = await this.leadRepository.findById(id);
       if (!existingLead) {
+        console.error("[LeadUseCase][deleteLead] Lead não encontrado:", id);
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
-      // Verificar permissões para operators
       if (profileInfo.role === 'operator' && existingLead.createdBy !== profileInfo.id) {
+        console.error("[LeadUseCase][deleteLead] Operador sem permissão:", { supabaseId, leadId: id, createdBy: existingLead.createdBy });
         return new Output(false, [], ["Você só pode deletar leads que você criou"], null);
       }
 

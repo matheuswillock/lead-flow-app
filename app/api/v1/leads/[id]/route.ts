@@ -247,6 +247,7 @@ export async function DELETE(
     });
 
     if (!lead || lead.teamId !== teamId) {
+      console.error("[LeadsRoute][DELETE] Lead não encontrado ou teamId mismatch:", { id, teamId, leadTeamId: lead?.teamId });
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
     }

@@ -200,9 +200,8 @@ export function ManagerUsersContainer({
       const result = await response.json();
 
       if (!result.isValid) {
-        const msg = result.errorMessages?.join(', ') || 'Não foi possível deletar. Tente novamente.';
-        console.error('[handleConfirmDeletePending]', msg);
-        toast.error(msg, { id: loadingToast });
+        console.error('[handleConfirmDeletePending]', result.errorMessages);
+        toast.dismiss(loadingToast);
         notifyManagerUsersError({
           operation: "deletePendingOperator",
           errorMessages: result.errorMessages,

@@ -81,7 +81,9 @@ export async function asaasFetch(endpoint: string, options?: RequestInit) {
     if (!response.ok) {
       const error = await response.json().catch(() => ({ errors: [] }));
       const errorMessage = error.errors?.[0]?.description || `Erro na API Asaas: ${response.status}`;
-      throw new Error(errorMessage);
+      const err = new Error(errorMessage);
+      (err as any).statusCode = response.status;
+      throw err;
     }
 
     return response.json();

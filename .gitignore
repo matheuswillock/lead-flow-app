@@ -40,6 +40,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# db clone dumps
+/tmp/db-clone/
+/backup_*.sql
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
