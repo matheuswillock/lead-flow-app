@@ -60,6 +60,30 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
     })
   }
 
+  async findByGoogleConnectionId(googleConnectionId: string) {
+    return prisma.backofficeUser.findMany({
+      where: { googleConnectionId },
+      select: { id: true, email: true, profileId: true },
+    })
+  }
+
+  async findByLinkedProfileId(profileId: string) {
+    return prisma.backofficeUser.findMany({
+      where: { linkedCorretorStudioProfileId: profileId },
+      select: { id: true, email: true, profileId: true },
+    })
+  }
+
+  async findLinkedDependentsWithoutOwnConnection(profileId: string) {
+    return prisma.backofficeUser.findMany({
+      where: {
+        linkedCorretorStudioProfileId: profileId,
+        googleConnectionId: null,
+      },
+      select: { id: true, email: true, profileId: true },
+    })
+  }
+
   async update(id: string, data: UpdateBackofficeUserInput): Promise<BackofficeUser> {
     return prisma.backofficeUser.update({
       where: { id },

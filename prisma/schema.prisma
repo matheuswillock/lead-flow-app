@@ -300,6 +300,7 @@ enum NotificationType {
   TEAM_MEMBER_REMOVED
   LEAD_SCHEDULE_CREATED
   LEAD_PROPOSAL_PENDING
+  GOOGLE_CONNECTION_BROKEN
 
   @@map("notification_type")
 }

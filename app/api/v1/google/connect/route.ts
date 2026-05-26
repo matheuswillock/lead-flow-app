@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository";
 import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
 
 const LOG_PREFIX = "[GoogleConnect]";
@@ -101,14 +102,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (email) {
-      const existingGoogleEmailProfile = await profileRepository.findByGoogleEmail(email);
-      if (existingGoogleEmailProfile && existingGoogleEmailProfile.supabaseId !== supabaseId) {
+      const existingConnection = await googleOAuthConnectionRepository.findByGoogleEmail(email);
+      if (
+        existingConnection?.ownerProfileId &&
+        existingConnection.ownerProfileId !== currentProfile.id
+      ) {
         logError("Tentativa de vincular Google email ja associado a outro perfil.", {
           status: "error",
           step: "google_email_conflict",
           supabaseId,
           email,
-          conflictingSupabaseId: existingGoogleEmailProfile.supabaseId,
+          conflictingProfileId: existingConnection.ownerProfileId,
         });
         const output = new Output(
           false,
@@ -121,6 +125,10 @@ export async function POST(request: NextRequest) {
     }
 
     const previousGoogleEmail = currentProfile.googleEmail;
+    const normalizedNextGoogleEmail = email ?? currentProfile.email;
+    const shouldNotifyGoogleConnected =
+      currentProfile.googleCalendarConnected !== true ||
+      (previousGoogleEmail ?? null) !== (normalizedNextGoogleEmail ?? null);
 
     const profile = await profileRepository.updateGoogleCalendarAuth(supabaseId, {
       accessToken,
@@ -155,22 +163,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const notifyOutput = await googleConnectionUseCase.notifyGoogleConnected({
-      supabaseId,
-      profileId: currentProfile.id,
-      activeTeamId: currentProfile.activeTeamId ?? null,
-      googleEmail: email ?? currentProfile.email,
-      previousGoogleEmail,
-    });
-
-    if (!notifyOutput.isValid) {
-      logError("Falha ao registrar notificacao de conexao Google.", {
-        status: "error",
-        step: "notify_connect",
+    if (shouldNotifyGoogleConnected) {
+      const notifyOutput = await googleConnectionUseCase.notifyGoogleConnected({
         supabaseId,
-        email: email ?? null,
-        errors: notifyOutput.errorMessages,
+        profileId: currentProfile.id,
+        activeTeamId: currentProfile.activeTeamId ?? null,
+        googleEmail: normalizedNextGoogleEmail,
+        previousGoogleEmail,
       });
+
+      if (!notifyOutput.isValid) {
+        logError("Falha ao registrar notificacao de conexao Google.", {
+          status: "error",
+          step: "notify_connect",
+          supabaseId,
+          email: email ?? null,
+          errors: notifyOutput.errorMessages,
+        });
+      }
     }
 
     logInfo("Google conectado com sucesso.", {
