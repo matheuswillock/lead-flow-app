@@ -4,7 +4,6 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
 import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository";
-import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository";
 
 const LOG_PREFIX = "[GoogleDisconnect]";
 
@@ -64,7 +63,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (currentProfile.googleConnectionId) {
-      const linkedDependents = await backofficeUserRepository.findByLinkedProfileId(currentProfile.id)
+      const linkedDependents =
+        await backofficeUserRepository.findLinkedDependentsWithoutOwnConnection(currentProfile.id)
       if (linkedDependents.length > 0 && !force) {
         const output = new Output(
           false,
@@ -88,18 +88,6 @@ export async function POST(request: NextRequest) {
       logError("Falha ao desconectar Google.", { status: "error", step: "persist", supabaseId });
       const output = new Output(false, [], ["Falha ao desconectar Google"], null);
       return NextResponse.json(output, { status: 400 });
-    }
-
-    if (currentProfile.googleConnectionId) {
-      const dependents = await backofficeUserRepository.findByGoogleConnectionId(
-        currentProfile.googleConnectionId
-      )
-      if (dependents.length === 0) {
-        await googleOAuthConnectionRepository.markRevoked(
-          currentProfile.googleConnectionId,
-          "Disconnected by profile owner"
-        )
-      }
     }
 
     const { data: identitiesData, error: identitiesError } = await supabase.auth.getUserIdentities();

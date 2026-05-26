@@ -27,6 +27,9 @@ export class GoogleOAuthConnectionRepository implements IGoogleOAuthConnectionRe
   }
 
   async updateTokens(id: string, input: UpdateGoogleOAuthTokensInput) {
+    const shouldReactivate =
+      input.accessToken !== undefined || input.refreshToken !== undefined || input.tokenExpiresAt !== undefined
+
     return prisma.googleOAuthConnection.update({
       where: { id },
       data: {
@@ -35,6 +38,7 @@ export class GoogleOAuthConnectionRepository implements IGoogleOAuthConnectionRe
         tokenExpiresAt: input.tokenExpiresAt,
         lastRefreshedAt: input.lastRefreshedAt,
         lastRefreshError: input.lastRefreshError,
+        revokedAt: shouldReactivate ? null : undefined,
       },
     })
   }

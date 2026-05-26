@@ -52,5 +52,6 @@ export interface IBackofficeUserRepository {
   findByIdWithGoogleContext(id: string): Promise<BackofficeUserWithGoogleContext | null>
   findByGoogleConnectionId(googleConnectionId: string): Promise<BackofficeUserConnectionDependent[]>
   findByLinkedProfileId(profileId: string): Promise<BackofficeUserConnectionDependent[]>
+  findLinkedDependentsWithoutOwnConnection(profileId: string): Promise<BackofficeUserConnectionDependent[]>
   update(id: string, data: UpdateBackofficeUserInput): Promise<BackofficeUser>
 }
