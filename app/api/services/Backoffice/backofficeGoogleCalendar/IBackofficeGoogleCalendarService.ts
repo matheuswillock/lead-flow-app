@@ -1,15 +1,11 @@
-import type { BackofficeUser } from "@prisma/client"
+import type { GoogleOAuthConnection } from "@prisma/client"
 
-export type BackofficeCalendarOrganizer = Pick<
-  BackofficeUser,
-  | "id"
-  | "email"
-  | "googleAccessToken"
-  | "googleRefreshToken"
-  | "googleTokenExpiresAt"
-  | "googleCalendarConnected"
-  | "timezone"
->
+export type BackofficeCalendarOrganizer = {
+  connection: GoogleOAuthConnection
+  backofficeUserId: string
+  backofficeUserEmail: string
+  timezone: string
+}
 
 export interface BackofficeCalendarEventInput {
   organizer: BackofficeCalendarOrganizer
