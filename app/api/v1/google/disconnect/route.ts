@@ -4,6 +4,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
 import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository";
+import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository";
 
 const LOG_PREFIX = "[GoogleDisconnect]";
 
@@ -55,7 +56,10 @@ export async function POST(request: NextRequest) {
     const force = body?.force === true
     const currentProfile = await profileRepository.findBySupabaseId(supabaseId);
     const backofficeUserRepository = new BackofficeUserRepository()
-    const disconnectedEmail = currentProfile?.googleEmail ?? currentProfile?.email ?? null;
+    const currentConnection = currentProfile?.googleConnectionId
+      ? await googleOAuthConnectionRepository.findById(currentProfile.googleConnectionId)
+      : null
+    const disconnectedEmail = currentConnection?.googleEmail ?? currentProfile?.email ?? null;
 
     if (!currentProfile) {
       const output = new Output(false, [], ["Perfil nao encontrado"], null);

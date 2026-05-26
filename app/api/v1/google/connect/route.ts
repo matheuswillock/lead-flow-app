@@ -124,10 +124,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const previousGoogleEmail = currentProfile.googleEmail;
+    const currentConnection = currentProfile.googleConnectionId
+      ? await googleOAuthConnectionRepository.findById(currentProfile.googleConnectionId)
+      : null;
+    const previousGoogleEmail = currentConnection?.googleEmail ?? null;
     const normalizedNextGoogleEmail = email ?? currentProfile.email;
     const shouldNotifyGoogleConnected =
-      currentProfile.googleCalendarConnected !== true ||
+      !currentProfile.googleConnectionId ||
       (previousGoogleEmail ?? null) !== (normalizedNextGoogleEmail ?? null);
 
     const profile = await profileRepository.updateGoogleCalendarAuth(supabaseId, {

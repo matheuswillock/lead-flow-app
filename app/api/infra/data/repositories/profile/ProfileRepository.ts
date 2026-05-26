@@ -848,22 +848,14 @@ class PrismaProfileRepository implements IProfileRepository {
     ): Promise<Profile | null> {
         try {
             const connectionRepo = new GoogleOAuthConnectionRepository()
-            const profile = await prisma.profile.update({
+            const profile = await prisma.profile.findUnique({
                 where: { supabaseId },
-                data: {
-                    googleAccessToken:
-                        updates.accessToken === undefined ? undefined : updates.accessToken,
-                    googleRefreshToken:
-                        updates.refreshToken === undefined ? undefined : updates.refreshToken,
-                    googleTokenExpiresAt:
-                        updates.expiresAt === undefined ? undefined : updates.expiresAt,
-                    googleEmail: updates.email === undefined ? undefined : updates.email,
-                    googleCalendarConnected:
-                        updates.connected === undefined ? undefined : updates.connected,
-                },
-            });
+            })
+            if (!profile) {
+                return null
+            }
 
-            const googleEmail = updates.email === undefined ? profile.googleEmail : updates.email
+            const googleEmail = updates.email ?? null
 
             if (googleEmail && (updates.connected ?? true)) {
                 let connection = await connectionRepo.findByGoogleEmail(googleEmail)
@@ -897,8 +889,12 @@ class PrismaProfileRepository implements IProfileRepository {
                 await connectionRepo.detachFromProfile(profile.id)
             }
 
+            const updatedProfile = await prisma.profile.findUnique({
+                where: { id: profile.id },
+            })
+
             console.info("Google Calendar auth updated:", profile.id);
-            return profile;
+            return updatedProfile;
         } catch (error) {
             console.error("Error updating Google Calendar auth:", error);
             return null;

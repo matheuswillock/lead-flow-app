@@ -36,8 +36,8 @@ Centralizar conexões OAuth Google em uma tabela única (`google_oauth_connectio
 
 ## Fase 2 — Consolidação pós-estabilização
 
-- [ ] TODO: Remover dual-write e manter escrita apenas na tabela central
-- [ ] TODO: Validar janela de observação (24-48h) e registrar evidências
+- [x] DONE: Remover dual-write e manter escrita apenas na tabela central
+- [x] DONE: Validar janela de observação (24-48h) e registrar evidências (ver `docs/google-oauth-connections-phase2-evidence.md`)
 
 ## Fase 3 — Limpeza legada
 
