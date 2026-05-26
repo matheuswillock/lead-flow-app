@@ -356,19 +356,27 @@ export function useLead(id: string) {
           },
         });
 
-        if (!response.ok) {
-          throw new Error('Erro ao buscar lead');
+        let responseBody: { isValid?: boolean; errorMessages?: string[]; result?: unknown } | null = null;
+        try { responseBody = await response.json(); } catch { /* sem body JSON */ }
+
+        if (!response.ok || responseBody?.isValid === false) {
+          const serverMessage = responseBody?.errorMessages?.join(", ");
+          console.error("[useLead] fetch failed", {
+            leadId: id,
+            status: response.status,
+            statusText: response.statusText,
+            serverMessage,
+            activeTeamId,
+          });
+          const isTeamMismatch = serverMessage?.includes("sem permissão no seu time");
+          throw new Error(
+            isTeamMismatch
+              ? "Este lead pertence a outro time. Troque o time ativo no menu superior para visualizá-lo."
+              : serverMessage || `Erro ao buscar lead (HTTP ${response.status})`
+          );
         }
 
-        const data = await response.json();
-        if (!data?.isValid) {
-          const message = Array.isArray(data?.errorMessages) && data.errorMessages.length > 0
-            ? data.errorMessages.join(", ")
-            : "Erro ao buscar lead";
-          throw new Error(message);
-        }
-
-        const nextLead = data.result as LeadResponseDTO;
+        const nextLead = responseBody!.result as LeadResponseDTO;
         leadFreshCacheByKey.set(requestKey, { lead: nextLead, fetchedAt: Date.now() });
         return nextLead;
       })();

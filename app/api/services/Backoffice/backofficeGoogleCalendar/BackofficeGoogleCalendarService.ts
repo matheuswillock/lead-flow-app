@@ -1,6 +1,6 @@
 import { DEFAULT_TZ, resolveTimezone } from "@/lib/dates"
-import type { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
-import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
+import type { IGoogleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/IGoogleOAuthConnectionRepository"
+import { GoogleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository"
 import type {
   BackofficeCalendarAttendee,
   BackofficeCalendarEventInput,
@@ -117,30 +117,40 @@ async function refreshAccessToken(refreshToken: string): Promise<GoogleTokenResu
 
 async function getValidAccessToken(
   organizer: BackofficeCalendarOrganizer,
-  userRepo: IBackofficeUserRepository
+  connectionRepo: IGoogleOAuthConnectionRepository
 ) {
+  const connection = organizer.connection
   const now = Date.now()
-  const expiresAt = organizer.googleTokenExpiresAt?.getTime() ?? 0
+  const expiresAt = connection.tokenExpiresAt?.getTime() ?? 0
 
-  if (organizer.googleAccessToken && expiresAt > now + 60_000) {
-    return organizer.googleAccessToken
+  if (connection.accessToken && expiresAt > now + 60_000) {
+    return connection.accessToken
   }
 
-  if (!organizer.googleRefreshToken) {
+  if (!connection.refreshToken) {
     throw new Error("Conta Google do backoffice não conectada")
   }
 
-  const refreshed = await refreshAccessToken(organizer.googleRefreshToken)
-  const expiresAtDate = new Date(Date.now() + refreshed.expires_in * 1000)
+  try {
+    const refreshed = await refreshAccessToken(connection.refreshToken)
+    const expiresAtDate = new Date(Date.now() + refreshed.expires_in * 1000)
 
-  await userRepo.update(organizer.id, {
-    googleAccessToken: refreshed.access_token,
-    googleRefreshToken: refreshed.refresh_token ?? organizer.googleRefreshToken,
-    googleTokenExpiresAt: expiresAtDate,
-    googleCalendarConnected: true,
-  })
+    await connectionRepo.updateTokens(connection.id, {
+      accessToken: refreshed.access_token,
+      refreshToken: refreshed.refresh_token ?? connection.refreshToken,
+      tokenExpiresAt: expiresAtDate,
+      lastRefreshedAt: new Date(),
+      lastRefreshError: null,
+    })
 
-  return refreshed.access_token
+    return refreshed.access_token
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Falha ao renovar token Google"
+    await connectionRepo.updateTokens(connection.id, {
+      lastRefreshError: errorMessage,
+    })
+    throw error
+  }
 }
 
 async function googleCalendarFetch<T>(
@@ -179,7 +189,7 @@ async function googleCalendarFetch<T>(
 export class BackofficeGoogleCalendarService
   implements IBackofficeGoogleCalendarService
 {
-  constructor(private readonly userRepo: IBackofficeUserRepository) {}
+  constructor(private readonly connectionRepo: IGoogleOAuthConnectionRepository) {}
 
   async getBusyIntervals({
     organizer,
@@ -192,7 +202,7 @@ export class BackofficeGoogleCalendarService
     timeMax: string
     calendarId?: string
   }) {
-    const accessToken = await getValidAccessToken(organizer, this.userRepo)
+    const accessToken = await getValidAccessToken(organizer, this.connectionRepo)
     const timezone = resolveTimezone(organizer.timezone ?? DEFAULT_TZ)
     const response = await googleCalendarFetch<{
       calendars?: Record<string, { busy?: Array<{ start: string; end: string }> }>
@@ -210,7 +220,7 @@ export class BackofficeGoogleCalendarService
   }
 
   async upsertEvent(input: BackofficeCalendarEventInput): Promise<BackofficeCalendarEventResult> {
-    const accessToken = await getValidAccessToken(input.organizer, this.userRepo)
+    const accessToken = await getValidAccessToken(input.organizer, this.connectionRepo)
     const calendarId = "primary"
     const timezone = resolveTimezone(input.organizer.timezone ?? DEFAULT_TZ)
     const endTime = getEventEnd(input.meetingDate)
@@ -282,7 +292,7 @@ export class BackofficeGoogleCalendarService
     eventId: string
     calendarId?: string
   }) {
-    const accessToken = await getValidAccessToken(organizer, this.userRepo)
+    const accessToken = await getValidAccessToken(organizer, this.connectionRepo)
     const baseUrl = `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`
     await googleCalendarFetch<void>(
       `${baseUrl}/${encodeURIComponent(eventId)}?sendUpdates=all`,
@@ -300,7 +310,7 @@ export class BackofficeGoogleCalendarService
     eventId: string
     calendarId?: string
   }): Promise<BackofficeCalendarAttendee[]> {
-    const accessToken = await getValidAccessToken(organizer, this.userRepo)
+    const accessToken = await getValidAccessToken(organizer, this.connectionRepo)
     const baseUrl = `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`
     const event = await googleCalendarFetch<{
       attendees?: Array<{
@@ -327,4 +337,4 @@ export class BackofficeGoogleCalendarService
 }
 
 export const backofficeGoogleCalendarService =
-  new BackofficeGoogleCalendarService(new BackofficeUserRepository())
+  new BackofficeGoogleCalendarService(new GoogleOAuthConnectionRepository())

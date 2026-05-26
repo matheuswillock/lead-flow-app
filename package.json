@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "dev:local": "bun run docker:up && bunx wait-on tcp:localhost:5433 && next dev",
+    "dev:local": "bunx tsx scripts/preflight-dev-local.ts && next dev",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "ngrok": "ngrok http --domain=nonzero-rodrick-mentholated.ngrok-free.dev 3000",
@@ -37,6 +37,7 @@
     "db:migrate:push:dry-run": "supabase db push --linked --dry-run",
     "db:migrate:status": "supabase migration list",
     "db:migrate:reset:local": "supabase db reset --local --no-seed",
+    "db:clone:remote": "bunx tsx scripts/clone-remote-to-local.ts",
     "db:diff": "supabase db diff --schema public",
     "prisma:backfill-leadcode": "bunx tsx scripts/backfill-leadcode.ts",
     "prisma:generate-import-leads-sql": "bunx tsx scripts/generate-backfill-import-leads.ts",

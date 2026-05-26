@@ -1,6 +1,7 @@
 import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates"
 import type { IBackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadSchedule/IBackofficeLeadScheduleRepository"
 import type { IBackofficeGoogleCalendarService } from "../backofficeGoogleCalendar/IBackofficeGoogleCalendarService"
+import type { IBackofficeGoogleConnectionResolverService } from "../backofficeGoogleConnection/IBackofficeGoogleConnectionResolverService"
 import type {
   BackofficeCalendarAvailabilityResult,
   GetBackofficeCalendarAvailabilityInput,
@@ -27,6 +28,7 @@ export class BackofficeCalendarAvailabilityService
 {
   constructor(
     private readonly userRepo: IBackofficeUserRepository,
+    private readonly googleResolver: IBackofficeGoogleConnectionResolverService,
     private readonly scheduleRepo: IBackofficeLeadScheduleRepository,
     private readonly googleCalendarService: IBackofficeGoogleCalendarService
   ) {}
@@ -116,13 +118,11 @@ export class BackofficeCalendarAvailabilityService
 
     for (const closer of activeClosers) {
       let busyIntervals = internalBusyByCloser[closer.id] ?? []
-      const canUseGoogleCalendar =
-        !!closer.googleCalendarConnected && !!closer.googleRefreshToken
-
-      if (canUseGoogleCalendar) {
+      const organizer = await this.googleResolver.resolveForBackofficeUser(closer.id)
+      if (organizer) {
         try {
           busyIntervals = await this.googleCalendarService.getBusyIntervals({
-            organizer: closer,
+            organizer,
             timeMin: dayStart.toISOString(),
             timeMax: dayEnd.toISOString(),
           })

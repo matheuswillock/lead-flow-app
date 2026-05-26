@@ -1,4 +1,5 @@
 import type { BackofficeUser, Profile } from "@prisma/client"
+import type { GoogleOAuthConnection } from "@prisma/client"
 
 export interface CreateBackofficeUserInput {
   id: string
@@ -21,6 +22,8 @@ export interface UpdateBackofficeUserInput {
   googleRefreshToken?: string | null
   googleTokenExpiresAt?: Date | null
   googleEmail?: string | null
+  googleConnectionId?: string | null
+  linkedCorretorStudioProfileId?: string | null
   timezone?: string
   mailboxStatus?: string
   mailboxAddress?: string
@@ -31,11 +34,19 @@ export type BackofficeUserWithProfile = BackofficeUser & {
   profile: Pick<Profile, "fullName" | "email">
 }
 
+export type BackofficeUserWithGoogleContext = BackofficeUser & {
+  googleConnection: GoogleOAuthConnection | null
+  linkedCorretorStudioProfile: {
+    googleConnection: GoogleOAuthConnection | null
+  } | null
+}
+
 export interface IBackofficeUserRepository {
   create(data: CreateBackofficeUserInput): Promise<BackofficeUser>
   findMany(params?: { isActive?: boolean }): Promise<BackofficeUserWithProfile[]>
   findById(id: string): Promise<BackofficeUser | null>
   findByEmail(email: string): Promise<BackofficeUser | null>
   findByProfileId(profileId: string): Promise<BackofficeUser | null>
+  findByIdWithGoogleContext(id: string): Promise<BackofficeUserWithGoogleContext | null>
   update(id: string, data: UpdateBackofficeUserInput): Promise<BackofficeUser>
 }

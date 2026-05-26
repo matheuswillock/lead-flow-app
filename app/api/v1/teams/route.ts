@@ -29,9 +29,10 @@ async function getPendingPaymentStatus(paymentId?: string | null) {
     };
   } catch (error) {
     console.error("[TeamsRoute][GET] Erro ao consultar pagamento pendente:", error);
+    const is404 = (error as any)?.statusCode === 404;
     return {
       paymentId,
-      paymentStatus: "PENDING",
+      paymentStatus: is404 ? "NOT_FOUND" : "PENDING",
       paymentMethod: "UNDEFINED",
     };
   }

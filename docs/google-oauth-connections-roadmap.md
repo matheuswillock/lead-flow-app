@@ -1,0 +1,60 @@
+# Roadmap — Reuso de conexão Google entre Corretor Studio e Backoffice
+
+## Objetivo
+
+Centralizar conexões OAuth Google em uma tabela única (`google_oauth_connections`) e permitir reuso no backoffice via vínculo com `Profile`, eliminando necessidade de reconectar contas.
+
+## Convenções deste roadmap
+
+- Status: `TODO` → `IN_PROGRESS` → `DONE`
+- Cada item concluído deve ser marcado no checklist.
+- Ao abrir PR, adicionar o link no bloco **PRs**.
+- Plano original de referência: `C:\Users\mathe\.claude\plans\vamos-criar-um-plano-tidy-lynx.md`
+
+## Fase 1 — Fundação de dados + compatibilidade
+
+- [x] DONE: Criar migration #1 (`create_google_oauth_connections_and_backfill`) com:
+  - nova tabela `google_oauth_connections`
+  - novas FKs em `corretor_studio_profiles` e `backoffice_users`
+  - coluna `linkedCorretorStudioProfileId` em `backoffice_users`
+  - backfill idempotente Profile/BackofficeUser
+  - bootstrap idempotente dos 3 vínculos (Bruno/Nathiele/Matheus)
+- [x] DONE: Atualizar `prisma/schema.prisma` com `GoogleOAuthConnection` e novas relações
+- [x] DONE: Criar helpers em `lib/google/connection.ts` (`isGoogleConnectionActive`, `resolveBackofficeGoogleConnection`)
+- [x] DONE: Criar repositório `googleOAuthConnection` (interface + implementação)
+- [x] DONE: Criar resolver backoffice `BackofficeGoogleConnectionResolverService` (interface + implementação)
+- [x] DONE: Refatorar `BackofficeGoogleCalendarService` para usar connection repository e persistir refresh/error
+- [x] DONE: Refatorar `BackofficeLeadScheduleService` para usar resolver (organizer derivado)
+- [x] DONE: Refatorar `BackofficeCalendarAvailabilityService` para resolver conexões sem N+1
+- [ ] TODO: Refatorar `GoogleCalendarService` (Corretor Studio) para organizer baseado em conexão
+- [ ] TODO: Ajustar callers impactados (lead schedule, calendar availability, cancel/resend, tasks, use cases)
+- [ ] TODO: Manter compatibilidade de DTOs (`googleCalendarConnected` derivado) e incluir `googleConnectionSource`
+- [ ] TODO: Atualizar rotas de connect/disconnect com regras de conflito e `force: true` quando houver dependentes
+- [ ] TODO: Atualizar `BackofficeAccountUseCase` para fluxo baseado em connection central
+- [ ] TODO: Incluir `NotificationType.GOOGLE_CONNECTION_BROKEN` e disparos no erro de refresh
+- [ ] TODO: Atualizar Postman se houver mudança de contrato em current-user/backoffice current-user
+
+## Fase 2 — Consolidação pós-estabilização
+
+- [ ] TODO: Remover dual-write e manter escrita apenas na tabela central
+- [ ] TODO: Validar janela de observação (24-48h) e registrar evidências
+
+## Fase 3 — Limpeza legada
+
+- [ ] TODO: Criar migration #2 (`drop_legacy_google_columns`) após deploy estável
+- [ ] TODO: Remover colunas legadas `google*` de `Profile` e `BackofficeUser` no schema
+- [ ] TODO: Remover uso de campos legados em repositórios/inputs (`BackofficeUserRepository.update`, `UpdateBackofficeUserInput`)
+- [ ] TODO: Validar queries pós-limpeza
+
+## Verificação obrigatória por etapa
+
+- [ ] TODO: `bun run typecheck 2>&1 | head -20`
+- [ ] TODO: `bun run lint`
+- [ ] TODO: `bun run governance:check`
+- [ ] TODO: `bun run design:check` (somente quando houver alteração visual)
+
+## PRs
+
+- PR 1: _pendente_
+- PR 2: _pendente_
+- PR 3: _pendente_

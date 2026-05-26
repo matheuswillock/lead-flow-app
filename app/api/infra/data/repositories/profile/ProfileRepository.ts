@@ -3,6 +3,7 @@ import type { UserRole, Profile, Prisma } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js"
 import type { IProfileRepository } from "./IProfileRepository";
 import { isManagerLikeRole } from "@/lib/roles";
+import { GoogleOAuthConnectionRepository } from "../googleOAuthConnection/GoogleOAuthConnectionRepository";
 
 // Função para criar cliente Supabase de forma segura
 function createSupabaseClient() {
@@ -846,6 +847,7 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     ): Promise<Profile | null> {
         try {
+            const connectionRepo = new GoogleOAuthConnectionRepository()
             const profile = await prisma.profile.update({
                 where: { supabaseId },
                 data: {
@@ -860,6 +862,40 @@ class PrismaProfileRepository implements IProfileRepository {
                         updates.connected === undefined ? undefined : updates.connected,
                 },
             });
+
+            const googleEmail = updates.email === undefined ? profile.googleEmail : updates.email
+
+            if (googleEmail && (updates.connected ?? true)) {
+                let connection = await connectionRepo.findByGoogleEmail(googleEmail)
+
+                if (!connection) {
+                    connection = await connectionRepo.create({
+                        googleEmail,
+                        accessToken: updates.accessToken ?? profile.googleAccessToken,
+                        refreshToken: updates.refreshToken ?? profile.googleRefreshToken,
+                        tokenExpiresAt: updates.expiresAt ?? profile.googleTokenExpiresAt,
+                        ownerProfileId: profile.id,
+                    })
+                } else {
+                    await connectionRepo.updateTokens(connection.id, {
+                        accessToken: updates.accessToken ?? connection.accessToken,
+                        refreshToken: updates.refreshToken ?? connection.refreshToken,
+                        tokenExpiresAt: updates.expiresAt ?? connection.tokenExpiresAt,
+                        lastRefreshedAt: new Date(),
+                        lastRefreshError: null,
+                    })
+                    await connectionRepo.attachToProfile(connection.id, profile.id)
+                }
+
+                await prisma.profile.update({
+                    where: { id: profile.id },
+                    data: { googleConnectionId: connection.id },
+                })
+            }
+
+            if (updates.connected === false) {
+                await connectionRepo.detachFromProfile(profile.id)
+            }
 
             console.info("Google Calendar auth updated:", profile.id);
             return profile;

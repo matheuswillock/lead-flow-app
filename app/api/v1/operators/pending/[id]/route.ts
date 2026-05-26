@@ -88,25 +88,29 @@ export async function DELETE(
 
     console.info('🗑️ [DeletePendingOperator] Deletando operador pendente:', id);
 
-    // Verificar se o operador pendente existe
-    const pendingOperator = await prisma.pendingOperator.findUnique({
-      where: { id },
-    });
+    const pendingOperator = await prisma.pendingOperator.findUnique({ where: { id } });
 
-    if (!pendingOperator) {
-      console.warn('⚠️ [DeletePendingOperator] Operador pendente não encontrado:', id);
+    if (pendingOperator) {
+      await prisma.pendingOperator.delete({ where: { id } });
+      console.info('✅ [DeletePendingOperator] PendingOperator deletado com sucesso:', id);
+      return NextResponse.json(
+        new Output(true, ['Operador pendente deletado com sucesso'], [], null),
+        { status: 200 }
+      );
+    }
+
+    const pendingAction = await prisma.pendingAction.findUnique({ where: { id } });
+
+    if (!pendingAction) {
+      console.warn('⚠️ [DeletePendingOperator] Registro não encontrado em nenhuma tabela:', id);
       return NextResponse.json(
         new Output(false, [], ['Operador pendente não encontrado'], null),
         { status: 404 }
       );
     }
 
-    // Deletar operador pendente
-    await prisma.pendingOperator.delete({
-      where: { id },
-    });
-
-    console.info('✅ [DeletePendingOperator] Operador pendente deletado com sucesso:', id);
+    await prisma.pendingAction.delete({ where: { id } });
+    console.info('✅ [DeletePendingOperator] PendingAction deletado com sucesso:', id);
 
     return NextResponse.json(
       new Output(true, ['Operador pendente deletado com sucesso'], [], null),

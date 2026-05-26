@@ -415,6 +415,7 @@ model Profile {
   googleRefreshToken       String?             @db.Text
   googleTokenExpiresAt     DateTime?           @db.Timestamptz(6)
   googleEmail              String?             @db.Text
+  googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
   asaasCustomerId          String?             @db.Text
   subscriptionId           String?             @db.Text
@@ -454,6 +455,9 @@ model Profile {
   teamMemberships             TeamMember[]
   createdHealthPlanOptions    HealthPlanOption[]        @relation("HealthPlanOptionCreator")
   backofficeUser              BackofficeUser?           @relation("BackofficeUserProfile")
+  googleConnection            GoogleOAuthConnection?    @relation("ProfileGoogleConnection", fields: [googleConnectionId], references: [id], onDelete: SetNull)
+  ownedGoogleConnections      GoogleOAuthConnection[]   @relation("GoogleConnectionOwnerProfile")
+  linkedFromBackofficeUsers   BackofficeUser[]          @relation("BackofficeUserLinkedProfile")
   createdBackofficeUsers      BackofficeUser[]          @relation("BackofficeUserCreator")
   createdBackofficeClients    BackofficeClient[]        @relation("BackofficeClientCreator")
   createdBackofficePayments   BackofficePayment[]       @relation("BackofficePaymentCreator")
@@ -483,6 +487,7 @@ model Profile {
   @@index([role])
   @@index([managerId])
   @@index([cpfCnpj])
+  @@index([googleConnectionId])
   @@map("corretor_studio_profiles")
 }
 
@@ -518,6 +523,8 @@ model BackofficeUser {
   googleRefreshToken      String?   @map("googleRefreshToken") @db.Text
   googleTokenExpiresAt    DateTime? @map("googleTokenExpiresAt") @db.Timestamptz(6)
   googleEmail             String?   @map("googleEmail") @db.Text
+  googleConnectionId      String?   @map("googleConnectionId") @db.Uuid
+  linkedCorretorStudioProfileId String? @map("linkedCorretorStudioProfileId") @db.Uuid
   timezone                String    @default("America/Sao_Paulo") @db.Text
   mailboxStatus           String    @default("pending_manual_action") @map("mailboxStatus") @db.Text
   mailboxAddress          String?   @map("mailboxAddress") @db.Text
@@ -528,6 +535,8 @@ model BackofficeUser {
 
   profile                Profile                  @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
   creator                Profile?                 @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  googleConnection       GoogleOAuthConnection?   @relation("BackofficeUserGoogleConnection", fields: [googleConnectionId], references: [id], onDelete: SetNull)
+  linkedCorretorStudioProfile Profile?            @relation("BackofficeUserLinkedProfile", fields: [linkedCorretorStudioProfileId], references: [id], onDelete: SetNull)
   generatedWebhookTokens BackofficeWebhookToken[] @relation("BackofficeWebhookTokenGenerator")
   sdrLeads               BackofficeLead[]         @relation("BackofficeLeadSdr")
   closerLeads            BackofficeLead[]         @relation("BackofficeLeadCloser")
@@ -540,8 +549,33 @@ model BackofficeUser {
   @@index([isSdr], map: "backoffice_users_is_sdr_idx")
   @@index([isCloser], map: "backoffice_users_is_closer_idx")
   @@index([googleCalendarConnected], map: "backoffice_users_google_connected_idx")
+  @@index([googleConnectionId], map: "backoffice_users_google_connection_id_idx")
+  @@index([linkedCorretorStudioProfileId], map: "backoffice_users_linked_profile_id_idx")
   @@index([createdByProfileId], map: "backoffice_users_created_by_profile_id_idx")
   @@map("backoffice_users")
+}
+
+model GoogleOAuthConnection {
+  id               String    @id @default(uuid()) @db.Uuid
+  googleEmail      String    @unique @db.Text
+  accessToken      String?   @db.Text
+  refreshToken     String?   @db.Text
+  tokenExpiresAt   DateTime? @db.Timestamptz(6)
+  scopes           String[]  @default([]) @db.Text
+  ownerProfileId   String?   @db.Uuid
+  lastRefreshedAt  DateTime? @db.Timestamptz(6)
+  lastRefreshError String?   @db.Text
+  revokedAt        DateTime? @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
+
+  ownerProfile   Profile?         @relation("GoogleConnectionOwnerProfile", fields: [ownerProfileId], references: [id], onDelete: SetNull)
+  profiles       Profile[]        @relation("ProfileGoogleConnection")
+  backofficeUsers BackofficeUser[] @relation("BackofficeUserGoogleConnection")
+
+  @@index([ownerProfileId])
+  @@index([googleEmail])
+  @@map("google_oauth_connections")
 }
 
 model BackofficeClient {
@@ -613,6 +647,10 @@ model BackofficeLead {
   createdByProfileId     String?              @map("createdByProfileId") @db.Uuid
   createdAt              DateTime             @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt              DateTime             @updatedAt @map("updatedAt") @db.Timestamptz(6)
+
+  comoVoceOrganizaSeuLeadsECarteira String? @map("como_voce_organiza_seus_leads_e_carteira") @db.Text
+  quantosUsuariosEmMediaVocePrecisa  String? @map("quantos_usuarios_em_media_voce_precisa") @db.Text
+  qualPerfilSeEnquadraEmSeuMomento   String? @map("qual_perfil_se_enquadra_em_seu_momento") @db.Text
 
   creator              Profile?                 @relation("BackofficeLeadCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
   sourceWebhookEvent   BackofficeWebhookEvent?  @relation("BackofficeLeadSourceWebhookEvent", fields: [sourceWebhookEventId], references: [id], onDelete: SetNull, map: "backoffice_leads_source_webhook_event_id_fkey")

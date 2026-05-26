@@ -443,6 +443,21 @@ unsubscribed unsubscribed
     }
   
 
+  "google_oauth_connections" {
+    String id "🗝️"
+    String googleEmail 
+    String accessToken "❓"
+    String refreshToken "❓"
+    DateTime tokenExpiresAt "❓"
+    String scopes 
+    DateTime lastRefreshedAt "❓"
+    String lastRefreshError "❓"
+    DateTime revokedAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
   "backoffice_clients" {
     String id "🗝️"
     String fullName 
@@ -491,6 +506,9 @@ unsubscribed unsubscribed
     DateTime statusEnteredAt 
     DateTime createdAt 
     DateTime updatedAt 
+    String como_voce_organiza_seus_leads_e_carteira "❓"
+    String quantos_usuarios_em_media_voce_precisa "❓"
+    String qual_perfil_se_enquadra_em_seu_momento "❓"
     }
   
 
@@ -1093,9 +1111,13 @@ unsubscribed unsubscribed
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "corretor_studio_profiles" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "manager"
+    "corretor_studio_profiles" }o--|o google_oauth_connections : "googleConnection"
     "corretor_studio_health_plan_options" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" |o--|| corretor_studio_profiles : "profile"
     "backoffice_users" }o--|o corretor_studio_profiles : "creator"
+    "backoffice_users" }o--|o google_oauth_connections : "googleConnection"
+    "backoffice_users" }o--|o corretor_studio_profiles : "linkedCorretorStudioProfile"
+    "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"
     "backoffice_payments" }o--|o corretor_studio_profiles : "creator"
