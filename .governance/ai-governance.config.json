@@ -46,6 +46,7 @@
       "app/api/v1/leads/[id]/attachments/[attachmentId]/route.ts",
       "app/api/v1/leads/[id]/finalize/route.ts",
       "app/api/v1/leads/[id]/route.ts",
+      "app/api/v1/leads/cnpj-available/route.ts",
       "app/api/v1/leads/[id]/schedule/route.ts",
       "app/api/v1/leads/[id]/schedule/cancel/route.ts",
       "app/api/v1/leads/[id]/schedule/resend/route.ts",

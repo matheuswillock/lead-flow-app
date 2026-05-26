@@ -39,7 +39,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(output, { status });
 
   } catch (error) {
-    console.error("Erro ao criar lead:", error);
+    console.error("[LeadsRoute][POST] Erro ao criar lead:", {
+      error: error instanceof Error ? { message: error.message, stack: error.stack, name: error.name } : error,
+    });
+
+    if (error && typeof error === "object" && "code" in error && (error as { code: string }).code === "P2002") {
+      const target = (error as { meta?: { target?: string[] } }).meta?.target;
+      const isCnpjDup = Array.isArray(target) && target.includes("cnpj");
+      const msg = isCnpjDup
+        ? "Já existe um lead com este CNPJ neste time"
+        : "Conflito de unicidade: " + (target?.join(", ") ?? "campo duplicado");
+      const output = new Output(false, [], [msg], null);
+      return NextResponse.json(output, { status: 409 });
+    }
+
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }

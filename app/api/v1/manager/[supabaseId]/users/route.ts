@@ -217,7 +217,14 @@ async function createUserAndInvite(args: {
       managerName: requesterProfile?.fullName || requesterProfile?.email || "Manager",
       inviteUrl: inviteLink,
     });
-  } catch (_inviteError) {
+  } catch (inviteError) {
+    console.error("[ManagerUsersRoute][createUserAndInvite] Invite falhou:", {
+      email,
+      teamId: args.teamId,
+      error: inviteError instanceof Error
+        ? { message: inviteError.message, stack: inviteError.stack, name: inviteError.name }
+        : inviteError,
+    });
     await db.teamMember.delete({
       where: {
         teamId_profileId: {
@@ -495,7 +502,9 @@ export async function POST(
 
     return NextResponse.json(output, { status: 202 });
   } catch (error) {
-    console.error("Erro ao criar usuário:", error);
+    console.error("[ManagerUsersRoute][POST] Erro ao criar usuário:", {
+      error: error instanceof Error ? { message: error.message, stack: error.stack, name: error.name } : error,
+    });
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }

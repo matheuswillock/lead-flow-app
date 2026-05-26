@@ -267,6 +267,21 @@ export class LeadUseCase implements ILeadUseCase {
         return normalizedPlans.output;
       }
 
+      if (data.cnpj && data.cnpj.trim().length > 0) {
+        const existingLead = await prisma.lead.findFirst({
+          where: { teamId, cnpj: data.cnpj.trim() },
+          select: { id: true, leadCode: true, name: true },
+        });
+        if (existingLead) {
+          return new Output(
+            false,
+            [],
+            [`Já existe um lead com este CNPJ neste time (${existingLead.leadCode ?? existingLead.name ?? existingLead.id})`],
+            null
+          );
+        }
+      }
+
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
         team: { connect: { id: teamId } },

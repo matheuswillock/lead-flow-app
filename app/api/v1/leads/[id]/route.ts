@@ -67,6 +67,12 @@ export async function GET(
     });
 
     if (!lead || lead.teamId !== teamId) {
+      console.warn("[LeadByIdRoute][GET] team mismatch ou lead inexistente", {
+        requestedLeadId: id,
+        requestTeamId: teamId,
+        leadTeamId: lead?.teamId ?? null,
+        profileId: profile.id,
+      });
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
     }
