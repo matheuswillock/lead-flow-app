@@ -125,6 +125,10 @@ export async function POST(request: NextRequest) {
     }
 
     const previousGoogleEmail = currentProfile.googleEmail;
+    const normalizedNextGoogleEmail = email ?? currentProfile.email;
+    const shouldNotifyGoogleConnected =
+      currentProfile.googleCalendarConnected !== true ||
+      (previousGoogleEmail ?? null) !== (normalizedNextGoogleEmail ?? null);
 
     const profile = await profileRepository.updateGoogleCalendarAuth(supabaseId, {
       accessToken,
@@ -159,22 +163,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const notifyOutput = await googleConnectionUseCase.notifyGoogleConnected({
-      supabaseId,
-      profileId: currentProfile.id,
-      activeTeamId: currentProfile.activeTeamId ?? null,
-      googleEmail: email ?? currentProfile.email,
-      previousGoogleEmail,
-    });
-
-    if (!notifyOutput.isValid) {
-      logError("Falha ao registrar notificacao de conexao Google.", {
-        status: "error",
-        step: "notify_connect",
+    if (shouldNotifyGoogleConnected) {
+      const notifyOutput = await googleConnectionUseCase.notifyGoogleConnected({
         supabaseId,
-        email: email ?? null,
-        errors: notifyOutput.errorMessages,
+        profileId: currentProfile.id,
+        activeTeamId: currentProfile.activeTeamId ?? null,
+        googleEmail: normalizedNextGoogleEmail,
+        previousGoogleEmail,
       });
+
+      if (!notifyOutput.isValid) {
+        logError("Falha ao registrar notificacao de conexao Google.", {
+          status: "error",
+          step: "notify_connect",
+          supabaseId,
+          email: email ?? null,
+          errors: notifyOutput.errorMessages,
+        });
+      }
     }
 
     logInfo("Google conectado com sucesso.", {
