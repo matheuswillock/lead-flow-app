@@ -296,7 +296,7 @@ export function BackofficeAllUsersContainer() {
           placeholder="Buscar por nome, e-mail ou telefone"
           value={localFilters.query}
           onChange={(event) => handleQueryChange(event.target.value)}
-          className="h-8 w-[260px] lg:w-[360px]"
+          className="h-8 w-65 lg:w-90"
         />
         <LeadsMultiFilter
           title="Papel"
@@ -434,7 +434,7 @@ export function BackofficeAllUsersContainer() {
               }}
               disabled={isLoading}
             >
-              <SelectTrigger className="h-8 w-[92px]">
+              <SelectTrigger className="h-8 w-23">
                 <SelectValue placeholder="10" />
               </SelectTrigger>
               <SelectContent>
