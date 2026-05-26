@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Output } from "@/lib/output";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository";
 import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
 
 const LOG_PREFIX = "[GoogleConnect]";
@@ -101,14 +102,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (email) {
-      const existingGoogleEmailProfile = await profileRepository.findByGoogleEmail(email);
-      if (existingGoogleEmailProfile && existingGoogleEmailProfile.supabaseId !== supabaseId) {
+      const existingConnection = await googleOAuthConnectionRepository.findByGoogleEmail(email);
+      if (
+        existingConnection?.ownerProfileId &&
+        existingConnection.ownerProfileId !== currentProfile.id
+      ) {
         logError("Tentativa de vincular Google email ja associado a outro perfil.", {
           status: "error",
           step: "google_email_conflict",
           supabaseId,
           email,
-          conflictingSupabaseId: existingGoogleEmailProfile.supabaseId,
+          conflictingProfileId: existingConnection.ownerProfileId,
         });
         const output = new Output(
           false,

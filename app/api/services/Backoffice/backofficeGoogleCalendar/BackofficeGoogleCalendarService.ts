@@ -1,6 +1,10 @@
 import { DEFAULT_TZ, resolveTimezone } from "@/lib/dates"
 import type { IGoogleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/IGoogleOAuthConnectionRepository"
 import { GoogleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository"
+import { NotificationType } from "@prisma/client"
+import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository"
+import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
+import { notificationRepository } from "@/app/api/infra/data/repositories/notification/NotificationRepository"
 import type {
   BackofficeCalendarAttendee,
   BackofficeCalendarEventInput,
@@ -149,6 +153,42 @@ async function getValidAccessToken(
     await connectionRepo.updateTokens(connection.id, {
       lastRefreshError: errorMessage,
     })
+    const backofficeRepo = new BackofficeUserRepository()
+    const dependents = await backofficeRepo.findByGoogleConnectionId(connection.id)
+    if (organizer.connection.ownerProfileId) {
+      const owner = await profileRepository.findById(organizer.connection.ownerProfileId)
+      if (owner) {
+        const teamId = await profileRepository.findFirstTeamIdByProfileId(owner.id)
+        if (teamId) {
+          await notificationRepository.createSystemNotification({
+          teamId,
+          recipientProfileId: owner.id,
+          type: NotificationType.GOOGLE_CONNECTION_BROKEN,
+          message: `Falha ao renovar conexão Google (${connection.googleEmail}).`,
+          metadata: {
+            event: "GOOGLE_CONNECTION_BROKEN",
+            googleEmail: connection.googleEmail,
+            source: organizer.backofficeUserId,
+          },
+        })
+          await Promise.all(
+            dependents.map((dependent) =>
+              notificationRepository.createSystemNotification({
+                teamId,
+                recipientProfileId: dependent.profileId,
+                type: NotificationType.GOOGLE_CONNECTION_BROKEN,
+                message: `Falha ao renovar conexão Google (${connection.googleEmail}).`,
+                metadata: {
+                  event: "GOOGLE_CONNECTION_BROKEN",
+                  googleEmail: connection.googleEmail,
+                  backofficeUserId: dependent.id,
+                },
+              })
+            )
+          )
+        }
+      }
+    }
     throw error
   }
 }

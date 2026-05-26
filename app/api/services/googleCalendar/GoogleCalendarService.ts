@@ -1,5 +1,6 @@
-import type { Profile, Lead } from "@prisma/client";
+import type { Lead, GoogleOAuthConnection } from "@prisma/client";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
+import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository";
 import { DEFAULT_TZ, resolveTimezone } from "@/lib/dates";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -111,31 +112,84 @@ async function refreshAccessToken(refreshToken: string): Promise<GoogleTokenResu
   return response.json() as Promise<GoogleTokenResult>;
 }
 
-async function getValidAccessToken(profile: Profile): Promise<string> {
-  const now = Date.now();
-  const expiresAt = profile.googleTokenExpiresAt?.getTime() ?? 0;
+export type CorretorStudioOrganizer = {
+  profileId: string;
+  supabaseId: string | null;
+  timezone: string;
+  connection: GoogleOAuthConnection;
+};
 
-  if (profile.googleAccessToken && expiresAt > now + 60_000) {
-    return profile.googleAccessToken;
+type LegacyOrganizerInput = {
+  id: string;
+  supabaseId: string | null;
+  timezone?: string | null;
+  googleConnectionId?: string | null;
+  googleEmail?: string | null;
+};
+
+async function resolveOrganizerConnection(
+  organizer: CorretorStudioOrganizer | LegacyOrganizerInput
+): Promise<CorretorStudioOrganizer> {
+  if ("connection" in organizer) {
+    return organizer;
   }
 
-  if (!profile.googleRefreshToken) {
+  const connection =
+    (organizer.googleConnectionId
+      ? await googleOAuthConnectionRepository.findById(organizer.googleConnectionId)
+      : null) ||
+    (organizer.googleEmail
+      ? await googleOAuthConnectionRepository.findByGoogleEmail(organizer.googleEmail)
+      : null)
+
+  if (!connection) {
+    throw new Error("Conta Google nao conectada ou conexao invalida")
+  }
+
+  return {
+    profileId: organizer.id,
+    supabaseId: organizer.supabaseId,
+    timezone: organizer.timezone ?? DEFAULT_TZ,
+    connection,
+  }
+}
+
+async function getValidAccessToken(
+  organizerInput: CorretorStudioOrganizer | LegacyOrganizerInput
+): Promise<string> {
+  const organizer = await resolveOrganizerConnection(organizerInput)
+  const { connection } = organizer;
+  const now = Date.now();
+  const expiresAt = connection.tokenExpiresAt?.getTime() ?? 0;
+
+  if (connection.accessToken && expiresAt > now + 60_000) {
+    return connection.accessToken;
+  }
+
+  if (!connection.refreshToken) {
     throw new Error("Conta Google nao conectada ou refresh token ausente");
   }
 
-  if (!profile.supabaseId) {
+  if (!organizer.supabaseId) {
     throw new Error("Supabase ID nao encontrado para renovar token Google");
   }
 
-  const refreshed = await refreshAccessToken(profile.googleRefreshToken);
+  const refreshed = await refreshAccessToken(connection.refreshToken);
   const newExpiresAt = new Date(Date.now() + refreshed.expires_in * 1000);
 
-  await profileRepository.updateGoogleCalendarAuth(profile.supabaseId, {
+  await googleOAuthConnectionRepository.updateTokens(connection.id, {
     accessToken: refreshed.access_token,
-    refreshToken: refreshed.refresh_token ?? profile.googleRefreshToken,
+    refreshToken: refreshed.refresh_token ?? connection.refreshToken,
+    tokenExpiresAt: newExpiresAt,
+    lastRefreshedAt: new Date(),
+    lastRefreshError: null,
+  })
+  await profileRepository.updateGoogleCalendarAuth(organizer.supabaseId, {
+    accessToken: refreshed.access_token,
+    refreshToken: refreshed.refresh_token ?? connection.refreshToken,
     expiresAt: newExpiresAt,
     connected: true,
-  });
+  })
 
   return refreshed.access_token;
 }
@@ -199,14 +253,15 @@ export async function getCalendarBusyIntervals({
   timeMax,
   calendarId = "primary",
 }: {
-  organizer: Profile;
+  organizer: CorretorStudioOrganizer | LegacyOrganizerInput;
   timeMin: string;
   timeMax: string;
   calendarId?: string;
 }): Promise<Array<{ start: string; end: string }>> {
   const accessToken = await getValidAccessToken(organizer);
   const url = `${GOOGLE_CALENDAR_API}/freeBusy`;
-  const organizerTimezone = resolveTimezone(organizer.timezone ?? DEFAULT_TZ);
+  const resolvedOrganizer = await resolveOrganizerConnection(organizer)
+  const organizerTimezone = resolveTimezone(resolvedOrganizer.timezone || DEFAULT_TZ);
   const body = {
     timeMin,
     timeMax,
@@ -244,7 +299,7 @@ export async function getCalendarEventAttendees({
   eventId,
   calendarId = "primary",
 }: {
-  organizer: Profile;
+  organizer: CorretorStudioOrganizer | LegacyOrganizerInput;
   eventId: string;
   calendarId?: string;
 }): Promise<CalendarAttendee[]> {
@@ -271,7 +326,7 @@ export async function resendCalendarInvite({
   calendarId = "primary",
   attendeeEmails,
 }: {
-  organizer: Profile;
+  organizer: CorretorStudioOrganizer | LegacyOrganizerInput;
   eventId: string;
   calendarId?: string;
   attendeeEmails?: string[];
@@ -311,7 +366,7 @@ export async function cancelCalendarEvent({
   eventId,
   calendarId = "primary",
 }: {
-  organizer: Profile;
+  organizer: CorretorStudioOrganizer | LegacyOrganizerInput;
   eventId: string;
   calendarId?: string;
 }): Promise<void> {
@@ -337,7 +392,7 @@ export async function upsertCalendarEvent({
   attendeeEmails,
   existingEventId,
 }: {
-  organizer: Profile;
+  organizer: CorretorStudioOrganizer | LegacyOrganizerInput;
   lead: Lead;
   closerEmail?: string | null;
   sdrEmail?: string | null;
@@ -350,7 +405,8 @@ export async function upsertCalendarEvent({
   existingEventId?: string | null;
 }): Promise<CalendarEventResult> {
   const accessToken = await getValidAccessToken(organizer);
-  const organizerTimezone = resolveTimezone(organizer.timezone ?? DEFAULT_TZ);
+  const resolvedOrganizer = await resolveOrganizerConnection(organizer)
+  const organizerTimezone = resolveTimezone(resolvedOrganizer.timezone || DEFAULT_TZ);
 
   const calendarId = "primary";
   const requestId = `lead${lead.id.replace(/-/g, "")}`;

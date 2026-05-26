@@ -26,13 +26,13 @@ Centralizar conexões OAuth Google em uma tabela única (`google_oauth_connectio
 - [x] DONE: Refatorar `BackofficeGoogleCalendarService` para usar connection repository e persistir refresh/error
 - [x] DONE: Refatorar `BackofficeLeadScheduleService` para usar resolver (organizer derivado)
 - [x] DONE: Refatorar `BackofficeCalendarAvailabilityService` para resolver conexões sem N+1
-- [ ] TODO: Refatorar `GoogleCalendarService` (Corretor Studio) para organizer baseado em conexão
-- [ ] TODO: Ajustar callers impactados (lead schedule, calendar availability, cancel/resend, tasks, use cases)
-- [ ] TODO: Manter compatibilidade de DTOs (`googleCalendarConnected` derivado) e incluir `googleConnectionSource`
-- [ ] TODO: Atualizar rotas de connect/disconnect com regras de conflito e `force: true` quando houver dependentes
-- [ ] TODO: Atualizar `BackofficeAccountUseCase` para fluxo baseado em connection central
-- [ ] TODO: Incluir `NotificationType.GOOGLE_CONNECTION_BROKEN` e disparos no erro de refresh
-- [ ] TODO: Atualizar Postman se houver mudança de contrato em current-user/backoffice current-user
+- [x] DONE: Refatorar `GoogleCalendarService` (Corretor Studio) para organizer baseado em conexão
+- [x] DONE: Ajustar callers impactados (lead schedule, calendar availability, cancel/resend, tasks, use cases)
+- [x] DONE: Manter compatibilidade de DTOs (`googleCalendarConnected` derivado) e incluir `googleConnectionSource`
+- [x] DONE: Atualizar rotas de connect/disconnect com regras de conflito e `force: true` quando houver dependentes
+- [x] DONE: Atualizar `BackofficeAccountUseCase` para fluxo baseado em connection central
+- [x] DONE: Incluir `NotificationType.GOOGLE_CONNECTION_BROKEN` e disparos no erro de refresh
+- [x] DONE: Atualizar Postman se houver mudança de contrato em current-user/backoffice current-user
 
 ## Fase 2 — Consolidação pós-estabilização
 

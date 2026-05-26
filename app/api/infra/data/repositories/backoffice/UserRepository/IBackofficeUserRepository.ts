@@ -41,6 +41,8 @@ export type BackofficeUserWithGoogleContext = BackofficeUser & {
   } | null
 }
 
+export type BackofficeUserConnectionDependent = Pick<BackofficeUser, "id" | "email" | "profileId">;
+
 export interface IBackofficeUserRepository {
   create(data: CreateBackofficeUserInput): Promise<BackofficeUser>
   findMany(params?: { isActive?: boolean }): Promise<BackofficeUserWithProfile[]>
@@ -48,5 +50,7 @@ export interface IBackofficeUserRepository {
   findByEmail(email: string): Promise<BackofficeUser | null>
   findByProfileId(profileId: string): Promise<BackofficeUser | null>
   findByIdWithGoogleContext(id: string): Promise<BackofficeUserWithGoogleContext | null>
+  findByGoogleConnectionId(googleConnectionId: string): Promise<BackofficeUserConnectionDependent[]>
+  findByLinkedProfileId(profileId: string): Promise<BackofficeUserConnectionDependent[]>
   update(id: string, data: UpdateBackofficeUserInput): Promise<BackofficeUser>
 }
