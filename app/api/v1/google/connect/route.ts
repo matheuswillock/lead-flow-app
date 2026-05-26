@@ -5,6 +5,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository";
 import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
+import { fetchGoogleGrantedScopes } from "@/lib/google/scopes";
 
 const LOG_PREFIX = "[GoogleConnect]";
 
@@ -154,6 +155,13 @@ export async function POST(request: NextRequest) {
       });
       const output = new Output(false, [], ["Falha ao salvar credenciais Google"], null);
       return NextResponse.json(output, { status: 400 });
+    }
+
+    if (profile.googleConnectionId) {
+      const grantedScopes = await fetchGoogleGrantedScopes(accessToken).catch(() => []);
+      await googleOAuthConnectionRepository.updateTokens(profile.googleConnectionId, {
+        scopes: grantedScopes,
+      });
     }
 
     if (email && previousGoogleEmail && previousGoogleEmail !== email) {

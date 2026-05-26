@@ -41,7 +41,8 @@ Centralizar conexões OAuth Google em uma tabela única (`google_oauth_connectio
 
 ## Fase 3 — Limpeza legada
 
-- [ ] TODO: Criar migration #2 (`drop_legacy_google_columns`) após deploy estável
+- [x] DONE: Criar migration #2 (`drop_legacy_google_columns`) após deploy estável
+- [x] DONE: Criar migration de backfill complementar para `Profile.googleConnectionId` pendente (`20260526230736_backfill_missing_profile_google_connection_id.sql`)
 - [ ] TODO: Remover colunas legadas `google*` de `Profile` e `BackofficeUser` no schema
 - [ ] TODO: Remover uso de campos legados em repositórios/inputs (`BackofficeUserRepository.update`, `UpdateBackofficeUserInput`)
 - [ ] TODO: Validar queries pós-limpeza

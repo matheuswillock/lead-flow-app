@@ -1,8 +1,9 @@
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository"
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository"
+import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository"
+import { fetchGoogleGrantedScopes } from "@/lib/google/scopes"
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-const GOOGLE_TOKENINFO_URL = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 const LOG_PREFIX = "[BackofficeMemberGoogleScopesService]"
 
 type GoogleTokenResult = {
@@ -50,21 +51,6 @@ async function refreshAccessToken(refreshToken: string): Promise<GoogleTokenResu
   return response.json() as Promise<GoogleTokenResult>
 }
 
-async function fetchGrantedScopes(accessToken: string): Promise<string[]> {
-  const response = await fetch(
-    `${GOOGLE_TOKENINFO_URL}?access_token=${encodeURIComponent(accessToken)}`,
-    { method: "GET" }
-  )
-
-  if (!response.ok) {
-    console.error(`${LOG_PREFIX} Tokeninfo failed`, { status: response.status })
-    return []
-  }
-
-  const tokenInfo = (await response.json()) as { scope?: string }
-  return tokenInfo.scope ? tokenInfo.scope.split(" ").filter(Boolean) : []
-}
-
 class BackofficeMemberGoogleScopesService {
   constructor(private readonly profileRepo: IProfileRepository) {}
 
@@ -75,29 +61,37 @@ class BackofficeMemberGoogleScopesService {
       throw new Error("Membro não encontrado")
     }
 
-    if (!profile.googleCalendarConnected) {
+    if (!profile.googleConnectionId) {
       return { connected: false, scopes: [] }
     }
 
-    let accessToken = profile.googleAccessToken
+    const connection = await googleOAuthConnectionRepository.findById(profile.googleConnectionId)
+    if (!connection || connection.revokedAt) {
+      return { connected: false, scopes: [] }
+    }
+
+    if (connection.scopes && connection.scopes.length > 0) {
+      return { connected: true, scopes: connection.scopes }
+    }
+
+    let accessToken = connection.accessToken
 
     const now = Date.now()
-    const expiresAt = profile.googleTokenExpiresAt?.getTime() ?? 0
+    const expiresAt = connection.tokenExpiresAt?.getTime() ?? 0
     const tokenExpired = !accessToken || expiresAt <= now + 60_000
 
     if (tokenExpired) {
-      if (!profile.googleRefreshToken || !profile.supabaseId) {
+      if (!connection.refreshToken || !profile.supabaseId) {
         return { connected: true, scopes: [] }
       }
 
       try {
-        const refreshed = await refreshAccessToken(profile.googleRefreshToken)
+        const refreshed = await refreshAccessToken(connection.refreshToken)
         const expiresAtDate = new Date(Date.now() + refreshed.expires_in * 1000)
-
-        await this.profileRepo.updateGoogleCalendarAuth(profile.supabaseId, {
+        await googleOAuthConnectionRepository.updateTokens(connection.id, {
           accessToken: refreshed.access_token,
-          refreshToken: refreshed.refresh_token ?? profile.googleRefreshToken,
-          expiresAt: expiresAtDate,
+          refreshToken: refreshed.refresh_token ?? connection.refreshToken,
+          tokenExpiresAt: expiresAtDate,
         })
 
         accessToken = refreshed.access_token
@@ -107,10 +101,11 @@ class BackofficeMemberGoogleScopesService {
       }
     }
 
-    const scopes = await fetchGrantedScopes(accessToken!).catch((err) => {
+    const scopes = await fetchGoogleGrantedScopes(accessToken!).catch((err) => {
       console.error(`${LOG_PREFIX} Tokeninfo failed for member ${memberId}`, err)
       return []
     })
+    await googleOAuthConnectionRepository.updateTokens(connection.id, { scopes })
 
     return { connected: true, scopes }
   }

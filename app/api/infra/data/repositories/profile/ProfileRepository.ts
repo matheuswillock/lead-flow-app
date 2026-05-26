@@ -848,14 +848,30 @@ class PrismaProfileRepository implements IProfileRepository {
     ): Promise<Profile | null> {
         try {
             const connectionRepo = new GoogleOAuthConnectionRepository()
-            const profile = await prisma.profile.findUnique({
+            const currentProfile = await prisma.profile.findUnique({
                 where: { supabaseId },
             })
-            if (!profile) {
+            if (!currentProfile) {
                 return null
             }
 
-            const googleEmail = updates.email ?? null
+            const profile = await prisma.profile.update({
+                where: { id: currentProfile.id },
+                data: {
+                    googleAccessToken:
+                        updates.accessToken === undefined ? undefined : updates.accessToken,
+                    googleRefreshToken:
+                        updates.refreshToken === undefined ? undefined : updates.refreshToken,
+                    googleTokenExpiresAt:
+                        updates.expiresAt === undefined ? undefined : updates.expiresAt,
+                    googleEmail: updates.email === undefined ? undefined : updates.email,
+                    googleCalendarConnected:
+                        updates.connected === undefined ? undefined : updates.connected,
+                },
+            })
+
+            const googleEmail =
+                updates.email === undefined ? profile.googleEmail : updates.email
 
             if (googleEmail && (updates.connected ?? true)) {
                 let connection = await connectionRepo.findByGoogleEmail(googleEmail)
