@@ -11,6 +11,7 @@ import type { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import type { PublicLeadFormRequest } from "../../v1/integrations/lead-form/DTO/requestPublicLeadForm";
 import type { IPublicLeadFormUseCase, PublicLeadFormOriginContext } from "./IPublicLeadFormUseCase";
 import { DEFAULT_TZ, formatLocalDateValue, getDayRangeInTz, getMinutesInTz, resolveTimezone } from "@/lib/dates";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 const SLOT_MINUTES = 30;
 
@@ -436,10 +437,14 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
         select: {
           id: true,
           email: true,
-          googleCalendarConnected: true,
-          googleRefreshToken: true,
-          googleAccessToken: true,
-          googleTokenExpiresAt: true,
+          googleConnection: {
+            select: {
+              accessToken: true,
+              refreshToken: true,
+              tokenExpiresAt: true,
+              revokedAt: true,
+            },
+          },
           supabaseId: true,
         },
       });
@@ -481,8 +486,7 @@ export class PublicLeadFormUseCase implements IPublicLeadFormUseCase {
 
       const slots = Array.from({ length: 24 * (60 / SLOT_MINUTES) }, (_, index) => index * SLOT_MINUTES);
 
-      const canUseGoogleCalendar =
-        !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
+      const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile.googleConnection);
       let busyIntervals: Array<{ start: string; end: string }> = [];
       let source: "google" | "internal" = "internal";
 

@@ -411,11 +411,6 @@ model Profile {
   canCreateAccountUsers    Boolean             @default(false)
   canManageAccountTeams    Boolean             @default(false)
   hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
-  googleCalendarConnected  Boolean             @default(false)
-  googleAccessToken        String?             @db.Text
-  googleRefreshToken       String?             @db.Text
-  googleTokenExpiresAt     DateTime?           @db.Timestamptz(6)
-  googleEmail              String?             @db.Text
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
   asaasCustomerId          String?             @db.Text
@@ -519,11 +514,6 @@ model BackofficeUser {
   isActive                Boolean   @default(true) @map("isActive")
   isSdr                   Boolean   @default(true) @map("isSdr")
   isCloser                Boolean   @default(true) @map("isCloser")
-  googleCalendarConnected Boolean   @default(false) @map("googleCalendarConnected")
-  googleAccessToken       String?   @map("googleAccessToken") @db.Text
-  googleRefreshToken      String?   @map("googleRefreshToken") @db.Text
-  googleTokenExpiresAt    DateTime? @map("googleTokenExpiresAt") @db.Timestamptz(6)
-  googleEmail             String?   @map("googleEmail") @db.Text
   googleConnectionId      String?   @map("googleConnectionId") @db.Uuid
   linkedCorretorStudioProfileId String? @map("linkedCorretorStudioProfileId") @db.Uuid
   timezone                String    @default("America/Sao_Paulo") @db.Text
@@ -549,7 +539,6 @@ model BackofficeUser {
   @@index([isActive], map: "backoffice_users_is_active_idx")
   @@index([isSdr], map: "backoffice_users_is_sdr_idx")
   @@index([isCloser], map: "backoffice_users_is_closer_idx")
-  @@index([googleCalendarConnected], map: "backoffice_users_google_connected_idx")
   @@index([googleConnectionId], map: "backoffice_users_google_connection_id_idx")
   @@index([linkedCorretorStudioProfileId], map: "backoffice_users_linked_profile_id_idx")
   @@index([createdByProfileId], map: "backoffice_users_created_by_profile_id_idx")

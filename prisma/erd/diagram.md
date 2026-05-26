@@ -391,11 +391,6 @@ unsubscribed unsubscribed
     Boolean canCreateAccountUsers 
     Boolean canManageAccountTeams 
     Boolean hasPermanentSubscription 
-    Boolean googleCalendarConnected 
-    String googleAccessToken "❓"
-    String googleRefreshToken "❓"
-    DateTime googleTokenExpiresAt "❓"
-    String googleEmail "❓"
     String asaasCustomerId "❓"
     String subscriptionId "❓"
     SubscriptionStatus subscriptionStatus "❓"
@@ -430,11 +425,6 @@ unsubscribed unsubscribed
     Boolean isActive 
     Boolean isSdr 
     Boolean isCloser 
-    Boolean googleCalendarConnected 
-    String googleAccessToken "❓"
-    String googleRefreshToken "❓"
-    DateTime googleTokenExpiresAt "❓"
-    String googleEmail "❓"
     String timezone 
     String mailboxStatus 
     String mailboxAddress "❓"

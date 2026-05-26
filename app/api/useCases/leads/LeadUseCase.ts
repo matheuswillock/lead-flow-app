@@ -28,6 +28,7 @@ import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { Attachment } from "resend";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -717,9 +718,18 @@ export class LeadUseCase implements ILeadUseCase {
         if (existingLead.closerId) {
           const closerProfile = await prisma.profile.findUnique({
             where: { id: existingLead.closerId },
+            include: {
+              googleConnection: {
+                select: {
+                  accessToken: true,
+                  refreshToken: true,
+                  tokenExpiresAt: true,
+                  revokedAt: true,
+                },
+              },
+            },
           });
-          const canUseGoogleCalendar =
-            !!closerProfile?.googleCalendarConnected && !!closerProfile.googleRefreshToken;
+          const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection);
 
           if (!closerProfile || !canUseGoogleCalendar) {
             calendarWarning =
@@ -1107,9 +1117,18 @@ export class LeadUseCase implements ILeadUseCase {
           } else {
             const closerProfile = await prisma.profile.findUnique({
               where: { id: existingLead.closerId },
+              include: {
+                googleConnection: {
+                  select: {
+                    accessToken: true,
+                    refreshToken: true,
+                    tokenExpiresAt: true,
+                    revokedAt: true,
+                  },
+                },
+              },
             });
-            const canUseGoogleCalendar =
-              !!closerProfile?.googleCalendarConnected && !!closerProfile.googleRefreshToken;
+            const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection);
 
             if (!closerProfile || !canUseGoogleCalendar) {
               transitionWarnings.push(

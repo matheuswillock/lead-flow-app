@@ -201,7 +201,11 @@ class PrismaProfileRepository implements IProfileRepository {
     async findByGoogleEmail(googleEmail: string): Promise<Profile | null> {
         try {
             const profile = await prisma.profile.findFirst({
-                where: { googleEmail },
+                where: {
+                    googleConnection: {
+                        is: { googleEmail },
+                    },
+                },
             });
             return profile ?? null;
         } catch (error) {
@@ -858,20 +862,16 @@ class PrismaProfileRepository implements IProfileRepository {
             const profile = await prisma.profile.update({
                 where: { id: currentProfile.id },
                 data: {
-                    googleAccessToken:
-                        updates.accessToken === undefined ? undefined : updates.accessToken,
-                    googleRefreshToken:
-                        updates.refreshToken === undefined ? undefined : updates.refreshToken,
-                    googleTokenExpiresAt:
-                        updates.expiresAt === undefined ? undefined : updates.expiresAt,
-                    googleEmail: updates.email === undefined ? undefined : updates.email,
-                    googleCalendarConnected:
-                        updates.connected === undefined ? undefined : updates.connected,
+                    googleConnectionId:
+                        updates.connected === false ? null : undefined,
                 },
             })
 
+            const currentConnection = profile.googleConnectionId
+                ? await connectionRepo.findById(profile.googleConnectionId)
+                : null
             const googleEmail =
-                updates.email === undefined ? profile.googleEmail : updates.email
+                updates.email === undefined ? currentConnection?.googleEmail ?? null : updates.email
 
             if (googleEmail && (updates.connected ?? true)) {
                 let connection = await connectionRepo.findByGoogleEmail(googleEmail)
@@ -879,9 +879,9 @@ class PrismaProfileRepository implements IProfileRepository {
                 if (!connection) {
                     connection = await connectionRepo.create({
                         googleEmail,
-                        accessToken: updates.accessToken ?? profile.googleAccessToken,
-                        refreshToken: updates.refreshToken ?? profile.googleRefreshToken,
-                        tokenExpiresAt: updates.expiresAt ?? profile.googleTokenExpiresAt,
+                        accessToken: updates.accessToken ?? null,
+                        refreshToken: updates.refreshToken ?? null,
+                        tokenExpiresAt: updates.expiresAt ?? null,
                         ownerProfileId: profile.id,
                     })
                 } else {

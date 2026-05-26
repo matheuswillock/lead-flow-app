@@ -1,4 +1,5 @@
 import { prisma } from "../../prisma";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 import type {
   CalendarAvailabilityCloserProfile,
   CalendarAvailabilityExcludedLead,
@@ -20,19 +21,34 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
   }
 
   async findCloserProfiles(requestedCloserIds: string[]): Promise<CalendarAvailabilityCloserProfile[]> {
-    return prisma.profile.findMany({
+    const profiles = await prisma.profile.findMany({
       where: { id: { in: requestedCloserIds } },
       select: {
         id: true,
         email: true,
         timezone: true,
-        googleCalendarConnected: true,
-        googleRefreshToken: true,
-        googleAccessToken: true,
-        googleTokenExpiresAt: true,
+        googleConnection: {
+          select: {
+            accessToken: true,
+            refreshToken: true,
+            tokenExpiresAt: true,
+            revokedAt: true,
+          },
+        },
         supabaseId: true,
       },
     });
+
+    return profiles.map((profile) => ({
+      id: profile.id,
+      email: profile.email,
+      timezone: profile.timezone,
+      googleCalendarConnected: isGoogleConnectionActive(profile.googleConnection),
+      googleRefreshToken: profile.googleConnection?.refreshToken ?? null,
+      googleAccessToken: profile.googleConnection?.accessToken ?? null,
+      googleTokenExpiresAt: profile.googleConnection?.tokenExpiresAt ?? null,
+      supabaseId: profile.supabaseId,
+    }));
   }
 
   async findExcludedLead(excludeLeadId: string, teamId: string): Promise<CalendarAvailabilityExcludedLead | null> {
