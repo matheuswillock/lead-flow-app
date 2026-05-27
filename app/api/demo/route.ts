@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { emailService } from "@/lib/services/EmailService";
 import { Output } from "@/lib/output";
 import { isValidPhone } from "@/lib/masks";
-
-const RECIPIENTS = ["matheuswillock@gmail.com", "bruno@onsidemarketing.com.br"];
-const SUBJECT = "[URGENTE] Novo lead para demonstração do Corretor Studio";
+import { backofficeDemoLeadUseCase } from "@/app/api/useCases/backofficeDemoLead/BackofficeDemoLeadUseCase";
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-
-const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,35 +22,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
-    const safeName = escapeHtml(fullName);
-    const safeEmail = escapeHtml(email);
-    const safeWhatsapp = escapeHtml(whatsapp);
-
-    const html = `
-      <h2>Novo lead para demonstração</h2>
-      <p><strong>Nome:</strong> ${safeName}</p>
-      <p><strong>E-mail:</strong> ${safeEmail}</p>
-      <p><strong>WhatsApp:</strong> ${safeWhatsapp}</p>
-    `;
-    const text = `Novo lead para demonstração\nNome: ${fullName}\nE-mail: ${email}\nWhatsApp: ${whatsapp}`;
-
-    const result = await emailService.sendEmail({
-      to: RECIPIENTS,
-      subject: SUBJECT,
-      html,
-      text,
+    const result = await backofficeDemoLeadUseCase.create({
+      name: fullName,
+      email,
+      phone: whatsapp,
     });
 
-    if (!result.success) {
-      const output = new Output(false, [], [result.error || "Erro ao enviar email"], null);
-      return NextResponse.json(output, { status: 500 });
+    if (!result.isValid) {
+      return NextResponse.json(result, { status: 500 });
     }
 
-    const output = new Output(true, ["Email enviado com sucesso"], [], result.data);
-    return NextResponse.json(output, { status: 200 });
-  } catch (error: any) {
-    console.error("Erro ao enviar lead de demonstração:", error);
-    const output = new Output(false, [], [error?.message || "Erro interno do servidor"], null);
+    return NextResponse.json(result, { status: 200 });
+  } catch (error: unknown) {
+    console.error("[DemoRoute][POST] Erro ao registrar lead de demonstração:", error);
+    const message = error instanceof Error ? error.message : "Erro interno do servidor";
+    const output = new Output(false, [], [message], null);
     return NextResponse.json(output, { status: 500 });
   }
 }
