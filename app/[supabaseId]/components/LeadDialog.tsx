@@ -235,7 +235,7 @@ export default function LeadDialog({
     !isTeamMaster;
   const { healthPlans, loading: healthPlansLoading } = useHealthPlans(supabaseId, activeTeamId);
   // SDRs do time para novos leads (create mode) — usa cache do useTeamSdrs, sem request extra
-  const { members: newLeadSdrs } = useTeamSdrs(supabaseId, activeTeamId);
+  const { members: newLeadSdrs, loading: newLeadSdrsLoading, error: newLeadSdrsError } = useTeamSdrs(supabaseId, activeTeamId);
   // closersByTeam e sdrsByTeam derivados dos membros já incluídos no useLeadDetails
   const closersByTeam = useMemo(
     () => (leadDetails?.teamMembers ?? []).filter((m) => m.functions?.includes("CLOSER")),
@@ -2221,8 +2221,8 @@ export default function LeadDialog({
                     sdrsToAssign={effectiveSdrsByTeam}
                       closersLoading={leadDetailsLoading}
                       closersError={leadDetailsError}
-                    sdrsLoading={leadDetailsLoading}
-                    sdrsError={leadDetailsError}
+                    sdrsLoading={currentLead ? leadDetailsLoading : newLeadSdrsLoading}
+                    sdrsError={currentLead ? leadDetailsError : newLeadSdrsError}
                       leadId={currentLead?.id}
                       onUploadStateChange={setIsAttachmentUploading}
                       initialAttachments={leadDetails?.attachments}
