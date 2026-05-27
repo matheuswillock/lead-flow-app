@@ -915,11 +915,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const extraUsers = Math.max(0, Math.trunc(input.extraUsers || 0))
     const activationMode = input.activationMode ?? "checkout"
     const billingType =
-      activationMode === "external_paid"
-        ? "EXTERNAL"
-        : input.billingType === "CREDIT_CARD"
-          ? "CREDIT_CARD"
-          : "PIX"
+      input.billingType === "CREDIT_CARD"
+        ? "CREDIT_CARD"
+        : "PIX"
     const email = normalizeText(input.email)?.toLowerCase() ?? null
     const cpfCnpj = normalizeDigits(input.cpfCnpj, 14)
 
