@@ -17,7 +17,9 @@ const PROFILE_LIST_SELECT = {
   role: true,
   functions: true,
   isMaster: true,
-  googleCalendarConnected: true,
+  googleConnection: {
+    select: { googleEmail: true, refreshToken: true, revokedAt: true },
+  },
   createdAt: true,
   manager: {
     select: {
@@ -64,7 +66,7 @@ function mapRow(profile: ProfileListRow): BackofficeAllUsersListRecord {
     role: profile.role,
     functions: profile.functions,
     isMaster: profile.isMaster,
-    googleCalendarConnected: profile.googleCalendarConnected,
+    googleCalendarConnected: !!profile.googleConnection?.refreshToken && !profile.googleConnection?.revokedAt,
     createdAt: profile.createdAt,
     master: masterRef,
   }
@@ -193,7 +195,6 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
       where: { id: profileId },
       select: {
         ...PROFILE_LIST_SELECT,
-        googleEmail: true,
         teamMemberships: {
           select: {
             team: {
@@ -218,7 +219,7 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
 
     return {
       ...base,
-      googleEmail: profile.googleEmail,
+      googleEmail: profile.googleConnection?.googleEmail ?? null,
       teams: profile.teamMemberships.map((membership) => ({
         id: membership.team.id,
         name: membership.team.name,

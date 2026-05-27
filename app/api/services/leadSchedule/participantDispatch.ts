@@ -1,4 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 export type ParticipantDispatchGroups = {
   all: string[];
@@ -58,8 +59,12 @@ export const resolveParticipantDispatchGroups = async ({
       profile: {
         select: {
           email: true,
-          googleCalendarConnected: true,
-          googleRefreshToken: true,
+          googleConnection: {
+            select: {
+              refreshToken: true,
+              revokedAt: true,
+            },
+          },
         },
       },
     },
@@ -74,8 +79,8 @@ export const resolveParticipantDispatchGroups = async ({
     const key = member.profile.email.trim().toLowerCase();
     if (!key || memberByEmail.has(key)) continue;
     memberByEmail.set(key, {
-      googleCalendarConnected: !!member.profile.googleCalendarConnected,
-      googleRefreshToken: member.profile.googleRefreshToken ?? null,
+      googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
+      googleRefreshToken: member.profile.googleConnection?.refreshToken ?? null,
     });
   }
 

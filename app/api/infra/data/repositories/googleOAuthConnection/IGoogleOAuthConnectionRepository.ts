@@ -4,6 +4,7 @@ export interface UpdateGoogleOAuthTokensInput {
   accessToken?: string | null
   refreshToken?: string | null
   tokenExpiresAt?: Date | null
+  scopes?: string[] | null
   lastRefreshedAt?: Date | null
   lastRefreshError?: string | null
 }
@@ -13,6 +14,7 @@ export interface CreateGoogleOAuthConnectionInput {
   accessToken?: string | null
   refreshToken?: string | null
   tokenExpiresAt?: Date | null
+  scopes?: string[]
   ownerProfileId?: string | null
 }
 

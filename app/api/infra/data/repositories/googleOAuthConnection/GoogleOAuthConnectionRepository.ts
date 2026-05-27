@@ -21,6 +21,7 @@ export class GoogleOAuthConnectionRepository implements IGoogleOAuthConnectionRe
         accessToken: input.accessToken ?? null,
         refreshToken: input.refreshToken ?? null,
         tokenExpiresAt: input.tokenExpiresAt ?? null,
+        scopes: input.scopes ?? [],
         ownerProfileId: input.ownerProfileId ?? null,
       },
     })
@@ -36,6 +37,7 @@ export class GoogleOAuthConnectionRepository implements IGoogleOAuthConnectionRe
         accessToken: input.accessToken,
         refreshToken: input.refreshToken,
         tokenExpiresAt: input.tokenExpiresAt,
+        scopes: input.scopes === null ? [] : input.scopes,
         lastRefreshedAt: input.lastRefreshedAt,
         lastRefreshError: input.lastRefreshError,
         revokedAt: shouldReactivate ? null : undefined,

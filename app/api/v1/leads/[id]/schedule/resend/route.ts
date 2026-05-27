@@ -8,6 +8,7 @@ import { resendCalendarInvite } from "@/app/api/services/googleCalendar/GoogleCa
 import { buildUniqueEmails, resolveParticipantDispatchGroups } from "@/app/api/services/leadSchedule/participantDispatch";
 import { emailService } from "@/lib/services/EmailService";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 const resendSchema = z.object({
   target: z.enum(["all", "single", "new"]),
@@ -196,7 +197,11 @@ export async function POST(
       where: { id: leadId },
       include: {
         manager: true,
-        closer: true,
+        closer: {
+          include: {
+            googleConnection: true,
+          },
+        },
         assignee: true,
       },
     });
@@ -225,7 +230,7 @@ export async function POST(
     });
     const attendeeEmails = participantDispatch.all;
 
-    const canUseGoogleCalendar = !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
+    const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile.googleConnection);
     // When Google Calendar is available, ALL participants are added as attendees on the event
     // and Google handles delivery to every address (including external guests).
     // Resend is only used when Google is not connected.
