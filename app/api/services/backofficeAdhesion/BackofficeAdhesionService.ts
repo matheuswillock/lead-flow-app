@@ -1216,7 +1216,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         email: adhesion.email,
         asaasCustomerId: adhesion.asaasCustomerId,
         cpfCnpj: adhesion.cpfCnpj,
-        subscriptionId: adhesion.billingType === "EXTERNAL" ? `external-adhesion-${adhesion.id}` : null,
+        subscriptionId: adhesion.billingType === "EXTERNAL"
+          ? `external-adhesion-${adhesion.id}`
+          : adhesion.asaasPaymentId ?? `adhesion-${adhesion.id}`,
         operatorCount: adhesion.extraUsers,
         subscriptionStartDate,
         postalCode: adhesion.postalCode,

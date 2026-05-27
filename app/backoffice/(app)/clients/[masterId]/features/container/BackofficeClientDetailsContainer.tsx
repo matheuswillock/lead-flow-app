@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
-import { CalendarDays, Crown, DollarSign, Eye, MoreHorizontal, Pencil, Search, Tag, Trash2, X } from "lucide-react"
+import { CalendarDays, Crown, DollarSign, Eye, MoreHorizontal, Pencil, Search, ShieldCheck, ShieldX, Tag, Trash2, X } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { CircleX, CircleCheckBig } from "lucide-react"
 import {
@@ -271,6 +271,23 @@ export function BackofficeClientDetailsContainer() {
                 <div className="flex items-center gap-2">
                   <h1 className="text-xl font-semibold">{details.fullName || "Sem nome"}</h1>
                   {details.plan.kind === "lifetime" && <Badge>Vitalício</Badge>}
+                  {details.subscription.hasAccess ? (
+                    <Badge
+                      variant="outline"
+                      className="border-semantic-success-border bg-semantic-success-surface text-semantic-success gap-1"
+                    >
+                      <ShieldCheck className="h-3 w-3" />
+                      Acesso ativo
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger gap-1"
+                    >
+                      <ShieldX className="h-3 w-3" />
+                      Sem acesso
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground">E-mail: {details.email}</p>
                 <p className="text-sm text-muted-foreground">

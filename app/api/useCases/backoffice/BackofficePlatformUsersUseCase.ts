@@ -314,6 +314,10 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         master.operatorCount
       )
 
+      const hasAccess =
+        master.hasPermanentSubscription ||
+        (!!master.subscriptionId && master.subscriptionStatus === "active")
+
       return new Output(true, [], [], {
         id: master.id,
         fullName: master.fullName,
@@ -332,6 +336,10 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         createdAt: master.createdAt,
         linkedUsersCount: master.linkedUsersCount,
         plan,
+        subscription: {
+          hasAccess,
+          status: master.subscriptionStatus,
+        },
         teams: master.teams,
         teamsPagination: {
           page,
