@@ -9,7 +9,7 @@ const schema = z
     closerId: z.string().uuid().optional(),
     closerIds: z.array(z.string().uuid()).optional(),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    excludeLeadId: z.string().uuid().optional(),
+    excludeLeadId: z.string().uuid().nullish(),
     timezone: z.string().optional(),
   })
   .refine((data) => data.closerId || (data.closerIds && data.closerIds.length > 0), {

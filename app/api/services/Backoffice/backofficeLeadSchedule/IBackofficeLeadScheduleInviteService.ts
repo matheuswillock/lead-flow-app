@@ -14,6 +14,18 @@ export interface SendBackofficeLeadScheduleInviteInput {
   timezone?: string | null
 }
 
+export interface SendCloserNewLeadNotificationInput {
+  closerEmail: string
+  leadName: string
+  leadEmail?: string | null
+  leadPhone?: string | null
+  meetingDate: Date
+  meetingTitle: string
+  meetingLink?: string | null
+  timezone?: string | null
+}
+
 export interface IBackofficeLeadScheduleInviteService {
   sendInvite(input: SendBackofficeLeadScheduleInviteInput): Promise<Output>
+  sendCloserNewLeadNotification(input: SendCloserNewLeadNotificationInput): Promise<Output>
 }

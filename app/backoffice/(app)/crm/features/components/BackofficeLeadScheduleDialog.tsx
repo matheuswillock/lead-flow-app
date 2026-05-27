@@ -269,7 +269,7 @@ export function BackofficeLeadScheduleDialog({
             ) : null}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="backoffice-schedule-title">Título</Label>
               <Input
@@ -289,11 +289,11 @@ export function BackofficeLeadScheduleDialog({
                 type="url"
                 value={link}
                 onChange={(event) => setLink(event.target.value)}
-                disabled={isSubmitting}
+                disabled={isSubmitting || (!!selectedCloser?.googleCalendarConnected && !link.trim())}
                 placeholder={
                   requiresManualMeetingLink
                     ? "https://meet..."
-                    : "Google Meet automático ou link manual"
+                    : "Gerado automaticamente pelo Google Meet"
                 }
                 aria-invalid={!linkValidation.isValid}
               />
@@ -304,7 +304,7 @@ export function BackofficeLeadScheduleDialog({
               ) : null}
               {selectedCloser?.googleCalendarConnected && !link.trim() ? (
                 <p className="text-xs text-muted-foreground">
-                  O evento será criado no Google Calendar do closer.
+                  O evento será criado no Google Calendar do closer e o link será gerado automaticamente.
                 </p>
               ) : null}
               {link.trim() && !linkValidation.isValid ? (
