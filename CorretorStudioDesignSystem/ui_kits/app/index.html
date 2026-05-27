@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-screen-label="00 Corretor Studio UI Kit">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Corretor Studio — UI Kit</title>
+<link rel="icon" href="../../assets/corretor-studio-icon.svg">
+<link rel="stylesheet" href="../../colors_and_type.css">
+<link rel="stylesheet" href="./kit.css">
+<style>
+  /* Floating screen switcher — kit-only chrome */
+  .cs-kit-switch {
+    position: fixed; right: 16px; bottom: 16px; z-index: 50;
+    display: inline-flex; gap: 4px; padding: 4px;
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: var(--precision-shadow-2);
+    font-family: var(--font-body);
+  }
+  .cs-kit-switch button {
+    border: 0; background: transparent; padding: 7px 13px; border-radius: 10px;
+    font-size: 12.5px; font-weight: 600; color: var(--muted-foreground); cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .cs-kit-switch button.is-active { background: var(--primary); color: var(--primary-foreground); }
+  .cs-kit-switch button:hover:not(.is-active) { background: var(--muted); color: var(--foreground); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="./shared.jsx"></script>
+<script type="text/babel" src="./AppShell.jsx"></script>
+<script type="text/babel" src="./LandingScreen.jsx"></script>
+<script type="text/babel" src="./KanbanScreen.jsx"></script>
+<script type="text/babel" src="./DashboardScreen.jsx"></script>
+
+<script type="text/babel">
+const { useState } = React;
+
+function Switcher({ screen, setScreen }) {
+  return (
+    <div className="cs-kit-switch">
+      <button className={screen === 'landing'   ? 'is-active' : ''} onClick={() => setScreen('landing')}>
+        <Icon name="arrowUpRight" size={13} />Landing
+      </button>
+      <button className={screen === 'dashboard' ? 'is-active' : ''} onClick={() => setScreen('dashboard')}>
+        <Icon name="layout" size={13} />Dashboard
+      </button>
+      <button className={screen === 'board'     ? 'is-active' : ''} onClick={() => setScreen('board')}>
+        <Icon name="kanban" size={13} />Board
+      </button>
+    </div>
+  );
+}
+
+function App() {
+  // Persist screen position across reloads (kit convention)
+  const [screen, setScreenRaw] = useState(() => localStorage.getItem('cs-kit-screen') || 'landing');
+  const setScreen = (s) => { localStorage.setItem('cs-kit-screen', s); setScreenRaw(s); };
+
+  let body;
+  if (screen === 'landing') {
+    body = <LandingScreen onEnterApp={() => setScreen('dashboard')} />;
+  } else if (screen === 'dashboard') {
+    body = (
+      <AppShell active="dashboard" onNavigate={setScreen}
+        title="Dashboard" crumb={<>Acme Corretora <b>· Visão geral</b></>}>
+        <DashboardScreen />
+      </AppShell>
+    );
+  } else {
+    body = (
+      <AppShell active="board" onNavigate={setScreen}
+        title="CRM" crumb={<>Acme Corretora <b>· Pipeline</b></>}>
+        <KanbanScreen />
+      </AppShell>
+    );
+  }
+
+  return (
+    <>
+      {body}
+      <Switcher screen={screen} setScreen={setScreen} />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

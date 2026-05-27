@@ -1,0 +1,383 @@
+/* =============================================================================
+ * Corretor Studio — Design Tokens (colors + type)
+ * Source of truth: lead-flow-app/DESIGN.md (Supercombo v3)
+ * Visual direction: Hybrid Warm-Precision
+ *   Zapier warmth · Stripe precision · Linear surface discipline
+ * =========================================================================== */
+
+/* Inter — body/UI family (per DESIGN.md). Variable font with opsz + wght axes. */
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-VariableFont_opsz_wght.ttf') format('truetype-variations'),
+       url('fonts/Inter-VariableFont_opsz_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-Italic-VariableFont_opsz_wght.ttf') format('truetype-variations'),
+       url('fonts/Inter-Italic-VariableFont_opsz_wght.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Inter static optical-size variants — namespaced as 'Inter 18pt' / '24pt' / '28pt'.
+ * Use only when you specifically want a fixed optical size; otherwise the variable font above auto-tunes. */
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-Thin.ttf')             format('truetype'); font-weight: 100; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-ThinItalic.ttf')       format('truetype'); font-weight: 100; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-ExtraLight.ttf')       format('truetype'); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-ExtraLightItalic.ttf') format('truetype'); font-weight: 200; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-Light.ttf')            format('truetype'); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-LightItalic.ttf')      format('truetype'); font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-Regular.ttf')          format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-Italic.ttf')           format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-Medium.ttf')           format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-MediumItalic.ttf')     format('truetype'); font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-SemiBold.ttf')         format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-SemiBoldItalic.ttf')   format('truetype'); font-weight: 600; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-Bold.ttf')             format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-BoldItalic.ttf')       format('truetype'); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-ExtraBold.ttf')        format('truetype'); font-weight: 800; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-ExtraBoldItalic.ttf')  format('truetype'); font-weight: 800; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-Black.ttf')            format('truetype'); font-weight: 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 18pt'; src: url('fonts/Inter_18pt-BlackItalic.ttf')      format('truetype'); font-weight: 900; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-Thin.ttf')             format('truetype'); font-weight: 100; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-ThinItalic.ttf')       format('truetype'); font-weight: 100; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-ExtraLight.ttf')       format('truetype'); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-ExtraLightItalic.ttf') format('truetype'); font-weight: 200; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-Light.ttf')            format('truetype'); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-LightItalic.ttf')      format('truetype'); font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-Regular.ttf')          format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-Italic.ttf')           format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-Medium.ttf')           format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-MediumItalic.ttf')     format('truetype'); font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-SemiBold.ttf')         format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-SemiBoldItalic.ttf')   format('truetype'); font-weight: 600; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-Bold.ttf')             format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-BoldItalic.ttf')       format('truetype'); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-ExtraBold.ttf')        format('truetype'); font-weight: 800; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-ExtraBoldItalic.ttf')  format('truetype'); font-weight: 800; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-Black.ttf')            format('truetype'); font-weight: 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 24pt'; src: url('fonts/Inter_24pt-BlackItalic.ttf')      format('truetype'); font-weight: 900; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-Thin.ttf')             format('truetype'); font-weight: 100; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-ThinItalic.ttf')       format('truetype'); font-weight: 100; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-ExtraLight.ttf')       format('truetype'); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-ExtraLightItalic.ttf') format('truetype'); font-weight: 200; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-Light.ttf')            format('truetype'); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-LightItalic.ttf')      format('truetype'); font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-Regular.ttf')          format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-Italic.ttf')           format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-Medium.ttf')           format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-MediumItalic.ttf')     format('truetype'); font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-SemiBold.ttf')         format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-SemiBoldItalic.ttf')   format('truetype'); font-weight: 600; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-Bold.ttf')             format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-BoldItalic.ttf')       format('truetype'); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-ExtraBold.ttf')        format('truetype'); font-weight: 800; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-ExtraBoldItalic.ttf')  format('truetype'); font-weight: 800; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-Black.ttf')            format('truetype'); font-weight: 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter 28pt'; src: url('fonts/Inter_28pt-BlackItalic.ttf')      format('truetype'); font-weight: 900; font-style: italic; font-display: swap; }
+
+/* Poppins — canonical display family (per DESIGN.md). All 9 weights + italics, local. */
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-Thin.ttf')             format('truetype'); font-weight: 100; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-ThinItalic.ttf')       format('truetype'); font-weight: 100; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-ExtraLight.ttf')       format('truetype'); font-weight: 200; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-ExtraLightItalic.ttf') format('truetype'); font-weight: 200; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-Light.ttf')            format('truetype'); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-LightItalic.ttf')      format('truetype'); font-weight: 300; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-Regular.ttf')          format('truetype'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-Italic.ttf')           format('truetype'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-Medium.ttf')           format('truetype'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-MediumItalic.ttf')     format('truetype'); font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-SemiBold.ttf')         format('truetype'); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-SemiBoldItalic.ttf')   format('truetype'); font-weight: 600; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-Bold.ttf')             format('truetype'); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-BoldItalic.ttf')       format('truetype'); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-ExtraBold.ttf')        format('truetype'); font-weight: 800; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-ExtraBoldItalic.ttf')  format('truetype'); font-weight: 800; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-Black.ttf')            format('truetype'); font-weight: 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('fonts/Poppins-BlackItalic.ttf')      format('truetype'); font-weight: 900; font-style: italic; font-display: swap; }
+
+/* Sora — alternate display family, available but not the default. Variable, 100–800. */
+@font-face {
+  font-family: 'Sora';
+  src: url('fonts/Sora-VariableFont_wght.ttf') format('truetype-variations'),
+       url('fonts/Sora-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---------- LIGHT (default) ------------------------------------------------ */
+:root {
+  /* Radius */
+  --radius: 0.65rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: 1rem;
+
+  /* Surfaces (luminance ladder) */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.141 0.005 285.823);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.141 0.005 285.823);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.141 0.005 285.823);
+  --surface-0: oklch(1 0 0);
+  --surface-1: color-mix(in oklab, var(--card) 92%, var(--background));
+  --surface-2: color-mix(in oklab, var(--card) 85%, transparent);
+  --surface-3: color-mix(in oklab, var(--card) 78%, transparent);
+  --surface-4: color-mix(in oklab, var(--card) 70%, transparent);
+
+  /* Brand primary — warm conversion orange */
+  --primary: #ff6900;
+  --primary-foreground: oklch(0.98 0.016 73.684);
+  --ring: oklch(0.705 0.213 47.604);
+
+  /* Neutral roles */
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.552 0.016 285.938);
+  --accent: oklch(0.967 0.001 286.375);
+  --accent-foreground: oklch(0.21 0.006 285.885);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+
+  /* Brand secondary accents (used only for gradient text + avatars) */
+  --brand-rose: #e57082;
+  --brand-pink: #cd6cdd;
+  --brand-purple: #cd6cdd;
+
+  /* Precision (fintech polish) */
+  --precision-indigo: #494fdf;
+  --precision-indigo-foreground: #ffffff;
+  --precision-border-soft: color-mix(in oklab, var(--border) 84%, #d6d9fc);
+  --precision-border-strong: color-mix(in oklab, var(--border) 55%, #b9b9f9);
+  --precision-shadow-1: 0 8px 18px -12px rgba(50, 50, 93, 0.22);
+  --precision-shadow-2: 0 20px 40px -22px rgba(50, 50, 93, 0.28), 0 12px 24px -16px rgba(0, 0, 0, 0.12);
+  --precision-shadow-3: 0 30px 45px -30px rgba(50, 50, 93, 0.25), 0 18px 36px -18px rgba(0, 0, 0, 0.1);
+
+  /* Semantic status */
+  --semantic-success: #00a87e;
+  --semantic-success-foreground: #ffffff;
+  --semantic-success-surface: color-mix(in oklab, var(--semantic-success) 16%, var(--card));
+  --semantic-success-border: color-mix(in oklab, var(--semantic-success) 38%, var(--border));
+  --semantic-warning: #ec7e00;
+  --semantic-warning-foreground: #ffffff;
+  --semantic-warning-surface: color-mix(in oklab, var(--semantic-warning) 14%, var(--card));
+  --semantic-warning-border: color-mix(in oklab, var(--semantic-warning) 34%, var(--border));
+  --semantic-danger: #e23b4a;
+  --semantic-danger-foreground: #ffffff;
+  --semantic-danger-surface: color-mix(in oklab, var(--semantic-danger) 14%, var(--card));
+  --semantic-danger-border: color-mix(in oklab, var(--semantic-danger) 36%, var(--border));
+  --semantic-info: #3b9eff;
+  --semantic-info-foreground: #ffffff;
+  --semantic-info-surface: color-mix(in oklab, var(--semantic-info) 15%, var(--card));
+  --semantic-info-border: color-mix(in oklab, var(--semantic-info) 36%, var(--border));
+  --semantic-new: #533afd;
+  --semantic-new-foreground: #ffffff;
+  --semantic-new-surface: color-mix(in oklab, var(--semantic-new) 14%, var(--card));
+  --semantic-new-border: color-mix(in oklab, var(--semantic-new) 34%, var(--border));
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: #ffffff;
+
+  /* Aliases */
+  --info: var(--semantic-info);
+  --success: var(--semantic-success);
+  --danger: var(--semantic-danger);
+  --warn: var(--semantic-warning);
+
+  /* Motion */
+  --motion-duration-fast: 150ms;
+  --motion-duration-base: 220ms;
+  --motion-duration-slow: 320ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Type families */
+  --font-display: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display-alt: 'Sora', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ---------- DARK ----------------------------------------------------------- */
+.dark, [data-theme="dark"] {
+  --background: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.21 0.006 285.885);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+  --surface-0: oklch(0.141 0.005 285.823);
+  --surface-1: color-mix(in oklab, var(--card) 92%, var(--background));
+  --surface-2: color-mix(in oklab, var(--card) 86%, transparent);
+  --surface-3: color-mix(in oklab, var(--card) 80%, transparent);
+  --surface-4: color-mix(in oklab, var(--card) 72%, transparent);
+
+  --primary: #f54900;
+  --primary-foreground: oklch(0.98 0.016 73.684);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.274 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.274 0.006 286.033);
+  --accent-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.705 0.213 47.604);
+
+  --brand-rose: #e06070;
+  --brand-pink: #b85ec8;
+  --brand-purple: #b85ec8;
+
+  --precision-indigo: #7170ff;
+  --precision-shadow-1: 0 8px 18px -12px rgba(0, 0, 0, 0.45);
+  --precision-shadow-2: 0 20px 40px -22px rgba(0, 0, 0, 0.52), 0 12px 24px -16px rgba(30, 30, 68, 0.45);
+  --precision-shadow-3: 0 30px 45px -30px rgba(0, 0, 0, 0.6), 0 18px 36px -18px rgba(36, 36, 78, 0.44);
+
+  --semantic-success: #22c08a;
+  --semantic-warning: #f2a236;
+  --semantic-danger: #f06572;
+  --semantic-info: #62b6ff;
+  --semantic-new: #7f7bff;
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: #2d070b;
+}
+
+/* ---------- Base typography ------------------------------------------------ */
+html { color-scheme: light dark; }
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  color: var(--foreground);
+  margin: 0;
+}
+
+/* ---------- Semantic type scale ------------------------------------------- */
+/* Use the .cs-* classes (or matching tags) to apply the scale.               */
+
+.cs-display-xl, h1.cs-display {
+  font-family: var(--font-display);
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+}
+
+.cs-display-lg {
+  font-family: var(--font-display);
+  font-size: 60px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.028em;
+}
+
+.cs-section, h2.cs {
+  font-family: var(--font-display);
+  font-size: 48px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.024em;
+}
+
+.cs-subsection, h3.cs {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.cs-card-title, h4.cs {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.cs-eyebrow {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.cs-body, p.cs {
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--foreground);
+}
+
+.cs-body-sm {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+.cs-ui-action {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.cs-mono, code.cs {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--muted);
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-sm);
+}
+
+/* Font-loaded flag — JS adds .fonts-ready to <html> once webfonts settle. Optional. */
+html:not(.fonts-ready) body { font-synthesis-weight: none; }
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ---------- Signature brand gradient (orange → rose → magenta) ------------ */
+.cs-gradient-text {
+  background: linear-gradient(120deg, var(--primary) 0%, var(--brand-rose) 52%, var(--brand-pink) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.cs-gradient-bg {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--brand-rose) 50%, var(--brand-pink) 100%);
+}
+
+/* Avatar gradients (from globals.css) */
+.cs-avatar-1 { background: linear-gradient(135deg, var(--primary), #cd6cdd); }
+.cs-avatar-2 { background: linear-gradient(135deg, #62b6ff, #7f7bff); }
+.cs-avatar-3 { background: linear-gradient(135deg, #22c08a, #62b6ff); }
+.cs-avatar-4 { background: linear-gradient(135deg, #f2a236, #f06572); }
+.cs-avatar-5 { background: linear-gradient(135deg, #7f7bff, #f06572); }
+.cs-avatar-6 { background: linear-gradient(135deg, #22c08a, #f2a236); }

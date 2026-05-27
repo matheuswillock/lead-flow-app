@@ -1,0 +1,38 @@
+<!-- @dsCard group="Colors" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 24px; background: var(--background); font-family: var(--font-body); color: var(--foreground); }
+.title { font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+.ladder { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.step { border-radius: 12px; height: 96px; padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--border); }
+.step.dark { color: white; border-color: rgba(255,255,255,0.12); }
+.step-name { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.85; }
+.step-token { font-family: var(--font-mono); font-size: 10px; opacity: 0.65; }
+</style></head>
+<body>
+<div class="title">Surface ladder — neutrals only</div>
+<div class="ladder">
+  <div class="step" style="background: var(--background); color: var(--foreground);">
+    <span class="step-name">surface-0</span>
+    <span class="step-token">--background</span>
+  </div>
+  <div class="step" style="background: oklch(0.985 0 0); color: oklch(0.141 0.005 285);">
+    <span class="step-name">surface-1</span>
+    <span class="step-token">card 92%</span>
+  </div>
+  <div class="step" style="background: oklch(0.967 0.001 286);">
+    <span class="step-name">surface-2</span>
+    <span class="step-token">muted</span>
+  </div>
+  <div class="step" style="background: oklch(0.92 0.004 286);">
+    <span class="step-name">surface-3</span>
+    <span class="step-token">border</span>
+  </div>
+  <div class="step dark" style="background: oklch(0.21 0.006 286);">
+    <span class="step-name">card-2</span>
+    <span class="step-token">dark card</span>
+  </div>
+</div>
+</body></html>
