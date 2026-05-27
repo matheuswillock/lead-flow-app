@@ -56,16 +56,16 @@ export function BackofficeProductTable({ products }: Props) {
         <TableHeader>
           <TableRow>
             <TableHead>Nome</TableHead>
-            <TableHead>Tipo</TableHead>
-            <TableHead>Modo</TableHead>
-            <TableHead className="text-right">Mensal</TableHead>
-            <TableHead className="text-right">Trimestral</TableHead>
-            <TableHead className="text-right">Semestral</TableHead>
-            <TableHead className="text-right">Anual</TableHead>
-            <TableHead className="text-right">Vitalício</TableHead>
-            <TableHead className="text-right">Total</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Ações</TableHead>
+            <TableHead className="text-center">Tipo</TableHead>
+            <TableHead className="text-center">Modo</TableHead>
+            <TableHead className="text-center">Mensal</TableHead>
+            <TableHead className="text-center">Trimestral</TableHead>
+            <TableHead className="text-center">Semestral</TableHead>
+            <TableHead className="text-center">Anual</TableHead>
+            <TableHead className="text-center">Vitalício</TableHead>
+            <TableHead className="text-center">Total</TableHead>
+            <TableHead className="text-center">Status</TableHead>
+            <TableHead className="text-center">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -91,40 +91,40 @@ export function BackofficeProductTable({ products }: Props) {
                     )}
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-center">
                   <Badge variant={product.type === "PLAN" ? "default" : "secondary"}>
                     {product.type === "PLAN" ? "Plano" : "Add-on"}
                   </Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-center">
                   <Badge variant="outline">
                     {product.billingMode === "RECURRING" ? "Parcelado" : "Vitalício"}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm">
+                <TableCell className="text-center font-mono text-sm">
                   {product.billingMode === "RECURRING" ? formatPrice(cardMonthly) : "—"}
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm">
+                <TableCell className="text-center font-mono text-sm">
                   {product.billingMode === "RECURRING" ? formatPrice(cardQuarterly) : "—"}
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm">
+                <TableCell className="text-center font-mono text-sm">
                   {product.billingMode === "RECURRING" ? formatPrice(cardSemiannual) : "—"}
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm">
+                <TableCell className="text-center font-mono text-sm">
                   {product.billingMode === "RECURRING" ? formatPrice(cardAnnual) : "—"}
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm">
+                <TableCell className="text-center font-mono text-sm">
                   {formatPrice(product.priceLifetime)}
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm font-medium">
+                <TableCell className="text-center font-mono text-sm font-medium">
                   {formatPrice(total)}
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-center">
                   <Badge variant={product.isActive ? "default" : "secondary"}>
                     {product.isActive ? "Ativo" : "Inativo"}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-center">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" aria-label={`Ações de ${product.name}`}>
