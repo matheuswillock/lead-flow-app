@@ -1,0 +1,32 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 22px 26px; background: var(--background); color: var(--foreground); font-family: var(--font-body); }
+.title { font-size: 11px; font-weight: 600; color: var(--muted-foreground); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 14px; }
+.row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: stretch; }
+.card { border-radius: 16px; padding: 18px 20px; border: 1px solid var(--border); }
+.feature { background: color-mix(in oklab, var(--card) 85%, transparent); box-shadow: 0 20px 40px -20px color-mix(in oklab, var(--primary) 22%, transparent); }
+.featured { background: var(--card); border-color: var(--precision-border-strong); box-shadow: var(--precision-shadow-2); position: relative; }
+.featured::after { content: 'Em breve'; position: absolute; top: 12px; right: 12px; background: var(--primary); color: var(--primary-foreground); font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px; letter-spacing: 0.03em; }
+.icon { width: 40px; height: 40px; border-radius: 12px; background: color-mix(in oklab, var(--primary) 15%, transparent); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.icon svg { width: 20px; height: 20px; }
+h3 { font-family: var(--font-display); font-size: 17px; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+p { font-size: 13px; color: var(--muted-foreground); margin: 0; line-height: 1.5; }
+</style></head>
+<body>
+<div class="title">Cards · feature + feature-featured</div>
+<div class="row">
+  <div class="card feature">
+    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="10" rx="1"/></svg></div>
+    <h3>Pipeline Kanban + Tabela</h3>
+    <p>Arraste e solte por etapa. Status e responsáveis sempre visíveis. Detalhes do lead em um clique.</p>
+  </div>
+  <div class="card featured">
+    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+    <h3>Campanhas de Email</h3>
+    <p>Editor visual, agendamento e métricas de abertura.</p>
+  </div>
+</div>
+</body></html>

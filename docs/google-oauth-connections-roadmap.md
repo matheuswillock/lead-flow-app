@@ -36,21 +36,22 @@ Centralizar conexões OAuth Google em uma tabela única (`google_oauth_connectio
 
 ## Fase 2 — Consolidação pós-estabilização
 
-- [ ] TODO: Remover dual-write e manter escrita apenas na tabela central
-- [ ] TODO: Validar janela de observação (24-48h) e registrar evidências
+- [x] DONE: Remover dual-write e manter escrita apenas na tabela central
+- [x] DONE: Validar janela de observação (24-48h) e registrar evidências (ver `docs/google-oauth-connections-phase2-evidence.md`)
 
 ## Fase 3 — Limpeza legada
 
-- [ ] TODO: Criar migration #2 (`drop_legacy_google_columns`) após deploy estável
-- [ ] TODO: Remover colunas legadas `google*` de `Profile` e `BackofficeUser` no schema
-- [ ] TODO: Remover uso de campos legados em repositórios/inputs (`BackofficeUserRepository.update`, `UpdateBackofficeUserInput`)
-- [ ] TODO: Validar queries pós-limpeza
+- [x] DONE: Criar migration #2 (`drop_legacy_google_columns`) após deploy estável
+- [x] DONE: Criar migration de backfill complementar para `Profile.googleConnectionId` pendente (`20260526230736_backfill_missing_profile_google_connection_id.sql`)
+- [x] DONE: Remover colunas legadas `google*` de `Profile` e `BackofficeUser` no schema
+- [x] DONE: Remover uso de campos legados em repositórios/inputs (`BackofficeUserRepository.update`, `UpdateBackofficeUserInput`)
+- [x] DONE: Validar queries pós-limpeza
 
 ## Verificação obrigatória por etapa
 
-- [ ] TODO: `bun run typecheck 2>&1 | head -20`
-- [ ] TODO: `bun run lint`
-- [ ] TODO: `bun run governance:check`
+- [x] DONE: `bun run typecheck 2>&1 | head -20`
+- [x] DONE: `bun run lint`
+- [x] DONE: `bun run governance:check`
 - [ ] TODO: `bun run design:check` (somente quando houver alteração visual)
 
 ## PRs

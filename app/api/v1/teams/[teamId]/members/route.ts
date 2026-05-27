@@ -4,6 +4,7 @@ import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { NotificationType } from "@prisma/client";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 const addMemberSchema = z.object({
   profileId: z.string().uuid(),
@@ -110,7 +111,12 @@ export async function GET(
             email: true,
             profileIconUrl: true,
             supabaseId: true,
-            googleCalendarConnected: true,
+            googleConnection: {
+              select: {
+                refreshToken: true,
+                revokedAt: true,
+              },
+            },
           },
         },
       },
@@ -124,7 +130,7 @@ export async function GET(
       email: member.profile.email,
       role: member.role,
       functions: member.functions,
-      googleCalendarConnected: member.profile.googleCalendarConnected ?? false,
+      googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
       profileIconUrl: member.profile.profileIconUrl,
       isMaster: member.profileId === team.masterId,
     }));

@@ -25,6 +25,7 @@ import { subscriptionCreditService } from "@/app/api/services/billing/Subscripti
 import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import type { Prisma } from "@prisma/client";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -588,7 +589,12 @@ export async function GET(
             profileIconId: true,
             profileIconUrl: true,
             hasPermanentSubscription: true,
-            googleCalendarConnected: true,
+            googleConnection: {
+              select: {
+                refreshToken: true,
+                revokedAt: true,
+              },
+            },
             canCreateAccountUsers: true,
             canManageAccountTeams: true,
             _count: {
@@ -630,7 +636,7 @@ export async function GET(
         createdAt: member.createdAt,
         updatedAt: member.updatedAt,
         hasPermanentSubscription: member.profile.hasPermanentSubscription,
-        googleCalendarConnected: member.profile.googleCalendarConnected ?? false,
+        googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
       }));
 
     const pendingAsUsers: any[] = [];

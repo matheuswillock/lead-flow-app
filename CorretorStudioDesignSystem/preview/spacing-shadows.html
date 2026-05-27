@@ -1,0 +1,36 @@
+<!-- @dsCard group="Spacing" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 26px 30px; background: var(--background); color: var(--foreground); font-family: var(--font-body); }
+.title { font-size: 11px; font-weight: 600; color: var(--muted-foreground); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 18px; }
+.row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.shadow-card { height: 110px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); display: flex; flex-direction: column; padding: 12px 14px; }
+.shadow-card .l { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted-foreground); }
+.shadow-card .name { font-weight: 700; font-size: 13px; margin-top: 6px; }
+.shadow-card .use { font-size: 11px; color: var(--muted-foreground); margin-top: auto; line-height: 1.45; }
+.s1 { box-shadow: var(--precision-shadow-1); }
+.s2 { box-shadow: var(--precision-shadow-2); }
+.s3 { box-shadow: 0 12px 28px -8px color-mix(in oklab, var(--primary) 60%, transparent); }
+</style></head>
+<body>
+<div class="title">Shadows · two systems, never mixed</div>
+<div class="row">
+  <div class="shadow-card s1">
+    <span class="l">--precision-shadow-1</span>
+    <span class="name">Precision · soft</span>
+    <span class="use">Card resting state. Neutral.</span>
+  </div>
+  <div class="shadow-card s2">
+    <span class="l">--precision-shadow-2</span>
+    <span class="name">Precision · elevated</span>
+    <span class="use">Popovers, modals, hovered cards.</span>
+  </div>
+  <div class="shadow-card s3">
+    <span class="l">orange tint 60%</span>
+    <span class="name">Warm CTA shadow</span>
+    <span class="use">Primary buttons + hero only.</span>
+  </div>
+</div>
+</body></html>

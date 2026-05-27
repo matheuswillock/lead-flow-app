@@ -1,0 +1,41 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 22px 26px; background: oklch(0.967 0.001 286); color: var(--foreground); font-family: var(--font-body); }
+.col { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); width: 280px; }
+.col-head { background: var(--primary); color: var(--primary-foreground); border-radius: 8px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.col-head h2 { font-family: var(--font-display); font-size: 14px; font-weight: 600; margin: 0; }
+.count { background: rgba(255,255,255,0.22); border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+.lead { background: var(--accent); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; cursor: grab; transition: box-shadow 150ms; }
+.lead:hover { box-shadow: 0 6px 14px -6px rgba(0,0,0,0.12); }
+.lead-name { font-size: 13.5px; font-weight: 600; color: var(--foreground); }
+.lead-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--muted-foreground); }
+.id-pill { font-family: var(--font-mono); background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 10px; }
+.footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.avatar { width: 22px; height: 22px; border-radius: 999px; background: linear-gradient(135deg, var(--primary), #cd6cdd); color: white; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; font-family: var(--font-display); }
+.clip-row { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted-foreground); }
+svg { width: 13px; height: 13px; }
+</style></head>
+<body>
+<div class="col">
+  <div class="col-head"><h2>Em negociação</h2><span class="count">3</span></div>
+  <div class="lead">
+    <div class="lead-name">Carla Andrade</div>
+    <div class="lead-meta"><span class="id-pill">CS-0241</span><span>· 2 dias no estágio</span></div>
+    <div class="footer">
+      <span class="clip-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>2</span>
+      <div class="avatar">CA</div>
+    </div>
+  </div>
+  <div class="lead">
+    <div class="lead-name">Felipe Moura — Pequenas Empresas</div>
+    <div class="lead-meta"><span class="id-pill">CS-0233</span><span>· 5 dias no estágio</span></div>
+    <div class="footer">
+      <span class="clip-row"></span>
+      <div class="avatar" style="background:linear-gradient(135deg,#62b6ff,#7f7bff)">FM</div>
+    </div>
+  </div>
+</div>
+</body></html>

@@ -770,10 +770,14 @@ export class LeadRepository implements ILeadRepository {
             supabaseId: true,
             fullName: true,
             email: true,
-            googleCalendarConnected: true,
-            googleRefreshToken: true,
-            googleAccessToken: true,
-            googleTokenExpiresAt: true,
+            googleConnection: {
+              select: {
+                accessToken: true,
+                refreshToken: true,
+                tokenExpiresAt: true,
+                revokedAt: true,
+              },
+            },
           },
         },
       },
@@ -781,7 +785,16 @@ export class LeadRepository implements ILeadRepository {
 
     const c = lead?.closer;
     if (!c?.supabaseId) return null;
-    return { ...c, supabaseId: c.supabaseId };
+    return {
+      id: c.id,
+      supabaseId: c.supabaseId,
+      fullName: c.fullName,
+      email: c.email,
+      googleCalendarConnected: !!c.googleConnection?.refreshToken && !c.googleConnection?.revokedAt,
+      googleRefreshToken: c.googleConnection?.refreshToken ?? null,
+      googleAccessToken: c.googleConnection?.accessToken ?? null,
+      googleTokenExpiresAt: c.googleConnection?.tokenExpiresAt ?? null,
+    };
   }
 
   async findForAttendeesRoleMap(leadId: string): Promise<LeadForAttendeesRoleMap | null> {
@@ -796,10 +809,14 @@ export class LeadRepository implements ILeadRepository {
             supabaseId: true,
             fullName: true,
             email: true,
-            googleCalendarConnected: true,
-            googleRefreshToken: true,
-            googleAccessToken: true,
-            googleTokenExpiresAt: true,
+            googleConnection: {
+              select: {
+                accessToken: true,
+                refreshToken: true,
+                tokenExpiresAt: true,
+                revokedAt: true,
+              },
+            },
           },
         },
         assignee: {
@@ -814,7 +831,18 @@ export class LeadRepository implements ILeadRepository {
     return {
       teamId: lead.teamId,
       email: lead.email,
-      closer: c?.supabaseId ? { ...c, supabaseId: c.supabaseId } : null,
+      closer: c?.supabaseId
+        ? {
+            id: c.id,
+            supabaseId: c.supabaseId,
+            fullName: c.fullName,
+            email: c.email,
+            googleCalendarConnected: !!c.googleConnection?.refreshToken && !c.googleConnection?.revokedAt,
+            googleRefreshToken: c.googleConnection?.refreshToken ?? null,
+            googleAccessToken: c.googleConnection?.accessToken ?? null,
+            googleTokenExpiresAt: c.googleConnection?.tokenExpiresAt ?? null,
+          }
+        : null,
       assignee: lead.assignee,
     };
   }

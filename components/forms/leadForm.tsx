@@ -100,6 +100,9 @@ export interface ILeadFormProps {
     sdrsError?: string | null;
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     onUploadStateChange?: (isUploading: boolean) => void;
+    onAttachmentsLoadingChange?: (isLoading: boolean) => void;
+    /** Anexos pré-carregados pelo endpoint agregado; evita fetch separado na montagem. */
+    initialAttachments?: import("@/components/ui/attachment-list").Attachment[];
     isEditMode?: boolean;
     currentProfileId?: string;
     currentUserIsSdr?: boolean;
@@ -134,6 +137,8 @@ export function LeadForm({
     sdrsError,
     leadId,
     onUploadStateChange,
+    onAttachmentsLoadingChange,
+    initialAttachments,
     isEditMode = false,
     currentProfileId,
     currentUserIsSdr = false,
@@ -907,7 +912,15 @@ export function LeadForm({
                     </p>
                 </div>
                 {leadId ? (
-                    <AttachmentList leadId={leadId} leadName={form.getValues("name")} onUploadStateChange={onUploadStateChange} />
+                    <AttachmentList
+                        leadId={leadId}
+                        leadName={form.getValues("name")}
+                        onUploadStateChange={onUploadStateChange}
+                        onLoadingChange={onAttachmentsLoadingChange}
+                        initialAttachments={initialAttachments}
+                        supabaseId={supabaseId}
+                        teamId={activeTeamId}
+                    />
                 ) : (
                     <div className="flex items-center justify-center p-8 border border-dashed rounded-lg bg-muted/20">
                         <div className="text-center space-y-2">

@@ -1,0 +1,32 @@
+<!-- @dsCard group="Brand" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 0; background: var(--background); color: var(--foreground); font-family: var(--font-body); }
+.stage { position: relative; height: 200px; padding: 22px 26px; overflow: hidden; }
+.dots { position: absolute; inset: 0; background-image: radial-gradient(circle, color-mix(in oklab, var(--border) 80%, transparent) 1px, transparent 1px); background-size: 22px 22px; opacity: 0.5; }
+.orb-1 { position: absolute; inset: 0; background: radial-gradient(55% 60% at 12% 35%, color-mix(in oklab, var(--primary) 22%, transparent) 0%, transparent 60%); pointer-events: none; }
+.orb-2 { position: absolute; inset: 0; background: radial-gradient(40% 50% at 92% 10%, color-mix(in oklab, var(--brand-rose) 18%, transparent) 0%, transparent 60%); pointer-events: none; }
+.orb-3 { position: absolute; inset: 0; background: radial-gradient(35% 40% at 75% 80%, color-mix(in oklab, var(--brand-pink) 16%, transparent) 0%, transparent 65%); pointer-events: none; }
+.fade { position: absolute; left: 0; right: 0; bottom: 0; height: 70px; background: linear-gradient(to bottom, transparent, var(--background)); pointer-events: none; }
+.content { position: relative; z-index: 1; }
+.title { font-size: 11px; font-weight: 600; color: var(--muted-foreground); letter-spacing: 0.06em; text-transform: uppercase; }
+h2 { font-family: var(--font-display); font-size: 28px; font-weight: 800; letter-spacing: -0.024em; margin: 6px 0 0; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 11px; font-weight: 600; background: color-mix(in oklab, var(--primary) 8%, var(--card)); border: 1px solid color-mix(in oklab, var(--primary) 30%, var(--border)); margin-top: 14px; }
+.pill .d { width: 6px; height: 6px; border-radius: 999px; background: var(--primary); }
+</style></head>
+<body>
+<div class="stage">
+  <div class="dots"></div>
+  <div class="orb-1"></div>
+  <div class="orb-2"></div>
+  <div class="orb-3"></div>
+  <div class="content">
+    <span class="title">Hero atmosphere</span>
+    <h2>Dot grid · soft <span class="cs-gradient-text">orbs</span> · fade</h2>
+    <div class="pill"><span class="d"></span>Em breve · Campanhas de Email</div>
+  </div>
+  <div class="fade"></div>
+</div>
+</body></html>

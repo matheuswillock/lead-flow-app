@@ -5,6 +5,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { googleOAuthConnectionRepository } from "@/app/api/infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository";
 import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
+import { fetchGoogleGrantedScopes } from "@/lib/google/scopes";
 
 const LOG_PREFIX = "[GoogleConnect]";
 
@@ -101,8 +102,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 404 });
     }
 
-    if (email) {
-      const existingConnection = await googleOAuthConnectionRepository.findByGoogleEmail(email);
+    // Resolve o email final antes do conflict check para cobrir tanto o caso em
+    // que email é fornecido explicitamente quanto o fallback para currentProfile.email.
+    const currentConnection = currentProfile.googleConnectionId
+      ? await googleOAuthConnectionRepository.findById(currentProfile.googleConnectionId)
+      : null;
+    const previousGoogleEmail = currentConnection?.googleEmail ?? null;
+    const normalizedNextGoogleEmail = email ?? currentProfile.email;
+
+    // Conflict check: rejeitar se o email final já está vinculado a OUTRO perfil.
+    // Rodar mesmo quando email não foi enviado no body, pois currentProfile.email
+    // pode já estar em google_oauth_connections com outro ownerProfileId.
+    if (normalizedNextGoogleEmail) {
+      const existingConnection =
+        await googleOAuthConnectionRepository.findByGoogleEmail(normalizedNextGoogleEmail);
       if (
         existingConnection?.ownerProfileId &&
         existingConnection.ownerProfileId !== currentProfile.id
@@ -111,7 +124,8 @@ export async function POST(request: NextRequest) {
           status: "error",
           step: "google_email_conflict",
           supabaseId,
-          email,
+          email: normalizedNextGoogleEmail,
+          emailWasExplicit: Boolean(email),
           conflictingProfileId: existingConnection.ownerProfileId,
         });
         const output = new Output(
@@ -123,18 +137,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(output, { status: 409 });
       }
     }
-
-    const previousGoogleEmail = currentProfile.googleEmail;
-    const normalizedNextGoogleEmail = email ?? currentProfile.email;
     const shouldNotifyGoogleConnected =
-      currentProfile.googleCalendarConnected !== true ||
+      !currentProfile.googleConnectionId ||
       (previousGoogleEmail ?? null) !== (normalizedNextGoogleEmail ?? null);
 
     const profile = await profileRepository.updateGoogleCalendarAuth(supabaseId, {
       accessToken,
       refreshToken: refreshToken ?? null,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
-      email: email ?? null,
+      email: normalizedNextGoogleEmail,
       connected: Boolean(refreshToken || accessToken),
     });
 
@@ -151,6 +162,13 @@ export async function POST(request: NextRequest) {
       });
       const output = new Output(false, [], ["Falha ao salvar credenciais Google"], null);
       return NextResponse.json(output, { status: 400 });
+    }
+
+    if (profile.googleConnectionId) {
+      const grantedScopes = await fetchGoogleGrantedScopes(accessToken).catch(() => []);
+      await googleOAuthConnectionRepository.updateTokens(profile.googleConnectionId, {
+        scopes: grantedScopes,
+      });
     }
 
     if (email && previousGoogleEmail && previousGoogleEmail !== email) {

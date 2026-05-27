@@ -4,6 +4,7 @@ import { leadScheduleRepository } from "@/app/api/infra/data/repositories/leadSc
 import { prisma } from "@/app/api/infra/data/prisma";
 import { cancelCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 export async function POST(
   request: NextRequest,
@@ -35,7 +36,11 @@ export async function POST(
       where: { id: leadId },
       include: {
         manager: true,
-        closer: true,
+        closer: {
+          include: {
+            googleConnection: true,
+          },
+        },
       },
     });
 
@@ -46,7 +51,7 @@ export async function POST(
 
     let calendarWarning: string | null = null;
     const closerProfile = lead.closer;
-    const canUseGoogleCalendar = !!closerProfile && !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
+    const canUseGoogleCalendar = !!closerProfile && isGoogleConnectionActive(closerProfile.googleConnection);
     if (schedule.googleEventId) {
       if (!closerProfile || !canUseGoogleCalendar) {
         calendarWarning = "Conta Google não conectada. Evento não foi cancelado no Google Calendar.";

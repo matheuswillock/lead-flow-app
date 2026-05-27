@@ -13,6 +13,7 @@ import type { ILeadScheduleService, CreateScheduleParams } from "./ILeadSchedule
 import { buildUniqueEmails, resolveParticipantDispatchGroups } from "./participantDispatch";
 import type { Attachment } from "resend";
 import { formatIntimezone, resolveTimezone } from "@/lib/dates";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 type InviteDispatchProvider = "google" | "resend";
 
@@ -205,6 +206,17 @@ export class LeadScheduleService implements ILeadScheduleService {
 
     const closerProfile = await prisma.profile.findUnique({
       where: { id: closerId },
+      include: {
+        googleConnection: {
+          select: {
+            accessToken: true,
+            refreshToken: true,
+            tokenExpiresAt: true,
+            revokedAt: true,
+            googleEmail: true,
+          },
+        },
+      },
     });
 
     if (!closerProfile || !closerProfile.email) {
@@ -223,7 +235,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       ],
     });
     const attendeeEmails = participantDispatch.all;
-    const canUseGoogleCalendar = !!closerProfile.googleCalendarConnected && !!closerProfile.googleRefreshToken;
+    const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile.googleConnection);
     // When Google Calendar is available, ALL participants are added as attendees on the event
     // and Google handles delivery to every address (including external guests).
     // Resend is only used when Google is not connected.
