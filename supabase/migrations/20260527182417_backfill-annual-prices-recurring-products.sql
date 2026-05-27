@@ -1,3 +1,9 @@
+-- Garante que a coluna e o valor do enum existem antes do backfill (idempotentes).
+ALTER TABLE "backoffice_products"
+  ADD COLUMN IF NOT EXISTS "priceAnnual" DECIMAL(10,2);
+
+ALTER TYPE "backoffice_adhesion_billing_cycle" ADD VALUE IF NOT EXISTS 'annual';
+
 -- Backfill rígido de priceAnnual para produtos recorrentes já existentes.
 -- Idempotente: só atualiza registros com priceAnnual nulo.
 
