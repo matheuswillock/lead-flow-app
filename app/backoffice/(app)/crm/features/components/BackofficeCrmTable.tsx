@@ -797,6 +797,7 @@ export function BackofficeCrmTable() {
           if (!open) setLeadToSchedule(null)
         }}
         onConfirm={confirmScheduleStatusChange}
+        isReschedule={leadToSchedule?.status === "scheduled"}
       />
     </div>
   )

@@ -216,6 +216,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         createdAt: true,
         hasPermanentSubscription: true,
         subscriptionPlan: true,
+        subscriptionStatus: true,
+        subscriptionId: true,
         operatorCount: true,
         googleConnection: {
           select: {
@@ -353,6 +355,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       createdAt: master.createdAt,
       hasPermanentSubscription: master.hasPermanentSubscription,
       subscriptionPlan: master.subscriptionPlan,
+      subscriptionStatus: master.subscriptionStatus,
+      subscriptionId: master.subscriptionId,
       operatorCount: master.operatorCount,
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
       linkedUsersCount: linkedUsers.size,

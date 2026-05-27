@@ -241,6 +241,9 @@ function mapLead(lead: BackofficeLeadWithRelations) {
     meetingNotes: lead.meetingNotes,
     meetingLink: lead.meetingLink,
     meetingExtraGuests: lead.meetingExtraGuests,
+    qualificationLeadOrganization: lead.qualificationLeadOrganization,
+    qualificationAvgUsers: lead.qualificationAvgUsers,
+    qualificationProfileFit: lead.qualificationProfileFit,
     adhesion: lead.adhesion
       ? {
           id: lead.adhesion.id,
@@ -374,6 +377,9 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         meetingLink: normalizedMeetingLink,
         meetingExtraGuests: meetingExtraGuests.value,
         createdByProfileId,
+        qualificationLeadOrganization: trimOrNull(data.qualificationLeadOrganization),
+        qualificationAvgUsers: trimOrNull(data.qualificationAvgUsers),
+        qualificationProfileFit: trimOrNull(data.qualificationProfileFit),
       })
 
       if (status === BackofficeLeadStatus.scheduled) {
@@ -566,6 +572,9 @@ export class BackofficeLeadUseCase implements IBackofficeLeadUseCase {
         meetingLink: normalizedMeetingLinkForUpdate,
         meetingExtraGuests:
           data.meetingExtraGuests !== undefined ? meetingExtraGuestsValue : undefined,
+        qualificationLeadOrganization: data.qualificationLeadOrganization !== undefined ? trimOrNull(data.qualificationLeadOrganization) : undefined,
+        qualificationAvgUsers: data.qualificationAvgUsers !== undefined ? trimOrNull(data.qualificationAvgUsers) : undefined,
+        qualificationProfileFit: data.qualificationProfileFit !== undefined ? trimOrNull(data.qualificationProfileFit) : undefined,
       })
 
       return new Output(true, ["Lead atualizado com sucesso"], [], mapLead(lead))

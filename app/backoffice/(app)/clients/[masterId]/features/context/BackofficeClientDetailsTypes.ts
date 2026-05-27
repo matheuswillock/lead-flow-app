@@ -41,6 +41,10 @@ export interface BackofficeClientDetails {
     amount: number | null
     kind: "lifetime" | "monthly" | "trial" | "none"
   }
+  subscription: {
+    hasAccess: boolean
+    status: string | null
+  }
   teams: BackofficeClientTeam[]
   teamsPagination: BackofficePagination
 }
