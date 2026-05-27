@@ -387,7 +387,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         throw new Error("E-mail é obrigatório para pagamento por fora")
       }
       const normalizedCpfCnpj = (normalized.cpfCnpj ?? "").replace(/\D/g, "")
-      if (!normalizedCpfCnpj || !/^\d{11}$|^\d{14}$/.test(normalizedCpfCnpj)) {
+      if (normalizedCpfCnpj && !/^\d{11}$|^\d{14}$/.test(normalizedCpfCnpj)) {
         throw new Error("CPF/CNPJ inválido para pagamento por fora")
       }
       const paidAt = new Date()
@@ -396,14 +396,14 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           adhesionId: adhesion.id,
           fullName: normalized.fullName,
           email: externalEmail,
-          cpfCnpj: normalizedCpfCnpj,
+          cpfCnpj: normalizedCpfCnpj || null,
           phone: normalized.phone,
         })
         const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
           fullName: normalized.fullName,
           phone: normalized.phone,
           email: externalEmail,
-          cpfCnpj: normalizedCpfCnpj,
+          cpfCnpj: normalizedCpfCnpj || null,
           paidAt,
           asaasCustomerId,
         })
@@ -554,7 +554,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         throw new Error("E-mail é obrigatório para pagamento por fora")
       }
       const normalizedCpfCnpj = (next.cpfCnpj ?? "").replace(/\D/g, "")
-      if (!normalizedCpfCnpj || !/^\d{11}$|^\d{14}$/.test(normalizedCpfCnpj)) {
+      if (normalizedCpfCnpj && !/^\d{11}$|^\d{14}$/.test(normalizedCpfCnpj)) {
         throw new Error("CPF/CNPJ inválido para pagamento por fora")
       }
       const existingProfileId = await this.repo.findProfileIdByEmail(next.email)
@@ -567,14 +567,14 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         adhesionId: persisted.id,
         fullName: next.fullName,
         email: next.email,
-        cpfCnpj: normalizedCpfCnpj,
+        cpfCnpj: normalizedCpfCnpj || null,
         phone: next.phone,
       })
       const paidAdhesion = await this.repo.markExternalPaid(persisted.id, {
         fullName: next.fullName,
         phone: next.phone,
         email: next.email,
-        cpfCnpj: normalizedCpfCnpj,
+        cpfCnpj: normalizedCpfCnpj || null,
         paidAt,
         asaasCustomerId,
       })
@@ -1029,7 +1029,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     adhesionId: string
     fullName: string
     email: string
-    cpfCnpj: string
+    cpfCnpj?: string | null
     phone: string
   }): Promise<string> {
     const customer = await asaasFetch(asaasApi.customers, {
@@ -1037,7 +1037,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       body: JSON.stringify({
         name: input.fullName,
         email: input.email,
-        cpfCnpj: input.cpfCnpj,
+        ...(input.cpfCnpj ? { cpfCnpj: input.cpfCnpj } : {}),
         mobilePhone: input.phone,
         externalReference: `backoffice-adhesion-${input.adhesionId}`,
         observations: "Cliente criado via adesão com pagamento externo (sem fatura Asaas).",

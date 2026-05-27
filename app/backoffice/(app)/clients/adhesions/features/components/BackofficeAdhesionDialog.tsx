@@ -257,7 +257,6 @@ export function BackofficeAdhesionDialog({
     (mode === "edit" || Boolean(values.leadId)) &&
     hasValidOptionalCpfCnpj &&
     (!(isExternalPaid || isExternalBilling) || isValidEmail(values.email.trim())) &&
-    (!(isExternalPaid || isExternalBilling) || /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)) &&
     (isExternalBilling || values.billingType === "PIX" || values.billingType === "CREDIT_CARD") &&
     !isSubmitting
 
