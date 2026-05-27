@@ -139,14 +139,14 @@ export class BackofficeUserUseCase {
   async listUsers(): Promise<Output> {
     try {
       const users = await this.userRepo.findMany()
-      const mapped = users.map((u) => ({
+      const mapped = users.map(({ googleConnection, linkedCorretorStudioProfile, ...u }) => ({
         ...u,
         googleCalendarConnected:
-          isGoogleConnectionActive(u.googleConnection) ||
-          isGoogleConnectionActive(u.linkedCorretorStudioProfile?.googleConnection ?? null),
+          isGoogleConnectionActive(googleConnection) ||
+          isGoogleConnectionActive(linkedCorretorStudioProfile?.googleConnection ?? null),
         googleEmail:
-          u.googleConnection?.googleEmail ??
-          u.linkedCorretorStudioProfile?.googleConnection?.googleEmail ??
+          googleConnection?.googleEmail ??
+          linkedCorretorStudioProfile?.googleConnection?.googleEmail ??
           null,
       }))
       return new Output(true, [], [], mapped)
