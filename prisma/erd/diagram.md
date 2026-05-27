@@ -74,6 +74,7 @@ canceled canceled
             monthly monthly
 quarterly quarterly
 semiannual semiannual
+annual annual
         }
     
 
@@ -1004,6 +1005,7 @@ unsubscribed unsubscribed
     Decimal priceMonthly "❓"
     Decimal priceQuarterly "❓"
     Decimal priceSemiannual "❓"
+    Decimal priceAnnual "❓"
     Decimal priceLifetime "❓"
     Boolean isActive 
     DateTime createdAt 

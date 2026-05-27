@@ -129,10 +129,7 @@ export function LeadForm({
     canMarkNoShow,
     onMarkNoShow,
     usersToAssign,
-    closersToAssign,
     sdrsToAssign,
-    closersLoading,
-    closersError,
     sdrsLoading,
     sdrsError,
     leadId,
@@ -177,31 +174,6 @@ export function LeadForm({
     };
 
     const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-
-    const handleGuestDraftChange = (
-        value: string,
-        currentEmails: string[],
-        onChange: (value: string) => void
-    ) => {
-        if (!value) {
-            setExtraGuestsDraft("");
-            return;
-        }
-        const parts = value.split(/[,;\s]+/);
-        if (parts.length === 1) {
-            setExtraGuestsDraft(value);
-            return;
-        }
-        const last = value.match(/[,\s;]$/) ? "" : parts.pop() || "";
-        const normalized = parts
-            .map((item) => item.trim().toLowerCase())
-            .filter(Boolean)
-            .filter(isValidEmail);
-        if (normalized.length > 0) {
-            onChange(buildEmailValue([...currentEmails, ...normalized]));
-        }
-        setExtraGuestsDraft(last);
-    };
 
     const watchedValues = form.watch();
     const healthPlanNames = React.useMemo(() => {
