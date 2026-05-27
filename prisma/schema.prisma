@@ -101,6 +101,7 @@ enum BackofficeAdhesionBillingCycle {
 enum BackofficeLeadOrigin {
   manual
   webhook_meta
+  landing_page
 
   @@map("backoffice_lead_origin")
 }

@@ -149,7 +149,6 @@
       "app/api/services/leadSchedule/LeadScheduleService.ts",
       "app/api/services/PaymentValidation/PaymentValidationService.ts",
       "app/api/services/support/SupportRequestService.ts",
-      "app/api/demo/route.ts",
       "app/api/email/route.ts",
       "app/api/email/send/route.ts",
       "app/api/v1/backoffice/clients/[id]/route.ts",
