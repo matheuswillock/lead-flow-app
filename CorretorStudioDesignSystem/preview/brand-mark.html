@@ -1,0 +1,24 @@
+<!-- @dsCard group="Brand" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 28px 32px; background: var(--background); font-family: var(--font-body); }
+.row { display: flex; align-items: center; gap: 32px; }
+.tile { width: 140px; height: 140px; border-radius: 21px; flex-shrink: 0; box-shadow: 0 24px 48px -24px color-mix(in oklab, #cd6cdd 60%, transparent), 0 8px 16px -8px color-mix(in oklab, var(--primary) 40%, transparent); }
+.meta { display: flex; flex-direction: column; gap: 6px; }
+.brand { font-family: var(--font-display); font-size: 32px; font-weight: 700; letter-spacing: -0.02em; color: var(--foreground); }
+.tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted-foreground); letter-spacing: 0.04em; text-transform: uppercase; }
+.dot { width: 8px; height: 8px; border-radius: 999px; background: var(--primary); }
+.tag-line { font-size: 14px; color: var(--muted-foreground); max-width: 360px; line-height: 1.5; }
+</style></head>
+<body>
+<div class="row">
+  <img class="tile" src="../assets/corretor-studio-icon.svg" alt="Corretor Studio">
+  <div class="meta">
+    <span class="tag"><span class="dot"></span>Supercombo v3</span>
+    <div class="brand">Corretor Studio</div>
+    <div class="tag-line">CRM e marketing para corretores de planos de saúde. Pipeline, agenda e indicadores para vender mais.</div>
+  </div>
+</div>
+</body></html>

@@ -102,8 +102,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 404 });
     }
 
-    if (email) {
-      const existingConnection = await googleOAuthConnectionRepository.findByGoogleEmail(email);
+    // Resolve o email final antes do conflict check para cobrir tanto o caso em
+    // que email é fornecido explicitamente quanto o fallback para currentProfile.email.
+    const currentConnection = currentProfile.googleConnectionId
+      ? await googleOAuthConnectionRepository.findById(currentProfile.googleConnectionId)
+      : null;
+    const previousGoogleEmail = currentConnection?.googleEmail ?? null;
+    const normalizedNextGoogleEmail = email ?? currentProfile.email;
+
+    // Conflict check: rejeitar se o email final já está vinculado a OUTRO perfil.
+    // Rodar mesmo quando email não foi enviado no body, pois currentProfile.email
+    // pode já estar em google_oauth_connections com outro ownerProfileId.
+    if (normalizedNextGoogleEmail) {
+      const existingConnection =
+        await googleOAuthConnectionRepository.findByGoogleEmail(normalizedNextGoogleEmail);
       if (
         existingConnection?.ownerProfileId &&
         existingConnection.ownerProfileId !== currentProfile.id
@@ -112,7 +124,8 @@ export async function POST(request: NextRequest) {
           status: "error",
           step: "google_email_conflict",
           supabaseId,
-          email,
+          email: normalizedNextGoogleEmail,
+          emailWasExplicit: Boolean(email),
           conflictingProfileId: existingConnection.ownerProfileId,
         });
         const output = new Output(
@@ -124,12 +137,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(output, { status: 409 });
       }
     }
-
-    const currentConnection = currentProfile.googleConnectionId
-      ? await googleOAuthConnectionRepository.findById(currentProfile.googleConnectionId)
-      : null;
-    const previousGoogleEmail = currentConnection?.googleEmail ?? null;
-    const normalizedNextGoogleEmail = email ?? currentProfile.email;
     const shouldNotifyGoogleConnected =
       !currentProfile.googleConnectionId ||
       (previousGoogleEmail ?? null) !== (normalizedNextGoogleEmail ?? null);
@@ -138,7 +145,7 @@ export async function POST(request: NextRequest) {
       accessToken,
       refreshToken: refreshToken ?? null,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
-      email: email ?? null,
+      email: normalizedNextGoogleEmail,
       connected: Boolean(refreshToken || accessToken),
     });
 

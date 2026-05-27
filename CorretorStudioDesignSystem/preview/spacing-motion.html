@@ -1,0 +1,27 @@
+<!-- @dsCard group="Spacing" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 24px 28px; background: var(--background); color: var(--foreground); font-family: var(--font-body); }
+.title { font-size: 11px; font-weight: 600; color: var(--muted-foreground); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+tr { border-bottom: 1px dashed var(--border); }
+tr:last-child { border-bottom: none; }
+td { padding: 7px 0; vertical-align: middle; }
+td.k { font-family: var(--font-mono); font-size: 11.5px; color: var(--foreground); font-weight: 600; width: 220px; }
+td.v { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted-foreground); width: 90px; }
+td.u { color: var(--muted-foreground); font-size: 12px; line-height: 1.45; }
+.cubic { display: inline-block; width: 30px; height: 14px; border-radius: 3px; background: linear-gradient(90deg, var(--primary) 0%, var(--primary) 100%); vertical-align: middle; margin-right: 8px; }
+</style></head>
+<body>
+<div class="title">Motion · durations + easings</div>
+<table>
+  <tr><td class="k">--motion-duration-fast</td><td class="v">150ms</td><td class="u">hover, active, focus rings</td></tr>
+  <tr><td class="k">--motion-duration-base</td><td class="v">220ms</td><td class="u">state changes, drawers open/close</td></tr>
+  <tr><td class="k">--motion-duration-slow</td><td class="v">320ms</td><td class="u">section reveal, page transition</td></tr>
+  <tr><td class="k">--motion-ease-standard</td><td class="v">cubic-bezier(0.2, 0, 0, 1)</td><td class="u">all state transitions — symmetric</td></tr>
+  <tr><td class="k">--motion-ease-entrance</td><td class="v">cubic-bezier(0.16, 1, 0.3, 1)</td><td class="u">reveal/enter — deceleration curve</td></tr>
+  <tr><td class="k">stagger</td><td class="v">80ms</td><td class="u">grid children whileInView, once: true</td></tr>
+</table>
+</body></html>

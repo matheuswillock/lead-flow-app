@@ -929,6 +929,58 @@
               }
             },
             {
+              "name": "3.1. Buscar Detalhes Agregados do Lead (lead + anexos + membros)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test('Status code é 200', function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test('Detalhes agregados retornados', function () {",
+                      "    const response = pm.response.json();",
+                      "    pm.expect(response.isValid).to.be.true;",
+                      "    pm.expect(response.result).to.have.property('lead');",
+                      "    pm.expect(response.result).to.have.property('attachments');",
+                      "    pm.expect(response.result).to.have.property('teamMembers');",
+                      "    pm.expect(response.result.lead).to.have.property('id');",
+                      "    pm.expect(response.result.attachments).to.be.an('array');",
+                      "    pm.expect(response.result.teamMembers).to.be.an('array');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/details",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "leads",
+                    "{{leadId}}",
+                    "details"
+                  ]
+                }
+              }
+            },
+            {
               "name": "4. Atualizar Lead",
               "event": [
                 {

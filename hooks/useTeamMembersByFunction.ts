@@ -13,6 +13,9 @@ type TeamMembersCacheEntry = {
 const MEMBERS_CACHE_TTL_MS = 60 * 1000;
 const EMPTY_MEMBERS_CACHE_TTL_MS = 10 * 1000;
 
+// Cache and in-flight maps are keyed by team only (not by function) so that
+// CLOSER and SDR consumers share the same HTTP request to /teams/{id}/members
+// and only filter the result locally.
 const membersInFlightByKey = new Map<string, Promise<UserAssociated[]>>();
 const membersCacheByKey = new Map<string, TeamMembersCacheEntry>();
 
@@ -25,6 +28,9 @@ const mapMemberToUserAssociated = (member: any): UserAssociated => ({
   functions: member.functions ?? [],
   googleCalendarConnected: member.googleCalendarConnected ?? false,
 });
+
+const filterByFunction = (members: UserAssociated[], fn: TeamFunction) =>
+  members.filter((m) => Array.isArray(m.functions) && m.functions.includes(fn));
 
 function useTeamMembersByFunction(
   supabaseId?: string,
@@ -47,7 +53,7 @@ function useTeamMembersByFunction(
         return;
       }
 
-      const requestKey = `${supabaseId}:${teamId}:${functionName}`;
+      const requestKey = `${supabaseId}:${teamId}`;
       latestRequestKeyRef.current = requestKey;
 
       if (!options?.force) {
@@ -60,7 +66,7 @@ function useTeamMembersByFunction(
               : MEMBERS_CACHE_TTL_MS;
 
           if (cacheAgeMs <= ttlMs) {
-            setMembers(cachedEntry.members);
+            setMembers(filterByFunction(cachedEntry.members, functionName));
             setError(null);
             lastAppliedKeyRef.current = requestKey;
             return;
@@ -78,7 +84,7 @@ function useTeamMembersByFunction(
         existingRequest ??
         (async (): Promise<UserAssociated[]> => {
           const response = await fetch(
-            `/api/v1/teams/${teamId}/members?function=${functionName}`,
+            `/api/v1/teams/${teamId}/members`,
             {
               method: "GET",
               cache: "no-store",
@@ -96,14 +102,14 @@ function useTeamMembersByFunction(
             throw new Error(errorMessage);
           }
 
-          const loadedMembers = ((result?.result?.members ?? []) as any[]).map(
+          const allMembers = ((result?.result?.members ?? []) as any[]).map(
             mapMemberToUserAssociated
           );
           membersCacheByKey.set(requestKey, {
-            members: loadedMembers,
+            members: allMembers,
             timestamp: Date.now(),
           });
-          return loadedMembers;
+          return allMembers;
         })();
 
       if (!existingRequest) {
@@ -118,11 +124,11 @@ function useTeamMembersByFunction(
       setLoading(true);
       setError(null);
       try {
-        const loadedMembers = await requestPromise;
+        const allMembers = await requestPromise;
         if (latestRequestKeyRef.current !== requestKey) {
           return;
         }
-        setMembers(loadedMembers);
+        setMembers(filterByFunction(allMembers, functionName));
         setError(null);
         lastAppliedKeyRef.current = requestKey;
       } catch (loadError) {

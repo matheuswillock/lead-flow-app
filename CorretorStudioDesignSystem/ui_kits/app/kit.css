@@ -1,0 +1,320 @@
+/* ui_kits/app/kit.css — recreating the Corretor Studio app surface
+ * Loaded after colors_and_type.css so it inherits all tokens.
+ */
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-display);
+}
+
+/* ---------- Buttons ---------- */
+.cs-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px; cursor: pointer; border: 0;
+  font-family: var(--font-body); font-weight: 600; letter-spacing: -0.005em;
+  white-space: nowrap;
+  transition: transform 150ms cubic-bezier(0.2,0,0,1), box-shadow 150ms cubic-bezier(0.2,0,0,1), background 150ms;
+}
+.cs-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 35%, transparent);
+}
+.cs-btn--sm { padding: 7px 12px; font-size: 12.5px; border-radius: 10px; }
+.cs-btn--md { padding: 9px 16px; font-size: 13.5px; border-radius: 12px; }
+.cs-btn--lg { padding: 13px 22px; font-size: 15px; border-radius: 16px; }
+
+.cs-btn--primary {
+  background: var(--primary); color: var(--primary-foreground);
+  box-shadow: 0 12px 28px -8px color-mix(in oklab, var(--primary) 60%, transparent);
+}
+.cs-btn--primary:hover { transform: translateY(-1px); box-shadow: 0 16px 32px -8px color-mix(in oklab, var(--primary) 70%, transparent); }
+
+.cs-btn--secondary {
+  background: color-mix(in oklab, var(--card) 70%, transparent);
+  color: var(--foreground); border: 1px solid var(--border);
+}
+.cs-btn--secondary:hover { background: var(--muted); }
+
+.cs-btn--ghost { background: transparent; color: var(--muted-foreground); }
+.cs-btn--ghost:hover { background: var(--accent); color: var(--foreground); }
+
+.cs-btn--icon {
+  padding: 0; width: 36px; height: 36px; border-radius: 10px;
+  background: var(--card); color: var(--foreground); border: 1px solid var(--border);
+}
+.cs-btn--icon:hover { background: var(--muted); }
+
+.cs-btn--pill {
+  border-radius: 999px; padding: 6px 14px; font-size: 12px;
+  background: color-mix(in oklab, var(--primary) 8%, var(--card));
+  color: var(--foreground);
+  border: 1px solid color-mix(in oklab, var(--primary) 30%, var(--border));
+}
+.cs-btn--pill .cs-pill__dot { width: 7px; height: 7px; border-radius: 999px; background: var(--primary); animation: cs-pulse 1.5s ease-in-out infinite; }
+@keyframes cs-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+/* ---------- Badge ---------- */
+.cs-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 6px;
+  font-family: var(--font-body); font-size: 11px; font-weight: 600;
+  border: 1px solid; line-height: 1.4;
+}
+.cs-badge__dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.cs-badge--success { background: var(--semantic-success-surface); color: var(--semantic-success); border-color: var(--semantic-success-border); }
+.cs-badge--warning { background: var(--semantic-warning-surface); color: var(--semantic-warning); border-color: var(--semantic-warning-border); }
+.cs-badge--danger  { background: var(--semantic-danger-surface);  color: var(--semantic-danger);  border-color: var(--semantic-danger-border); }
+.cs-badge--info    { background: var(--semantic-info-surface);    color: var(--semantic-info);    border-color: var(--semantic-info-border); }
+.cs-badge--new     { background: var(--semantic-new-surface);     color: var(--semantic-new);     border-color: var(--semantic-new-border); }
+.cs-badge--neutral { background: var(--muted); color: var(--muted-foreground); border-color: var(--border); }
+.cs-badge--primary { background: color-mix(in oklab, var(--primary) 12%, var(--card)); color: var(--primary); border-color: color-mix(in oklab, var(--primary) 30%, var(--border)); }
+.cs-badge--solid.cs-badge--success { background: var(--semantic-success); color: var(--semantic-success-foreground); border-color: transparent; }
+.cs-badge--solid.cs-badge--primary { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+
+/* ---------- Card ---------- */
+.cs-card {
+  background: var(--card); color: var(--card-foreground);
+  border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(15, 15, 30, 0.04);
+}
+.cs-card--app { /* default */ }
+.cs-card--feature {
+  background: color-mix(in oklab, var(--card) 85%, transparent);
+  border-radius: 18px;
+  box-shadow: 0 20px 40px -20px color-mix(in oklab, var(--primary) 22%, transparent);
+  backdrop-filter: blur(8px);
+  transition: transform 220ms var(--motion-ease-standard), box-shadow 220ms var(--motion-ease-standard), border-color 220ms var(--motion-ease-standard);
+}
+.cs-card--feature:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 28px 56px -24px color-mix(in oklab, var(--primary) 28%, transparent);
+  border-color: color-mix(in oklab, var(--primary) 30%, var(--border));
+}
+.cs-card--featured {
+  background: var(--card);
+  border-color: var(--precision-border-strong);
+  border-radius: 18px;
+  box-shadow: var(--precision-shadow-2);
+  position: relative;
+}
+
+/* ---------- Avatar ---------- */
+.cs-avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; color: white; font-weight: 700;
+  font-family: var(--font-display); flex-shrink: 0;
+  letter-spacing: 0;
+}
+
+/* ---------- Form ---------- */
+.cs-field { display: flex; flex-direction: column; gap: 6px; }
+.cs-field label { font-size: 13px; font-weight: 600; color: var(--foreground); font-family: var(--font-body); }
+.cs-input {
+  width: 100%; box-sizing: border-box;
+  background: transparent; border: 1px solid var(--border);
+  border-radius: 14px; padding: 11px 16px;
+  font-family: var(--font-body); font-size: 14px; color: var(--foreground);
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.cs-input::placeholder { color: var(--muted-foreground); }
+.cs-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 30%, transparent); }
+.cs-input.is-error { border-color: var(--semantic-danger); }
+.cs-help-err { font-size: 11.5px; color: var(--semantic-danger); }
+
+/* ---------- App Shell ---------- */
+.cs-app { display: grid; grid-template-columns: 252px 1fr; min-height: 100vh; }
+.cs-sidebar { background: var(--sidebar, oklch(0.985 0 0)); border-right: 1px solid var(--border); padding: 16px 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.cs-sidebar__brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 4px; }
+.cs-sidebar__ws {
+  margin: 12px 4px 14px;
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-family: var(--font-body); font-size: 12.5px; color: var(--foreground);
+  cursor: pointer;
+}
+.cs-sidebar__ws-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cs-sidebar__ws-meta .cs-avatar { width: 20px; height: 20px; font-size: 9px; }
+.cs-group-label {
+  padding: 10px 12px 6px; font-family: var(--font-body); font-size: 10.5px;
+  font-weight: 600; color: var(--muted-foreground); letter-spacing: 0.04em;
+  text-transform: uppercase; display: flex; justify-content: space-between; align-items: center;
+}
+.cs-nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border-radius: 8px;
+  font-family: var(--font-body); font-size: 13.5px; font-weight: 500;
+  color: var(--foreground); cursor: pointer; margin: 1px 4px;
+  text-decoration: none; position: relative;
+}
+.cs-nav-item:hover { background: var(--accent); }
+.cs-nav-item.is-active { background: color-mix(in oklab, var(--primary) 8%, transparent); color: var(--foreground); }
+.cs-nav-item.is-active::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 999px; background: var(--primary); }
+.cs-nav-item__icon { color: var(--muted-foreground); flex-shrink: 0; }
+.cs-nav-item.is-active .cs-nav-item__icon { color: var(--primary); }
+.cs-nav-item__pill { margin-left: auto; font-size: 10px; background: color-mix(in oklab, var(--primary) 12%, transparent); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-weight: 700; }
+
+.cs-main { display: flex; flex-direction: column; min-width: 0; }
+.cs-topbar {
+  height: 56px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 20px; background: var(--background);
+  position: sticky; top: 0; z-index: 5;
+}
+.cs-topbar__title { font-family: var(--font-display); font-size: 16px; font-weight: 600; }
+.cs-topbar__search { flex: 1; max-width: 380px; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--muted-foreground); font-size: 13px; font-family: var(--font-body); }
+.cs-topbar__search input { border: 0; outline: 0; background: transparent; flex: 1; font-size: 13px; color: var(--foreground); font-family: var(--font-body); }
+.cs-topbar__spacer { flex: 1; }
+.cs-topbar__crumb { color: var(--muted-foreground); font-size: 12.5px; font-family: var(--font-body); }
+.cs-topbar__crumb b { color: var(--foreground); font-weight: 600; }
+
+/* ---------- Kanban ---------- */
+.cs-board { display: flex; flex-direction: column; min-height: 0; padding: 18px 20px; gap: 14px; flex: 1; }
+.cs-board__head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.cs-board__head-l { display: flex; align-items: center; gap: 12px; }
+.cs-board__title { font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+.cs-board__sub { color: var(--muted-foreground); font-family: var(--font-body); font-size: 13px; }
+.cs-board__filters { display: flex; align-items: center; gap: 8px; }
+.cs-columns { display: grid; grid-auto-columns: 280px; grid-auto-flow: column; gap: 14px; overflow-x: auto; padding-bottom: 4px; flex: 1; align-items: stretch; }
+.cs-col { display: flex; flex-direction: column; min-height: 0; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 10px; box-shadow: 0 1px 2px rgba(15,15,30,0.04); }
+.cs-col__head { background: var(--primary); color: var(--primary-foreground); border-radius: 8px; padding: 9px 12px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+.cs-col__head h2 { font-family: var(--font-display); font-size: 13.5px; font-weight: 600; margin: 0; letter-spacing: -0.005em; }
+.cs-col__count { background: rgba(255,255,255,0.22); color: white; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; font-family: var(--font-body); }
+.cs-col__body { display: flex; flex-direction: column; gap: 8px; min-height: 240px; }
+
+.cs-lead {
+  background: var(--accent); border: 1px solid var(--border); border-radius: 12px;
+  padding: 10px 12px; cursor: pointer; transition: box-shadow 150ms, transform 150ms, border-color 150ms;
+  font-family: var(--font-body);
+}
+.cs-lead:hover { box-shadow: 0 8px 18px -8px rgba(15,15,30,0.14); transform: translateY(-1px); }
+.cs-lead__name { font-size: 13.5px; font-weight: 600; color: var(--foreground); line-height: 1.3; }
+.cs-lead__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: var(--muted-foreground); }
+.cs-id-pill { font-family: var(--mono, ui-monospace, monospace); background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 10px; }
+.cs-lead__footer { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid color-mix(in oklab, var(--border) 60%, transparent); }
+.cs-lead__attach { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted-foreground); }
+.cs-lead.is-overdue { border-color: color-mix(in oklab, var(--semantic-danger) 50%, transparent); box-shadow: 0 0 0 1px color-mix(in oklab, var(--semantic-danger) 30%, transparent); }
+
+/* ---------- Dashboard ---------- */
+.cs-dash { padding: 22px 24px; display: flex; flex-direction: column; gap: 22px; max-width: 1280px; }
+.cs-dash__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+.cs-dash__head h1 { font-family: var(--font-display); font-size: 26px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+.cs-dash__head p { font-family: var(--font-body); font-size: 13.5px; color: var(--muted-foreground); margin: 4px 0 0; }
+.cs-metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.cs-metric {
+  padding: 16px 18px; border-radius: 14px; background: var(--card); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.cs-metric--success { background: linear-gradient(135deg, color-mix(in oklab, var(--semantic-success) 10%, var(--card)) 0%, var(--card) 60%); border-color: color-mix(in oklab, var(--semantic-success) 30%, var(--border)); }
+.cs-metric--warning { background: linear-gradient(135deg, color-mix(in oklab, var(--semantic-warning) 10%, var(--card)) 0%, var(--card) 60%); border-color: color-mix(in oklab, var(--semantic-warning) 30%, var(--border)); }
+.cs-metric--info    { background: linear-gradient(135deg, color-mix(in oklab, var(--semantic-info) 8%, var(--card)) 0%, var(--card) 60%); border-color: color-mix(in oklab, var(--semantic-info) 22%, var(--border)); }
+.cs-metric--new     { background: linear-gradient(135deg, color-mix(in oklab, var(--semantic-new) 8%, var(--card)) 0%, var(--card) 60%); border-color: color-mix(in oklab, var(--semantic-new) 22%, var(--border)); }
+.cs-metric__label { font-family: var(--font-body); font-size: 11.5px; font-weight: 600; color: var(--muted-foreground); letter-spacing: 0.04em; text-transform: uppercase; display: flex; align-items: center; justify-content: space-between; }
+.cs-metric__value { font-family: var(--font-display); font-size: 28px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.cs-metric__delta { font-family: var(--font-body); font-size: 12px; color: var(--muted-foreground); display: flex; align-items: center; gap: 4px; }
+.cs-metric--success .cs-metric__delta { color: var(--semantic-success); }
+.cs-metric--warning .cs-metric__delta { color: var(--semantic-warning); }
+.cs-metric--info .cs-metric__delta    { color: var(--semantic-info); }
+.cs-metric--new .cs-metric__delta     { color: var(--semantic-new); }
+
+.cs-chart-card { padding: 20px 22px; border-radius: 16px; background: var(--card); border: 1px solid var(--border); }
+.cs-chart-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.cs-chart-card__title { font-family: var(--font-display); font-size: 17px; font-weight: 600; margin: 0; }
+.cs-chart-card__sub { font-family: var(--font-body); font-size: 12.5px; color: var(--muted-foreground); margin: 2px 0 0; }
+.cs-chart-tabs { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.cs-chart-tabs button { border: 0; background: transparent; padding: 5px 11px; border-radius: 7px; font-family: var(--font-body); font-size: 12px; font-weight: 600; color: var(--muted-foreground); cursor: pointer; }
+.cs-chart-tabs button.is-active { background: var(--muted); color: var(--foreground); }
+
+.cs-meet-list { display: flex; flex-direction: column; gap: 8px; }
+.cs-meet { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.cs-meet__date { width: 52px; text-align: center; padding: 4px 0; border-radius: 8px; background: var(--muted); }
+.cs-meet__date .day { font-family: var(--font-display); font-size: 18px; font-weight: 700; line-height: 1; }
+.cs-meet__date .mon { font-family: var(--font-body); font-size: 10px; color: var(--muted-foreground); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+.cs-meet__body { min-width: 0; }
+.cs-meet__title { font-family: var(--font-display); font-weight: 600; font-size: 14px; }
+.cs-meet__sub { font-family: var(--font-body); font-size: 12.5px; color: var(--muted-foreground); display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+
+/* ---------- Landing ---------- */
+.cs-landing { font-family: var(--font-body); color: var(--foreground); min-height: 100vh; }
+.cs-lp-header { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--border); background: color-mix(in oklab, var(--background) 80%, transparent); backdrop-filter: blur(12px); }
+.cs-lp-header__inner { max-width: 1200px; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; gap: 24px; }
+.cs-lp-nav { display: flex; gap: 28px; font-size: 13px; color: var(--muted-foreground); margin: 0 auto; }
+.cs-lp-nav a { color: inherit; text-decoration: none; }
+.cs-lp-nav a:hover { color: var(--foreground); }
+
+.cs-lp-hero { position: relative; overflow: hidden; }
+.cs-lp-hero__bg-dots { position: absolute; inset: 0; background-image: radial-gradient(circle, color-mix(in oklab, var(--border) 80%, transparent) 1px, transparent 1px); background-size: 28px 28px; opacity: 0.4; pointer-events: none; }
+.cs-lp-hero__bg-orbs {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(55% 45% at 15% 0%, color-mix(in oklab, var(--primary) 20%, transparent) 0%, transparent 60%),
+    radial-gradient(35% 30% at 96% 5%, color-mix(in oklab, var(--brand-rose) 16%, transparent) 0%, transparent 60%),
+    radial-gradient(30% 24% at 82% 22%, color-mix(in oklab, var(--brand-pink) 14%, transparent) 0%, transparent 65%);
+}
+.cs-lp-hero__fade { position: absolute; left: 0; right: 0; bottom: 0; height: 120px; background: linear-gradient(to bottom, transparent, var(--background)); pointer-events: none; }
+.cs-lp-hero__inner { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 64px 24px 96px; display: grid; grid-template-columns: 1.2fr 1fr; gap: 56px; align-items: center; }
+.cs-lp-hero h1 { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; margin: 0; }
+.cs-lp-hero h1 .pre { display: block; font-size: 18px; font-weight: 600; color: var(--muted-foreground); margin-bottom: 8px; letter-spacing: -0.01em; }
+.cs-lp-hero h1 .main { display: block; font-size: 44px; line-height: 1.05; }
+.cs-lp-hero p.sub { font-size: 17px; color: var(--muted-foreground); line-height: 1.55; margin: 20px 0 28px; max-width: 540px; }
+.cs-lp-hero p.sub b { color: var(--foreground); font-weight: 600; }
+
+.cs-lp-bento { max-width: 1200px; margin: 0 auto; padding: 60px 24px; }
+.cs-lp-bento__head { text-align: center; margin-bottom: 40px; }
+.cs-lp-bento__head h2 { font-family: var(--font-display); font-size: 36px; font-weight: 700; letter-spacing: -0.024em; margin: 0; }
+.cs-lp-bento__head p { font-size: 15px; color: var(--muted-foreground); margin: 12px 0 0; }
+.cs-lp-bento__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.cs-feat { padding: 20px 24px; }
+.cs-feat--lg { grid-column: span 2; padding: 28px 30px; }
+.cs-feat__icon { width: 44px; height: 44px; border-radius: 12px; background: color-mix(in oklab, var(--primary) 15%, transparent); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px; transition: transform 220ms; }
+.cs-feat--lg .cs-feat__icon { width: 56px; height: 56px; border-radius: 14px; margin-bottom: 18px; }
+.cs-feat:hover .cs-feat__icon { transform: scale(1.08); }
+.cs-feat__title { font-family: var(--font-display); font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+.cs-feat--lg .cs-feat__title { font-size: 22px; margin-bottom: 8px; }
+.cs-feat__desc { font-size: 13px; color: var(--muted-foreground); margin: 0; line-height: 1.5; }
+.cs-feat--lg .cs-feat__desc { font-size: 14.5px; margin-bottom: 16px; }
+.cs-feat__bullets { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.cs-feat__bullets li { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: var(--muted-foreground); }
+.cs-feat__bullets svg { color: var(--primary); flex-shrink: 0; margin-top: 2px; }
+.cs-feat__embreve { position: absolute; top: 14px; right: 14px; background: var(--primary); color: var(--primary-foreground); font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 999px; letter-spacing: 0.03em; }
+.cs-feat { position: relative; }
+
+.cs-lp-demo { position: relative; padding: 60px 24px 100px; overflow: hidden; }
+.cs-lp-demo__bg { position: absolute; inset: 0; background: radial-gradient(45% 45% at 50% 50%, color-mix(in oklab, var(--primary) 14%, transparent) 0%, transparent 60%); pointer-events: none; }
+.cs-lp-demo__inner { position: relative; max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: start; }
+.cs-lp-demo__head h2 { font-family: var(--font-display); font-size: 36px; font-weight: 700; letter-spacing: -0.024em; margin: 0 0 32px; }
+.cs-lp-demo__head h2 b { color: var(--primary); font-weight: 700; }
+.cs-lp-demo__bens { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 14px; }
+.cs-lp-demo__bens li { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500; color: var(--foreground); }
+.cs-lp-demo__bens .ico { width: 36px; height: 36px; border-radius: 10px; background: color-mix(in oklab, var(--primary) 12%, transparent); color: var(--primary); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.cs-lp-demo__form { padding: 32px; border-radius: 24px; }
+.cs-lp-demo__form form { display: flex; flex-direction: column; gap: 18px; }
+.cs-lp-demo__trust { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 14px; font-size: 11.5px; color: var(--muted-foreground); }
+.cs-lp-demo__trust svg { color: var(--primary); }
+
+.cs-hero-visual { position: relative; }
+.cs-hero-visual__frame { border-radius: 24px; overflow: hidden; box-shadow: 0 32px 64px -24px rgba(15,15,30,0.25); border: 1px solid var(--border); background: var(--card); padding: 18px; }
+.cs-hero-visual__frame--image { padding: 0; }
+.cs-hero-visual__float { position: absolute; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--border); background: color-mix(in oklab, var(--card) 85%, transparent); backdrop-filter: blur(12px); box-shadow: 0 20px 40px -20px color-mix(in oklab, var(--primary) 25%, transparent); display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; font-family: var(--font-body); }
+.cs-hero-visual__float svg { color: var(--primary); }
+.cs-hero-visual__float--tl { top: -14px; left: -14px; }
+.cs-hero-visual__float--br { bottom: -14px; right: -14px; }
+
+/* ---------- Mini chart ---------- */
+.cs-spark { width: 100%; height: 220px; display: block; }
+
+/* ---------- Misc ---------- */
+.cs-scroll { overflow: auto; }
+.cs-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.cs-scroll::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--border) 90%, transparent); border-radius: 999px; }
+
+.cs-hero-cta { display: flex; gap: 12px; }
+.cs-hero-pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 500; border: 1px solid color-mix(in oklab, var(--primary) 30%, var(--border)); background: color-mix(in oklab, var(--primary) 8%, var(--card)); color: var(--foreground); margin-bottom: 24px; font-family: var(--font-body); }
+.cs-hero-pill .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--primary); animation: cs-pulse 1.5s ease-in-out infinite; }
+.cs-hero-pill b { color: var(--primary); font-weight: 600; }
+.cs-hero-pill em { font-style: normal; color: var(--muted-foreground); }

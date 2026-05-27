@@ -1,0 +1,34 @@
+<!-- @dsCard group="Spacing" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 22px 26px; background: var(--background); color: var(--foreground); font-family: var(--font-body); }
+.title { font-size: 11px; font-weight: 600; color: var(--muted-foreground); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 14px; }
+.row { display: flex; gap: 18px; align-items: flex-end; }
+.step { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.shape { background: var(--primary); width: 60px; }
+.label { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted-foreground); }
+.h-1 { height: 60px; border-radius: 4px; }
+.h-2 { height: 60px; border-radius: 6.4px; }
+.h-3 { height: 60px; border-radius: 8.4px; }
+.h-4 { height: 60px; border-radius: 10.4px; }
+.h-5 { height: 60px; border-radius: 14.4px; }
+.h-6 { height: 60px; border-radius: 16px; }
+.h-7 { height: 60px; border-radius: 999px; }
+.note { font-size: 11px; color: var(--muted-foreground); margin-top: 14px; line-height: 1.5; max-width: 600px; }
+.note b { color: var(--foreground); font-weight: 600; }
+</style></head>
+<body>
+<div class="title">Radius scale · base 0.65rem (10.4px)</div>
+<div class="row">
+  <div class="step"><div class="shape h-1"></div><span class="label">sm · 6.4</span></div>
+  <div class="step"><div class="shape h-2"></div><span class="label">md · 8.4</span></div>
+  <div class="step"><div class="shape h-3"></div><span class="label">lg · 10.4</span></div>
+  <div class="step"><div class="shape h-4"></div><span class="label">xl · 14.4</span></div>
+  <div class="step"><div class="shape h-6"></div><span class="label">2xl · 16</span></div>
+  <div class="step"><div class="shape h-5"></div><span class="label">3xl · 24</span></div>
+  <div class="step"><div class="shape h-7"></div><span class="label">full</span></div>
+</div>
+<div class="note"><b>Defaults:</b> inputs & badges <code>md</code> · cards & buttons <code>2xl</code> · hero visual frame <code>3xl</code> · avatars and status dots <code>full</code>.</div>
+</body></html>

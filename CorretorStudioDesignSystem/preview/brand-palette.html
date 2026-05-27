@@ -1,0 +1,32 @@
+<!-- @dsCard group="Brand" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 24px 28px; background: var(--background); font-family: var(--font-body); display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; align-items: stretch; }
+.swatch { border-radius: 16px; padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 6px; min-height: 120px; }
+.swatch-1 { background: linear-gradient(135deg, #ff6900 0%, #e57082 50%, #cd6cdd 100%); color: white; }
+.swatch-2 { background: var(--primary); color: var(--primary-foreground); }
+.swatch-3 { background: var(--card); border: 1px solid var(--border); color: var(--foreground); }
+.label { font-family: var(--font-display); font-size: 14px; font-weight: 600; letter-spacing: -0.005em; }
+.mono { font-family: var(--font-mono); font-size: 11px; opacity: 0.85; letter-spacing: 0.02em; }
+.use { font-size: 11px; opacity: 0.78; margin-top: auto; line-height: 1.4; }
+.swatch-3 .use { color: var(--muted-foreground); opacity: 1; }
+</style></head>
+<body>
+<div class="swatch swatch-1">
+  <div class="label">Signature gradient</div>
+  <div class="mono">#ff6900 → #e57082 → #cd6cdd</div>
+  <div class="use">Logo, hero headline accent words only.</div>
+</div>
+<div class="swatch swatch-2">
+  <div class="label">Primary</div>
+  <div class="mono">#ff6900 / #f54900 dark</div>
+  <div class="use">CTA, focus ring, active state. The brand.</div>
+</div>
+<div class="swatch swatch-3">
+  <div class="label">Neutrals</div>
+  <div class="mono">OKLch luminance ladder</div>
+  <div class="use">surface-0 → surface-4. Depth without shadow.</div>
+</div>
+</body></html>
