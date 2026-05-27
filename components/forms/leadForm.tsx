@@ -100,6 +100,7 @@ export interface ILeadFormProps {
     sdrsError?: string | null;
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     onUploadStateChange?: (isUploading: boolean) => void;
+    onAttachmentsLoadingChange?: (isLoading: boolean) => void;
     isEditMode?: boolean;
     currentProfileId?: string;
     currentUserIsSdr?: boolean;
@@ -134,6 +135,7 @@ export function LeadForm({
     sdrsError,
     leadId,
     onUploadStateChange,
+    onAttachmentsLoadingChange,
     isEditMode = false,
     currentProfileId,
     currentUserIsSdr = false,
@@ -907,7 +909,12 @@ export function LeadForm({
                     </p>
                 </div>
                 {leadId ? (
-                    <AttachmentList leadId={leadId} leadName={form.getValues("name")} onUploadStateChange={onUploadStateChange} />
+                    <AttachmentList
+                        leadId={leadId}
+                        leadName={form.getValues("name")}
+                        onUploadStateChange={onUploadStateChange}
+                        onLoadingChange={onAttachmentsLoadingChange}
+                    />
                 ) : (
                     <div className="flex items-center justify-center p-8 border border-dashed rounded-lg bg-muted/20">
                         <div className="text-center space-y-2">

@@ -245,6 +245,17 @@ export default function LeadDialog({
   const sharedActivityId = searchParams.get("activityId");
   const currentActivitiesLead = leadDetails?.id === currentLead?.id ? leadDetails : null;
   const isActivityLoading = leadDetailsLoading || (!!currentLead && leadDetails?.id !== currentLead.id);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  // Único gating de loading do conteúdo do dialog: só liberamos quando lead,
+  // attachments e team members (closers/SDRs/mentions) estão prontos. Para
+  // criação de lead (sem currentLead), só dependemos do user.
+  const isLeadContentLoading =
+    !!currentLead &&
+    (leadDetailsLoading ||
+      attachmentsLoading ||
+      closersLoading ||
+      sdrsLoading ||
+      teamMembersLoading);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -2257,11 +2268,13 @@ export default function LeadDialog({
               </DialogHeader>
 
               <div className="mt-6 flex-1 min-h-0">
-                {userLoading ? (
+                {userLoading || isLeadContentLoading ? (
                   <div className="flex items-center justify-center p-8">
                     <div className="text-center">
                       <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-2"></div>
-                      <p className="text-sm text-muted-foreground">Carregando dados do usuário...</p>
+                      <p className="text-sm text-muted-foreground">
+                        {userLoading ? "Carregando dados do usuário..." : "Carregando lead..."}
+                      </p>
                     </div>
                   </div>
                 ) : !user ? (
@@ -2285,6 +2298,7 @@ export default function LeadDialog({
                     sdrsError={sdrsError}
                       leadId={currentLead?.id}
                       onUploadStateChange={setIsAttachmentUploading}
+                      onAttachmentsLoadingChange={setAttachmentsLoading}
                       scheduleSummary={
                         currentLead
                           ? {
@@ -2340,7 +2354,7 @@ export default function LeadDialog({
                   <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
                     {leadDetailsError}
                   </div>
-                ) : isActivityLoading ? (
+                ) : isActivityLoading || isLeadContentLoading ? (
                   <div className="flex h-full w-full items-center justify-center">
                     <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
                   </div>

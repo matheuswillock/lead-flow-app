@@ -44,6 +44,7 @@ interface AttachmentListProps {
   leadName?: string;
   className?: string;
   onUploadStateChange?: (isUploading: boolean) => void;
+  onLoadingChange?: (isLoading: boolean) => void;
 }
 
 const ATTACHMENTS_CACHE_TTL_MS = 60 * 1000;
@@ -87,7 +88,7 @@ async function loadAttachmentsWithDedupe(leadId: string, force = false): Promise
   return await requestPromise;
 }
 
-export function AttachmentList({ leadId, leadName, className, onUploadStateChange }: AttachmentListProps) {
+export function AttachmentList({ leadId, leadName, className, onUploadStateChange, onLoadingChange }: AttachmentListProps) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -97,6 +98,10 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
     setIsUploading(value);
     onUploadStateChange?.(value);
   };
+
+  useEffect(() => {
+    onLoadingChange?.(isLoading);
+  }, [isLoading, onLoadingChange]);
 
   const fetchAttachments = useCallback(async (force = false) => {
     setIsLoading(true);
