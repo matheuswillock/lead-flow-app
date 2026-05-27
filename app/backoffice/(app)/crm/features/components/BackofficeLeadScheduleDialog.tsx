@@ -32,12 +32,16 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink"
+import { formatLocalDateValue } from "@/lib/dates"
 import type {
   BackofficeCrmUserOption,
   BackofficeLeadScheduleInput,
 } from "../context/BackofficeCrmTypes"
 
+const DEFAULT_MEETING_TITLE = "Demonstração Corretor Studio"
+
 export interface BackofficeLeadScheduleDialogLead {
+  id?: string | null
   name: string
   closerBackofficeUserId: string | null
   meetingDate: string | null
@@ -78,19 +82,64 @@ export function BackofficeLeadScheduleDialog({
   const [extraGuests, setExtraGuests] = useState<string[]>([])
   const [extraGuestsDraft, setExtraGuestsDraft] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [availableTimes, setAvailableTimes] = useState<string[]>([])
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setMeetingDate(parseInitialDate(lead?.meetingDate ?? null))
     setCloserId(lead?.closerBackofficeUserId ?? "")
-    setTitle(lead?.meetingTitle ?? (lead?.name ? `Agendamento - ${lead.name}` : ""))
+    setTitle(lead?.meetingTitle ?? DEFAULT_MEETING_TITLE)
     setNotes(lead?.meetingNotes ?? "")
     setLink(lead?.meetingLink ?? "")
     setExtraGuests(lead?.meetingExtraGuests ?? [])
     setExtraGuestsDraft("")
+    setAvailableTimes([])
   }, [lead, open])
 
   const selectedCloser = closerOptions.find((option) => option.id === closerId) ?? null
+  const closerTimezone = selectedCloser?.timezone ?? "America/Sao_Paulo"
+  const meetingDateKey = meetingDate ? formatLocalDateValue(meetingDate, closerTimezone) : null
+
+  // Busca os horários disponíveis quando closer + data estão selecionados
+  useEffect(() => {
+    if (!open || !closerId || !meetingDateKey) {
+      setAvailableTimes([])
+      setAvailabilityLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setAvailabilityLoading(true)
+
+    fetch("/api/v1/backoffice/calendar/availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        closerIds: [closerId],
+        date: meetingDateKey,
+        timezone: closerTimezone,
+        excludeLeadId: lead?.id ?? null,
+      }),
+    })
+      .then((res) => res.json() as Promise<{ isValid: boolean; result?: { availableTimes: string[] } }>)
+      .then((data) => {
+        if (cancelled) return
+        setAvailableTimes(data.isValid ? (data.result?.availableTimes ?? []) : [])
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAvailableTimes([])
+      })
+      .finally(() => {
+        if (!cancelled) setAvailabilityLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, closerId, meetingDateKey, closerTimezone, lead?.id])
+
   const requiresManualMeetingLink =
     !!selectedCloser && !selectedCloser.googleCalendarConnected
   const linkValidation = validateMeetingLinkValue(link, {
@@ -191,7 +240,10 @@ export function BackofficeLeadScheduleDialog({
             invalid={!meetingDate}
             disabled={isSubmitting}
             disablePastDates
-            tz={selectedCloser?.timezone ?? "America/Sao_Paulo"}
+            tz={closerTimezone}
+            availableTimes={closerId ? availableTimes : undefined}
+            timeLoading={availabilityLoading}
+            timeLoadingText="Carregando horários disponíveis..."
           />
 
           <div className="flex flex-col gap-2">
