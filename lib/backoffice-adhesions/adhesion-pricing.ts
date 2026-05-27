@@ -7,6 +7,7 @@ export const BACKOFFICE_ADHESION_CYCLE_MONTHS: Record<
   monthly: 1,
   quarterly: 3,
   semiannual: 6,
+  annual: 12,
 }
 
 export const BACKOFFICE_ADHESION_CYCLE_LABELS: Record<
@@ -16,6 +17,7 @@ export const BACKOFFICE_ADHESION_CYCLE_LABELS: Record<
   monthly: "Mensal",
   quarterly: "Trimestral",
   semiannual: "Semestral",
+  annual: "Anual",
 }
 
 export interface BackofficeAdhesionPricingInput {
@@ -58,6 +60,8 @@ export function resolveProductPriceForCycle(
       ? product.priceQuarterly
       : cycle === "semiannual"
         ? product.priceSemiannual
+        : cycle === "annual"
+          ? product.priceAnnual
         : product.priceMonthly
 
   if (value == null) {

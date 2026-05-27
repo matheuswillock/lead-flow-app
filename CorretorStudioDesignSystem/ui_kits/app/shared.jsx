@@ -2,8 +2,6 @@
  * Logo, Button, Badge, Card, Avatar, Input, Icons
  */
 
-const { useState, useMemo, useEffect, useRef } = React;
-
 const cn = (...xs) => xs.filter(Boolean).join(' ');
 
 // ---------- Logo ---------------------------------------------------------
