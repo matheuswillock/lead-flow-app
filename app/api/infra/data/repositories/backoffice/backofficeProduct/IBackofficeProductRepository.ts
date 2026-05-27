@@ -18,6 +18,7 @@ export interface CreateBackofficeProductInput {
   priceMonthly?: number | null
   priceQuarterly?: number | null
   priceSemiannual?: number | null
+  priceAnnual?: number | null
   priceLifetime?: number | null
   isActive?: boolean
 }
@@ -31,6 +32,7 @@ export interface UpdateBackofficeProductInput {
   priceMonthly?: number | null
   priceQuarterly?: number | null
   priceSemiannual?: number | null
+  priceAnnual?: number | null
   priceLifetime?: number | null
   isActive?: boolean
 }
@@ -51,7 +53,7 @@ export interface IBackofficeProductRepository {
 
 export interface UpsertPaymentRuleInput {
   paymentMethod: "PIX" | "CREDIT_CARD"
-  billingCycle: "monthly" | "quarterly" | "semiannual"
+  billingCycle: "monthly" | "quarterly" | "semiannual" | "annual"
   price: number
   canInstallment: boolean
   maxInstallments: number
