@@ -498,9 +498,9 @@ unsubscribed unsubscribed
     DateTime statusEnteredAt 
     DateTime createdAt 
     DateTime updatedAt 
-    String como_voce_organiza_seus_leads_e_carteira "❓"
-    String quantos_usuarios_em_media_voce_precisa "❓"
-    String qual_perfil_se_enquadra_em_seu_momento "❓"
+    String qualification_lead_organization "❓"
+    String qualification_avg_users "❓"
+    String qualification_profile_fit "❓"
     }
   
 

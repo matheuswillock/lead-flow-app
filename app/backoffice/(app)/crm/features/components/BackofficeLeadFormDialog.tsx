@@ -146,6 +146,9 @@ const leadFormSchema = z
     meetingNotes: z.string().trim(),
     meetingLink: z.string().trim(),
     meetingExtraGuests: z.array(z.string().email()),
+    qualificationLeadOrganization: z.string().trim(),
+    qualificationAvgUsers: z.string().trim(),
+    qualificationProfileFit: z.string().trim(),
   })
   .superRefine((data, ctx) => {
     if (!data.sdrBackofficeUserId) {
@@ -199,6 +202,9 @@ const EMPTY_FORM_VALUES: LeadFormValues = {
   meetingNotes: "",
   meetingLink: "",
   meetingExtraGuests: [],
+  qualificationLeadOrganization: "",
+  qualificationAvgUsers: "",
+  qualificationProfileFit: "",
 }
 
 function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
@@ -218,6 +224,9 @@ function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
     meetingNotes: lead.meetingNotes ?? "",
     meetingLink: lead.meetingLink ?? "",
     meetingExtraGuests: lead.meetingExtraGuests ?? [],
+    qualificationLeadOrganization: lead.qualificationLeadOrganization ?? "",
+    qualificationAvgUsers: lead.qualificationAvgUsers ?? "",
+    qualificationProfileFit: lead.qualificationProfileFit ?? "",
   }
 }
 
@@ -362,6 +371,9 @@ export function BackofficeLeadFormDialog() {
         meetingNotes: nullIfEmpty(values.meetingNotes),
         meetingLink: nullIfEmpty(values.meetingLink),
         meetingExtraGuests: values.meetingExtraGuests,
+        qualificationLeadOrganization: nullIfEmpty(values.qualificationLeadOrganization),
+        qualificationAvgUsers: nullIfEmpty(values.qualificationAvgUsers),
+        qualificationProfileFit: nullIfEmpty(values.qualificationProfileFit),
       }
 
       if (isEdit && selectedLead) {
@@ -539,6 +551,71 @@ export function BackofficeLeadFormDialog() {
                               {...field}
                               placeholder="Anotações sobre o lead"
                               rows={4}
+                              disabled={isSubmitting}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </section>
+
+                  <Separator />
+
+                  <section className="flex flex-col gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold">Qualificação</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Respostas do lead sobre seu perfil e necessidades.
+                      </p>
+                    </div>
+                    <FormField
+                      control={form.control}
+                      name="qualificationLeadOrganization"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Como você organiza seus leads e carteira?</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              placeholder="Ex: Uso planilha, WhatsApp, CRM..."
+                              rows={2}
+                              disabled={isSubmitting}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="qualificationAvgUsers"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Quantos usuários em média você precisa?</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              placeholder="Ex: 1 a 5 usuários"
+                              rows={2}
+                              disabled={isSubmitting}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="qualificationProfileFit"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Qual perfil se enquadra no seu momento?</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              placeholder="Ex: Corretor autônomo, pequena equipe..."
+                              rows={2}
                               disabled={isSubmitting}
                             />
                           </FormControl>
