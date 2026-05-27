@@ -32,12 +32,16 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink"
+import { formatLocalDateValue } from "@/lib/dates"
 import type {
   BackofficeCrmUserOption,
   BackofficeLeadScheduleInput,
 } from "../context/BackofficeCrmTypes"
 
+const DEFAULT_MEETING_TITLE = "Demonstração Corretor Studio"
+
 export interface BackofficeLeadScheduleDialogLead {
+  id?: string | null
   name: string
   closerBackofficeUserId: string | null
   meetingDate: string | null
@@ -54,6 +58,7 @@ interface BackofficeLeadScheduleDialogProps {
   guestOptions: BackofficeCrmUserOption[]
   onOpenChange: (open: boolean) => void
   onConfirm: (input: BackofficeLeadScheduleInput) => Promise<void>
+  isReschedule?: boolean
 }
 
 function parseInitialDate(value: string | null): Date | undefined {
@@ -69,6 +74,7 @@ export function BackofficeLeadScheduleDialog({
   guestOptions,
   onOpenChange,
   onConfirm,
+  isReschedule = false,
 }: BackofficeLeadScheduleDialogProps) {
   const [meetingDate, setMeetingDate] = useState<Date | undefined>()
   const [closerId, setCloserId] = useState("")
@@ -78,19 +84,64 @@ export function BackofficeLeadScheduleDialog({
   const [extraGuests, setExtraGuests] = useState<string[]>([])
   const [extraGuestsDraft, setExtraGuestsDraft] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [availableTimes, setAvailableTimes] = useState<string[]>([])
+  const [availabilityLoading, setAvailabilityLoading] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setMeetingDate(parseInitialDate(lead?.meetingDate ?? null))
     setCloserId(lead?.closerBackofficeUserId ?? "")
-    setTitle(lead?.meetingTitle ?? (lead?.name ? `Agendamento - ${lead.name}` : ""))
+    setTitle(lead?.meetingTitle ?? DEFAULT_MEETING_TITLE)
     setNotes(lead?.meetingNotes ?? "")
     setLink(lead?.meetingLink ?? "")
     setExtraGuests(lead?.meetingExtraGuests ?? [])
     setExtraGuestsDraft("")
+    setAvailableTimes([])
   }, [lead, open])
 
   const selectedCloser = closerOptions.find((option) => option.id === closerId) ?? null
+  const closerTimezone = selectedCloser?.timezone ?? "America/Sao_Paulo"
+  const meetingDateKey = meetingDate ? formatLocalDateValue(meetingDate, closerTimezone) : null
+
+  // Busca os horários disponíveis quando closer + data estão selecionados
+  useEffect(() => {
+    if (!open || !closerId || !meetingDateKey) {
+      setAvailableTimes([])
+      setAvailabilityLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setAvailabilityLoading(true)
+
+    fetch("/api/v1/backoffice/calendar/availability", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        closerIds: [closerId],
+        date: meetingDateKey,
+        timezone: closerTimezone,
+        excludeLeadId: lead?.id ?? null,
+      }),
+    })
+      .then((res) => res.json() as Promise<{ isValid: boolean; result?: { availableTimes: string[] } }>)
+      .then((data) => {
+        if (cancelled) return
+        setAvailableTimes(data.isValid ? (data.result?.availableTimes ?? []) : [])
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAvailableTimes([])
+      })
+      .finally(() => {
+        if (!cancelled) setAvailabilityLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, closerId, meetingDateKey, closerTimezone, lead?.id])
+
   const requiresManualMeetingLink =
     !!selectedCloser && !selectedCloser.googleCalendarConnected
   const linkValidation = validateMeetingLinkValue(link, {
@@ -175,10 +226,12 @@ export function BackofficeLeadScheduleDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarClock data-icon="inline-start" />
-            Agendar lead
+            {isReschedule ? "Reagendar lead" : "Agendar lead"}
           </DialogTitle>
           <DialogDescription>
-            Informe a data e o closer antes de marcar o lead como agendado.
+            {isReschedule
+              ? "Atualize os dados para reagendar o lead."
+              : "Informe a data e o closer antes de marcar o lead como agendado."}
           </DialogDescription>
         </DialogHeader>
 
@@ -191,7 +244,10 @@ export function BackofficeLeadScheduleDialog({
             invalid={!meetingDate}
             disabled={isSubmitting}
             disablePastDates
-            tz={selectedCloser?.timezone ?? "America/Sao_Paulo"}
+            tz={closerTimezone}
+            availableTimes={closerId ? availableTimes : undefined}
+            timeLoading={availabilityLoading}
+            timeLoadingText="Carregando horários disponíveis..."
           />
 
           <div className="flex flex-col gap-2">
@@ -217,7 +273,7 @@ export function BackofficeLeadScheduleDialog({
             ) : null}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="backoffice-schedule-title">Título</Label>
               <Input
@@ -237,11 +293,11 @@ export function BackofficeLeadScheduleDialog({
                 type="url"
                 value={link}
                 onChange={(event) => setLink(event.target.value)}
-                disabled={isSubmitting}
+                disabled={isSubmitting || (!!selectedCloser?.googleCalendarConnected && !link.trim())}
                 placeholder={
                   requiresManualMeetingLink
                     ? "https://meet..."
-                    : "Google Meet automático ou link manual"
+                    : "Gerado automaticamente pelo Google Meet"
                 }
                 aria-invalid={!linkValidation.isValid}
               />
@@ -252,7 +308,7 @@ export function BackofficeLeadScheduleDialog({
               ) : null}
               {selectedCloser?.googleCalendarConnected && !link.trim() ? (
                 <p className="text-xs text-muted-foreground">
-                  O evento será criado no Google Calendar do closer.
+                  O evento será criado no Google Calendar do closer e o link será gerado automaticamente.
                 </p>
               ) : null}
               {link.trim() && !linkValidation.isValid ? (
@@ -366,7 +422,11 @@ export function BackofficeLeadScheduleDialog({
             Cancelar
           </Button>
           <Button type="button" disabled={!canSubmit} onClick={() => void handleSubmit()}>
-            {isSubmitting ? "Salvando..." : "Confirmar agendamento"}
+            {isSubmitting
+              ? "Salvando..."
+              : isReschedule
+                ? "Confirmar reagendamento"
+                : "Confirmar agendamento"}
           </Button>
         </DialogFooter>
       </DialogContent>

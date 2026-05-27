@@ -839,6 +839,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         : null)
 
     if (!adhesion) {
+      console.info("[BackofficeAdhesionService][processPaymentWebhook] adesão não encontrada", {
+        paymentId: payment.id,
+        externalReference: payment.externalReference ?? null,
+        event,
+      })
       return { processed: false }
     }
 
@@ -858,7 +863,15 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     if (isPaid) {
       const paidAt = this.resolvePaymentDate(payment) ?? new Date()
       const updated = await this.repo.updateStatus(adhesion.id, "paid", { paidAt })
-      await this.ensureAccountForPaidAdhesion(updated)
+      try {
+        await this.ensureAccountForPaidAdhesion(updated)
+      } catch (accountError) {
+        console.error("[BackofficeAdhesionService][processPaymentWebhook][ensureAccount]", {
+          adhesionId: adhesion.id,
+          error: accountError,
+        })
+        throw accountError
+      }
       return { processed: true, adhesionId: adhesion.id }
     }
 
@@ -1216,7 +1229,9 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         email: adhesion.email,
         asaasCustomerId: adhesion.asaasCustomerId,
         cpfCnpj: adhesion.cpfCnpj,
-        subscriptionId: adhesion.billingType === "EXTERNAL" ? `external-adhesion-${adhesion.id}` : null,
+        subscriptionId: adhesion.billingType === "EXTERNAL"
+          ? `external-adhesion-${adhesion.id}`
+          : adhesion.asaasPaymentId ?? `adhesion-${adhesion.id}`,
         operatorCount: adhesion.extraUsers,
         subscriptionStartDate,
         postalCode: adhesion.postalCode,

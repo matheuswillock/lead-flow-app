@@ -10,7 +10,7 @@ function NavItem({ icon, label, active, pill, onClick }) {
   );
 }
 
-function AppShell({ active, onNavigate, children, title, crumb, actions }) {
+function AppShell({ active, onNavigate, children, title, crumb }) {
   return (
     <div className="cs-app">
       <aside className="cs-sidebar">

@@ -63,6 +63,9 @@ export interface BackofficeLeadItem {
   statusEnteredAt: string
   createdAt: string
   updatedAt: string
+  qualificationLeadOrganization: string | null
+  qualificationAvgUsers: string | null
+  qualificationProfileFit: string | null
 }
 
 export interface BackofficeLeadCreateInput {
@@ -79,6 +82,9 @@ export interface BackofficeLeadCreateInput {
   meetingNotes?: string | null
   meetingLink?: string | null
   meetingExtraGuests?: string[] | null
+  qualificationLeadOrganization?: string | null
+  qualificationAvgUsers?: string | null
+  qualificationProfileFit?: string | null
 }
 
 export interface BackofficeLeadUpdateInput {
@@ -94,6 +100,9 @@ export interface BackofficeLeadUpdateInput {
   meetingNotes?: string | null
   meetingLink?: string | null
   meetingExtraGuests?: string[] | null
+  qualificationLeadOrganization?: string | null
+  qualificationAvgUsers?: string | null
+  qualificationProfileFit?: string | null
 }
 
 export interface BackofficeLeadScheduleInput {

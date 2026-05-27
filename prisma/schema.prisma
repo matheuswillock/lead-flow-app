@@ -94,6 +94,7 @@ enum BackofficeAdhesionBillingCycle {
   monthly
   quarterly
   semiannual
+  annual
 
   @@map("backoffice_adhesion_billing_cycle")
 }
@@ -101,6 +102,7 @@ enum BackofficeAdhesionBillingCycle {
 enum BackofficeLeadOrigin {
   manual
   webhook_meta
+  landing_page
 
   @@map("backoffice_lead_origin")
 }
@@ -638,9 +640,9 @@ model BackofficeLead {
   createdAt              DateTime             @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt              DateTime             @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
-  comoVoceOrganizaSeuLeadsECarteira String? @map("como_voce_organiza_seus_leads_e_carteira") @db.Text
-  quantosUsuariosEmMediaVocePrecisa  String? @map("quantos_usuarios_em_media_voce_precisa") @db.Text
-  qualPerfilSeEnquadraEmSeuMomento   String? @map("qual_perfil_se_enquadra_em_seu_momento") @db.Text
+  qualificationLeadOrganization String? @map("qualification_lead_organization") @db.Text
+  qualificationAvgUsers         String? @map("qualification_avg_users") @db.Text
+  qualificationProfileFit       String? @map("qualification_profile_fit") @db.Text
 
   creator              Profile?                 @relation("BackofficeLeadCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
   sourceWebhookEvent   BackofficeWebhookEvent?  @relation("BackofficeLeadSourceWebhookEvent", fields: [sourceWebhookEventId], references: [id], onDelete: SetNull, map: "backoffice_leads_source_webhook_event_id_fkey")
@@ -1518,6 +1520,7 @@ model BackofficeProduct {
   priceMonthly    Decimal?                     @db.Decimal(10, 2)
   priceQuarterly  Decimal?                     @db.Decimal(10, 2)
   priceSemiannual Decimal?                     @db.Decimal(10, 2)
+  priceAnnual     Decimal?                     @db.Decimal(10, 2)
   priceLifetime   Decimal?                     @db.Decimal(10, 2)
   isActive        Boolean                      @default(true)
   createdAt       DateTime                     @default(now()) @db.Timestamptz(6)

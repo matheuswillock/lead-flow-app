@@ -31,6 +31,9 @@ type NormalizedBackofficeMetaLeadPayload = {
   phone: string | null
   notes: string | null
   sourceExternalId: string | null
+  qualificationLeadOrganization: string | null
+  qualificationAvgUsers: string | null
+  qualificationProfileFit: string | null
 }
 
 type LeadPayloadParseResult =
@@ -105,6 +108,9 @@ function parseDirectMetaLeadPayload(payload: unknown): LeadPayloadParseResult {
       phone: normalizeTextValue(record.phone),
       notes: normalizeTextValue(record.notes),
       sourceExternalId: normalizeTextValue(record.external_id),
+      qualificationLeadOrganization: normalizeTextValue(record.qualification_lead_organization ?? record.como_voce_organiza_seus_leads_e_carteira),
+      qualificationAvgUsers: normalizeTextValue(record.qualification_avg_users ?? record.quantos_usuarios_em_media_voce_precisa),
+      qualificationProfileFit: normalizeTextValue(record.qualification_profile_fit ?? record.qual_perfil_se_enquadra_em_seu_momento),
     },
   }
 }
@@ -247,6 +253,9 @@ export class BackofficeMetaWebhookUseCase implements IBackofficeMetaWebhookUseCa
           sourceExternalId: leadPayload.lead.sourceExternalId,
           sourceWebhookEventId: event.id,
           createdByProfileId: null,
+          qualificationLeadOrganization: leadPayload.lead.qualificationLeadOrganization,
+          qualificationAvgUsers: leadPayload.lead.qualificationAvgUsers,
+          qualificationProfileFit: leadPayload.lead.qualificationProfileFit,
         })
 
         await this.eventRepo.markProcessed(event.id)

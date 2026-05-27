@@ -200,6 +200,23 @@ export class BackofficeLeadScheduleService
             ...scheduleData,
           })
 
+      // Notifica o closer por e-mail em todos os cenários (Google ou Resend)
+      const lead = await this.leadRepo.findById(input.leadId)
+      this.inviteService
+        .sendCloserNewLeadNotification({
+          closerEmail: closerEmail,
+          leadName: input.leadName,
+          leadEmail: input.leadEmail,
+          leadPhone: lead?.phone ?? null,
+          meetingDate: input.meetingDate,
+          meetingTitle: input.meetingTitle,
+          meetingLink: finalMeetingLink,
+          timezone: closer.timezone,
+        })
+        .catch((err) =>
+          console.error("[BackofficeLeadScheduleService][closerNotification]", err)
+        )
+
       return new Output(
         true,
         [existingSchedule ? "Agendamento atualizado com sucesso" : "Agendamento criado com sucesso"],

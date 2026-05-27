@@ -27,6 +27,10 @@ export interface UpdateBackofficeUserInput {
 
 export type BackofficeUserWithProfile = BackofficeUser & {
   profile: Pick<Profile, "fullName" | "email">
+  googleConnection: Pick<GoogleOAuthConnection, "refreshToken" | "revokedAt" | "googleEmail"> | null
+  linkedCorretorStudioProfile: {
+    googleConnection: Pick<GoogleOAuthConnection, "refreshToken" | "revokedAt" | "googleEmail"> | null
+  } | null
 }
 
 export type BackofficeUserWithGoogleContext = BackofficeUser & {

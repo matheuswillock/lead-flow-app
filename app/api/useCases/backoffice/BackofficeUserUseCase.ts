@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
+import { isGoogleConnectionActive } from "@/lib/google/connection"
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository"
 import type { IMailboxProvisioningService } from "@/app/api/services/mailbox/IMailboxProvisioningService"
 import type { BackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
@@ -138,7 +139,17 @@ export class BackofficeUserUseCase {
   async listUsers(): Promise<Output> {
     try {
       const users = await this.userRepo.findMany()
-      return new Output(true, [], [], users)
+      const mapped = users.map(({ googleConnection, linkedCorretorStudioProfile, ...u }) => ({
+        ...u,
+        googleCalendarConnected:
+          isGoogleConnectionActive(googleConnection) ||
+          isGoogleConnectionActive(linkedCorretorStudioProfile?.googleConnection ?? null),
+        googleEmail:
+          googleConnection?.googleEmail ??
+          linkedCorretorStudioProfile?.googleConnection?.googleEmail ??
+          null,
+      }))
+      return new Output(true, [], [], mapped)
     } catch (error) {
       console.error("[BackofficeUserUseCase][listUsers]", error)
       return new Output(false, [], ["Erro ao listar usuários backoffice"], null)

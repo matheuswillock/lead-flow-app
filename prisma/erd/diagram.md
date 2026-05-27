@@ -74,6 +74,7 @@ canceled canceled
             monthly monthly
 quarterly quarterly
 semiannual semiannual
+annual annual
         }
     
 
@@ -81,6 +82,7 @@ semiannual semiannual
         backoffice_lead_origin {
             manual manual
 webhook_meta webhook_meta
+landing_page landing_page
         }
     
 
@@ -497,9 +499,9 @@ unsubscribed unsubscribed
     DateTime statusEnteredAt 
     DateTime createdAt 
     DateTime updatedAt 
-    String como_voce_organiza_seus_leads_e_carteira "❓"
-    String quantos_usuarios_em_media_voce_precisa "❓"
-    String qual_perfil_se_enquadra_em_seu_momento "❓"
+    String qualification_lead_organization "❓"
+    String qualification_avg_users "❓"
+    String qualification_profile_fit "❓"
     }
   
 
@@ -1003,6 +1005,7 @@ unsubscribed unsubscribed
     Decimal priceMonthly "❓"
     Decimal priceQuarterly "❓"
     Decimal priceSemiannual "❓"
+    Decimal priceAnnual "❓"
     Decimal priceLifetime "❓"
     Boolean isActive 
     DateTime createdAt 

@@ -55,6 +55,7 @@ import {
   type LeadActivityRealtimeRow,
 } from "@/hooks/useLeadActivitiesRealtime";
 import { useHealthPlans } from "@/hooks/useHealthPlans";
+import { useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import { isManagerLikeRole } from "@/lib/roles";
 import { isMeetingOverdue } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
@@ -227,7 +228,14 @@ export default function LeadDialog({
     !isTeamMaster &&
     activeRole !== "manager" &&
     activeRole !== "backoffice";
+  // Operator SDRs ficam travados no próprio nome; managers com SDR veem todos
+  const isOperatorSdr =
+    (activeFunctions.includes("SDR") || user?.functions?.includes("SDR")) &&
+    activeRole === "operator" &&
+    !isTeamMaster;
   const { healthPlans, loading: healthPlansLoading } = useHealthPlans(supabaseId, activeTeamId);
+  // SDRs do time para novos leads (create mode) — usa cache do useTeamSdrs, sem request extra
+  const { members: newLeadSdrs, loading: newLeadSdrsLoading, error: newLeadSdrsError } = useTeamSdrs(supabaseId, activeTeamId);
   // closersByTeam e sdrsByTeam derivados dos membros já incluídos no useLeadDetails
   const closersByTeam = useMemo(
     () => (leadDetails?.teamMembers ?? []).filter((m) => m.functions?.includes("CLOSER")),
@@ -236,6 +244,11 @@ export default function LeadDialog({
   const sdrsByTeam = useMemo(
     () => (leadDetails?.teamMembers ?? []).filter((m) => m.functions?.includes("SDR")),
     [leadDetails?.teamMembers]
+  );
+  // Em create mode (sem lead), usa newLeadSdrs; em edit mode usa os membros do leadDetails
+  const effectiveSdrsByTeam = useMemo(
+    () => (currentLead ? sdrsByTeam : newLeadSdrs),
+    [currentLead, sdrsByTeam, newLeadSdrs]
   );
   const sharedLeadCode = searchParams.get("leadCode");
   const sharedActivityId = searchParams.get("activityId");
@@ -2205,11 +2218,11 @@ export default function LeadDialog({
                     onCancel={() => setOpen(false)}
                     usersToAssign={usersToAssign}
                     closersToAssign={availableScheduleClosers}
-                    sdrsToAssign={sdrsByTeam}
+                    sdrsToAssign={effectiveSdrsByTeam}
                       closersLoading={leadDetailsLoading}
                       closersError={leadDetailsError}
-                    sdrsLoading={leadDetailsLoading}
-                    sdrsError={leadDetailsError}
+                    sdrsLoading={currentLead ? leadDetailsLoading : newLeadSdrsLoading}
+                    sdrsError={currentLead ? leadDetailsError : newLeadSdrsError}
                       leadId={currentLead?.id}
                       onUploadStateChange={setIsAttachmentUploading}
                       initialAttachments={leadDetails?.attachments}
@@ -2237,7 +2250,7 @@ export default function LeadDialog({
                       onMarkNoShow={handleNoShow}
                       isEditMode={!!currentLead}
                       currentProfileId={user.id}
-                      currentUserIsSdr={activeFunctions.includes("SDR") || user.functions.includes("SDR")}
+                      currentUserIsSdr={isOperatorSdr}
                       currentUserIsCloser={isCloserOperator}
                       supabaseId={supabaseId}
                       activeTeamId={activeTeamId ?? undefined}

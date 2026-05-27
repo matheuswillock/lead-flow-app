@@ -6,6 +6,7 @@ import { Output } from "@/lib/output"
 import type {
   IBackofficeLeadScheduleInviteService,
   SendBackofficeLeadScheduleInviteInput,
+  SendCloserNewLeadNotificationInput,
 } from "./IBackofficeLeadScheduleInviteService"
 
 const CALENDAR_DURATION_MINUTES = 30
@@ -328,6 +329,91 @@ export class BackofficeLeadScheduleInviteService
     } catch (error) {
       console.error("[BackofficeLeadScheduleInviteService][sendInvite]", error)
       return new Output(false, [], ["Erro ao enviar convites do agendamento"], null)
+    }
+  }
+
+  async sendCloserNewLeadNotification(
+    input: SendCloserNewLeadNotificationInput
+  ): Promise<Output> {
+    try {
+      const closerRecipient = normalizeEmail(input.closerEmail)
+      if (!closerRecipient) {
+        return new Output(false, [], ["Closer sem e-mail válido para notificação"], null)
+      }
+
+      const timezone = input.timezone || DEFAULT_TZ
+      const formattedDate = formatIntimezone(input.meetingDate, "dd 'de' MMMM 'de' yyyy", timezone)
+      const formattedTime = formatIntimezone(input.meetingDate, "HH:mm", timezone)
+      const safeLeadName = escapeHtml(input.leadName)
+      const safeLeadEmail = escapeHtml(input.leadEmail)
+      const safeLeadPhone = escapeHtml(input.leadPhone)
+
+      const leadContactRows = [
+        input.leadEmail
+          ? `<tr><td style="padding: 6px 0; color: #737373; font-size: 13px; width: 90px;">E-mail</td><td style="padding: 6px 0; color: #171717; font-size: 13px;">${safeLeadEmail}</td></tr>`
+          : "",
+        input.leadPhone
+          ? `<tr><td style="padding: 6px 0; color: #737373; font-size: 13px;">Telefone</td><td style="padding: 6px 0; color: #171717; font-size: 13px;">${safeLeadPhone}</td></tr>`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("")
+
+      const meetingLinkRow = input.meetingLink
+        ? `<p style="margin: 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> <a href="${escapeHtmlAttribute(input.meetingLink)}" style="color: #ff6900; text-decoration: none;">${escapeHtml(input.meetingLink)}</a></p>`
+        : ""
+
+      const body = `
+        <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
+          Um novo lead foi agendado e atribuído a você.
+        </p>
+
+        <div style="background-color: #f5f5f5; border: 1px solid #e5e5e5; padding: 16px; border-radius: 12px; margin: 0 0 20px 0;">
+          <p style="margin: 0 0 10px 0; color: #171717; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Lead</p>
+          <p style="margin: 0 0 8px 0; color: #171717; font-size: 16px; font-weight: 600;">${safeLeadName}</p>
+          ${
+            leadContactRows
+              ? `<table style="width: 100%; border-collapse: collapse; margin-top: 4px;">${leadContactRows}</table>`
+              : ""
+          }
+        </div>
+
+        <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 0 0 20px 0;">
+          <p style="margin: 0 0 10px 0; color: #7c2d12; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Agendamento</p>
+          <p style="margin: 0 0 6px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> ${formattedDate}</p>
+          <p style="margin: 0 0 6px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> ${formattedTime}</p>
+          <p style="margin: 0 0 6px 0; color: #7c2d12; font-size: 14px;"><strong>Título:</strong> ${escapeHtml(input.meetingTitle)}</p>
+          ${meetingLinkRow}
+        </div>
+
+        <p style="margin: 0; color: #737373; font-size: 13px; line-height: 1.6;">
+          Acesse o backoffice para ver os detalhes completos do lead.
+        </p>
+      `
+
+      const result = await sendBackofficeScheduleEmail({
+        to: [closerRecipient],
+        subject: `Novo lead agendado: ${input.leadName}`,
+        html: buildEmailShell(
+          `Novo lead: ${input.leadName}`,
+          "Notificação de agendamento",
+          body
+        ),
+      })
+
+      if (!result.success) {
+        return new Output(
+          false,
+          [],
+          [result.error ?? "Erro ao enviar notificação ao closer"],
+          null
+        )
+      }
+
+      return new Output(true, ["Notificação enviada ao closer"], [], { closerRecipient })
+    } catch (error) {
+      console.error("[BackofficeLeadScheduleInviteService][sendCloserNewLeadNotification]", error)
+      return new Output(false, [], ["Erro ao enviar notificação de novo lead ao closer"], null)
     }
   }
 }
