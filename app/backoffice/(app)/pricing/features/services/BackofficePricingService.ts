@@ -6,7 +6,7 @@ function parsePrice(value: string): number | null {
   return isNaN(n) || n <= 0 ? null : n
 }
 
-const BILLING_CYCLES = ["monthly", "quarterly", "semiannual"] as const
+const BILLING_CYCLES = ["monthly", "quarterly", "semiannual", "annual"] as const
 
 function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProductFormData>) {
   const payload: Record<string, unknown> = {}
@@ -19,6 +19,7 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
   if ("priceMonthly" in data) payload.priceMonthly = parsePrice(data.priceMonthly ?? "")
   if ("priceQuarterly" in data) payload.priceQuarterly = parsePrice(data.priceQuarterly ?? "")
   if ("priceSemiannual" in data) payload.priceSemiannual = parsePrice(data.priceSemiannual ?? "")
+  if ("priceAnnual" in data) payload.priceAnnual = parsePrice(data.priceAnnual ?? "")
   if ("priceLifetime" in data) payload.priceLifetime = parsePrice(data.priceLifetime ?? "")
   if (data.isActive !== undefined) payload.isActive = data.isActive
 
@@ -55,9 +56,11 @@ function formToPayload(data: BackofficeProductFormData | Partial<BackofficeProdu
       const pixMonthly = parsePrice(data.paymentRules.monthly?.pixPrice ?? "")
       const pixQuarterly = parsePrice(data.paymentRules.quarterly?.pixPrice ?? "")
       const pixSemiannual = parsePrice(data.paymentRules.semiannual?.pixPrice ?? "")
+      const pixAnnual = parsePrice(data.paymentRules.annual?.pixPrice ?? "")
       if (pixMonthly != null) payload.priceMonthly = pixMonthly
       if (pixQuarterly != null) payload.priceQuarterly = pixQuarterly
       if (pixSemiannual != null) payload.priceSemiannual = pixSemiannual
+      if (pixAnnual != null) payload.priceAnnual = pixAnnual
     }
   }
 

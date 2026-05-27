@@ -63,6 +63,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
         priceMonthly: toDecimalOrNull(data.priceMonthly),
         priceQuarterly: toDecimalOrNull(data.priceQuarterly),
         priceSemiannual: toDecimalOrNull(data.priceSemiannual),
+        priceAnnual: toDecimalOrNull(data.priceAnnual),
         priceLifetime: toDecimalOrNull(data.priceLifetime),
         isActive: data.isActive ?? true,
       },
@@ -88,6 +89,9 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
         }),
         ...(Object.prototype.hasOwnProperty.call(data, "priceSemiannual") && {
           priceSemiannual: toDecimalOrNull(data.priceSemiannual),
+        }),
+        ...(Object.prototype.hasOwnProperty.call(data, "priceAnnual") && {
+          priceAnnual: toDecimalOrNull(data.priceAnnual),
         }),
         ...(Object.prototype.hasOwnProperty.call(data, "priceLifetime") && {
           priceLifetime: toDecimalOrNull(data.priceLifetime),
