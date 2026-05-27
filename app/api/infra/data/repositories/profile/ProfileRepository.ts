@@ -870,10 +870,21 @@ class PrismaProfileRepository implements IProfileRepository {
             const currentConnection = profile.googleConnectionId
                 ? await connectionRepo.findById(profile.googleConnectionId)
                 : null
+            const wantsConnect = updates.connected ?? true
             const googleEmail =
-                updates.email === undefined ? currentConnection?.googleEmail ?? null : updates.email
+                updates.email == null
+                    ? currentConnection?.googleEmail ?? null
+                    : updates.email
 
-            if (googleEmail && (updates.connected ?? true)) {
+            if (wantsConnect && !googleEmail) {
+                console.error(
+                    "[ProfileRepository] updateGoogleCalendarAuth: missing googleEmail; cannot upsert google_oauth_connection",
+                    { profileId: profile.id, supabaseId }
+                )
+                return null
+            }
+
+            if (googleEmail && wantsConnect) {
                 let connection = await connectionRepo.findByGoogleEmail(googleEmail)
 
                 if (!connection) {

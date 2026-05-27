@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
       accessToken,
       refreshToken: refreshToken ?? null,
       expiresAt: expiresAt ? new Date(expiresAt) : null,
-      email: email ?? null,
+      email: normalizedNextGoogleEmail,
       connected: Boolean(refreshToken || accessToken),
     });
 

@@ -36,8 +36,6 @@ export class BoardService implements IBoardService {
             }
 
             const url = `${API_BASE_URL}/leads?${searchParams.toString()}`;
-            console.info('[BoardService] Fetching leads from:', url);
-            console.info('[BoardService] Headers:', { supabaseId, role, teamId });
 
             const response = await fetch(url, {
                 method: "GET",
@@ -47,9 +45,6 @@ export class BoardService implements IBoardService {
                     ...(teamId ? { "x-team-id": teamId } : {})
                 },
             });
-
-            console.info('[BoardService] Response status:', response.status);
-            console.info('[BoardService] Response ok:', response.ok);
 
             // Check if response is ok before parsing
             if (!response.ok) {
@@ -64,7 +59,6 @@ export class BoardService implements IBoardService {
             }
 
             const data = await response.json();
-            console.info('[BoardService] Response data:', data);
 
             return data as Output;
             
