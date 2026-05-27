@@ -33,6 +33,7 @@ export interface BackofficeProductDTO {
   priceMonthly: number | null
   priceQuarterly: number | null
   priceSemiannual: number | null
+  priceAnnual: number | null
   priceLifetime: number | null
   isActive: boolean
   createdAt: string
@@ -49,6 +50,7 @@ export interface CreateBackofficeProductUseCaseInput {
   priceMonthly?: number | null
   priceQuarterly?: number | null
   priceSemiannual?: number | null
+  priceAnnual?: number | null
   priceLifetime?: number | null
   isActive?: boolean
   paymentRules?: UpsertPaymentRuleInput[]
@@ -63,6 +65,7 @@ export interface UpdateBackofficeProductUseCaseInput {
   priceMonthly?: number | null
   priceQuarterly?: number | null
   priceSemiannual?: number | null
+  priceAnnual?: number | null
   priceLifetime?: number | null
   isActive?: boolean
   paymentRules?: UpsertPaymentRuleInput[]
@@ -156,6 +159,11 @@ export class BackofficeProductUseCase {
           : existing.priceSemiannual !== null
             ? Number(existing.priceSemiannual)
             : null,
+        priceAnnual: Object.prototype.hasOwnProperty.call(input, "priceAnnual")
+          ? input.priceAnnual
+          : existing.priceAnnual !== null
+            ? Number(existing.priceAnnual)
+            : null,
         priceLifetime: Object.prototype.hasOwnProperty.call(input, "priceLifetime")
           ? input.priceLifetime
           : existing.priceLifetime !== null
@@ -210,6 +218,7 @@ export class BackofficeProductUseCase {
       priceMonthly?: number | null
       priceQuarterly?: number | null
       priceSemiannual?: number | null
+      priceAnnual?: number | null
       priceLifetime?: number | null
     }
   ): string | null {
@@ -222,6 +231,9 @@ export class BackofficeProductUseCase {
       }
       if (!prices.priceSemiannual || prices.priceSemiannual <= 0) {
         return "Preço semestral é obrigatório para produtos recorrentes"
+      }
+      if (!prices.priceAnnual || prices.priceAnnual <= 0) {
+        return "Preço anual é obrigatório para produtos recorrentes"
       }
     } else if (billingMode === "LIFETIME") {
       if (prices.priceLifetime != null && prices.priceLifetime <= 0) {
@@ -257,6 +269,7 @@ export function mapProductDTO(product: BackofficeProduct): BackofficeProductDTO 
     priceMonthly: decimalToNumber(product.priceMonthly),
     priceQuarterly: decimalToNumber(product.priceQuarterly),
     priceSemiannual: decimalToNumber(product.priceSemiannual),
+    priceAnnual: decimalToNumber(product.priceAnnual),
     priceLifetime: decimalToNumber(product.priceLifetime),
     isActive: product.isActive,
     createdAt: product.createdAt.toISOString(),

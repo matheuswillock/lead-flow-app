@@ -1,6 +1,14 @@
-import { Pencil, Trash2 } from "lucide-react"
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Table,
   TableBody,
@@ -19,7 +27,7 @@ function formatPrice(value: number | null): string {
 
 function getCardPrice(
   product: BackofficeProductItem,
-  cycle: "monthly" | "quarterly" | "semiannual"
+  cycle: "monthly" | "quarterly" | "semiannual" | "annual"
 ): number | null {
   const rule = product.paymentRules.find(
     (r) => r.paymentMethod === "CREDIT_CARD" && r.billingCycle === cycle
@@ -48,15 +56,16 @@ export function BackofficeProductTable({ products }: Props) {
         <TableHeader>
           <TableRow>
             <TableHead>Nome</TableHead>
-            <TableHead>Tipo</TableHead>
-            <TableHead>Modo</TableHead>
-            <TableHead className="text-right">Mensal</TableHead>
-            <TableHead className="text-right">Trimestral</TableHead>
-            <TableHead className="text-right">Semestral</TableHead>
-            <TableHead className="text-right">Vitalício</TableHead>
-            <TableHead className="text-right">Total</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="w-20" />
+            <TableHead className="text-center">Tipo</TableHead>
+            <TableHead className="text-center">Modo</TableHead>
+            <TableHead className="text-center">Mensal</TableHead>
+            <TableHead className="text-center">Trimestral</TableHead>
+            <TableHead className="text-center">Semestral</TableHead>
+            <TableHead className="text-center">Anual</TableHead>
+            <TableHead className="text-center">Vitalício</TableHead>
+            <TableHead className="text-center">Total</TableHead>
+            <TableHead className="text-center">Status</TableHead>
+            <TableHead className="text-center">Ações</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -64,11 +73,12 @@ export function BackofficeProductTable({ products }: Props) {
             const cardMonthly = getCardPrice(product, "monthly")
             const cardQuarterly = getCardPrice(product, "quarterly")
             const cardSemiannual = getCardPrice(product, "semiannual")
+            const cardAnnual = getCardPrice(product, "annual")
             const total =
               product.billingMode === "LIFETIME"
                 ? product.priceLifetime
-                : cardSemiannual != null
-                  ? cardSemiannual * 6
+                : cardAnnual != null
+                  ? cardAnnual * 12
                   : null
 
             return (
@@ -81,55 +91,63 @@ export function BackofficeProductTable({ products }: Props) {
                     )}
                   </div>
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-center">
                   <Badge variant={product.type === "PLAN" ? "default" : "secondary"}>
                     {product.type === "PLAN" ? "Plano" : "Add-on"}
                   </Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-center">
                   <Badge variant="outline">
                     {product.billingMode === "RECURRING" ? "Parcelado" : "Vitalício"}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm">
+                <TableCell className="text-center font-mono text-sm">
                   {product.billingMode === "RECURRING" ? formatPrice(cardMonthly) : "—"}
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm">
+                <TableCell className="text-center font-mono text-sm">
                   {product.billingMode === "RECURRING" ? formatPrice(cardQuarterly) : "—"}
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm">
+                <TableCell className="text-center font-mono text-sm">
                   {product.billingMode === "RECURRING" ? formatPrice(cardSemiannual) : "—"}
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm">
+                <TableCell className="text-center font-mono text-sm">
+                  {product.billingMode === "RECURRING" ? formatPrice(cardAnnual) : "—"}
+                </TableCell>
+                <TableCell className="text-center font-mono text-sm">
                   {formatPrice(product.priceLifetime)}
                 </TableCell>
-                <TableCell className="text-right font-mono text-sm font-medium">
+                <TableCell className="text-center font-mono text-sm font-medium">
                   {formatPrice(total)}
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-center">
                   <Badge variant={product.isActive ? "default" : "secondary"}>
                     {product.isActive ? "Ativo" : "Inativo"}
                   </Badge>
                 </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => openEditDialog(product)}
-                      aria-label="Editar produto"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => openDeleteDialog(product)}
-                      aria-label="Excluir produto"
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
+                <TableCell className="text-center">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" aria-label={`Ações de ${product.name}`}>
+                        <MoreHorizontal data-icon="inline-start" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem onClick={() => openEditDialog(product)}>
+                          <Pencil data-icon="inline-start" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => openDeleteDialog(product)}
+                        >
+                          <Trash2 data-icon="inline-start" />
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             )
