@@ -43,6 +43,7 @@ const CYCLE_MONTHS: Record<BackofficeAdhesionBillingCycleKey, number> = {
   monthly: 1,
   quarterly: 3,
   semiannual: 6,
+  annual: 12,
 }
 
 function sanitizePhone(value: string): string {

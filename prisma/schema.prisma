@@ -94,6 +94,7 @@ enum BackofficeAdhesionBillingCycle {
   monthly
   quarterly
   semiannual
+  annual
 
   @@map("backoffice_adhesion_billing_cycle")
 }
@@ -1519,6 +1520,7 @@ model BackofficeProduct {
   priceMonthly    Decimal?                     @db.Decimal(10, 2)
   priceQuarterly  Decimal?                     @db.Decimal(10, 2)
   priceSemiannual Decimal?                     @db.Decimal(10, 2)
+  priceAnnual     Decimal?                     @db.Decimal(10, 2)
   priceLifetime   Decimal?                     @db.Decimal(10, 2)
   isActive        Boolean                      @default(true)
   createdAt       DateTime                     @default(now()) @db.Timestamptz(6)
