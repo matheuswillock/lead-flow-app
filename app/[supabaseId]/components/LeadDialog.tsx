@@ -14,7 +14,8 @@ import {
   type ReactNode,
   type SyntheticEvent,
 } from "react";
-import { useLead, useLeads } from "@/hooks/useLeads";
+import { useLeads } from "@/hooks/useLeads";
+import { useLeadDetails } from "@/hooks/useLeadDetails";
 import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
@@ -54,7 +55,6 @@ import {
   type LeadActivityRealtimeRow,
 } from "@/hooks/useLeadActivitiesRealtime";
 import { useHealthPlans } from "@/hooks/useHealthPlans";
-import { useTeamClosers, useTeamSdrs } from "@/hooks/useTeamMembersByFunction";
 import { isManagerLikeRole } from "@/lib/roles";
 import { isMeetingOverdue } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
@@ -131,9 +131,6 @@ type LeadOriginBadge = {
 };
 
 const DEFAULT_REACTION_UNIFIEDS = ["1f44d", "2764-fe0f", "1f602", "1f389", "1f62e", "1f622"];
-const TEAM_MEMBERS_CACHE_TTL_MS = 5 * 60 * 1000;
-const teamMembersCacheByTeamId = new Map<string, { members: MentionMember[]; timestamp: number }>();
-const teamMembersInFlightByTeamId = new Map<string, Promise<MentionMember[]>>();
 
 const normalizeLeadPhoneDigits = (phone: string): string => {
   if (!phone) return "";
@@ -160,8 +157,6 @@ export default function LeadDialog({
   const currentLeadId = currentLead?.id ?? "";
   const form = useLeadForm();
   const { createLead, updateLead } = useLeads();
-  const { lead: leadDetails, loading: leadDetailsLoading, error: leadDetailsError, fetchLead } =
-    useLead(currentLeadId);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const [meetingHealdSaving, setMeetingHealdSaving] = useState(false);
@@ -204,8 +199,6 @@ export default function LeadDialog({
     { status: string; trigger?: LeadStatusTransitionTrigger } | null
   >(null);
   const [teamMembers, setTeamMembers] = useState<MentionMember[]>([]);
-  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
-  const [teamMembersError, setTeamMembersError] = useState<string | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionStart, setMentionStart] = useState<number | null>(null);
@@ -223,39 +216,36 @@ export default function LeadDialog({
   const searchParams = useSearchParams();
   const supabaseId = params.supabaseId as string | undefined;
   const { activeTeamId, activeFunctions, activeRole, isTeamMaster } = useTeamContext();
+  const {
+    details: leadDetails,
+    loading: leadDetailsLoading,
+    error: leadDetailsError,
+    refresh: refreshLeadDetails,
+  } = useLeadDetails(currentLeadId || null, activeTeamId, supabaseId);
   const isCloserOperator =
     activeFunctions.includes("CLOSER") &&
     !isTeamMaster &&
     activeRole !== "manager" &&
     activeRole !== "backoffice";
   const { healthPlans, loading: healthPlansLoading } = useHealthPlans(supabaseId, activeTeamId);
-  const {
-    members: closersByTeam,
-    loading: closersLoading,
-    error: closersError,
-    refreshMembers: refreshClosers,
-  } = useTeamClosers(supabaseId, activeTeamId);
-  const {
-    members: sdrsByTeam,
-    loading: sdrsLoading,
-    error: sdrsError,
-    refreshMembers: refreshSdrs,
-  } = useTeamSdrs(supabaseId, activeTeamId);
+  // closersByTeam e sdrsByTeam derivados dos membros já incluídos no useLeadDetails
+  const closersByTeam = useMemo(
+    () => (leadDetails?.teamMembers ?? []).filter((m) => m.functions?.includes("CLOSER")),
+    [leadDetails?.teamMembers]
+  );
+  const sdrsByTeam = useMemo(
+    () => (leadDetails?.teamMembers ?? []).filter((m) => m.functions?.includes("SDR")),
+    [leadDetails?.teamMembers]
+  );
   const sharedLeadCode = searchParams.get("leadCode");
   const sharedActivityId = searchParams.get("activityId");
-  const currentActivitiesLead = leadDetails?.id === currentLead?.id ? leadDetails : null;
-  const isActivityLoading = leadDetailsLoading || (!!currentLead && leadDetails?.id !== currentLead.id);
-  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
-  // Único gating de loading do conteúdo do dialog: só liberamos quando lead,
-  // attachments e team members (closers/SDRs/mentions) estão prontos. Para
-  // criação de lead (sem currentLead), só dependemos do user.
-  const isLeadContentLoading =
-    !!currentLead &&
-    (leadDetailsLoading ||
-      attachmentsLoading ||
-      closersLoading ||
-      sdrsLoading ||
-      teamMembersLoading);
+  const currentActivitiesLead =
+    leadDetails?.lead?.id === currentLead?.id ? leadDetails?.lead : null;
+  const isActivityLoading =
+    leadDetailsLoading || (!!currentLead && leadDetails?.lead?.id !== currentLead?.id);
+  // Único gating de loading do conteúdo do dialog: o useLeadDetails carrega lead,
+  // anexos e membros em paralelo — basta aguardar o loading dele.
+  const isLeadContentLoading = !!currentLead && leadDetailsLoading;
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -265,15 +255,9 @@ export default function LeadDialog({
 
   useEffect(() => {
     if (currentLead?.id && open) {
-      void fetchLead();
+      void refreshLeadDetails();
     }
-  }, [currentLead?.id, open, fetchLead]);
-
-  useEffect(() => {
-    if (!open || !activeTeamId || !supabaseId) return;
-    void refreshClosers();
-    void refreshSdrs();
-  }, [open, activeTeamId, supabaseId, refreshClosers, refreshSdrs]);
+  }, [currentLead?.id, open, refreshLeadDetails]);
 
   useEffect(() => {
     if (!open) {
@@ -302,88 +286,19 @@ export default function LeadDialog({
     setHighlightedActivityId(null);
   }, [currentLead?.id]);
 
+  // teamMembers para o popover de menções — derivado do useLeadDetails (sem fetch separado)
   useEffect(() => {
-    if (!open || !activeTeamId || !supabaseId) return;
-    let isMounted = true;
-
-    const fetchTeamMembers = async () => {
-      setTeamMembersLoading(true);
-      setTeamMembersError(null);
-      try {
-        const cached = teamMembersCacheByTeamId.get(activeTeamId);
-        if (cached && Date.now() - cached.timestamp <= TEAM_MEMBERS_CACHE_TTL_MS) {
-          if (isMounted) {
-            setTeamMembers(cached.members);
-          }
-          return;
-        }
-
-        const existingRequest = teamMembersInFlightByTeamId.get(activeTeamId);
-        const requestPromise = existingRequest ?? (async (): Promise<MentionMember[]> => {
-          const response = await fetch(`/api/v1/teams/${activeTeamId}/members`, {
-            headers: {
-              "x-supabase-user-id": supabaseId,
-            },
-          });
-
-          const result = await response.json();
-          if (!response.ok || !result?.isValid) {
-            const message = Array.isArray(result?.errorMessages) && result.errorMessages.length > 0
-              ? result.errorMessages.join(", ")
-              : "Erro ao carregar membros do time";
-            throw new Error(message);
-          }
-
-          const members = (result?.result?.members ?? []).map((member: any) => ({
-            profileId: member.profileId,
-            name: member.name || member.email || "Usuário",
-            email: member.email ?? null,
-            profileIconUrl: member.profileIconUrl ?? null,
-            role: member.role,
-            functions: member.functions ?? [],
-            googleCalendarConnected: member.googleCalendarConnected ?? false,
-          })) as MentionMember[];
-
-          teamMembersCacheByTeamId.set(activeTeamId, {
-            members,
-            timestamp: Date.now(),
-          });
-
-          return members;
-        })();
-
-        if (!existingRequest) {
-          teamMembersInFlightByTeamId.set(
-            activeTeamId,
-            requestPromise.finally(() => {
-              teamMembersInFlightByTeamId.delete(activeTeamId);
-            })
-          );
-        }
-
-        const members = await requestPromise;
-
-        if (isMounted) {
-          setTeamMembers(members);
-        }
-      } catch (error) {
-        if (isMounted) {
-          setTeamMembers([]);
-          setTeamMembersError(error instanceof Error ? error.message : "Erro ao carregar membros do time");
-        }
-      } finally {
-        if (isMounted) {
-          setTeamMembersLoading(false);
-        }
-      }
-    };
-
-    fetchTeamMembers();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [open, activeTeamId, supabaseId]);
+    const members = (leadDetails?.teamMembers ?? []).map((m) => ({
+      profileId: m.id,
+      name: m.name,
+      email: m.email ?? null,
+      profileIconUrl: m.avatarImageUrl ?? null,
+      role: m.role,
+      functions: m.functions ?? [],
+      googleCalendarConnected: m.googleCalendarConnected ?? false,
+    })) as MentionMember[];
+    setTeamMembers(members);
+  }, [leadDetails?.teamMembers]);
 
   useEffect(() => {
     if (currentLead?.status) {
@@ -580,11 +495,10 @@ export default function LeadDialog({
 
     silentFetchTimerRef.current = window.setTimeout(() => {
       silentFetchTimerRef.current = null;
-      void fetchLead({ silent: true }).finally(() => {
-        setReactionOverrides({});
-      });
+      refreshLeadDetails({ silent: true });
+      setReactionOverrides({});
     }, 500);
-  }, [currentLead?.id, open, fetchLead, clearSilentLeadSyncTimer]);
+  }, [currentLead?.id, open, refreshLeadDetails, clearSilentLeadSyncTimer]);
 
   useEffect(() => {
     return () => {
@@ -945,7 +859,7 @@ export default function LeadDialog({
       }
 
       toast.success("Atividade registrada");
-      void fetchLead({ silent: true });
+      refreshLeadDetails({ silent: true });
     } catch (error) {
       setOptimisticActivities((prev) => prev.filter((activity) => activity.id !== optimisticActivityId));
       setActivityBody(trimmed);
@@ -2292,13 +2206,13 @@ export default function LeadDialog({
                     usersToAssign={usersToAssign}
                     closersToAssign={availableScheduleClosers}
                     sdrsToAssign={sdrsByTeam}
-                      closersLoading={teamMembersLoading || closersLoading}
-                      closersError={closersError}
-                    sdrsLoading={sdrsLoading}
-                    sdrsError={sdrsError}
+                      closersLoading={leadDetailsLoading}
+                      closersError={leadDetailsError}
+                    sdrsLoading={leadDetailsLoading}
+                    sdrsError={leadDetailsError}
                       leadId={currentLead?.id}
                       onUploadStateChange={setIsAttachmentUploading}
-                      onAttachmentsLoadingChange={setAttachmentsLoading}
+                      initialAttachments={leadDetails?.attachments}
                       scheduleSummary={
                         currentLead
                           ? {
@@ -2576,13 +2490,13 @@ export default function LeadDialog({
                         />
                         {mentionOpen && currentLead && (
                           <div className="absolute bottom-full left-0 mb-2 w-full rounded-md border border-border/60 bg-background shadow-sm z-50">
-                            {teamMembersLoading ? (
+                            {leadDetailsLoading ? (
                               <div className="px-3 py-2 text-xs text-muted-foreground">
                                 Carregando membros...
                               </div>
-                            ) : teamMembersError ? (
+                            ) : leadDetailsError ? (
                               <div className="px-3 py-2 text-xs text-destructive">
-                                {teamMembersError}
+                                {leadDetailsError}
                               </div>
                             ) : mentionMatches.length === 0 ? (
                               <div className="px-3 py-2 text-xs text-muted-foreground">

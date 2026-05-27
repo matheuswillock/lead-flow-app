@@ -101,6 +101,8 @@ export interface ILeadFormProps {
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     onUploadStateChange?: (isUploading: boolean) => void;
     onAttachmentsLoadingChange?: (isLoading: boolean) => void;
+    /** Anexos pré-carregados pelo endpoint agregado; evita fetch separado na montagem. */
+    initialAttachments?: import("@/components/ui/attachment-list").Attachment[];
     isEditMode?: boolean;
     currentProfileId?: string;
     currentUserIsSdr?: boolean;
@@ -136,6 +138,7 @@ export function LeadForm({
     leadId,
     onUploadStateChange,
     onAttachmentsLoadingChange,
+    initialAttachments,
     isEditMode = false,
     currentProfileId,
     currentUserIsSdr = false,
@@ -914,6 +917,7 @@ export function LeadForm({
                         leadName={form.getValues("name")}
                         onUploadStateChange={onUploadStateChange}
                         onLoadingChange={onAttachmentsLoadingChange}
+                        initialAttachments={initialAttachments}
                     />
                 ) : (
                     <div className="flex items-center justify-center p-8 border border-dashed rounded-lg bg-muted/20">

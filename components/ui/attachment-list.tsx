@@ -45,6 +45,12 @@ interface AttachmentListProps {
   className?: string;
   onUploadStateChange?: (isUploading: boolean) => void;
   onLoadingChange?: (isLoading: boolean) => void;
+  /**
+   * Quando fornecido, usa esses anexos como estado inicial e pula o fetch
+   * de montagem. Útil quando o pai já carregou os dados via endpoint agregado.
+   * O componente ainda fará re-fetch após uploads/deletes.
+   */
+  initialAttachments?: Attachment[];
 }
 
 const ATTACHMENTS_CACHE_TTL_MS = 60 * 1000;
@@ -88,8 +94,8 @@ async function loadAttachmentsWithDedupe(leadId: string, force = false): Promise
   return await requestPromise;
 }
 
-export function AttachmentList({ leadId, leadName, className, onUploadStateChange, onLoadingChange }: AttachmentListProps) {
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+export function AttachmentList({ leadId, leadName, className, onUploadStateChange, onLoadingChange, initialAttachments }: AttachmentListProps) {
+  const [attachments, setAttachments] = useState<Attachment[]>(initialAttachments ?? []);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -115,8 +121,16 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
     }
   }, [leadId]);
 
-  // Buscar attachments ao montar o componente
+  // Buscar attachments ao montar o componente.
+  // Se initialAttachments foi fornecido, pula o fetch inicial e atualiza
+  // o cache para que uploads/deletes subsequentes partam do estado correto.
   useEffect(() => {
+    if (initialAttachments !== undefined) {
+      setAttachments(initialAttachments);
+      writeAttachmentsCache(leadId, initialAttachments);
+      return;
+    }
+
     let cancelled = false;
 
     const fetchInitialAttachments = async () => {
@@ -141,7 +155,7 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
     return () => {
       cancelled = true;
     };
-  }, [leadId]);
+  }, [leadId, initialAttachments]);
 
   const handleFileSelect = () => {
     fileInputRef.current?.click();
