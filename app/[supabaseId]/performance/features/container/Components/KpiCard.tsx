@@ -23,7 +23,6 @@ export function KpiCard({
   helper,
   delta,
   deltaInverse,
-  sparkColor,
   sparkValues,
   accent = "primary",
   featured = false,
