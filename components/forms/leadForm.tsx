@@ -918,6 +918,8 @@ export function LeadForm({
                         onUploadStateChange={onUploadStateChange}
                         onLoadingChange={onAttachmentsLoadingChange}
                         initialAttachments={initialAttachments}
+                        supabaseId={supabaseId}
+                        teamId={activeTeamId}
                     />
                 ) : (
                     <div className="flex items-center justify-center p-8 border border-dashed rounded-lg bg-muted/20">

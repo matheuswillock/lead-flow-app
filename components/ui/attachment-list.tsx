@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, X, FileIcon, Image as ImageIcon, File as FileTextIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -51,6 +51,10 @@ interface AttachmentListProps {
    * O componente ainda fará re-fetch após uploads/deletes.
    */
   initialAttachments?: Attachment[];
+  /** Supabase user ID — enviado como x-supabase-user-id nas requisições. */
+  supabaseId?: string;
+  /** Team ID ativo — enviado como x-team-id nas requisições. */
+  teamId?: string;
 }
 
 const ATTACHMENTS_CACHE_TTL_MS = 60 * 1000;
@@ -61,7 +65,7 @@ function writeAttachmentsCache(leadId: string, attachments: Attachment[]) {
   attachmentsCacheByLeadId.set(leadId, { attachments, timestamp: Date.now() });
 }
 
-async function loadAttachmentsWithDedupe(leadId: string, force = false): Promise<Attachment[]> {
+async function loadAttachmentsWithDedupe(leadId: string, force = false, headers?: Record<string, string>): Promise<Attachment[]> {
   if (!force) {
     const cached = attachmentsCacheByLeadId.get(leadId);
     if (cached && Date.now() - cached.timestamp <= ATTACHMENTS_CACHE_TTL_MS) {
@@ -75,7 +79,9 @@ async function loadAttachmentsWithDedupe(leadId: string, force = false): Promise
   }
 
   const requestPromise = (async (): Promise<Attachment[]> => {
-    const response = await fetch(`/api/v1/leads/${leadId}/attachments`);
+    const response = await fetch(`/api/v1/leads/${leadId}/attachments`, {
+      headers: headers ?? {},
+    });
     const result = await response.json();
     const nextAttachments = result.isValid && Array.isArray(result.result)
       ? (result.result as Attachment[])
@@ -94,7 +100,7 @@ async function loadAttachmentsWithDedupe(leadId: string, force = false): Promise
   return await requestPromise;
 }
 
-export function AttachmentList({ leadId, leadName, className, onUploadStateChange, onLoadingChange, initialAttachments }: AttachmentListProps) {
+export function AttachmentList({ leadId, leadName, className, onUploadStateChange, onLoadingChange, initialAttachments, supabaseId, teamId }: AttachmentListProps) {
   const [attachments, setAttachments] = useState<Attachment[]>(initialAttachments ?? []);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -109,17 +115,24 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
     onLoadingChange?.(isLoading);
   }, [isLoading, onLoadingChange]);
 
+  const authHeaders = React.useMemo(() => {
+    const h: Record<string, string> = {};
+    if (supabaseId) h["x-supabase-user-id"] = supabaseId;
+    if (teamId) h["x-team-id"] = teamId;
+    return Object.keys(h).length > 0 ? h : undefined;
+  }, [supabaseId, teamId]);
+
   const fetchAttachments = useCallback(async (force = false) => {
     setIsLoading(true);
     try {
-      const nextAttachments = await loadAttachmentsWithDedupe(leadId, force);
+      const nextAttachments = await loadAttachmentsWithDedupe(leadId, force, authHeaders);
       setAttachments(nextAttachments);
     } catch (error) {
       console.error("Erro ao buscar attachments:", error);
     } finally {
       setIsLoading(false);
     }
-  }, [leadId]);
+  }, [leadId, authHeaders]);
 
   // Buscar attachments ao montar o componente.
   // Se initialAttachments foi fornecido, pula o fetch inicial e atualiza
@@ -136,7 +149,7 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
     const fetchInitialAttachments = async () => {
       setIsLoading(true);
       try {
-        const nextAttachments = await loadAttachmentsWithDedupe(leadId);
+        const nextAttachments = await loadAttachmentsWithDedupe(leadId, false, authHeaders);
         if (!cancelled) {
           setAttachments(nextAttachments);
         }
@@ -155,7 +168,7 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
     return () => {
       cancelled = true;
     };
-  }, [leadId, initialAttachments]);
+  }, [leadId, initialAttachments, authHeaders]);
 
   const handleFileSelect = () => {
     fileInputRef.current?.click();
@@ -187,6 +200,7 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
 
         const response = await fetch(`/api/v1/leads/${leadId}/attachments`, {
           method: "POST",
+          headers: authHeaders ?? {},
           body: formData,
         });
 
@@ -225,6 +239,7 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
     try {
       const response = await fetch(`/api/v1/leads/${leadId}/attachments/${attachmentId}`, {
         method: "DELETE",
+        headers: authHeaders ?? {},
       });
 
       const result = await response.json();
@@ -344,7 +359,7 @@ export function AttachmentList({ leadId, leadName, className, onUploadStateChang
                 size="icon"
                 variant="ghost"
                 onClick={() => handleDeleteAttachment(attachment.id)}
-                className="flex-shrink-0 ml-2"
+                className="shrink-0 ml-2"
               >
                 <X className="h-4 w-4" />
               </Button>
