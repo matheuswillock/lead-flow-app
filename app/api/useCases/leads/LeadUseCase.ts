@@ -267,6 +267,21 @@ export class LeadUseCase implements ILeadUseCase {
         return normalizedPlans.output;
       }
 
+      if (data.cnpj && data.cnpj.trim().length > 0) {
+        const existingLead = await prisma.lead.findFirst({
+          where: { teamId, cnpj: data.cnpj.trim() },
+          select: { id: true, leadCode: true, name: true },
+        });
+        if (existingLead) {
+          return new Output(
+            false,
+            [],
+            [`Já existe um lead com este CNPJ neste time (${existingLead.leadCode ?? existingLead.name ?? existingLead.id})`],
+            null
+          );
+        }
+      }
+
       const lead = await this.leadRepository.create({
         manager: { connect: { id: managerId } },
         team: { connect: { id: teamId } },
@@ -675,16 +690,18 @@ export class LeadUseCase implements ILeadUseCase {
       const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
       
       if (!profileInfo) {
+        console.error("[LeadUseCase][deleteLead] Perfil não encontrado para supabaseId:", supabaseId);
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
       const existingLead = await this.leadRepository.findById(id);
       if (!existingLead) {
+        console.error("[LeadUseCase][deleteLead] Lead não encontrado:", id);
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
-      // Verificar permissões para operators
       if (profileInfo.role === 'operator' && existingLead.createdBy !== profileInfo.id) {
+        console.error("[LeadUseCase][deleteLead] Operador sem permissão:", { supabaseId, leadId: id, createdBy: existingLead.createdBy });
         return new Output(false, [], ["Você só pode deletar leads que você criou"], null);
       }
 

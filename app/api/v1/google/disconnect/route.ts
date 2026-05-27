@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { profileRepository } from "@/app/api/infra/data/repositories/profile/ProfileRepository";
 import { googleConnectionUseCase } from "@/app/api/useCases/googleConnection/GoogleConnectionUseCase";
+import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository";
 
 const LOG_PREFIX = "[GoogleDisconnect]";
 
@@ -50,8 +51,30 @@ export async function POST(request: NextRequest) {
 
     supabaseId = user.id;
 
+    const body = await request.json().catch(() => ({}))
+    const force = body?.force === true
     const currentProfile = await profileRepository.findBySupabaseId(supabaseId);
+    const backofficeUserRepository = new BackofficeUserRepository()
     const disconnectedEmail = currentProfile?.googleEmail ?? currentProfile?.email ?? null;
+
+    if (!currentProfile) {
+      const output = new Output(false, [], ["Perfil nao encontrado"], null);
+      return NextResponse.json(output, { status: 404 });
+    }
+
+    if (currentProfile.googleConnectionId) {
+      const linkedDependents =
+        await backofficeUserRepository.findLinkedDependentsWithoutOwnConnection(currentProfile.id)
+      if (linkedDependents.length > 0 && !force) {
+        const output = new Output(
+          false,
+          [],
+          ["Existem usuarios backoffice dependentes desta conexao. Reenvie com force=true para confirmar."],
+          { dependents: linkedDependents }
+        )
+        return NextResponse.json(output, { status: 409 })
+      }
+    }
 
     const profile = await profileRepository.updateGoogleCalendarAuth(supabaseId, {
       accessToken: null,
@@ -82,13 +105,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (currentProfile) {
-      const notifyOutput = await googleConnectionUseCase.notifyGoogleDisconnected({
-        supabaseId,
-        profileId: currentProfile.id,
-        activeTeamId: currentProfile.activeTeamId ?? null,
-        googleEmail: disconnectedEmail,
-      });
+    const notifyOutput = await googleConnectionUseCase.notifyGoogleDisconnected({
+      supabaseId,
+      profileId: currentProfile.id,
+      activeTeamId: currentProfile.activeTeamId ?? null,
+      googleEmail: disconnectedEmail,
+    });
 
       if (!notifyOutput.isValid) {
         logError("Falha ao registrar notificacao de desconexao Google.", {
@@ -99,7 +121,6 @@ export async function POST(request: NextRequest) {
           errors: notifyOutput.errorMessages,
         });
       }
-    }
 
     logInfo("Google desconectado com sucesso.", {
       status: "success",

@@ -44,12 +44,18 @@ function getPlanInfo(master: BackofficeAllUsersMasterRef | null): PlanInfo {
 }
 
 function serializeListItem(record: BackofficeAllUsersListRecord) {
+  const serializedFunctions = record.functions.map((func) => ({
+    name: func,
+    label: func === "CLOSER" ? "Closer" : "SDR",
+  }))
+
   return {
     id: record.id,
     fullName: record.fullName,
     email: record.email,
     phone: record.phone,
     role: record.role,
+    functions: serializedFunctions,
     isMaster: record.isMaster,
     googleCalendarConnected: record.googleCalendarConnected,
     createdAt: record.createdAt.toISOString(),

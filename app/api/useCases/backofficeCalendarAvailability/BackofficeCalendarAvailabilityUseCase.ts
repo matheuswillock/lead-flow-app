@@ -7,6 +7,7 @@ import type {
 } from "./IBackofficeCalendarAvailabilityUseCase"
 import { BackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
 import { BackofficeLeadScheduleRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeLeadSchedule/BackofficeLeadScheduleRepository"
+import { backofficeGoogleConnectionResolverService } from "@/app/api/services/Backoffice/backofficeGoogleConnection/BackofficeGoogleConnectionResolverService"
 import {
   backofficeGoogleCalendarService,
 } from "@/app/api/services/Backoffice/backofficeGoogleCalendar/BackofficeGoogleCalendarService"
@@ -54,6 +55,7 @@ export const backofficeCalendarAvailabilityUseCase =
   new BackofficeCalendarAvailabilityUseCase(
     new BackofficeCalendarAvailabilityService(
       new BackofficeUserRepository(),
+      backofficeGoogleConnectionResolverService,
       new BackofficeLeadScheduleRepository(),
       backofficeGoogleCalendarService
     )

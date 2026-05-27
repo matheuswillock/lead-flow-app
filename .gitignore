@@ -26,6 +26,7 @@
 # misc
 .DS_Store
 *.pem
+opencode.json
 
 # debug
 npm-debug.log*
@@ -39,6 +40,10 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# db clone dumps
+/tmp/db-clone/
+/backup_*.sql
 
 # typescript
 *.tsbuildinfo

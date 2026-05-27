@@ -6749,7 +6749,7 @@
                 "current-user"
               ]
             },
-            "description": "Retorna dados do usuário backoffice autenticado."
+            "description": "Retorna dados do usuário backoffice autenticado, incluindo googleConnectionSource quando houver conexão Google ativa."
           }
         },
         {

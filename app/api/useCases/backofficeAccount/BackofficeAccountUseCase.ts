@@ -11,6 +11,10 @@ import type {
 } from "./IBackofficeAccountUseCase"
 import { IBackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
 import { BackofficeUserRepository } from "../../infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository"
+import type { IGoogleOAuthConnectionRepository } from "../../infra/data/repositories/googleOAuthConnection/IGoogleOAuthConnectionRepository"
+import { GoogleOAuthConnectionRepository } from "../../infra/data/repositories/googleOAuthConnection/GoogleOAuthConnectionRepository"
+import type { IBackofficeGoogleConnectionResolverService } from "../../services/Backoffice/backofficeGoogleConnection/IBackofficeGoogleConnectionResolverService"
+import { BackofficeGoogleConnectionResolverService } from "../../services/Backoffice/backofficeGoogleConnection/BackofficeGoogleConnectionResolverService"
 
 const BACKOFFICE_EMAIL_DOMAIN = "@corretorstudio.com"
 
@@ -32,7 +36,11 @@ function isValidBackofficeEmail(value: string): boolean {
   return /^[^\s@]+$/.test(prefix) && value === `${prefix}${BACKOFFICE_EMAIL_DOMAIN}`
 }
 
-function mapAccount(profile: Profile, user: BackofficeUser) {
+function mapAccount(
+  profile: Profile,
+  user: BackofficeUser,
+  googleConnectionSource: "backoffice_user" | "linked_profile" | null = null
+) {
   return {
     profileId: profile.id,
     supabaseId: profile.supabaseId,
@@ -56,6 +64,7 @@ function mapAccount(profile: Profile, user: BackofficeUser) {
     isCloser: user.isCloser,
     googleCalendarConnected: user.googleCalendarConnected,
     googleEmail: user.googleEmail,
+    googleConnectionSource,
     timezone: user.timezone,
   }
 }
@@ -63,7 +72,9 @@ function mapAccount(profile: Profile, user: BackofficeUser) {
 export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
   constructor(
     private readonly userRepo: IBackofficeUserRepository,
-    private readonly profileRepo: IProfileRepository
+    private readonly profileRepo: IProfileRepository,
+    private readonly connectionRepo: IGoogleOAuthConnectionRepository,
+    private readonly googleResolver: IBackofficeGoogleConnectionResolverService
   ) {}
 
   async getAccount(profileId: string): Promise<Output> {
@@ -81,7 +92,13 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
         return new Output(false, [], ["Perfil sem autenticação vinculada"], null)
       }
 
-      return new Output(true, [], [], mapAccount(profile, user))
+      const organizer = await this.googleResolver.resolveForBackofficeUser(user.id)
+      return new Output(
+        true,
+        [],
+        [],
+        mapAccount(profile, user, organizer?.source ?? null)
+      )
     } catch (error) {
       console.error("[BackofficeAccountUseCase][getAccount]", error)
       return new Output(false, [], ["Erro ao buscar conta backoffice"], null)
@@ -145,7 +162,13 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
       const updatedUser =
         email && email !== user.email ? await this.userRepo.update(user.id, { email }) : user
 
-      return new Output(true, ["Conta atualizada com sucesso"], [], mapAccount(updatedProfile, updatedUser))
+      const organizer = await this.googleResolver.resolveForBackofficeUser(updatedUser.id)
+      return new Output(
+        true,
+        ["Conta atualizada com sucesso"],
+        [],
+        mapAccount(updatedProfile, updatedUser, organizer?.source ?? null)
+      )
     } catch (error) {
       console.error("[BackofficeAccountUseCase][updateAccount]", error)
       return new Output(false, [], ["Erro ao atualizar conta backoffice"], null)
@@ -206,6 +229,31 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
         return new Output(false, [], ["Expiração do token Google inválida"], null)
       }
 
+      const googleEmail = normalizeBackofficeEmail(data.email) ?? null
+      let connection = googleEmail
+        ? await this.connectionRepo.findByGoogleEmail(googleEmail)
+        : null
+
+      if (!connection && googleEmail) {
+        connection = await this.connectionRepo.create({
+          googleEmail,
+          accessToken,
+          refreshToken: trimString(data.refreshToken) || null,
+          tokenExpiresAt: expiresAt,
+        })
+      } else if (connection) {
+        connection = await this.connectionRepo.updateTokens(connection.id, {
+          accessToken,
+          refreshToken:
+            data.refreshToken === undefined
+              ? connection.refreshToken
+              : trimString(data.refreshToken) || null,
+          tokenExpiresAt: expiresAt,
+          lastRefreshedAt: new Date(),
+          lastRefreshError: null,
+        })
+      }
+
       const updatedUser = await this.userRepo.update(user.id, {
         googleCalendarConnected: true,
         googleAccessToken: accessToken,
@@ -214,12 +262,20 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
             ? user.googleRefreshToken
             : trimString(data.refreshToken) || null,
         googleTokenExpiresAt: expiresAt,
-        googleEmail: normalizeBackofficeEmail(data.email) ?? null,
+        googleEmail,
+        googleConnectionId: connection?.id ?? user.googleConnectionId ?? null,
       })
 
+      if (connection?.id) {
+        await this.connectionRepo.attachToBackofficeUser(connection.id, user.id)
+      }
+
+      const organizer = await this.googleResolver.resolveForBackofficeUser(updatedUser.id)
+
       return new Output(true, ["Google Calendar conectado"], [], {
-        googleCalendarConnected: updatedUser.googleCalendarConnected,
-        googleEmail: updatedUser.googleEmail,
+        googleCalendarConnected: !!organizer,
+        googleEmail: organizer?.connection.googleEmail ?? updatedUser.googleEmail,
+        googleConnectionSource: organizer?.source ?? null,
         timezone: updatedUser.timezone,
       })
     } catch (error) {
@@ -241,7 +297,9 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
         googleRefreshToken: null,
         googleTokenExpiresAt: null,
         googleEmail: null,
+        googleConnectionId: null,
       })
+      await this.connectionRepo.detachFromBackofficeUser(user.id)
 
       return new Output(true, ["Google Calendar desconectado"], [], null)
     } catch (error) {
@@ -253,5 +311,7 @@ export class BackofficeAccountUseCase implements IBackofficeAccountUseCase {
 
 export const backofficeAccountUseCase = new BackofficeAccountUseCase(
   new BackofficeUserRepository(),
-  profileRepository
+  profileRepository,
+  new GoogleOAuthConnectionRepository(),
+  new BackofficeGoogleConnectionResolverService(new BackofficeUserRepository())
 )

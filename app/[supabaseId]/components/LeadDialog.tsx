@@ -2311,6 +2311,8 @@ export default function LeadDialog({
                       currentProfileId={user.id}
                       currentUserIsSdr={activeFunctions.includes("SDR") || user.functions.includes("SDR")}
                       currentUserIsCloser={isCloserOperator}
+                      supabaseId={supabaseId}
+                      activeTeamId={activeTeamId ?? undefined}
                     />
                 )}
               </div>

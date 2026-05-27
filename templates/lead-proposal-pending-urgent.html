@@ -1,0 +1,33 @@
+<!--
+  Fluxo: Lead movido para proposta pendente (notificação urgente)
+  Fonte: lib/services/EmailService.ts → sendLeadProposalPendingUrgentEmail
+  Assunto: Você tem uma proposta pendente no Corretor Studio - ID: {{leadCode}}
+  Variáveis: {{leadCode}}, {{actorName}}, {{leadName}}, {{leadEmail}}, {{leadPhone}},
+            {{sdrName}}, {{closerName}}, {{notes}}, {{leadUrl}}
+-->
+<div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937;">
+  <div style="background: #ff6900; color: #fff; padding: 16px 20px; border-radius: 10px 10px 0 0;">
+    <h1 style="margin: 0; font-size: 22px;">Você tem uma proposta pendente no Corretor Studio - ID: {{leadCode}}</h1>
+    <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.95;">
+      {{actorName}} moveu um lead para o status de proposta pendente.
+    </p>
+  </div>
+
+  <div style="border: 1px solid #fed7aa; border-top: 0; border-radius: 0 0 10px 10px; padding: 20px; background: #fff;">
+    <p style="margin: 0 0 14px;"><strong>Lead:</strong> {{leadName}}</p>
+    <p style="margin: 0 0 8px;"><strong>E-mail:</strong> {{leadEmail}}</p>
+    <p style="margin: 0 0 14px;"><strong>Telefone:</strong> {{leadPhone}}</p>
+
+    <p style="margin: 0 0 8px;"><strong>SDR:</strong> {{sdrName}}</p>
+    <p style="margin: 0 0 14px;"><strong>Closer:</strong> {{closerName}}</p>
+
+    <div style="margin: 0 0 14px;">
+      <a href="{{leadUrl}}" style="display: inline-block; background: #ff6900; color: #fff; text-decoration: none; padding: 10px 14px; border-radius: 8px; font-weight: 600;">Acessar lead no CRM</a>
+    </div>
+
+    <div style="background: #fff7ed; border-left: 4px solid #ff6900; padding: 12px; border-radius: 6px;">
+      <p style="margin: 0 0 4px;"><strong>Observações</strong></p>
+      <p style="margin: 0; white-space: pre-wrap;">{{notes}}</p>
+    </div>
+  </div>
+</div>

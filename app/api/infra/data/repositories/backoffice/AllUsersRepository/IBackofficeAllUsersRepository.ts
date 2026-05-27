@@ -1,4 +1,4 @@
-import type { SubscriptionPlan, UserRole } from "@prisma/client"
+import type { SubscriptionPlan, UserFunction, UserRole } from "@prisma/client"
 
 export type BackofficeAllUsersRoleFilter = "master" | "manager" | "operator"
 export type BackofficeAllUsersPlanFilter = "lifetime" | "monthly" | "trial" | "none"
@@ -28,6 +28,7 @@ export interface BackofficeAllUsersListRecord {
   email: string
   phone: string | null
   role: UserRole
+  functions: UserFunction[]
   isMaster: boolean
   googleCalendarConnected: boolean
   createdAt: Date

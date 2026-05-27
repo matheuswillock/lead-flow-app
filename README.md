@@ -42,7 +42,8 @@ O projeto foi construido com Next.js (App Router), Supabase, PostgreSQL e Prisma
 
 - Node.js `>=24` (conforme `package.json`)
 - Bun
-- Banco PostgreSQL (recomendado: Supabase)
+- Docker Desktop (para o ambiente Supabase local)
+- Supabase CLI (`npm install -g supabase` ou `brew install supabase/tap/supabase`)
 - Conta Asaas Sandbox (se for testar pagamentos/webhooks)
 
 ## Instalacao e execucao
@@ -70,22 +71,23 @@ cp .env.example .env
 Copy-Item .env.example .env
 ```
 
-Edite o `.env` com as credenciais reais dos servicos (Supabase, banco, Asaas, Resend e chaves de criptografia).
+Edite o `.env` com as credenciais reais dos servicos (Supabase remoto, Asaas, Resend e chaves de criptografia).
 
-4. Gere cliente Prisma e aplique migracoes:
+4. Suba o banco local (ver secao [Banco de dados local](#banco-de-dados-local)):
+
+```bash
+supabase start
+```
+
+5. Configure o `.env.local` para apontar ao banco local (ver secao abaixo).
+
+6. Gere o cliente Prisma:
 
 ```bash
 bun run prisma:generate
-bun run prisma:migrate
 ```
 
-5. (Opcional) Rode seed:
-
-```bash
-bun run prisma:seed
-```
-
-6. Inicie a aplicacao:
+7. Inicie a aplicacao:
 
 ```bash
 bun run dev
@@ -93,11 +95,105 @@ bun run dev
 
 Acesse `http://localhost:3000`.
 
-7. (Opcional) Para testar webhook local do Asaas:
+8. (Opcional) Para testar webhook local do Asaas:
 
 ```bash
 bun run ngrok
 ```
+
+---
+
+## Banco de dados local
+
+O projeto usa o **Supabase CLI** para replicar o ambiente remoto localmente via Docker.
+A stack local inclui: PostgreSQL, Auth, Studio, Storage, Realtime e Edge Functions — identico ao ambiente de producao.
+
+### O que o Supabase local oferece
+
+| Servico | URL local | Descricao |
+|---|---|---|
+| API / PostgREST | http://127.0.0.1:54321 | Endpoint REST do banco |
+| Supabase Studio | http://127.0.0.1:54323 | Interface visual (tabelas, SQL, Auth) |
+| Postgres | `localhost:54322` | Conexao direta ao banco |
+| Mailpit | http://127.0.0.1:54324 | Captura de emails enviados pelo Auth |
+
+### Comandos principais
+
+```bash
+# Subir a stack completa (aplica migrations automaticamente)
+supabase start
+
+# Verificar status e obter as credenciais locais
+supabase status
+
+# Parar a stack (mantém os dados)
+supabase stop
+
+# Parar e remover todos os dados locais
+supabase stop --no-backup
+
+# Resetar o banco local e reaplicar todas as migrations do zero
+bun run db:migrate:reset:local
+
+# Ver status das migrations (local vs remoto)
+bun run db:migrate:status
+```
+
+### Migrations
+
+As migrations ficam em `supabase/migrations/` e sao criadas com:
+
+```bash
+bun run db:migrate:new <nome-da-migration>
+# Cria: supabase/migrations/<timestamp>_<nome>.sql
+```
+
+Ao rodar `supabase start` ou `bun run db:migrate:reset:local`, todas as migrations sao aplicadas automaticamente ao banco local na ordem cronologica.
+
+Para aplicar ao banco remoto (requer autorizacao explicita):
+
+```bash
+bun run db:migrate:push:dry-run   # visualiza o que sera aplicado
+bun run db:migrate:push           # aplica ao remoto vinculado
+```
+
+### Configurando o .env.local para usar o banco local
+
+Crie (ou edite) o arquivo `.env.local` na raiz do projeto com as credenciais locais.
+Essas credenciais sao estaticas para todo projeto Supabase local — nao sao segredos:
+
+```env
+# Supabase local (supabase start)
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+
+# Prisma — conecta direto ao Postgres do Supabase local
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+DIRECT_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+```
+
+O Next.js carrega `.env.local` com prioridade sobre `.env`, entao `bun run dev`
+usara automaticamente o banco local enquanto o arquivo existir.
+
+> **Nota:** O Prisma CLI (`bun run prisma:db:pull`, `prisma studio` etc.) le o `.env`,
+> nao o `.env.local`. Comandos Prisma CLI continuam apontando ao banco remoto por padrao.
+
+### Alternativa: PostgreSQL bare via docker-compose
+
+O arquivo `docker-compose.yml` sobe apenas um PostgreSQL sem os servicos Supabase.
+Use apenas para casos especificos (testes de integracao standalone, etc.).
+Para desenvolvimento normal, prefira `supabase start`.
+
+```bash
+docker compose up -d    # sobe o Postgres na porta 5433
+docker compose down     # para (mantém dados)
+docker compose down -v  # para e remove os dados
+```
+
+Conexao: `postgresql://postgres:postgres@localhost:5433/leadflow_dev`
+
+---
 
 ## Scripts mais usados
 
@@ -112,10 +208,17 @@ bun run typecheck
 bun run lint
 bun run format
 
-# Banco
+# Banco — Supabase CLI
+supabase start
+supabase stop
+bun run db:migrate:new <nome>
+bun run db:migrate:status
+bun run db:migrate:reset:local
+
+# Banco — Prisma
 bun run prisma:generate
-bun run prisma:migrate
 bun run prisma:studio
+bun run prisma:db:pull
 ```
 
 ## Arquitetura do projeto
@@ -159,15 +262,18 @@ app/
     infra/data/repositories/
 components/               # UI reutilizavel e componentes de feature
 lib/                      # utilitarios, validacoes, clientes e servicos
-prisma/                   # schema, migracoes e seed
-docs/                     # documentação tecnica complementar
+prisma/                   # schema e seed
+supabase/
+  migrations/             # migrations SQL (fonte de verdade do schema)
+  config.toml             # configuracao do ambiente Supabase local
+docs/                     # documentacao tecnica complementar
 ```
 
 ## Time desenvolvedor
 
 - **Matheus Willock** - responsavel pelo desenvolvimento do projeto
 
-## documentação complementar
+## Documentacao complementar
 
 - [Guia rapido](./docs/QUICK_START.md)
 - [Guia de arquitetura](./docs/ARCHITECTURE_GUIDE.md)
