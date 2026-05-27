@@ -320,6 +320,7 @@ export function BackofficeLeadFormDialog() {
 
   const scheduleLead = useMemo(
     () => ({
+      id: selectedLead?.id ?? null,
       name: watchedValues.name || selectedLead?.name || "Lead",
       closerBackofficeUserId: watchedValues.closerBackofficeUserId || null,
       meetingDate: watchedValues.meetingDate || null,
@@ -735,7 +736,7 @@ export function BackofficeLeadFormDialog() {
                         disabled={isSubmitting}
                       >
                         <CalendarClock data-icon="inline-start" />
-                        {isScheduled ? "Editar agendamento" : "Agendar"}
+                        {isScheduled ? "Reagendar lead" : "Agendar lead"}
                       </Button>
                     </div>
 
@@ -855,6 +856,7 @@ export function BackofficeLeadFormDialog() {
         guestOptions={users}
         onOpenChange={setScheduleDialogOpen}
         onConfirm={handleScheduleConfirm}
+        isReschedule={isEdit && isScheduled}
       />
     </>
   )

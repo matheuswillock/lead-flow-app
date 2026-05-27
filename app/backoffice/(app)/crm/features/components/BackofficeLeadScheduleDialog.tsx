@@ -58,6 +58,7 @@ interface BackofficeLeadScheduleDialogProps {
   guestOptions: BackofficeCrmUserOption[]
   onOpenChange: (open: boolean) => void
   onConfirm: (input: BackofficeLeadScheduleInput) => Promise<void>
+  isReschedule?: boolean
 }
 
 function parseInitialDate(value: string | null): Date | undefined {
@@ -73,6 +74,7 @@ export function BackofficeLeadScheduleDialog({
   guestOptions,
   onOpenChange,
   onConfirm,
+  isReschedule = false,
 }: BackofficeLeadScheduleDialogProps) {
   const [meetingDate, setMeetingDate] = useState<Date | undefined>()
   const [closerId, setCloserId] = useState("")
@@ -224,10 +226,12 @@ export function BackofficeLeadScheduleDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarClock data-icon="inline-start" />
-            Agendar lead
+            {isReschedule ? "Reagendar lead" : "Agendar lead"}
           </DialogTitle>
           <DialogDescription>
-            Informe a data e o closer antes de marcar o lead como agendado.
+            {isReschedule
+              ? "Atualize os dados para reagendar o lead."
+              : "Informe a data e o closer antes de marcar o lead como agendado."}
           </DialogDescription>
         </DialogHeader>
 
@@ -418,7 +422,11 @@ export function BackofficeLeadScheduleDialog({
             Cancelar
           </Button>
           <Button type="button" disabled={!canSubmit} onClick={() => void handleSubmit()}>
-            {isSubmitting ? "Salvando..." : "Confirmar agendamento"}
+            {isSubmitting
+              ? "Salvando..."
+              : isReschedule
+                ? "Confirmar reagendamento"
+                : "Confirmar agendamento"}
           </Button>
         </DialogFooter>
       </DialogContent>
