@@ -33,6 +33,7 @@ const CYCLES: { key: BackofficeAdhesionBillingCycleKey; label: string; months: n
   { key: "monthly", label: "Mensal", months: 1, defaultMax: 1 },
   { key: "quarterly", label: "Trimestral", months: 3, defaultMax: 3 },
   { key: "semiannual", label: "Semestral", months: 6, defaultMax: 6 },
+  { key: "annual", label: "Anual", months: 12, defaultMax: 12 },
 ]
 
 function normalizePriceInput(value: string): string {

@@ -3,7 +3,7 @@ import { Output } from "@/lib/output"
 import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
 import { backofficeAdhesionUseCase } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
 
-const ADHESION_CYCLES = ["monthly", "quarterly", "semiannual"] as const
+const ADHESION_CYCLES = ["monthly", "quarterly", "semiannual", "annual"] as const
 type BackofficeAdhesionBillingCycleValue = (typeof ADHESION_CYCLES)[number]
 
 const BILLING_TYPES = ["PIX", "CREDIT_CARD", "EXTERNAL"] as const
