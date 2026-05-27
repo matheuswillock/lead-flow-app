@@ -58,7 +58,7 @@ interface ContextValue {
   openEditDialog: (lead: BackofficeLeadItem) => void
   closeFormDialog: () => void
   refresh: () => Promise<void>
-  createLead: (input: BackofficeLeadCreateInput) => Promise<void>
+  createLead: (input: BackofficeLeadCreateInput) => Promise<BackofficeLeadItem>
   updateLead: (id: string, input: BackofficeLeadUpdateInput) => Promise<void>
   updateLeadStatus: (
     id: string,
@@ -376,10 +376,11 @@ export function BackofficeCrmProvider({ children, service }: ProviderProps) {
   }, [])
 
   const createLead = useCallback(
-    async (input: BackofficeLeadCreateInput) => {
+    async (input: BackofficeLeadCreateInput): Promise<BackofficeLeadItem> => {
       const created = await service.create(input)
       setLeads((prev) => [created, ...prev])
       toast.success("Lead criado")
+      return created
     },
     [service]
   )
