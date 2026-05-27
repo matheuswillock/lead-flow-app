@@ -29,6 +29,16 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
         profile: {
           select: { fullName: true, email: true },
         },
+        googleConnection: {
+          select: { refreshToken: true, revokedAt: true, googleEmail: true },
+        },
+        linkedCorretorStudioProfile: {
+          select: {
+            googleConnection: {
+              select: { refreshToken: true, revokedAt: true, googleEmail: true },
+            },
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
     })
