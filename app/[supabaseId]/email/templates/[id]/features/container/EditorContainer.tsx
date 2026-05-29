@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { AlertCircle, Code2, Send } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useTemplateEditorContext } from "../context/TemplateEditorContext";
 import { EmailEditorStudio, type EmailEditorStudioRef } from "../components/EmailEditorStudio";
+import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext";
 
 export function EditorContainer() {
   const {
@@ -16,9 +17,20 @@ export function EditorContainer() {
     error,
     loading,
     saving,
+    isNewTemplate,
     updateDraft,
   } = useTemplateEditorContext();
   const editorRef = useRef<EmailEditorStudioRef>(null);
+  const { setOverride } = usePageBreadcrumb();
+
+  useEffect(() => {
+    if (loading) return;
+    const label = isNewTemplate
+      ? "Novo template"
+      : draft.name || "Editar template";
+    setOverride({ label });
+    return () => setOverride(null);
+  }, [loading, isNewTemplate, draft.name, setOverride]);
 
   if (loading) {
     return (
