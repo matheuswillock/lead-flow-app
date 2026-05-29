@@ -3,8 +3,9 @@ import { Output } from "@/lib/output"
 import type { IBackofficeHealthPlanUseCase } from "./IBackofficeHealthPlanUseCase"
 import { backofficeHealthPlanService } from "@/app/api/services/backofficeHealthPlan/BackofficeHealthPlanService"
 import type { IBackofficeHealthPlanService } from "@/app/api/services/backofficeHealthPlan/IBackofficeHealthPlanService"
+import { STORAGE_BUCKETS } from "@/lib/supabase/storage"
 
-function parseUrlOrNull(value?: string | null): string | null | undefined {
+function parseStorageUrlOrNull(value?: string | null): string | null | undefined {
   if (value === undefined) return undefined
   if (value === null) return null
   const trimmed = value.trim()
@@ -12,6 +13,8 @@ function parseUrlOrNull(value?: string | null): string | null | undefined {
   try {
     const parsed = new URL(trimmed)
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined
+    const expectedPath = `/storage/v1/object/public/${STORAGE_BUCKETS.PROFILE_ICONS}/`
+    if (!parsed.pathname.includes(expectedPath)) return undefined
     return trimmed
   } catch {
     return undefined
@@ -38,9 +41,9 @@ export class BackofficeHealthPlanUseCase implements IBackofficeHealthPlanUseCase
         return new Output(false, [], ["Nome da operadora é obrigatório"], null)
       }
 
-      const iconUrl = parseUrlOrNull(input.iconUrl)
+      const iconUrl = parseStorageUrlOrNull(input.iconUrl)
       if (input.iconUrl !== undefined && iconUrl === undefined) {
-        return new Output(false, [], ["URL do ícone inválida"], null)
+        return new Output(false, [], ["Ícone deve ser enviado por upload do sistema"], null)
       }
 
       const item = await this.service.create({
@@ -72,9 +75,9 @@ export class BackofficeHealthPlanUseCase implements IBackofficeHealthPlanUseCase
       }
 
       if (input.iconUrl !== undefined) {
-        const parsed = parseUrlOrNull(input.iconUrl)
+        const parsed = parseStorageUrlOrNull(input.iconUrl)
         if (parsed === undefined) {
-          return new Output(false, [], ["URL do ícone inválida"], null)
+          return new Output(false, [], ["Ícone deve ser enviado por upload do sistema"], null)
         }
         payload.iconUrl = parsed
       }
