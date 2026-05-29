@@ -127,8 +127,8 @@ export function CampaignList() {
                 <TableRow key={campaign.id}>
                   <TableCell className="font-medium">{campaign.name}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    <div>{campaign.template.name}</div>
-                    <div className="text-xs">{campaign.contactList.name}</div>
+                    <div>{campaign.template?.name ?? '—'}</div>
+                    <div className="text-xs">{campaign.contactList?.name ?? '—'}</div>
                   </TableCell>
                   <TableCell>
                     <CampaignStatusBadge status={campaign.status} />

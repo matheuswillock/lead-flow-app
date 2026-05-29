@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator"
 import { useContatosContext } from "../context/ContatosContext"
 import { ContactListPanel } from "../components/ContactListPanel"
 import { ContactListCreateModal } from "../components/ContactListCreateModal"
+import { ContactAddModal } from "../components/ContactAddModal"
 import { ContactsTable } from "../components/ContactsTable"
 import { CsvUploadDropzone } from "../components/CsvUploadDropzone"
 
@@ -52,7 +53,14 @@ export function ContatosContainer() {
             <>
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold">{selectedList?.name}</h2>
-                <CsvUploadDropzone />
+                <div className="flex items-center gap-2">
+                  <ContactAddModal
+                    trigger={
+                      <Button size="sm" variant="outline">+ Adicionar contato</Button>
+                    }
+                  />
+                  <CsvUploadDropzone />
+                </div>
               </div>
               <ContactsTable />
             </>

@@ -76,7 +76,7 @@ function ContactListItem({ list }: { list: ContactList }) {
               e.stopPropagation();
               setDeleteOpen(true);
             }}
-            title="Arquivar lista"
+            title="Excluir lista"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -86,11 +86,10 @@ function ContactListItem({ list }: { list: ContactList }) {
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Arquivar lista?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir lista?</AlertDialogTitle>
             <AlertDialogDescription>
-              A lista <strong>"{list.name}"</strong> será arquivada e não
-              aparecerá mais nas campanhas. Os contatos não serão apagados
-              permanentemente.
+              A lista <strong>&quot;{list.name}&quot;</strong> e todos os seus contatos serão
+              excluídos permanentemente. Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -102,7 +101,7 @@ function ContactListItem({ list }: { list: ContactList }) {
               disabled={deletingList}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deletingList ? "Arquivando..." : "Sim, arquivar"}
+              {deletingList ? "Excluindo..." : "Excluir"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

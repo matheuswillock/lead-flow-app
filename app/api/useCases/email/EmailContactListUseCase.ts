@@ -114,25 +114,66 @@ export class EmailContactListUseCase {
     }
   }
 
-  async archive(id: string, ctx: TeamContext): Promise<Output> {
+  async deleteList(id: string, ctx: TeamContext): Promise<Output> {
     try {
       const existing = await prisma.emailContactList.findFirst({
-        where: { id, teamId: ctx.teamId, isArchived: false },
+        where: { id, teamId: ctx.teamId },
       })
 
       if (!existing) {
         return new Output(false, [], ["Lista não encontrada"], null)
       }
 
-      await prisma.emailContactList.update({
-        where: { id },
-        data: { isArchived: true },
+      const campaignCount = await prisma.emailCampaign.count({
+        where: { contactListId: id, teamId: ctx.teamId },
       })
 
-      return new Output(true, ["Lista removida com sucesso"], [], null)
+      if (campaignCount > 0) {
+        return new Output(false, [], ["Não é possível excluir uma lista vinculada a campanhas"], null)
+      }
+
+      await prisma.emailContactList.delete({ where: { id } })
+
+      return new Output(true, ["Lista excluída com sucesso"], [], null)
     } catch (error) {
-      console.error("[EmailContactListUseCase][archive]", error)
-      return new Output(false, [], ["Erro ao remover lista de contatos"], null)
+      console.error("[EmailContactListUseCase][deleteList]", error)
+      return new Output(false, [], ["Erro ao excluir lista de contatos"], null)
+    }
+  }
+
+  async addContact(listId: string, email: string, name: string | null, ctx: TeamContext): Promise<Output> {
+    try {
+      const existing = await prisma.emailContactList.findFirst({
+        where: { id: listId, teamId: ctx.teamId, isArchived: false },
+      })
+
+      if (!existing) {
+        return new Output(false, [], ["Lista não encontrada"], null)
+      }
+
+      const existingContact = await prisma.emailContact.findUnique({
+        where: { listId_email: { listId, email } },
+      })
+
+      await prisma.emailContact.upsert({
+        where: { listId_email: { listId, email } },
+        update: { name: name ?? null },
+        create: { id: randomUUID(), listId, email, name: name ?? null },
+      })
+
+      if (!existingContact) {
+        const totalCount = await prisma.emailContact.count({ where: { listId } })
+        await prisma.emailContactList.update({
+          where: { id: listId },
+          data: { totalContacts: totalCount },
+        })
+      }
+
+      const message = existingContact ? "Contato atualizado com sucesso" : "Contato adicionado com sucesso"
+      return new Output(true, [message], [], null)
+    } catch (error) {
+      console.error("[EmailContactListUseCase][addContact]", error)
+      return new Output(false, [], ["Erro ao adicionar contato"], null)
     }
   }
 

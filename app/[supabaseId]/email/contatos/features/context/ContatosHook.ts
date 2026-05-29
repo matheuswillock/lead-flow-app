@@ -14,6 +14,7 @@ export type ContatosActions = {
   handleSelectList: (id: string) => void
   handleUploadCsv: (file: File) => Promise<void>
   handleDeleteContact: (contactId: string) => Promise<void>
+  handleAddContact: (email: string, name?: string) => Promise<void>
   handleSearch: (query: string) => void
   handlePageChange: (page: number) => void
 }
@@ -126,10 +127,10 @@ export function useContatos(supabaseId: string): ContatosHookReturn {
         if (selectedListId === id) {
           setSelectedListId(null);
         }
-        toast.success("Lista arquivada com sucesso");
+        toast.success("Lista excluída com sucesso");
       } catch (error) {
         console.error("[useContatos] handleDeleteList error", error);
-        toast.error("Erro ao arquivar lista");
+        toast.error("Erro ao excluir lista");
         throw error;
       }
     },
@@ -186,6 +187,25 @@ export function useContatos(supabaseId: string): ContatosHookReturn {
     [selectedListId]
   );
 
+  const handleAddContact = useCallback(
+    async (email: string, name?: string) => {
+      if (!selectedListId) return;
+      console.info("[useContatos] handleAddContact", { email });
+      try {
+        await service.addContact(selectedListId, email, name);
+        await fetchLists();
+        void fetchContacts(selectedListId, page, search);
+        toast.success("Contato adicionado com sucesso");
+      } catch (error) {
+        console.error("[useContatos] handleAddContact error", error);
+        const message = error instanceof Error ? error.message : "Erro ao adicionar contato";
+        toast.error(message);
+        throw error;
+      }
+    },
+    [selectedListId, fetchLists, fetchContacts, page, search]
+  );
+
   const handleSearch = useCallback(
     (query: string) => {
       setSearch(query);
@@ -228,6 +248,7 @@ export function useContatos(supabaseId: string): ContatosHookReturn {
     handleSelectList,
     handleUploadCsv,
     handleDeleteContact,
+    handleAddContact,
     handleSearch,
     handlePageChange,
   };

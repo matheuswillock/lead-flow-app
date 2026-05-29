@@ -1100,6 +1100,16 @@ unsubscribed unsubscribed
     DateTime updatedAt 
     }
   
+
+  "email_team_settings" {
+    String id "🗝️"
+    String fromName 
+    String fromEmail 
+    String replyTo "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -1244,4 +1254,5 @@ unsubscribed unsubscribed
     "corretor_studio_profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
+    "email_team_settings" |o--|| corretor_studio_teams : "team"
 ```

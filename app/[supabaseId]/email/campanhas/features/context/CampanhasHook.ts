@@ -247,8 +247,8 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const openEdit = useCallback(async (campaign: Campaign) => {
     setEditingCampaign(campaign)
     setEditName(campaign.name)
-    setEditTemplateId(campaign.template.id)
-    setEditContactListId(campaign.contactList.id)
+    setEditTemplateId(campaign.template?.id ?? "")
+    setEditContactListId(campaign.contactList?.id ?? "")
     setEditScheduledAt(campaign.scheduledAt ? formatLocalInputValue(new Date(campaign.scheduledAt), tz) : "")
     try {
       const [tmpl, lists] = await Promise.all([

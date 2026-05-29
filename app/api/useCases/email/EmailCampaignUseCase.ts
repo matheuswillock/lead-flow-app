@@ -165,17 +165,21 @@ export class EmailCampaignUseCase {
 
   async send(id: string, ctx: TeamContext): Promise<Output> {
     try {
-      const [campaign, teamSettings] = await Promise.all([
-        prisma.emailCampaign.findFirst({
-          where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
-          include: {
-            template: { select: { id: true, subject: true, html: true } },
-            contactList: { select: { id: true, name: true, totalContacts: true } },
-            team: { select: { master: { select: { id: true } } } },
-          },
-        }),
-        prisma.emailTeamSettings.findUnique({ where: { teamId: ctx.teamId } }),
-      ])
+      const campaign = await prisma.emailCampaign.findFirst({
+        where: { id, teamId: ctx.teamId, status: { in: ["draft", "scheduled"] } },
+        include: {
+          template: { select: { id: true, subject: true, html: true } },
+          contactList: { select: { id: true, name: true, totalContacts: true } },
+          team: { select: { master: { select: { id: true } } } },
+        },
+      })
+
+      let teamSettings = null
+      try {
+        teamSettings = await prisma.emailTeamSettings.findUnique({ where: { teamId: ctx.teamId } })
+      } catch {
+        // fall back to env defaults if model unavailable in current client build
+      }
 
       if (!campaign) {
         return new Output(false, [], ["Campanha não encontrada ou já foi enviada"], null)

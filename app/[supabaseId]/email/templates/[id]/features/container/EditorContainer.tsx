@@ -14,10 +14,10 @@ import { usePageBreadcrumb } from "@/app/context/PageBreadcrumbContext";
 export function EditorContainer() {
   const {
     draft,
+    template,
     error,
     loading,
     saving,
-    isNewTemplate,
     updateDraft,
   } = useTemplateEditorContext();
   const editorRef = useRef<EmailEditorStudioRef>(null);
@@ -25,12 +25,10 @@ export function EditorContainer() {
 
   useEffect(() => {
     if (loading) return;
-    const label = isNewTemplate
-      ? "Novo template"
-      : draft.name || "Editar template";
+    const label = !template ? "Novo template" : draft.name || "Novo template";
     setOverride({ label });
     return () => setOverride(null);
-  }, [loading, isNewTemplate, draft.name, setOverride]);
+  }, [loading, template, draft.name, setOverride]);
 
   if (loading) {
     return (

@@ -11,8 +11,8 @@ export type Campaign = {
   totalClicked: number
   totalBounced: number
   createdAt: string
-  template: { id: string; name: string }
-  contactList: { id: string; name: string }
+  template: { id: string; name: string } | null
+  contactList: { id: string; name: string } | null
 }
 
 export type CreditStatus = {

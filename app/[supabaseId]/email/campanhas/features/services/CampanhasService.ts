@@ -38,9 +38,9 @@ export class CampanhasService implements ICampanhasService {
 
   async send(id: string) {
     const res = await fetch(`${this.baseUrl}/campaigns/${id}/send`, { method: 'POST' })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = await res.json()
-    if (!json.isValid) throw new Error(json.errorMessages?.join(', ') ?? 'Erro')
+    const json = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(json?.errorMessages?.join(', ') ?? `HTTP ${res.status}`)
+    if (!json?.isValid) throw new Error(json?.errorMessages?.join(', ') ?? 'Erro')
     return json.result as { sent: number; failed: number }
   }
 
