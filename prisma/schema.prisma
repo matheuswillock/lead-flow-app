@@ -493,6 +493,9 @@ model HealthPlanOption {
   id             String   @id @default(uuid()) @db.Uuid
   name           String   @db.Text
   normalizedName String   @unique @db.Text
+  isActive       Boolean  @default(true)
+  isDefault      Boolean  @default(false)
+  iconUrl        String?  @db.Text
   createdBy      String?  @db.Uuid
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @db.Timestamptz(6)
@@ -500,6 +503,7 @@ model HealthPlanOption {
   creator Profile? @relation("HealthPlanOptionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([name])
+  @@index([isActive, isDefault])
   @@index([createdBy])
   @@map("corretor_studio_health_plan_options")
 }

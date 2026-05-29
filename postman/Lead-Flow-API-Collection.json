@@ -6684,7 +6684,7 @@
                   "disabled": true
                 },
                 {
-                  "key": "operadora",
+                  "key": "health-plan",
                   "value": "Hapvida",
                   "disabled": true
                 },
@@ -8651,6 +8651,160 @@
             },
             "description": "Endpoint público que recebe leads do Make (cenário Meta Lead Ads). O token vai no path e deve bater com o token active salvo em backoffice_webhook_tokens. Token inválido ou expirado → 401. Payload aceito é armazenado bruto em backoffice_webhook_events e a tentativa HTTP é registrada em backoffice_webhook_request_logs."
           }
+        },
+        {
+          "name": "Backoffice Health Plans",
+          "item": [
+            {
+              "name": "GET Backoffice Health Plans",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/health-plans?includeInactive=true",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "health-plans"
+                  ],
+                  "query": [
+                    {
+                      "key": "includeInactive",
+                      "value": "true"
+                    }
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/health-plans/route.ts"
+              }
+            },
+            {
+              "name": "POST Create Backoffice Health Plan",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Unimed\",\n  \"iconUrl\": \"https://example.com/unimed.png\",\n  \"isDefault\": true\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/health-plans",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "health-plans"
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/health-plans/route.ts"
+              }
+            },
+            {
+              "name": "PUT Update Backoffice Health Plan",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Amil\",\n  \"iconUrl\": \"https://example.com/amil.png\",\n  \"isDefault\": false,\n  \"isActive\": true\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/health-plans/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "health-plans",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/health-plans/[id]/route.ts"
+              }
+            },
+            {
+              "name": "DELETE Backoffice Health Plan",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/health-plans/:id",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "health-plans",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": ""
+                    }
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/health-plans/[id]/route.ts"
+              }
+            },
+            {
+              "name": "POST Backoffice Health Plan Icon Upload",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "icon",
+                      "type": "file",
+                      "src": ""
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/health-plans/icon-upload",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "health-plans",
+                    "icon-upload"
+                  ]
+                },
+                "description": "Auto-generated from app/api/v1/backoffice/health-plans/icon-upload/route.ts"
+              }
+            }
+          ]
         }
       ]
     },

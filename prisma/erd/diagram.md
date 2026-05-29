@@ -415,6 +415,9 @@ unsubscribed unsubscribed
     String id "🗝️"
     String name 
     String normalizedName 
+    Boolean isActive 
+    Boolean isDefault 
+    String iconUrl "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }

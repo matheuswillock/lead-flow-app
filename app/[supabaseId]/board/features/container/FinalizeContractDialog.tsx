@@ -89,7 +89,7 @@ interface FinalizeContractDialogProps {
   initialHolderCnpj?: string | null;
   onFinalize: (data: FinalizeContractData) => Promise<void>;
   closers?: UserAssociated[];
-  healthPlans?: { id: string; name: string }[];
+  healthPlans?: { id: string; name: string; iconUrl?: string | null; isDefault?: boolean }[];
   initialAmount?: number | null;
   initialStartDate?: string | Date | null;
   initialFinalizedDate?: string | Date | null;
@@ -169,9 +169,11 @@ export function FinalizeContractDialog({
 
   useEffect(() => {
     if (open) {
+      const defaultHealthPlan = healthPlans.find((plan) => plan.isDefault)
+      const fallbackOperadora = initialOperadora ?? defaultHealthPlan?.name ?? ""
       setAmount(toDisplayCurrency(initialAmount));
       setCloserId(leadCloserId ?? '');
-      setOperadora(initialOperadora ?? '');
+      setOperadora(fallbackOperadora);
       setProductName(initialProductName ?? '');
       setSource(initialSource ?? 'crm');
       setHolderName(initialHolderName ?? '');
@@ -201,6 +203,7 @@ export function FinalizeContractDialog({
     initialHolderBirthDate,
     initialHolderDocument,
     initialDependents,
+    healthPlans,
   ]);
 
   const formatCurrencyDisplay = (value: string): string => {
@@ -428,7 +431,17 @@ export function FinalizeContractDialog({
                     </SelectTrigger>
                     <SelectContent>
                       {healthPlans.map((hp) => (
-                        <SelectItem key={hp.id} value={hp.name}>{hp.name}</SelectItem>
+                        <SelectItem key={hp.id} value={hp.name}>
+                          <div className="flex items-center gap-2">
+                            {hp.iconUrl ? (
+                              <img src={hp.iconUrl} alt={hp.name} className="size-4 rounded-sm object-cover" />
+                            ) : (
+                              <span className="size-4 rounded-sm bg-muted" />
+                            )}
+                            <span>{hp.name}</span>
+                            {hp.isDefault ? <span className="text-xs text-muted-foreground">(Default)</span> : null}
+                          </div>
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
