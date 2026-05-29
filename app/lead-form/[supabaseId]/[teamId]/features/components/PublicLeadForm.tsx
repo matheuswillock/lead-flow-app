@@ -76,7 +76,7 @@ const parseExtraGuests = (value: string | undefined): string[] => {
 
 const fieldLabelClassName = "block text-sm font-medium mb-1";
 const fieldInputClassName = "h-9";
-const fieldSelectTriggerClassName = "h-9";
+const fieldSelectTriggerClassName = "";
 const fieldTextareaClassName = "min-h-[84px] resize-y";
 
 export function PublicLeadForm() {

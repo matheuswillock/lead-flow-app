@@ -992,7 +992,7 @@ export function LeadForm({
                                             currentUserIsCloser
                                         }
                                     >
-                                        <SelectTrigger className="h-9">
+                                        <SelectTrigger className="">
                                             <SelectValue
                                                 placeholder={
                                                     isLoadingWithoutOptions

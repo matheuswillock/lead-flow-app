@@ -2454,7 +2454,7 @@ export default function LeadDialog({
                 <div className="grid gap-2">
                   <label className="text-xs font-medium text-muted-foreground">Tipo de atividade</label>
                   <Select value={activityType} onValueChange={(value) => setActivityType(value as typeof activityType)}>
-                    <SelectTrigger className="h-9">
+                    <SelectTrigger className="">
                       <SelectValue placeholder="Selecione o tipo" />
                     </SelectTrigger>
                     <SelectContent>

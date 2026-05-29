@@ -18,7 +18,7 @@ export type Contact = {
   createdAt: string
 }
 
-export type ContatosState = {
+export type ContactsState = {
   lists: ContactList[]
   selectedListId: string | null
   contacts: Contact[]

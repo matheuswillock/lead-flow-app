@@ -465,7 +465,7 @@ export function BackofficeHealthPlansContainer() {
               <TooltipContent>Configuração das colunas</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <SheetContent side="right" className="w-[420px] sm:w-[460px]">
+          <SheetContent side="right" className="w-105 sm:w-115">
             <SheetHeader>
               <SheetTitle>Configuração das colunas</SheetTitle>
               <SheetDescription>Selecione quais headers devem aparecer na tabela de Operadoras.</SheetDescription>
@@ -576,7 +576,7 @@ export function BackofficeHealthPlansContainer() {
               ) : null}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[220px] p-0" align="start">
+          <PopoverContent className="w-55 p-0" align="start">
             <Command>
               <CommandList>
                 <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
@@ -641,7 +641,7 @@ export function BackofficeHealthPlansContainer() {
               ) : null}
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[240px] p-0" align="start">
+          <PopoverContent className="w-60 p-0" align="start">
             <Command>
               <CommandList>
                 <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
@@ -744,7 +744,7 @@ export function BackofficeHealthPlansContainer() {
               value={`${table.getState().pagination.pageSize}`}
               onValueChange={(value) => table.setPageSize(Number(value))}
             >
-              <SelectTrigger className="h-8 w-[76px]" aria-label="Linhas por página">
+              <SelectTrigger className="w-19" aria-label="Linhas por página">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -758,7 +758,7 @@ export function BackofficeHealthPlansContainer() {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex w-[100px] items-center justify-center text-sm font-medium">
+          <div className="flex w-25 items-center justify-center text-sm font-medium">
             Página {table.getState().pagination.pageIndex + 1} de {pageCount}
           </div>
           <div className="flex items-center gap-2">

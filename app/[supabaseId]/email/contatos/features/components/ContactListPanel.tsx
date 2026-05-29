@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { useContatosContext } from "../context/ContatosContext";
+import { useContatosContext } from "../context/ContactsContext";
 import type { ContactList } from "../context/ContatosTypes";
 
 function ContactListItem({ list }: { list: ContactList }) {

@@ -3,14 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ContatosService } from "../services/ContatosService";
-import type { ContactList, Contact, ContatosState } from "./ContatosTypes";
+import type { ContactList, Contact, ContactsState } from "./ContatosTypes";
 
 const PAGE_SIZE = 50;
 const service = new ContatosService();
 
-export type ContatosActions = {
+export type ContactsActions = {
   handleCreateList: (name: string, description?: string) => Promise<void>
   handleDeleteList: (id: string) => Promise<void>
+  handleAddContact: (email: string, name?: string) => Promise<void>
   handleSelectList: (id: string) => void
   handleUploadCsv: (file: File) => Promise<void>
   handleDeleteContact: (contactId: string) => Promise<void>
@@ -18,7 +19,7 @@ export type ContatosActions = {
   handlePageChange: (page: number) => void
 }
 
-export type ContatosHookReturn = ContatosState & ContatosActions
+export type ContatosHookReturn = ContactsState & ContactsActions
 
 export function useContatos(supabaseId: string): ContatosHookReturn {
   const [lists, setLists] = useState<ContactList[]>([]);
@@ -136,6 +137,14 @@ export function useContatos(supabaseId: string): ContatosHookReturn {
     [fetchLists, selectedListId]
   );
 
+  const handleAddContact = useCallback(
+    async (_email: string, _name?: string) => {
+      toast.error("Adição manual de contato ainda não está disponível");
+      throw new Error("Adição manual de contato ainda não está disponível");
+    },
+    []
+  );
+
   const handleUploadCsv = useCallback(
     async (file: File) => {
       if (!selectedListId) return;
@@ -225,6 +234,7 @@ export function useContatos(supabaseId: string): ContatosHookReturn {
     deletingContactId,
     handleCreateList,
     handleDeleteList,
+    handleAddContact,
     handleSelectList,
     handleUploadCsv,
     handleDeleteContact,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { Loader2 } from "lucide-react";
+import { useState } from "react";
+import { Loader2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,34 +16,34 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useContatosContext } from "../context/ContactsContext";
 
-type ContactListCreateModalProps = {
-  trigger: ReactNode
+type ContactAddModalProps = {
+  trigger: React.ReactNode
 }
 
-export function ContactListCreateModal({ trigger }: ContactListCreateModalProps) {
-  const { handleCreateList } = useContatosContext();
+export function ContactAddModal({ trigger }: ContactAddModalProps) {
+  const { handleAddContact } = useContatosContext();
   const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
 
   function resetForm() {
+    setEmail("");
     setName("");
-    setDescription("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const trimmedName = name.trim();
-    if (!trimmedName) return;
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) return;
 
     setLoading(true);
     try {
-      await handleCreateList(trimmedName, description.trim() || undefined);
+      await handleAddContact(trimmedEmail, name.trim() || undefined);
       setOpen(false);
       resetForm();
     } catch {
-      // error toast is handled in hook
+      // error toast handled in hook
     } finally {
       setLoading(false);
     }
@@ -59,24 +59,25 @@ export function ContactListCreateModal({ trigger }: ContactListCreateModalProps)
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-110">
+      <DialogContent className="sm:max-w-100">
         <DialogHeader>
-          <DialogTitle>Nova Lista de Contatos</DialogTitle>
+          <DialogTitle>Adicionar contato</DialogTitle>
           <DialogDescription>
-            Crie uma lista para organizar seus contatos de e-mail.
+            Adicione um contato manualmente à lista selecionada.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="list-name">
-              Nome <span className="text-destructive">*</span>
+            <Label htmlFor="contact-email">
+              E-mail <span className="text-destructive">*</span>
             </Label>
             <Input
-              id="list-name"
-              placeholder="Ex: Leads Novos Janeiro"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              id="contact-email"
+              type="email"
+              placeholder="contato@exemplo.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
               required
               autoFocus
@@ -84,13 +85,12 @@ export function ContactListCreateModal({ trigger }: ContactListCreateModalProps)
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="list-description">Descrição (opcional)</Label>
-            <textarea
-              id="list-description"
-              className="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
-              placeholder="Descrição opcional da lista..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+            <Label htmlFor="contact-name">Nome (opcional)</Label>
+            <Input
+              id="contact-name"
+              placeholder="Nome do contato"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               disabled={loading}
             />
           </div>
@@ -104,9 +104,13 @@ export function ContactListCreateModal({ trigger }: ContactListCreateModalProps)
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={loading || !name.trim()}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Criar Lista
+            <Button type="submit" disabled={loading || !email.trim()}>
+              {loading ? (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              ) : (
+                <UserPlus data-icon="inline-start" />
+              )}
+              {loading ? "Adicionando..." : "Adicionar"}
             </Button>
           </DialogFooter>
         </form>

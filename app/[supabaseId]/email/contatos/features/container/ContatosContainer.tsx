@@ -3,7 +3,7 @@
 import { BookUser } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { useContatosContext } from "../context/ContatosContext"
+import { useContatosContext } from "../context/ContactsContext"
 import { ContactListPanel } from "../components/ContactListPanel"
 import { ContactListCreateModal } from "../components/ContactListCreateModal"
 import { ContactsTable } from "../components/ContactsTable"

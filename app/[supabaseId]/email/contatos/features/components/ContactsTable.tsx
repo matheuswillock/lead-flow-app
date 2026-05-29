@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { useContatosContext } from "../context/ContatosContext"
+import { useContatosContext } from "../context/ContactsContext"
 import type { Contact } from "../context/ContatosTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"

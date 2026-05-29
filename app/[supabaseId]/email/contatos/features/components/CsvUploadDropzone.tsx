@@ -3,7 +3,7 @@
 import { useRef } from "react"
 import { Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useContatosContext } from "../context/ContatosContext"
+import { useContatosContext } from "../context/ContactsContext"
 import { Input } from "@/components/ui/input";
 
 export function CsvUploadDropzone() {
