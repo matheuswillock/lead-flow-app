@@ -1,6 +1,11 @@
 -- Backfill rígido de priceAnnual para produtos recorrentes já existentes.
 -- Idempotente: só atualiza registros com priceAnnual nulo.
 
+-- Safety guard: garante a coluna para ambientes em que esta migration
+-- execute antes da migration que introduz priceAnnual.
+ALTER TABLE "backoffice_products"
+  ADD COLUMN IF NOT EXISTS "priceAnnual" DECIMAL(10,2);
+
 UPDATE "backoffice_products"
 SET "priceAnnual" = 69.90
 WHERE "slug" = 'crm'
