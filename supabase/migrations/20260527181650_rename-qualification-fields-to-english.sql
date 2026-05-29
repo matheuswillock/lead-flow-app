@@ -1,0 +1,6 @@
+ALTER TABLE backoffice_leads
+  RENAME COLUMN como_voce_organiza_seus_leads_e_carteira TO qualification_lead_organization;
+ALTER TABLE backoffice_leads
+  RENAME COLUMN quantos_usuarios_em_media_voce_precisa TO qualification_avg_users;
+ALTER TABLE backoffice_leads
+  RENAME COLUMN qual_perfil_se_enquadra_em_seu_momento TO qualification_profile_fit;

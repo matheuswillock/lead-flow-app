@@ -1,4 +1,4 @@
-import type { SubscriptionPlan } from "@prisma/client"
+import type { SubscriptionPlan, SubscriptionStatus } from "@prisma/client"
 
 export interface TeamSummaryRecord {
   id: string
@@ -15,7 +15,9 @@ export interface TeamMemberRecord {
   addedAt: Date
   role: string
   googleCalendarConnected: boolean
+  googleEmail: string | null
   functions: string[]
+  isMaster: boolean
 }
 
 export interface MasterPlatformUserRecord {
@@ -52,6 +54,8 @@ export interface MasterPlatformUserDetailsRecord {
   createdAt: Date
   hasPermanentSubscription: boolean
   subscriptionPlan: SubscriptionPlan | null
+  subscriptionStatus: SubscriptionStatus | null
+  subscriptionId: string | null
   operatorCount: number
   googleCalendarConnected: boolean
   linkedUsersCount: number

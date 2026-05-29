@@ -68,6 +68,8 @@ export interface ILeadFormProps {
     onSubmit: (data: leadFormData) => void | Promise<void>;
     isLoading?: boolean;
     isUpdating?: boolean;
+    supabaseId?: string;
+    activeTeamId?: string;
     healthPlanOptions: Array<{ id: string; name: string }>;
     healthPlanOptionsLoading?: boolean;
     onCancel: () => void;
@@ -98,6 +100,9 @@ export interface ILeadFormProps {
     sdrsError?: string | null;
     leadId?: string; // ID do lead para exibir attachments (apenas em modo de edição)
     onUploadStateChange?: (isUploading: boolean) => void;
+    onAttachmentsLoadingChange?: (isLoading: boolean) => void;
+    /** Anexos pré-carregados pelo endpoint agregado; evita fetch separado na montagem. */
+    initialAttachments?: import("@/components/ui/attachment-list").Attachment[];
     isEditMode?: boolean;
     currentProfileId?: string;
     currentUserIsSdr?: boolean;
@@ -109,6 +114,8 @@ export function LeadForm({
     onSubmit,
     isLoading,
     isUpdating,
+    supabaseId,
+    activeTeamId,
     healthPlanOptions,
     healthPlanOptionsLoading,
     onCancel,
@@ -122,14 +129,13 @@ export function LeadForm({
     canMarkNoShow,
     onMarkNoShow,
     usersToAssign,
-    closersToAssign,
     sdrsToAssign,
-    closersLoading,
-    closersError,
     sdrsLoading,
     sdrsError,
     leadId,
     onUploadStateChange,
+    onAttachmentsLoadingChange,
+    initialAttachments,
     isEditMode = false,
     currentProfileId,
     currentUserIsSdr = false,
@@ -142,6 +148,8 @@ export function LeadForm({
     const [currentValueError, setCurrentValueError] = useState<string | null>(null);
     const [extraGuestsDraft, setExtraGuestsDraft] = useState("");
     const [ticketError, setTicketError] = useState<string | null>(null);
+    const [cnpjDupError, setCnpjDupError] = useState<string | null>(null);
+    const [cnpjChecking, setCnpjChecking] = useState(false);
     const lastInvalidHashRef = useRef<string>("");
     const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
         threshold: 0.2,
@@ -166,31 +174,6 @@ export function LeadForm({
     };
 
     const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-
-    const handleGuestDraftChange = (
-        value: string,
-        currentEmails: string[],
-        onChange: (value: string) => void
-    ) => {
-        if (!value) {
-            setExtraGuestsDraft("");
-            return;
-        }
-        const parts = value.split(/[,;\s]+/);
-        if (parts.length === 1) {
-            setExtraGuestsDraft(value);
-            return;
-        }
-        const last = value.match(/[,\s;]$/) ? "" : parts.pop() || "";
-        const normalized = parts
-            .map((item) => item.trim().toLowerCase())
-            .filter(Boolean)
-            .filter(isValidEmail);
-        if (normalized.length > 0) {
-            onChange(buildEmailValue([...currentEmails, ...normalized]));
-        }
-        setExtraGuestsDraft(last);
-    };
 
     const watchedValues = form.watch();
     const healthPlanNames = React.useMemo(() => {
@@ -218,7 +201,7 @@ export function LeadForm({
         () => leadFormSchema.safeParse(watchedValues).success,
         [watchedValues]
     );
-    const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating;
+    const isSubmitDisabled = !hasChanges || hasBlockingErrors || !isSchemaValid || isLoading || isUpdating || cnpjChecking || cnpjDupError !== null;
     const meetingHealdValue = (scheduleSummary?.meetingHeald ?? "no") as "yes" | "no";
 
     useEffect(() => {
@@ -311,6 +294,28 @@ export function LeadForm({
             lastInvalidHashRef.current = "";
         }
     }, [isSchemaValid]);
+
+    const handleCnpjBlur = useCallback(async (cnpjUnmasked: string) => {
+        if (isEditMode || !supabaseId || !activeTeamId || !cnpjUnmasked || cnpjUnmasked.trim().length === 0) return;
+        setCnpjDupError(null);
+        setCnpjChecking(true);
+        try {
+            const params = new URLSearchParams({ cnpj: cnpjUnmasked.trim() });
+            const res = await fetch(`/api/v1/leads/cnpj-available?${params.toString()}`, {
+                headers: {
+                    "x-supabase-user-id": supabaseId,
+                    "x-team-id": activeTeamId,
+                },
+            });
+            if (res.status === 409) {
+                setCnpjDupError("Já existe um lead com este CNPJ neste time");
+            }
+        } catch {
+            // Ignore network errors — backend validation will catch at submit
+        } finally {
+            setCnpjChecking(false);
+        }
+    }, [isEditMode, supabaseId, activeTeamId]);
 
     const handleInvalidSubmit = useCallback(async () => {
         if (isLoading || isUpdating) return;
@@ -427,7 +432,7 @@ export function LeadForm({
                 )}
             />
 
-            <FormField 
+            <FormField
                 control={form.control}
                 name="cnpj"
                 render={({ field }) => (
@@ -440,6 +445,11 @@ export function LeadForm({
                                     const masked = formatDocumentInput(e.target.value);
                                     const unmasked = unmask(masked);
                                     field.onChange(unmasked);
+                                    if (cnpjDupError) setCnpjDupError(null);
+                                }}
+                                onBlur={() => {
+                                    field.onBlur();
+                                    void handleCnpjBlur(field.value || '');
                                 }}
                                 type="text"
                                 placeholder="00.000.000/0000-00"
@@ -448,6 +458,12 @@ export function LeadForm({
                             />
                         </FormControl>
                         <FormMessage />
+                        {cnpjDupError && (
+                            <p className="text-sm font-medium text-destructive">{cnpjDupError}</p>
+                        )}
+                        {cnpjChecking && (
+                            <p className="text-sm text-muted-foreground">Verificando CNPJ...</p>
+                        )}
                     </FormItem>
                 )}
             />
@@ -868,7 +884,15 @@ export function LeadForm({
                     </p>
                 </div>
                 {leadId ? (
-                    <AttachmentList leadId={leadId} leadName={form.getValues("name")} onUploadStateChange={onUploadStateChange} />
+                    <AttachmentList
+                        leadId={leadId}
+                        leadName={form.getValues("name")}
+                        onUploadStateChange={onUploadStateChange}
+                        onLoadingChange={onAttachmentsLoadingChange}
+                        initialAttachments={initialAttachments}
+                        supabaseId={supabaseId}
+                        teamId={activeTeamId}
+                    />
                 ) : (
                     <div className="flex items-center justify-center p-8 border border-dashed rounded-lg bg-muted/20">
                         <div className="text-center space-y-2">

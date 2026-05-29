@@ -1,0 +1,91 @@
+# =============================================================================
+# docker-compose.yml — PostgreSQL bare para desenvolvimento local
+# =============================================================================
+#
+# ATENÇÃO: Este arquivo sobe apenas o PostgreSQL (sem Auth, Storage, Studio).
+# Para o ambiente Supabase completo (recomendado), use o Supabase CLI:
+#
+#   supabase start   →  sobe tudo (Postgres, Auth, Studio, Storage, Realtime)
+#   supabase stop    →  para tudo
+#
+# Use este docker-compose apenas se quiser um Postgres isolado sem os
+# serviços Supabase (ex: testes de integração standalone).
+#
+# -----------------------------------------------------------------------------
+# COMO USAR
+# -----------------------------------------------------------------------------
+#
+# Subir o container:
+#   docker compose up -d
+#
+# Parar sem remover dados:
+#   docker compose stop
+#
+# Parar e remover containers (mantém o volume com os dados):
+#   docker compose down
+#
+# Parar e remover tudo, incluindo os dados:
+#   docker compose down -v
+#
+# -----------------------------------------------------------------------------
+# CONEXÃO
+# -----------------------------------------------------------------------------
+#
+# Host:     localhost
+# Porta:    5433  (mapeada para 5432 dentro do container — evita conflito com
+#                  o Postgres do Supabase local que usa 54322)
+# Banco:    leadflow_dev
+# Usuário:  postgres
+# Senha:    postgres
+#
+# Connection string:
+#   postgresql://postgres:postgres@localhost:5433/leadflow_dev
+#
+# Para conectar via psql:
+#   psql postgresql://postgres:postgres@localhost:5433/leadflow_dev
+#
+# Para acessar o container diretamente:
+#   docker compose exec db psql -U postgres -d leadflow_dev
+#
+# -----------------------------------------------------------------------------
+# CONFIGURAÇÃO NO .env
+# -----------------------------------------------------------------------------
+#
+# Copie .env.local.docker para .env.local e use `bun run dev:local`:
+#
+#   DATABASE_URL=postgresql://postgres:postgres@localhost:5433/leadflow_dev
+#   DIRECT_URL=postgresql://postgres:postgres@localhost:5433/leadflow_dev
+#
+# -----------------------------------------------------------------------------
+# DADOS PERSISTENTES
+# -----------------------------------------------------------------------------
+#
+# Os dados ficam no volume Docker `leadflow_pgdata`.
+# Para inspecionar: docker volume inspect lead-flow-app_leadflow_pgdata
+# Para backup:      docker compose exec db pg_dump -U postgres leadflow_dev > backup.sql
+# Para restore:     docker compose exec -T db psql -U postgres leadflow_dev < backup.sql
+#
+# =============================================================================
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    ports:
+      # Porta 5433 no host → 5432 no container.
+      # Evita conflito com o Postgres do Supabase local (54322).
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: leadflow_dev
+    volumes:
+      - leadflow_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  leadflow_pgdata:

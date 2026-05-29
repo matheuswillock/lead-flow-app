@@ -116,13 +116,47 @@ jobs:
             exit 1
           fi
 
+  migration-status:
+    name: Migration Status
+    if: ${{ startsWith(github.ref, 'refs/heads/bugfix/') || startsWith(github.ref, 'refs/heads/fix/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - quality-gate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun store
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Check Migration Status
+        run: bunx supabase migration list --db-url "$DATABASE_URL"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
   build:
     name: Build
     if: ${{ startsWith(github.ref, 'refs/heads/bugfix/') || startsWith(github.ref, 'refs/heads/fix/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
-      - quality-gate
+      - migration-status
     steps:
       - name: Checkout
         uses: actions/checkout@v4

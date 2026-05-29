@@ -1,4 +1,5 @@
 import type { BackofficeUser, Profile } from "@prisma/client"
+import type { GoogleOAuthConnection } from "@prisma/client"
 
 export interface CreateBackofficeUserInput {
   id: string
@@ -16,11 +17,8 @@ export interface UpdateBackofficeUserInput {
   fullAccess?: boolean
   isSdr?: boolean
   isCloser?: boolean
-  googleCalendarConnected?: boolean
-  googleAccessToken?: string | null
-  googleRefreshToken?: string | null
-  googleTokenExpiresAt?: Date | null
-  googleEmail?: string | null
+  googleConnectionId?: string | null
+  linkedCorretorStudioProfileId?: string | null
   timezone?: string
   mailboxStatus?: string
   mailboxAddress?: string
@@ -29,7 +27,20 @@ export interface UpdateBackofficeUserInput {
 
 export type BackofficeUserWithProfile = BackofficeUser & {
   profile: Pick<Profile, "fullName" | "email">
+  googleConnection: Pick<GoogleOAuthConnection, "refreshToken" | "revokedAt" | "googleEmail"> | null
+  linkedCorretorStudioProfile: {
+    googleConnection: Pick<GoogleOAuthConnection, "refreshToken" | "revokedAt" | "googleEmail"> | null
+  } | null
 }
+
+export type BackofficeUserWithGoogleContext = BackofficeUser & {
+  googleConnection: GoogleOAuthConnection | null
+  linkedCorretorStudioProfile: {
+    googleConnection: GoogleOAuthConnection | null
+  } | null
+}
+
+export type BackofficeUserConnectionDependent = Pick<BackofficeUser, "id" | "email" | "profileId">;
 
 export interface IBackofficeUserRepository {
   create(data: CreateBackofficeUserInput): Promise<BackofficeUser>
@@ -37,5 +48,9 @@ export interface IBackofficeUserRepository {
   findById(id: string): Promise<BackofficeUser | null>
   findByEmail(email: string): Promise<BackofficeUser | null>
   findByProfileId(profileId: string): Promise<BackofficeUser | null>
+  findByIdWithGoogleContext(id: string): Promise<BackofficeUserWithGoogleContext | null>
+  findByGoogleConnectionId(googleConnectionId: string): Promise<BackofficeUserConnectionDependent[]>
+  findByLinkedProfileId(profileId: string): Promise<BackofficeUserConnectionDependent[]>
+  findLinkedDependentsWithoutOwnConnection(profileId: string): Promise<BackofficeUserConnectionDependent[]>
   update(id: string, data: UpdateBackofficeUserInput): Promise<BackofficeUser>
 }

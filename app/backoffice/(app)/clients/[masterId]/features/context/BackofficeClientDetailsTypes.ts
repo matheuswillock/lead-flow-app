@@ -6,7 +6,9 @@ export interface BackofficeClientTeamMember {
   addedAt: string
   role: string
   googleCalendarConnected: boolean
+  googleEmail: string | null
   functions: string[]
+  isMaster: boolean
 }
 
 export interface BackofficeClientTeam {
@@ -38,6 +40,10 @@ export interface BackofficeClientDetails {
     label: string
     amount: number | null
     kind: "lifetime" | "monthly" | "trial" | "none"
+  }
+  subscription: {
+    hasAccess: boolean
+    status: string | null
   }
   teams: BackofficeClientTeam[]
   teamsPagination: BackofficePagination

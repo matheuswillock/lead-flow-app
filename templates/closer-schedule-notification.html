@@ -1,0 +1,81 @@
+<!--
+  Fluxo: Notificação ao closer de novo agendamento ou reagendamento
+  Fonte: lib/services/EmailService.ts → sendCloserScheduleNotificationEmail
+  Assunto: "Reunião agendada: {{meetingTitle}}" ou "Reunião reagendada: {{meetingTitle}}"
+  Variáveis: {{closerName}}, {{leadName}}, {{meetingTitle}}, {{formattedDate}}, {{formattedTime}},
+            {{scheduleIntroText}}, {{leadCrmMarkup}}, {{linkMarkup}}, {{attendeesMarkup}},
+            {{notes}} (opcional)
+
+  scheduleIntroText (novo agendamento):
+    Olá <strong>{{closerName}}</strong>, você tem um novo agendamento com o lead <strong>{{leadName}}</strong>.
+
+  scheduleIntroText (reagendamento):
+    Olá <strong>{{closerName}}</strong>, você tem um novo reagendamento com o lead <strong>{{leadName}}</strong>.
+
+  leadCrmMarkup (quando há leadCode):
+    <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead no Corretor Studio:</strong> <a href="{{leadCrmUrl}}" style="color: #ff6900; text-decoration: none;">Abrir lead no CRM</a></p>
+
+  attendeesMarkup (quando há participantes):
+    <ul style="margin: 8px 0 0 20px; padding: 0; color: #7c2d12; font-size: 14px;">
+      <li style="margin-bottom: 4px;">{{attendeeEmail}}</li>
+      ...
+    </ul>
+
+  attendeesMarkup (sem participantes):
+    <p style="margin: 8px 0 0 0; color: #7c2d12; font-size: 14px;">Nenhum participante informado.</p>
+-->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); overflow: hidden;">
+          <tr>
+            <td style="background: linear-gradient(135deg, #ff6900 0%, #e65f00 100%); padding: 40px 32px; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">Corretor Studio</h1>
+              <p style="margin: 8px 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">Confirmação de agendamento</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 40px 32px;">
+              <h2 style="margin: 0 0 16px 0; color: #171717; font-size: 22px; font-weight: 600;">{{meetingTitle}}</h2>
+              <p style="margin: 0 0 20px 0; color: #525252; font-size: 15px; line-height: 1.6;">
+                {{scheduleIntroText}}
+              </p>
+              <div style="background-color: #fff7ed; border: 1px solid #fed7aa; padding: 16px; border-radius: 12px; margin: 20px 0;">
+                <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px; font-weight: 600;">Infos do agendamento</p>
+                <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Data:</strong> {{formattedDate}}</p>
+                <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Horário:</strong> {{formattedTime}}</p>
+                <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Lead:</strong> {{leadName}}</p>
+                {{leadCrmMarkup}}
+                <p style="margin: 0 0 8px 0; color: #7c2d12; font-size: 14px;"><strong>Link:</strong> {{linkMarkup}}</p>
+                <div style="margin: 0; color: #7c2d12; font-size: 14px;">
+                  <strong>Participantes:</strong>
+                  {{attendeesMarkup}}
+                </div>
+              </div>
+              <!-- Bloco opcional: renderizado apenas quando {{notes}} estiver presente -->
+              <div style="background-color: #fafafa; border: 1px solid #e5e5e5; padding: 16px; border-radius: 12px; margin-top: 16px;">
+                <p style="margin: 0 0 8px 0; color: #171717; font-size: 14px; font-weight: 600;">Notas</p>
+                <p style="margin: 0; color: #525252; font-size: 14px; white-space: pre-wrap;">{{notes}}</p>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color: #fafafa; padding: 20px 32px; border-top: 1px solid #e5e5e5;">
+              <p style="margin: 0; color: #a3a3a3; font-size: 12px; text-align: center;">
+                Este é um e-mail automático do Corretor Studio
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

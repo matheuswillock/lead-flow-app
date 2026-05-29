@@ -1,3 +1,9 @@
 # Keep Prisma migration SQL stable across OSes.
 prisma/migrations/**/migration.sql text eol=lf
 
+# Keep AI governance adapters stable across OSes.
+.github/copilot-instructions.md text eol=lf
+.cursor/rules/lead-flow-agents.mdc text eol=lf
+CLAUDE.md text eol=lf
+agents.md text eol=lf
+AGENTS.md text eol=lf

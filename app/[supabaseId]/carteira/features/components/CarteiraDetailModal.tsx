@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from 'react';
+import { useParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ExternalLink, File, FileText, Image, Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -30,6 +31,10 @@ import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDocumentInput, formatRgCpfInput, sanitizeRgCpfDigits } from '@/lib/masks';
+import { useTeamContext } from '@/app/context/TeamContext';
+import { useTeamClosers } from '@/hooks/useTeamMembersByFunction';
+import { useHealthPlans } from '@/hooks/useHealthPlans';
+import { FinalizeContractDialog, type FinalizeContractData } from '@/app/[supabaseId]/board/features/container/FinalizeContractDialog';
 import {
   PORTFOLIO_STATUS_LABELS,
   type CarteiraDetailAttachment,
@@ -177,7 +182,7 @@ interface EditForm {
   productName: string;
   amount: string;
   startDateAt: string;
-  finalizedDateAt: string;
+  contractDueDate: string;
   notes: string;
   holderEnabled: boolean;
   holderName: string;
@@ -187,13 +192,13 @@ interface EditForm {
   dependents: EditDependent[];
 }
 
-function initEditForm(detail: CarteiraDetailData): EditForm {
+function _initEditForm(detail: CarteiraDetailData): EditForm {
   return {
     operadora: detail.contract?.operadora ?? '',
     productName: detail.contract?.productName ?? detail.soldPlan ?? '',
     amount: detail.contract ? formatCurrencyInput(detail.contract.amount) : '',
     startDateAt: toInputDate(detail.contract?.startDateAt),
-    finalizedDateAt: toInputDate(detail.contract?.finalizedDateAt ?? detail.contractDueDate),
+    contractDueDate: toInputDate(detail.contractDueDate),
     notes: detail.contract?.notes ?? '',
     holderEnabled: !!detail.holder,
     holderName: detail.holder?.name ?? '',
@@ -212,20 +217,26 @@ function initEditForm(detail: CarteiraDetailData): EditForm {
 }
 
 function buildPayload(form: EditForm): UpdateCarteiraDetailPayload {
+  const holderDocument = sanitizeRgCpfDigits(form.holderDocument);
+  const hasHolderContent =
+    !!form.holderName.trim() ||
+    !!form.holderBirthDate ||
+    !!holderDocument ||
+    !!form.holderCnpj.trim();
+
   return {
     operadora: form.operadora.trim() || null,
     productName: form.productName.trim() || null,
     amount: parseCurrencyInput(form.amount) || undefined,
     startDateAt: form.startDateAt || undefined,
-    finalizedDateAt: form.finalizedDateAt || undefined,
-    contractDueDate: form.finalizedDateAt || null,
+    contractDueDate: form.contractDueDate || null,
     soldPlan: form.productName.trim() || null,
     notes: form.notes.trim() || null,
-    holder: form.holderEnabled
+    holder: (form.holderEnabled || hasHolderContent)
       ? {
           name: form.holderName.trim(),
           birthDate: form.holderBirthDate,
-          document: sanitizeRgCpfDigits(form.holderDocument),
+          document: holderDocument,
           cnpj: form.holderCnpj.trim() || null,
         }
       : undefined,
@@ -254,15 +265,21 @@ export function CarteiraDetailModal({
   isLoading,
   onSave,
 }: CarteiraDetailModalProps) {
+  const params = useParams();
+  const supabaseId = params.supabaseId as string;
+  const { activeTeamId } = useTeamContext();
+  const { members: closers } = useTeamClosers(supabaseId, activeTeamId);
+  const { healthPlans } = useHealthPlans(supabaseId, activeTeamId);
+
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<EditForm | null>(null);
+  const [isContractEditOpen, setIsContractEditOpen] = useState(false);
 
   const startEditing = useCallback(() => {
-    if (!detail) return;
-    setForm(initEditForm(detail));
-    setIsEditing(true);
-  }, [detail]);
+    onOpenChange(false);
+    setIsContractEditOpen(true);
+  }, [onOpenChange]);
 
   const cancelEditing = useCallback(() => {
     setIsEditing(false);
@@ -323,7 +340,46 @@ export function CarteiraDetailModal({
     onOpenChange(false);
   };
 
+  const handleContractEditSave = async (data: FinalizeContractData) => {
+    if (!detail) return;
+
+    setIsSaving(true);
+    try {
+      await onSave(detail.leadId, {
+        operadora: data.operadora,
+        productName: data.productName ?? null,
+        amount: data.amount,
+        startDateAt: data.startDateAt.toISOString(),
+        contractDueDate: data.finalizedDateAt.toISOString(),
+        soldPlan: data.productName ?? null,
+        notes: data.notes ?? null,
+        holder: {
+          name: data.contractHolder.name,
+          birthDate: data.contractHolder.birthDate.toISOString(),
+          document: sanitizeRgCpfDigits(data.contractHolder.document),
+          cnpj: data.contractHolder.cnpj ?? null,
+        },
+        dependents: data.dependents.map((dependent) => ({
+          id: dependent.id,
+          name: dependent.name,
+          birthDate: dependent.birthDate.toISOString(),
+          parentesco: dependent.parentesco,
+          document: dependent.document ? sanitizeRgCpfDigits(dependent.document) : null,
+        })),
+      });
+
+      setIsContractEditOpen(false);
+      toast.success('Dados atualizados com sucesso');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar');
+      throw err;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         {/* Header */}
@@ -386,8 +442,8 @@ export function CarteiraDetailModal({
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <DateTimePicker
-                    date={toPickerDate(form.finalizedDateAt)}
-                    onDateChange={(value) => patchForm('finalizedDateAt', fromPickerDate(value))}
+                    date={toPickerDate(form.contractDueDate)}
+                    onDateChange={(value) => patchForm('contractDueDate', fromPickerDate(value))}
                     label="Vencimento"
                     showTime={false}
                     disablePastDates={false}
@@ -412,7 +468,7 @@ export function CarteiraDetailModal({
                 <InfoRow label="Operadora" value={detail.contract.operadora} />
                 <InfoRow label="Plano" value={detail.contract.productName ?? detail.soldPlan} />
                 <InfoRow label="Valor" value={formatBRL(detail.contract.amount)} />
-                <InfoRow label="Vencimento" value={formatDate(detail.contract.finalizedDateAt)} />
+                <InfoRow label="Vencimento" value={formatDate(detail.contractDueDate)} />
                 <InfoRow label="Data de início" value={formatDate(detail.contract.startDateAt)} />
                 <InfoRow label="SDR" value={<ProfileBadge person={detail.sdr} />} />
                 <InfoRow label="Closer" value={<ProfileBadge person={detail.closer} />} />
@@ -654,5 +710,39 @@ export function CarteiraDetailModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {detail && (
+      <FinalizeContractDialog
+        open={isContractEditOpen}
+        onOpenChange={setIsContractEditOpen}
+        headerTitle="Editar cliente"
+        headerDescription={`Atualize os dados do contrato para o cliente: ${detail.leadName}`}
+        leadName={detail.leadName}
+        submitLabel="Salvar alterações"
+        submittingLabel="Salvando..."
+        onFinalize={handleContractEditSave}
+        closers={closers}
+        healthPlans={healthPlans}
+        leadCloserId={detail.closer?.id}
+        initialAmount={detail.contract?.amount ?? detail.saleValue}
+        initialStartDate={detail.contract?.startDateAt}
+        initialFinalizedDate={detail.contractDueDate}
+        initialOperadora={detail.contract?.operadora ?? null}
+        initialProductName={detail.contract?.productName ?? detail.soldPlan ?? null}
+        initialNotes={detail.contract?.notes ?? null}
+        initialHolderName={detail.holder?.name ?? null}
+        initialHolderBirthDate={detail.holder?.birthDate ?? null}
+        initialHolderDocument={detail.holder?.document ?? null}
+        initialHolderCnpj={detail.holder?.cnpj ?? null}
+        initialDependents={(detail.dependents ?? []).map((dependent) => ({
+          id: dependent.id,
+          name: dependent.name,
+          birthDate: new Date(dependent.birthDate),
+          parentesco: dependent.parentesco,
+          document: dependent.document ?? undefined,
+        }))}
+      />
+    )}
+    </>
   );
 }

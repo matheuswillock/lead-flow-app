@@ -1,5 +1,6 @@
 import { prisma } from "@/app/api/infra/data/prisma"
 import type { Prisma } from "@prisma/client"
+import { isGoogleConnectionActive } from "@/lib/google/connection"
 import type {
   IBackofficePlatformUsersRepository,
   MasterPlatformUserBillingRecord,
@@ -92,7 +93,12 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           hasPermanentSubscription: true,
           subscriptionPlan: true,
           operatorCount: true,
-          googleCalendarConnected: true,
+          googleConnection: {
+            select: {
+              refreshToken: true,
+              revokedAt: true,
+            },
+          },
           teamsOwned: {
             select: {
               id: true,
@@ -161,7 +167,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       hasPermanentSubscription: master.hasPermanentSubscription,
       subscriptionPlan: master.subscriptionPlan,
       operatorCount: master.operatorCount,
-      googleCalendarConnected: master.googleCalendarConnected,
+      googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
       linkedUsersCount: membersByMaster.get(master.id)?.size ?? 0,
       teamsCount: master.teamsOwned.length,
       teams: master.teamsOwned.map((team) => ({
@@ -210,8 +216,15 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         createdAt: true,
         hasPermanentSubscription: true,
         subscriptionPlan: true,
+        subscriptionStatus: true,
+        subscriptionId: true,
         operatorCount: true,
-        googleCalendarConnected: true,
+        googleConnection: {
+          select: {
+            refreshToken: true,
+            revokedAt: true,
+          },
+        },
       },
     })
 
@@ -286,7 +299,14 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
                   fullName: true,
                   email: true,
                   phone: true,
-                  googleCalendarConnected: true,
+                  googleConnection: {
+                    select: {
+                      googleEmail: true,
+                      refreshToken: true,
+                      revokedAt: true,
+                    },
+                  },
+                  isMaster: true,
                 },
               },
             },
@@ -335,8 +355,10 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       createdAt: master.createdAt,
       hasPermanentSubscription: master.hasPermanentSubscription,
       subscriptionPlan: master.subscriptionPlan,
+      subscriptionStatus: master.subscriptionStatus,
+      subscriptionId: master.subscriptionId,
       operatorCount: master.operatorCount,
-      googleCalendarConnected: master.googleCalendarConnected,
+      googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
       linkedUsersCount: linkedUsers.size,
       teamsTotalItems,
       teams: teams.map((team) => ({
@@ -351,8 +373,10 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           phone: member.profile.phone,
           addedAt: member.createdAt,
           role: member.role,
-          googleCalendarConnected: member.profile.googleCalendarConnected,
+          googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
+          googleEmail: member.profile.googleConnection?.googleEmail ?? null,
           functions: member.functions,
+          isMaster: member.profile.isMaster,
         })),
       })),
     }

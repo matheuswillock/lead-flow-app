@@ -4,11 +4,32 @@ import type {
   CarteiraDetailData,
   CarteiraFiltersState,
   CarteiraRow,
+  CreateCarteiraPayload,
   UpdateCarteiraData,
   UpdateCarteiraDetailPayload,
 } from '../context/CarteiraTypes';
 
 class CarteiraService implements ICarteiraService {
+  async createEntry(
+    supabaseId: string,
+    teamId: string,
+    payload: CreateCarteiraPayload
+  ): Promise<CarteiraDetailData> {
+    const res = await fetch('/api/v1/portfolio', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-supabase-user-id': supabaseId,
+        'x-team-id': teamId,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json();
+    if (!json.isValid) throw new Error(json.errorMessages?.[0] ?? 'Erro ao adicionar cliente');
+    return json.result as CarteiraDetailData;
+  }
+
   async listPortfolio(
     supabaseId: string,
     teamId: string,
@@ -18,6 +39,7 @@ class CarteiraService implements ICarteiraService {
 
     if (filters.search) params.set('search', filters.search);
     if (filters.portfolioStatuses.length) params.set('portfolioStatuses', filters.portfolioStatuses.join(','));
+    if (filters.sources.length) params.set('sources', filters.sources.join(','));
     if (filters.sdrIds.length) params.set('sdrIds', filters.sdrIds.join(','));
     if (filters.closerIds.length) params.set('closerIds', filters.closerIds.join(','));
     if (filters.operadora) params.set('operadora', filters.operadora);

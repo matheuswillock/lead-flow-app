@@ -17,12 +17,12 @@ export function PerformanceContainer() {
   const periodLabel = (
     {
       "1d": "ultimas 24h",
-      "7d": "ultimos 7 dias",
-      "15d": "ultimos 15 dias",
+      "7d": "últimos 7 dias",
+      "15d": "últimos 15 dias",
       "1m": "ultimo mes",
-      "3m": "ultimos 3 meses",
+      "3m": "últimos 3 meses",
     } as Record<string, string>
-  )[filters.preset] ?? "ultimos 7 dias";
+  )[filters.preset] ?? "últimos 7 dias";
 
   return (
     <div className="flex-1 min-w-0 flex flex-col">

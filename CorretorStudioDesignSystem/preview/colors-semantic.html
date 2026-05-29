@@ -1,0 +1,34 @@
+<!-- @dsCard group="Colors" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 24px; background: var(--background); font-family: var(--font-body); color: var(--foreground); }
+.title { font-family: var(--font-display); font-size: 13px; font-weight: 600; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+.grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.cell { border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.swatch { height: 36px; border-radius: 8px; }
+.name { font-size: 12px; font-weight: 600; color: var(--foreground); }
+.hex { font-family: var(--font-mono); font-size: 11px; color: var(--muted-foreground); }
+.tinted { border: 1px solid; padding: 6px 8px; border-radius: 7px; font-size: 11px; font-weight: 600; display: inline-block; }
+.success .swatch { background: var(--semantic-success); }
+.success .tinted { background: var(--semantic-success-surface); color: var(--semantic-success); border-color: var(--semantic-success-border); }
+.warning .swatch { background: var(--semantic-warning); }
+.warning .tinted { background: var(--semantic-warning-surface); color: var(--semantic-warning); border-color: var(--semantic-warning-border); }
+.danger .swatch { background: var(--semantic-danger); }
+.danger .tinted { background: var(--semantic-danger-surface); color: var(--semantic-danger); border-color: var(--semantic-danger-border); }
+.info .swatch { background: var(--semantic-info); }
+.info .tinted { background: var(--semantic-info-surface); color: var(--semantic-info); border-color: var(--semantic-info-border); }
+.new .swatch { background: var(--semantic-new); }
+.new .tinted { background: var(--semantic-new-surface); color: var(--semantic-new); border-color: var(--semantic-new-border); }
+</style></head>
+<body>
+<div class="title">Semantic status pairs · solid + tinted</div>
+<div class="grid">
+  <div class="cell success"><div class="swatch"></div><div class="name">success</div><span class="tinted">Ativo</span><div class="hex">#00a87e</div></div>
+  <div class="cell warning"><div class="swatch"></div><div class="name">warning</div><span class="tinted">Atenção</span><div class="hex">#ec7e00</div></div>
+  <div class="cell danger"><div class="swatch"></div><div class="name">danger</div><span class="tinted">Perdido</span><div class="hex">#e23b4a</div></div>
+  <div class="cell info"><div class="swatch"></div><div class="name">info</div><span class="tinted">Aguardando</span><div class="hex">#3b9eff</div></div>
+  <div class="cell new"><div class="swatch"></div><div class="name">new</div><span class="tinted">Em breve</span><div class="hex">#533afd</div></div>
+</div>
+</body></html>

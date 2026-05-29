@@ -1,5 +1,6 @@
 import type { TaskAssigneeStatus, TaskType } from "@prisma/client";
 import { prisma } from "../../prisma";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 import type {
   ITaskRepository,
   TaskWithRelations,
@@ -268,17 +269,33 @@ class TaskRepository implements ITaskRepository {
   }
 
   async findProfilesWithGoogleForTask(profileIds: string[]) {
-    return prisma.profile.findMany({
-      where: { id: { in: profileIds }, googleCalendarConnected: true },
+    const profiles = await prisma.profile.findMany({
+      where: { id: { in: profileIds } },
       select: {
         id: true,
-        googleAccessToken: true,
-        googleRefreshToken: true,
-        googleTokenExpiresAt: true,
+        googleConnection: {
+          select: {
+            accessToken: true,
+            refreshToken: true,
+            tokenExpiresAt: true,
+            revokedAt: true,
+          },
+        },
         timezone: true,
         supabaseId: true,
       },
     });
+
+    return profiles
+      .filter((profile) => isGoogleConnectionActive(profile.googleConnection))
+      .map((profile) => ({
+        id: profile.id,
+        googleAccessToken: profile.googleConnection?.accessToken ?? null,
+        googleRefreshToken: profile.googleConnection?.refreshToken ?? null,
+        googleTokenExpiresAt: profile.googleConnection?.tokenExpiresAt ?? null,
+        timezone: profile.timezone,
+        supabaseId: profile.supabaseId,
+      }));
   }
 }
 

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import {
   getTeamAccess,
@@ -27,9 +29,10 @@ async function getPendingPaymentStatus(paymentId?: string | null) {
     };
   } catch (error) {
     console.error("[TeamsRoute][GET] Erro ao consultar pagamento pendente:", error);
+    const is404 = (error as any)?.statusCode === 404;
     return {
       paymentId,
-      paymentStatus: "PENDING",
+      paymentStatus: is404 ? "NOT_FOUND" : "PENDING",
       paymentMethod: "UNDEFINED",
     };
   }
@@ -41,8 +44,10 @@ async function createTeamForAccount(args: {
   requesterProfileId: string;
   masterFunctions: ("SDR" | "CLOSER")[];
   requesterFunctions: ("SDR" | "CLOSER")[];
+  tx?: Prisma.TransactionClient;
 }) {
-  const team = await prisma.team.create({
+  const db = args.tx ?? prisma;
+  const team = await db.team.create({
     data: {
       name: args.teamName,
       masterId: args.masterId,
@@ -50,7 +55,7 @@ async function createTeamForAccount(args: {
     },
   });
 
-  await prisma.teamMember.upsert({
+  await db.teamMember.upsert({
     where: {
       teamId_profileId: {
         teamId: team.id,
@@ -69,7 +74,7 @@ async function createTeamForAccount(args: {
   });
 
   if (args.requesterProfileId !== args.masterId) {
-    await prisma.teamMember.upsert({
+    await db.teamMember.upsert({
       where: {
         teamId_profileId: {
           teamId: team.id,
@@ -310,12 +315,16 @@ export async function POST(request: NextRequest) {
     const delta = projectedBilling.billingDelta;
 
     if (delta <= 0) {
-      const team = await createTeamForAccount({
-        teamName: validatedData.name,
-        masterId: managerId,
-        requesterProfileId: profileId,
-        masterFunctions: billingOwner.functions ?? [],
-        requesterFunctions: isMaster ? profile.functions ?? [] : teamMember.functions ?? [],
+      const team = await prisma.$transaction(async (tx) => {
+        await subscriptionCreditService.assertCapacityAvailable(tx, managerId, { teams: 1 });
+        return createTeamForAccount({
+          teamName: validatedData.name,
+          masterId: managerId,
+          requesterProfileId: profileId,
+          masterFunctions: billingOwner.functions ?? [],
+          requesterFunctions: isMaster ? profile.functions ?? [] : teamMember.functions ?? [],
+          tx,
+        });
       });
 
       return NextResponse.json(

@@ -12,6 +12,7 @@ import type {
 } from "./IBackofficeLeadScheduleService"
 import type { IBackofficeLeadScheduleInviteService } from "./IBackofficeLeadScheduleInviteService"
 import { IBackofficeUserRepository } from "@/app/api/infra/data/repositories/backoffice/UserRepository/IBackofficeUserRepository"
+import type { IBackofficeGoogleConnectionResolverService } from "../backofficeGoogleConnection/IBackofficeGoogleConnectionResolverService"
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
@@ -32,6 +33,7 @@ export class BackofficeLeadScheduleService
   constructor(
     private readonly scheduleRepo: IBackofficeLeadScheduleRepository,
     private readonly userRepo: IBackofficeUserRepository,
+    private readonly googleResolver: IBackofficeGoogleConnectionResolverService,
     private readonly leadRepo: IBackofficeLeadRepository,
     private readonly googleCalendarService: IBackofficeGoogleCalendarService,
     private readonly inviteService: IBackofficeLeadScheduleInviteService
@@ -60,8 +62,8 @@ export class BackofficeLeadScheduleService
       }
 
       const existingSchedule = await this.scheduleRepo.findLatestActiveByLeadId(input.leadId)
-      const canUseGoogleCalendar =
-        closer.googleCalendarConnected === true && !!closer.googleRefreshToken
+      const organizer = await this.googleResolver.resolveForBackofficeUser(closer.id)
+      const canUseGoogleCalendar = !!organizer
       const meetingLinkValidation = validateMeetingLinkValue(input.meetingLink, {
         required: !canUseGoogleCalendar,
       })
@@ -95,10 +97,10 @@ export class BackofficeLeadScheduleService
       let finalMeetingLink = normalizedMeetingLink
       let dispatchPayload: Prisma.InputJsonValue | null = null
 
-      if (canUseGoogleCalendar) {
+      if (organizer) {
         try {
           const calendarResult = await this.googleCalendarService.upsertEvent({
-            organizer: closer,
+            organizer,
             leadId: input.leadId,
             leadName: input.leadName,
             leadEmail: input.leadEmail,
@@ -198,6 +200,23 @@ export class BackofficeLeadScheduleService
             ...scheduleData,
           })
 
+      // Notifica o closer por e-mail em todos os cenários (Google ou Resend)
+      const lead = await this.leadRepo.findById(input.leadId)
+      this.inviteService
+        .sendCloserNewLeadNotification({
+          closerEmail: closerEmail,
+          leadName: input.leadName,
+          leadEmail: input.leadEmail,
+          leadPhone: lead?.phone ?? null,
+          meetingDate: input.meetingDate,
+          meetingTitle: input.meetingTitle,
+          meetingLink: finalMeetingLink,
+          timezone: closer.timezone,
+        })
+        .catch((err) =>
+          console.error("[BackofficeLeadScheduleService][closerNotification]", err)
+        )
+
       return new Output(
         true,
         [existingSchedule ? "Agendamento atualizado com sucesso" : "Agendamento criado com sucesso"],
@@ -229,15 +248,16 @@ export class BackofficeLeadScheduleService
       let calendarWarning: string | null = null
       if (schedule.googleEventId && schedule.closerBackofficeUserId) {
         const closer = await this.userRepo.findById(schedule.closerBackofficeUserId)
-        const canUseGoogleCalendar =
-          !!closer?.googleCalendarConnected && !!closer.googleRefreshToken
+        const organizer = closer
+          ? await this.googleResolver.resolveForBackofficeUser(closer.id)
+          : null
 
-        if (!closer || !canUseGoogleCalendar) {
+        if (!closer || !organizer) {
           calendarWarning = "Conta Google não conectada. Evento não foi cancelado no Google Calendar."
         } else {
           try {
             await this.googleCalendarService.cancelEvent({
-              organizer: closer,
+              organizer,
               eventId: schedule.googleEventId,
               calendarId: schedule.googleCalendarId ?? "primary",
             })
@@ -283,13 +303,15 @@ export class BackofficeLeadScheduleService
         return new Output(false, [], ["Lead não encontrado"], null)
       }
 
-      const canUseGoogle =
-        !!schedule.googleEventId && !!closer?.googleCalendarConnected && !!closer.googleRefreshToken
+      const organizer = closer
+        ? await this.googleResolver.resolveForBackofficeUser(closer.id)
+        : null
+      const canUseGoogle = !!schedule.googleEventId && !!organizer
 
-      if (canUseGoogle && closer) {
+      if (canUseGoogle && organizer) {
         try {
           const attendees = await this.googleCalendarService.getEventAttendees({
-            organizer: closer,
+            organizer,
             eventId: schedule.googleEventId ?? "",
             calendarId: schedule.googleCalendarId ?? "primary",
           })

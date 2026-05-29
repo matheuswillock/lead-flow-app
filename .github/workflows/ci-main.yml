@@ -65,12 +65,45 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
+  migration-status:
+    name: Migration Status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - quality
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun store
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun/install/cache
+            node_modules
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb', '**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Check Migration Status
+        run: bunx supabase migration list --db-url "$DATABASE_URL"
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
   build:
     name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs:
-      - quality
+      - migration-status
     steps:
       - name: Checkout
         uses: actions/checkout@v4

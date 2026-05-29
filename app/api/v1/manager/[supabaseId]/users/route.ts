@@ -21,8 +21,11 @@ import { profileRepository } from "@/app/api/infra/data/repositories/profile/Pro
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { isManagerLikeRole } from "@/lib/roles";
 import { incrementalBillingService } from "@/app/api/services/billing/IncrementalBillingService";
+import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
 import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
+import type { Prisma } from "@prisma/client";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -110,10 +113,12 @@ async function createUserAndInvite(args: {
     canCreateAccountUsers: boolean;
     canManageAccountTeams: boolean;
   };
+  tx?: Prisma.TransactionClient;
 }) {
   const email = normalizeEmail(args.userData.email);
+  const db = args.tx ?? prisma;
 
-  const profile = await prisma.profile.create({
+  const profile = await db.profile.create({
     data: {
       fullName: args.userData.name,
       email,
@@ -134,7 +139,7 @@ async function createUserAndInvite(args: {
     },
   });
 
-  const teamMemberRecord = await prisma.teamMember.create({
+  const teamMemberRecord = await db.teamMember.create({
     data: {
       teamId: args.teamId,
       profileId: profile.id,
@@ -194,13 +199,13 @@ async function createUserAndInvite(args: {
     const inviteLink = buildSetPasswordEmailAuthLink(data, "invite");
 
     if (supabaseUserId) {
-      await prisma.profile.update({
+      await db.profile.update({
         where: { id: profile.id },
         data: { supabaseId: supabaseUserId },
       });
     }
 
-    const requesterProfile = await prisma.profile.findUnique({
+    const requesterProfile = await db.profile.findUnique({
       where: { id: args.requesterProfileId },
       select: { fullName: true, email: true },
     });
@@ -213,8 +218,15 @@ async function createUserAndInvite(args: {
       managerName: requesterProfile?.fullName || requesterProfile?.email || "Manager",
       inviteUrl: inviteLink,
     });
-  } catch (_inviteError) {
-    await prisma.teamMember.delete({
+  } catch (inviteError) {
+    console.error("[ManagerUsersRoute][createUserAndInvite] Invite falhou:", {
+      email,
+      teamId: args.teamId,
+      error: inviteError instanceof Error
+        ? { message: inviteError.message, stack: inviteError.stack, name: inviteError.name }
+        : inviteError,
+    });
+    await db.teamMember.delete({
       where: {
         teamId_profileId: {
           teamId: args.teamId,
@@ -223,7 +235,7 @@ async function createUserAndInvite(args: {
       },
     });
 
-    await prisma.profile.delete({ where: { id: profile.id } });
+    await db.profile.delete({ where: { id: profile.id } });
     throw new Error("Erro ao enviar convite. Tente novamente.");
   }
 
@@ -402,14 +414,19 @@ export async function POST(
     });
 
     if (projectedBilling.billingDelta <= 0) {
-      const createdUser = await createUserAndInvite({
-        teamId,
-        masterId: managerId,
-        requesterProfileId: profileId,
-        actorName,
-        teamName,
-        userData: validatedData,
-        delegatedPermissions,
+      const createdUser = await prisma.$transaction(async (tx) => {
+        await subscriptionCreditService.assertCapacityAvailable(tx, managerId, { users: 1 });
+
+        return createUserAndInvite({
+          teamId,
+          masterId: managerId,
+          requesterProfileId: profileId,
+          actorName,
+          teamName,
+          userData: validatedData,
+          delegatedPermissions,
+          tx,
+        });
       });
 
       const output = new Output(true, ["Usuário criado com sucesso"], [], createdUser);
@@ -486,7 +503,9 @@ export async function POST(
 
     return NextResponse.json(output, { status: 202 });
   } catch (error) {
-    console.error("Erro ao criar usuário:", error);
+    console.error("[ManagerUsersRoute][POST] Erro ao criar usuário:", {
+      error: error instanceof Error ? { message: error.message, stack: error.stack, name: error.name } : error,
+    });
     const output = new Output(false, [], ["Erro interno do servidor"], null);
     return NextResponse.json(output, { status: 500 });
   }
@@ -570,7 +589,12 @@ export async function GET(
             profileIconId: true,
             profileIconUrl: true,
             hasPermanentSubscription: true,
-            googleCalendarConnected: true,
+            googleConnection: {
+              select: {
+                refreshToken: true,
+                revokedAt: true,
+              },
+            },
             canCreateAccountUsers: true,
             canManageAccountTeams: true,
             _count: {
@@ -612,7 +636,7 @@ export async function GET(
         createdAt: member.createdAt,
         updatedAt: member.updatedAt,
         hasPermanentSubscription: member.profile.hasPermanentSubscription,
-        googleCalendarConnected: member.profile.googleCalendarConnected ?? false,
+        googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
       }));
 
     const pendingAsUsers: any[] = [];

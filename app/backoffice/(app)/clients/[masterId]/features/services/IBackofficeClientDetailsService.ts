@@ -44,4 +44,15 @@ export interface IBackofficeClientDetailsService {
   ): Promise<void>
 
   deleteClient(masterId: string): Promise<void>
+
+  updateMember(
+    memberId: string,
+    data: { fullName?: string; phone?: string | null; email?: string }
+  ): Promise<void>
+
+  deleteMember(memberId: string, password: string): Promise<void>
+
+  removeMemberFromTeam(memberId: string, teamId: string): Promise<void>
+
+  getMemberGoogleScopes(memberId: string): Promise<{ connected: boolean; scopes: string[] }>
 }

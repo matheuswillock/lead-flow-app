@@ -138,4 +138,53 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       throw new Error(json.errorMessages?.[0] ?? "Erro ao excluir conta do cliente")
     }
   }
+
+  async updateMember(
+    memberId: string,
+    data: { fullName?: string; phone?: string | null; email?: string }
+  ): Promise<void> {
+    const res = await fetch(`/api/v1/backoffice/members/${memberId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao atualizar membro")
+    }
+  }
+
+  async deleteMember(memberId: string, password: string): Promise<void> {
+    const res = await fetch(`/api/v1/backoffice/members/${memberId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao excluir conta do membro")
+    }
+  }
+
+  async removeMemberFromTeam(memberId: string, teamId: string): Promise<void> {
+    const res = await fetch(
+      `/api/v1/backoffice/members/${memberId}/teams/${teamId}`,
+      { method: "DELETE" }
+    )
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao remover membro do time")
+    }
+  }
+
+  async getMemberGoogleScopes(memberId: string): Promise<{ connected: boolean; scopes: string[] }> {
+    const res = await fetch(`/api/v1/backoffice/members/${memberId}/google-scopes`, {
+      cache: "no-store",
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao buscar escopos Google do membro")
+    }
+    return json.result as { connected: boolean; scopes: string[] }
+  }
 }

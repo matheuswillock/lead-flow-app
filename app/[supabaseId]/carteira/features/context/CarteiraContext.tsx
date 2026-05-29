@@ -1,11 +1,13 @@
 "use client";
 
-import { createContext, ReactNode, useContext } from 'react';
+import { createContext, ReactNode, useContext, type Dispatch, type SetStateAction } from 'react';
 import { useCarteiraHook } from './CarteiraHook';
 import type {
   CarteiraData,
   CarteiraDetailData,
   CarteiraFiltersState,
+  CarteiraTableColumnKey,
+  CreateCarteiraPayload,
   UpdateCarteiraData,
   UpdateCarteiraDetailPayload,
 } from './CarteiraTypes';
@@ -17,8 +19,14 @@ type CarteiraContextValue = {
   filters: CarteiraFiltersState;
   availableOperadoras: string[];
   setFilter: <K extends keyof CarteiraFiltersState>(key: K, value: CarteiraFiltersState[K]) => void;
+  setFilters: (next: CarteiraFiltersState) => void;
   setPage: (page: number) => void;
   clearFilters: () => void;
+  tableColumnVisibility: Record<CarteiraTableColumnKey, boolean>;
+  setTableColumnVisibility: Dispatch<SetStateAction<Record<CarteiraTableColumnKey, boolean>>>;
+  tableColumnOrder: CarteiraTableColumnKey[];
+  setTableColumnOrder: Dispatch<SetStateAction<CarteiraTableColumnKey[]>>;
+  createEntry: (payload: CreateCarteiraPayload) => Promise<CarteiraDetailData>;
   updateEntry: (leadId: string, data: UpdateCarteiraData) => Promise<void>;
   getEntryDetail: (leadId: string) => Promise<CarteiraDetailData>;
   updateEntryDetail: (leadId: string, payload: UpdateCarteiraDetailPayload) => Promise<CarteiraDetailData>;

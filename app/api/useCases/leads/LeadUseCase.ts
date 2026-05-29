@@ -17,6 +17,7 @@ import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinal
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
 import { healthPlanService } from "../../services/healthPlans/HealthPlanService";
 import { leadScheduleService } from "../../services/leadSchedule/LeadScheduleService";
+import { cancelCalendarEvent } from "../../services/googleCalendar/GoogleCalendarService";
 import { prisma } from "../../infra/data/prisma";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "../../v1/leads/DTO/leadValueLimits";
 import { normalizeHealthPlanName } from "@/lib/healthPlans";
@@ -27,6 +28,7 @@ import { STORAGE_BUCKETS } from "@/lib/supabase/storage";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import type { Attachment } from "resend";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   new_opportunity: "Nova oportunidade",
@@ -264,6 +266,21 @@ export class LeadUseCase implements ILeadUseCase {
       });
       if (normalizedPlans.output) {
         return normalizedPlans.output;
+      }
+
+      if (data.cnpj && data.cnpj.trim().length > 0) {
+        const existingLead = await prisma.lead.findFirst({
+          where: { teamId, cnpj: data.cnpj.trim() },
+          select: { id: true, leadCode: true, name: true },
+        });
+        if (existingLead) {
+          return new Output(
+            false,
+            [],
+            [`Já existe um lead com este CNPJ neste time (${existingLead.leadCode ?? existingLead.name ?? existingLead.id})`],
+            null
+          );
+        }
       }
 
       const lead = await this.leadRepository.create({
@@ -674,25 +691,85 @@ export class LeadUseCase implements ILeadUseCase {
       const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
       
       if (!profileInfo) {
+        console.error("[LeadUseCase][deleteLead] Perfil não encontrado para supabaseId:", supabaseId);
         return new Output(false, [], ["Perfil do usuário não encontrado"], null);
       }
 
-      // Verificar permissões para operators
-      if (profileInfo.role === 'operator') {
-        const existingLead = await this.leadRepository.findById(id);
-        
-        if (!existingLead) {
-          return new Output(false, [], ["Lead não encontrado"], null);
+      const existingLead = await this.leadRepository.findById(id);
+      if (!existingLead) {
+        console.error("[LeadUseCase][deleteLead] Lead não encontrado:", id);
+        return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      if (profileInfo.role === 'operator' && existingLead.createdBy !== profileInfo.id) {
+        console.error("[LeadUseCase][deleteLead] Operador sem permissão:", { supabaseId, leadId: id, createdBy: existingLead.createdBy });
+        return new Output(false, [], ["Você só pode deletar leads que você criou"], null);
+      }
+
+      const schedule = await leadScheduleRepository.findLatestByLeadId(id);
+      let calendarWarning: string | null = null;
+
+      if (schedule?.googleEventId) {
+        if (!existingLead.closerId) {
+          calendarWarning =
+            "Closer do agendamento não encontrado. Evento não foi cancelado no Google Calendar.";
         }
-        
-        // Operator só pode deletar se criou o lead
-        if (existingLead.createdBy !== profileInfo.id) {
-          return new Output(false, [], ["Você só pode deletar leads que você criou"], null);
+
+        if (existingLead.closerId) {
+          const closerProfile = await prisma.profile.findUnique({
+            where: { id: existingLead.closerId },
+            include: {
+              googleConnection: {
+                select: {
+                  accessToken: true,
+                  refreshToken: true,
+                  tokenExpiresAt: true,
+                  revokedAt: true,
+                },
+              },
+            },
+          });
+          const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection);
+
+          if (!closerProfile || !canUseGoogleCalendar) {
+            calendarWarning =
+              "Conta Google do closer não está conectada. Evento não foi cancelado no Google Calendar.";
+          }
+
+          if (closerProfile && canUseGoogleCalendar) {
+            try {
+              await cancelCalendarEvent({
+                organizer: closerProfile,
+                eventId: schedule.googleEventId,
+                calendarId: schedule.googleCalendarId ?? "primary",
+              });
+            } catch (calendarError) {
+              calendarWarning =
+                calendarError instanceof Error
+                  ? calendarError.message
+                  : "Falha ao cancelar evento no Google Calendar";
+            }
+          }
         }
       }
 
-      await this.leadRepository.delete(id);
-      return new Output(true, ["Lead excluído com sucesso"], [], null);
+      await prisma.$transaction(async (tx) => {
+        if (schedule) {
+          await tx.leadsSchedule.delete({
+            where: { id: schedule.id },
+          });
+        }
+
+        await tx.lead.delete({
+          where: { id },
+        });
+      });
+
+      const successMessages = ["Lead excluído com sucesso"];
+      if (calendarWarning) {
+        successMessages.push("Aviso: evento no Google Calendar não foi removido.");
+      }
+      return new Output(true, successMessages, [], null);
     } catch (error) {
       console.error("Erro ao excluir lead:", error);
       return new Output(false, [], ["Erro interno do servidor ao excluir lead"], null);
@@ -823,6 +900,25 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const statusUpdateExtraData: Prisma.LeadUpdateInput = {};
+      const transitionWarnings: string[] = [];
+
+      const isCurrentStatusScheduled = existingLead.status === LeadStatus.scheduled;
+      const isMeetingHeald = existingLead.meetingHeald === "yes";
+
+      if (
+        isCurrentStatusScheduled &&
+        isMeetingHeald &&
+        (status === LeadStatus.new_opportunity || status === LeadStatus.no_show)
+      ) {
+        return new Output(
+          false,
+          [],
+          ["Lead com reunião realizada não pode voltar para Nova oportunidade ou No-show."],
+          {
+            transition: createTransition(false, "validation_error"),
+          }
+        );
+      }
 
       if (status === LeadStatus.no_show) {
         if (!existingLead.meetingDate) {
@@ -848,9 +944,10 @@ export class LeadUseCase implements ILeadUseCase {
       }
 
       const isLeavingScheduled =
-        existingLead.status === LeadStatus.scheduled &&
+        isCurrentStatusScheduled &&
         status !== LeadStatus.scheduled &&
-        status !== LeadStatus.no_show;
+        status !== LeadStatus.no_show &&
+        status !== LeadStatus.new_opportunity;
 
       if (isLeavingScheduled && existingLead.meetingHeald !== "yes") {
         const team = existingLead.teamId
@@ -1003,6 +1100,67 @@ export class LeadUseCase implements ILeadUseCase {
             }
           );
         }
+      }
+
+      const shouldCleanupScheduledOnRevert =
+        existingLead.status === LeadStatus.scheduled &&
+        status === LeadStatus.new_opportunity;
+
+      if (shouldCleanupScheduledOnRevert && mode === "apply") {
+        const schedule = await leadScheduleRepository.findLatestByLeadId(id);
+
+        if (schedule?.googleEventId) {
+          if (!existingLead.closerId) {
+            transitionWarnings.push(
+              "Closer do agendamento não encontrado. Evento não foi cancelado no Google Calendar."
+            );
+          } else {
+            const closerProfile = await prisma.profile.findUnique({
+              where: { id: existingLead.closerId },
+              include: {
+                googleConnection: {
+                  select: {
+                    accessToken: true,
+                    refreshToken: true,
+                    tokenExpiresAt: true,
+                    revokedAt: true,
+                  },
+                },
+              },
+            });
+            const canUseGoogleCalendar = isGoogleConnectionActive(closerProfile?.googleConnection);
+
+            if (!closerProfile || !canUseGoogleCalendar) {
+              transitionWarnings.push(
+                "Conta Google do closer não está conectada. Evento não foi cancelado no Google Calendar."
+              );
+            } else {
+              try {
+                await cancelCalendarEvent({
+                  organizer: closerProfile,
+                  eventId: schedule.googleEventId,
+                  calendarId: schedule.googleCalendarId ?? "primary",
+                });
+              } catch (calendarError) {
+                transitionWarnings.push(
+                  calendarError instanceof Error
+                    ? calendarError.message
+                    : "Falha ao cancelar evento no Google Calendar."
+                );
+              }
+            }
+          }
+        }
+
+        if (schedule) {
+          await leadScheduleRepository.delete(schedule.id);
+        }
+
+        statusUpdateExtraData.meetingDate = null;
+        statusUpdateExtraData.meetingTitle = null;
+        statusUpdateExtraData.meetingNotes = null;
+        statusUpdateExtraData.meetingLink = null;
+        statusUpdateExtraData.meetingHeald = null;
       }
 
       if (status !== existingLead.status) {
@@ -1173,13 +1331,20 @@ export class LeadUseCase implements ILeadUseCase {
         });
       }
 
+      const successMessages = ["Status do lead atualizado com sucesso"];
+      if (transitionWarnings.length > 0) {
+        successMessages.push("Aviso: evento no Google Calendar não foi removido.");
+      }
+
       return new Output(
         true,
-        ["Status do lead atualizado com sucesso"],
+        successMessages,
         [],
         {
           ...this.transformToDTO(lead),
-          transition: createTransition(true, "none"),
+          transition: createTransition(true, "none", {
+            warnings: transitionWarnings.length > 0 ? transitionWarnings : undefined,
+          }),
         }
       );
     } catch (error) {

@@ -1,6 +1,8 @@
-import { Prisma } from '@prisma/client';
+import { ActivityType, LeadStatus, Prisma, PortfolioSource } from '@prisma/client';
 import { prisma } from '@/app/api/infra/data/prisma';
+import { sanitizeDocumentDigits, sanitizeRgCpfDigits } from '@/lib/masks';
 import type {
+  CreatePortfolioEntryPayload,
   IPortfolioService,
   PortfolioDetailResult,
   PortfolioFilters,
@@ -13,6 +15,7 @@ import type {
 function mapToPortfolioRow(entry: {
   id: string;
   portfolioStatus: string;
+  source: PortfolioSource;
   note: string | null;
   lastContactAt: Date | null;
   createdAt: Date;
@@ -38,6 +41,7 @@ function mapToPortfolioRow(entry: {
     leadId: entry.lead.id,
     leadCode: entry.lead.leadCode,
     leadName: entry.lead.name,
+    source: entry.source,
     portfolioStatus: entry.portfolioStatus as PortfolioRow['portfolioStatus'],
     note: entry.note,
     lastContactAt: entry.lastContactAt,
@@ -85,7 +89,7 @@ export class PortfolioService implements IPortfolioService {
   async listPortfolio(filters: PortfolioFilters): Promise<PortfolioListResult> {
     const {
       teamId, profileId, isManager, isCloser,
-      portfolioStatuses, sdrIds, closerIds,
+      portfolioStatuses, sdrIds, closerIds, sources,
       operadora,
       contractDateStart, contractDateEnd,
       dueDateStart, dueDateEnd,
@@ -103,6 +107,7 @@ export class PortfolioService implements IPortfolioService {
     const where: Prisma.LeadPortfolioWhereInput = {
       teamId,
       ...(portfolioStatuses?.length ? { portfolioStatus: { in: portfolioStatuses } } : {}),
+      ...(sources?.length ? { source: { in: sources } } : {}),
       lead: {
         ...accessLeadFilter,
         ...(sdrIds?.length ? { assignedTo: { in: sdrIds } } : {}),
@@ -111,7 +116,7 @@ export class PortfolioService implements IPortfolioService {
         ...(dueDateStart || dueDateEnd ? {
           contractDueDate: {
             ...(dueDateStart ? { gte: dueDateStart } : {}),
-            ...(dueDateEnd ? { lte: dueDateEnd } : {}),
+            ...(dueDateEnd ? { lt: dueDateEnd } : {}),
           },
         } : {}),
         ...(needsLeadFinalizedJoin ? {
@@ -121,7 +126,7 @@ export class PortfolioService implements IPortfolioService {
                 ...(contractDateStart || contractDateEnd ? [{
                   startDateAt: {
                     ...(contractDateStart ? { gte: contractDateStart } : {}),
-                    ...(contractDateEnd ? { lte: contractDateEnd } : {}),
+                    ...(contractDateEnd ? { lt: contractDateEnd } : {}),
                   },
                 }] : []),
                 ...(operadora ? [{
@@ -223,6 +228,7 @@ export class PortfolioService implements IPortfolioService {
       leadId: entry.lead.id,
       leadCode: entry.lead.leadCode,
       leadName: entry.lead.name,
+      source: entry.source,
       saleValue: ticket > 0 ? ticket : currentValue,
       portfolioStatus: entry.portfolioStatus,
       sdr: entry.lead.assignee ? { id: entry.lead.assignee.id, name: entry.lead.assignee.fullName ?? '' } : null,
@@ -266,6 +272,167 @@ export class PortfolioService implements IPortfolioService {
         uploaderName: a.uploader.fullName ?? null,
       })),
     };
+  }
+
+  private async generateLeadCode(name: string): Promise<string> {
+    const clean = name.replace(/[^A-Za-zÀ-ÿ]/g, '');
+    const firstLetter = (clean[0] || 'L').toUpperCase();
+    const lastLetter = (clean[clean.length - 1] || 'D').toUpperCase();
+
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const digitsLength = 4 + Math.floor(Math.random() * 3);
+      const digits = Array.from({ length: digitsLength }, () => Math.floor(Math.random() * 10)).join('');
+      const code = `${firstLetter}${digits}${lastLetter}`;
+      const existing = await prisma.lead.findUnique({ where: { leadCode: code }, select: { id: true } });
+      if (!existing) {
+        return code;
+      }
+    }
+
+    const fallbackDigits = Date.now().toString().slice(-6);
+    return `${firstLetter}${fallbackDigits}${lastLetter}`;
+  }
+
+  async createPortfolioEntry(
+    teamId: string,
+    profileId: string,
+    data: CreatePortfolioEntryPayload
+  ): Promise<PortfolioDetailResult> {
+    const startDateAt = new Date(data.startDateAt);
+    const finalizedDateAt = new Date(data.finalizedDateAt);
+    const holderBirthDate = new Date(data.holder.birthDate);
+    const contractDueDate = data.contractDueDate ? new Date(data.contractDueDate) : null;
+
+    if (Number.isNaN(startDateAt.getTime())) {
+      throw new Error('Data de início inválida');
+    }
+    if (Number.isNaN(finalizedDateAt.getTime())) {
+      throw new Error('Data de finalização inválida');
+    }
+    if (Number.isNaN(holderBirthDate.getTime())) {
+      throw new Error('Data de nascimento do titular inválida');
+    }
+    if (contractDueDate && Number.isNaN(contractDueDate.getTime())) {
+      throw new Error('Data de vigência inválida');
+    }
+
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      select: { id: true, masterId: true },
+    });
+
+    if (!team) {
+      throw new Error('Time não encontrado');
+    }
+
+    const closerMember = await prisma.teamMember.findFirst({
+      where: { teamId, profileId: data.closerId },
+      select: { id: true },
+    });
+
+    if (!closerMember) {
+      throw new Error('Closer inválido para este time');
+    }
+
+    const leadCode = await this.generateLeadCode(data.name);
+    const amount = Number(data.amount);
+    const created = await prisma.$transaction(async (tx) => {
+      const lead = await tx.lead.create({
+        data: {
+          managerId: team.masterId,
+          teamId,
+          leadCode,
+          status: LeadStatus.contract_finalized,
+          name: data.name.trim(),
+          email: data.email.trim(),
+          phone: data.phone.trim(),
+          cnpj: sanitizeDocumentDigits(data.cnpj || '') || null,
+          soldPlan: data.soldPlan?.trim() || null,
+          contractDueDate,
+          ticket: amount,
+          currentValue: amount,
+          createdBy: profileId,
+          updatedBy: profileId,
+          closerId: data.closerId,
+          activities: {
+            create: [
+              {
+                type: ActivityType.note,
+                body: 'Lead criado direto na carteira',
+                createdBy: profileId,
+              },
+              {
+                type: ActivityType.status_change,
+                body: `Contrato finalizado no valor de R$ ${amount.toFixed(2)}`,
+                payload: {
+                  previousStatus: LeadStatus.new_opportunity,
+                  newStatus: LeadStatus.contract_finalized,
+                  amount,
+                  startDateAt: data.startDateAt,
+                  finalizedDateAt: data.finalizedDateAt,
+                },
+                createdBy: profileId,
+              },
+            ],
+          },
+        },
+      });
+
+      const finalized = await tx.leadFinalized.create({
+        data: {
+          leadId: lead.id,
+          amount,
+          startDateAt,
+          finalizedDateAt,
+          duration: Math.max(
+            0,
+            Math.floor(
+              (finalizedDateAt.getTime() - lead.createdAt.getTime()) / (1000 * 60 * 60 * 24)
+            )
+          ),
+          notes: data.notes?.trim() || null,
+          closerId: data.closerId,
+          operadora: data.operadora.trim(),
+          productName: data.productName?.trim() || null,
+        },
+      });
+
+      await tx.leadFinalizedHolder.create({
+        data: {
+          leadFinalizedId: finalized.id,
+          name: data.holder.name.trim(),
+          birthDate: holderBirthDate,
+          document: sanitizeRgCpfDigits(data.holder.document),
+          cnpj: sanitizeDocumentDigits(data.holder.cnpj || '') || null,
+        },
+      });
+
+      const dependents = data.dependents ?? [];
+      if (dependents.length > 0) {
+        await tx.leadFinalizedDependent.createMany({
+          data: dependents.map((dep) => ({
+            leadFinalizedId: finalized.id,
+            name: dep.name.trim(),
+            birthDate: new Date(dep.birthDate),
+            parentesco: dep.parentesco.trim(),
+            document: sanitizeRgCpfDigits(dep.document || '') || null,
+          })),
+        });
+      }
+
+      await tx.leadPortfolio.create({
+        data: {
+          leadId: lead.id,
+          teamId,
+          portfolioStatus: 'active',
+          source: data.source,
+        },
+      });
+
+      return lead;
+    });
+
+    return this.fetchDetailResult(created.id);
   }
 
   async getPortfolioEntryDetail(
@@ -339,7 +506,6 @@ export class PortfolioService implements IPortfolioService {
         if (payload.productName !== undefined) finalizedPatch.productName = payload.productName;
         if (payload.amount !== undefined) finalizedPatch.amount = payload.amount;
         if (payload.startDateAt) finalizedPatch.startDateAt = new Date(payload.startDateAt);
-        if (sharedDueDate) finalizedPatch.finalizedDateAt = new Date(sharedDueDate);
         if (payload.notes !== undefined) finalizedPatch.notes = payload.notes;
         if (Object.keys(finalizedPatch).length > 0) {
           await tx.leadFinalized.update({ where: { id: finalized.id }, data: finalizedPatch });

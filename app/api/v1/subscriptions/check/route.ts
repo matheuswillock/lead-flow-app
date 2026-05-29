@@ -20,9 +20,6 @@ export async function POST(request: NextRequest) {
     const checkSubscriptionUseCase = new CheckSubscriptionUseCase(subscriptionCheckService);
 
     const output = await checkSubscriptionUseCase.execute(body);
-    const result = output.result as
-      | { hasActiveSubscription?: boolean; userExists?: boolean }
-      | null;
     const statusCode = output.isValid ? 200 : 400;
 
     return NextResponse.json(output, { status: statusCode });

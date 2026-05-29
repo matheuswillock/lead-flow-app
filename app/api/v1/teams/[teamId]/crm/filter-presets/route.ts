@@ -23,6 +23,7 @@ export async function GET(
 
     const { teamId } = await params;
     if (!teamId || teamId !== teamAccess.access.teamId) {
+      console.error("[TeamFilterPresetsRoute][GET] teamId mismatch:", { urlTeamId: teamId, accessTeamId: teamAccess.access.teamId });
       return NextResponse.json(
         new Output(false, [], ["Acesso negado para este time"], null),
         { status: 403 }

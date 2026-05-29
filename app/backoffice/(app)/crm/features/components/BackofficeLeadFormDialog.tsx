@@ -146,6 +146,9 @@ const leadFormSchema = z
     meetingNotes: z.string().trim(),
     meetingLink: z.string().trim(),
     meetingExtraGuests: z.array(z.string().email()),
+    qualificationLeadOrganization: z.string().trim(),
+    qualificationAvgUsers: z.string().trim(),
+    qualificationProfileFit: z.string().trim(),
   })
   .superRefine((data, ctx) => {
     if (!data.sdrBackofficeUserId) {
@@ -156,6 +159,14 @@ const leadFormSchema = z
       })
     }
 
+    if (!data.closerBackofficeUserId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["closerBackofficeUserId"],
+        message: "Closer é obrigatório para salvar o lead.",
+      })
+    }
+
     if (data.status !== "scheduled") return
 
     if (!data.meetingDate) {
@@ -163,14 +174,6 @@ const leadFormSchema = z
         code: z.ZodIssueCode.custom,
         path: ["meetingDate"],
         message: "Data de agendamento é obrigatória.",
-      })
-    }
-
-    if (!data.closerBackofficeUserId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["closerBackofficeUserId"],
-        message: "Closer é obrigatório para leads agendados.",
       })
     }
 
@@ -199,6 +202,9 @@ const EMPTY_FORM_VALUES: LeadFormValues = {
   meetingNotes: "",
   meetingLink: "",
   meetingExtraGuests: [],
+  qualificationLeadOrganization: "",
+  qualificationAvgUsers: "",
+  qualificationProfileFit: "",
 }
 
 function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
@@ -218,6 +224,9 @@ function toFormValues(lead: BackofficeLeadItem | null): LeadFormValues {
     meetingNotes: lead.meetingNotes ?? "",
     meetingLink: lead.meetingLink ?? "",
     meetingExtraGuests: lead.meetingExtraGuests ?? [],
+    qualificationLeadOrganization: lead.qualificationLeadOrganization ?? "",
+    qualificationAvgUsers: lead.qualificationAvgUsers ?? "",
+    qualificationProfileFit: lead.qualificationProfileFit ?? "",
   }
 }
 
@@ -279,6 +288,7 @@ export function BackofficeLeadFormDialog() {
   const {
     isFormDialogOpen,
     closeFormDialog,
+    openEditDialog,
     selectedLead,
     createLead,
     updateLead,
@@ -311,6 +321,7 @@ export function BackofficeLeadFormDialog() {
 
   const scheduleLead = useMemo(
     () => ({
+      id: selectedLead?.id ?? null,
       name: watchedValues.name || selectedLead?.name || "Lead",
       closerBackofficeUserId: watchedValues.closerBackofficeUserId || null,
       meetingDate: watchedValues.meetingDate || null,
@@ -332,6 +343,14 @@ export function BackofficeLeadFormDialog() {
   )
 
   async function handleScheduleConfirm(input: BackofficeLeadScheduleInput) {
+    if (isEdit && isScheduled && selectedLead) {
+      // Reagendamento: dispara imediatamente via API (Google Calendar + convite)
+      await updateLeadStatus(selectedLead.id, "scheduled", input)
+      // selectedLead é atualizado no context → useEffect reseta o form com os novos dados
+      return
+    }
+
+    // Primeiro agendamento (novo lead ou mudança de status): apenas seta valores no form
     form.setValue("status", "scheduled", { shouldDirty: true, shouldValidate: true })
     form.setValue("closerBackofficeUserId", input.closerBackofficeUserId ?? "", {
       shouldDirty: true,
@@ -362,6 +381,9 @@ export function BackofficeLeadFormDialog() {
         meetingNotes: nullIfEmpty(values.meetingNotes),
         meetingLink: nullIfEmpty(values.meetingLink),
         meetingExtraGuests: values.meetingExtraGuests,
+        qualificationLeadOrganization: nullIfEmpty(values.qualificationLeadOrganization),
+        qualificationAvgUsers: nullIfEmpty(values.qualificationAvgUsers),
+        qualificationProfileFit: nullIfEmpty(values.qualificationProfileFit),
       }
 
       if (isEdit && selectedLead) {
@@ -374,13 +396,16 @@ export function BackofficeLeadFormDialog() {
             { silent: true },
           )
         }
+        // Mantém o dialog aberto no modo edição com os dados atualizados
       } else {
-        await createLead({
+        const created = await createLead({
           ...basePayload,
           status: values.status,
         })
+        // Transiciona para modo edição sem fechar o dialog,
+        // habilitando o botão de agendamento
+        openEditDialog(created)
       }
-      closeFormDialog()
     } catch (err) {
       console.error("[BackofficeLeadFormDialog][submit]", err)
       toast.error(err instanceof Error ? err.message : "Erro ao salvar lead")
@@ -552,6 +577,71 @@ export function BackofficeLeadFormDialog() {
 
                   <section className="flex flex-col gap-4">
                     <div>
+                      <h3 className="text-sm font-semibold">Qualificação</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Respostas do lead sobre seu perfil e necessidades.
+                      </p>
+                    </div>
+                    <FormField
+                      control={form.control}
+                      name="qualificationLeadOrganization"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Como você organiza seus leads e carteira?</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              placeholder="Ex: Uso planilha, WhatsApp, CRM..."
+                              rows={2}
+                              disabled={isSubmitting}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="qualificationAvgUsers"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Quantos usuários em média você precisa?</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              placeholder="Ex: 1 a 5 usuários"
+                              rows={2}
+                              disabled={isSubmitting}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="qualificationProfileFit"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Qual perfil se enquadra no seu momento?</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              {...field}
+                              placeholder="Ex: Corretor autônomo, pequena equipe..."
+                              rows={2}
+                              disabled={isSubmitting}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </section>
+
+                  <Separator />
+
+                  <section className="flex flex-col gap-4">
+                    <div>
                       <h3 className="text-sm font-semibold">Responsáveis</h3>
                       <p className="text-xs text-muted-foreground">
                         SDR e Closer são usuários backoffice ativos com a função habilitada.
@@ -603,9 +693,9 @@ export function BackofficeLeadFormDialog() {
                       <FormField
                         control={form.control}
                         name="closerBackofficeUserId"
-                        render={({ field }) => (
+                        render={({ field, fieldState }) => (
                           <FormItem>
-                            <FormLabel>Closer{isScheduled ? " *" : ""}</FormLabel>
+                            <FormLabel>Closer *</FormLabel>
                             <Select
                               value={field.value || NO_SELECTION_VALUE}
                               onValueChange={(value) =>
@@ -615,16 +705,16 @@ export function BackofficeLeadFormDialog() {
                             >
                               <FormControl>
                                 <SelectTrigger
-                                  aria-invalid={Boolean(
-                                    form.formState.errors.closerBackofficeUserId,
-                                  )}
+                                  aria-invalid={Boolean(fieldState.error || !field.value)}
                                 >
                                   <SelectValue placeholder="Selecione o closer" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
                                 <SelectGroup>
-                                  <SelectItem value={NO_SELECTION_VALUE}>Sem closer</SelectItem>
+                                  <SelectItem value={NO_SELECTION_VALUE}>
+                                    Selecione o closer
+                                  </SelectItem>
                                   {closerOptions.map((option) => (
                                     <SelectItem key={option.id} value={option.id}>
                                       {option.name}
@@ -634,6 +724,11 @@ export function BackofficeLeadFormDialog() {
                               </SelectContent>
                             </Select>
                             <FormMessage />
+                            {!field.value && !fieldState.error ? (
+                              <p className="text-xs font-medium text-destructive">
+                                Selecione um closer para salvar o lead.
+                              </p>
+                            ) : null}
                           </FormItem>
                         )}
                       />
@@ -655,10 +750,11 @@ export function BackofficeLeadFormDialog() {
                         variant="outline"
                         size="sm"
                         onClick={() => setScheduleDialogOpen(true)}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || !isEdit}
+                        title={!isEdit ? "Salve o lead primeiro para agendar" : undefined}
                       >
                         <CalendarClock data-icon="inline-start" />
-                        {isScheduled ? "Editar agendamento" : "Agendar"}
+                        {isScheduled ? "Reagendar lead" : "Agendar lead"}
                       </Button>
                     </div>
 
@@ -778,6 +874,7 @@ export function BackofficeLeadFormDialog() {
         guestOptions={users}
         onOpenChange={setScheduleDialogOpen}
         onConfirm={handleScheduleConfirm}
+        isReschedule={isEdit && isScheduled}
       />
     </>
   )

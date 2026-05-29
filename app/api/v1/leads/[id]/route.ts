@@ -39,14 +39,16 @@ export async function GET(
       return NextResponse.json(output, { status: 404 });
     }
 
-    const membership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_profileId: {
-          teamId,
-          profileId: profile.id
-        }
-      }
-    });
+    // membership e lead check em paralelo — lead não depende do membership
+    const [membership, lead] = await Promise.all([
+      prisma.teamMember.findUnique({
+        where: { teamId_profileId: { teamId, profileId: profile.id } },
+      }),
+      prisma.lead.findUnique({
+        where: { id },
+        select: { id: true, teamId: true },
+      }),
+    ]);
 
     if (!membership) {
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
@@ -61,12 +63,13 @@ export async function GET(
       return NextResponse.json(output, { status: 403 });
     }
 
-    const lead = await prisma.lead.findUnique({
-      where: { id },
-      select: { id: true, teamId: true }
-    });
-
     if (!lead || lead.teamId !== teamId) {
+      console.warn("[LeadByIdRoute][GET] team mismatch ou lead inexistente", {
+        requestedLeadId: id,
+        requestTeamId: teamId,
+        leadTeamId: lead?.teamId ?? null,
+        profileId: profile.id,
+      });
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
     }
@@ -122,14 +125,18 @@ export async function PUT(
       return NextResponse.json(output, { status: 404 });
     }
 
-    const membership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_profileId: {
-          teamId,
-          profileId: profile.id
-        }
-      }
-    });
+    const wantsMeetingHealdUpdate = Object.prototype.hasOwnProperty.call(body, "meetingHeald");
+
+    // membership e lead check em paralelo — lead não depende do membership
+    const [membership, lead] = await Promise.all([
+      prisma.teamMember.findUnique({
+        where: { teamId_profileId: { teamId, profileId: profile.id } },
+      }),
+      prisma.lead.findUnique({
+        where: { id },
+        select: { id: true, teamId: true, status: true, closerId: true },
+      }),
+    ]);
 
     if (!membership) {
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
@@ -143,13 +150,6 @@ export async function PUT(
       const output = new Output(false, [], ["Acesso negado: funcao SDR ou Closer necessaria para visualizar leads."], null);
       return NextResponse.json(output, { status: 403 });
     }
-
-    const wantsMeetingHealdUpdate = Object.prototype.hasOwnProperty.call(body, "meetingHeald");
-
-    const lead = await prisma.lead.findUnique({
-      where: { id },
-      select: { id: true, teamId: true, status: true, closerId: true }
-    });
 
     if (!lead || lead.teamId !== teamId) {
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
@@ -219,14 +219,16 @@ export async function DELETE(
       return NextResponse.json(output, { status: 404 });
     }
 
-    const membership = await prisma.teamMember.findUnique({
-      where: {
-        teamId_profileId: {
-          teamId,
-          profileId: profile.id
-        }
-      }
-    });
+    // membership e lead check em paralelo — lead não depende do membership
+    const [membership, lead] = await Promise.all([
+      prisma.teamMember.findUnique({
+        where: { teamId_profileId: { teamId, profileId: profile.id } },
+      }),
+      prisma.lead.findUnique({
+        where: { id },
+        select: { id: true, teamId: true },
+      }),
+    ]);
 
     if (!membership) {
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
@@ -241,12 +243,8 @@ export async function DELETE(
       return NextResponse.json(output, { status: 403 });
     }
 
-    const lead = await prisma.lead.findUnique({
-      where: { id },
-      select: { id: true, teamId: true }
-    });
-
     if (!lead || lead.teamId !== teamId) {
+      console.error("[LeadsRoute][DELETE] Lead não encontrado ou teamId mismatch:", { id, teamId, leadTeamId: lead?.teamId });
       const output = new Output(false, [], ["Lead não encontrado ou sem permissão no seu time."], null);
       return NextResponse.json(output, { status: 404 });
     }

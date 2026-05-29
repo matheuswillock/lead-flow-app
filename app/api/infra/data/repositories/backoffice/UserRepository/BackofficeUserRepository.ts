@@ -29,6 +29,16 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
         profile: {
           select: { fullName: true, email: true },
         },
+        googleConnection: {
+          select: { refreshToken: true, revokedAt: true, googleEmail: true },
+        },
+        linkedCorretorStudioProfile: {
+          select: {
+            googleConnection: {
+              select: { refreshToken: true, revokedAt: true, googleEmail: true },
+            },
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
     })
@@ -46,6 +56,44 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
     return prisma.backofficeUser.findUnique({ where: { profileId } })
   }
 
+  async findByIdWithGoogleContext(id: string) {
+    return prisma.backofficeUser.findUnique({
+      where: { id },
+      include: {
+        googleConnection: true,
+        linkedCorretorStudioProfile: {
+          select: {
+            googleConnection: true,
+          },
+        },
+      },
+    })
+  }
+
+  async findByGoogleConnectionId(googleConnectionId: string) {
+    return prisma.backofficeUser.findMany({
+      where: { googleConnectionId },
+      select: { id: true, email: true, profileId: true },
+    })
+  }
+
+  async findByLinkedProfileId(profileId: string) {
+    return prisma.backofficeUser.findMany({
+      where: { linkedCorretorStudioProfileId: profileId },
+      select: { id: true, email: true, profileId: true },
+    })
+  }
+
+  async findLinkedDependentsWithoutOwnConnection(profileId: string) {
+    return prisma.backofficeUser.findMany({
+      where: {
+        linkedCorretorStudioProfileId: profileId,
+        googleConnectionId: null,
+      },
+      select: { id: true, email: true, profileId: true },
+    })
+  }
+
   async update(id: string, data: UpdateBackofficeUserInput): Promise<BackofficeUser> {
     return prisma.backofficeUser.update({
       where: { id },
@@ -55,19 +103,12 @@ export class BackofficeUserRepository implements IBackofficeUserRepository {
         ...(data.fullAccess !== undefined ? { fullAccess: data.fullAccess } : {}),
         ...(data.isSdr !== undefined ? { isSdr: data.isSdr } : {}),
         ...(data.isCloser !== undefined ? { isCloser: data.isCloser } : {}),
-        ...(data.googleCalendarConnected !== undefined
-          ? { googleCalendarConnected: data.googleCalendarConnected }
+        ...(data.googleConnectionId !== undefined
+          ? { googleConnectionId: data.googleConnectionId }
           : {}),
-        ...(data.googleAccessToken !== undefined
-          ? { googleAccessToken: data.googleAccessToken }
+        ...(data.linkedCorretorStudioProfileId !== undefined
+          ? { linkedCorretorStudioProfileId: data.linkedCorretorStudioProfileId }
           : {}),
-        ...(data.googleRefreshToken !== undefined
-          ? { googleRefreshToken: data.googleRefreshToken }
-          : {}),
-        ...(data.googleTokenExpiresAt !== undefined
-          ? { googleTokenExpiresAt: data.googleTokenExpiresAt }
-          : {}),
-        ...(data.googleEmail !== undefined ? { googleEmail: data.googleEmail } : {}),
         ...(data.timezone !== undefined ? { timezone: data.timezone } : {}),
         ...(data.mailboxStatus !== undefined ? { mailboxStatus: data.mailboxStatus } : {}),
         ...(data.mailboxAddress !== undefined ? { mailboxAddress: data.mailboxAddress } : {}),

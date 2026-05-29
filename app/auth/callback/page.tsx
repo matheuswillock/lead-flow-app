@@ -9,6 +9,8 @@ import { ConnectingDots } from "@/components/ui/connecting-dots";
 
 type Status = "connecting" | "error";
 
+const REDIRECT_SECONDS = 5;
+
 function GoogleIcon() {
   return (
     <svg
@@ -42,11 +44,22 @@ function AuthCallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<Status>("connecting");
   const [errorMessage, setErrorMessage] = useState("");
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
 
   const setError = (msg: string) => {
     setStatus("error");
     setErrorMessage(msg);
   };
+
+  useEffect(() => {
+    if (redirectCountdown === null) return;
+    if (redirectCountdown === 0) {
+      router.replace("/");
+      return;
+    }
+    const timer = setTimeout(() => setRedirectCountdown((c) => (c !== null ? c - 1 : null)), 1000);
+    return () => clearTimeout(timer);
+  }, [redirectCountdown, router]);
 
   useEffect(() => {
     const finalize = async () => {
@@ -72,6 +85,9 @@ function AuthCallbackContent() {
             "Conta não encontrada. Crie sua conta com e-mail e senha ou fale com o suporte."
           );
           setTimeout(() => router.replace("/"), 5000);
+        } else if (oauthError === "access_denied") {
+          setError(`Acesso negado. Você será redirecionado em instantes.`);
+          setRedirectCountdown(REDIRECT_SECONDS);
         } else {
           setError(`Falha ao conectar com o Google: ${description}`);
         }
@@ -273,6 +289,12 @@ function AuthCallbackContent() {
             <p className="text-xs text-muted-foreground leading-relaxed">
               {errorMessage}
             </p>
+            {redirectCountdown !== null && (
+              <p className="text-xs text-muted-foreground">
+                Redirecionando em{" "}
+                <span className="font-semibold tabular-nums">{redirectCountdown}s</span>…
+              </p>
+            )}
           </div>
         )}
 

@@ -374,11 +374,43 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       subscriptionEndDate: data.subscriptionEndDate,
       subscriptionNextDueDate: data.subscriptionNextDueDate,
     }
-    await prisma.profileSubscription.upsert({
+    const subscription = await prisma.profileSubscription.upsert({
       where: { profileId: data.profileId },
       create: { profileId: data.profileId, ...payload, hasPermanentSubscription: false },
       update: payload,
+      select: { id: true },
     })
+
+    const activeAdhesions = await prisma.backofficeAdhesion.findMany({
+      where: {
+        createdProfileId: data.profileId,
+        status: "paid",
+      },
+      select: { extraTeams: true, extraUsers: true },
+    })
+
+    if (activeAdhesions.length > 0) {
+      const capacity = activeAdhesions.reduce(
+        (acc, adhesion) => ({
+          includedExtraTeams: acc.includedExtraTeams + Math.max(0, adhesion.extraTeams),
+          includedExtraUsers: acc.includedExtraUsers + Math.max(0, adhesion.extraUsers),
+        }),
+        { includedExtraTeams: 0, includedExtraUsers: 0 }
+      )
+
+      try {
+        await prisma.profileSubscriptionCapacity.upsert({
+          where: { profileSubscriptionId: subscription.id },
+          create: {
+            profileSubscriptionId: subscription.id,
+            ...capacity,
+          },
+          update: capacity,
+        })
+      } catch (error) {
+        console.info("[BackofficeAdhesionRepository] Tabela de capacidades indisponível; backfill posterior necessário.", error)
+      }
+    }
   }
 
   async clearPaymentArtifacts(id: string): Promise<BackofficeAdhesionWithRelations> {

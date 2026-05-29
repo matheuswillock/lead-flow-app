@@ -150,12 +150,13 @@ export function BackofficeAdhesionsContainer() {
   async function handleResendInvite(adhesion: BackofficeAdhesionItem) {
     if (resendingInviteId) return
     setResendingInviteId(adhesion.id)
+    const toastId = toast.loading("Enviando convite...")
     try {
       await service.resendInvite(adhesion.id)
-      toast.success("Convite reenviado")
+      toast.success("Convite reenviado com sucesso", { id: toastId })
     } catch (err) {
       console.error("[BackofficeAdhesionsContainer][resendInvite]", err)
-      toast.error(err instanceof Error ? err.message : "Erro ao reenviar convite")
+      toast.error(err instanceof Error ? err.message : "Erro ao reenviar convite", { id: toastId })
     } finally {
       setResendingInviteId(null)
     }
@@ -223,7 +224,7 @@ export function BackofficeAdhesionsContainer() {
           onChange={(event) =>
             setLocalFilters((current) => ({ ...current, query: event.target.value }))
           }
-          className="h-8 w-[260px] lg:w-[420px]"
+          className="h-8 w-65 lg:w-105"
         />
         <Select
           value={localFilters.status}
@@ -234,7 +235,7 @@ export function BackofficeAdhesionsContainer() {
             }))
           }
         >
-          <SelectTrigger className="h-8 w-[180px]">
+          <SelectTrigger className="h-8 w-45">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -390,7 +391,7 @@ export function BackofficeAdhesionsContainer() {
             onValueChange={(value) => void setAdhesionsPageSize(Number.parseInt(value, 10))}
             disabled={isLoading}
           >
-            <SelectTrigger className="h-8 w-[92px]">
+            <SelectTrigger className="h-8 w-23">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

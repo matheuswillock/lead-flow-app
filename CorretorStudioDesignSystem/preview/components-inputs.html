@@ -1,0 +1,25 @@
+<!-- @dsCard group="Components" -->
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body { margin: 0; padding: 22px 26px; background: var(--background); color: var(--foreground); font-family: var(--font-body); display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.title { font-size: 11px; font-weight: 600; color: var(--muted-foreground); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 8px; grid-column: 1/-1; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+label { font-size: 13px; font-weight: 600; color: var(--foreground); }
+.input { width: 100%; box-sizing: border-box; background: transparent; border: 1px solid var(--border); border-radius: 14px; padding: 10px 14px; font-size: 14px; font-family: var(--font-body); color: var(--foreground); transition: all 150ms; }
+.input::placeholder { color: var(--muted-foreground); }
+.input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 30%, transparent); }
+.input.focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 30%, transparent); }
+.input.error { border-color: var(--semantic-danger); }
+.help { font-size: 11.5px; color: var(--muted-foreground); }
+.help.err { color: var(--semantic-danger); }
+.input.disabled { background: var(--muted); color: var(--muted-foreground); cursor: not-allowed; }
+</style></head>
+<body>
+<div class="title">Form inputs · default · focus · error · disabled</div>
+<div class="field"><label>Nome completo</label><input class="input" type="text" placeholder="Seu nome"></div>
+<div class="field"><label>E-mail profissional</label><input class="input focus" value="contato@corretor.com.br"></div>
+<div class="field"><label>WhatsApp</label><input class="input error" value="11 98765"><span class="help err">Telefone inválido — use DDD + 9 dígitos.</span></div>
+<div class="field"><label>Workspace</label><input class="input disabled" value="acme-corretora" disabled></div>
+</body></html>
