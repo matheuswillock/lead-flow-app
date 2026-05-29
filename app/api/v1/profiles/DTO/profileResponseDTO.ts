@@ -1,6 +1,7 @@
 import type { UserRole, UserFunction } from "@prisma/client";
 import { Output } from "@/lib/output";
 import { isManagerLikeRole } from "@/lib/roles";
+import { isGoogleConnectionActive } from "@/lib/google/connection";
 
 export interface UserAssociated {
   id: string; 
@@ -72,7 +73,7 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
         email: operator.email,
         role: operator.role,
         functions: operator.functions ?? [],
-        googleCalendarConnected: operator.googleCalendarConnected ?? false,
+        googleCalendarConnected: isGoogleConnectionActive(operator.googleConnection),
       }));
     
     usersAssociated.push(...operators);
@@ -106,8 +107,8 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     managerId: profile.managerId,
     profileIconId: profile.profileIconId,
     profileIconUrl: profile.profileIconUrl,
-    googleCalendarConnected: profile.googleCalendarConnected ?? false,
-    googleEmail: profile.googleEmail ?? null,
+    googleCalendarConnected: isGoogleConnectionActive(profile.googleConnection),
+    googleEmail: profile.googleConnection?.googleEmail ?? null,
     subscriptionId: profile.subscriptionId ?? null,
     subscriptionStatus: profile.subscriptionStatus ?? null,
     activeTeamId: profile.activeTeamId ?? null,

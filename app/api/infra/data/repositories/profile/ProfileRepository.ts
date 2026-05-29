@@ -96,9 +96,12 @@ class PrismaProfileRepository implements IProfileRepository {
     async findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null> {
         try {
             const profile = await withPrismaRetry(async () => {
-                const found = await prisma.profile.findUnique({ 
+                const found = await prisma.profile.findUnique({
                     where: { supabaseId },
                     include: {
+                        googleConnection: {
+                            select: { refreshToken: true, revokedAt: true, googleEmail: true },
+                        },
                         operators: {
                             select: {
                                 id: true,
@@ -106,7 +109,10 @@ class PrismaProfileRepository implements IProfileRepository {
                                 profileIconUrl: true,
                                 email: true,
                                 role: true,
-                                functions: true
+                                functions: true,
+                                googleConnection: {
+                                    select: { refreshToken: true, revokedAt: true, googleEmail: true },
+                                },
                             }
                         },
                         manager: {
@@ -142,7 +148,10 @@ class PrismaProfileRepository implements IProfileRepository {
                             profileIconUrl: true,
                             email: true,
                             role: true,
-                            functions: true
+                            functions: true,
+                            googleConnection: {
+                                select: { refreshToken: true, revokedAt: true, googleEmail: true },
+                            },
                         }
                     });
 
