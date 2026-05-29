@@ -14,14 +14,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useContatosContext } from "../context/ContactsContext";
+import { useContactsContext } from "../context/ContactsContext";
 
 type ContactAddModalProps = {
   trigger: React.ReactNode
 }
 
 export function ContactAddModal({ trigger }: ContactAddModalProps) {
-  const { handleAddContact } = useContatosContext();
+  const { handleAddContact } = useContactsContext();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");

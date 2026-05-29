@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { useContatos, type ContatosHookReturn } from "./ContactsHook";
+import { useContacts, type ContactsHookReturn } from "./ContactsHook";
 
 const ContactsContext = createContext<ContactsHookReturn | undefined>(undefined);
 
@@ -11,7 +11,7 @@ type ContactsProviderProps = {
 }
 
 export function ContactsProvider({ children, supabaseId }: ContactsProviderProps) {
-  const value = useContatos(supabaseId);
+  const value = useContacts(supabaseId);
   return (
     <ContactsContext.Provider value={value}>
       {children}
@@ -19,10 +19,10 @@ export function ContactsProvider({ children, supabaseId }: ContactsProviderProps
   );
 }
 
-export function useContatosContext(): ContatosHookReturn {
+export function useContactsContext(): ContactsHookReturn {
   const ctx = useContext(ContactsContext);
   if (!ctx) {
-    throw new Error("useContatosContext deve ser usado dentro de ContactsProvider");
+    throw new Error("useContactsContext deve ser usado dentro de ContactsProvider");
   }
   return ctx;
 }

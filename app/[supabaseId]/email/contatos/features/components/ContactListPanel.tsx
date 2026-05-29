@@ -16,12 +16,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
-import { useContatosContext } from "../context/ContactsContext";
+import { useContactsContext } from "../context/ContactsContext";
 import type { ContactList } from "../context/ContatosTypes";
 
 function ContactListItem({ list }: { list: ContactList }) {
   const { selectedListId, handleSelectList, handleDeleteList } =
-    useContatosContext();
+    useContactsContext();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletingList, setDeletingList] = useState(false);
 
@@ -112,7 +112,7 @@ function ContactListItem({ list }: { list: ContactList }) {
 }
 
 export function ContactListPanel() {
-  const { lists, loadingLists } = useContatosContext();
+  const { lists, loadingLists } = useContactsContext();
 
   if (loadingLists && lists.length === 0) {
     return (

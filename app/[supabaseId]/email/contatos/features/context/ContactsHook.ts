@@ -19,9 +19,9 @@ export type ContactsActions = {
   handlePageChange: (page: number) => void
 }
 
-export type ContatosHookReturn = ContactsState & ContactsActions
+export type ContactsHookReturn = ContactsState & ContactsActions
 
-export function useContatos(supabaseId: string): ContatosHookReturn {
+export function useContacts(supabaseId: string): ContactsHookReturn {
   const [lists, setLists] = useState<ContactList[]>([]);
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
