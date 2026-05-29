@@ -33,8 +33,21 @@ export class BackofficeHealthPlansService implements IBackofficeHealthPlansServi
     return response.json()
   }
 
-  async deactivate(id: string) {
-    const response = await fetch(`/api/v1/backoffice/health-plans/${id}`, { method: "DELETE" })
+  async deactivate(id: string, password: string) {
+    const response = await fetch(`/api/v1/backoffice/health-plans/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    })
+    return response.json()
+  }
+
+  async activate(id: string, password: string) {
+    const response = await fetch(`/api/v1/backoffice/health-plans/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: true, password }),
+    })
     return response.json()
   }
 

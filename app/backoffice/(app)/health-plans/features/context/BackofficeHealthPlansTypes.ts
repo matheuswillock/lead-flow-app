@@ -15,7 +15,8 @@ export type BackofficeHealthPlansActions = {
   refresh: () => Promise<void>
   createItem: (payload: BackofficeHealthPlanPayload) => Promise<{ isValid: boolean; errorMessages: string[] }>
   updateItem: (id: string, payload: BackofficeHealthPlanUpdatePayload) => Promise<{ isValid: boolean; errorMessages: string[] }>
-  deactivateItem: (id: string) => Promise<{ isValid: boolean; errorMessages: string[] }>
+  deactivateItem: (id: string, password: string) => Promise<{ isValid: boolean; errorMessages: string[] }>
+  activateItem: (id: string, password: string) => Promise<{ isValid: boolean; errorMessages: string[] }>
   uploadIcon: (file: File) => Promise<{ isValid: boolean; errorMessages: string[]; result?: { iconUrl: string } }>
 }
 

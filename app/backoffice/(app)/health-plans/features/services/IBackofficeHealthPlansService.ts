@@ -26,6 +26,7 @@ export interface IBackofficeHealthPlansService {
   list(includeInactive?: boolean): Promise<BackofficeHealthPlanItem[]>
   create(payload: BackofficeHealthPlanPayload): Promise<{ isValid: boolean; errorMessages: string[] }>
   update(id: string, payload: BackofficeHealthPlanUpdatePayload): Promise<{ isValid: boolean; errorMessages: string[] }>
-  deactivate(id: string): Promise<{ isValid: boolean; errorMessages: string[] }>
+  deactivate(id: string, password: string): Promise<{ isValid: boolean; errorMessages: string[] }>
+  activate(id: string, password: string): Promise<{ isValid: boolean; errorMessages: string[] }>
   uploadIcon(file: File): Promise<{ isValid: boolean; errorMessages: string[]; result?: { iconUrl: string } }>
 }

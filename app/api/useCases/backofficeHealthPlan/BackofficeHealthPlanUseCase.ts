@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client"
+import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
 import type { IBackofficeHealthPlanUseCase } from "./IBackofficeHealthPlanUseCase"
 import { backofficeHealthPlanService } from "@/app/api/services/backofficeHealthPlan/BackofficeHealthPlanService"
@@ -23,6 +24,32 @@ function parseStorageUrlOrNull(value?: string | null): string | null | undefined
 
 export class BackofficeHealthPlanUseCase implements IBackofficeHealthPlanUseCase {
   constructor(private readonly service: IBackofficeHealthPlanService) {}
+
+  private async validateActorPassword(actor?: { email?: string; password?: string }): Promise<Output | null> {
+    const email = actor?.email?.trim().toLowerCase()
+    const password = actor?.password?.trim()
+
+    if (!email || !password) {
+      return new Output(false, [], ["Senha é obrigatória para confirmar a ação"], null)
+    }
+
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!url || !serviceKey) {
+      return new Output(false, [], ["Configuração de autenticação indisponível"], null)
+    }
+
+    const supabase = createClient(url, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    })
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) {
+      return new Output(false, [], ["Senha incorreta"], null)
+    }
+
+    return null
+  }
 
   async list(includeInactive: boolean): Promise<Output> {
     try {
@@ -62,7 +89,11 @@ export class BackofficeHealthPlanUseCase implements IBackofficeHealthPlanUseCase
     }
   }
 
-  async update(id: string, input: { name?: string; iconUrl?: string | null; isDefault?: boolean; isActive?: boolean }): Promise<Output> {
+  async update(
+    id: string,
+    input: { name?: string; iconUrl?: string | null; isDefault?: boolean; isActive?: boolean },
+    actor?: { email?: string; password?: string }
+  ): Promise<Output> {
     try {
       const payload: { name?: string; iconUrl?: string | null; isDefault?: boolean; isActive?: boolean } = {}
 
@@ -83,7 +114,11 @@ export class BackofficeHealthPlanUseCase implements IBackofficeHealthPlanUseCase
       }
 
       if (input.isDefault !== undefined) payload.isDefault = input.isDefault
-      if (input.isActive !== undefined) payload.isActive = input.isActive
+      if (input.isActive !== undefined) {
+        const authError = await this.validateActorPassword(actor)
+        if (authError) return authError
+        payload.isActive = input.isActive
+      }
 
       const item = await this.service.update(id, payload)
       if (!item) {
@@ -99,8 +134,11 @@ export class BackofficeHealthPlanUseCase implements IBackofficeHealthPlanUseCase
     }
   }
 
-  async deactivate(id: string): Promise<Output> {
+  async deactivate(id: string, actor?: { email?: string; password?: string }): Promise<Output> {
     try {
+      const authError = await this.validateActorPassword(actor)
+      if (authError) return authError
+
       const item = await this.service.deactivate(id)
       if (!item) {
         return new Output(false, [], ["Plano de saúde não encontrado"], null)

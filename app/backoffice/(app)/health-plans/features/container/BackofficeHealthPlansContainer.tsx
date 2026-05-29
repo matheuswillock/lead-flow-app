@@ -3,10 +3,21 @@
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   Check,
+  CircleOff,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -17,7 +28,6 @@ import {
   Plus,
   PlusCircle,
   Settings,
-  Trash2,
   Upload,
   X,
 } from "lucide-react"
@@ -166,7 +176,7 @@ function DragHandle() {
 }
 
 export function BackofficeHealthPlansContainer() {
-  const { items, isLoading, isSaving, createItem, updateItem, deactivateItem, uploadIcon } = useBackofficeHealthPlans()
+  const { items, isLoading, isSaving, createItem, updateItem, deactivateItem, activateItem, uploadIcon } = useBackofficeHealthPlans()
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [query, setQuery] = useState("")
@@ -179,6 +189,10 @@ export function BackofficeHealthPlansContainer() {
   const [tableColumnOrder, setTableColumnOrder] = useState<Array<"drag" | HealthPlanColumnKey | "actions">>(
     DEFAULT_HEALTH_PLAN_COLUMN_ORDER
   )
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false)
+  const [statusPassword, setStatusPassword] = useState("")
+  const [statusTarget, setStatusTarget] = useState<BackofficeHealthPlanItem | null>(null)
+  const [statusAction, setStatusAction] = useState<"activate" | "deactivate">("deactivate")
   const statusLabel = statusFilter === "all" ? null : statusFilter === "active" ? "Ativas" : "Inativas"
   const defaultLabel = defaultFilter === "all" ? null : defaultFilter === "default" ? "Sim" : "Não"
 
@@ -252,13 +266,25 @@ export function BackofficeHealthPlansContainer() {
     setForm(emptyForm)
   }
 
-  async function handleDeactivate(item: BackofficeHealthPlanItem) {
-    const result = await deactivateItem(item.id)
+  async function handleStatusAction() {
+    if (!statusTarget || !statusPassword.trim()) return
+
+    const result =
+      statusAction === "deactivate"
+        ? await deactivateItem(statusTarget.id, statusPassword)
+        : await activateItem(statusTarget.id, statusPassword)
+
     if (!result.isValid) {
-      toast.error(result.errorMessages?.[0] ?? "Erro ao inativar operadora")
+      toast.error(
+        result.errorMessages?.[0] ??
+          (statusAction === "deactivate" ? "Erro ao inativar operadora" : "Erro ao ativar operadora")
+      )
       return
     }
-    toast.success("Operadora inativada com sucesso")
+    toast.success(statusAction === "deactivate" ? "Operadora inativada com sucesso" : "Operadora ativada com sucesso")
+    setStatusDialogOpen(false)
+    setStatusPassword("")
+    setStatusTarget(null)
   }
 
   async function handleIconUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -352,21 +378,42 @@ export function BackofficeHealthPlansContainer() {
                       className="text-destructive"
                       onSelect={(event) => {
                         event.stopPropagation()
-                        void handleDeactivate(row.original)
+                        setStatusAction("deactivate")
+                        setStatusTarget(row.original)
+                        setStatusPassword("")
+                        setStatusDialogOpen(true)
                       }}
                     >
-                      <Trash2 data-icon="inline-start" />
+                      <CircleOff data-icon="inline-start" />
                       Inativar operadora
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                 </>
-              ) : null}
+              ) : (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem
+                      onSelect={(event) => {
+                        event.stopPropagation()
+                        setStatusAction("activate")
+                        setStatusTarget(row.original)
+                        setStatusPassword("")
+                        setStatusDialogOpen(true)
+                      }}
+                    >
+                      <Check data-icon="inline-start" />
+                      Ativar operadora
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         ),
       },
     ],
-    [handleDeactivate]
+    [activateItem, deactivateItem]
   )
 
   const table = useReactTable({
@@ -823,6 +870,54 @@ export function BackofficeHealthPlansContainer() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={statusDialogOpen}
+        onOpenChange={(openState) => {
+          if (!isSaving) setStatusDialogOpen(openState)
+          if (!openState) {
+            setStatusPassword("")
+            setStatusTarget(null)
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {statusAction === "deactivate" ? "Inativar operadora?" : "Ativar operadora?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {statusAction === "deactivate"
+                ? "Digite sua senha para confirmar a inativação."
+                : "Digite sua senha para confirmar a ativação."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="health-plan-action-password">Digite sua senha</Label>
+            <Input
+              id="health-plan-action-password"
+              type="password"
+              value={statusPassword}
+              onChange={(event) => setStatusPassword(event.target.value)}
+              autoComplete="current-password"
+              placeholder="Sua senha"
+              disabled={isSaving}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSaving}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isSaving || !statusPassword.trim()}
+              onClick={(event) => {
+                event.preventDefault()
+                void handleStatusAction()
+              }}
+            >
+              {isSaving ? "Confirmando..." : "Confirmar ação"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

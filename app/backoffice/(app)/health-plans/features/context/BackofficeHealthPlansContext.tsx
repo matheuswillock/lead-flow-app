@@ -63,10 +63,24 @@ export function BackofficeHealthPlansProvider({
   )
 
   const deactivateItem = useCallback(
-    async (id: string) => {
+    async (id: string, password: string) => {
       setSaving(true)
       try {
-        const result = await service.deactivate(id)
+        const result = await service.deactivate(id, password)
+        if (result.isValid) await refreshWithLog()
+        return result
+      } finally {
+        setSaving(false)
+      }
+    },
+    [refreshWithLog, service, setSaving]
+  )
+
+  const activateItem = useCallback(
+    async (id: string, password: string) => {
+      setSaving(true)
+      try {
+        const result = await service.activate(id, password)
         if (result.isValid) await refreshWithLog()
         return result
       } finally {
@@ -93,9 +107,10 @@ export function BackofficeHealthPlansProvider({
       createItem,
       updateItem,
       deactivateItem,
+      activateItem,
       uploadIcon,
     }),
-    [createItem, deactivateItem, error, isLoading, isSaving, items, refreshWithLog, updateItem, uploadIcon]
+    [activateItem, createItem, deactivateItem, error, isLoading, isSaving, items, refreshWithLog, updateItem, uploadIcon]
   )
 
   return <BackofficeHealthPlansContext.Provider value={value}>{children}</BackofficeHealthPlansContext.Provider>
