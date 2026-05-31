@@ -250,22 +250,26 @@ export default function PipelineTable({ useExternalFilters = false }: PipelineTa
     (payload: ScheduleMeetingSuccessPayload) => {
       patchLead(payload.leadId, {
         status: payload.status,
+        email: payload.leadEmail,
         meetingDate: payload.meetingDate,
         meetingTitle: payload.meetingTitle,
         meetingNotes: payload.meetingNotes,
         meetingLink: payload.meetingLink,
         closerId: payload.closerId,
+        meetingType: payload.meetingType,
       });
       setSelectedLead((prev) =>
         prev?.id === payload.leadId
           ? {
               ...prev,
               status: payload.status,
+              email: payload.leadEmail,
               meetingDate: payload.meetingDate,
               meetingTitle: payload.meetingTitle,
               meetingNotes: payload.meetingNotes,
               meetingLink: payload.meetingLink,
               closerId: payload.closerId,
+              meetingType: payload.meetingType,
             }
           : prev
       );

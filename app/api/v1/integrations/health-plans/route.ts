@@ -11,6 +11,8 @@ export async function GET() {
         healthPlans: options.map((option) => ({
           id: option.id,
           name: option.name,
+          iconUrl: option.iconUrl,
+          isDefault: option.isDefault,
         })),
       }),
       { status: 200 }

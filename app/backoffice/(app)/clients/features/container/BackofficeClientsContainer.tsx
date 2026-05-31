@@ -278,7 +278,7 @@ export function BackofficeClientsContainer() {
                   }}
                   disabled={isLoading}
                 >
-                  <SelectTrigger className="h-8 w-[92px]">
+                  <SelectTrigger className="w-[92px]">
                     <SelectValue placeholder="10" />
                   </SelectTrigger>
                   <SelectContent>

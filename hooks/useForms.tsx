@@ -74,6 +74,10 @@ export function useLeadForm() {
       meetingHeald: undefined,
       additionalNotes: "",
       responsible: "",
+      isReferral: false,
+      referrerLeadId: "",
+      referrerName: "",
+      referrerPhone: "",
     },
   });
 }

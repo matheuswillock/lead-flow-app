@@ -12,6 +12,9 @@ export type HealthPlanOptionDTO = {
   id: string;
   name: string;
   normalizedName: string;
+  isActive: boolean;
+  isDefault: boolean;
+  iconUrl: string | null;
 };
 
 export type HealthPlanValidationResult = {
@@ -30,12 +33,16 @@ class HealthPlanService {
     });
   }
 
-  async listOptions(): Promise<HealthPlanOptionDTO[]> {
+  async listOptions(params?: { includeInactive?: boolean }): Promise<HealthPlanOptionDTO[]> {
     const options = await prisma.healthPlanOption.findMany({
+      where: params?.includeInactive ? undefined : { isActive: true },
       select: {
         id: true,
         name: true,
         normalizedName: true,
+        isActive: true,
+        isDefault: true,
+        iconUrl: true,
       },
     });
 
@@ -58,19 +65,27 @@ class HealthPlanService {
     const normalizedName = normalizeHealthPlanName(input.name);
     const safeName = input.name.trim().replace(/\s+/g, " ");
 
-    const existing = await prisma.healthPlanOption.findUnique({
+    const existing = await prisma.healthPlanOption.findFirst({
       where: { normalizedName },
       select: {
         id: true,
         name: true,
         normalizedName: true,
+        isActive: true,
+        isDefault: true,
+        iconUrl: true,
       },
     });
 
     if (existing) {
       return {
         created: false,
-        option: existing,
+        option: {
+          ...existing,
+          isActive: existing.isActive,
+          isDefault: existing.isDefault,
+          iconUrl: existing.iconUrl,
+        },
         duplicate: true,
       };
     }
@@ -85,6 +100,9 @@ class HealthPlanService {
         id: true,
         name: true,
         normalizedName: true,
+        isActive: true,
+        isDefault: true,
+        iconUrl: true,
       },
     });
 

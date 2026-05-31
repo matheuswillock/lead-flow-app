@@ -29,10 +29,18 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
         timezone: true,
         googleConnection: {
           select: {
+            id: true,
+            googleEmail: true,
             accessToken: true,
             refreshToken: true,
             tokenExpiresAt: true,
+            scopes: true,
+            ownerProfileId: true,
             revokedAt: true,
+            lastRefreshedAt: true,
+            lastRefreshError: true,
+            createdAt: true,
+            updatedAt: true,
           },
         },
         supabaseId: true,
@@ -47,6 +55,7 @@ export class CalendarAvailabilityRepository implements ICalendarAvailabilityRepo
       googleRefreshToken: profile.googleConnection?.refreshToken ?? null,
       googleAccessToken: profile.googleConnection?.accessToken ?? null,
       googleTokenExpiresAt: profile.googleConnection?.tokenExpiresAt ?? null,
+      googleConnection: profile.googleConnection,
       supabaseId: profile.supabaseId,
     }));
   }

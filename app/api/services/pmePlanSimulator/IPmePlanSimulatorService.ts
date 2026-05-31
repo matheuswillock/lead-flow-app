@@ -1,3 +1,5 @@
+import type { AgeRangeCount } from "@/lib/ageRanges";
+
 export type PmeHospitalId = "nenhum" | "sirio" | "einstein" | "rededor";
 
 export interface PmeAgeRange {
@@ -54,6 +56,11 @@ export interface PmeSimulationInput {
   hospitalId: PmeHospitalId;
 }
 
+export interface PmeSimulationFromRangeCountsInput {
+  ageRangeCounts: AgeRangeCount[];
+  hospitalId: PmeHospitalId;
+}
+
 export interface PmeSimulationOutput {
   lives: number;
   hospitalId: PmeHospitalId;
@@ -64,5 +71,6 @@ export interface PmeSimulationOutput {
 export interface IPmePlanSimulatorService {
   getCatalog(): PmeSimulatorCatalog;
   simulate(input: PmeSimulationInput): PmeSimulationOutput;
+  simulateFromRangeCounts(input: PmeSimulationFromRangeCountsInput): PmeSimulationOutput;
 }
 

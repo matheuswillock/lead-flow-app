@@ -25,6 +25,16 @@ const sortTimeSlots = (a: string, b: string) => {
   return ah * 60 + am - (bh * 60 + bm);
 };
 
+const isExpectedGoogleFallbackError = (error: unknown) => {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("conta google nao conectada") ||
+    message.includes("conexao invalida") ||
+    message.includes("refresh token ausente")
+  );
+};
+
 export class CalendarAvailabilityService implements ICalendarAvailabilityService {
   constructor(private readonly repository: ICalendarAvailabilityRepository) {}
 
@@ -128,16 +138,27 @@ export class CalendarAvailabilityService implements ICalendarAvailabilityService
 
       if (canUseGoogleCalendar) {
         try {
+          if (!closerProfile.googleConnection) {
+            throw new Error("Perfil marcado com Google conectado, mas sem conexao OAuth carregada");
+          }
+
           busyIntervals = await getCalendarBusyIntervals({
-            organizer: closerProfile as unknown as Parameters<typeof getCalendarBusyIntervals>[0]["organizer"],
+            organizer: {
+              profileId: closerProfile.id,
+              supabaseId: closerProfile.supabaseId,
+              timezone: closerProfile.timezone ?? timezone,
+              connection: closerProfile.googleConnection,
+            },
             timeMin,
             timeMax,
           });
           usedGoogle = true;
         } catch (error) {
-          console.warn(
-            "Falha ao buscar disponibilidade no Google Calendar, usando fallback interno.",
-            error
+          const reason = isExpectedGoogleFallbackError(error)
+            ? "google_connection_unavailable"
+            : "google_availability_unavailable";
+          console.info(
+            `Google Calendar indisponivel para disponibilidade (${reason}); usando fallback interno.`
           );
         }
       }

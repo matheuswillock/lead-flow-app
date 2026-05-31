@@ -32,6 +32,7 @@ interface LegacyExceptionsConfig {
   repositoryHttpRequestAllowlist?: string[];
   serviceImportOutsideUseCaseAllowlist?: string[];
   nonRepositoryDatabaseAccessAllowlist?: string[];
+  prismaIncludeAllowlist?: string[];
 }
 
 interface GovernanceConfig {
@@ -45,12 +46,21 @@ interface AllowlistMonitoringConfig {
   excludeFromWarnAllowlist?: Record<string, string[] | undefined>;
 }
 
+interface FrozenAllowlistsConfig {
+  [category: string]: string[] | undefined;
+}
+
 const ROOT = process.cwd();
 const CONFIG_PATH = path.join(ROOT, ".governance", "ai-governance.config.json");
 const MONITORING_CONFIG_PATH = path.join(
   ROOT,
   ".governance",
   "allowlist-monitoring.config.json",
+);
+const FROZEN_ALLOWLISTS_CONFIG_PATH = path.join(
+  ROOT,
+  ".governance",
+  "frozen-allowlists.json",
 );
 const DEFAULT_MAX_EXAMPLES = 5;
 const NON_TS_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".py"]);
@@ -217,6 +227,16 @@ async function loadAllowlistMonitoringConfig(): Promise<AllowlistMonitoringConfi
   return JSON.parse(
     await fs.readFile(MONITORING_CONFIG_PATH, "utf8"),
   ) as AllowlistMonitoringConfig;
+}
+
+async function loadFrozenAllowlistsConfig(): Promise<FrozenAllowlistsConfig> {
+  if (!(await pathExists(FROZEN_ALLOWLISTS_CONFIG_PATH))) {
+    return {};
+  }
+
+  return JSON.parse(
+    await fs.readFile(FROZEN_ALLOWLISTS_CONFIG_PATH, "utf8"),
+  ) as FrozenAllowlistsConfig;
 }
 
 async function isDirectory(targetPath: string): Promise<boolean> {
@@ -484,6 +504,87 @@ async function validatePrismaInV1Routes(
       warnings.push(
         `Legacy exception may be removable (no Prisma detected anymore): ${allowlistedPath}`,
       );
+    }
+  }
+}
+
+async function validatePrismaIncludeUsage(
+  config: GovernanceConfig,
+  issues: string[],
+  warnings: string[],
+): Promise<void> {
+  const allowlist = normalizePathList(
+    config.legacyExceptions.prismaIncludeAllowlist,
+  );
+
+  const apiFiles = await collectFilesRecursively(
+    path.join(ROOT, "app", "api"),
+    (filename) => filename.endsWith(".ts"),
+  );
+
+  const currentViolations = new Set<string>();
+
+  for (const apiFile of apiFiles) {
+    const relative = normalizeRelativePath(apiFile);
+    const fileContent = await fs.readFile(apiFile, "utf8");
+
+    if (!/\bprisma\s*\./.test(fileContent)) {
+      continue;
+    }
+
+    if (!/\binclude\s*:/.test(fileContent)) {
+      continue;
+    }
+
+    currentViolations.add(relative);
+    if (!allowlist.has(relative)) {
+      issues.push(
+        `Uso de Prisma include detectado fora da exceção: ${relative}. Prefira select e selecione apenas os campos necessários.`,
+      );
+    }
+  }
+
+  for (const allowlistedPath of allowlist) {
+    const absolutePath = toAbsolutePath(allowlistedPath);
+    if (!(await pathExists(absolutePath))) {
+      issues.push(
+        `Legacy exception path does not exist (prismaIncludeAllowlist): ${allowlistedPath}`,
+      );
+      continue;
+    }
+
+    if (!currentViolations.has(allowlistedPath)) {
+      warnings.push(
+        `Legacy exception may be removable (prisma include no longer detected): ${allowlistedPath}`,
+      );
+    }
+  }
+}
+
+function validateFrozenAllowlistsNoNewItems(
+  config: GovernanceConfig,
+  frozenAllowlists: FrozenAllowlistsConfig,
+  issues: string[],
+): void {
+  for (const [category, frozenEntries] of Object.entries(frozenAllowlists)) {
+    if (!Array.isArray(frozenEntries)) {
+      continue;
+    }
+
+    const currentEntries = config.legacyExceptions[category] ?? [];
+    const frozenSet = new Set(
+      frozenEntries.map((entry) => entry.replaceAll("\\", "/")),
+    );
+    const currentSet = new Set(
+      currentEntries.map((entry) => entry.replaceAll("\\", "/")),
+    );
+
+    for (const currentEntry of currentSet) {
+      if (!frozenSet.has(currentEntry)) {
+        issues.push(
+          `Categoria de exceção congelada recebeu novo item: ${category} -> ${currentEntry}. Novos itens não são permitidos.`,
+        );
+      }
     }
   }
 }
@@ -1115,10 +1216,13 @@ async function checkGovernance(
 ): Promise<void> {
   const issues: string[] = [];
   const warnings: string[] = [];
+  const frozenAllowlists = await loadFrozenAllowlistsConfig();
 
   validateCanonicalMetadata(config, canonicalText, issues);
+  validateFrozenAllowlistsNoNewItems(config, frozenAllowlists, issues);
   await validateAdapters(config, canonicalText, canonicalAbsolutePath, issues);
   await validatePrismaInV1Routes(config, issues, warnings);
+  await validatePrismaIncludeUsage(config, issues, warnings);
   await validateRouteRepositoryImports(config, issues, warnings);
   await validateServiceImportsOutsideUseCases(config, issues, warnings);
   await validateHttpRequestBoundaries(config, issues, warnings);

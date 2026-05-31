@@ -79,7 +79,7 @@ export function DataTableToolbar<TData>({
           value={onlyMeetingsHeld ? "held" : "all"}
           onValueChange={(value) => setOnlyMeetingsHeld(value === "held")}
         >
-          <SelectTrigger className="h-8 w-[160px]">
+          <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Reuniões" />
           </SelectTrigger>
           <SelectContent>

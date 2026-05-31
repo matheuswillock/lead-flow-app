@@ -33,6 +33,8 @@ export class HealthPlanUseCase implements IHealthPlanUseCase {
         healthPlans: options.map((option) => ({
           id: option.id,
           name: option.name,
+          iconUrl: option.iconUrl,
+          isDefault: option.isDefault,
         })),
       });
     } catch (error) {

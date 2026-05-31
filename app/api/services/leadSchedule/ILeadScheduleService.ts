@@ -12,10 +12,11 @@ export interface CreateScheduleParams {
   leadCode: string | null;
   closerId: string;
   teamId: string;
-  meetingDate: string; // ISO
+  meetingDate?: string; // ISO
   meetingTitle: string;
   meetingNotes?: string;
   meetingLink?: string;
+  meetingType?: "online" | "call" | "whatsapp" | null;
   extraGuests?: string[];
   createdByProfileId: string;
   transitionStatusToScheduled?: boolean;
