@@ -1,14 +1,6 @@
--- Add meetingType column to leads
-ALTER TABLE public.corretor_studio_leads
-  ADD COLUMN IF NOT EXISTS "meetingType" text;
-
--- Add meetingType column to leads schedule
-ALTER TABLE public.corretor_studio_leads_schedule
-  ADD COLUMN IF NOT EXISTS "meetingType" text;
-
--- Migrate existing age data from old free-text lists (e.g. "30, 50, 60, 14, 18,")
--- to range:count format (e.g. "00_18:2,29_33:1,49_53:1,59_plus:1").
--- Idempotent: skips rows already in the new format (contains ":").
+-- Backfill age values that remained in legacy free-text format
+-- (ex.: "30, 50, 60, 14, 18,") to range:count format.
+-- Idempotent: only updates rows without ':' and only when computed value differs.
 WITH parsed_tokens AS (
   SELECT
     l.id AS lead_id,
