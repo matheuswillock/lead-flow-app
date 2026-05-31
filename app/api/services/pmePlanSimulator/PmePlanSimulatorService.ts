@@ -1,25 +1,20 @@
+import { AGE_RANGES as SHARED_AGE_RANGES } from "@/lib/ageRanges";
 import type {
   IPmePlanSimulatorService,
   PmeAgeRange,
   PmeHospitalOption,
   PmePlanCatalogItem,
   PmePlanSimulationResult,
+  PmeSimulationFromRangeCountsInput,
   PmeSimulationInput,
   PmeSimulationOutput,
 } from "./IPmePlanSimulatorService";
 
-const AGE_RANGES: PmeAgeRange[] = [
-  { label: "00-18", min: 0, max: 18 },
-  { label: "19-23", min: 19, max: 23 },
-  { label: "24-28", min: 24, max: 28 },
-  { label: "29-33", min: 29, max: 33 },
-  { label: "34-38", min: 34, max: 38 },
-  { label: "39-43", min: 39, max: 43 },
-  { label: "44-48", min: 44, max: 48 },
-  { label: "49-53", min: 49, max: 53 },
-  { label: "54-58", min: 54, max: 58 },
-  { label: "59+", min: 59, max: 999 },
-];
+const AGE_RANGES: PmeAgeRange[] = SHARED_AGE_RANGES.map((range) => ({
+  label: range.label,
+  min: range.min,
+  max: range.max,
+}));
 
 const HOSPITALS: PmeHospitalOption[] = [
   { id: "nenhum", label: "Sem Hospital", sub: "Rede padrão da operadora" },
@@ -99,7 +94,7 @@ export class PmePlanSimulatorService implements IPmePlanSimulatorService {
       };
     }
 
-    const quantityByRange = new Array(AGE_RANGES.length).fill(0);
+    const quantityByRange = new Array(AGE_RANGES.length).fill(0) as number[];
     for (const age of ages) {
       const index = getAgeRangeIndex(age);
       if (index >= 0) {
@@ -107,6 +102,41 @@ export class PmePlanSimulatorService implements IPmePlanSimulatorService {
       }
     }
 
+    return this.computeSimulation(quantityByRange, lives, hospital);
+  }
+
+  simulateFromRangeCounts(input: PmeSimulationFromRangeCountsInput): PmeSimulationOutput {
+    const hospital = HOSPITALS.find((item) => item.id === input.hospitalId) ?? HOSPITALS[0];
+
+    const quantityByRange = new Array(AGE_RANGES.length).fill(0) as number[];
+    let lives = 0;
+
+    for (const entry of input.ageRangeCounts) {
+      if (entry.count <= 0) continue;
+      const rangeIndex = SHARED_AGE_RANGES.findIndex((r) => r.rangeKey === entry.rangeKey);
+      if (rangeIndex >= 0) {
+        quantityByRange[rangeIndex] += entry.count;
+        lives += entry.count;
+      }
+    }
+
+    if (lives === 0) {
+      return {
+        lives: 0,
+        hospitalId: hospital.id,
+        hospitalLabel: hospital.label,
+        results: [],
+      };
+    }
+
+    return this.computeSimulation(quantityByRange, lives, hospital);
+  }
+
+  private computeSimulation(
+    quantityByRange: number[],
+    lives: number,
+    hospital: PmeHospitalOption,
+  ): PmeSimulationOutput {
     const computed = PLANS
       .filter((plan) => plan.hospitalId === hospital.id && isEligibleOperator(plan.operator, lives))
       .map((plan) => {

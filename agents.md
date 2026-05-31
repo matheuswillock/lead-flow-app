@@ -46,6 +46,9 @@ bun run db:migrate:new <migration-name>
 # Creates: supabase/migrations/<timestamp>_<migration-name>.sql
 ```
 
+Agents **MUST NOT** create migration files manually in `supabase/migrations/` (including hand-crafted timestamps, copy/paste, or rename-only flows).  
+Every new migration file **MUST** originate from `supabase migration new` (via `bun run db:migrate:new <migration-name>`), and only then receive SQL edits.
+
 Write SQL directly in the generated file. For schema changes driven by `prisma/schema.prisma`, apply the schema to the local DB first (`bun run prisma:db:push`), then use `bun run db:diff` to capture the diff.
 
 All migrations **MUST** be idempotent when possible (`IF EXISTS`, `IF NOT EXISTS`, `CREATE OR REPLACE`).
@@ -194,6 +197,9 @@ Target flow: `Route -> UseCase -> [Service] -> Prisma`
 - Routes **MUST NOT** call Prisma directly for new code.
 - `app/api/infra/data/prisma.ts` **MUST** remain the shared Prisma client boundary.
 - New product API code **MUST** follow the canonical `app/api` layout — see `.github/instructions/project-context.instructions.md` for the full folder tree.
+- Prisma queries **MUST** prefer `select` over `include` by default.
+- `include` **MUST** be used only when the full related entity is intentionally required by the use case.
+- For list endpoints and CRM flows, queries **MUST** select only fields consumed by the response/DTO and UI.
 
 ### Frontend (FOR NEW FEATURES)
 

@@ -251,6 +251,16 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         return new Output(false, [], ["Assinaturas vitalícias não precisam de gestão de créditos"], null);
       }
 
+      const currentSummary = await getBillingSummary(owner.id);
+      if (resource === "user" && currentSummary.hasUnlimitedUsers) {
+        return new Output(
+          false,
+          [],
+          ["Plano anual já possui usuários ilimitados. A gestão de créditos de usuários está desabilitada."],
+          null
+        );
+      }
+
       const teams = resource === "team" ? quantity : 0;
       const users = resource === "user" ? quantity : 0;
 

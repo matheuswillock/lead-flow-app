@@ -13,6 +13,7 @@ import {
   CalendarDays,
   Tag,
   Zap,
+  Building2,
   EllipsisVertical,
   LogOut,
   UserRound,
@@ -55,6 +56,7 @@ const navigationItems = [
   { title: "Funcionalidades", url: "/backoffice/features", icon: Zap },
   { title: "Integrações", url: "/backoffice/integracoes", icon: Plug },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
+  { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
 ]
 
 export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {

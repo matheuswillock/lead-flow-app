@@ -172,13 +172,19 @@ export class LeadScheduleService implements ILeadScheduleService {
       meetingTitle,
       meetingNotes,
       meetingLink,
+      meetingType,
       extraGuests,
       createdByProfileId,
       transitionStatusToScheduled,
       confirmNoShowSchedule,
     } = params;
 
-    const meetingDate = new Date(meetingDateISO);
+    const resolvedMeetingType = meetingType ?? "online";
+    const isOnlineMeeting = resolvedMeetingType === "online";
+    if (isOnlineMeeting && !meetingDateISO) {
+      return new Output(false, [], ["Data da reunião é obrigatória para agendamento online."], null);
+    }
+    const meetingDate = meetingDateISO ? new Date(meetingDateISO) : new Date();
     const shouldLogCloserChange = closerId !== leadCurrentCloserId;
 
     const existingSchedule = await leadScheduleRepository.findLatestByLeadId(leadId);
@@ -223,6 +229,15 @@ export class LeadScheduleService implements ILeadScheduleService {
       return new Output(false, [], ["Closer não encontrado ou sem e-mail válido."], null);
     }
 
+    if (isOnlineMeeting && !leadEmail?.trim()) {
+      return new Output(
+        false,
+        [],
+        ["Lead precisa de um email para agendamento online. Preencha o email do lead antes de agendar."],
+        null
+      );
+    }
+
     const closerEmail = closerProfile.email.trim().toLowerCase();
     const resolvedMeetingTitle = meetingTitle || `Estudo Plano de Saúde: ${leadName}`;
     const participantDispatch = await resolveParticipantDispatchGroups({
@@ -250,7 +265,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       googleRecipients,
       resendRecipients,
     };
-    const manualLinkRequired = !canUseGoogleCalendar;
+    const manualLinkRequired = isOnlineMeeting && !canUseGoogleCalendar;
     const validatedMeetingLink = validateMeetingLinkValue(meetingLink, {
       required: manualLinkRequired,
     });
@@ -296,8 +311,17 @@ export class LeadScheduleService implements ILeadScheduleService {
     let inviteDispatchLastPayload: Prisma.InputJsonValue | null = null;
     const inviteDispatchLastAttemptAt = new Date();
 
+    if (!isOnlineMeeting) {
+      inviteDispatchStatus = "sent_resend";
+      inviteDispatchProvider = "resend";
+      inviteDispatchLastPayload = {
+        provider: "none",
+        reason: `meeting_type_${resolvedMeetingType}`,
+      };
+    }
+
     // --- Google Calendar attempt ---
-    if (canUseGoogleCalendar) {
+    if (isOnlineMeeting && canUseGoogleCalendar) {
       if (googleRecipients.length === 0) {
         return new Output(
           false,
@@ -388,7 +412,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           null
         );
       }
-    } else {
+    } else if (isOnlineMeeting) {
       googleDispatchError = "Conta Google não conectada. Evento não foi criado no Google Calendar.";
       console.warn(`${LOG_PREFIX} Google Calendar não conectado para closer`, { leadId, closerId });
       await registerInviteDispatchActivity({
@@ -408,9 +432,11 @@ export class LeadScheduleService implements ILeadScheduleService {
       });
     }
 
-    const resolvedMeetingLink = normalizedMeetingLink?.trim() || calendarResult?.meetLink || null;
+    const resolvedMeetingLink = isOnlineMeeting
+      ? normalizedMeetingLink?.trim() || calendarResult?.meetLink || null
+      : null;
 
-    if (!resolvedMeetingLink?.trim()) {
+    if (isOnlineMeeting && !resolvedMeetingLink?.trim()) {
       return new Output(
         false,
         [],
@@ -420,7 +446,7 @@ export class LeadScheduleService implements ILeadScheduleService {
     }
 
     // --- Resend email dispatch for participants sem Google conectado ---
-    if (resendRecipients.length > 0) {
+    if (isOnlineMeeting && resendRecipients.length > 0) {
       const organizerName = closerProfile.fullName || closerProfile.email;
       const emailResult = await emailService.sendMeetingInviteEmail({
         to: resendRecipients,
@@ -507,7 +533,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       }
     }
 
-    if (inviteDispatchStatus !== "failed") {
+    if (isOnlineMeeting && inviteDispatchStatus !== "failed") {
       try {
         const scheduleAttachments = await this.buildLeadScheduleAttachments(leadId);
 
@@ -533,7 +559,7 @@ export class LeadScheduleService implements ILeadScheduleService {
       }
     }
 
-    if (inviteDispatchStatus === "failed") {
+    if (isOnlineMeeting && inviteDispatchStatus === "failed") {
       const reason = inviteDispatchLastError || googleDispatchError || "Falha no envio do convite";
       return new Output(
         false,
@@ -557,6 +583,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           meetingTitle: resolvedMeetingTitle,
           notes: meetingNotes,
           meetingLink: resolvedMeetingLink,
+          meetingType: resolvedMeetingType,
           extraGuests: extraGuests ?? [],
           googleEventId: calendarResult?.eventId ?? undefined,
           googleCalendarId: calendarResult?.calendarId ?? undefined,
@@ -571,6 +598,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           meetingTitle: resolvedMeetingTitle,
           notes: meetingNotes,
           meetingLink: resolvedMeetingLink,
+          meetingType: resolvedMeetingType,
           extraGuests: extraGuests ?? existingSchedule?.extraGuests ?? [],
           googleEventId: calendarResult?.eventId ?? existingSchedule?.googleEventId ?? undefined,
           googleCalendarId: calendarResult?.calendarId ?? existingSchedule?.googleCalendarId ?? undefined,
@@ -589,6 +617,7 @@ export class LeadScheduleService implements ILeadScheduleService {
           meetingTitle: resolvedMeetingTitle,
           meetingNotes: meetingNotes || null,
           meetingLink: resolvedMeetingLink,
+          meetingType: resolvedMeetingType,
           closerId,
           ...(transitionStatusToScheduled === true ? { status: LeadStatus.scheduled } : {}),
         },

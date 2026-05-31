@@ -6,6 +6,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -17,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { Lead } from '../context/PipelineTypes';
 import {
   ScheduleMeetingDialog,
@@ -44,6 +46,12 @@ import {
   type SalesInfoInitialValues,
   type SalesInfoPayload,
 } from '@/app/[supabaseId]/components/SalesInfoRequirementDialog';
+import {
+  LeadInfoRequirementDialog,
+  type LeadInfoInitialValues,
+  type LeadInfoPayload,
+  type MissingLeadField,
+} from '@/app/[supabaseId]/components/LeadInfoRequirementDialog';
 import {
   leadStatusTransitionClient,
   type LeadStatusTransitionTrigger,
@@ -74,6 +82,13 @@ type PendingSalesInfoGate = {
   currentSalesInfo: SalesInfoInitialValues;
 };
 
+type PendingLeadInfoGate = {
+  status: string;
+  trigger?: LeadStatusTransitionTrigger;
+  missingFields: MissingLeadField[];
+  currentLeadInfo: LeadInfoInitialValues;
+};
+
 const needsTriggerDialog = (status: string) =>
   status === 'future_sale' || status === 'opportunityLost' || status === 'operator_denied';
 
@@ -99,6 +114,10 @@ export function ChangeStatusDialog({
   const [pendingSalesInfoGate, setPendingSalesInfoGate] = useState<PendingSalesInfoGate | null>(null);
   const [showSalesInfoDialog, setShowSalesInfoDialog] = useState(false);
   const [salesInfoSaving, setSalesInfoSaving] = useState(false);
+  const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
+  const [showLeadInfoDialog, setShowLeadInfoDialog] = useState(false);
+  const [leadInfoSaving, setLeadInfoSaving] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [meetingHealdGateOpen, setMeetingHealdGateOpen] = useState(false);
   const [meetingHealdBlockedOpen, setMeetingHealdBlockedOpen] = useState(false);
   const [pendingMeetingHealdGate, setPendingMeetingHealdGate] = useState<
@@ -169,6 +188,45 @@ export function ChangeStatusDialog({
             currentSalesInfo,
           });
           setShowSalesInfoDialog(true);
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
+        if (transition.blockerType === 'lead_info_required') {
+          const missingFields = Array.isArray(transition.missingLeadFields)
+            ? transition.missingLeadFields
+            : [];
+          const currentLeadInfo: LeadInfoInitialValues = {
+            age:
+              typeof transition.currentLeadInfo?.age === 'string'
+                ? transition.currentLeadInfo.age
+                : lead.age ?? null,
+            currentHealthPlan:
+              typeof transition.currentLeadInfo?.currentHealthPlan === 'string'
+                ? transition.currentLeadInfo.currentHealthPlan
+                : lead.currentHealthPlan ?? null,
+            referenceHospital:
+              typeof transition.currentLeadInfo?.referenceHospital === 'string'
+                ? transition.currentLeadInfo.referenceHospital
+                : lead.referenceHospital ?? null,
+            ongoingTreatment:
+              typeof transition.currentLeadInfo?.ongoingTreatment === 'string'
+                ? transition.currentLeadInfo.ongoingTreatment
+                : lead.currentTreatment ?? null,
+          };
+
+          setPendingLeadInfoGate({
+            status: newStatus,
+            trigger: trigger ? { ...trigger } : undefined,
+            missingFields,
+            currentLeadInfo,
+          });
+          setShowLeadInfoDialog(true);
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
+        if (transition.blockerType === 'email_required') {
           toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
           return false;
         }
@@ -260,17 +318,27 @@ export function ChangeStatusDialog({
     }
   };
 
-  const handleStatusChange = async (newStatus: string) => {
+  const handleStatusChange = (newStatus: string) => {
     setSelectedStatus(newStatus);
     setPendingConfirmation(null);
+    setPendingLeadInfoGate(null);
+  };
 
-    if (newStatus === 'scheduled') {
-      onOpenChange(false);
-      setShowScheduleDialog(true);
-      return;
+  const handleSubmitStatusChange = async () => {
+    if (!selectedStatus || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      if (selectedStatus === 'scheduled') {
+        onOpenChange(false);
+        setShowScheduleDialog(true);
+        return;
+      }
+
+      await updateLeadStatus(selectedStatus);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    await updateLeadStatus(newStatus);
   };
 
   const handleScheduleSuccess = async (payload?: ScheduleMeetingSuccessPayload) => {
@@ -352,6 +420,48 @@ export function ChangeStatusDialog({
     }
   };
 
+  const handleLeadInfoSave = async (payload: LeadInfoPayload) => {
+    if (!lead || !pendingLeadInfoGate) return;
+
+    setLeadInfoSaving(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${lead.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(supabaseId ? { 'x-supabase-user-id': supabaseId } : {}),
+          ...(activeTeamId ? { 'x-team-id': activeTeamId } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const leadInfoResult = await response.json().catch(() => null);
+      if (!response.ok || !leadInfoResult?.isValid) {
+        throw new Error(leadInfoResult?.errorMessages?.[0] || 'Erro ao salvar informações do lead');
+      }
+
+      const leadInfoPatch =
+        leadInfoResult.result && typeof leadInfoResult.result === 'object'
+          ? (leadInfoResult.result as Partial<Lead>)
+          : {};
+      await onStatusChanged(lead.id, leadInfoPatch);
+
+      const updated = await updateLeadStatus(
+        pendingLeadInfoGate.status,
+        pendingLeadInfoGate.trigger,
+        false
+      );
+      if (!updated) return;
+
+      setShowLeadInfoDialog(false);
+      setPendingLeadInfoGate(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao salvar informações do lead');
+    } finally {
+      setLeadInfoSaving(false);
+    }
+  };
+
   const handleStatusTriggerConfirm = async (payload: LeadStatusTriggerPayload) => {
     if (!selectedStatus) return;
 
@@ -424,38 +534,43 @@ export function ChangeStatusDialog({
               </Select>
             </div>
           </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              onClick={() => void handleSubmitStatusChange()}
+              disabled={!selectedStatus || isSubmitting}
+            >
+              {isSubmitting ? 'Mudando status...' : 'Mudar status'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {lead && (
-        <ScheduleMeetingDialog
-          open={showScheduleDialog}
-          onOpenChange={setShowScheduleDialog}
-          lead={lead}
-          onScheduleSuccess={handleScheduleSuccess}
-          closers={closers}
-          teamMembers={teamMembers}
-          mode="create"
-        />
-      )}
+      <ScheduleMeetingDialog
+        open={showScheduleDialog}
+        onOpenChange={setShowScheduleDialog}
+        lead={lead}
+        onScheduleSuccess={handleScheduleSuccess}
+        closers={closers}
+        teamMembers={teamMembers}
+        mode="create"
+      />
 
-      {lead && (
-        <FinalizeContractDialog
-          open={showFinalizeDialog}
-          onOpenChange={setShowFinalizeDialog}
-          leadName={lead.name}
-          leadCloserId={lead.closerId ?? undefined}
-          onFinalize={handleFinalizeContract}
-          closers={closers}
-          healthPlans={healthPlans}
-          initialAmount={lead.ticket}
-          initialStartDate={lead.contractDueDate}
-          initialOperadora={lead.soldPlan}
-          initialHolderCnpj={lead.cnpj}
-        />
-      )}
+      <FinalizeContractDialog
+        open={showFinalizeDialog}
+        onOpenChange={setShowFinalizeDialog}
+        leadName={lead.name}
+        leadCloserId={lead.closerId ?? undefined}
+        onFinalize={handleFinalizeContract}
+        closers={closers}
+        healthPlans={healthPlans}
+        initialAmount={lead.ticket}
+        initialStartDate={lead.contractDueDate}
+        initialOperadora={lead.soldPlan}
+        initialHolderCnpj={lead.cnpj}
+      />
 
-      {lead && selectedStatus && needsTriggerDialog(selectedStatus) && (
+      {selectedStatus && needsTriggerDialog(selectedStatus) && (
         <LeadStatusTriggerDialog
           open={showStatusTriggerDialog}
           onOpenChange={setShowStatusTriggerDialog}
@@ -470,8 +585,8 @@ export function ChangeStatusDialog({
 
       <AlertDialog
         open={!!pendingConfirmation && !needsTriggerDialog(pendingConfirmation.status)}
-        onOpenChange={(open) => {
-          if (!open) setPendingConfirmation(null);
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setPendingConfirmation(null);
         }}
       >
         <AlertDialogContent>
@@ -483,10 +598,12 @@ export function ChangeStatusDialog({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={(event) => {
-              event.preventDefault();
-              void handleConfirmCombinedRule();
-            }}>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleConfirmCombinedRule();
+              }}
+            >
               Confirmar
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -495,9 +612,9 @@ export function ChangeStatusDialog({
 
       <MeetingHealdConfirmDialog
         open={meetingHealdGateOpen}
-        onOpenChange={(open) => {
-          setMeetingHealdGateOpen(open);
-          if (!open) setPendingMeetingHealdGate(null);
+        onOpenChange={(nextOpen) => {
+          setMeetingHealdGateOpen(nextOpen);
+          if (!nextOpen) setPendingMeetingHealdGate(null);
         }}
         onConfirm={async () => {
           if (!pendingMeetingHealdGate) return;
@@ -520,14 +637,12 @@ export function ChangeStatusDialog({
         onOpenChange={setMeetingHealdBlockedOpen}
       />
 
-      {lead && pendingSalesInfoGate && (
+      {pendingSalesInfoGate && (
         <SalesInfoRequirementDialog
           open={showSalesInfoDialog}
-          onOpenChange={(open) => {
-            setShowSalesInfoDialog(open);
-            if (!open) {
-              setPendingSalesInfoGate(null);
-            }
+          onOpenChange={(nextOpen) => {
+            setShowSalesInfoDialog(nextOpen);
+            if (!nextOpen) setPendingSalesInfoGate(null);
           }}
           onSave={handleSalesInfoSave}
           healthPlans={healthPlans}
@@ -537,7 +652,21 @@ export function ChangeStatusDialog({
           missingFields={pendingSalesInfoGate.missingFields}
         />
       )}
+
+      {pendingLeadInfoGate && (
+        <LeadInfoRequirementDialog
+          open={showLeadInfoDialog}
+          onOpenChange={(nextOpen) => {
+            setShowLeadInfoDialog(nextOpen);
+            if (!nextOpen) setPendingLeadInfoGate(null);
+          }}
+          onSave={handleLeadInfoSave}
+          leadName={lead.name}
+          isSaving={leadInfoSaving}
+          initialValues={pendingLeadInfoGate.currentLeadInfo}
+          missingFields={pendingLeadInfoGate.missingFields}
+        />
+      )}
     </>
   );
 }
-

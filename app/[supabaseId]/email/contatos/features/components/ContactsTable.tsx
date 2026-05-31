@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { useContatosContext } from "../context/ContatosContext"
+import { useContactsContext } from "../context/ContactsContext"
 import type { Contact } from "../context/ContatosTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
@@ -97,7 +97,7 @@ export function ContactsTable() {
     handleSearch,
     handlePageChange,
     handleDeleteContact,
-  } = useContatosContext()
+  } = useContactsContext()
 
   return (
     <div className="space-y-3">

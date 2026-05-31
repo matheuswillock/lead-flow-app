@@ -178,7 +178,9 @@ export class IncrementalBillingService implements IIncrementalBillingService {
     const nextRawExtraTeams = Math.max(0, nextTeamCount - 1);
     const nextRawExtraUsers = Math.max(0, nextTotalUsersIncludingMaster - 1);
     const nextBillableTeams = Math.max(nextRawExtraTeams, currentSummary.contractedExtraTeams);
-    const nextBillableUsers = Math.max(nextRawExtraUsers, currentSummary.contractedExtraUsers);
+    const nextBillableUsers = currentSummary.hasUnlimitedUsers
+      ? 0
+      : Math.max(nextRawExtraUsers, currentSummary.contractedExtraUsers);
     const targetRecurringTotal = currentSummary.hasPermanentSubscription
       ? 0
       : roundCurrency(

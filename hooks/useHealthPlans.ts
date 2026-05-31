@@ -5,6 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export type HealthPlanOption = {
   id: string;
   name: string;
+  iconUrl?: string | null;
+  isDefault?: boolean;
 };
 
 const healthPlanInFlightByKey = new Map<string, Promise<HealthPlanOption[]>>();

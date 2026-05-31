@@ -29,11 +29,12 @@ const roundCurrency = (value: number) => Number(value.toFixed(2));
 
 function getTargetRecurringTotal(summary: BillingSummary, extraTeams: number, extraUsers: number) {
   if (summary.hasPermanentSubscription) return 0;
+  const effectiveExtraUsers = summary.hasUnlimitedUsers ? 0 : extraUsers;
 
   return roundCurrency(
     summary.basePrice +
       (summary.billableTeams + extraTeams) * BILLING_PRICES.extraTeam +
-      (summary.billableUsers + extraUsers) * BILLING_PRICES.extraUser
+      (summary.billableUsers + effectiveExtraUsers) * BILLING_PRICES.extraUser
   );
 }
 
