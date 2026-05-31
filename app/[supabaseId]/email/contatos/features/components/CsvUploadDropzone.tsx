@@ -3,10 +3,11 @@
 import { useRef } from "react"
 import { Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useContatosContext } from "../context/ContatosContext"
+import { useContactsContext } from "../context/ContactsContext"
+import { Input } from "@/components/ui/input";
 
 export function CsvUploadDropzone() {
-  const { uploadingCsv, handleUploadCsv } = useContatosContext()
+  const { uploadingCsv, handleUploadCsv } = useContactsContext()
   const inputRef = useRef<HTMLInputElement>(null)
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -18,7 +19,7 @@ export function CsvUploadDropzone() {
 
   return (
     <div>
-      <input
+      <Input
         ref={inputRef}
         type="file"
         accept=".csv"

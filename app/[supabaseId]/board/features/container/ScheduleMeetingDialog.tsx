@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { Lead } from "../context/BoardTypes";
 import { useParams } from "next/navigation";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -50,12 +51,14 @@ import {
 export type ScheduleMeetingSuccessPayload = {
   leadId: string;
   status: Lead["status"];
+  leadEmail: string | null;
   meetingDate: string | null;
   meetingTitle: string | null;
   meetingNotes: string | null;
   meetingLink: string | null;
   closerId: string | null;
   extraGuests: string[];
+  meetingType: "online" | "call" | "whatsapp";
 };
 
 type ScheduleInviteDispatch = {
@@ -110,8 +113,10 @@ export function ScheduleMeetingDialog({
   const [meetingTitle, setMeetingTitle] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [meetingLink, setMeetingLink] = useState<string>("");
+  const [leadEmailDraft, setLeadEmailDraft] = useState<string>("");
   const [closerId, setCloserId] = useState<string>("");
   const [extraGuests, setExtraGuests] = useState<string[]>([]);
+  const [meetingType, setMeetingType] = useState<"online" | "call" | "whatsapp">("online");
   const [extraGuestsDraft, setExtraGuestsDraft] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingNoShowConfirmation, setPendingNoShowConfirmation] =
@@ -139,20 +144,23 @@ export function ScheduleMeetingDialog({
     () => availableClosers.find((closer) => closer.id === closerId),
     [availableClosers, closerId]
   );
+  const isOnlineMeeting = meetingType === "online";
   const requiresManualMeetingLink = !!selectedCloser && !selectedCloser.googleCalendarConnected;
   const meetingLinkValidation = useMemo(
     () =>
       validateMeetingLinkValue(meetingLink, {
-        required: requiresManualMeetingLink,
+        required: isOnlineMeeting && requiresManualMeetingLink,
       }),
-    [meetingLink, requiresManualMeetingLink]
+    [meetingLink, requiresManualMeetingLink, isOnlineMeeting]
   );
+  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
   const canSubmit =
-    isValidDate(meetingDate) &&
-    meetingTitle.trim().length > 0 &&
     !!closerId &&
-    availableTimes.length > 0 &&
-    meetingLinkValidation.isValid;
+    (!isOnlineMeeting || isValidEmail(leadEmailDraft)) &&
+    (!isOnlineMeeting || isValidDate(meetingDate)) &&
+    (!isOnlineMeeting || meetingTitle.trim().length > 0) &&
+    (!isOnlineMeeting || availableTimes.length > 0) &&
+    (!isOnlineMeeting || meetingLinkValidation.isValid);
   const hasAvailabilityInputs = isValidDate(meetingDate) && !!closerId && !!supabaseId;
 
   useEffect(() => {
@@ -226,12 +234,14 @@ export function ScheduleMeetingDialog({
     );
     setNotes(lead.meetingNotes || "");
     setMeetingLink(lead.meetingLink || "");
+    setLeadEmailDraft(lead.email || "");
     setCloserId(lead.closerId || "");
     setExtraGuests(
       Array.isArray(initialExtraGuests)
         ? Array.from(new Set(initialExtraGuests.map((item) => item.trim().toLowerCase()).filter(Boolean)))
         : []
     );
+    setMeetingType((lead.meetingType as "online" | "call" | "whatsapp" | null) ?? "online");
     setExtraGuestsDraft("");
     setPendingNoShowConfirmation(null);
   }, [open, lead, mode, initialExtraGuests]);
@@ -318,8 +328,6 @@ export function ScheduleMeetingDialog({
     };
   }, [open, meetingDate, closerId, supabaseId, activeTeamId, lead.id]);
 
-  const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-
   const addExtraGuests = (values: string[]) => {
     const normalized = values
       .map((item) => item.trim().toLowerCase())
@@ -350,12 +358,12 @@ export function ScheduleMeetingDialog({
   };
 
   const submitSchedule = async (confirmNoShowSchedule: boolean) => {
-    if (!isValidDate(meetingDate)) {
+    if (isOnlineMeeting && !isValidDate(meetingDate)) {
       toast.error("Selecione uma data e hora para o agendamento");
       return;
     }
-    const scheduledMeetingDate = meetingDate;
-    if (!meetingTitle.trim()) {
+    const scheduledMeetingDate = isValidDate(meetingDate) ? meetingDate : new Date();
+    if (isOnlineMeeting && !meetingTitle.trim()) {
       toast.error("Informe o titulo da reunião");
       return;
     }
@@ -363,23 +371,51 @@ export function ScheduleMeetingDialog({
       toast.error("Selecione um closer para a reuniao");
       return;
     }
-    if (requiresManualMeetingLink && !meetingLink.trim()) {
+    if (isOnlineMeeting && !isValidEmail(leadEmailDraft)) {
+      toast.error("Informe um email válido para agendamento online.");
+      return;
+    }
+    if (isOnlineMeeting && requiresManualMeetingLink && !meetingLink.trim()) {
       toast.error("Este closer não tem Google conectado. Informe um link manual da reunião.");
       return;
     }
-    if (!meetingLinkValidation.isValid) {
+    if (isOnlineMeeting && !meetingLinkValidation.isValid) {
       toast.error(meetingLinkValidation.error);
       return;
     }
 
     const guests = extraGuests;
     const normalizedNotes = notes || `Reunião agendada com ${lead.name}`;
-    const normalizedMeetingLink = meetingLinkValidation.normalized || "";
+    const normalizedMeetingLink = meetingLinkValidation.isValid ? meetingLinkValidation.normalized : "";
 
     setIsSubmitting(true);
     const loadingToast = toast.loading("Agendando reunião...");
 
     try {
+      const normalizedLeadEmail = leadEmailDraft.trim().toLowerCase();
+      let resolvedLeadEmail = lead.email?.trim().toLowerCase() || null;
+
+      if (isOnlineMeeting && normalizedLeadEmail !== resolvedLeadEmail) {
+        const updateLeadResponse = await fetch(`/api/v1/leads/${lead.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-supabase-user-id": supabaseId,
+            "x-team-id": activeTeamId || "",
+          },
+          body: JSON.stringify({
+            email: normalizedLeadEmail,
+          }),
+        });
+
+        const updateLeadResult = await updateLeadResponse.json().catch(() => null);
+        if (!updateLeadResponse.ok || !updateLeadResult?.isValid) {
+          throw new Error(updateLeadResult?.errorMessages?.join(", ") || "Erro ao atualizar e-mail do lead.");
+        }
+
+        resolvedLeadEmail = normalizedLeadEmail;
+      }
+
       // 1. Criar agendamento
       const response = await fetch(`/api/v1/leads/${lead.id}/schedule`, {
         method: "POST",
@@ -389,10 +425,11 @@ export function ScheduleMeetingDialog({
           "x-team-id": activeTeamId || "",
         },
         body: JSON.stringify({
-          date: scheduledMeetingDate.toISOString(),
-          meetingTitle: meetingTitle.trim(),
+          date: isOnlineMeeting ? scheduledMeetingDate.toISOString() : undefined,
+          meetingTitle: isOnlineMeeting ? meetingTitle.trim() : undefined,
           notes: normalizedNotes,
           meetingLink: normalizedMeetingLink || undefined,
+          meetingType,
           closerId: closerId || undefined,
           extraGuests: guests.length ? guests : undefined,
           transitionStatusToScheduled: true,
@@ -447,17 +484,16 @@ export function ScheduleMeetingDialog({
       const inviteDispatch = scheduleResult.inviteDispatch;
 
       // ✅ Sucesso - Fechar dialog e atualizar UI
-      toast.success(
-        `Reunião agendada para ${formatIntimezone(
-          scheduledMeetingDate,
-          "dd 'de' MMMM 'de' yyyy 'às' HH:mm",
-          SCHEDULE_TIMEZONE,
-        )}`,
-        {
-          id: loadingToast,
-          duration: 4000,
-        },
-      )
+      const successMessage = isOnlineMeeting
+        ? `Reunião agendada para ${formatIntimezone(
+            scheduledMeetingDate,
+            "dd 'de' MMMM 'de' yyyy 'às' HH:mm",
+            SCHEDULE_TIMEZONE,
+          )}`
+        : meetingType === "call"
+          ? "Ligação agendada com sucesso."
+          : "Agendamento por WhatsApp criado com sucesso.";
+      toast.success(successMessage, { id: loadingToast, duration: 4000 })
 
       if (inviteDispatch?.status === "failed") {
         const errorText = inviteDispatch.error
@@ -476,14 +512,19 @@ export function ScheduleMeetingDialog({
       const schedulePayload: ScheduleMeetingSuccessPayload = {
         leadId: lead.id,
         status: scheduleResult.status ?? "scheduled",
+        leadEmail: resolvedLeadEmail,
         meetingDate:
           typeof scheduleResult.date === "string"
             ? scheduleResult.date
-            : scheduledMeetingDate.toISOString(),
+            : isOnlineMeeting
+              ? scheduledMeetingDate.toISOString()
+              : null,
         meetingTitle:
           typeof scheduleResult.meetingTitle === "string"
             ? scheduleResult.meetingTitle
-            : meetingTitle.trim(),
+            : isOnlineMeeting
+              ? meetingTitle.trim()
+              : null,
         meetingNotes:
           typeof scheduleResult.notes === "string"
             ? scheduleResult.notes
@@ -493,6 +534,7 @@ export function ScheduleMeetingDialog({
         extraGuests: Array.isArray(scheduleResult.extraGuests)
           ? scheduleResult.extraGuests
           : guests,
+        meetingType,
       };
       
       // Limpar form
@@ -500,6 +542,8 @@ export function ScheduleMeetingDialog({
       setMeetingTitle("");
       setNotes("");
       setMeetingLink("");
+      setMeetingType("online");
+      setLeadEmailDraft(resolvedLeadEmail || "");
       setExtraGuests([]);
       setExtraGuestsDraft("");
 
@@ -575,28 +619,70 @@ export function ScheduleMeetingDialog({
             </div>
 
             {/* Data e Hora */}
+            <div className="grid gap-2">
+              <Label>Tipo de agendamento</Label>
+              <RadioGroup
+                value={meetingType}
+                onValueChange={(value) => setMeetingType(value as "online" | "call" | "whatsapp")}
+                className="grid gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="online" id="meeting-type-online" />
+                  <Label htmlFor="meeting-type-online">Online</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="call" id="meeting-type-call" />
+                  <Label htmlFor="meeting-type-call">Ligação</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="whatsapp" id="meeting-type-whatsapp" />
+                  <Label htmlFor="meeting-type-whatsapp">WhatsApp</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {isOnlineMeeting && (
+              <div className="grid gap-2">
+                <Label htmlFor="lead-email">Email do lead</Label>
+                <Input
+                  id="lead-email"
+                  type="email"
+                  placeholder="lead@exemplo.com"
+                  value={leadEmailDraft}
+                  onChange={(event) => setLeadEmailDraft(event.target.value)}
+                  required
+                />
+                {!isValidEmail(leadEmailDraft) && (
+                  <p className="text-xs text-muted-foreground">
+                    Informe um email válido para concluir o agendamento online.
+                  </p>
+                )}
+              </div>
+            )}
+
             <DateTimePicker
               date={meetingDate}
               onDateChange={setMeetingDate}
               label="Data e Horário da Reunião"
-              required
+              required={isOnlineMeeting}
+              disabled={!isOnlineMeeting}
               disablePastDates
               availableTimes={availableTimes}
               tz={SCHEDULE_TIMEZONE}
             />
-            {!isValidDate(meetingDate) && (
+            {isOnlineMeeting && !isValidDate(meetingDate) && (
               <p className="text-xs text-muted-foreground">Selecione uma data para carregar horários disponíveis.</p>
             )}
-            {isValidDate(meetingDate) && !closerId && (
+            {isOnlineMeeting && isValidDate(meetingDate) && !closerId && (
               <p className="text-xs text-muted-foreground">Selecione um closer para carregar horários disponíveis.</p>
             )}
-            {availabilityLoading && (
+            {isOnlineMeeting && availabilityLoading && (
               <p className="text-xs text-muted-foreground">Carregando horários disponíveis...</p>
             )}
-            {availabilityError && (
+            {isOnlineMeeting && availabilityError && (
               <p className="text-xs text-destructive">{availabilityError}</p>
             )}
-            {hasAvailabilityInputs && availableTimes.length === 0 && !availabilityLoading && !availabilityError && (
+            {isOnlineMeeting && hasAvailabilityInputs && availableTimes.length === 0 && !availabilityLoading && !availabilityError && (
               <p className="text-xs text-muted-foreground">Nenhum horário disponível para este dia.</p>
             )}
 
@@ -608,7 +694,8 @@ export function ScheduleMeetingDialog({
                 placeholder="Ex: Apresentação da proposta"
                 value={meetingTitle}
                 onChange={(e) => setMeetingTitle(e.target.value)}
-                required
+                required={isOnlineMeeting}
+                disabled={!isOnlineMeeting}
               />
             </div>
 
@@ -627,7 +714,7 @@ export function ScheduleMeetingDialog({
             {/* Link da reunião */}
             <div className="grid gap-2">
               <Label htmlFor="meetingLink">
-                Link da reunião {requiresManualMeetingLink ? "(obrigatório para este closer)" : "(opcional)"}
+                Link da reunião {isOnlineMeeting && requiresManualMeetingLink ? "(obrigatório para este closer)" : "(opcional)"}
               </Label>
               <Input
                 id="meetingLink"
@@ -636,12 +723,12 @@ export function ScheduleMeetingDialog({
                 value={meetingLink}
                 onChange={(e) => setMeetingLink(e.target.value)}
               />
-              {requiresManualMeetingLink && (
+              {isOnlineMeeting && requiresManualMeetingLink && (
                 <p className="text-xs text-amber-600">
                   O closer selecionado não tem Google conectado. Informe manualmente o link da reunião para continuar.
                 </p>
               )}
-              {meetingLink.trim() && !meetingLinkValidation.isValid && (
+              {isOnlineMeeting && meetingLink.trim() && !meetingLinkValidation.isValid && (
                 <p className="text-xs text-destructive">{meetingLinkValidation.error}</p>
               )}
             </div>

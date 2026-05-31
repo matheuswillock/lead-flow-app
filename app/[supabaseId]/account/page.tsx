@@ -634,7 +634,7 @@ export default function AccountProfilePage() {
 
 
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground">
+    <div className="min-h-dvh bg-background text-foreground">
       <div className="container mx-auto max-w-3xl px-4 py-10">
         <Card className="border-border/60 shadow-sm">
           <CardHeader className="space-y-2">
@@ -882,7 +882,7 @@ export default function AccountProfilePage() {
                           <AlertDialogTrigger asChild>
                             <Button
                               type="button"
-                              className="h-9 font-medium border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white cursor-pointer"
+                              className="h-9 font-medium border-foreground/20 hover:border-red-400 border bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white cursor-pointer"
                               disabled={isDisconnectingGoogle}
                             >
                               {isDisconnectingGoogle ? "Desconectando..." : "Desconectar Google"}
@@ -1006,7 +1006,7 @@ export default function AccountProfilePage() {
                           }}
                           disabled={isTimezoneLoading || isUpdatingTimezone}
                         >
-                          <SelectTrigger className="h-10">
+                          <SelectTrigger className="">
                             <SelectValue placeholder="Selecione um fuso horário" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1240,7 +1240,7 @@ export default function AccountProfilePage() {
                         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                           <AlertDialogTrigger asChild>
                             <Button
-                              className="h-9 font-medium border-foreground/20 hover:border-red-400 border-1 bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white cursor-pointer"
+                              className="h-9 font-medium border-foreground/20 hover:border-red-400 border bg-transparent hover:bg-red-500 text-red-500/90 hover:text-white cursor-pointer"
                               disabled={isDeletingAccount}
                             >
                               Deletar conta

@@ -2,6 +2,7 @@ import type { BillingSnapshot } from "@/app/api/infra/data/repositories/billing/
 import { BILLING_PRICES, type BillingSummary } from "@/app/api/shared/billing/billingConfig";
 
 export function buildBillingSummary(masterId: string, snapshot: BillingSnapshot): BillingSummary {
+  const hasUnlimitedUsers = snapshot.hasUnlimitedUsers;
   const rawExtraTeams = Math.max(0, snapshot.teamCount - 1);
   const rawExtraUsers = Math.max(0, snapshot.totalUsersIncludingMaster - 1);
   const includedExtraTeams = Math.max(0, snapshot.includedExtraTeams);
@@ -11,21 +12,22 @@ export function buildBillingSummary(masterId: string, snapshot: BillingSnapshot)
   const contractedExtraTeams = Math.max(0, includedExtraTeams + manualAdjustmentExtraTeams);
   const contractedExtraUsers = Math.max(0, includedExtraUsers + manualAdjustmentExtraUsers);
   const availableExtraTeams = Math.max(0, contractedExtraTeams - rawExtraTeams);
-  const availableExtraUsers = Math.max(0, contractedExtraUsers - rawExtraUsers);
+  const availableExtraUsers = hasUnlimitedUsers ? 0 : Math.max(0, contractedExtraUsers - rawExtraUsers);
   const billableTeams = Math.max(rawExtraTeams, contractedExtraTeams);
-  const billableUsers = Math.max(rawExtraUsers, contractedExtraUsers);
+  const billableUsers = hasUnlimitedUsers ? 0 : Math.max(rawExtraUsers, contractedExtraUsers);
   const totalTeamSlots = 1 + contractedExtraTeams;
-  const totalUserSlots = 1 + contractedExtraUsers;
+  const totalUserSlots = hasUnlimitedUsers ? snapshot.totalUsersIncludingMaster : 1 + contractedExtraUsers;
   const usedTeamSlots = snapshot.teamCount;
   const usedUserSlots = snapshot.totalUsersIncludingMaster;
 
   const basePrice = BILLING_PRICES.base;
   const extraTeamsPrice = billableTeams * BILLING_PRICES.extraTeam;
-  const extraUsersPrice = billableUsers * BILLING_PRICES.extraUser;
+  const extraUsersPrice = hasUnlimitedUsers ? 0 : billableUsers * BILLING_PRICES.extraUser;
   const totalPrice = basePrice + extraTeamsPrice + extraUsersPrice;
 
   return {
     masterId,
+    hasUnlimitedUsers,
     teamCount: snapshot.teamCount,
     distinctUserCount: snapshot.distinctUserCount,
     totalUsersIncludingMaster: snapshot.totalUsersIncludingMaster,
@@ -42,9 +44,9 @@ export function buildBillingSummary(masterId: string, snapshot: BillingSnapshot)
     availableExtraTeams,
     availableExtraUsers,
     availableTeamSlots: availableExtraTeams,
-    availableUserSlots: availableExtraUsers,
+    availableUserSlots: hasUnlimitedUsers ? Number.MAX_SAFE_INTEGER : availableExtraUsers,
     removableTeamSlots: availableExtraTeams,
-    removableUserSlots: availableExtraUsers,
+    removableUserSlots: hasUnlimitedUsers ? 0 : availableExtraUsers,
     billableTeams,
     billableUsers,
     basePrice,

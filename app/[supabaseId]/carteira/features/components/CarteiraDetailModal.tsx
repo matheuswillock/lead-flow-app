@@ -616,7 +616,7 @@ export function CarteiraDetailModal({
                         <div className="flex flex-col gap-1.5">
                           <Label className="text-xs">Parentesco</Label>
                           <Select value={dep.parentesco} onValueChange={(v) => patchDependent(dep._key, { parentesco: v })}>
-                            <SelectTrigger className="h-8 text-sm">
+                            <SelectTrigger className="text-sm">
                               <SelectValue placeholder="Selecionar" />
                             </SelectTrigger>
                             <SelectContent>

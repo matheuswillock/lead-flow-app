@@ -31,7 +31,8 @@ class PrismaSubscriptionCreditRepository {
     const teams = Math.max(0, input.teams ?? 0);
     const users = Math.max(0, input.users ?? 0);
 
-    if (teams > summary.availableTeamSlots || users > summary.availableUserSlots) {
+    const usersExceeded = !summary.hasUnlimitedUsers && users > summary.availableUserSlots;
+    if (teams > summary.availableTeamSlots || usersExceeded) {
       throw new Error("Capacidade insuficiente para criar sem checkout");
     }
 
@@ -122,7 +123,7 @@ class PrismaSubscriptionCreditRepository {
 
     if (!master) return null;
 
-    const [teamCount, teamMembers, subscription] = await Promise.all([
+    const [teamCount, teamMembers, subscription, annualAdhesionCount] = await Promise.all([
       tx.team.count({ where: { masterId } }),
       tx.teamMember.findMany({
         where: { team: { masterId } },
@@ -132,6 +133,10 @@ class PrismaSubscriptionCreditRepository {
       tx.profileSubscription.findUnique({
         where: { profileId: masterId },
         select: {
+          subscriptionCycle: true,
+          subscriptionStatus: true,
+          subscriptionStartDate: true,
+          subscriptionEndDate: true,
           capacity: {
             select: {
               includedExtraTeams: true,
@@ -142,12 +147,27 @@ class PrismaSubscriptionCreditRepository {
           },
         },
       }),
+      tx.backofficeAdhesion.count({
+        where: {
+          createdProfileId: masterId,
+          status: "paid",
+          cycle: "annual",
+        },
+      }),
     ]);
 
     const distinctUserCount = teamMembers.filter((member) => member.profileId !== masterId).length;
+    const now = new Date();
+    const hasYearlySubscription =
+      subscription?.subscriptionCycle === "YEARLY" &&
+      (!subscription?.subscriptionStatus || subscription.subscriptionStatus === "active") &&
+      (!subscription?.subscriptionStartDate || subscription.subscriptionStartDate <= now) &&
+      (!subscription?.subscriptionEndDate || subscription.subscriptionEndDate >= now);
+    const hasUnlimitedUsers = hasYearlySubscription || annualAdhesionCount > 0;
 
     return {
       hasPermanentSubscription: master.hasPermanentSubscription,
+      hasUnlimitedUsers,
       teamCount,
       distinctUserCount,
       totalUsersIncludingMaster: distinctUserCount + 1,

@@ -474,7 +474,7 @@ export function BackofficeClientDetailsContainer() {
                       }}
                       disabled={isTeamsLoading}
                     >
-                      <SelectTrigger className="h-8 w-[92px]">
+                      <SelectTrigger className="w-[92px]">
                         <SelectValue placeholder="10" />
                       </SelectTrigger>
                       <SelectContent>
@@ -554,7 +554,7 @@ export function BackofficeClientDetailsContainer() {
                       }}
                       disabled={isInvoicesLoading}
                     >
-                      <SelectTrigger className="h-9 w-[210px]">
+                      <SelectTrigger className="w-[210px]">
                         <SelectValue placeholder="Status" />
                       </SelectTrigger>
                       <SelectContent>
@@ -575,7 +575,7 @@ export function BackofficeClientDetailsContainer() {
                       }}
                       disabled={isInvoicesLoading}
                     >
-                      <SelectTrigger className="h-9 w-[210px]">
+                      <SelectTrigger className="w-[210px]">
                         <SelectValue placeholder="Período" />
                       </SelectTrigger>
                       <SelectContent>

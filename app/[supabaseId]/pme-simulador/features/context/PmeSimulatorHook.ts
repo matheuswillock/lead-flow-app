@@ -4,17 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { isManagerLikeRole } from "@/lib/roles";
 import { useTeamContext } from "@/app/context/TeamContext";
 import { useUserContext } from "@/app/context/UserContext";
+import { deserializeAgeRanges, getTotalBeneficiaries } from "@/lib/ageRanges";
 import type { IPmeSimulatorService } from "../services/IPmeSimulatorService";
 import type { PmeHospitalId, PmeSimulationOutput, PmeSimulatorCatalog, PmeSimulatorContextValue } from "./PmeSimulatorTypes";
 
 const DEFAULT_HOSPITAL_ID: PmeHospitalId = "nenhum";
-
-function parseAges(input: string): number[] {
-  return input
-    .split(/[,;\s]+/)
-    .map((item) => Number(item.trim()))
-    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 99);
-}
 
 export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulatorContextValue {
   const { user } = useUserContext();
@@ -24,11 +18,20 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
   const [isSimulationLoading, setIsSimulationLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [catalogs, setCatalogs] = useState<PmeSimulatorCatalog | null>(null);
-  const [ages, setAges] = useState<number[]>([]);
-  const [ageInput, setAgeInput] = useState("");
+  const [serializedAgeRanges, setSerializedAgeRanges] = useState("");
   const [selectedHospitalId, setSelectedHospitalId] = useState<PmeHospitalId>(DEFAULT_HOSPITAL_ID);
   const [simulation, setSimulation] = useState<PmeSimulationOutput | null>(null);
   const [expandedPlanIds, setExpandedPlanIds] = useState<string[]>([]);
+
+  const ageRangeCounts = useMemo(
+    () => deserializeAgeRanges(serializedAgeRanges),
+    [serializedAgeRanges],
+  );
+
+  const totalLives = useMemo(
+    () => getTotalBeneficiaries(ageRangeCounts),
+    [ageRangeCounts],
+  );
 
   const isAllowed = useMemo(() => {
     if (!user) {
@@ -69,7 +72,7 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
     if (!user?.supabaseId || !activeTeamId || !isAllowed) {
       return;
     }
-    if (ages.length === 0) {
+    if (totalLives === 0) {
       setSimulation(null);
       return;
     }
@@ -77,10 +80,10 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
     try {
       setIsSimulationLoading(true);
       setError(null);
-      const output = await service.simulate({
+      const output = await service.simulateFromRangeCounts({
         supabaseId: user.supabaseId,
         teamId: activeTeamId,
-        ages,
+        ageRangeCounts,
         hospitalId: selectedHospitalId,
       });
       setSimulation(output);
@@ -91,27 +94,7 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
     } finally {
       setIsSimulationLoading(false);
     }
-  }, [activeTeamId, ages, isAllowed, selectedHospitalId, service, user?.supabaseId]);
-
-  const addAgesFromInput = useCallback(() => {
-    const parsed = parseAges(ageInput);
-    if (parsed.length === 0) {
-      return;
-    }
-    setAges((current) => [...current, ...parsed].sort((a, b) => a - b));
-    setAgeInput("");
-  }, [ageInput]);
-
-  const removeAgeByIndex = useCallback((index: number) => {
-    setAges((current) => current.filter((_, currentIndex) => currentIndex !== index));
-  }, []);
-
-  const clearAges = useCallback(() => {
-    setAges([]);
-    setAgeInput("");
-    setSimulation(null);
-    setExpandedPlanIds([]);
-  }, []);
+  }, [activeTeamId, ageRangeCounts, isAllowed, selectedHospitalId, service, totalLives, user?.supabaseId]);
 
   const selectHospital = useCallback((hospitalId: PmeHospitalId) => {
     setSelectedHospitalId(hospitalId);
@@ -128,13 +111,13 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
   }, [loadCatalog]);
 
   useEffect(() => {
-    if (ages.length === 0) {
+    if (totalLives === 0) {
       setSimulation(null);
       setExpandedPlanIds([]);
       return;
     }
     void runSimulation();
-  }, [ages, selectedHospitalId, runSimulation]);
+  }, [totalLives, selectedHospitalId, runSimulation]);
 
   return {
     isCatalogLoading,
@@ -142,15 +125,12 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
     isAllowed,
     error,
     catalogs,
-    ages,
-    ageInput,
+    ageRangeCounts,
+    serializedAgeRanges,
     selectedHospitalId,
     simulation,
     expandedPlanIds,
-    setAgeInput,
-    addAgesFromInput,
-    removeAgeByIndex,
-    clearAges,
+    setSerializedAgeRanges,
     selectHospital,
     runSimulation,
     togglePlan,

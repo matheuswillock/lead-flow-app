@@ -1,3 +1,4 @@
+import type { AgeRangeCount } from "@/lib/ageRanges";
 import type { Output } from "@/lib/output";
 import type { PmeSimulationOutput, PmeSimulatorCatalog } from "../context/PmeSimulatorTypes";
 import type { IPmeSimulatorService } from "./IPmeSimulatorService";
@@ -36,6 +37,33 @@ class PmeSimulatorService implements IPmeSimulatorService {
       },
       body: JSON.stringify({
         ages: input.ages,
+        hospitalId: input.hospitalId,
+      }),
+    });
+
+    const output = (await response.json()) as Output;
+    if (!response.ok || !output.isValid) {
+      throw new Error(output.errorMessages?.[0] ?? "Erro ao simular planos.");
+    }
+
+    return output.result as PmeSimulationOutput;
+  }
+
+  async simulateFromRangeCounts(input: {
+    supabaseId: string;
+    teamId: string;
+    ageRangeCounts: AgeRangeCount[];
+    hospitalId: "nenhum" | "sirio" | "einstein" | "rededor";
+  }): Promise<PmeSimulationOutput> {
+    const response = await fetch("/api/v1/pme-plan-simulator", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-supabase-user-id": input.supabaseId,
+        "x-team-id": input.teamId,
+      },
+      body: JSON.stringify({
+        ageRangeCounts: input.ageRangeCounts,
         hospitalId: input.hospitalId,
       }),
     });

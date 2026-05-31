@@ -1,5 +1,6 @@
 export interface BillingSnapshot {
   hasPermanentSubscription: boolean;
+  hasUnlimitedUsers: boolean;
   teamCount: number;
   distinctUserCount: number;
   totalUsersIncludingMaster: number;

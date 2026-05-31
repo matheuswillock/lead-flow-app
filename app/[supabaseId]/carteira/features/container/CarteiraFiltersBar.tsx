@@ -385,7 +385,7 @@ export function CarteiraFiltersBar() {
           value={filters.operadora || '__all__'}
           onValueChange={(v) => setFilter('operadora', v === '__all__' ? '' : v)}
         >
-          <SelectTrigger className="h-8 w-44 border-dashed text-xs">
+          <SelectTrigger className="w-44 border-dashed text-xs">
             <SelectValue placeholder="Operadora" />
           </SelectTrigger>
           <SelectContent>

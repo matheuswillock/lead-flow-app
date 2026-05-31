@@ -493,6 +493,9 @@ model HealthPlanOption {
   id             String   @id @default(uuid()) @db.Uuid
   name           String   @db.Text
   normalizedName String   @unique @db.Text
+  isActive       Boolean  @default(true)
+  isDefault      Boolean  @default(false)
+  iconUrl        String?  @db.Text
   createdBy      String?  @db.Uuid
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @db.Timestamptz(6)
@@ -500,6 +503,7 @@ model HealthPlanOption {
   creator Profile? @relation("HealthPlanOptionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([name])
+  @@index([isActive, isDefault])
   @@index([createdBy])
   @@map("corretor_studio_health_plan_options")
 }
@@ -849,6 +853,7 @@ model Lead {
   meetingNotes         String?       @db.Text
   meetingLink          String?       @db.Text
   meetingHeald         MeetingHeald?
+  meetingType          String?       @db.Text
   followUpAt           DateTime?     @db.Timestamptz(6)
   followUpNotes        String?       @db.Text
   followUpSourceStatus LeadStatus?
@@ -862,6 +867,12 @@ model Lead {
   contractDueDate DateTime? @db.Timestamptz(6) // Data de vigência do contrato
   soldPlan        String?   @db.Text // Plano vendido
 
+  // Indicação / Referral
+  isReferral      Boolean?  @default(false)
+  referrerLeadId  String?   @db.Uuid
+  referrerName    String?   @db.Text
+  referrerPhone   String?   @db.Text
+
   createdBy String?  @db.Uuid
   updatedBy String?  @db.Uuid
   createdAt DateTime @default(now()) @db.Timestamptz(6)
@@ -874,6 +885,8 @@ model Lead {
   closer        Profile?         @relation("LeadCloser", fields: [closerId], references: [id], onDelete: SetNull)
   creator       Profile?         @relation("LeadCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   updater       Profile?         @relation("LeadUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
+  referrerLead  Lead?            @relation("LeadReferrer", fields: [referrerLeadId], references: [id], onDelete: SetNull)
+  referredLeads Lead[]           @relation("LeadReferrer")
   activities    LeadActivity[]
   tasks         Task[]
   LeadsSchedule LeadsSchedule[]
@@ -994,6 +1007,7 @@ model LeadsSchedule {
   meetingTitle                String?               @db.Text
   notes                       String?               @db.Text
   meetingLink                 String?               @db.Text
+  meetingType                 String?               @db.Text
   extraGuests                 String[]              @default([])
   googleEventId               String?               @db.Text
   googleCalendarId            String?               @db.Text

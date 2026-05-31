@@ -62,7 +62,13 @@ export const UpdateLeadRequestSchema = z.object({
     .nullish()
     .transform((val) => val ?? undefined),
   contractDueDate: z.string().datetime().nullish().transform(val => val || undefined),
-  soldPlan: z.string().trim().min(1, "Plano vendido deve ser válido").nullish().transform(val => val || undefined)
+  soldPlan: z.string().trim().min(1, "Plano vendido deve ser válido").nullish().transform(val => val || undefined),
+  // Meeting type & referral fields
+  meetingType: z.enum(["online", "call", "whatsapp"]).optional(),
+  isReferral: z.boolean().optional(),
+  referrerLeadId: z.string().uuid("ID do lead indicador deve ser um UUID válido").optional(),
+  referrerName: z.string().optional(),
+  referrerPhone: z.string().optional(),
 });
 
 export type UpdateLeadRequest = z.infer<typeof UpdateLeadRequestSchema>;

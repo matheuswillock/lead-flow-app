@@ -1,3 +1,5 @@
+import type { AgeRangeCount } from "@/lib/ageRanges";
+
 export type PmeHospitalId = "nenhum" | "sirio" | "einstein" | "rededor";
 
 export interface PmeAgeRange {
@@ -56,15 +58,12 @@ export interface PmeSimulatorContextValue {
   isAllowed: boolean;
   error: string | null;
   catalogs: PmeSimulatorCatalog | null;
-  ages: number[];
-  ageInput: string;
+  ageRangeCounts: AgeRangeCount[];
+  serializedAgeRanges: string;
   selectedHospitalId: PmeHospitalId;
   simulation: PmeSimulationOutput | null;
   expandedPlanIds: string[];
-  setAgeInput: (value: string) => void;
-  addAgesFromInput: () => void;
-  removeAgeByIndex: (index: number) => void;
-  clearAges: () => void;
+  setSerializedAgeRanges: (value: string) => void;
   selectHospital: (hospitalId: PmeHospitalId) => void;
   runSimulation: () => Promise<void>;
   togglePlan: (planId: string) => void;

@@ -1,24 +1,28 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { AgeTagsInput } from "./AgeTagsInput";
+import { AgeRangeInput } from "@/components/ui/age-range-input";
 
 type BeneficiariesCardProps = {
-  ages: number[];
-  ageInput: string;
+  serializedAgeRanges: string;
   isLoading: boolean;
-  onInputChange: (value: string) => void;
-  onAddAges: () => void;
-  onRemoveAge: (index: number) => void;
-  onClearAges: () => void;
+  onAgeRangesChange: (serialized: string) => void;
 };
 
-export function BeneficiariesCard(props: BeneficiariesCardProps) {
+export function BeneficiariesCard({
+  serializedAgeRanges,
+  isLoading,
+  onAgeRangesChange,
+}: BeneficiariesCardProps) {
   return (
     <Card className="rounded-2xl border-border bg-card">
       <CardContent className="flex flex-col gap-4 p-6">
         <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
           Beneficiários
         </span>
-        <AgeTagsInput {...props} />
+        <AgeRangeInput
+          value={serializedAgeRanges}
+          onChange={onAgeRangesChange}
+          disabled={isLoading}
+        />
       </CardContent>
     </Card>
   );

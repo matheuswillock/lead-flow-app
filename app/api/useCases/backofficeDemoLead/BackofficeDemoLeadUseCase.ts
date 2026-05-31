@@ -10,6 +10,12 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
 
   async create(input: CreateDemoLeadInput): Promise<Output> {
     try {
+      const sourceExternalId = `demo:${input.email.trim().toLowerCase()}`
+      const existing = await this.leadRepository.findBySourceExternalId(sourceExternalId)
+      if (existing) {
+        return new Output(true, ["Lead já existente para esta demonstração"], [], { id: existing.id })
+      }
+
       const lead = await this.leadRepository.create({
         id: randomUUID(),
         name: input.name,
@@ -17,6 +23,7 @@ export class BackofficeDemoLeadUseCase implements IBackofficeDemoLeadUseCase {
         phone: input.phone,
         status: BackofficeLeadStatus.new_opportunity,
         origin: BackofficeLeadOrigin.landing_page,
+        sourceExternalId,
         createdByProfileId: null,
       })
 

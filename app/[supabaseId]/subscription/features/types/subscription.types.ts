@@ -24,6 +24,7 @@ export interface SubscriptionData {
   createdAt: string;
   billingSummary?: {
     masterId: string;
+    hasUnlimitedUsers: boolean;
     teamCount: number;
     distinctUserCount: number;
     totalUsersIncludingMaster: number;

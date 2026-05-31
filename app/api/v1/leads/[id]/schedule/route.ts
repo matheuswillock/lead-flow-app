@@ -8,10 +8,11 @@ import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { validateMeetingLinkValue } from "@/lib/validations/meetingLink";
 
 const scheduleSchema = z.object({
-  date: z.string().datetime(),
+  date: z.string().datetime().optional(),
   meetingTitle: z.string().optional(),
   notes: z.string().optional(),
   meetingLink: z.string().optional(),
+  meetingType: z.enum(["online", "call", "whatsapp"]).optional(),
   closerId: z.string().uuid("ID do closer deve ser um UUID válido").optional(),
   extraGuests: z.array(z.string().email("Email inválido")).optional(),
   transitionStatusToScheduled: z.boolean().optional(),
@@ -55,6 +56,7 @@ export async function POST(
       meetingTitle,
       notes,
       meetingLink,
+      meetingType,
       closerId,
       extraGuests,
       transitionStatusToScheduled,
@@ -106,6 +108,11 @@ export async function POST(
       meetingTitle: meetingTitle || "",
       meetingNotes: notes,
       meetingLink: meetingLinkValidation.normalized,
+      meetingType:
+        meetingType ??
+        ((lead.meetingType === "online" || lead.meetingType === "call" || lead.meetingType === "whatsapp")
+          ? lead.meetingType
+          : null),
       extraGuests,
       createdByProfileId: teamAccess.access.profileId,
       transitionStatusToScheduled,

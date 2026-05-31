@@ -6,6 +6,7 @@ export const BILLING_PRICES = {
 
 export type BillingSummary = {
   masterId: string;
+  hasUnlimitedUsers: boolean;
   teamCount: number;
   distinctUserCount: number;
   totalUsersIncludingMaster: number;

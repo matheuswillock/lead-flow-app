@@ -67,6 +67,8 @@ type LeadStatusTransitionBlockerType =
   | "loss_reason_trigger"
   | "disabled_status"
   | "validation_error"
+  | "email_required"
+  | "lead_info_required"
   | "none";
 
 export class LeadUseCase implements ILeadUseCase {
@@ -307,6 +309,14 @@ export class LeadUseCase implements ILeadUseCase {
         ticket: data.ticket || null,
         contractDueDate: data.contractDueDate ? new Date(data.contractDueDate) : null,
         soldPlan: normalizedPlans.soldPlan,
+        // Meeting type & referral fields
+        meetingType: data.meetingType || null,
+        isReferral: data.isReferral ?? null,
+        referrerName: data.referrerName || null,
+        referrerPhone: data.referrerPhone || null,
+        ...(data.referrerLeadId
+          ? { referrerLead: { connect: { id: data.referrerLeadId } } }
+          : {}),
         creator: { connect: { id: profileInfo.id } },
         updater: { connect: { id: profileInfo.id } },
         ...(assignedTo && {
@@ -576,6 +586,18 @@ export class LeadUseCase implements ILeadUseCase {
       if (data.ticket !== undefined) updateData.ticket = data.ticket;
       if (data.contractDueDate !== undefined) updateData.contractDueDate = data.contractDueDate ? new Date(data.contractDueDate) : null;
       if (data.soldPlan !== undefined) updateData.soldPlan = normalizedPlans?.soldPlan || null;
+      // Meeting type & referral fields
+      if (data.meetingType !== undefined) updateData.meetingType = data.meetingType || null;
+      if (data.isReferral !== undefined) updateData.isReferral = data.isReferral ?? null;
+      if (data.referrerLeadId !== undefined) {
+        if (data.referrerLeadId) {
+          updateData.referrerLead = { connect: { id: data.referrerLeadId } };
+        } else {
+          updateData.referrerLead = { disconnect: true };
+        }
+      }
+      if (data.referrerName !== undefined) updateData.referrerName = data.referrerName || null;
+      if (data.referrerPhone !== undefined) updateData.referrerPhone = data.referrerPhone || null;
       if (data.assignedTo !== undefined) {
         if (data.assignedTo) {
           updateData.assignee = { connect: { id: data.assignedTo } };
@@ -823,6 +845,39 @@ export class LeadUseCase implements ILeadUseCase {
             transition: createTransition(false, "finalize_contract"),
           }
         );
+      }
+
+      // R6: Gate — require lead qualification info before pricingRequest
+      if (status === LeadStatus.pricingRequest) {
+        const missingLeadFields: Array<"age" | "currentHealthPlan" | "referenceHospital" | "ongoingTreatment"> = [];
+        if (!existingLead.age?.trim()) missingLeadFields.push("age");
+        if (!existingLead.currentHealthPlan?.trim()) missingLeadFields.push("currentHealthPlan");
+        if (!existingLead.referenceHospital?.trim()) missingLeadFields.push("referenceHospital");
+        if (!existingLead.currentTreatment?.trim()) missingLeadFields.push("ongoingTreatment");
+
+        if (missingLeadFields.length > 0) {
+          const currentLeadInfo = {
+            age: existingLead.age || null,
+            currentHealthPlan: existingLead.currentHealthPlan || null,
+            referenceHospital: existingLead.referenceHospital || null,
+            ongoingTreatment: existingLead.currentTreatment || null,
+          };
+          return new Output(
+            false,
+            [],
+            ["Preencha as informações do lead para continuar para Cotação."],
+            {
+              missingLeadFields,
+              currentLeadInfo,
+              sourceStatus: existingLead.status,
+              targetStatus: status,
+              transition: createTransition(false, "lead_info_required", {
+                missingLeadFields,
+                currentLeadInfo,
+              }),
+            }
+          );
+        }
       }
 
       const requiresSalesInfoBeforeTransition =
@@ -1080,16 +1135,31 @@ export class LeadUseCase implements ILeadUseCase {
 
       if (status === LeadStatus.scheduled) {
         const latestSchedule = await leadScheduleRepository.findLatestByLeadId(id);
+        const resolvedMeetingType = (latestSchedule?.meetingType || existingLead.meetingType || "online") as
+          | "online"
+          | "call"
+          | "whatsapp";
         const resolvedMeetingLink = latestSchedule?.meetingLink?.trim() || existingLead.meetingLink?.trim() || "";
         const inviteDispatchSuccessful = latestSchedule?.inviteDispatchStatus
           ? SCHEDULED_INVITE_SUCCESS_STATUSES.includes(latestSchedule.inviteDispatchStatus)
           : false;
+        const requiresOnlineArtifacts = resolvedMeetingType === "online";
+
+        if (requiresOnlineArtifacts && !existingLead.email?.trim()) {
+          return new Output(
+            false,
+            [],
+            ["Lead precisa de um email para agendamento online. Preencha o email do lead antes de agendar."],
+            {
+              transition: createTransition(false, "email_required"),
+            }
+          );
+        }
 
         if (
           !existingLead.meetingDate ||
           !existingLead.closerId ||
-          !resolvedMeetingLink ||
-          !inviteDispatchSuccessful
+          (requiresOnlineArtifacts && (!resolvedMeetingLink || !inviteDispatchSuccessful))
         ) {
           return new Output(
             false,
@@ -1519,6 +1589,12 @@ export class LeadUseCase implements ILeadUseCase {
       ticket: lead.ticket ? Number(lead.ticket) : null,
       contractDueDate: lead.contractDueDate ? lead.contractDueDate.toISOString() : null,
       soldPlan: lead.soldPlan,
+      // Meeting type & referral fields
+      meetingType: lead.meetingType ?? null,
+      isReferral: lead.isReferral ?? null,
+      referrerLeadId: lead.referrerLeadId ?? null,
+      referrerName: lead.referrerName ?? null,
+      referrerPhone: lead.referrerPhone ?? null,
       leadTimeDueAt: lead.leadTimeDueAt ?? null,
       isLeadTimeBreached: lead.isLeadTimeBreached ?? false,
       attachmentCount: lead._count?.attachments || lead.attachments?.length || 0,
