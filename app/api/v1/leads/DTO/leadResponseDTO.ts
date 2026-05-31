@@ -37,6 +37,11 @@ export interface LeadResponseDTO {
   ticket: number | null;
   contractDueDate: string | null;
   soldPlan: string | null;
+  meetingType: string | null;
+  isReferral: boolean | null;
+  referrerLeadId: string | null;
+  referrerName: string | null;
+  referrerPhone: string | null;
   leadTimeDueAt?: string | null;
   isLeadTimeBreached?: boolean;
   attachmentCount?: number;

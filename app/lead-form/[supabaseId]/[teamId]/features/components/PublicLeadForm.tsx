@@ -14,6 +14,7 @@ import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
 import { SchedulingSection } from "./SchedulingSection";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { AgeRangeInput } from "@/components/ui/age-range-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -180,14 +181,14 @@ export function PublicLeadForm() {
 
         const result = await submitLead({
           name: data.name,
-          email: data.email,
-          phone: normalizeLeadPhoneDigits(data.phone),
+          email: data.email ?? "",
+          phone: normalizeLeadPhoneDigits(data.phone || ""),
           cnpj: data.cnpj ? unmask(data.cnpj) : undefined,
-          age: data.age,
-          currentHealthPlan: data.currentHealthPlan,
+          age: data.age ?? "",
+          currentHealthPlan: data.currentHealthPlan ?? "",
           currentValue: data.currentValue ? parseCurrencyValue(data.currentValue) ?? undefined : undefined,
-          referenceHospital: data.referenceHospital,
-          currentTreatment: data.ongoingTreatment,
+          referenceHospital: data.referenceHospital ?? "",
+          currentTreatment: data.ongoingTreatment ?? "",
           notes: data.additionalNotes || undefined,
           assignedTo: data.responsible,
           closerId: hasMeeting ? closerId : undefined,
@@ -393,7 +394,7 @@ export function PublicLeadForm() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Email *</FormLabel>
+                        <FormLabel className={fieldLabelClassName}>Email</FormLabel>
                         <FormControl>
                           <Input className={fieldInputClassName} type="email" placeholder="email@exemplo.com" {...field} />
                         </FormControl>
@@ -429,26 +430,12 @@ export function PublicLeadForm() {
                     name="age"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Idades</FormLabel>
+                        <FormLabel className={fieldLabelClassName}>Faixas Etárias</FormLabel>
                         <FormControl>
-                          <Input
-                            className={fieldInputClassName}
-                            placeholder="Ex: 30, 28, 5"
+                          <AgeRangeInput
                             value={field.value || ""}
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              const digitsOnly = raw.replace(/[^0-9,\s]/g, "");
-                              const endsWithSeparator = /[,\s]$/.test(digitsOnly);
-                              const parts = digitsOnly.split(/[,\s]+/).filter(Boolean);
-                              const normalized = parts
-                                .map((part) => part.replace(/\D/g, ""))
-                                .filter(Boolean);
-                              let formatted = normalized.join(", ");
-                              if (endsWithSeparator && normalized.length > 0) {
-                                formatted += ", ";
-                              }
-                              field.onChange(formatted);
-                            }}
+                            onChange={field.onChange}
+                            disabled={isSubmitting}
                           />
                         </FormControl>
                         <FormMessage />
@@ -484,7 +471,7 @@ export function PublicLeadForm() {
                     name="currentHealthPlan"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Plano de Saúde Atual *</FormLabel>
+                        <FormLabel className={fieldLabelClassName}>Plano de Saúde Atual</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger className={fieldSelectTriggerClassName}>
@@ -531,7 +518,7 @@ export function PublicLeadForm() {
                     name="referenceHospital"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Hospital de Referência *</FormLabel>
+                        <FormLabel className={fieldLabelClassName}>Hospital de Referência</FormLabel>
                         <FormControl>
                           <Input className={fieldInputClassName} placeholder="Hospital de referência" {...field} />
                         </FormControl>
@@ -546,7 +533,7 @@ export function PublicLeadForm() {
                   name="ongoingTreatment"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className={fieldLabelClassName}>Tratamento em Andamento *</FormLabel>
+                      <FormLabel className={fieldLabelClassName}>Tratamento em Andamento</FormLabel>
                       <FormControl>
                         <Input
                           className={fieldInputClassName}
@@ -713,3 +700,4 @@ export function PublicLeadForm() {
     </div>
   );
 }
+

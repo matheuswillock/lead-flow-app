@@ -9,14 +9,18 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
+import { Checkbox } from "../ui/checkbox";
+import { Badge } from "../ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, formatDocumentInput, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
+import { AgeRangeInput } from "../ui/age-range-input";
 import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { ReferralDialog } from "./referral-dialog";
 import { useIsInView } from "@/hooks/use-is-in-view";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import {
@@ -146,10 +150,10 @@ export function LeadForm({
     const [currentValueDisplay, setCurrentValueDisplay] = useState("");
     const [ticketDisplay, setTicketDisplay] = useState("");
     const [currentValueError, setCurrentValueError] = useState<string | null>(null);
-    const [extraGuestsDraft, setExtraGuestsDraft] = useState("");
     const [ticketError, setTicketError] = useState<string | null>(null);
     const [cnpjDupError, setCnpjDupError] = useState<string | null>(null);
     const [cnpjChecking, setCnpjChecking] = useState(false);
+    const [referralDialogOpen, setReferralDialogOpen] = useState(false);
     const lastInvalidHashRef = useRef<string>("");
     const { ref: formEndRef, isInView: hasReachedFormEnd } = useIsInView({
         threshold: 0.2,
@@ -167,13 +171,6 @@ export function LeadForm({
         }
         return base;
     }, [sdrs, usersToAssign, currentUserIsSdr, currentProfileId]);
-
-    const buildEmailValue = (emails: string[]) => {
-        const unique = Array.from(new Set(emails));
-        return unique.join(", ");
-    };
-
-    const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
     const watchedValues = form.watch();
     const healthPlanNames = React.useMemo(() => {
@@ -218,7 +215,11 @@ export function LeadForm({
                 (watchedValues.ongoingTreatment && watchedValues.ongoingTreatment.trim() !== '') ||
                 (watchedValues.additionalNotes && watchedValues.additionalNotes.trim() !== '') ||
                 (watchedValues.responsible && watchedValues.responsible.trim() !== '') ||
-                (watchedValues.closerId && watchedValues.closerId.trim() !== '');
+                (watchedValues.closerId && watchedValues.closerId.trim() !== '') ||
+                watchedValues.isReferral ||
+                (watchedValues.referrerLeadId && watchedValues.referrerLeadId.trim() !== '') ||
+                (watchedValues.referrerName && watchedValues.referrerName.trim() !== '') ||
+                (watchedValues.referrerPhone && watchedValues.referrerPhone.trim() !== '');
 
             setHasChanges(!!hasAnyData);
             return;
@@ -237,7 +238,11 @@ export function LeadForm({
                 watchedValues.ongoingTreatment !== initialData.ongoingTreatment ||
                 watchedValues.additionalNotes !== initialData.additionalNotes ||
                 watchedValues.responsible !== initialData.responsible ||
-                watchedValues.closerId !== initialData.closerId;
+                watchedValues.closerId !== initialData.closerId ||
+                watchedValues.isReferral !== initialData.isReferral ||
+                watchedValues.referrerLeadId !== initialData.referrerLeadId ||
+                watchedValues.referrerName !== initialData.referrerName ||
+                watchedValues.referrerPhone !== initialData.referrerPhone;
 
         setHasChanges(hasFormChanges);
     }, [watchedValues, initialData, onMeetingHealdChange]);
@@ -417,13 +422,12 @@ export function LeadForm({
                 name="email"
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">Email*</FormLabel>
+                        <FormLabel className="block text-sm font-medium mb-1">Email</FormLabel>
                         <FormControl>
                             <Input
                                 {...field}
                                 type="email"
                                 placeholder="email@exemplo.com"
-                                required
                                 disabled={isLoading || isUpdating}
                             />
                         </FormControl>
@@ -473,37 +477,65 @@ export function LeadForm({
                 name="age"
                 render={({ field }) => (
                     <FormItem className="sm:col-span-2">
-                        <FormLabel className="block text-sm font-medium mb-1">Faixas Etárias*</FormLabel>
+                        <FormLabel className="block text-sm font-medium mb-1">Faixas Etárias</FormLabel>
                         <FormControl>
-                            <div className="space-y-2">
-                                <Input
-                                    value={field.value || ""}
-                                    onChange={(e) => {
-                                        const raw = e.target.value;
-                                        const digitsOnly = raw.replace(/[^0-9,\s]/g, "");
-                                        const endsWithSeparator = /[,\s]$/.test(digitsOnly);
-                                        const parts = digitsOnly.split(/[,\s]+/).filter(Boolean);
-                                        const normalized = parts
-                                            .map((part) => part.replace(/\D/g, ""))
-                                            .filter(Boolean);
-                                        let formatted = normalized.join(", ");
-                                        if (endsWithSeparator && normalized.length > 0) {
-                                            formatted += ", ";
-                                        }
-                                        field.onChange(formatted);
-                                    }}
-                                    placeholder="Ex: 36, 32, 13"
-                                    disabled={isLoading || isUpdating}
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Exemplo: 12, 15, 22, 30, 120, 55. Digite dois caracteres e pressione espaco para adicionar a virgula automaticamente.
-                                </p>
-                            </div>
+                            <AgeRangeInput
+                                value={field.value || ""}
+                                onChange={field.onChange}
+                                disabled={isLoading || isUpdating}
+                            />
                         </FormControl>
                         <FormMessage />
                     </FormItem>
                 )}
             />
+
+            <div className="sm:col-span-2 rounded-md border border-border p-3">
+                <FormField
+                    control={form.control}
+                    name="isReferral"
+                    render={({ field }) => (
+                        <FormItem className="flex items-center justify-between">
+                            <div className="grid gap-1">
+                                <FormLabel className="mb-0">Indicação</FormLabel>
+                                <p className="text-xs text-muted-foreground">Marque quando este lead veio por indicação.</p>
+                            </div>
+                            <FormControl>
+                                <Checkbox
+                                    checked={!!field.value}
+                                    onCheckedChange={(checked) => {
+                                        const isChecked = !!checked;
+                                        field.onChange(isChecked);
+                                        if (!isChecked) {
+                                            form.setValue("referrerLeadId", "");
+                                            form.setValue("referrerName", "");
+                                            form.setValue("referrerPhone", "");
+                                        }
+                                    }}
+                                    disabled={isLoading || isUpdating}
+                                />
+                            </FormControl>
+                        </FormItem>
+                    )}
+                />
+                {form.watch("isReferral") && (
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap gap-2">
+                            {!!form.watch("referrerName") && <Badge variant="secondary">{form.watch("referrerName")}</Badge>}
+                            {!!form.watch("referrerPhone") && <Badge variant="outline">{form.watch("referrerPhone")}</Badge>}
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setReferralDialogOpen(true)}
+                            disabled={isLoading || isUpdating}
+                        >
+                            {form.watch("referrerName") ? "Editar indicação" : "Selecionar indicador"}
+                        </Button>
+                    </div>
+                )}
+            </div>
 
             <div className="sm:col-span-2">
                 <FormField
@@ -512,7 +544,7 @@ export function LeadForm({
                     render={({ field }) => (
                         <FormItem>
                             <FormLabel className="block text-sm font-medium mb-1">
-                                Qual o plano de saúde?*
+                                Qual o plano de saúde?
                             </FormLabel>
                             <FormControl>
                                 <Select
@@ -584,13 +616,12 @@ export function LeadForm({
                 render={({ field }) => (
                     <FormItem>
                         <FormLabel className="block text-sm font-medium mb-1">
-                            Hospital Referência (se houver)*
+                            Hospital Referência (se houver)
                         </FormLabel>
                         <FormControl>
                             <Input
                                 {...field}
                                 placeholder="Digite o hospital"
-                                required
                                 disabled={isLoading || isUpdating}
                             />
                         </FormControl>
@@ -605,13 +636,12 @@ export function LeadForm({
                 render={({ field }) => (
                     <FormItem className="sm:col-span-2">
                         <FormLabel className="block text-sm font-medium mb-1">
-                            Existe algum tratamento em andamento?*
+                            Existe algum tratamento em andamento?
                         </FormLabel>
                         <FormControl>
                             <Input
                                 {...field}
                                 placeholder="Descreva brevemente"
-                                required
                                 disabled={isLoading || isUpdating}
                             />
                         </FormControl>
@@ -1083,6 +1113,22 @@ export function LeadForm({
                 aria-hidden="true"
             />
         </form>
+        <ReferralDialog
+            open={referralDialogOpen}
+            onOpenChange={setReferralDialogOpen}
+            teamId={activeTeamId}
+            initialValue={{
+                referrerLeadId: form.watch("referrerLeadId") || "",
+                referrerName: form.watch("referrerName") || "",
+                referrerPhone: form.watch("referrerPhone") || "",
+            }}
+            onConfirm={(value) => {
+                form.setValue("isReferral", true, { shouldDirty: true });
+                form.setValue("referrerLeadId", value.referrerLeadId || "", { shouldDirty: true });
+                form.setValue("referrerName", value.referrerName || "", { shouldDirty: true });
+                form.setValue("referrerPhone", value.referrerPhone || "", { shouldDirty: true });
+            }}
+        />
       </Form>
     );
 }

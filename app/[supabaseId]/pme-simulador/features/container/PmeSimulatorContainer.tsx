@@ -1,6 +1,7 @@
 "use client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { getTotalBeneficiaries } from "@/lib/ageRanges";
 import { BeneficiariesCard } from "../components/BeneficiariesCard";
 import { HospitalSelectorCard } from "../components/HospitalSelectorCard";
 import { PmeSimulatorHeader } from "../components/PmeSimulatorHeader";
@@ -14,15 +15,12 @@ export function PmeSimulatorContainer() {
     isAllowed,
     error,
     catalogs,
-    ages,
-    ageInput,
+    ageRangeCounts,
+    serializedAgeRanges,
     selectedHospitalId,
     simulation,
     expandedPlanIds,
-    setAgeInput,
-    addAgesFromInput,
-    removeAgeByIndex,
-    clearAges,
+    setSerializedAgeRanges,
     selectHospital,
     togglePlan,
   } = usePmeSimulatorContext();
@@ -53,13 +51,9 @@ export function PmeSimulatorContainer() {
         ) : null}
 
         <BeneficiariesCard
-          ages={ages}
-          ageInput={ageInput}
+          serializedAgeRanges={serializedAgeRanges}
           isLoading={isSimulationLoading}
-          onInputChange={setAgeInput}
-          onAddAges={addAgesFromInput}
-          onRemoveAge={removeAgeByIndex}
-          onClearAges={clearAges}
+          onAgeRangesChange={setSerializedAgeRanges}
         />
 
         <HospitalSelectorCard
@@ -69,7 +63,7 @@ export function PmeSimulatorContainer() {
         />
 
         <SimulationResults
-          agesCount={ages.length}
+          agesCount={getTotalBeneficiaries(ageRangeCounts)}
           simulation={simulation}
           isLoading={isCatalogLoading || isSimulationLoading}
           expandedPlanIds={expandedPlanIds}

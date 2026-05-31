@@ -206,6 +206,9 @@ Target flow: `Route -> UseCase -> [Service] -> Prisma`
 - Routes **MUST NOT** call Prisma directly for new code.
 - `app/api/infra/data/prisma.ts` **MUST** remain the shared Prisma client boundary.
 - New product API code **MUST** follow the canonical `app/api` layout — see `.github/instructions/project-context.instructions.md` for the full folder tree.
+- Prisma queries **MUST** prefer `select` over `include` by default.
+- `include` **MUST** be used only when the full related entity is intentionally required by the use case.
+- For list endpoints and CRM flows, queries **MUST** select only fields consumed by the response/DTO and UI.
 
 ### Frontend (FOR NEW FEATURES)
 

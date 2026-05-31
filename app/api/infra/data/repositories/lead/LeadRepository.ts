@@ -3,6 +3,77 @@ import { Lead, LeadStatus, Prisma } from "@prisma/client";
 import { prisma } from "../../prisma";
 import type { LeadCloserForCalendar, LeadForAttendeesRoleMap } from "@/app/api/v1/leads/[id]/schedule/attendees/ScheduleAttendeesTypes";
 
+const CRM_LEAD_LIST_SELECT = {
+  id: true,
+  leadCode: true,
+  managerId: true,
+  teamId: true,
+  assignedTo: true,
+  closerId: true,
+  status: true,
+  name: true,
+  email: true,
+  phone: true,
+  cnpj: true,
+  age: true,
+  currentHealthPlan: true,
+  currentValue: true,
+  referenceHospital: true,
+  currentTreatment: true,
+  meetingDate: true,
+  meetingTitle: true,
+  meetingNotes: true,
+  meetingLink: true,
+  meetingHeald: true,
+  meetingType: true,
+  followUpAt: true,
+  followUpNotes: true,
+  followUpSourceStatus: true,
+  lossReason: true,
+  lossReasonDetails: true,
+  statusEnteredAt: true,
+  notes: true,
+  ticket: true,
+  contractDueDate: true,
+  soldPlan: true,
+  isReferral: true,
+  referrerLeadId: true,
+  referrerName: true,
+  referrerPhone: true,
+  createdBy: true,
+  updatedBy: true,
+  createdAt: true,
+  updatedAt: true,
+  manager: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+    },
+  },
+  assignee: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      profileIconUrl: true,
+    },
+  },
+  closer: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      profileIconUrl: true,
+    },
+  },
+  _count: {
+    select: {
+      attachments: true,
+    },
+  },
+} satisfies Prisma.LeadSelect;
+
 export class LeadRepository implements ILeadRepository {
   async create(data: Prisma.LeadCreateInput): Promise<Lead> {
     return await prisma.lead.create({
@@ -441,42 +512,13 @@ export class LeadRepository implements ILeadRepository {
 
     const leads = await prisma.lead.findMany({
       where,
-      include: {
-        manager: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        assignee: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profileIconUrl: true,
-          },
-        },
-        closer: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profileIconUrl: true,
-          },
-        },
-        _count: {
-          select: {
-            attachments: true,
-          },
-        },
-      },
+      select: CRM_LEAD_LIST_SELECT,
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    return { leads };
+    return { leads: leads as unknown as Lead[] };
   }
 
   async findAllByTeamId(
@@ -519,42 +561,13 @@ export class LeadRepository implements ILeadRepository {
 
     const leads = await prisma.lead.findMany({
       where,
-      include: {
-        manager: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-          },
-        },
-        assignee: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profileIconUrl: true,
-          },
-        },
-        closer: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            profileIconUrl: true,
-          },
-        },
-        _count: {
-          select: {
-            attachments: true,
-          },
-        },
-      },
+      select: CRM_LEAD_LIST_SELECT,
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    return { leads };
+    return { leads: leads as unknown as Lead[] };
   }
 
   async findAllByOperatorId(
