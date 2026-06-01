@@ -7,6 +7,7 @@ import { useTemplates } from './TemplatesHook'
 interface ITemplatesContext extends TemplatesState {
   fetchTemplates: () => Promise<void>
   handleDelete: (id: string) => Promise<void>
+  handleDuplicate: (id: string) => Promise<void>
 }
 
 const TemplatesContext = createContext<ITemplatesContext | undefined>(undefined)

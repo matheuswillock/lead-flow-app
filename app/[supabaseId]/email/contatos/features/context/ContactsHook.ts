@@ -15,7 +15,6 @@ export type ContactsActions = {
   handleSelectList: (id: string) => void
   handleUploadCsv: (file: File) => Promise<void>
   handleDeleteContact: (contactId: string) => Promise<void>
-  handleAddContact: (email: string, name?: string) => Promise<void>
   handleSearch: (query: string) => void
   handlePageChange: (page: number) => void
 }
@@ -138,14 +137,6 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
     [fetchLists, selectedListId]
   );
 
-  const handleAddContact = useCallback(
-    async (_email: string, _name?: string) => {
-      toast.error("Adição manual de contato ainda não está disponível");
-      throw new Error("Adição manual de contato ainda não está disponível");
-    },
-    []
-  );
-
   const handleUploadCsv = useCallback(
     async (file: File) => {
       if (!selectedListId) return;
@@ -258,7 +249,6 @@ export function useContacts(supabaseId: string): ContactsHookReturn {
     handleSelectList,
     handleUploadCsv,
     handleDeleteContact,
-    handleAddContact,
     handleSearch,
     handlePageChange,
   };

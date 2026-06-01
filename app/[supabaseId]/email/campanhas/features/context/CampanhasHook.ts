@@ -146,6 +146,10 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   }, [fetchCampaigns, statusFilter])
 
   const handleSend = useCallback(async (id: string) => {
+    if (!credits?.hasSubscription) {
+      toast.error("Ative um plano em Assinaturas para disparar campanhas")
+      return
+    }
     setSendingId(id)
     console.info("[useCampanhas] handleSend", id)
     try {
@@ -159,7 +163,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setSendingId(null)
     }
-  }, [fetchCampaigns, fetchCredits, page, statusFilter])
+  }, [credits?.hasSubscription, fetchCampaigns, fetchCredits, page, statusFilter])
 
   const handleCancel = useCallback(async (id: string) => {
     setCancelingId(id)

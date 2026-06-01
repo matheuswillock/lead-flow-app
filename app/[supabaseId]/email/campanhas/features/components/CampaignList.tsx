@@ -28,7 +28,15 @@ import type { Campaign } from "../context/CampanhasTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone } from "@/lib/dates"
 
-function SendConfirmDialog({ campaign, onConfirm }: { campaign: Campaign; onConfirm: () => Promise<void> }) {
+function SendConfirmDialog({
+  campaign,
+  onConfirm,
+  disabled,
+}: {
+  campaign: Campaign
+  onConfirm: () => Promise<void>
+  disabled?: boolean
+}) {
   const [open, setOpen] = useState(false)
   const [sending, setSending] = useState(false)
 
@@ -48,8 +56,9 @@ function SendConfirmDialog({ campaign, onConfirm }: { campaign: Campaign; onConf
         size="sm"
         variant="outline"
         onClick={() => setOpen(true)}
-        disabled={sending}
+        disabled={sending || disabled}
         className="h-7 px-2 text-xs"
+        title={disabled ? "Ative um plano em Assinaturas para disparar campanhas" : undefined}
       >
         <Send className="mr-1 h-3 w-3" />
         Disparar
@@ -91,7 +100,9 @@ export function CampaignList() {
     handleDeleteDraft,
     handlePageChange,
     openEdit,
+    credits,
   } = useCampanhasContext()
+  const canSendCampaign = !!credits?.hasSubscription
 
   return (
     <div className="space-y-3">
@@ -125,30 +136,31 @@ export function CampaignList() {
             ) : (
               campaigns.map((campaign) => (
                 <TableRow key={campaign.id}>
-                  <TableCell className="font-medium">{campaign.name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="align-middle font-medium">{campaign.name}</TableCell>
+                  <TableCell className="align-middle text-sm text-muted-foreground">
                     <div>{campaign.template?.name ?? '—'}</div>
                     <div className="text-xs">{campaign.contactList?.name ?? '—'}</div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="align-middle">
                     <CampaignStatusBadge status={campaign.status} />
                   </TableCell>
-                  <TableCell className="text-sm">
+                  <TableCell className="align-middle text-sm">
                     {campaign.totalRecipients.toLocaleString("pt-BR")}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="align-middle text-sm text-muted-foreground">
                     {campaign.sentAt
                       ? formatIntimezone(new Date(campaign.sentAt), "dd/MM/yyyy", tz)
                       : campaign.scheduledAt
                       ? formatIntimezone(new Date(campaign.scheduledAt), "dd/MM/yyyy", tz)
                       : formatIntimezone(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="align-middle">
                     <div className="flex items-center justify-end gap-1">
                       {(campaign.status === "draft" || campaign.status === "scheduled") && (
                         <SendConfirmDialog
                           campaign={campaign}
                           onConfirm={() => handleSend(campaign.id)}
+                          disabled={!canSendCampaign}
                         />
                       )}
                       {campaign.status === "sending" && (

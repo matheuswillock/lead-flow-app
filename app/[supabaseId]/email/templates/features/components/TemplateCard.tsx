@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { Copy, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,7 +27,9 @@ import { Template } from '../context/TemplatesTypes'
 interface TemplateCardProps {
   template: Template
   deleting: string | null
+  duplicating: string | null
   onDelete: (id: string) => Promise<void>
+  onDuplicate: (id: string) => Promise<void>
 }
 
 function HtmlPreview({ html }: { html: string | null }) {
@@ -50,12 +52,20 @@ function HtmlPreview({ html }: { html: string | null }) {
   )
 }
 
-export function TemplateCard({ template, deleting, onDelete }: TemplateCardProps) {
+export function TemplateCard({
+  template,
+  deleting,
+  duplicating,
+  onDelete,
+  onDuplicate,
+}: TemplateCardProps) {
   const router = useRouter()
   const params = useParams()
   const supabaseId = params.supabaseId as string
   const [deleteOpen, setDeleteOpen] = useState(false)
   const isDeleting = deleting === template.id
+  const isDuplicating = duplicating === template.id
+  const isBusy = isDeleting || isDuplicating
 
   const handleEdit = () => {
     router.push(`/${supabaseId}/email/templates/${template.id}`)
@@ -64,6 +74,10 @@ export function TemplateCard({ template, deleting, onDelete }: TemplateCardProps
   const handleConfirmDelete = async () => {
     setDeleteOpen(false)
     await onDelete(template.id)
+  }
+
+  const handleDuplicate = async () => {
+    await onDuplicate(template.id)
   }
 
   return (
@@ -97,7 +111,7 @@ export function TemplateCard({ template, deleting, onDelete }: TemplateCardProps
                   size="icon"
                   className="h-7 w-7 opacity-0 group-hover:opacity-100"
                   onClick={(e) => e.stopPropagation()}
-                  disabled={isDeleting}
+                  disabled={isBusy}
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
@@ -107,9 +121,14 @@ export function TemplateCard({ template, deleting, onDelete }: TemplateCardProps
                   <Pencil className="mr-2 h-3.5 w-3.5" />
                   Editar
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDuplicate} disabled={isBusy}>
+                  <Copy className="mr-2 h-3.5 w-3.5" />
+                  {isDuplicating ? 'Duplicando...' : 'Duplicar'}
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
+                  disabled={isBusy}
                   onClick={() => setDeleteOpen(true)}
                 >
                   <Trash2 className="mr-2 h-3.5 w-3.5" />

@@ -6,6 +6,7 @@ import { Search, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { useTemplatesContext } from '../context/TemplatesContext'
 import { TemplateCard } from '../components/TemplateCard'
 
@@ -48,8 +49,9 @@ export function TemplatesContainer() {
   const params = useParams()
   const supabaseId = params.supabaseId as string
   const [search, setSearch] = useState('')
+  const [isCreatingTemplate, setIsCreatingTemplate] = useState(false)
 
-  const { templates, loading, deleting, handleDelete } = useTemplatesContext()
+  const { templates, loading, deleting, duplicating, handleDelete, handleDuplicate } = useTemplatesContext()
 
   const filtered = search.trim()
     ? templates.filter(
@@ -59,12 +61,19 @@ export function TemplatesContainer() {
       )
     : templates
 
+  const handleCreateTemplate = () => {
+    if (isCreatingTemplate) return
+    setIsCreatingTemplate(true)
+    router.push(`/${supabaseId}/email/templates/new`)
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">Templates</h1>
-        <Button onClick={() => router.push(`/${supabaseId}/email/templates/new`)}>
-          + Criar Template
+        <Button onClick={handleCreateTemplate} disabled={isCreatingTemplate}>
+          {isCreatingTemplate ? <Spinner data-icon="inline-start" /> : null}
+          {isCreatingTemplate ? 'Abrindo...' : '+ Criar Template'}
         </Button>
       </div>
 
@@ -89,7 +98,9 @@ export function TemplatesContainer() {
               key={template.id}
               template={template}
               deleting={deleting}
+              duplicating={duplicating}
               onDelete={handleDelete}
+              onDuplicate={handleDuplicate}
             />
           ))}
         </div>

@@ -11,6 +11,7 @@ const service = createTemplatesService()
 interface UseTemplatesReturn extends TemplatesState {
   fetchTemplates: () => Promise<void>
   handleDelete: (id: string) => Promise<void>
+  handleDuplicate: (id: string) => Promise<void>
 }
 
 export function useTemplates(supabaseId: string): UseTemplatesReturn {
@@ -19,6 +20,7 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [duplicating, setDuplicating] = useState<string | null>(null)
 
   const isFetchingRef = useRef(false)
 
@@ -74,6 +76,44 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
     [activeTeamId, supabaseId]
   )
 
+  const handleDuplicate = useCallback(
+    async (id: string) => {
+      if (duplicating === id) return
+
+      const sourceTemplate = templates.find((template) => template.id === id)
+      if (!sourceTemplate) {
+        toast.error('Template não encontrado para duplicação')
+        return
+      }
+
+      setDuplicating(id)
+      try {
+        const duplicatedTemplate = await service.create(
+          supabaseId,
+          {
+            name: `Cópia de ${sourceTemplate.name}`,
+            subject: sourceTemplate.subject,
+            previewText: sourceTemplate.previewText ?? undefined,
+            mailyJson: sourceTemplate.mailyJson ?? undefined,
+            html: sourceTemplate.html ?? undefined,
+          },
+          activeTeamId
+        )
+
+        setTemplates((prev) => [duplicatedTemplate, ...prev])
+        toast.success('Template duplicado com sucesso')
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Erro ao duplicar template'
+        console.error('[useTemplates] Failed to duplicate template', err)
+        await fetchTemplates()
+        toast.error('Erro ao duplicar template', { description: message })
+      } finally {
+        setDuplicating(null)
+      }
+    },
+    [activeTeamId, duplicating, fetchTemplates, supabaseId, templates]
+  )
+
   useEffect(() => {
     fetchTemplates()
   }, [fetchTemplates])
@@ -83,7 +123,9 @@ export function useTemplates(supabaseId: string): UseTemplatesReturn {
     loading,
     error,
     deleting,
+    duplicating,
     fetchTemplates,
     handleDelete,
+    handleDuplicate,
   }
 }

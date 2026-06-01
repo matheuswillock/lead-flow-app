@@ -15,4 +15,5 @@ export interface TemplatesState {
   loading: boolean
   error: string | null
   deleting: string | null
+  duplicating: string | null
 }

@@ -1,11 +1,19 @@
 "use client"
 
 import { useState } from "react"
-import { Search, Trash2 } from "lucide-react"
+import { Eye, MoreHorizontal, Search, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +24,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -37,7 +51,8 @@ function ContactStatusBadge({ contact }: { contact: Contact }) {
 }
 
 function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfirm: () => Promise<void> }) {
-  const [open, setOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [viewOpen, setViewOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
   async function handleConfirm() {
@@ -46,22 +61,65 @@ function DeleteContactDialog({ contact, onConfirm }: { contact: Contact; onConfi
       await onConfirm()
     } finally {
       setDeleting(false)
-      setOpen(false)
+      setDeleteOpen(false)
     }
   }
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-        onClick={() => setOpen(true)}
-        title="Remover contato"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
-      <AlertDialog open={open} onOpenChange={setOpen}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            className="h-8 w-8 p-0"
+            title="Abrir menu"
+          >
+            <span className="sr-only">Abrir menu</span>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Ações</DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => setViewOpen(true)}>
+            <Eye className="mr-2 h-4 w-4" />
+            Visualizar
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => setDeleteOpen(true)}
+            className="text-red-600"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Deletar
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Dialog open={viewOpen} onOpenChange={setViewOpen}>
+        <DialogContent className="max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Detalhes do contato</DialogTitle>
+          </DialogHeader>
+          <div className="overflow-y-auto flex-1 space-y-3 text-sm">
+            <div>
+              <p className="text-muted-foreground">Email</p>
+              <p className="font-medium">{contact.email}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Nome</p>
+              <p className="font-medium">{contact.name ?? "—"}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Status</p>
+              <div className="pt-1">
+                <ContactStatusBadge contact={contact} />
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remover contato?</AlertDialogTitle>
@@ -119,7 +177,7 @@ export function ContactsTable() {
               <TableHead>Nome</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Adicionado em</TableHead>
-              <TableHead className="w-10" />
+              <TableHead className="w-10 text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -148,7 +206,7 @@ export function ContactsTable() {
                   <TableCell className="text-sm text-muted-foreground">
                     {formatIntimezone(new Date(contact.createdAt), "dd/MM/yyyy", tz)}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-right">
                     <DeleteContactDialog
                       contact={contact}
                       onConfirm={() => handleDeleteContact(contact.id)}
