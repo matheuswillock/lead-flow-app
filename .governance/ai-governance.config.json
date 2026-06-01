@@ -144,7 +144,8 @@
     ],
     "nonTypeScriptFileAllowlist": [
       "eslint.config.mjs",
-      "postcss.config.mjs"
+      "postcss.config.mjs",
+      ".github/scripts/claude-pr-description.py"
     ],
     "routeRepositoryImportAllowlist": [
       "app/api/v1/backoffice/clients/[id]/route.ts",

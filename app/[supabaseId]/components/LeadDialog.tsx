@@ -2221,7 +2221,7 @@ export default function LeadDialog({
     <>
       <Dialog open={open && !showFinalizeDialog} onOpenChange={setOpen}>
         <DialogContent
-          className="bg-transparent border-none shadow-none p-0 w-[95vw] max-w-[95vw] sm:w-[90vw] sm:max-w-[90vw] lg:w-[60vw] lg:max-w-[60vw] max-h-[90vh] flex items-center justify-center [&>button]:hidden"
+          className="bg-transparent border-none shadow-none p-0 w-[85vw] max-w-[85vw] sm:w-[80vw] sm:max-w-[80vw] lg:w-[65vw] lg:max-w-[65vw] max-h-[90vh] flex items-center justify-center [&>button]:hidden"
           onEscapeKeyDown={(e) => {
             if (isAttachmentUploading) { e.preventDefault(); return; }
             setOpen(false);
@@ -2232,7 +2232,7 @@ export default function LeadDialog({
           }}
         >
           <div className="w-full max-w-full h-[90vh] max-h-[90vh] flex flex-col gap-2 lg:flex-row lg:items-stretch">
-            <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm flex flex-col h-full min-h-0 lg:flex-[0_0_80%] lg:h-[95%] lg:max-h-[95%] lg:self-center dialog-scrollbar overflow-y-auto">
+            <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm flex flex-col h-full min-h-0 lg:flex-[1_1_0%] lg:h-[95%] lg:max-h-[95%] lg:self-center dialog-scrollbar overflow-y-auto">
               <DialogHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -2388,7 +2388,7 @@ export default function LeadDialog({
               </div>
             </div>
 
-            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm flex flex-col min-h-0 lg:flex-[0_0_24%] lg:h-[95%] lg:max-h-[95%] lg:self-center">
+            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm flex flex-col min-h-0 lg:w-[320px] lg:min-w-[320px] lg:max-w-[320px] lg:h-[95%] lg:max-h-[95%] lg:self-center">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-semibold">Feed de Atividades</h3>
                 <DialogClose asChild>
