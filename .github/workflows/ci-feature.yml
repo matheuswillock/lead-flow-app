@@ -301,6 +301,9 @@ jobs:
                 claudeDescription.trim()
               );
             };
+            const shouldApplyClaudeDescription = (body) =>
+              body.includes('<seus bullet points aqui>') ||
+              body.includes('<sua frase aqui>');
             const automationSection = (message) => [
               '<!-- ci-feature:automation:start -->',
               '## CI Automation',
@@ -346,6 +349,9 @@ jobs:
               const existingPr = prs.data[0];
               const fallbackTemplate = fs.readFileSync('.github/pull_request_template.md', 'utf8');
               let body = applyChecklistStatuses(existingPr.body || fallbackTemplate);
+              if (shouldApplyClaudeDescription(body)) {
+                body = applyClaudeDescription(body);
+              }
               body = upsertAutomationSection(body, '*Atualizado automaticamente pelo GitHub Actions.*');
 
               await github.rest.pulls.update({
