@@ -933,8 +933,7 @@ export class LeadUseCase implements ILeadUseCase {
 
       const requiresFinalizeContractBeforeTransition =
         existingLead.status === LeadStatus.offerSubmission &&
-        (status === LeadStatus.dps_agreement ||
-          status === LeadStatus.invoicePayment ||
+        (status === LeadStatus.invoicePayment ||
           status === LeadStatus.contract_finalized);
 
       if (requiresFinalizeContractBeforeTransition) {
