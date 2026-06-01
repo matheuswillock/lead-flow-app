@@ -68,6 +68,7 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
   const basePrice = billingSummary?.basePrice ?? 59.9;
   const billableTeams = billingSummary?.billableTeams ?? 0;
   const billableUsers = billingSummary?.billableUsers ?? (subscription.planDetails?.operatorCount ?? 0);
+  const hasUnlimitedUsers = billingSummary?.hasUnlimitedUsers === true;
   const extraTeamsPrice = billingSummary?.extraTeamsPrice ?? 0;
   const extraUsersPrice =
     billingSummary?.extraUsersPrice ?? Number(((subscription.planDetails?.operatorCount ?? 0) * 19.9).toFixed(2));
@@ -244,7 +245,15 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                   </div>
                 )}
 
-                {billableUsers > 0 && (
+                {hasUnlimitedUsers && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-muted-foreground">Usuários adicionais:</span>
+                    <span className="font-semibold">Ilimitados</span>
+                  </div>
+                )}
+
+                {!hasUnlimitedUsers && billableUsers > 0 && (
                   <div className="flex items-center gap-2 text-sm">
                     <Users className="h-4 w-4 text-muted-foreground" />
                     <span className="text-muted-foreground">

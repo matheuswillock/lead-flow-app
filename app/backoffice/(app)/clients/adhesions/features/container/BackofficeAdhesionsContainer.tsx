@@ -235,7 +235,7 @@ export function BackofficeAdhesionsContainer() {
             }))
           }
         >
-          <SelectTrigger className="h-8 w-45">
+          <SelectTrigger className="w-45">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -391,7 +391,7 @@ export function BackofficeAdhesionsContainer() {
             onValueChange={(value) => void setAdhesionsPageSize(Number.parseInt(value, 10))}
             disabled={isLoading}
           >
-            <SelectTrigger className="h-8 w-23">
+            <SelectTrigger className="w-23">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

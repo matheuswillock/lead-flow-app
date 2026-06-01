@@ -14,14 +14,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useContatosContext } from "../context/ContatosContext";
+import { useContactsContext } from "../context/ContactsContext";
 
 type ContactAddModalProps = {
   trigger: React.ReactNode
 }
 
 export function ContactAddModal({ trigger }: ContactAddModalProps) {
-  const { handleAddContact } = useContatosContext();
+  const { handleAddContact } = useContactsContext();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -59,7 +59,7 @@ export function ContactAddModal({ trigger }: ContactAddModalProps) {
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-[400px]">
+      <DialogContent className="sm:max-w-100">
         <DialogHeader>
           <DialogTitle>Adicionar contato</DialogTitle>
           <DialogDescription>

@@ -621,39 +621,45 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(220, 220, 220, 0.95);
 }
 
-/* Dialog scrollbar (hover to reveal) */
+/* Hover-reveal vertical scrollbar */
+.scroll-hover-y,
 .dialog-scrollbar {
   scrollbar-gutter: stable;
   scrollbar-color: rgba(190, 190, 190, 0.9) rgba(5, 5, 5, 0.75);
   scrollbar-width: none;
 }
 
+.scroll-hover-y:hover,
 .dialog-scrollbar:hover {
   scrollbar-width: thin;
 }
 
+.scroll-hover-y::-webkit-scrollbar,
 .dialog-scrollbar::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
 
+.scroll-hover-y:hover::-webkit-scrollbar,
 .dialog-scrollbar:hover::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
+.scroll-hover-y::-webkit-scrollbar-track,
 .dialog-scrollbar::-webkit-scrollbar-track {
   background: rgba(5, 5, 5, 0.75);
   border-radius: 999px;
 }
 
+.scroll-hover-y::-webkit-scrollbar-thumb,
 .dialog-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(190, 190, 190, 0.9);
   border-radius: 999px;
   border: 2px solid rgba(5, 5, 5, 0.75);
 }
 
+.scroll-hover-y::-webkit-scrollbar-thumb:hover,
 .dialog-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(220, 220, 220, 0.95);
 }
-

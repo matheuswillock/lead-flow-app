@@ -5,8 +5,18 @@ import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
 import { pmePlanSimulatorUseCase, PME_SIMULATOR_ERROR_MESSAGES } from "@/app/api/useCases/pmePlanSimulator/PmePlanSimulatorUseCase";
 
+const ageRangeCountSchema = z.object({
+  rangeKey: z.string(),
+  count: z.number().int().min(1),
+});
+
 const simulationBodySchema = z.object({
   ages: z.array(z.number().int().min(0).max(99)).min(1, PME_SIMULATOR_ERROR_MESSAGES.INVALID_AGES),
+  hospitalId: z.enum(["nenhum", "sirio", "einstein", "rededor"]),
+});
+
+const simulationFromRangeCountsBodySchema = z.object({
+  ageRangeCounts: z.array(ageRangeCountSchema).min(1, PME_SIMULATOR_ERROR_MESSAGES.INVALID_AGE_RANGE_COUNTS),
   hospitalId: z.enum(["nenhum", "sirio", "einstein", "rededor"]),
 });
 
@@ -67,6 +77,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+
+    const rangeCountsParsed = simulationFromRangeCountsBodySchema.safeParse(body);
+    if (rangeCountsParsed.success) {
+      const output = await pmePlanSimulatorUseCase.simulateFromRangeCounts(rangeCountsParsed.data);
+      return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
+    }
+
     const parsed = simulationBodySchema.safeParse(body);
     if (!parsed.success) {
       const errors = parsed.error.issues.map((issue) => issue.message);

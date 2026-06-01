@@ -415,6 +415,9 @@ unsubscribed unsubscribed
     String id "🗝️"
     String name 
     String normalizedName 
+    Boolean isActive 
+    Boolean isDefault 
+    String iconUrl "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -639,6 +642,7 @@ unsubscribed unsubscribed
     String meetingNotes "❓"
     String meetingLink "❓"
     MeetingHeald meetingHeald "❓"
+    String meetingType "❓"
     DateTime followUpAt "❓"
     String followUpNotes "❓"
     LeadStatus followUpSourceStatus "❓"
@@ -649,6 +653,9 @@ unsubscribed unsubscribed
     Decimal ticket "❓"
     DateTime contractDueDate "❓"
     String soldPlan "❓"
+    Boolean isReferral "❓"
+    String referrerName "❓"
+    String referrerPhone "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -702,6 +709,7 @@ unsubscribed unsubscribed
     String meetingTitle "❓"
     String notes "❓"
     String meetingLink "❓"
+    String meetingType "❓"
     String extraGuests 
     String googleEventId "❓"
     String googleCalendarId "❓"
@@ -1157,6 +1165,7 @@ unsubscribed unsubscribed
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "closer"
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "creator"
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "updater"
+    "corretor_studio_leads" |o--|o corretor_studio_leads : "referrerLead"
     "corretor_studio_lead_activities" |o--|| "ActivityType" : "enum:type"
     "corretor_studio_lead_activities" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_activities" }o--|o corretor_studio_profiles : "author"

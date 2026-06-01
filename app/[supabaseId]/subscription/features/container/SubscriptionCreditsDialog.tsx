@@ -24,8 +24,9 @@ export function SubscriptionCreditsDialog({
   subscription,
   onUpdateCredits,
 }: SubscriptionCreditsDialogProps) {
+  const hasUnlimitedUsers = subscription.billingSummary?.hasUnlimitedUsers === true;
   const [action, setAction] = useState<'add' | 'remove'>('add');
-  const [resource, setResource] = useState<'user' | 'team'>('user');
+  const [resource, setResource] = useState<'user' | 'team'>(hasUnlimitedUsers ? 'team' : 'user');
   const [billingType, setBillingType] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
   const [quantity, setQuantity] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,12 +37,15 @@ export function SubscriptionCreditsDialog({
   const quantityIsInvalid = quantity < 1 || (action === 'remove' && quantity > maxRemovable);
 
   const impactText = useMemo(() => {
+    if (hasUnlimitedUsers && resource === 'user') {
+      return 'Plano anual com usuários ilimitados: não é necessário gerenciar créditos de usuários.';
+    }
     const label = resource === 'team' ? 'times' : 'usuários';
     if (action === 'remove') {
       return `Reduz ${quantity} créditos de ${label} da capacidade futura.`;
     }
     return `Adiciona ${quantity} créditos de ${label} sem criar ${resource === 'team' ? 'time' : 'usuário'} agora.`;
-  }, [action, quantity, resource]);
+  }, [action, hasUnlimitedUsers, quantity, resource]);
 
   const handleSubmit = async () => {
     if (quantityIsInvalid) return;
@@ -93,7 +97,7 @@ export function SubscriptionCreditsDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
-                      <SelectItem value="user">Usuários</SelectItem>
+                      {!hasUnlimitedUsers && <SelectItem value="user">Usuários</SelectItem>}
                       <SelectItem value="team">Times</SelectItem>
                     </SelectGroup>
                   </SelectContent>
@@ -144,6 +148,9 @@ export function SubscriptionCreditsDialog({
                 )}
                 {quantityIsInvalid && (
                   <span className="text-semantic-danger">Quantidade inválida para a capacidade disponível.</span>
+                )}
+                {hasUnlimitedUsers && resource === 'team' && (
+                  <span className="text-muted-foreground">Usuários já são ilimitados neste plano anual.</span>
                 )}
               </div>
             </div>

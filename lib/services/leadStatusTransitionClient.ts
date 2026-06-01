@@ -8,6 +8,8 @@ export type LeadStatusTransitionBlockerType =
   | "loss_reason_trigger"
   | "disabled_status"
   | "validation_error"
+  | "email_required"
+  | "lead_info_required"
   | "none";
 
 export interface LeadStatusTransitionResultPayload {
@@ -17,6 +19,13 @@ export interface LeadStatusTransitionResultPayload {
     sourceStatus?: string;
     targetStatus?: string;
     missingFields?: Array<"ticket" | "contractDueDate" | "soldPlan">;
+    missingLeadFields?: Array<"age" | "currentHealthPlan" | "referenceHospital" | "ongoingTreatment">;
+    currentLeadInfo?: {
+      age: string | null;
+      currentHealthPlan: string | null;
+      referenceHospital: string | null;
+      ongoingTreatment: string | null;
+    };
     confirmationRuleId?: string | null;
     confirmationMessage?: string | null;
     canConfirmMeetingHeald?: boolean;

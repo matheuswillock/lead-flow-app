@@ -14,6 +14,7 @@ export function SubscriptionBillingBreakdownCard({ subscription }: SubscriptionB
   const summary = subscription.billingSummary;
   const extraTeamUnitPrice = summary?.contractedExtraTeams ? summary.extraTeamsPrice / summary.billableTeams : 29.9;
   const extraUserUnitPrice = summary?.contractedExtraUsers ? summary.extraUsersPrice / summary.billableUsers : 19.9;
+  const hasUnlimitedUsers = summary?.hasUnlimitedUsers === true;
 
   return (
     <Card>
@@ -37,7 +38,13 @@ export function SubscriptionBillingBreakdownCard({ subscription }: SubscriptionB
             <span className="font-medium">{formatCurrency(summary?.extraTeamsPrice)}</span>
           </div>
         )}
-        {(summary?.contractedExtraUsers ?? 0) > 0 && (
+        {hasUnlimitedUsers && (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Usuários adicionais</span>
+            <span className="font-medium">Ilimitados</span>
+          </div>
+        )}
+        {!hasUnlimitedUsers && (summary?.contractedExtraUsers ?? 0) > 0 && (
           <div className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">
               Usuários adicionais ({summary?.contractedExtraUsers} × {formatCurrency(extraUserUnitPrice)})

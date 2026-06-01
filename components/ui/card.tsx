@@ -15,6 +15,16 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+function ScrollCard({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <Card
+      data-slot="scroll-card"
+      className={cn("max-h-[90vh] overflow-hidden", className)}
+      {...props}
+    />
+  )
+}
+
 function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -71,6 +81,16 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+function ScrollCardContent({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <CardContent
+      data-slot="scroll-card-content"
+      className={cn("scroll-hover-y min-h-0 flex-1 overflow-y-auto pr-2", className)}
+      {...props}
+    />
+  )
+}
+
 function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -83,10 +103,12 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
 
 export {
   Card,
+  ScrollCard,
   CardHeader,
   CardFooter,
   CardTitle,
   CardAction,
   CardDescription,
   CardContent,
+  ScrollCardContent,
 }

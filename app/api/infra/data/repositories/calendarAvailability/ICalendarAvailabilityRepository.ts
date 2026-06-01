@@ -1,3 +1,5 @@
+import type { GoogleOAuthConnection } from "@prisma/client";
+
 export type CalendarAvailabilityCloserProfile = {
   id: string;
   email: string | null;
@@ -6,6 +8,7 @@ export type CalendarAvailabilityCloserProfile = {
   googleRefreshToken: string | null;
   googleAccessToken: string | null;
   googleTokenExpiresAt: Date | null;
+  googleConnection: GoogleOAuthConnection | null;
   supabaseId: string | null;
 };
 

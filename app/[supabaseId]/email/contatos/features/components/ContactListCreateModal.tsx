@@ -14,14 +14,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useContatosContext } from "../context/ContatosContext";
+import { useContactsContext } from "../context/ContactsContext";
 
 type ContactListCreateModalProps = {
   trigger: ReactNode
 }
 
 export function ContactListCreateModal({ trigger }: ContactListCreateModalProps) {
-  const { handleCreateList } = useContatosContext();
+  const { handleCreateList } = useContactsContext();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -59,7 +59,7 @@ export function ContactListCreateModal({ trigger }: ContactListCreateModalProps)
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent className="sm:max-w-110">
         <DialogHeader>
           <DialogTitle>Nova Lista de Contatos</DialogTitle>
           <DialogDescription>
@@ -87,7 +87,7 @@ export function ContactListCreateModal({ trigger }: ContactListCreateModalProps)
             <Label htmlFor="list-description">Descrição (opcional)</Label>
             <textarea
               id="list-description"
-              className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+              className="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
               placeholder="Descrição opcional da lista..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}

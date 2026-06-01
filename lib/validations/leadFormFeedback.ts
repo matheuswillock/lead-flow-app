@@ -3,11 +3,6 @@ import { z } from "zod";
 export const LEAD_REQUIRED_FIELD_ORDER = [
   "name",
   "phone",
-  "email",
-  "age",
-  "currentHealthPlan",
-  "referenceHospital",
-  "ongoingTreatment",
   "responsible",
 ] as const;
 
@@ -16,11 +11,6 @@ export type LeadRequiredField = (typeof LEAD_REQUIRED_FIELD_ORDER)[number];
 export const LEAD_REQUIRED_FIELD_LABELS: Record<LeadRequiredField, string> = {
   name: "Nome",
   phone: "Telefone",
-  email: "Email",
-  age: "Faixas etárias",
-  currentHealthPlan: "Plano de saúde",
-  referenceHospital: "Hospital de referência",
-  ongoingTreatment: "Tratamento em andamento",
   responsible: "Responsável",
 };
 

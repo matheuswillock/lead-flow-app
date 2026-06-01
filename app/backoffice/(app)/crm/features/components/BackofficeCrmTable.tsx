@@ -695,7 +695,7 @@ export function BackofficeCrmTable() {
               value={`${table.getState().pagination.pageSize}`}
               onValueChange={(value) => table.setPageSize(Number(value))}
             >
-              <SelectTrigger className="h-8 w-[76px]" aria-label="Linhas por página">
+              <SelectTrigger className="w-[76px]" aria-label="Linhas por página">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -802,4 +802,3 @@ export function BackofficeCrmTable() {
     </div>
   )
 }
-

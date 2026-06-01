@@ -1,23 +1,5 @@
 import { z } from "zod";
-
-const isValidCnpj = (value: string): boolean => {
-  const cnpj = value.replace(/\D/g, "");
-  if (cnpj.length !== 14) return false;
-  if (/^(\d)\1+$/.test(cnpj)) return false;
-
-  const calculateDigit = (base: string, weights: number[]) => {
-    const sum = base
-      .split("")
-      .reduce((acc, digit, index) => acc + Number.parseInt(digit, 10) * weights[index], 0);
-    const remainder = sum % 11;
-    return remainder < 2 ? 0 : 11 - remainder;
-  };
-
-  const firstDigit = calculateDigit(cnpj.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-  const secondDigit = calculateDigit(cnpj.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-
-  return firstDigit === Number.parseInt(cnpj[12], 10) && secondDigit === Number.parseInt(cnpj[13], 10);
-};
+import { isValidCNPJ } from "@/lib/masks";
 
 export const loginFormSchema = z.object({
   email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
@@ -180,28 +162,20 @@ export type updateAccountFormData = z.infer<typeof updateAccountFormSchema>;
 export const leadFormSchema = z.object({
   name: z.string().min(2, "Nome inválido"),
   phone: z.string().min(8, "Telefone inválido").max(20, "Telefone inválido"),
-  email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
+  email: z.string().email("Email inválido").optional().or(z.literal("")),
   cnpj: z
     .string()
     .optional()
     .refine((value) => {
       if (!value || value.trim() === "") return true;
-      return isValidCnpj(value);
+      return isValidCNPJ(value);
     }, "CNPJ inválido"),
   closerId: z.string().min(0).optional(),
-  age: z.string()
-    .min(1, "Informe as idades")
-    .regex(/^[0-9,\s]+$/, "Use apenas números, vírgulas e espaços")
-    .refine((val) => {
-      // Extrai todos os números da string
-      const ages = val.split(',').map(age => parseInt(age.trim())).filter(age => !isNaN(age));
-      // Verifica se todas as idades são <= 120
-      return ages.every(age => age <= 120);
-    }, "Todas as idades devem ser no máximo 120 anos"),
-  currentHealthPlan: z.string().trim().min(1, "Selecione um plano de saúde"),
+  age: z.string().optional().or(z.literal("")),
+  currentHealthPlan: z.string().trim().optional().or(z.literal("")),
   currentValue: z.string().optional(),
-  referenceHospital: z.string().min(2, "O hospital de referência é obrigatório"),
-  ongoingTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
+  referenceHospital: z.string().optional().or(z.literal("")),
+  ongoingTreatment: z.string().optional().or(z.literal("")),
   additionalNotes: z.string().min(0).optional(),
   meetingDate: z.string().min(0).optional(),
   meetingTitle: z.string().min(0).optional(),
@@ -221,11 +195,17 @@ export const leadFormSchema = z.object({
       return emails.every((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
     }, "Informe apenas emails válidos"),
   responsible: z.string().min(2, "O responsável é obrigatório"),
-  
+
   // Novos campos para leads finalizados (opcionais, apenas em edição)
-  ticket: z.string().min(0).optional(), // Valor vendido
-  contractDueDate: z.string().min(0).optional(), // Data de vigência
-  soldPlan: z.string().trim().min(1, "Selecione o plano vendido").optional(), // Plano vendido
+  ticket: z.string().min(0).optional(),
+  contractDueDate: z.string().min(0).optional(),
+  soldPlan: z.string().trim().min(1, "Selecione o plano vendido").optional(),
+
+  // Indicação / Referral
+  isReferral: z.boolean().optional(),
+  referrerLeadId: z.string().uuid().optional().or(z.literal("")),
+  referrerName: z.string().optional().or(z.literal("")),
+  referrerPhone: z.string().optional().or(z.literal("")),
 });
 
 export type leadFormData = z.infer<typeof leadFormSchema>;

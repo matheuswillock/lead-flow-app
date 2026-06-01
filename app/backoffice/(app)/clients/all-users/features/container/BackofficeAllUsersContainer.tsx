@@ -434,7 +434,7 @@ export function BackofficeAllUsersContainer() {
               }}
               disabled={isLoading}
             >
-              <SelectTrigger className="h-8 w-23">
+              <SelectTrigger className="w-23">
                 <SelectValue placeholder="10" />
               </SelectTrigger>
               <SelectContent>

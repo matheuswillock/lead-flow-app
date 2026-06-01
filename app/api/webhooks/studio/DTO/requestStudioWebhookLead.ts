@@ -1,24 +1,6 @@
 import { z } from "zod";
 import { MAX_DECIMAL_LABEL, MAX_DECIMAL_VALUE } from "@/app/api/v1/leads/DTO/leadValueLimits";
-
-const isValidCnpj = (value: string): boolean => {
-  const cnpj = value.replace(/\D/g, "");
-  if (cnpj.length !== 14) return false;
-  if (/^(\d)\1+$/.test(cnpj)) return false;
-
-  const calculateDigit = (base: string, weights: number[]) => {
-    const sum = base
-      .split("")
-      .reduce((acc, digit, index) => acc + Number.parseInt(digit, 10) * weights[index], 0);
-    const remainder = sum % 11;
-    return remainder < 2 ? 0 : 11 - remainder;
-  };
-
-  const firstDigit = calculateDigit(cnpj.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-  const secondDigit = calculateDigit(cnpj.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-
-  return firstDigit === Number.parseInt(cnpj[12], 10) && secondDigit === Number.parseInt(cnpj[13], 10);
-};
+import { isValidCNPJ, sanitizeDocumentDigits } from "@/lib/masks";
 
 export const StudioWebhookLeadRequestSchema = z
   .object({
@@ -34,8 +16,11 @@ export const StudioWebhookLeadRequestSchema = z
       .trim()
       .optional()
       .or(z.literal(""))
-      .transform((value) => value || undefined)
-      .refine((value) => !value || isValidCnpj(value), "cnpj must be valid"),
+      .transform((value) => {
+        if (!value) return undefined;
+        return sanitizeDocumentDigits(value) || undefined;
+      })
+      .refine((value) => !value || isValidCNPJ(value), "cnpj must be valid"),
     ages: z.string().trim().optional().or(z.literal("")).transform((value) => value || undefined),
     current_health_plan: z.string().trim().optional().or(z.literal("")).transform((value) => value || undefined),
     current_value: z.coerce

@@ -303,7 +303,7 @@ export function TaskFormDialog({
               onValueChange={handleAddAssignee}
               disabled={isSubmitting || unselectedMembers.length === 0}
             >
-              <SelectTrigger id="task-assignee" className="w-full min-h-10 h-auto py-1.5" aria-required>
+              <SelectTrigger id="task-assignee" className="w-full py-1.5" aria-required>
                 {selectedMembers.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1.5 pr-6">
                     {selectedMembers.map((m) => (
@@ -402,4 +402,3 @@ export function TaskFormDialog({
     </Dialog>
   )
 }
-

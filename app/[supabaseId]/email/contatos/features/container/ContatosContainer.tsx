@@ -3,7 +3,7 @@
 import { BookUser } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { useContatosContext } from "../context/ContatosContext"
+import { useContactsContext } from "../context/ContactsContext"
 import { ContactListPanel } from "../components/ContactListPanel"
 import { ContactListCreateModal } from "../components/ContactListCreateModal"
 import { ContactAddModal } from "../components/ContactAddModal"
@@ -11,7 +11,7 @@ import { ContactsTable } from "../components/ContactsTable"
 import { CsvUploadDropzone } from "../components/CsvUploadDropzone"
 
 export function ContatosContainer() {
-  const { selectedListId, lists } = useContatosContext()
+  const { selectedListId, lists } = useContactsContext()
 
   const selectedList = lists.find((l) => l.id === selectedListId) ?? null
 

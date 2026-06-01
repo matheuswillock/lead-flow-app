@@ -67,6 +67,12 @@ import {
   type SalesInfoPayload,
 } from "@/app/[supabaseId]/components/SalesInfoRequirementDialog";
 import {
+  LeadInfoRequirementDialog,
+  type LeadInfoInitialValues,
+  type LeadInfoPayload,
+  type MissingLeadField,
+} from "@/app/[supabaseId]/components/LeadInfoRequirementDialog";
+import {
   formatIntimezone,
   parseLocalToUtc,
 } from "@/lib/dates";
@@ -97,6 +103,13 @@ type PendingSalesInfoGate = {
   trigger?: LeadStatusTransitionTrigger;
   missingFields: MissingSalesField[];
   currentSalesInfo: SalesInfoInitialValues;
+};
+
+type PendingLeadInfoGate = {
+  status: string;
+  trigger?: LeadStatusTransitionTrigger;
+  missingFields: MissingLeadField[];
+  currentLeadInfo: LeadInfoInitialValues;
 };
 
 const needsStatusTriggerDialog = (status: string) =>
@@ -190,6 +203,9 @@ export default function LeadDialog({
   const [salesInfoDialogOpen, setSalesInfoDialogOpen] = useState(false);
   const [salesInfoSaving, setSalesInfoSaving] = useState(false);
   const [pendingSalesInfoGate, setPendingSalesInfoGate] = useState<PendingSalesInfoGate | null>(null);
+  const [leadInfoDialogOpen, setLeadInfoDialogOpen] = useState(false);
+  const [leadInfoSaving, setLeadInfoSaving] = useState(false);
+  const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
 
   useEffect(() => {
     setLocalLead(lead);
@@ -541,11 +557,13 @@ export default function LeadDialog({
     async (payload: ScheduleMeetingSuccessPayload) => {
       await applyLocalLeadPatch(payload.leadId, {
         status: payload.status,
+        email: payload.leadEmail,
         meetingDate: payload.meetingDate,
         meetingTitle: payload.meetingTitle,
         meetingNotes: payload.meetingNotes,
         meetingLink: payload.meetingLink,
         closerId: payload.closerId,
+        meetingType: payload.meetingType,
       });
     },
     [applyLocalLeadPatch]
@@ -1321,6 +1339,11 @@ export default function LeadDialog({
       ticket: undefined,
       contractDueDate: undefined,
       soldPlan: undefined,
+      meetingType: undefined,
+      isReferral: data.isReferral || false,
+      referrerLeadId: data.referrerLeadId || undefined,
+      referrerName: data.referrerName || undefined,
+      referrerPhone: data.referrerPhone || undefined,
     };
   };
 
@@ -1347,6 +1370,16 @@ export default function LeadDialog({
       ticket: data.ticket ? parseCurrentValue(data.ticket) : undefined,
       contractDueDate: parseMeetingDate(data.contractDueDate || ""),
       soldPlan: data.soldPlan || undefined,
+      meetingType:
+        currentLead?.meetingType === "online" ||
+        currentLead?.meetingType === "call" ||
+        currentLead?.meetingType === "whatsapp"
+          ? currentLead.meetingType
+          : undefined,
+      isReferral: data.isReferral || false,
+      referrerLeadId: data.referrerLeadId || undefined,
+      referrerName: data.referrerName || undefined,
+      referrerPhone: data.referrerPhone || undefined,
     };
   };
 
@@ -1616,6 +1649,45 @@ export default function LeadDialog({
           return false;
         }
 
+        if (transition.blockerType === "lead_info_required") {
+          const missingFields = Array.isArray(transition.missingLeadFields)
+            ? transition.missingLeadFields
+            : [];
+          const currentLeadInfo: LeadInfoInitialValues = {
+            age:
+              typeof transition.currentLeadInfo?.age === "string"
+                ? transition.currentLeadInfo.age
+                : currentLead.age ?? null,
+            currentHealthPlan:
+              typeof transition.currentLeadInfo?.currentHealthPlan === "string"
+                ? transition.currentLeadInfo.currentHealthPlan
+                : currentLead.currentHealthPlan ?? null,
+            referenceHospital:
+              typeof transition.currentLeadInfo?.referenceHospital === "string"
+                ? transition.currentLeadInfo.referenceHospital
+                : currentLead.referenceHospital ?? null,
+            ongoingTreatment:
+              typeof transition.currentLeadInfo?.ongoingTreatment === "string"
+                ? transition.currentLeadInfo.ongoingTreatment
+                : currentLead.currentTreatment ?? null,
+          };
+
+          setPendingLeadInfoGate({
+            status: newStatus,
+            trigger: trigger ? { ...trigger } : undefined,
+            missingFields,
+            currentLeadInfo,
+          });
+          setLeadInfoDialogOpen(true);
+          toast.info(transitionMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
+        if (transition.blockerType === "email_required") {
+          toast.error(transitionMessage, { id: loadingToast, duration: 5000 });
+          return false;
+        }
+
         if (transition.blockerType === "confirmation") {
           const confirmationRuleId =
             typeof transition.confirmationRuleId === "string" ? transition.confirmationRuleId : null;
@@ -1841,15 +1913,64 @@ export default function LeadDialog({
         prev && prev.id === payload.leadId
           ? ({
               ...prev,
+              email: payload.leadEmail,
               status: payload.status,
               meetingDate: payload.meetingDate,
               meetingTitle: payload.meetingTitle,
               meetingNotes: payload.meetingNotes,
               meetingLink: payload.meetingLink,
               closerId: payload.closerId,
+              meetingType: payload.meetingType,
             } as Lead)
           : prev,
       );
+    }
+  };
+
+  const handleLeadInfoRequirementSave = async (payload: LeadInfoPayload) => {
+    if (!currentLead || !supabaseId || !pendingLeadInfoGate) return;
+
+    setLeadInfoSaving(true);
+    try {
+      const response = await fetch(`/api/v1/leads/${currentLead.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-supabase-user-id": supabaseId,
+          "x-team-id": activeTeamId || "",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.isValid) {
+        throw new Error(result?.errorMessages?.join(", ") || "Erro ao salvar informações do lead");
+      }
+
+      const leadPatch =
+        result.result && typeof result.result === "object"
+          ? (result.result as Partial<Lead>)
+          : {};
+      await applyLocalLeadPatch(currentLead.id, leadPatch);
+      setLocalLead((prev) =>
+        prev && prev.id === currentLead.id ? ({ ...prev, ...leadPatch } as Lead) : prev,
+      );
+
+      const updated = await updateLeadStatus(
+        pendingLeadInfoGate.status,
+        pendingLeadInfoGate.trigger,
+        false
+      );
+      if (!updated) return;
+
+      setLeadInfoDialogOpen(false);
+      setPendingLeadInfoGate(null);
+      setStatusDialogOpen(false);
+      setShowStatusTriggerDialog(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao salvar informações do lead");
+    } finally {
+      setLeadInfoSaving(false);
     }
   };
 
@@ -1891,6 +2012,10 @@ export default function LeadDialog({
         ticket: currentLead.ticket ? formatCurrency(currentLead.ticket) : "",
         contractDueDate: currentLead.contractDueDate || "",
         soldPlan: currentLead.soldPlan || undefined,
+        isReferral: currentLead.isReferral || false,
+        referrerLeadId: currentLead.referrerLeadId || "",
+        referrerName: currentLead.referrerName || "",
+        referrerPhone: currentLead.referrerPhone || "",
       });
     } else if (!currentLead && open) {
       form.reset({
@@ -1915,6 +2040,10 @@ export default function LeadDialog({
         ticket: "",
         contractDueDate: "",
         soldPlan: undefined,
+        isReferral: false,
+        referrerLeadId: "",
+        referrerName: "",
+        referrerPhone: "",
       });
     }
   }, [currentLead, open, form]);
@@ -2092,7 +2221,7 @@ export default function LeadDialog({
     <>
       <Dialog open={open && !showFinalizeDialog} onOpenChange={setOpen}>
         <DialogContent
-          className="bg-transparent border-none shadow-none p-0 w-[95vw] max-w-[95vw] sm:w-[90vw] sm:max-w-[90vw] lg:w-[60vw] lg:max-w-[60vw] max-h-[90vh] flex items-center justify-center [&>button]:hidden"
+          className="bg-transparent border-none shadow-none p-0 w-[85vw] max-w-[85vw] sm:w-[80vw] sm:max-w-[80vw] lg:w-[65vw] lg:max-w-[65vw] max-h-[90vh] flex items-center justify-center [&>button]:hidden"
           onEscapeKeyDown={(e) => {
             if (isAttachmentUploading) { e.preventDefault(); return; }
             setOpen(false);
@@ -2103,7 +2232,7 @@ export default function LeadDialog({
           }}
         >
           <div className="w-full max-w-full h-[90vh] max-h-[90vh] flex flex-col gap-2 lg:flex-row lg:items-stretch">
-            <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm flex flex-col h-full min-h-0 lg:flex-[0_0_80%] lg:h-[95%] lg:max-h-[95%] lg:self-center dialog-scrollbar overflow-y-auto">
+            <div className="rounded-xl border border-border/60 bg-card p-6 shadow-sm flex flex-col h-full min-h-0 lg:flex-[1_1_0%] lg:h-[95%] lg:max-h-[95%] lg:self-center dialog-scrollbar overflow-y-auto">
               <DialogHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -2259,7 +2388,7 @@ export default function LeadDialog({
               </div>
             </div>
 
-            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm flex flex-col min-h-0 lg:flex-[0_0_24%] lg:h-[95%] lg:max-h-[95%] lg:self-center">
+            <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm flex flex-col min-h-0 lg:w-[320px] lg:min-w-[320px] lg:max-w-[320px] lg:h-[95%] lg:max-h-[95%] lg:self-center">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-semibold">Feed de Atividades</h3>
                 <DialogClose asChild>
@@ -2454,7 +2583,7 @@ export default function LeadDialog({
                 <div className="grid gap-2">
                   <label className="text-xs font-medium text-muted-foreground">Tipo de atividade</label>
                   <Select value={activityType} onValueChange={(value) => setActivityType(value as typeof activityType)}>
-                    <SelectTrigger className="h-9">
+                    <SelectTrigger className="">
                       <SelectValue placeholder="Selecione o tipo" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2878,6 +3007,23 @@ export default function LeadDialog({
           isSaving={salesInfoSaving}
           initialValues={pendingSalesInfoGate?.currentSalesInfo}
           missingFields={pendingSalesInfoGate?.missingFields}
+        />
+      )}
+
+      {currentLead && (
+        <LeadInfoRequirementDialog
+          open={leadInfoDialogOpen}
+          onOpenChange={(nextOpen) => {
+            setLeadInfoDialogOpen(nextOpen);
+            if (!nextOpen) {
+              setPendingLeadInfoGate(null);
+            }
+          }}
+          onSave={handleLeadInfoRequirementSave}
+          leadName={currentLead.name}
+          isSaving={leadInfoSaving}
+          initialValues={pendingLeadInfoGate?.currentLeadInfo}
+          missingFields={pendingLeadInfoGate?.missingFields}
         />
       )}
 
