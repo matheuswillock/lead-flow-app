@@ -9,11 +9,44 @@ export interface CreateContactListInput {
   description?: string
 }
 
+const DEFAULT_LIST_NAME = "Todos contatos"
+
 export class EmailContactListUseCase {
   private contactListService = new EmailContactListService()
 
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase()
+  }
+
+  private async ensureDefaultList(ctx: TeamContext): Promise<{ id: string; isSystemDefault: boolean }> {
+    const existingDefault = await prisma.emailContactList.findFirst({
+      where: {
+        teamId: ctx.teamId,
+        isArchived: false,
+        isSystemDefault: true,
+      },
+      select: { id: true, isSystemDefault: true },
+    })
+
+    if (existingDefault) {
+      return existingDefault
+    }
+
+    return prisma.emailContactList.create({
+      data: {
+        id: randomUUID(),
+        teamId: ctx.teamId,
+        createdBy: ctx.profileId,
+        name: DEFAULT_LIST_NAME,
+        isSystemDefault: true,
+      },
+      select: { id: true, isSystemDefault: true },
+    })
+  }
+
   async list(ctx: TeamContext): Promise<Output> {
     try {
+      const defaultList = await this.ensureDefaultList(ctx)
       const lists = await prisma.emailContactList.findMany({
         where: { teamId: ctx.teamId, isArchived: false },
         select: {
@@ -21,6 +54,7 @@ export class EmailContactListUseCase {
           name: true,
           description: true,
           totalContacts: true,
+          isSystemDefault: true,
           createdAt: true,
           updatedAt: true,
           creator: { select: { id: true, fullName: true, email: true } },
@@ -28,7 +62,27 @@ export class EmailContactListUseCase {
         orderBy: { updatedAt: "desc" },
       })
 
-      return new Output(true, [], [], lists)
+      const teamContacts = await prisma.emailContact.findMany({
+        where: { list: { teamId: ctx.teamId, isArchived: false } },
+        select: { email: true },
+      })
+
+      const totalDefaultContacts = new Set(teamContacts.map((contact) => contact.email)).size
+
+      const normalizedLists = lists
+        .map((list) => {
+          const isDefault = list.id === defaultList.id || list.isSystemDefault
+          return {
+            ...list,
+            name: isDefault ? DEFAULT_LIST_NAME : list.name,
+            description: isDefault ? list.description : list.description,
+            totalContacts: isDefault ? totalDefaultContacts : list.totalContacts,
+            isSystemDefault: isDefault,
+          }
+        })
+        .sort((a, b) => Number(b.isSystemDefault) - Number(a.isSystemDefault))
+
+      return new Output(true, [], [], normalizedLists)
     } catch (error) {
       console.error("[EmailContactListUseCase][list]", error)
       return new Output(false, [], ["Erro ao listar listas de contatos"], null)
@@ -79,6 +133,7 @@ export class EmailContactListUseCase {
           createdBy: ctx.profileId,
           name: data.name.trim(),
           description: data.description?.trim() ?? null,
+          isSystemDefault: false,
         },
       })
 
@@ -97,6 +152,10 @@ export class EmailContactListUseCase {
 
       if (!existing) {
         return new Output(false, [], ["Lista não encontrada"], null)
+      }
+
+      if (existing.isSystemDefault) {
+        return new Output(false, [], ["A lista padrão não pode ser alterada"], null)
       }
 
       const list = await prisma.emailContactList.update({
@@ -122,6 +181,10 @@ export class EmailContactListUseCase {
 
       if (!existing) {
         return new Output(false, [], ["Lista não encontrada"], null)
+      }
+
+      if (existing.isSystemDefault) {
+        return new Output(false, [], ["A lista padrão não pode ser excluída"], null)
       }
 
       const campaignCount = await prisma.emailCampaign.count({
@@ -151,21 +214,45 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Lista não encontrada"], null)
       }
 
+      const normalizedEmail = this.normalizeEmail(email)
       const existingContact = await prisma.emailContact.findUnique({
-        where: { listId_email: { listId, email } },
+        where: { listId_email: { listId, email: normalizedEmail } },
       })
 
       await prisma.emailContact.upsert({
-        where: { listId_email: { listId, email } },
+        where: { listId_email: { listId, email: normalizedEmail } },
         update: { name: name ?? null },
-        create: { id: randomUUID(), listId, email, name: name ?? null },
+        create: { id: randomUUID(), listId, email: normalizedEmail, name: name ?? null },
       })
+
+      const defaultList = await this.ensureDefaultList(ctx)
+      if (!existing.isSystemDefault) {
+        await prisma.emailContact.upsert({
+          where: { listId_email: { listId: defaultList.id, email: normalizedEmail } },
+          update: { name: name ?? null },
+          create: {
+            id: randomUUID(),
+            listId: defaultList.id,
+            email: normalizedEmail,
+            name: name ?? null,
+          },
+        })
+      }
 
       if (!existingContact) {
         const totalCount = await prisma.emailContact.count({ where: { listId } })
         await prisma.emailContactList.update({
           where: { id: listId },
           data: { totalContacts: totalCount },
+        })
+      }
+      if (!existing.isSystemDefault) {
+        const defaultTotalCount = await prisma.emailContact.count({
+          where: { listId: defaultList.id },
+        })
+        await prisma.emailContactList.update({
+          where: { id: defaultList.id },
+          data: { totalContacts: defaultTotalCount },
         })
       }
 
@@ -208,7 +295,7 @@ export class EmailContactListUseCase {
         await Promise.all(
           batch.map((contact) =>
             prisma.emailContact.upsert({
-              where: { listId_email: { listId: id, email: contact.email } },
+              where: { listId_email: { listId: id, email: this.normalizeEmail(contact.email) } },
               update: {
                 name: contact.name ?? null,
                 customFields: (contact.customFields as object) ?? null,
@@ -216,7 +303,7 @@ export class EmailContactListUseCase {
               create: {
                 id: randomUUID(),
                 listId: id,
-                email: contact.email,
+                email: this.normalizeEmail(contact.email),
                 name: contact.name ?? null,
                 customFields: (contact.customFields as object) ?? null,
               },
@@ -232,6 +319,35 @@ export class EmailContactListUseCase {
         where: { id },
         data: { totalContacts: totalCount },
       })
+      if (!existing.isSystemDefault) {
+        const defaultList = await this.ensureDefaultList(ctx)
+        for (const contact of contacts) {
+          const normalizedEmail = this.normalizeEmail(contact.email)
+          await prisma.emailContact.upsert({
+            where: {
+              listId_email: { listId: defaultList.id, email: normalizedEmail },
+            },
+            update: {
+              name: contact.name ?? null,
+              customFields: (contact.customFields as object) ?? null,
+            },
+            create: {
+              id: randomUUID(),
+              listId: defaultList.id,
+              email: normalizedEmail,
+              name: contact.name ?? null,
+              customFields: (contact.customFields as object) ?? null,
+            },
+          })
+        }
+        const defaultTotalCount = await prisma.emailContact.count({
+          where: { listId: defaultList.id },
+        })
+        await prisma.emailContactList.update({
+          where: { id: defaultList.id },
+          data: { totalContacts: defaultTotalCount },
+        })
+      }
 
       return new Output(
         true,
@@ -310,13 +426,42 @@ export class EmailContactListUseCase {
         return new Output(false, [], ["Contato não encontrado"], null)
       }
 
+      if (list.isSystemDefault) {
+        const affectedContacts = await prisma.emailContact.findMany({
+          where: {
+            email: contact.email,
+            list: { teamId: ctx.teamId, isArchived: false },
+          },
+          select: { listId: true },
+        })
+
+        const affectedListIds = Array.from(new Set(affectedContacts.map((item) => item.listId)))
+
+        await prisma.emailContact.deleteMany({
+          where: {
+            email: contact.email,
+            list: { teamId: ctx.teamId, isArchived: false },
+          },
+        })
+
+        for (const affectedListId of affectedListIds) {
+          const totalCount = await prisma.emailContact.count({ where: { listId: affectedListId } })
+          await prisma.emailContactList.update({
+            where: { id: affectedListId },
+            data: { totalContacts: totalCount },
+          })
+        }
+        return new Output(true, ["Contato removido com sucesso"], [], null)
+      }
+
       await prisma.$transaction([
         prisma.emailContact.delete({ where: { id: contactId } }),
-        prisma.emailContactList.update({
-          where: { id: listId },
-          data: { totalContacts: { decrement: 1 } },
-        }),
       ])
+      const totalCount = await prisma.emailContact.count({ where: { listId } })
+      await prisma.emailContactList.update({
+        where: { id: listId },
+        data: { totalContacts: totalCount },
+      })
 
       return new Output(true, ["Contato removido com sucesso"], [], null)
     } catch (error) {

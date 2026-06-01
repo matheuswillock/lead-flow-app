@@ -3,6 +3,7 @@ export type ContactList = {
   name: string
   description: string | null
   totalContacts: number
+  isSystemDefault: boolean
   isArchived: boolean
   createdAt: string
   updatedAt: string

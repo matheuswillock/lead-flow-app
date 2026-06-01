@@ -938,6 +938,7 @@ unsubscribed unsubscribed
     String description "❓"
     String csvStoragePath "❓"
     Int totalContacts 
+    Boolean isSystemDefault 
     Boolean isArchived 
     DateTime createdAt 
     DateTime updatedAt 

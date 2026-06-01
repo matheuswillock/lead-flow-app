@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { MoreHorizontal, Send, X, Trash2, Pencil } from "lucide-react"
+import { MoreHorizontal, Send, Trash2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -41,24 +41,23 @@ import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 function CampaignActionsMenu({
   campaign,
   canSendCampaign,
-  cancelingId,
   deletingId,
   openEdit,
   handleSend,
-  handleCancel,
   handleDeleteDraft,
 }: {
   campaign: Campaign
   canSendCampaign: boolean
-  cancelingId: string | null
   deletingId: string | null
   openEdit: (campaign: Campaign) => void
   handleSend: (id: string) => Promise<void>
-  handleCancel: (id: string) => Promise<void>
   handleDeleteDraft: (id: string) => Promise<void>
 }) {
   const [sendConfirmOpen, setSendConfirmOpen] = useState(false)
   const [sending, setSending] = useState(false)
+  const canSendByStatus = campaign.status === "draft" || campaign.status === "scheduled"
+  const canEdit = true
+  const canDelete = true
 
   async function handleSendConfirm() {
     setSending(true)
@@ -82,47 +81,28 @@ function CampaignActionsMenu({
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Ações</DropdownMenuLabel>
 
-          {(campaign.status === "draft" || campaign.status === "scheduled") && (
-            <>
-              <DropdownMenuItem
-                onClick={() => setSendConfirmOpen(true)}
-                disabled={!canSendCampaign}
-                title={!canSendCampaign ? "Ative um plano em Assinaturas para disparar campanhas" : undefined}
-              >
-                <Send className="mr-2 h-4 w-4" />
-                Disparar
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          )}
+          <DropdownMenuItem
+            onClick={() => setSendConfirmOpen(true)}
+            disabled={!canSendCampaign || !canSendByStatus}
+            title={!canSendCampaign ? "Ative um plano em Assinaturas para disparar campanhas" : undefined}
+          >
+            <Send className="mr-2 h-4 w-4" />
+            Disparar
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void openEdit(campaign)} disabled={!canEdit}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => handleDeleteDraft(campaign.id)}
+            disabled={deletingId === campaign.id || !canDelete}
+            className="text-red-600"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
+          </DropdownMenuItem>
 
-          {campaign.status === "scheduled" && (
-            <DropdownMenuItem
-              onClick={() => handleCancel(campaign.id)}
-              disabled={cancelingId === campaign.id}
-            >
-              <X className="mr-2 h-4 w-4" />
-              {cancelingId === campaign.id ? "Cancelando..." : "Cancelar"}
-            </DropdownMenuItem>
-          )}
-
-          {campaign.status === "draft" && (
-            <>
-              <DropdownMenuItem onClick={() => void openEdit(campaign)}>
-                <Pencil className="mr-2 h-4 w-4" />
-                Editar
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => handleDeleteDraft(campaign.id)}
-                disabled={deletingId === campaign.id}
-                className="text-red-600"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {deletingId === campaign.id ? "Excluindo..." : "Excluir"}
-              </DropdownMenuItem>
-            </>
-          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -157,10 +137,8 @@ export function CampaignList() {
     page,
     totalPages,
     loading,
-    cancelingId,
     deletingId,
     handleSend,
-    handleCancel,
     handleDeleteDraft,
     handlePageChange,
     openEdit,
@@ -237,11 +215,9 @@ export function CampaignList() {
                         <CampaignActionsMenu
                           campaign={campaign}
                           canSendCampaign={canSendCampaign}
-                          cancelingId={cancelingId}
                           deletingId={deletingId}
                           openEdit={openEdit}
                           handleSend={handleSend}
-                          handleCancel={handleCancel}
                           handleDeleteDraft={handleDeleteDraft}
                         />
                       )}

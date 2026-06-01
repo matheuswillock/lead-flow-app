@@ -72,18 +72,20 @@ function ContactListItem({ list }: { list: ContactList }) {
           <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
             {list.totalContacts.toLocaleString("pt-BR")}
           </Badge>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDeleteOpen(true);
-            }}
-            title="Excluir lista"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {!list.isSystemDefault ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDeleteOpen(true);
+              }}
+              title="Excluir lista"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
         </div>
       </div>
 

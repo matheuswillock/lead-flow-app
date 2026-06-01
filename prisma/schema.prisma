@@ -1411,6 +1411,7 @@ model EmailContactList {
   description    String?  @db.Text
   csvStoragePath String?  @db.Text
   totalContacts  Int      @default(0)
+  isSystemDefault Boolean @default(false)
   isArchived     Boolean  @default(false)
   createdAt      DateTime @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @db.Timestamptz(6)
