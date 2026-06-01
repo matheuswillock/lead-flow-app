@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { sanitizeDocumentDigits } from "@/lib/masks";
 
 export async function GET(request: NextRequest) {
   const teamAccess = await getTeamAccess(request);
@@ -9,7 +10,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(teamAccess.error, { status: teamAccess.status });
   }
 
-  const cnpj = new URL(request.url).searchParams.get("cnpj")?.trim();
+  const cnpj = sanitizeDocumentDigits(new URL(request.url).searchParams.get("cnpj") ?? "");
   if (!cnpj) {
     const output = new Output(false, [], ["CNPJ é obrigatório"], null);
     return NextResponse.json(output, { status: 400 });

@@ -548,10 +548,26 @@ export class LeadUseCase implements ILeadUseCase {
       const shouldTrackCloser = data.closerId !== undefined;
       const shouldTrackMeetingHeald = data.meetingHeald !== undefined;
       const shouldTrackStatus = data.status !== undefined;
-      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald || shouldTrackStatus;
+      const shouldCheckCnpj = data.cnpj !== undefined && !!data.cnpj;
+      const shouldTrackChanges = shouldTrackAssignment || shouldTrackCloser || shouldTrackMeetingHeald || shouldTrackStatus || shouldCheckCnpj;
       const existingLead = shouldTrackChanges ? await this.leadRepository.findById(id) : null;
       if (shouldTrackChanges && !existingLead) {
         return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      if (shouldCheckCnpj && existingLead) {
+        const cnpjConflict = await prisma.lead.findFirst({
+          where: { teamId: existingLead.teamId!, cnpj: data.cnpj, NOT: { id } },
+          select: { id: true, leadCode: true, name: true },
+        });
+        if (cnpjConflict) {
+          return new Output(
+            false,
+            [],
+            [`Já existe um lead com este CNPJ neste time (${cnpjConflict.leadCode ?? cnpjConflict.name})`],
+            null
+          );
+        }
       }
 
       const updateData: any = {};

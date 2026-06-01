@@ -574,15 +574,16 @@ export function ScheduleMeetingDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-125">
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <DialogHeader>
             <DialogTitle>{mode === "reschedule" ? "Reagendar Reunião" : "Agendar Reunião"}</DialogTitle>
-          <DialogDescription>
-            {mode === "reschedule" ? "Reagendar reunião com " : "Agendar reunião com "}<strong>{lead.name}</strong>
-          </DialogDescription>
-        </DialogHeader>
+            <DialogDescription>
+              {mode === "reschedule" ? "Reagendar reunião com " : "Agendar reunião com "}<strong>{lead.name}</strong>
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="grid gap-4 py-4">
+          <div className="scroll-hover-y min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="grid gap-4 py-4">
             {/* Closer */}
             <div className="grid gap-2">
               <Label>Closer</Label>
@@ -808,9 +809,10 @@ export function ScheduleMeetingDialog({
               </p>
             </div>
 
+            </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 pt-2">
             <Button
               type="button"
               variant="outline"
