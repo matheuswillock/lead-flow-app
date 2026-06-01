@@ -1,23 +1,5 @@
 import { z } from "zod";
-
-const isValidCnpj = (value: string): boolean => {
-  const cnpj = value.replace(/\D/g, "");
-  if (cnpj.length !== 14) return false;
-  if (/^(\d)\1+$/.test(cnpj)) return false;
-
-  const calculateDigit = (base: string, weights: number[]) => {
-    const sum = base
-      .split("")
-      .reduce((acc, digit, index) => acc + Number.parseInt(digit, 10) * weights[index], 0);
-    const remainder = sum % 11;
-    return remainder < 2 ? 0 : 11 - remainder;
-  };
-
-  const firstDigit = calculateDigit(cnpj.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-  const secondDigit = calculateDigit(cnpj.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-
-  return firstDigit === Number.parseInt(cnpj[12], 10) && secondDigit === Number.parseInt(cnpj[13], 10);
-};
+import { isValidCNPJ } from "@/lib/masks";
 
 export const loginFormSchema = z.object({
   email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
@@ -186,7 +168,7 @@ export const leadFormSchema = z.object({
     .optional()
     .refine((value) => {
       if (!value || value.trim() === "") return true;
-      return isValidCnpj(value);
+      return isValidCNPJ(value);
     }, "CNPJ inválido"),
   closerId: z.string().min(0).optional(),
   age: z.string().optional().or(z.literal("")),
