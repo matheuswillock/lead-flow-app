@@ -98,7 +98,9 @@ export class EmailCampaignUseCase {
             totalOpened: true,
             totalClicked: true,
             totalBounced: true,
+            dispatchCount: true,
             createdAt: true,
+            creator: { select: { fullName: true, email: true } },
             template: { select: { id: true, name: true } },
             contactList: { select: { id: true, name: true } },
           },
@@ -327,6 +329,7 @@ export class EmailCampaignUseCase {
           status: "sent",
           sentAt: new Date(),
           totalSent: dispatchResult.sent,
+          dispatchCount: { increment: 1 },
         },
       })
 

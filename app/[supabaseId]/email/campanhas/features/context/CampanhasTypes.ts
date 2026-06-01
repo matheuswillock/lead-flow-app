@@ -10,7 +10,9 @@ export type Campaign = {
   totalOpened: number
   totalClicked: number
   totalBounced: number
+  dispatchCount: number
   createdAt: string
+  creator: { fullName: string | null; email: string | null } | null
   template: { id: string; name: string } | null
   contactList: { id: string; name: string } | null
 }

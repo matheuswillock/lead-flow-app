@@ -176,10 +176,13 @@ export function CampaignList() {
           <TableHeader>
             <TableRow>
               <TableHead>Nome</TableHead>
+              <TableHead>Criado por</TableHead>
               <TableHead>Template / Lista</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Destinatários</TableHead>
-              <TableHead>Data</TableHead>
+              <TableHead>Qtd. disparos</TableHead>
+              <TableHead>Data de criação</TableHead>
+              <TableHead>Último disparo</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -187,14 +190,14 @@ export function CampaignList() {
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 6 }).map((__, j) => (
+                  {Array.from({ length: 9 }).map((__, j) => (
                     <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                   ))}
                 </TableRow>
               ))
             ) : campaigns.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={9} className="py-12 text-center text-sm text-muted-foreground">
                   Nenhuma campanha encontrada
                 </TableCell>
               </TableRow>
@@ -202,6 +205,9 @@ export function CampaignList() {
               campaigns.map((campaign) => (
                 <TableRow key={campaign.id}>
                   <TableCell className="align-middle font-medium">{campaign.name}</TableCell>
+                  <TableCell className="align-middle text-sm text-muted-foreground">
+                    {campaign.creator?.fullName?.trim() || campaign.creator?.email || "—"}
+                  </TableCell>
                   <TableCell className="align-middle text-sm text-muted-foreground">
                     <div>{campaign.template?.name ?? '—'}</div>
                     <div className="text-xs">{campaign.contactList?.name ?? '—'}</div>
@@ -213,11 +219,15 @@ export function CampaignList() {
                     {campaign.totalRecipients.toLocaleString("pt-BR")}
                   </TableCell>
                   <TableCell className="align-middle text-sm text-muted-foreground">
+                    {campaign.dispatchCount.toLocaleString("pt-BR")}
+                  </TableCell>
+                  <TableCell className="align-middle text-sm text-muted-foreground">
+                    {formatIntimezone(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
+                  </TableCell>
+                  <TableCell className="align-middle text-sm text-muted-foreground">
                     {campaign.sentAt
-                      ? formatIntimezone(new Date(campaign.sentAt), "dd/MM/yyyy", tz)
-                      : campaign.scheduledAt
-                      ? formatIntimezone(new Date(campaign.scheduledAt), "dd/MM/yyyy", tz)
-                      : formatIntimezone(new Date(campaign.createdAt), "dd/MM/yyyy", tz)}
+                      ? formatIntimezone(new Date(campaign.sentAt), "dd/MM/yyyy HH:mm", tz)
+                      : "—"}
                   </TableCell>
                   <TableCell className="align-middle">
                     <div className="flex items-center justify-end gap-1">

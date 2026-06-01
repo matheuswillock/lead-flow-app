@@ -969,6 +969,7 @@ unsubscribed unsubscribed
     Int totalOpened 
     Int totalClicked 
     Int totalBounced 
+    Int dispatchCount 
     Int totalComplained 
     String errorMessage "❓"
     DateTime createdAt 
