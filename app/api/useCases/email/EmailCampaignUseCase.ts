@@ -4,6 +4,7 @@ import { prisma } from "@/app/api/infra/data/prisma"
 import { EmailCampaignDispatchService } from "@/app/api/services/EmailCampaignDispatch/EmailCampaignDispatchService"
 import { EmailCreditService } from "@/app/api/services/EmailCredit/EmailCreditService"
 import type { TeamAccess as TeamContext } from "@/app/api/v1/utils/teamAccess"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 const FALLBACK_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Corretor Studio"
 const FALLBACK_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "no-reply@corretorstudio.com"
@@ -18,6 +19,62 @@ export interface CreateCampaignInput {
 export class EmailCampaignUseCase {
   private dispatchService = new EmailCampaignDispatchService()
   private creditService = new EmailCreditService()
+
+  private async resolveEffectiveCampaignFeature() {
+    type CampaignFeatureNode = {
+      id: string
+      parentId: string | null
+      inheritParentSettings: boolean
+      betaEnabled: boolean
+    }
+
+    const visited = new Set<string>()
+    let current: CampaignFeatureNode | null = await prisma.backofficeFeature.findFirst({
+      where: { slug: FEATURE_SLUGS.EMAIL_CAMPAIGNS, isActive: true },
+      select: { id: true, parentId: true, inheritParentSettings: true, betaEnabled: true },
+    })
+
+    if (!current) return null
+
+    while (current.inheritParentSettings && current.parentId && !visited.has(current.id)) {
+      visited.add(current.id)
+      const parent: (CampaignFeatureNode & { isActive: boolean }) | null = await prisma.backofficeFeature.findUnique({
+        where: { id: current.parentId },
+        select: { id: true, parentId: true, inheritParentSettings: true, betaEnabled: true, isActive: true },
+      })
+      if (!parent || !parent.isActive) break
+      current = parent
+    }
+
+    return current
+  }
+
+  private async hasCampaignsBetaAccess(profileId: string): Promise<boolean> {
+    const feature = await prisma.backofficeFeature.findFirst({
+      where: { slug: FEATURE_SLUGS.EMAIL_CAMPAIGNS, isActive: true },
+      select: { id: true, betaEnabled: true },
+    })
+
+    if (!feature) return false
+
+    const effectiveFeature = await this.resolveEffectiveCampaignFeature()
+    const betaFeatureId = effectiveFeature?.betaEnabled ? effectiveFeature.id : feature.betaEnabled ? feature.id : null
+
+    if (!betaFeatureId) return false
+
+    const featureIds = Array.from(new Set([feature.id, betaFeatureId]))
+    const betaGrant = await prisma.backofficeFeatureGrant.findFirst({
+      where: {
+        profileId,
+        grantType: "BETA",
+        isActive: true,
+        featureId: { in: featureIds },
+      },
+      select: { id: true },
+    })
+
+    return !!betaGrant
+  }
 
   async list(ctx: TeamContext, options: { status?: string; page: number; pageSize: number }): Promise<Output> {
     try {
@@ -191,7 +248,8 @@ export class EmailCampaignUseCase {
 
       const masterId = campaign.team.master.id
       const hasCredits = await this.creditService.hasEnoughCredits(masterId)
-      if (!hasCredits) {
+      const hasCampaignsBetaAccess = await this.hasCampaignsBetaAccess(ctx.profileId)
+      if (!hasCredits && !hasCampaignsBetaAccess) {
         return new Output(false, [], ["Sem assinatura de créditos de email ativa. Ative um plano em Assinaturas"], null)
       }
 
@@ -258,8 +316,9 @@ export class EmailCampaignUseCase {
           skipDuplicates: true,
         })
 
-        // Deduzir créditos
-        await this.creditService.deductCredits(masterId, dispatchResult.sent)
+        if (hasCredits) {
+          await this.creditService.deductCredits(masterId, dispatchResult.sent)
+        }
       }
 
       await prisma.emailCampaign.update({

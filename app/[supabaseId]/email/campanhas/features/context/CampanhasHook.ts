@@ -6,6 +6,8 @@ import { CampanhasService } from "../services/CampanhasService"
 import type { Campaign, CreditStatus, Template, ContactList } from "./CampanhasTypes"
 import { parseLocalToUtc, formatLocalInputValue } from "@/lib/dates"
 import { useTimezone } from "@/app/context/TimezoneContext"
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext"
+import { FEATURE_SLUGS } from "@/lib/features/feature-slugs"
 
 const PAGE_SIZE = 20
 const service = new CampanhasService()
@@ -64,6 +66,8 @@ export type CampanhasHookReturn = {
 
 export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   const { tz } = useTimezone()
+  const { isBeta } = useFeatureAccess()
+  const isCampaignsBetaAccess = isBeta(FEATURE_SLUGS.EMAIL_CAMPAIGNS)
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -146,7 +150,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
   }, [fetchCampaigns, statusFilter])
 
   const handleSend = useCallback(async (id: string) => {
-    if (!credits?.hasSubscription) {
+    if (!credits?.hasSubscription && !isCampaignsBetaAccess) {
       toast.error("Ative um plano em Assinaturas para disparar campanhas")
       return
     }
@@ -163,7 +167,7 @@ export function useCampanhas(supabaseId: string): CampanhasHookReturn {
     } finally {
       setSendingId(null)
     }
-  }, [credits?.hasSubscription, fetchCampaigns, fetchCredits, page, statusFilter])
+  }, [credits?.hasSubscription, fetchCampaigns, fetchCredits, isCampaignsBetaAccess, page, statusFilter])
 
   const handleCancel = useCallback(async (id: string) => {
     setCancelingId(id)
