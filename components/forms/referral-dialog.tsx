@@ -1,15 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useParams } from "next/navigation";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ReferralLeadOption = {
@@ -42,7 +41,9 @@ export function ReferralDialog({ open, onOpenChange, teamId, initialValue, onCon
   const [manualName, setManualName] = useState("");
   const [manualPhone, setManualPhone] = useState("");
   const [loading, setLoading] = useState(false);
-  const [comboboxOpen, setComboboxOpen] = useState(false);
+  const [selectedSnapshot, setSelectedSnapshot] = useState<ReferralLeadOption | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -50,40 +51,53 @@ export function ReferralDialog({ open, onOpenChange, teamId, initialValue, onCon
     setSelectedId(initialValue?.referrerLeadId || "");
     setManualName(initialValue?.referrerName || "");
     setManualPhone(initialValue?.referrerPhone || "");
+    setSelectedSnapshot(
+      initialValue?.referrerLeadId
+        ? {
+            id: initialValue.referrerLeadId,
+            name: initialValue.referrerName,
+            phone: initialValue.referrerPhone || null,
+          }
+        : null
+    );
+    setSearchOpen(false);
     setQuery("");
     setResults([]);
-    setComboboxOpen(false);
   }, [open, initialValue]);
 
   useEffect(() => {
-    if (!open || mode !== "existing" || !query.trim() || !supabaseId) return;
+    if (!open || mode !== "existing" || !supabaseId) return;
     let mounted = true;
-    setLoading(true);
-    fetch(`/api/v1/leads/search?q=${encodeURIComponent(query.trim())}`, {
-      headers: {
-        "x-supabase-user-id": supabaseId,
-        ...(teamId ? { "x-team-id": teamId } : {}),
-      },
-    })
-      .then((res) => res.json())
-      .then((result) => {
-        if (!mounted) return;
-        const list = Array.isArray(result?.result) ? (result.result as ReferralLeadOption[]) : [];
-        setResults(list);
+    const timeoutId = setTimeout(() => {
+      setLoading(true);
+      fetch(`/api/v1/leads/search?q=${encodeURIComponent(query.trim())}`, {
+        headers: {
+          "x-supabase-user-id": supabaseId,
+          ...(teamId ? { "x-team-id": teamId } : {}),
+        },
       })
-      .catch(() => {
-        if (!mounted) return;
-        setResults([]);
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
+        .then((res) => res.json())
+        .then((result) => {
+          if (!mounted) return;
+          const list = Array.isArray(result?.result) ? (result.result as ReferralLeadOption[]) : [];
+          setResults(list);
+        })
+        .catch(() => {
+          if (!mounted) return;
+          setResults([]);
+        })
+        .finally(() => {
+          if (mounted) setLoading(false);
+        });
+    }, 200);
+
     return () => {
       mounted = false;
+      clearTimeout(timeoutId);
     };
   }, [open, mode, query, supabaseId, teamId]);
 
-  const selectedLead = results.find((item) => item.id === selectedId);
+  const selectedLead = results.find((item) => item.id === selectedId) ?? selectedSnapshot;
 
   const handleConfirm = () => {
     if (mode === "existing" && selectedLead) {
@@ -127,51 +141,51 @@ export function ReferralDialog({ open, onOpenChange, teamId, initialValue, onCon
           {mode === "existing" ? (
             <div className="grid gap-2">
               <Label>Buscar por nome ou telefone</Label>
-              <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={comboboxOpen}
-                    className="w-full justify-between"
-                  >
-                    {selectedLead ? `${selectedLead.name} • ${selectedLead.phone || "Sem telefone"}` : "Selecione um lead"}
-                    <ChevronsUpDown className="opacity-50" data-icon="inline-end" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-                  <Command shouldFilter={false}>
-                    <CommandInput
-                      placeholder="Buscar por nome ou telefone..."
-                      value={query}
-                      onValueChange={setQuery}
-                    />
-                    <CommandList>
-                      {loading ? (
-                        <div className="p-3 text-sm text-muted-foreground">Buscando...</div>
-                      ) : (
-                        <CommandEmpty>Nenhum lead encontrado.</CommandEmpty>
-                      )}
-                      <CommandGroup>
-                        {results.map((lead) => (
-                          <CommandItem
-                            key={lead.id}
-                            value={lead.id}
-                            onSelect={() => {
-                              setSelectedId(lead.id);
-                              setComboboxOpen(false);
-                            }}
-                          >
-                            <Check className={cn("mr-2", selectedId === lead.id ? "opacity-100" : "opacity-0")} />
-                            <span>{lead.name} • {lead.phone || "Sem telefone"}</span>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
+              {selectedLead && (
+                <div className="text-xs text-muted-foreground">
+                  Selecionado: <span className="text-foreground">{selectedLead.name} • {selectedLead.phone || "Sem telefone"}</span>
+                </div>
+              )}
+              <div
+                ref={searchContainerRef}
+                onFocusCapture={() => setSearchOpen(true)}
+                onBlurCapture={(event) => {
+                  const nextFocused = event.relatedTarget as Node | null;
+                  if (!nextFocused || !searchContainerRef.current?.contains(nextFocused)) {
+                    setSearchOpen(false);
+                  }
+                }}
+              >
+                <Command shouldFilter={false} className="rounded-md border border-input bg-transparent">
+                <CommandInput
+                  placeholder="Buscar por nome ou telefone..."
+                  value={query}
+                  onValueChange={setQuery}
+                />
+                  {searchOpen && (
+                    <CommandList className="max-h-56 scroll-hover-y">
+                  {loading && <div className="p-3 text-sm text-muted-foreground">Buscando...</div>}
+                  {!loading && <CommandEmpty>Nenhum lead encontrado.</CommandEmpty>}
+                  <CommandGroup>
+                    {results.map((lead) => (
+                      <CommandItem
+                        key={lead.id}
+                        value={`${lead.id}-${lead.name}-${lead.phone ?? ""}`}
+                        onSelect={() => {
+                          setSelectedId(lead.id);
+                          setSelectedSnapshot(lead);
+                          setSearchOpen(false);
+                        }}
+                      >
+                        <Check className={cn("mr-2", selectedId === lead.id ? "opacity-100" : "opacity-0")} />
+                        <span>{lead.name} • {lead.phone || "Sem telefone"}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
                     </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+                  )}
+                </Command>
+              </div>
             </div>
           ) : (
             <div className="grid gap-3">
