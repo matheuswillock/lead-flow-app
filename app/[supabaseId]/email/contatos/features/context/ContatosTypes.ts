@@ -6,6 +6,11 @@ export type ContactList = {
   isArchived: boolean
   createdAt: string
   updatedAt: string
+  creator: {
+    id: string
+    fullName: string | null
+    email: string | null
+  } | null
 }
 
 export type Contact = {

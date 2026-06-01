@@ -66,6 +66,7 @@ export function TemplateCard({
   const isDeleting = deleting === template.id
   const isDuplicating = duplicating === template.id
   const isBusy = isDeleting || isDuplicating
+  const creatorLabel = template.creator?.fullName?.trim() || template.creator?.email || '—'
 
   const handleEdit = () => {
     router.push(`/${supabaseId}/email/templates/${template.id}`)
@@ -97,6 +98,7 @@ export function TemplateCard({
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{template.name}</p>
             <p className="truncate text-xs text-muted-foreground">{template.subject}</p>
+            <p className="truncate text-xs text-muted-foreground">Criado por: {creatorLabel}</p>
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">

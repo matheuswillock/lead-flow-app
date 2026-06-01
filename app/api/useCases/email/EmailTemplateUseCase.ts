@@ -47,7 +47,7 @@ export class EmailTemplateUseCase {
           html: true,
           createdAt: true,
           updatedAt: true,
-          creator: { select: { id: true, fullName: true } },
+          creator: { select: { id: true, fullName: true, email: true } },
         },
         orderBy: { updatedAt: "desc" },
       })

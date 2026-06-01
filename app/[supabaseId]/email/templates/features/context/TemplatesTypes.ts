@@ -7,7 +7,11 @@ export interface Template {
   html: string | null
   createdAt: string
   updatedAt: string
-  creator?: { id: string; fullName: string }
+  creator: {
+    id: string
+    fullName: string | null
+    email: string | null
+  } | null
 }
 
 export interface TemplatesState {

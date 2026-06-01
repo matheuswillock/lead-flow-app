@@ -26,6 +26,7 @@ function ContactListItem({ list }: { list: ContactList }) {
   const [deletingList, setDeletingList] = useState(false);
 
   const isSelected = selectedListId === list.id;
+  const creatorLabel = list.creator?.fullName?.trim() || list.creator?.email || "—";
 
   async function confirmDelete() {
     setDeletingList(true);
@@ -62,6 +63,9 @@ function ContactListItem({ list }: { list: ContactList }) {
               {list.description}
             </p>
           )}
+          <p className="truncate text-xs text-muted-foreground leading-snug mt-0.5">
+            Criado por: {creatorLabel}
+          </p>
         </div>
 
         <div className="ml-2 flex shrink-0 items-center gap-1.5">
