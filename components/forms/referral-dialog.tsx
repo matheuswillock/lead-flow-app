@@ -67,10 +67,17 @@ export function ReferralDialog({ open, onOpenChange, teamId, initialValue, onCon
 
   useEffect(() => {
     if (!open || mode !== "existing" || !supabaseId) return;
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+
     let mounted = true;
     const timeoutId = setTimeout(() => {
       setLoading(true);
-      fetch(`/api/v1/leads/search?q=${encodeURIComponent(query.trim())}`, {
+      fetch(`/api/v1/leads/search?q=${encodeURIComponent(normalizedQuery)}`, {
         headers: {
           "x-supabase-user-id": supabaseId,
           ...(teamId ? { "x-team-id": teamId } : {}),
