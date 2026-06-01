@@ -219,42 +219,6 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY || 'placeholder-resend-key' }}
         run: bun run build
 
-  deploy-preview:
-    name: Deploy Vercel (Preview)
-    if: >-
-      ${{
-        startsWith(github.ref, 'refs/heads/feature/') ||
-        startsWith(github.ref, 'refs/heads/features/') ||
-        startsWith(github.ref, 'refs/heads/feat/')
-      }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: build
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-
-      - name: Deploy to Vercel (Preview)
-        id: vercel-preview
-        run: |
-          DEPLOY_URL=$(vercel deploy \
-            --token=${{ secrets.VERCEL_TOKEN }} \
-            --yes \
-            2>&1 | tail -1)
-          echo "preview-url=$DEPLOY_URL" >> $GITHUB_OUTPUT
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      - name: Preview Summary
-        run: |
-          echo "### Preview Deploy (feature)" >> $GITHUB_STEP_SUMMARY
-          echo "- URL: ${{ steps['vercel-preview'].outputs['preview-url'] }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-
   auto-pr-to-develop:
     name: Open PR to develop
     if: >-
@@ -267,18 +231,29 @@ jobs:
         )
       }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     needs:
       - quality
       - quality-gate
       - build
-      - deploy-preview
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate PR Description with GPT
+        id: generate-claude-description
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: python3 .github/scripts/claude-pr-description.py
 
       - name: Create PR if not exists (feature -> develop)
         uses: actions/github-script@v7
+        env:
+          CLAUDE_DESCRIPTION: ${{ steps['generate-claude-description'].outputs['claude-description'] }}
         with:
           github-token: ${{ secrets.PR_AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -287,13 +262,13 @@ jobs:
             const repo = context.repo.repo;
             const head = context.ref.replace('refs/heads/', '');
             const base = 'develop';
+            const claudeDescription = process.env.CLAUDE_DESCRIPTION || '';
             const checks = {
               governanceSync: '${{ needs.quality.outputs['governance-sync'] }}',
               governanceCheck: '${{ needs.quality.outputs['governance-check'] }}',
               lint: '${{ needs.quality.outputs.lint }}',
               typecheck: '${{ needs.quality.outputs.typecheck }}',
               build: '${{ needs.build.result }}',
-              deployPreview: '${{ needs['deploy-preview'].result }}',
             };
             const isSuccess = (status) => status === 'success';
             const checklistLine = (status, label) => `- [${isSuccess(status) ? 'x' : ' '}] ${isSuccess(status) ? '✅' : '❌'} ${label}`;
@@ -319,6 +294,13 @@ jobs:
               body = replaceChecklistLine(body, 'Confirmou sincronizacao do `AGENTS.md` gerado para Codex?', checks.governanceSync, 'Confirmou sincronizacao do `AGENTS.md` gerado para Codex?');
               return body;
             };
+            const applyClaudeDescription = (body) => {
+              if (!claudeDescription.trim()) return body;
+              return body.replace(
+                /^(- Summary of changes:.*\n- Why this change is needed:.*)/m,
+                claudeDescription.trim()
+              );
+            };
             const automationSection = (message) => [
               '<!-- ci-feature:automation:start -->',
               '## CI Automation',
@@ -327,7 +309,6 @@ jobs:
               `**Base:** \`${base}\``,
               '',
               checklistLine(checks.build, 'Build OK'),
-              checklistLine(checks.deployPreview, 'Preview deploy OK'),
               '',
               message,
               '<!-- ci-feature:automation:end -->'
@@ -392,6 +373,7 @@ jobs:
 
             const title = `feat: ${head.replace(/^features\//,'').replace(/^feature\//,'').replace(/^feat\//,'')}`;
             let body = applyChecklistStatuses(fs.readFileSync('.github/pull_request_template.md', 'utf8'));
+            body = applyClaudeDescription(body);
             body = upsertAutomationSection(body, '*Criado automaticamente pelo GitHub Actions.*');
 
             const res = await github.rest.pulls.create({
