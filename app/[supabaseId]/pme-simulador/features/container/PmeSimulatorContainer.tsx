@@ -3,6 +3,7 @@
 import { Loader2, ReceiptText } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { getTotalBeneficiaries } from "@/lib/ageRanges";
 import { BeneficiariesCard } from "../components/BeneficiariesCard";
@@ -68,49 +69,61 @@ export function PmeSimulatorContainer() {
           </Alert>
         ) : null}
 
-        <BeneficiariesCard
-          serializedAgeRanges={serializedAgeRanges}
-          isLoading={isSimulationLoading}
-          onAgeRangesChange={setSerializedAgeRanges}
-        />
-
-        <HospitalSelectorCard
-          hospitals={catalogs?.hospitals ?? []}
-          selectedHospitalId={selectedHospitalId}
-          onSelectHospital={selectHospital}
-        />
-
-        <div className="rounded-2xl border bg-card px-6 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-6">
-            <div className="flex flex-col">
-              <span className="text-xl font-bold">{totalLives}</span>
-              <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Vidas</span>
+        <Card className="rounded-2xl border-border bg-card">
+          <CardContent className="flex flex-col gap-0 p-0">
+            <div className="p-6">
+              <BeneficiariesCard
+                serializedAgeRanges={serializedAgeRanges}
+                isLoading={isSimulationLoading}
+                onAgeRangesChange={setSerializedAgeRanges}
+              />
             </div>
-            <Separator orientation="vertical" className="h-8" />
-            <div className="flex flex-col">
-              <span className="text-xl font-bold">{totalFaixas}</span>
-              <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Faixas</span>
-            </div>
-            <Separator orientation="vertical" className="h-8" />
-            <div className="flex flex-col">
-              <span className="text-base font-bold leading-tight">{hospitalLabel}</span>
-              <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Hospital</span>
-            </div>
-          </div>
 
-          <Button
-            size="lg"
-            disabled={totalLives === 0 || isSimulationLoading}
-            onClick={() => void runSimulation()}
-          >
-            {isSimulationLoading ? (
-              <Loader2 data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <ReceiptText data-icon="inline-start" />
-            )}
-            Simular planos
-          </Button>
-        </div>
+            <Separator />
+
+            <div className="p-6">
+              <HospitalSelectorCard
+                hospitals={catalogs?.hospitals ?? []}
+                selectedHospitalId={selectedHospitalId}
+                onSelectHospital={selectHospital}
+              />
+            </div>
+
+            <Separator />
+
+            <div className="flex items-center justify-between gap-4 px-6 py-4">
+              <div className="flex items-center gap-6">
+                <div className="flex flex-col">
+                  <span className="text-xl font-bold">{totalLives}</span>
+                  <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Vidas</span>
+                </div>
+                <Separator orientation="vertical" className="h-8" />
+                <div className="flex flex-col">
+                  <span className="text-xl font-bold">{totalFaixas}</span>
+                  <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Faixas</span>
+                </div>
+                <Separator orientation="vertical" className="h-8" />
+                <div className="flex flex-col">
+                  <span className="text-base font-bold leading-tight">{hospitalLabel}</span>
+                  <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">Hospital</span>
+                </div>
+              </div>
+
+              <Button
+                size="lg"
+                disabled={totalLives === 0 || isSimulationLoading}
+                onClick={() => void runSimulation()}
+              >
+                {isSimulationLoading ? (
+                  <Loader2 data-icon="inline-start" className="animate-spin" />
+                ) : (
+                  <ReceiptText data-icon="inline-start" />
+                )}
+                Simular planos
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         <SimulationResults
           agesCount={totalLives}
