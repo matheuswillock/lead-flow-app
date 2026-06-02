@@ -14,7 +14,7 @@ import { usePublicLeadFormContext } from "../context/PublicLeadFormContext";
 import { SchedulingSection } from "./SchedulingSection";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { AgeRangeInput } from "@/components/ui/age-range-input";
+import { AgeEntryInput } from "@/components/ui/age-entry-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -430,9 +430,9 @@ export function PublicLeadForm() {
                     name="age"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Faixas Etárias</FormLabel>
+                        <FormLabel className={fieldLabelClassName}>Idades dos Beneficiários</FormLabel>
                         <FormControl>
-                          <AgeRangeInput
+                          <AgeEntryInput
                             value={field.value || ""}
                             onChange={field.onChange}
                             disabled={isSubmitting}

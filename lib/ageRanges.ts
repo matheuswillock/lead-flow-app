@@ -84,6 +84,43 @@ export function getTotalBeneficiaries(entries: AgeRangeCount[]): number {
   return entries.reduce((sum, e) => sum + e.count, 0);
 }
 
+// --- Specific age entries (new format: "22:2,25:1") ---
+
+export interface AgeEntry {
+  age: number;
+  count: number;
+}
+
+export function serializeAgeEntries(entries: AgeEntry[]): string {
+  return entries
+    .filter((e) => e.count > 0)
+    .sort((a, b) => a.age - b.age)
+    .map((e) => `${e.age}:${e.count}`)
+    .join(",");
+}
+
+export function deserializeAgeEntries(value: string): AgeEntry[] {
+  if (!value || !value.trim()) return [];
+  // Only parse entries where the key is a plain number (new format).
+  // Range-key format uses underscores (e.g. "00_18:2") — skip those silently.
+  return value
+    .split(",")
+    .map((part) => {
+      const [keyStr, countStr] = part.trim().split(":");
+      if (!keyStr || !countStr) return null;
+      if (!/^\d+$/.test(keyStr)) return null; // skip range keys like "00_18"
+      const age = parseInt(keyStr, 10);
+      const count = parseInt(countStr, 10);
+      if (isNaN(age) || isNaN(count) || count < 1) return null;
+      return { age, count };
+    })
+    .filter((e): e is AgeEntry => e !== null);
+}
+
+export function getTotalBeneficiariesFromEntries(entries: AgeEntry[]): number {
+  return entries.reduce((sum, e) => sum + e.count, 0);
+}
+
 export function formatAgeRangeSummary(value: string): string {
   const entries = isNewAgeFormat(value)
     ? deserializeAgeRanges(value)
