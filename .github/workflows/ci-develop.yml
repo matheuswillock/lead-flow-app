@@ -231,9 +231,22 @@ jobs:
               "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(JSON.parse(d).version))")
           fi
 
-          # Reuse the release branch version only when it differs from main.
-          # A matching version means the release PR was already merged — compute a new bump instead.
-          if [ -n "$RELEASE_VERSION" ] && [ "$RELEASE_VERSION" != "$MAIN_VERSION" ]; then
+          # Returns 0 (true) if $1 is strictly greater than $2 using semver comparison.
+          semver_gt() {
+            local a_major a_minor a_patch b_major b_minor b_patch
+            IFS='.' read -r a_major a_minor a_patch <<< "$1"
+            IFS='.' read -r b_major b_minor b_patch <<< "$2"
+            if [ "${a_major:-0}" -gt "${b_major:-0}" ]; then return 0; fi
+            if [ "${a_major:-0}" -lt "${b_major:-0}" ]; then return 1; fi
+            if [ "${a_minor:-0}" -gt "${b_minor:-0}" ]; then return 0; fi
+            if [ "${a_minor:-0}" -lt "${b_minor:-0}" ]; then return 1; fi
+            if [ "${a_patch:-0}" -gt "${b_patch:-0}" ]; then return 0; fi
+            return 1
+          }
+
+          # Reuse only when the release branch carries a version strictly newer than main.
+          # Equal or lower version means the PR was already merged or the branch is stale.
+          if [ -n "$RELEASE_VERSION" ] && semver_gt "$RELEASE_VERSION" "$MAIN_VERSION"; then
             BUMP_TYPE="reused"
             NEW_VERSION="$RELEASE_VERSION"
           else
