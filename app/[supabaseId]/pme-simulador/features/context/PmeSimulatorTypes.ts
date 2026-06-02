@@ -63,6 +63,7 @@ export interface PmeSimulatorContextValue {
   selectedHospitalId: PmeHospitalId;
   simulation: PmeSimulationOutput | null;
   expandedPlanIds: string[];
+  totalFaixas: number;
   setSerializedAgeRanges: (value: string) => void;
   selectHospital: (hospitalId: PmeHospitalId) => void;
   runSimulation: () => Promise<void>;
