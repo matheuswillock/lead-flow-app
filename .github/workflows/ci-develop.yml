@@ -221,26 +221,23 @@ jobs:
           git fetch origin main --depth=1
           git fetch origin release/develop-to-main --depth=1 2>/dev/null || true
 
-          if git show "${RELEASE_BRANCH}:package.json" > /dev/null 2>&1 && [ "$(git rev-list --count "${MAIN_BRANCH}..${RELEASE_BRANCH}")" -gt 0 ]; then
-            CURRENT_VERSION=$(node -e "
-              const { execSync } = require('child_process');
-              const pkg = JSON.parse(execSync('git show origin/release/develop-to-main:package.json', {
-                encoding: 'utf8',
-                stdio: ['ignore', 'pipe', 'ignore'],
-              }));
-              process.stdout.write(pkg.version);
-            ")
+          # Read version strings via pipe — no execSync needed
+          MAIN_VERSION=$(git show origin/main:package.json | node -e \
+            "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(JSON.parse(d).version))")
+
+          RELEASE_VERSION=""
+          if git show "${RELEASE_BRANCH}:package.json" > /dev/null 2>&1; then
+            RELEASE_VERSION=$(git show origin/release/develop-to-main:package.json | node -e \
+              "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(JSON.parse(d).version))")
+          fi
+
+          # Reuse the release branch version only when it differs from main.
+          # A matching version means the release PR was already merged — compute a new bump instead.
+          if [ -n "$RELEASE_VERSION" ] && [ "$RELEASE_VERSION" != "$MAIN_VERSION" ]; then
             BUMP_TYPE="reused"
-            NEW_VERSION="$CURRENT_VERSION"
+            NEW_VERSION="$RELEASE_VERSION"
           else
-            CURRENT_VERSION=$(node -e "
-              const { execSync } = require('child_process');
-              const pkg = JSON.parse(execSync('git show origin/main:package.json', {
-                encoding: 'utf8',
-                stdio: ['ignore', 'pipe', 'ignore'],
-              }));
-              process.stdout.write(pkg.version);
-            ")
+            CURRENT_VERSION="$MAIN_VERSION"
 
             RANGE="${MAIN_BRANCH}..HEAD"
             COMMITS=$(git log $RANGE --pretty=format:"%s")
