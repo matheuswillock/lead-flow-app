@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AgeRangeInput } from "@/components/ui/age-range-input";
+import { AgeEntryInput } from "@/components/ui/age-entry-input";
 
 export type MissingLeadField = "age" | "currentHealthPlan" | "referenceHospital" | "ongoingTreatment";
 
@@ -82,8 +82,8 @@ export function LeadInfoRequirementDialog({
         <div className="grid gap-4">
           {missing.has("age") && (
             <div className="grid gap-2">
-              <Label>Faixas etárias *</Label>
-              <AgeRangeInput value={age} onChange={setAge} disabled={isSaving} />
+              <Label>Idades dos Beneficiários *</Label>
+              <AgeEntryInput value={age} onChange={setAge} disabled={isSaving} />
             </div>
           )}
 

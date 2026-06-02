@@ -15,11 +15,14 @@ export async function GET(request: NextRequest) {
     }
 
     const q = new URL(request.url).searchParams.get("q")?.trim() || "";
+    if (!q) {
+      return NextResponse.json(new Output(true, [], [], []), { status: 200 });
+    }
 
     const output = await leadUseCase.getAllLeadsByUserRole(teamAccess.access.supabaseId, {
       role: teamAccess.access.teamMember.role,
       teamId: teamAccess.access.teamId,
-      search: q || undefined,
+      search: q,
     });
     if (!output.isValid) {
       return NextResponse.json(output, { status: 400 });
