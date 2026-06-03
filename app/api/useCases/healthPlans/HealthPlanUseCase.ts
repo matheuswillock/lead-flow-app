@@ -27,7 +27,7 @@ export class HealthPlanUseCase implements IHealthPlanUseCase {
         return new Output(false, [], [HEALTH_PLAN_ERROR_MESSAGES.PROFILE_NOT_FOUND], null);
       }
 
-      const options = await healthPlanService.listOptions();
+      const options = await healthPlanService.listOptions({ defaultOnly: true });
 
       return new Output(true, [], [], {
         healthPlans: options.map((option) => ({
