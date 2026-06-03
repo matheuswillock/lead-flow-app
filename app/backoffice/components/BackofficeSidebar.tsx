@@ -17,6 +17,7 @@ import {
   EllipsisVertical,
   LogOut,
   UserRound,
+  Mail,
 } from "lucide-react"
 import {
   Sidebar,
@@ -57,6 +58,7 @@ const navigationItems = [
   { title: "Integrações", url: "/backoffice/integracoes", icon: Plug },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
   { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
+  { title: "Email", url: "/backoffice/email", icon: Mail },
 ]
 
 export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
@@ -168,6 +170,18 @@ export function BackofficeSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             isActive={pathname.startsWith("/backoffice/features/beta")}
                           >
                             <Link href="/backoffice/features/beta">Grupo Beta</Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      </SidebarMenuSub>
+                    ) : null}
+                    {item.url === "/backoffice/email" ? (
+                      <SidebarMenuSub>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname.startsWith("/backoffice/email/configuracoes")}
+                          >
+                            <Link href="/backoffice/email/configuracoes">Configurações</Link>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                       </SidebarMenuSub>

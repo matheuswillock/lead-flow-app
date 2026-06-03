@@ -46,6 +46,48 @@ export async function GET(request: NextRequest) {
           continue
         }
 
+        // Check dispatch restrictions (blocked dates and time window)
+        const teamSettings = await prisma.emailTeamSettings.findUnique({
+          where: { teamId: campaign.teamId },
+          select: { dispatchBlockedDates: true, dispatchTimeFrom: true, dispatchTimeTo: true },
+        }).catch(() => null)
+
+        if (teamSettings) {
+          const todayStr = now.toISOString().slice(0, 10)
+          type BlockedEntry = { date?: string; from?: string; to?: string }
+          const blockedDates = ((teamSettings.dispatchBlockedDates as BlockedEntry[]) ?? [])
+          let blocked = false
+          let blockReason = ""
+          for (const entry of blockedDates) {
+            if (entry.date && entry.date === todayStr) {
+              blocked = true
+              blockReason = `Data ${todayStr} bloqueada por restrição configurada`
+              break
+            }
+            if (entry.from && entry.to && todayStr >= entry.from && todayStr <= entry.to) {
+              blocked = true
+              blockReason = `Período bloqueado ${entry.from} – ${entry.to}`
+              break
+            }
+          }
+          if (!blocked && teamSettings.dispatchTimeFrom && teamSettings.dispatchTimeTo) {
+            const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+            const [fH, fM] = teamSettings.dispatchTimeFrom.split(":").map(Number)
+            const [tH, tM] = teamSettings.dispatchTimeTo.split(":").map(Number)
+            if (currentMinutes < fH * 60 + fM || currentMinutes > tH * 60 + tM) {
+              blocked = true
+              blockReason = `Fora da janela de disparo ${teamSettings.dispatchTimeFrom}–${teamSettings.dispatchTimeTo} (UTC)`
+            }
+          }
+          if (blocked) {
+            await prisma.emailCampaign.update({
+              where: { id: campaign.id },
+              data: { status: "failed", errorMessage: `Disparo bloqueado: ${blockReason}` },
+            })
+            continue
+          }
+        }
+
         const masterId = campaign.team.master.id
         const ownerTz = resolveTimezone(campaign.team.master.timezone)
         const hasCredits = await creditService.hasEnoughCredits(masterId)

@@ -472,6 +472,8 @@ model Profile {
   // Email campaigns relations
   emailCreditSubscription  EmailCreditSubscription? @relation("EmailCreditSubscriptionOwner")
   emailTemplatesCreated    EmailTemplate[]          @relation("EmailTemplateCreator")
+  emailTemplatesApproved   EmailTemplate[]          @relation("EmailTemplateApprover")
+  emailTemplatesRejected   EmailTemplate[]          @relation("EmailTemplateRejecter")
   emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
   emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
 
@@ -1392,15 +1394,24 @@ model EmailTemplate {
   previewText String?  @db.Text
   mailyJson   Json?
   html        String?  @db.Text
-  isArchived  Boolean  @default(false)
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+  isArchived     Boolean  @default(false)
+  approvalStatus String   @default("approved") @db.Text
+  approvedBy     String?  @db.Uuid
+  approvedAt     DateTime? @db.Timestamptz(6)
+  rejectedBy     String?  @db.Uuid
+  rejectedAt     DateTime? @db.Timestamptz(6)
+  reviewNote     String?  @db.Text
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
 
   team      Team            @relation("TeamEmailTemplates", fields: [teamId], references: [id], onDelete: Cascade)
   creator   Profile         @relation("EmailTemplateCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  approver  Profile?        @relation("EmailTemplateApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  rejecter  Profile?        @relation("EmailTemplateRejecter", fields: [rejectedBy], references: [id], onDelete: SetNull)
   campaigns EmailCampaign[]
 
   @@index([teamId, isArchived])
+  @@index([teamId, approvalStatus])
   @@index([createdBy])
   @@map("corretor_studio_email_templates")
 }
@@ -1714,6 +1725,18 @@ model EmailTeamSettings {
   fromName  String   @default("Corretor Studio") @db.Text
   fromEmail String   @default("no-reply@corretorstudio.com") @db.Text
   replyTo   String?  @db.Text
+
+  dispatchBlockedDates     Json?
+  dispatchTimeFrom         String?  @db.Text
+  dispatchTimeTo           String?  @db.Text
+  dispatchAllowedRoles     String[] @default(["manager", "backoffice"])
+  templateCreateRoles      String[] @default(["manager", "backoffice"])
+  templateApprovalRequired Boolean  @default(false)
+
+  resendDomainId     String? @db.Text
+  resendDomainName   String? @db.Text
+  resendDomainStatus String? @db.Text
+
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 

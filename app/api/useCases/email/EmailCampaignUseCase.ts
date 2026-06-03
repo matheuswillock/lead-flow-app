@@ -153,7 +153,7 @@ export class EmailCampaignUseCase {
 
       const [template, contactList] = await Promise.all([
         prisma.emailTemplate.findFirst({
-          where: { id: data.templateId, teamId: ctx.teamId, isArchived: false },
+          where: { id: data.templateId, teamId: ctx.teamId, isArchived: false, approvalStatus: "approved" },
           select: { id: true },
         }),
         prisma.emailContactList.findFirst({ where: { id: data.contactListId, teamId: ctx.teamId, isArchived: false } }),
@@ -242,6 +242,43 @@ export class EmailCampaignUseCase {
 
       if (!campaign) {
         return new Output(false, [], ["Campanha não encontrada ou já foi enviada"], null)
+      }
+
+      // Enforce dispatch restrictions from team settings
+      if (teamSettings) {
+        const allowedRoles: string[] = teamSettings.dispatchAllowedRoles ?? ["manager", "backoffice"]
+        if (!allowedRoles.includes(ctx.teamMember.role)) {
+          return new Output(false, [], ["Seu perfil não tem permissão para disparar campanhas"], null)
+        }
+
+        const todayStr = new Date().toISOString().slice(0, 10)
+        type BlockedEntry = { date?: string; from?: string; to?: string }
+        const blockedDates = ((teamSettings.dispatchBlockedDates as BlockedEntry[]) ?? [])
+        for (const entry of blockedDates) {
+          if (entry.date && entry.date === todayStr) {
+            return new Output(false, [], [`Disparo bloqueado: a data ${todayStr} está na lista de restrições`], null)
+          }
+          if (entry.from && entry.to && todayStr >= entry.from && todayStr <= entry.to) {
+            return new Output(false, [], [`Disparo bloqueado: data atual está no período bloqueado ${entry.from} – ${entry.to}`], null)
+          }
+        }
+
+        if (teamSettings.dispatchTimeFrom && teamSettings.dispatchTimeTo) {
+          const now = new Date()
+          const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes()
+          const [fH, fM] = teamSettings.dispatchTimeFrom.split(":").map(Number)
+          const [tH, tM] = teamSettings.dispatchTimeTo.split(":").map(Number)
+          const fromMinutes = fH * 60 + fM
+          const toMinutes = tH * 60 + tM
+          if (currentMinutes < fromMinutes || currentMinutes > toMinutes) {
+            return new Output(
+              false,
+              [],
+              [`Disparo bloqueado: horário permitido é ${teamSettings.dispatchTimeFrom} – ${teamSettings.dispatchTimeTo} (UTC)`],
+              null
+            )
+          }
+        }
       }
 
       if (!campaign.template.html) {

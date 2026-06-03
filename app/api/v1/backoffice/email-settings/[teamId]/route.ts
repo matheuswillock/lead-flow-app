@@ -1,22 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { Output } from "@/lib/output"
-import { getTeamAccess } from "@/app/api/v1/utils/teamAccess"
-import { EmailTeamSettingsUseCase } from "@/app/api/useCases/email/EmailTeamSettingsUseCase"
-import { isManagerLikeRole } from "@/lib/roles"
+import { getBackofficeAccess } from "@/app/api/v1/backoffice/utils/getBackofficeAccess"
+import { BackofficeEmailSettingsUseCase } from "@/app/api/useCases/backoffice/BackofficeEmailSettingsUseCase"
 
 const dateRe = /^\d{4}-\d{2}-\d{2}$/
 const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/
-const blockedDateSchema = z.union([
-  z.object({ date: z.string().regex(dateRe) }),
-  z.object({ from: z.string().regex(dateRe), to: z.string().regex(dateRe) }),
-])
-
 const updateSchema = z.object({
   fromName: z.string().min(1).max(100).optional(),
   fromEmail: z.string().email().optional(),
   replyTo: z.string().email().nullable().optional(),
-  dispatchBlockedDates: z.array(blockedDateSchema).nullable().optional(),
+  dispatchBlockedDates: z.array(
+    z.union([
+      z.object({ date: z.string().regex(dateRe) }),
+      z.object({ from: z.string().regex(dateRe), to: z.string().regex(dateRe) }),
+    ])
+  ).nullable().optional(),
   dispatchTimeFrom: z.string().regex(timeRe).nullable().optional(),
   dispatchTimeTo: z.string().regex(timeRe).nullable().optional(),
   dispatchAllowedRoles: z.array(z.enum(["manager", "backoffice", "operator"])).optional(),
@@ -24,38 +23,36 @@ const updateSchema = z.object({
   templateApprovalRequired: z.boolean().optional(),
 })
 
-function makeUseCase() {
-  return new EmailTeamSettingsUseCase()
-}
+const useCase = new BackofficeEmailSettingsUseCase()
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ teamId: string }> }
+) {
   try {
-    const teamAccess = await getTeamAccess(request)
-    if (teamAccess.error) {
-      return NextResponse.json(teamAccess.error, { status: teamAccess.status })
+    const { teamId } = await params
+    const access = await getBackofficeAccess(request)
+    if (access.error) {
+      return NextResponse.json(access.error, { status: access.status })
     }
 
-    const useCase = makeUseCase()
-    const output = await useCase.get(teamAccess.access)
+    const output = await useCase.getByTeamId(teamId)
     return NextResponse.json(output, { status: output.isValid ? 200 : 500 })
   } catch (error) {
-    console.error("[EmailSettingsRoute][GET]", error)
+    console.error("[BackofficeEmailSettingsByTeamRoute][GET]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
 }
 
-export async function PATCH(request: NextRequest) {
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ teamId: string }> }
+) {
   try {
-    const teamAccess = await getTeamAccess(request)
-    if (teamAccess.error) {
-      return NextResponse.json(teamAccess.error, { status: teamAccess.status })
-    }
-
-    if (!isManagerLikeRole(teamAccess.access.teamMember.role)) {
-      return NextResponse.json(
-        new Output(false, [], ["Apenas managers podem alterar configurações de email"], null),
-        { status: 403 }
-      )
+    const { teamId } = await params
+    const access = await getBackofficeAccess(request)
+    if (access.error) {
+      return NextResponse.json(access.error, { status: access.status })
     }
 
     const body = await request.json().catch(() => null)
@@ -65,11 +62,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(new Output(false, [], errors, null), { status: 400 })
     }
 
-    const useCase = makeUseCase()
-    const output = await useCase.update(validation.data, teamAccess.access)
+    const output = await useCase.update(teamId, validation.data)
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 })
   } catch (error) {
-    console.error("[EmailSettingsRoute][PATCH]", error)
+    console.error("[BackofficeEmailSettingsByTeamRoute][PATCH]", error)
     return NextResponse.json(new Output(false, [], ["Erro interno"], null), { status: 500 })
   }
 }

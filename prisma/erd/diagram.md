@@ -929,6 +929,10 @@ unsubscribed unsubscribed
     Json mailyJson "❓"
     String html "❓"
     Boolean isArchived 
+    String approvalStatus 
+    DateTime approvedAt "❓"
+    DateTime rejectedAt "❓"
+    String reviewNote "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1118,6 +1122,15 @@ unsubscribed unsubscribed
     String fromName 
     String fromEmail 
     String replyTo "❓"
+    Json dispatchBlockedDates "❓"
+    String dispatchTimeFrom "❓"
+    String dispatchTimeTo "❓"
+    String dispatchAllowedRoles 
+    String templateCreateRoles 
+    Boolean templateApprovalRequired 
+    String resendDomainId "❓"
+    String resendDomainName "❓"
+    String resendDomainStatus "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1228,6 +1241,8 @@ unsubscribed unsubscribed
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
     "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "approver"
+    "corretor_studio_email_templates" }o--|o corretor_studio_profiles : "rejecter"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
