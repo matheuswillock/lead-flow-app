@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "agent-email-inbox": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agent-email-inbox/SKILL.md",
+      "computedHash": "6280018b559b3a932bf0f610146978ca3416e2b2bf21f62c45dbad4d3ccd1282"
+    },
     "ai-agents-sync": {
       "source": "local",
       "sourceType": "local",
@@ -25,14 +31,32 @@
       "skillPath": "skills/corretor-studio-frontend/SKILL.md",
       "computedHash": "b19d2641b52fcd655a5a23a54da7b9fd1b13ca9d5d1545b8b9edc7c3aa6f89d4"
     },
+    "email-best-practices": {
+      "source": "resend/email-best-practices",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "652506fcb66611db5d9b1fcdad46e856bd9a4c18e9f05688771b96b1d00f3317"
+    },
     "project-context-doc": {
       "source": "local",
       "sourceType": "local",
       "skillPath": ".agents/skills/project-context-doc/SKILL.md",
       "computedHash": "84b101a717a94e49237575f00cf51c7ca870b7366eeb4350314132d4e35b3cbb"
     },
+    "react-email": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/react-email/SKILL.md",
+      "computedHash": "bfa6a36801b573de92f7675395b909fe23935c4c11526a18b9cef67042cfacb5"
+    },
+    "resend": {
+      "source": "resend/resend-skills",
+      "sourceType": "github",
+      "skillPath": "skills/resend/SKILL.md",
+      "computedHash": "27aa881e2a230f9ea335cd1ee9f847a0b00b38a9b73eaf2a365c63abb9cb4980"
+    },
     "resend-cli": {
-      "source": "resend/resend-cli",
+      "source": "resend/resend-skills",
       "sourceType": "github",
       "skillPath": "skills/resend-cli/SKILL.md",
       "computedHash": "c06b046b871b0d35dad79b71aa316335750d46f9557f5d25f3e533662ae4ea24"
