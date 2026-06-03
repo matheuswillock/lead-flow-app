@@ -257,6 +257,7 @@ Routes consuming Output-based use cases **SHOULD** map `result.isValid` to HTTP 
 
 ### MUST NOT
 
+- Commit or push directly to `main` or `develop` branches under any circumstances. All changes **MUST** go through a feature, bugfix, or release branch and be merged via pull request.
 - Create implementation summary docs (`*_IMPLEMENTATION_SUMMARY.md`, `*_FIX_SUMMARY.md`, similar).
 - Use npm or yarn (project standard is Bun).
 - Hardcode URLs when `NEXT_PUBLIC_APP_URL` or `getFullUrl()` should be used.

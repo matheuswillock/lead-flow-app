@@ -17,9 +17,6 @@ export class BackofficeHealthPlanService implements IBackofficeHealthPlanService
 
   async create(input: CreateBackofficeHealthPlanInput): Promise<BackofficeHealthPlanDTO> {
     const normalizedName = normalizeHealthPlanName(input.name)
-    if (input.isDefault) {
-      await this.repository.clearDefault()
-    }
     return this.repository.create({
       name: input.name,
       normalizedName,
@@ -32,10 +29,6 @@ export class BackofficeHealthPlanService implements IBackofficeHealthPlanService
   async update(id: string, input: UpdateBackofficeHealthPlanInput): Promise<BackofficeHealthPlanDTO | null> {
     const existing = await this.repository.findById(id)
     if (!existing) return null
-
-    if (input.isDefault) {
-      await this.repository.clearDefault(id)
-    }
 
     return this.repository.update(id, {
       ...(input.name !== undefined

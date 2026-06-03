@@ -7,6 +7,8 @@ export type BackofficeHealthPlanItem = {
   iconUrl: string | null
   createdAt: string
   updatedAt: string
+  activatedAt: string | null
+  deactivatedAt: string | null
 }
 
 export type BackofficeHealthPlanPayload = {

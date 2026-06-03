@@ -33,9 +33,12 @@ class HealthPlanService {
     });
   }
 
-  async listOptions(params?: { includeInactive?: boolean }): Promise<HealthPlanOptionDTO[]> {
+  async listOptions(params?: { includeInactive?: boolean; defaultOnly?: boolean }): Promise<HealthPlanOptionDTO[]> {
     const options = await prisma.healthPlanOption.findMany({
-      where: params?.includeInactive ? undefined : { isActive: true },
+      where: {
+        ...(params?.includeInactive ? {} : { isActive: true }),
+        ...(params?.defaultOnly ? { isDefault: true } : {}),
+      },
       select: {
         id: true,
         name: true,

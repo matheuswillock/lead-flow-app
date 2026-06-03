@@ -13,6 +13,8 @@ const select = {
   iconUrl: true,
   createdAt: true,
   updatedAt: true,
+  activatedAt: true,
+  deactivatedAt: true,
 } as const
 
 export class BackofficeHealthPlanRepository implements IBackofficeHealthPlanRepository {
@@ -71,7 +73,12 @@ export class BackofficeHealthPlanRepository implements IBackofficeHealthPlanRepo
         ...(input.normalizedName !== undefined ? { normalizedName: input.normalizedName } : {}),
         ...(input.iconUrl !== undefined ? { iconUrl: input.iconUrl } : {}),
         ...(input.isDefault !== undefined ? { isDefault: input.isDefault } : {}),
-        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        ...(input.isActive !== undefined
+          ? {
+              isActive: input.isActive,
+              ...(input.isActive ? { activatedAt: new Date() } : { deactivatedAt: new Date() }),
+            }
+          : {}),
       },
       select,
     })

@@ -1,0 +1,1 @@
+drop index if exists corretor_studio_health_plan_options_one_default_active_idx;
