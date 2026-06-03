@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AgeRangeInput } from "@/components/ui/age-range-input";
+import { AgeEntryInput, type AgeEntryInputHandle } from "@/components/ui/age-entry-input";
 
 export type MissingLeadField = "age" | "currentHealthPlan" | "referenceHospital" | "ongoingTreatment";
 
@@ -43,6 +43,7 @@ export function LeadInfoRequirementDialog({
   isSaving = false,
   leadName,
 }: LeadInfoRequirementDialogProps) {
+  const ageInputRef = useRef<AgeEntryInputHandle>(null);
   const [age, setAge] = useState("");
   const [currentHealthPlan, setCurrentHealthPlan] = useState("");
   const [referenceHospital, setReferenceHospital] = useState("");
@@ -59,8 +60,9 @@ export function LeadInfoRequirementDialog({
   const missing = useMemo(() => new Set(missingFields), [missingFields]);
 
   const handleSubmit = async () => {
+    const flushedAge = ageInputRef.current?.flush() ?? age;
     await onSave({
-      ...(missing.has("age") ? { age } : {}),
+      ...(missing.has("age") ? { age: flushedAge } : {}),
       ...(missing.has("currentHealthPlan") ? { currentHealthPlan } : {}),
       ...(missing.has("referenceHospital") ? { referenceHospital } : {}),
       ...(missing.has("ongoingTreatment") ? { ongoingTreatment } : {}),
@@ -82,8 +84,8 @@ export function LeadInfoRequirementDialog({
         <div className="grid gap-4">
           {missing.has("age") && (
             <div className="grid gap-2">
-              <Label>Faixas etárias *</Label>
-              <AgeRangeInput value={age} onChange={setAge} disabled={isSaving} />
+              <Label>Idades dos Beneficiários *</Label>
+              <AgeEntryInput ref={ageInputRef} value={age} onChange={setAge} disabled={isSaving} />
             </div>
           )}
 

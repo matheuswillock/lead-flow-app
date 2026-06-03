@@ -17,7 +17,7 @@ import { DateTimePicker } from "../ui/date-time-picker";
 import { UserAssociated } from "@/app/api/v1/profiles/DTO/profileResponseDTO";
 import { maskPhone, formatDocumentInput, unmask } from "@/lib/masks";
 import { AttachmentList } from "../ui/attachment-list";
-import { AgeRangeInput } from "../ui/age-range-input";
+import { AgeEntryInput } from "../ui/age-entry-input";
 import { Loader2, BadgeCheck, Badge as BadgeIcon, CalendarClock, CalendarSync, CalendarX2, Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { ReferralDialog } from "./referral-dialog";
@@ -477,9 +477,9 @@ export function LeadForm({
                 name="age"
                 render={({ field }) => (
                     <FormItem className="sm:col-span-2">
-                        <FormLabel className="block text-sm font-medium mb-1">Faixas Etárias</FormLabel>
+                        <FormLabel className="block text-sm font-medium mb-1">Idades dos Beneficiários</FormLabel>
                         <FormControl>
-                            <AgeRangeInput
+                            <AgeEntryInput
                                 value={field.value || ""}
                                 onChange={field.onChange}
                                 disabled={isLoading || isUpdating}
