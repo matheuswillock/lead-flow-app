@@ -98,17 +98,24 @@ import { useBackofficeHealthPlans } from "../context/BackofficeHealthPlansContex
 import type { BackofficeHealthPlanItem } from "../services/IBackofficeHealthPlansService"
 import { cn } from "@/lib/utils"
 
+const SYSTEM_HEALTH_PLAN_NORMALIZED_NAMES = new Set(["novaadesao", "outros"])
+
+const isSystemHealthPlan = (normalizedName: string) =>
+  SYSTEM_HEALTH_PLAN_NORMALIZED_NAMES.has(normalizedName)
+
 type FormState = {
   id?: string
   name: string
   iconUrl: string
   isDefault: boolean
+  isSystem?: boolean
 }
 
 const emptyForm: FormState = {
   name: "",
   iconUrl: "",
   isDefault: false,
+  isSystem: false,
 }
 
 const HEALTH_PLAN_COLUMN_OPTIONS = [
@@ -233,6 +240,7 @@ export function BackofficeHealthPlansContainer() {
       name: item.name,
       iconUrl: item.iconUrl ?? "",
       isDefault: item.isDefault,
+      isSystem: isSystemHealthPlan(item.normalizedName),
     })
     setOpen(true)
   }
@@ -258,7 +266,7 @@ export function BackofficeHealthPlansContainer() {
     const payload = {
       name: trimmedName,
       iconUrl: form.iconUrl.trim() || null,
-      isDefault: form.isDefault,
+      isDefault: form.isSystem ? undefined : form.isDefault,
     }
     const result = form.id ? await updateItem(form.id, payload) : await createItem(payload)
     if (!result.isValid) {
@@ -399,43 +407,45 @@ export function BackofficeHealthPlansContainer() {
                   Editar operadora
                 </DropdownMenuItem>
               </DropdownMenuGroup>
-              {row.original.isActive ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onSelect={(event) => {
-                        event.stopPropagation()
-                        setStatusAction("deactivate")
-                        setStatusTarget(row.original)
-                        setStatusPassword("")
-                        setStatusDialogOpen(true)
-                      }}
-                    >
-                      <CircleOff data-icon="inline-start" />
-                      Inativar operadora
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </>
-              ) : (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem
-                      onSelect={(event) => {
-                        event.stopPropagation()
-                        setStatusAction("activate")
-                        setStatusTarget(row.original)
-                        setStatusPassword("")
-                        setStatusDialogOpen(true)
-                      }}
-                    >
-                      <Check data-icon="inline-start" />
-                      Ativar operadora
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                </>
+              {!isSystemHealthPlan(row.original.normalizedName) && (
+                row.original.isActive ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onSelect={(event) => {
+                          event.stopPropagation()
+                          setStatusAction("deactivate")
+                          setStatusTarget(row.original)
+                          setStatusPassword("")
+                          setStatusDialogOpen(true)
+                        }}
+                      >
+                        <CircleOff data-icon="inline-start" />
+                        Inativar operadora
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </>
+                ) : (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.stopPropagation()
+                          setStatusAction("activate")
+                          setStatusTarget(row.original)
+                          setStatusPassword("")
+                          setStatusDialogOpen(true)
+                        }}
+                      >
+                        <Check data-icon="inline-start" />
+                        Ativar operadora
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </>
+                )
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -480,10 +490,11 @@ export function BackofficeHealthPlansContainer() {
             Gerencie catálogo de operadoras, ícone e tag default.
           </p>
         </div>
-        <Button size="sm" onClick={startCreate}>
-          <Plus data-icon="inline-start" />
-          Nova operadora
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={startCreate}>
+            <Plus data-icon="inline-start" />
+            Nova operadora
+          </Button>
         <Sheet>
           <TooltipProvider delayDuration={0}>
             <Tooltip>
@@ -580,6 +591,7 @@ export function BackofficeHealthPlansContainer() {
             </div>
           </SheetContent>
         </Sheet>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -886,17 +898,24 @@ export function BackofficeHealthPlansContainer() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant={form.isDefault ? "default" : "outline"}
-                onClick={() => setForm((prev) => ({ ...prev, isDefault: !prev.isDefault }))}
-              >
-                <Star
-                  data-icon="inline-start"
-                  className={form.isDefault ? "fill-primary-foreground" : ""}
-                />
-                {form.isDefault ? "Default" : "Marcar como default"}
-              </Button>
+              {form.isSystem ? (
+                <Button type="button" variant="default" disabled>
+                  <Star data-icon="inline-start" className="fill-primary-foreground" />
+                  Default
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant={form.isDefault ? "default" : "outline"}
+                  onClick={() => setForm((prev) => ({ ...prev, isDefault: !prev.isDefault }))}
+                >
+                  <Star
+                    data-icon="inline-start"
+                    className={form.isDefault ? "fill-primary-foreground" : ""}
+                  />
+                  {form.isDefault ? "Default" : "Marcar como default"}
+                </Button>
+              )}
             </div>
 
             <DialogFooter>
