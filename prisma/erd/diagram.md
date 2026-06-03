@@ -420,6 +420,8 @@ unsubscribed unsubscribed
     String iconUrl "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    DateTime activatedAt "❓"
+    DateTime deactivatedAt "❓"
     }
   
 

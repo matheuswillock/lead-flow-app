@@ -496,9 +496,11 @@ model HealthPlanOption {
   isActive       Boolean  @default(true)
   isDefault      Boolean  @default(false)
   iconUrl        String?  @db.Text
-  createdBy      String?  @db.Uuid
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+  createdBy      String?   @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+  activatedAt    DateTime? @db.Timestamptz(6)
+  deactivatedAt  DateTime? @db.Timestamptz(6)
 
   creator Profile? @relation("HealthPlanOptionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 

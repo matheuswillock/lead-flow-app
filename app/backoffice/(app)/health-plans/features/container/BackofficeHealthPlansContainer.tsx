@@ -17,17 +17,18 @@ import {
   ArrowUp,
   ArrowUpDown,
   Check,
+  CheckCircle,
   CircleOff,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  GripVertical,
   MoreHorizontal,
   Pencil,
   Plus,
   PlusCircle,
   Settings,
+  Star,
   Upload,
   X,
 } from "lucide-react"
@@ -114,6 +115,9 @@ const HEALTH_PLAN_COLUMN_OPTIONS = [
   { key: "name", label: "Operadora" },
   { key: "status", label: "Status" },
   { key: "default", label: "Default" },
+  { key: "createdAt", label: "Criado em" },
+  { key: "activatedAt", label: "Ativado em" },
+  { key: "deactivatedAt", label: "Inativado em" },
 ] as const
 
 type HealthPlanColumnKey = (typeof HEALTH_PLAN_COLUMN_OPTIONS)[number]["key"]
@@ -123,13 +127,18 @@ const DEFAULT_HEALTH_PLAN_COLUMN_VISIBILITY: HealthPlanColumnVisibility = {
   name: true,
   status: true,
   default: true,
+  createdAt: true,
+  activatedAt: true,
+  deactivatedAt: true,
 }
 
-const DEFAULT_HEALTH_PLAN_COLUMN_ORDER: Array<"drag" | HealthPlanColumnKey | "actions"> = [
-  "drag",
+const DEFAULT_HEALTH_PLAN_COLUMN_ORDER: Array<HealthPlanColumnKey | "actions"> = [
   "name",
   "status",
   "default",
+  "createdAt",
+  "activatedAt",
+  "deactivatedAt",
   "actions",
 ]
 
@@ -160,19 +169,13 @@ function SortableHeader({
   )
 }
 
-function DragHandle() {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className="cursor-default"
-      aria-label="Coluna de controle"
-      onClick={(event) => event.stopPropagation()}
-    >
-      <GripVertical data-icon="inline-start" />
-    </Button>
-  )
+const formatDate = (value: string | null | undefined): string => {
+  if (!value) return "—"
+  try {
+    return new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
+  } catch {
+    return "—"
+  }
 }
 
 export function BackofficeHealthPlansContainer() {
@@ -186,9 +189,10 @@ export function BackofficeHealthPlansContainer() {
   const [tableColumnVisibility, setTableColumnVisibility] = useState<HealthPlanColumnVisibility>(
     DEFAULT_HEALTH_PLAN_COLUMN_VISIBILITY
   )
-  const [tableColumnOrder, setTableColumnOrder] = useState<Array<"drag" | HealthPlanColumnKey | "actions">>(
+  const [tableColumnOrder, setTableColumnOrder] = useState<Array<HealthPlanColumnKey | "actions">>(
     DEFAULT_HEALTH_PLAN_COLUMN_ORDER
   )
+  const [isUploading, setIsUploading] = useState(false)
   const [statusDialogOpen, setStatusDialogOpen] = useState(false)
   const [statusPassword, setStatusPassword] = useState("")
   const [statusTarget, setStatusTarget] = useState<BackofficeHealthPlanItem | null>(null)
@@ -290,25 +294,22 @@ export function BackofficeHealthPlansContainer() {
   async function handleIconUpload(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
-    const result = await uploadIcon(file)
-    if (!result.isValid || !result.result?.iconUrl) {
-      toast.error(result.errorMessages?.[0] ?? "Erro ao enviar ícone")
-      return
+    setIsUploading(true)
+    try {
+      const result = await uploadIcon(file)
+      if (!result.isValid || !result.result?.iconUrl) {
+        toast.error(result.errorMessages?.[0] ?? "Erro ao enviar ícone")
+        return
+      }
+      setForm((prev) => ({ ...prev, iconUrl: result.result?.iconUrl ?? "" }))
+      toast.success("Ícone enviado com sucesso")
+    } finally {
+      setIsUploading(false)
     }
-    setForm((prev) => ({ ...prev, iconUrl: result.result?.iconUrl ?? "" }))
-    toast.success("Ícone enviado com sucesso")
   }
 
   const columns = useMemo<ColumnDef<BackofficeHealthPlanItem>[]>(
     () => [
-      {
-        id: "drag",
-        header: () => null,
-        cell: () => <DragHandle />,
-        size: 40,
-        enableSorting: false,
-        enableHiding: false,
-      },
       {
         accessorKey: "name",
         id: "name",
@@ -316,9 +317,9 @@ export function BackofficeHealthPlansContainer() {
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
             {row.original.iconUrl ? (
-              <img src={row.original.iconUrl} alt={row.original.name} className="size-6 rounded-md border object-cover" />
+              <img src={row.original.iconUrl} alt={row.original.name} className="size-8 rounded-md border object-cover" />
             ) : (
-              <div className="size-6 rounded-md border bg-muted" />
+              <div className="size-8 rounded-md border bg-muted" />
             )}
             <span className="font-medium">{row.original.name}</span>
           </div>
@@ -328,17 +329,45 @@ export function BackofficeHealthPlansContainer() {
         accessorKey: "isActive",
         id: "status",
         header: ({ column }) => <SortableHeader column={column} label="Status" />,
-        cell: ({ row }) => (
-          <Badge variant={row.original.isActive ? "default" : "secondary"}>
-            {row.original.isActive ? "Ativa" : "Inativa"}
-          </Badge>
+        cell: ({ row }) => row.original.isActive ? (
+          <span className="flex items-center justify-center gap-1.5 text-sm font-medium text-emerald-500">
+            <CheckCircle className="size-4" />
+            Ativa
+          </span>
+        ) : (
+          <span className="flex items-center justify-center gap-1.5 text-sm font-medium text-muted-foreground">
+            <CircleOff className="size-4" />
+            Inativa
+          </span>
         ),
       },
       {
         accessorKey: "isDefault",
         id: "default",
         header: ({ column }) => <SortableHeader column={column} label="Default" />,
-        cell: ({ row }) => (row.original.isDefault ? <Badge variant="outline">Default</Badge> : <span className="text-muted-foreground">—</span>),
+        cell: ({ row }) => row.original.isDefault ? (
+          <Star className="mx-auto size-4 fill-primary text-primary" />
+        ) : (
+          <Star className="mx-auto size-4 text-muted-foreground/30" />
+        ),
+      },
+      {
+        accessorKey: "createdAt",
+        id: "createdAt",
+        header: ({ column }) => <SortableHeader column={column} label="Criado em" />,
+        cell: ({ row }) => <span className="text-sm text-muted-foreground">{formatDate(row.original.createdAt)}</span>,
+      },
+      {
+        accessorKey: "activatedAt",
+        id: "activatedAt",
+        header: ({ column }) => <SortableHeader column={column} label="Ativado em" />,
+        cell: ({ row }) => <span className="text-sm text-muted-foreground">{formatDate(row.original.activatedAt)}</span>,
+      },
+      {
+        accessorKey: "deactivatedAt",
+        id: "deactivatedAt",
+        header: ({ column }) => <SortableHeader column={column} label="Inativado em" />,
+        cell: ({ row }) => <span className="text-sm text-muted-foreground">{formatDate(row.original.deactivatedAt)}</span>,
       },
       {
         id: "actions",
@@ -425,12 +454,15 @@ export function BackofficeHealthPlansContainer() {
         name: tableColumnVisibility.name,
         status: tableColumnVisibility.status,
         default: tableColumnVisibility.default,
+        createdAt: tableColumnVisibility.createdAt,
+        activatedAt: tableColumnVisibility.activatedAt,
+        deactivatedAt: tableColumnVisibility.deactivatedAt,
       },
       columnOrder: tableColumnOrder,
     },
     onSortingChange: setSorting,
     onColumnOrderChange: (value) =>
-      setTableColumnOrder((typeof value === "function" ? value(tableColumnOrder) : value) as Array<"drag" | HealthPlanColumnKey | "actions">),
+      setTableColumnOrder((typeof value === "function" ? value(tableColumnOrder) : value) as Array<HealthPlanColumnKey | "actions">),
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -517,7 +549,7 @@ export function BackofficeHealthPlansContainer() {
                         setTableColumnOrder((prev) => {
                           const order = [...prev]
                           const from = order.indexOf(option.key)
-                          const lastContentIndex = order.indexOf("default")
+                          const lastContentIndex = order.indexOf("deactivatedAt")
                           if (from < 0 || from >= lastContentIndex) return order
                           const temp = order[from + 1]
                           order[from + 1] = order[from]
@@ -831,16 +863,21 @@ export function BackofficeHealthPlansContainer() {
             <div className="grid gap-2">
               <Label htmlFor="operadora-icon-file">Ícone</Label>
               <div className="flex items-center gap-2">
+                {form.iconUrl ? (
+                  <img src={form.iconUrl} alt="Ícone da operadora" className="size-16 rounded-lg border object-cover" />
+                ) : (
+                  <div className="size-16 rounded-lg border bg-muted" />
+                )}
                 <Label
                   htmlFor="operadora-icon-file"
                   className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm"
                 >
                   <Upload className="size-4" />
-                  Upload ícone
+                  {isUploading ? "Enviando..." : "Upload ícone"}
                 </Label>
-                <Input id="operadora-icon-file" type="file" className="hidden" accept="image/*" onChange={handleIconUpload} />
+                <Input id="operadora-icon-file" type="file" className="hidden" accept="image/*" onChange={handleIconUpload} disabled={isUploading} />
                 {form.iconUrl ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setForm((prev) => ({ ...prev, iconUrl: "" }))}>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setForm((prev) => ({ ...prev, iconUrl: "" }))} disabled={isUploading}>
                     <X />
                     Remover ícone
                   </Button>
@@ -854,8 +891,11 @@ export function BackofficeHealthPlansContainer() {
                 variant={form.isDefault ? "default" : "outline"}
                 onClick={() => setForm((prev) => ({ ...prev, isDefault: !prev.isDefault }))}
               >
-                <Check data-icon="inline-start" />
-                Marcar como default
+                <Star
+                  data-icon="inline-start"
+                  className={form.isDefault ? "fill-primary-foreground" : ""}
+                />
+                {form.isDefault ? "Default" : "Marcar como default"}
               </Button>
             </div>
 
@@ -863,7 +903,7 @@ export function BackofficeHealthPlansContainer() {
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isSaving}>
+              <Button type="submit" disabled={isSaving || isUploading}>
                 {isSaving ? "Salvando..." : "Salvar"}
               </Button>
             </DialogFooter>

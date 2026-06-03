@@ -74,7 +74,7 @@ export interface ILeadFormProps {
     isUpdating?: boolean;
     supabaseId?: string;
     activeTeamId?: string;
-    healthPlanOptions: Array<{ id: string; name: string }>;
+    healthPlanOptions: Array<{ id: string; name: string; iconUrl?: string | null }>;
     healthPlanOptionsLoading?: boolean;
     onCancel: () => void;
     className?: string;
@@ -182,6 +182,11 @@ export function LeadForm({
             .filter((value) => value && !baseNames.includes(value));
         return [...baseNames, ...extras];
     }, [healthPlanOptions, watchedValues.currentHealthPlan, watchedValues.soldPlan]);
+    const healthPlanIconByName = React.useMemo(() => {
+        const map = new Map<string, string | null | undefined>();
+        healthPlanOptions.forEach((option) => map.set(option.name.trim(), option.iconUrl));
+        return map;
+    }, [healthPlanOptions]);
     const hasBlockingErrors = React.useMemo(() => {
         const entries = Object.entries(form.formState.errors);
         if (entries.length === 0) return false;
@@ -556,11 +561,19 @@ export function LeadForm({
                                         <SelectValue placeholder="Selecione o plano atual ou 'Nova Adesão' se não possui" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {healthPlanNames.map((planName) => (
-                                            <SelectItem key={`current-health-plan-${planName}`} value={planName}>
-                                                {planName}
-                                            </SelectItem>
-                                        ))}
+                                        {healthPlanNames.map((planName) => {
+                                            const iconUrl = healthPlanIconByName.get(planName);
+                                            return (
+                                                <SelectItem key={`current-health-plan-${planName}`} value={planName}>
+                                                    <span className="flex items-center gap-2">
+                                                        {iconUrl ? (
+                                                            <img src={iconUrl} alt="" className="size-4 rounded object-cover" />
+                                                        ) : null}
+                                                        {planName}
+                                                    </span>
+                                                </SelectItem>
+                                            );
+                                        })}
                                     </SelectContent>
                                 </Select>
                             </FormControl>
@@ -570,7 +583,7 @@ export function LeadForm({
                 />
             </div>
 
-            <FormField 
+            <FormField
                 control={form.control}
                 name="currentValue"
                 render={({ field }) => {
@@ -887,11 +900,19 @@ export function LeadForm({
                                                 <SelectValue placeholder="Selecione o plano vendido" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {healthPlanNames.map((planName) => (
-                                                    <SelectItem key={`sold-health-plan-${planName}`} value={planName}>
-                                                        {planName}
-                                                    </SelectItem>
-                                                ))}
+                                                {healthPlanNames.map((planName) => {
+                                                    const iconUrl = healthPlanIconByName.get(planName);
+                                                    return (
+                                                        <SelectItem key={`sold-health-plan-${planName}`} value={planName}>
+                                                            <span className="flex items-center gap-2">
+                                                                {iconUrl ? (
+                                                                    <img src={iconUrl} alt="" className="size-4 rounded object-cover" />
+                                                                ) : null}
+                                                                {planName}
+                                                            </span>
+                                                        </SelectItem>
+                                                    );
+                                                })}
                                             </SelectContent>
                                         </Select>
                                     </FormControl>

@@ -7,6 +7,8 @@ export type BackofficeHealthPlanEntity = {
   iconUrl: string | null
   createdAt: Date
   updatedAt: Date
+  activatedAt: Date | null
+  deactivatedAt: Date | null
 }
 
 export interface IBackofficeHealthPlanRepository {
