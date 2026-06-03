@@ -22,10 +22,10 @@ export function useBillingSlots(supabaseId: string, enabled: boolean): BillingSl
       .then((r) => r.json())
       .then((data) => {
         if (data.isValid && data.result) {
-          const { availableExtraTeams, availableExtraUsers, hasPermanentSubscription } = data.result
+          const { availableExtraTeams, availableExtraUsers, hasPermanentSubscription, hasUnlimitedUsers } = data.result
           setSlots({
             hasAvailableTeamSlot: hasPermanentSubscription || availableExtraTeams > 0,
-            hasAvailableUserSlot: hasPermanentSubscription || availableExtraUsers > 0,
+            hasAvailableUserSlot: hasPermanentSubscription || hasUnlimitedUsers || availableExtraUsers > 0,
           })
         }
       })

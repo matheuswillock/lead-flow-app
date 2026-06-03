@@ -118,7 +118,7 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
   useEffect(() => {
     setSimulation(null);
     setExpandedPlanIds([]);
-  }, [totalLives, selectedHospitalId]);
+  }, [totalLives, serializedAgeRanges, selectedHospitalId]);
 
   return {
     isCatalogLoading,
