@@ -33,6 +33,11 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
     [ageRangeCounts],
   );
 
+  const totalFaixas = useMemo(
+    () => ageRangeCounts.filter((r) => r.count > 0).length,
+    [ageRangeCounts],
+  );
+
   const isAllowed = useMemo(() => {
     if (!user) {
       return false;
@@ -111,13 +116,9 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
   }, [loadCatalog]);
 
   useEffect(() => {
-    if (totalLives === 0) {
-      setSimulation(null);
-      setExpandedPlanIds([]);
-      return;
-    }
-    void runSimulation();
-  }, [totalLives, selectedHospitalId, runSimulation]);
+    setSimulation(null);
+    setExpandedPlanIds([]);
+  }, [totalLives, serializedAgeRanges, selectedHospitalId]);
 
   return {
     isCatalogLoading,
@@ -130,6 +131,7 @@ export function usePmeSimulatorHook(service: IPmeSimulatorService): PmeSimulator
     selectedHospitalId,
     simulation,
     expandedPlanIds,
+    totalFaixas,
     setSerializedAgeRanges,
     selectHospital,
     runSimulation,

@@ -53,43 +53,60 @@ export function AgeRangeInput({
   const total = useMemo(() => getTotalBeneficiaries(entries), [entries]);
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+    <div className={cn("flex flex-col gap-3", className)}>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
         {AGE_RANGES.map((range) => {
           const count = countMap.get(range.rangeKey) ?? 0;
+          const filled = count > 0;
           return (
             <div
               key={range.rangeKey}
               className={cn(
-                "flex items-center justify-between gap-1 rounded-md border px-2 py-1.5",
-                count > 0
-                  ? "border-primary/40 bg-primary/5"
-                  : "border-border bg-background"
+                "flex flex-col gap-3 rounded-2xl border p-3.5 transition-colors",
+                filled
+                  ? "border-primary/50 bg-primary/8"
+                  : "border-border bg-muted/30"
               )}
             >
-              <span className="text-xs font-medium text-foreground truncate">
-                {range.label}
-              </span>
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-baseline justify-between gap-1">
+                <span
+                  className={cn(
+                    "text-sm font-semibold leading-none",
+                    filled ? "text-primary" : "text-foreground"
+                  )}
+                >
+                  {range.label}
+                </span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Anos
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-1">
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
-                  className="size-6"
+                  className="size-8 shrink-0 rounded-xl"
                   disabled={disabled || count <= 0}
                   onClick={() => updateCount(range.rangeKey, -1)}
                   aria-label={`Diminuir ${range.label}`}
                 >
                   <Minus />
                 </Button>
-                <span className="w-5 text-center text-xs font-semibold tabular-nums">
+                <span
+                  className={cn(
+                    "min-w-6 text-center text-xl font-bold tabular-nums leading-none",
+                    filled ? "text-primary" : "text-muted-foreground/40"
+                  )}
+                >
                   {count}
                 </span>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
-                  className="size-6"
+                  className="size-8 shrink-0 rounded-xl"
                   disabled={disabled}
                   onClick={() => updateCount(range.rangeKey, 1)}
                   aria-label={`Aumentar ${range.label}`}
@@ -101,6 +118,7 @@ export function AgeRangeInput({
           );
         })}
       </div>
+
       {total > 0 && (
         <p className="text-xs text-muted-foreground">
           Total: {total} {total === 1 ? "beneficiário" : "beneficiários"}

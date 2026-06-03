@@ -162,9 +162,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Check Migration Status
-        run: bunx supabase migration list --db-url "$DATABASE_URL"
+        run: bunx supabase migration list --db-url "$DIRECT_URL"
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
   build:
     name: Build
