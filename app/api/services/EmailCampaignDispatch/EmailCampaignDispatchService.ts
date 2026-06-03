@@ -7,6 +7,7 @@ const BATCH_SIZE = 50
 export class EmailCampaignDispatchService implements IEmailCampaignDispatchService {
   async dispatchBatch(params: {
     from: string
+    replyTo?: string | null
     recipients: Array<{ email: string; name?: string | null; customFields?: Record<string, unknown> | null }>
     subject: string
     html: string
@@ -24,6 +25,7 @@ export class EmailCampaignDispatchService implements IEmailCampaignDispatchServi
       try {
         const batchPayload = chunk.map((recipient) => ({
           from: params.from,
+          ...(params.replyTo ? { replyTo: params.replyTo } : {}),
           to: recipient.email,
           subject: interpolateEmailTemplate(params.subject, recipient),
           html: interpolateEmailTemplate(params.html, recipient),

@@ -7,6 +7,7 @@ export interface DispatchBatchResult {
 export interface IEmailCampaignDispatchService {
   dispatchBatch(params: {
     from: string
+    replyTo?: string | null
     recipients: Array<{ email: string; name?: string | null; customFields?: Record<string, unknown> | null }>
     subject: string
     html: string

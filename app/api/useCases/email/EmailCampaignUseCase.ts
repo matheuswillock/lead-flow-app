@@ -288,10 +288,12 @@ export class EmailCampaignUseCase {
       const fromName = teamSettings?.fromName ?? FALLBACK_FROM_NAME
       const fromEmail = teamSettings?.fromEmail ?? FALLBACK_FROM_EMAIL
       const from = `${fromName} <${fromEmail}>`
+      const replyTo = teamSettings?.replyTo ?? null
 
       // Dispatch
       const dispatchResult = await this.dispatchService.dispatchBatch({
         from,
+        replyTo,
         recipients: recipientsList,
         subject: campaign.template.subject,
         html: campaign.template.html,

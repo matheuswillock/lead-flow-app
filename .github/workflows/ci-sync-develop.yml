@@ -35,14 +35,14 @@ jobs:
 
       - name: Merge main into develop
         run: |
-          git merge origin/main --no-edit || {
+          git merge origin/main --no-ff -m "chore: sync develop ← main [skip ci]" || {
             CONFLICTS=$(git status --porcelain | grep "^UU")
             COUNT=$(echo "$CONFLICTS" | grep -c "^UU" || true)
 
             if [ "$COUNT" -eq 1 ] && echo "$CONFLICTS" | grep -q "^UU package.json"; then
               git checkout --ours package.json
               git add package.json
-              git commit -m "chore: sync develop ← main (auto-resolved package.json version)"
+              git commit -m "chore: sync develop ← main (auto-resolved package.json version) [skip ci]"
             else
               echo "::error::Unexpected merge conflicts. Manual resolution required:"
               git status --porcelain
