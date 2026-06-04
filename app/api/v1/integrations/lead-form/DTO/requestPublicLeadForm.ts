@@ -25,8 +25,17 @@ export const PublicLeadFormRequestSchema = z
     age: z
       .string()
       .min(1, "Informe as idades")
-      .regex(/^[0-9,\s]+$/, "Use apenas números, vírgulas e espaços")
+      .regex(/^[\d:,\s]+$/, "Formato de idades inválido")
       .refine((val) => {
+        // New format: "22:2,25:1" (age:count pairs from AgeEntryInput)
+        if (/^\d+:\d+(,\d+:\d+)*$/.test(val.trim())) {
+          return val
+            .split(",")
+            .map((part) => Number.parseInt(part.trim().split(":")[0], 10))
+            .filter((age) => !Number.isNaN(age))
+            .every((age) => age <= 120);
+        }
+        // Old format: "22, 25, 30"
         const ages = val
           .split(",")
           .map((age) => Number.parseInt(age.trim(), 10))
