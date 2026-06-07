@@ -9,7 +9,7 @@ export const PublicLeadFormRequestSchema = z
 
     // Lead fields
     name: z.string().min(2, "Nome inválido"),
-    email: z.string().email("Email inválido").min(1, "O email é obrigatório"),
+    email: z.string().email("Email inválido").nullish().transform((val) => val || undefined),
     phone: z.string().min(8, "Telefone inválido").max(20, "Telefone inválido"),
     cnpj: z
       .string()
@@ -24,24 +24,36 @@ export const PublicLeadFormRequestSchema = z
       }),
     age: z
       .string()
-      .min(1, "Informe as idades")
-      .regex(/^[0-9,\s]+$/, "Use apenas números, vírgulas e espaços")
+      .nullish()
       .refine((val) => {
-        const ages = val
+        if (!val || !val.trim()) return true;
+        return /^[\d:,\s]+$/.test(val);
+      }, "Formato de idades inválido")
+      .refine((val) => {
+        if (!val || !val.trim()) return true;
+        if (/^\d+:\d+(,\d+:\d+)*$/.test(val.trim())) {
+          return val
+            .split(",")
+            .map((p) => Number.parseInt(p.trim().split(":")[0], 10))
+            .filter((a) => !Number.isNaN(a))
+            .every((a) => a <= 120);
+        }
+        return val
           .split(",")
-          .map((age) => Number.parseInt(age.trim(), 10))
-          .filter((age) => !Number.isNaN(age));
-        return ages.every((age) => age <= 120);
-      }, "Todas as idades devem ser no máximo 120 anos"),
-    currentHealthPlan: z.string().trim().min(1, "Selecione um plano de saúde"),
+          .map((a) => Number.parseInt(a.trim(), 10))
+          .filter((a) => !Number.isNaN(a))
+          .every((a) => a <= 120);
+      }, "Todas as idades devem ser no máximo 120 anos")
+      .transform((val) => val || undefined),
+    currentHealthPlan: z.string().trim().nullish().transform((val) => val || undefined),
     currentValue: z
       .number()
       .min(0, "Valor deve ser maior ou igual a zero")
       .max(MAX_DECIMAL_VALUE, `Valor deve ser menor que ${MAX_DECIMAL_LABEL}`)
       .nullish()
       .transform((val) => val ?? undefined),
-    referenceHospital: z.string().min(2, "O hospital de referência é obrigatório"),
-    currentTreatment: z.string().min(2, "Descreva o tratamento em andamento"),
+    referenceHospital: z.string().nullish().transform((val) => val || undefined),
+    currentTreatment: z.string().nullish().transform((val) => val || undefined),
     notes: z.string().nullish().transform((val) => val || undefined),
     assignedTo: z.string().uuid("ID do SDR deve ser um UUID válido"),
 
