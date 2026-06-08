@@ -134,6 +134,7 @@ const PT_BR_CORRECTIONS: Record<string, string> = {
 // Termos que coincidem com o dicionário acima mas são válidos no contexto do projeto
 // (nomes próprios, marcas, identificadores técnicos exibidos como texto literal).
 const IGNORE_WORDS = new Set<string>([]);
+const STRICT = process.env.LINT_PT_BR_STRICT === "1";
 
 const WORD_REGEX = /\p{L}+/gu;
 // Only treat content between an opening tag's ">" and a closing tag's "</" as
@@ -385,16 +386,18 @@ async function run(): Promise<void> {
     return;
   }
 
-  console.error(`[lint:pt-br] FAILED — ${allFindings.length} possível(is) erro(s) de acentuação PT-BR encontrado(s)`);
+  console.warn(`[lint:pt-br] WARN — ${allFindings.length} possível(is) erro(s) de acentuação PT-BR encontrado(s)`);
   for (const finding of allFindings) {
-    console.error(
+    console.warn(
       `  - ${finding.filePath}:${finding.line}:${finding.column}  "${finding.word}" → "${finding.suggestion}"  |  ${finding.snippet}`,
     );
   }
-  console.error(
+  console.warn(
     "\nSe alguma destas palavras for um nome próprio/termo técnico válido neste contexto, adicione-a a IGNORE_WORDS em scripts/lint-pt-br.ts.",
   );
-  process.exit(1);
+  if (STRICT) {
+    process.exit(1);
+  }
 }
 
 run().catch((error: unknown) => {

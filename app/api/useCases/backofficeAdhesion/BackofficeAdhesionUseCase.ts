@@ -53,6 +53,7 @@ const EXPECTED_CREATE_ERROR_MESSAGES = new Set([
 const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
 const MEMBER_PRO_MIN_ACCESS_DAYS = 1
 const MEMBER_PRO_MAX_ACCESS_DAYS = 365
+const MEMBER_PRO_MIN_ACCESS_TOLERANCE_MS = 60 * 1000
 
 function validateMemberProAccessExpiresAt(accessExpiresAt: string | null | undefined): void {
   if (!accessExpiresAt) {
@@ -65,7 +66,10 @@ function validateMemberProAccessExpiresAt(accessExpiresAt: string | null | undef
   }
 
   const now = Date.now()
-  if (expiresAt.getTime() < now + MEMBER_PRO_MIN_ACCESS_DAYS * MEMBER_PRO_DAY_MS) {
+  if (
+    expiresAt.getTime() + MEMBER_PRO_MIN_ACCESS_TOLERANCE_MS <
+    now + MEMBER_PRO_MIN_ACCESS_DAYS * MEMBER_PRO_DAY_MS
+  ) {
     throw new Error("O acesso Member PRO deve ter validade de no mínimo 1 dia")
   }
   if (expiresAt.getTime() > now + MEMBER_PRO_MAX_ACCESS_DAYS * MEMBER_PRO_DAY_MS) {

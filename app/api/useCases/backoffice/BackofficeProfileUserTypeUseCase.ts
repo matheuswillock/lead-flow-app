@@ -5,6 +5,7 @@ import type { IBackofficeAllUsersRepository } from "@/app/api/infra/data/reposit
 const DAY_MS = 24 * 60 * 60 * 1000
 const MIN_ACCESS_DAYS = 1
 const MAX_ACCESS_DAYS = 365
+const MIN_ACCESS_TOLERANCE_MS = 60 * 1000
 
 export interface BackofficeProfileUserTypeInput {
   userType: "common" | "member_pro"
@@ -46,7 +47,7 @@ export class BackofficeProfileUserTypeUseCase {
       }
 
       const now = Date.now()
-      if (accessExpiresAt.getTime() < now + MIN_ACCESS_DAYS * DAY_MS) {
+      if (accessExpiresAt.getTime() + MIN_ACCESS_TOLERANCE_MS < now + MIN_ACCESS_DAYS * DAY_MS) {
         return new Output(false, [], ["O acesso Member PRO deve ter validade de no mínimo 1 dia"], null)
       }
       if (accessExpiresAt.getTime() > now + MAX_ACCESS_DAYS * DAY_MS) {

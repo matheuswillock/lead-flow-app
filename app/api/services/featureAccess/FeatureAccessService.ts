@@ -26,7 +26,6 @@ function principalsForUser(user: UserRoleInfo): Set<string> {
   if (user.functions.includes("CLOSER")) principals.add("CLOSER")
   if (user.canManageAccountTeams) principals.add("CAN_MANAGE_TEAMS")
   if (user.canCreateAccountUsers) principals.add("CAN_CREATE_USERS")
-  if (user.memberProActive) principals.add("MEMBER_PRO")
   return principals
 }
 
