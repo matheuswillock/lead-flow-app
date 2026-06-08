@@ -27,7 +27,7 @@ const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
 const supportFormSchema = z.object({
   subject: z.string().trim().min(1, "Informe o assunto do pedido de suporte."),
-  message: z.string().trim().min(1, "Descreva o que voce precisa no campo de mensagem."),
+  message: z.string().trim().min(1, "Descreva o que você precisa no campo de mensagem."),
 });
 
 export function SupportRequestDialog({ trigger }: SupportRequestDialogProps) {
@@ -60,20 +60,20 @@ export function SupportRequestDialog({ trigger }: SupportRequestDialogProps) {
     const merged = [...images, ...nextImages];
 
     if (merged.length > MAX_IMAGES) {
-      toast.error(`Voce pode enviar no maximo ${MAX_IMAGES} imagens.`);
+      toast.error(`Você pode enviar no máximo ${MAX_IMAGES} imagens.`);
       event.target.value = "";
       return;
     }
 
     for (const image of merged) {
       if (!image.type.startsWith("image/")) {
-        toast.error("Apenas arquivos de imagem sao permitidos.");
+        toast.error("Apenas arquivos de imagem são permitidos.");
         event.target.value = "";
         return;
       }
 
       if (image.size > MAX_IMAGE_SIZE) {
-        toast.error("Cada imagem deve ter no maximo 5MB.");
+        toast.error("Cada imagem deve ter no máximo 5MB.");
         event.target.value = "";
         return;
       }
@@ -94,7 +94,7 @@ export function SupportRequestDialog({ trigger }: SupportRequestDialogProps) {
     }
 
     if (!requesterEmail) {
-      toast.error("Nao foi possivel identificar seu email para envio.");
+      toast.error("Não foi possível identificar seu e-mail para envio.");
       return;
     }
 
@@ -154,7 +154,7 @@ export function SupportRequestDialog({ trigger }: SupportRequestDialogProps) {
         <DialogHeader>
           <DialogTitle>Enviar pedido de suporte</DialogTitle>
           <DialogDescription>
-            Preencha o assunto, descreva sua solicitacao e envie imagens se necessario.
+            Preencha o assunto, descreva sua solicitação e envie imagens se necessário.
           </DialogDescription>
         </DialogHeader>
 
@@ -163,7 +163,7 @@ export function SupportRequestDialog({ trigger }: SupportRequestDialogProps) {
             <Label htmlFor="support-subject">Assunto</Label>
             <Input
               id="support-subject"
-              placeholder="Ex.: Nao consigo concluir o cadastro"
+              placeholder="Ex.: Não consigo concluir o cadastro"
               value={subject}
               onChange={(event) => setSubject(event.target.value)}
               maxLength={120}
@@ -174,7 +174,7 @@ export function SupportRequestDialog({ trigger }: SupportRequestDialogProps) {
             <Label htmlFor="support-message">Mensagem</Label>
             <Textarea
               id="support-message"
-              placeholder="Descreva em detalhes o problema ou duvida"
+              placeholder="Descreva em detalhes o problema ou dúvida"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               rows={6}

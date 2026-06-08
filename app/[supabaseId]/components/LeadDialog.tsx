@@ -771,7 +771,7 @@ export default function LeadDialog({
       toast.success("ID copiado");
     } catch (error) {
       console.error("Erro ao copiar ID do lead:", error);
-      toast.error("Nao foi possivel copiar o ID");
+      toast.error("Não foi possível copiar o ID");
     }
   };
 
@@ -782,7 +782,7 @@ export default function LeadDialog({
       toast.success("Link de compartilhamento copiado");
     } catch (error) {
       console.error("Erro ao copiar link de compartilhamento:", error);
-      toast.error("Nao foi possivel copiar o link");
+      toast.error("Não foi possível copiar o link");
     }
   };
 
@@ -1410,7 +1410,7 @@ export default function LeadDialog({
 
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel atualizar a reuniao.");
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível atualizar a reunião.");
       }
 
       // Keep local state aligned with server response.
@@ -1430,7 +1430,7 @@ export default function LeadDialog({
         );
       }
       form.setValue("meetingHeald", previous, { shouldDirty: false });
-      toast.warning(error instanceof Error ? error.message : "Nao foi possivel atualizar a reuniao.");
+      toast.warning(error instanceof Error ? error.message : "Não foi possível atualizar a reunião.");
     } finally {
       setMeetingHealdSaving(false);
     }
@@ -1546,7 +1546,7 @@ export default function LeadDialog({
   const handleNoShow = async () => {
     if (!currentLead) return;
     if (!supabaseId) {
-      toast.error("Usuario nao identificado");
+      toast.error("Usuário não identificado");
       return;
     }
 
@@ -2763,7 +2763,7 @@ export default function LeadDialog({
                 <Label>Participante</Label>
                 <Select value={resendEmail} onValueChange={setResendEmail}>
                   <SelectTrigger>
-                    <SelectValue placeholder={scheduleLoading ? "Carregando..." : "Selecione o email"} />
+                    <SelectValue placeholder={scheduleLoading ? "Carregando..." : "Selecione o e-mail"} />
                   </SelectTrigger>
                   <SelectContent>
                     {buildParticipantOptions().map((option) => (
@@ -3073,7 +3073,7 @@ export default function LeadDialog({
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/15 text-primary">
                     <Mail className="h-5 w-5" />
                   </div>
-                  <span className="text-xs">Email</span>
+                  <span className="text-xs">E-mail</span>
                 </a>
               </Button>
             </div>

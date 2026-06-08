@@ -114,12 +114,12 @@ export function createColumns({
         );
       },
       cell: ({ row }) => {
-        const email = row.getValue("email") as string || "Email não informado";
-        
+        const email = row.getValue("email") as string || "E-mail não informado";
+
         return (
           <div className="flex items-center gap-2">
             <div className="text-muted-foreground">{email}</div>
-            {email !== "Email não informado" && (                    
+            {email !== "E-mail não informado" && (                    
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <Button

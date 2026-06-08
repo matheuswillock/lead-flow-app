@@ -298,7 +298,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
       });
       setLeadCardDisplay(nextDisplay);
     } catch (error) {
-      console.error("Erro ao carregar configuracoes do card:", error);
+      console.error("Erro ao carregar configurações do card:", error);
       setLeadCardDisplay(DEFAULT_LEAD_CARD_DISPLAY);
     }
   }, [leadCardDisplayStorageKey]);
@@ -317,7 +317,7 @@ export const BoardProvider: React.FC<IBoardProviderProps> = ({
         JSON.stringify(leadCardDisplay)
       );
     } catch (error) {
-      console.error("Erro ao salvar configuracoes do card:", error);
+      console.error("Erro ao salvar configurações do card:", error);
     }
   }, [leadCardDisplayStorageKey, leadCardDisplay]);
 

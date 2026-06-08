@@ -205,7 +205,7 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                 </div>
 
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">Email:</span>
+                  <span className="text-muted-foreground">E-mail:</span>
                   <span className="font-semibold">{subscription.customer.email}</span>
                 </div>
               </div>
@@ -285,7 +285,7 @@ export function SubscriptionCard({ subscription, onCancel }: SubscriptionCardPro
                 </div>
 
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">Email:</span>
+                  <span className="text-muted-foreground">E-mail:</span>
                   <span className="font-semibold">{subscription.customer.email}</span>
                 </div>
 

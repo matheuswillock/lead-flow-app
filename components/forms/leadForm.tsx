@@ -427,7 +427,7 @@ export function LeadForm({
                 name="email"
                 render={({ field }) => (
                     <FormItem>
-                        <FormLabel className="block text-sm font-medium mb-1">Email</FormLabel>
+                        <FormLabel className="block text-sm font-medium mb-1">E-mail</FormLabel>
                         <FormControl>
                             <Input
                                 {...field}

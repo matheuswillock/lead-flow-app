@@ -538,13 +538,13 @@ export default function AccountProfilePage() {
 
       if (hasGoogleIdentity) {
         sessionStorage.removeItem("googleConnectContext");
-        toast.info("Sua conta ja possui identidade Google vinculada.");
+        toast.info("Sua conta já possui identidade Google vinculada.");
         return;
       }
 
       if (!linkIdentity) {
         sessionStorage.removeItem("googleConnectContext");
-        toast.error("Nao foi possivel iniciar a vinculacao Google nesta versao do cliente.");
+        toast.error("Não foi possível iniciar a vinculação Google nesta versão do cliente.");
         return;
       }
 
@@ -555,7 +555,7 @@ export default function AccountProfilePage() {
         if (error.message === "Manual linking is disabled") {
           toast.error("Vinculacao manual desativada no Supabase. Ative em Auth > Providers.");
         } else {
-          toast.error(error.message || "Erro ao iniciar conexao com Google");
+          toast.error(error.message || "Erro ao iniciar conexão com Google");
         }
       }
     } catch (error) {
@@ -878,7 +878,7 @@ export default function AccountProfilePage() {
                         ) : (
                           <Calendar className="h-4 w-4" />
                         )}
-                        {user?.googleCalendarConnected ? "Conectado" : "Nao conectado"}
+                        {user?.googleCalendarConnected ? "Conectado" : "Não conectado"}
                       </div>
                     </div>
 
@@ -892,7 +892,7 @@ export default function AccountProfilePage() {
                         <p className="text-xs text-muted-foreground">
                           {user?.googleCalendarConnected
                             ? `Conectado como ${user.googleEmail || user.email}.`
-                            : "Necessario para enviar convites e criar eventos."}
+                            : "Necessário para enviar convites e criar eventos."}
                         </p>
                       </div>
                       {user?.googleCalendarConnected ? (

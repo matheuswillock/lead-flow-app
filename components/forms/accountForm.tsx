@@ -96,7 +96,7 @@ export function AccountForm({
             name="email"
             render={({ field }) => (
               <FormItem className="space-y-2">
-                <FormLabel>Email</FormLabel>
+                <FormLabel>E-mail</FormLabel>
                 <FormControl>
                   <Input
                     type="email"

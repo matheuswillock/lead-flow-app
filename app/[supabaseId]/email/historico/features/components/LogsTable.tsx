@@ -95,7 +95,7 @@ export function LogsTable() {
             ) : logs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
-                  Nenhum email encontrado para os filtros selecionados
+                  Nenhum e-mail encontrado para os filtros selecionados
                 </TableCell>
               </TableRow>
             ) : (

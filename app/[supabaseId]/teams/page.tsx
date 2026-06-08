@@ -306,7 +306,7 @@ export default function TeamsPage() {
 
       const result = await response.json();
       if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel criar o time.");
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível criar o time.");
       }
 
       const payload = result?.result as any;
@@ -618,7 +618,7 @@ export default function TeamsPage() {
       });
       const result = await response.json();
       if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel carregar o time.");
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível carregar o time.");
       }
 
       const payload = result.result as {
@@ -679,7 +679,7 @@ export default function TeamsPage() {
       });
       const result = await response.json();
       if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel atualizar o time.");
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível atualizar o time.");
       }
       toast.success("Nome do time atualizado.");
       setManageTeamName(trimmedName);
@@ -694,7 +694,7 @@ export default function TeamsPage() {
 
   const handleAddMember = async () => {
     if (!manageTeamId || !selectedProfileId) {
-      toast.error("Selecione um usuario para adicionar.");
+      toast.error("Selecione um usuário para adicionar.");
       return;
     }
 
@@ -712,7 +712,7 @@ export default function TeamsPage() {
       });
       const result = await response.json();
       if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel adicionar membro.");
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível adicionar membro.");
       }
       toast.success("Membro adicionado.");
       setSelectedProfileId("");
@@ -743,7 +743,7 @@ export default function TeamsPage() {
       });
       const result = await response.json();
       if (!response.ok || !result?.isValid) {
-        throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel remover membro.");
+        throw new Error(result?.errorMessages?.join(", ") || "Não foi possível remover membro.");
       }
       toast.success("Membro removido.");
       await loadManageData(manageTeamId);
@@ -777,7 +777,7 @@ export default function TeamsPage() {
         });
         const result = await response.json();
         if (!response.ok || !result?.isValid) {
-          throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel deletar o time.");
+          throw new Error(result?.errorMessages?.join(", ") || "Não foi possível deletar o time.");
         }
         toast.success("Time deletado com sucesso.");
         setIsManageOpen(false);
@@ -802,15 +802,15 @@ export default function TeamsPage() {
         });
         const result = await response.json();
         if (!response.ok || !result?.isValid) {
-          throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel transferir o time.");
+          throw new Error(result?.errorMessages?.join(", ") || "Não foi possível transferir o time.");
         }
         toast.success("Time transferido com sucesso.");
         setIsManageOpen(false);
         await refreshTeams();
       }
     } catch (error: any) {
-      console.error("Erro ao confirmar acao:", error);
-      toast.error(error?.message || "Erro ao confirmar acao.");
+      console.error("Erro ao confirmar ação:", error);
+      toast.error(error?.message || "Erro ao confirmar ação.");
     } finally {
       setConfirming(false);
       setConfirmAction(null);
@@ -935,7 +935,7 @@ export default function TeamsPage() {
             <DialogDescription>
               {manageTeamName
                 ? `Time selecionado: ${manageTeamName}.`
-                : "Atualize as configuracoes do time."}
+                : "Atualize as configurações do time."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1151,7 +1151,7 @@ export default function TeamsPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Nome</TableHead>
-                          <TableHead>Email</TableHead>
+                          <TableHead>E-mail</TableHead>
                           <TableHead>Papel</TableHead>
                           <TableHead>Funções</TableHead>
                           <TableHead className="w-[80px] text-right">Ações</TableHead>
@@ -1529,17 +1529,17 @@ export default function TeamsPage() {
             </DialogTitle>
             <DialogDescription>
               {confirmAction === "delete"
-                ? "Esta acao e irreversivel e remove o time permanentemente."
+                ? "Esta ação é irreversível e remove o time permanentemente."
                 : "Ao transferir, o novo master assumira a cobranca e o gerenciamento do time."}
             </DialogDescription>
           </DialogHeader>
           {confirmAction === "delete" ? (
             <div className="rounded-md border border-red-600/30 bg-muted/20 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">Voce perdera:</p>
+              <p className="font-medium text-foreground">Você perderá:</p>
               <ul className="list-disc list-inside space-y-1">
                 <li>Leads cadastrados neste time</li>
                 <li>Agendamentos vinculados ao time</li>
-                <li>Usuarios deste time perderao acesso se nao estiverem em outro time</li>
+                <li>Usuários deste time perderão acesso se não estiverem em outro time</li>
               </ul>
             </div>
           ) : null}

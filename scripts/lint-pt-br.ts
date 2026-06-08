@@ -115,6 +115,20 @@ const PT_BR_CORRECTIONS: Record<string, string> = {
   debito: "débito",
   beneficio: "benefício",
   beneficios: "benefícios",
+  combinacao: "combinação",
+  combinacoes: "combinações",
+  modulo: "módulo",
+  modulos: "módulos",
+  cartao: "cartão",
+  cartoes: "cartões",
+  maximo: "máximo",
+  maxima: "máxima",
+  visao: "visão",
+  metricas: "métricas",
+  simulacoes: "simulações",
+  confianca: "confiança",
+  indice: "índice",
+  comecar: "começar",
 };
 
 // Termos que coincidem com o dicionário acima mas são válidos no contexto do projeto
@@ -322,11 +336,12 @@ async function scanFile(filePath: string): Promise<Finding[]> {
     }
 
     // Skip path/identifier-like segments (e.g. "/email/templates/",
-    // "sidebar-email-collapsed", "landing-email-orbs") — Portuguese prose
-    // never glues words to "/" or "-" without surrounding whitespace.
+    // "sidebar-email-collapsed", "landing-email-orbs") and email-address
+    // domains in examples (e.g. "convidado1@email.com") — Portuguese prose
+    // never glues words to "/", "-" or "@" without surrounding whitespace.
     const charBefore = content.charAt(index - 1);
     const charAfter = content.charAt(index + word.length);
-    if (["/", "-"].includes(charBefore) || ["/", "-"].includes(charAfter)) {
+    if (["/", "-", "@"].includes(charBefore) || ["/", "-"].includes(charAfter)) {
       continue;
     }
 

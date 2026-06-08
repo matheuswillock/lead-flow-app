@@ -321,7 +321,7 @@ export default function CalendarStudio() {
 
         const result = await response.json().catch(() => null)
         if (!response.ok || !result?.isValid) {
-          throw new Error(result?.errorMessages?.join(", ") || "Nao foi possivel atualizar a reuniao.")
+          throw new Error(result?.errorMessages?.join(", ") || "Não foi possível atualizar a reunião.")
         }
 
         const serverValue = result?.result?.meetingHeald ?? next
@@ -329,7 +329,7 @@ export default function CalendarStudio() {
       } catch (err) {
         patchLead?.(lead.id, { meetingHeald: previous })
         toast.warning(
-          err instanceof Error ? err.message : "Nao foi possivel atualizar a reuniao.",
+          err instanceof Error ? err.message : "Não foi possível atualizar a reunião.",
         )
       } finally {
         setMeetingHealdSavingId(null)
