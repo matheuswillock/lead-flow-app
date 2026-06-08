@@ -49,6 +49,8 @@ bun run db:migrate:new <migration-name>
 Agents **MUST NOT** create migration files manually in `supabase/migrations/` (including hand-crafted timestamps, copy/paste, or rename-only flows).  
 Every new migration file **MUST** originate from `supabase migration new` (via `bun run db:migrate:new <migration-name>`), and only then receive SQL edits.
 
+If a migration is incorrect and **has not been applied anywhere yet**, the required procedure is to delete that pending migration file, adjust `prisma/schema.prisma`, and generate a new migration from the updated schema. Agents **MUST NOT** keep patching or reusing an incorrect unapplied migration when the source-of-truth schema still needs changes.
+
 Write SQL directly in the generated file. For schema changes driven by `prisma/schema.prisma`, apply the schema to the local DB first (`bun run prisma:db:push`), then use `bun run db:diff` to capture the diff.
 
 All migrations **MUST** be idempotent when possible (`IF EXISTS`, `IF NOT EXISTS`, `CREATE OR REPLACE`).
