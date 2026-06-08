@@ -168,7 +168,37 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Check Migration Status
-        run: bunx supabase migration list --db-url "$DIRECT_URL"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          migration_list="$(bunx supabase migration list --db-url "$DIRECT_URL")"
+          echo "$migration_list"
+
+          if echo "$migration_list" | awk -F '│' '
+            function trim(value) {
+              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+              return value
+            }
+
+            /[0-9]{14}/ {
+              local = trim($1)
+              remote = trim($2)
+
+              if (local == "" || remote == "" || local != remote) {
+                bad = 1
+              }
+            }
+
+            END {
+              exit bad
+            }
+          '; then
+            exit 0
+          fi
+
+          echo "Migration history is out of sync. Apply the missing migrations or repair the remote history before merging."
+          exit 1
         env:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
 
