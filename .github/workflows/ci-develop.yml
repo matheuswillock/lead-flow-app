@@ -156,24 +156,24 @@ jobs:
           migration_list="$(bunx supabase migration list --db-url "$DIRECT_URL")"
           echo "$migration_list"
 
-          if echo "$migration_list" | awk -F '│' '
-            function trim(value) {
-              gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-              return value
-            }
+          if MIGRATION_LIST="$migration_list" node -e '
+            const input = process.env.MIGRATION_LIST ?? "";
+            let bad = false;
 
-            /[0-9]{14}/ {
-              local = trim($1)
-              remote = trim($2)
+            for (const line of input.split(/\r?\n/)) {
+              if (!/\d{14}/.test(line)) {
+                continue;
+              }
 
-              if (local == "" || remote == "" || local != remote) {
-                bad = 1
+              const [local = "", remote = ""] = line.split(/[│|]/).map((value) => value.trim());
+
+              if (!local || !remote || local !== remote) {
+                bad = true;
+                break;
               }
             }
 
-            END {
-              exit bad
-            }
+            process.exit(bad ? 1 : 0);
           '; then
             exit 0
           fi
