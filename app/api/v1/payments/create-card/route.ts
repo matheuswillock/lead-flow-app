@@ -35,6 +35,23 @@ export async function POST(request: NextRequest) {
 
     const profile = await prisma.profile.findUnique({
       where: { supabaseId },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        cpfCnpj: true,
+        phone: true,
+        postalCode: true,
+        address: true,
+        addressNumber: true,
+        complement: true,
+        neighborhood: true,
+        subscription: {
+          select: {
+            asaasCustomerId: true,
+          },
+        },
+      },
     });
 
     if (!profile) {
@@ -45,7 +62,7 @@ export async function POST(request: NextRequest) {
     const sanitizedPhone = String(phone || "").replace(/\D/g, "");
     const sanitizedPostalCode = String(postalCode || "").replace(/\D/g, "");
 
-    let customerId = profile.asaasCustomerId || null;
+    let customerId = profile.subscription?.asaasCustomerId || null;
 
     if (!customerId) {
       const customer = await asaasCustomerService.createCustomer({
@@ -63,9 +80,15 @@ export async function POST(request: NextRequest) {
 
       customerId = customer.customerId;
 
-      await prisma.profile.update({
-        where: { id: profile.id },
-        data: { asaasCustomerId: customerId },
+      await prisma.profileSubscription.upsert({
+        where: { profileId: profile.id },
+        create: {
+          profile: { connect: { id: profile.id } },
+          asaasCustomerId: customerId,
+        },
+        update: {
+          asaasCustomerId: customerId,
+        },
       });
     }
 

@@ -274,7 +274,15 @@ export async function POST(request: NextRequest) {
       }),
       prisma.profile.findUnique({
         where: { id: managerId },
-        select: { id: true, hasPermanentSubscription: true, functions: true },
+        select: {
+          id: true,
+          functions: true,
+          subscription: {
+            select: {
+              hasPermanentSubscription: true,
+            },
+          },
+        },
       }),
     ]);
 
@@ -294,7 +302,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(new Output(false, [], errors, null), { status: 400 });
     }
 
-    if (billingOwner.hasPermanentSubscription) {
+    if (billingOwner.subscription?.hasPermanentSubscription) {
       const team = await createTeamForAccount({
         teamName: validatedData.name,
         masterId: managerId,

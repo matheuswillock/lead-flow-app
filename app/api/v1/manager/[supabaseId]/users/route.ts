@@ -48,7 +48,7 @@ async function getProfileLabel(profileId: string) {
 }
 
 async function getBillingOwnerProfile(profileId: string): Promise<BillingOwnerProfile | null> {
-  return prisma.profile.findUnique({
+  const profile = await prisma.profile.findUnique({
     where: { id: profileId },
     select: {
       id: true,
@@ -61,15 +61,43 @@ async function getBillingOwnerProfile(profileId: string): Promise<BillingOwnerPr
       addressNumber: true,
       neighborhood: true,
       complement: true,
-      asaasCustomerId: true,
-      asaasSubscriptionId: true,
-      subscriptionStatus: true,
-      subscriptionNextDueDate: true,
-      subscriptionCycle: true,
-      hasPermanentSubscription: true,
       timezone: true,
+      subscription: {
+        select: {
+          asaasCustomerId: true,
+          asaasSubscriptionId: true,
+          subscriptionStatus: true,
+          subscriptionNextDueDate: true,
+          subscriptionCycle: true,
+          hasPermanentSubscription: true,
+        },
+      },
     },
   });
+
+  if (!profile) {
+    return null;
+  }
+
+  return {
+    id: profile.id,
+    fullName: profile.fullName,
+    email: profile.email,
+    cpfCnpj: profile.cpfCnpj,
+    phone: profile.phone,
+    postalCode: profile.postalCode,
+    address: profile.address,
+    addressNumber: profile.addressNumber,
+    neighborhood: profile.neighborhood,
+    complement: profile.complement,
+    asaasCustomerId: profile.subscription?.asaasCustomerId ?? null,
+    asaasSubscriptionId: profile.subscription?.asaasSubscriptionId ?? null,
+    subscriptionStatus: profile.subscription?.subscriptionStatus ?? null,
+    subscriptionNextDueDate: profile.subscription?.subscriptionNextDueDate ?? null,
+    subscriptionCycle: profile.subscription?.subscriptionCycle ?? null,
+    hasPermanentSubscription: profile.subscription?.hasPermanentSubscription ?? false,
+    timezone: profile.timezone,
+  };
 }
 
 function resolveDelegatedPermissions(
@@ -126,7 +154,6 @@ async function createUserAndInvite(args: {
       functions: args.userData.functions ?? [],
       managerId: args.masterId,
       isMaster: false,
-      hasPermanentSubscription: args.userData.hasPermanentSubscription ?? false,
       canCreateAccountUsers: args.delegatedPermissions.canCreateAccountUsers,
       canManageAccountTeams: args.delegatedPermissions.canManageAccountTeams,
     },
@@ -588,7 +615,11 @@ export async function GET(
             email: true,
             profileIconId: true,
             profileIconUrl: true,
-            hasPermanentSubscription: true,
+            subscription: {
+              select: {
+                hasPermanentSubscription: true,
+              },
+            },
             googleConnection: {
               select: {
                 refreshToken: true,
@@ -635,7 +666,7 @@ export async function GET(
         meetingsCount: member.profile._count?.leadsAsCloser ?? 0,
         createdAt: member.createdAt,
         updatedAt: member.updatedAt,
-        hasPermanentSubscription: member.profile.hasPermanentSubscription,
+        hasPermanentSubscription: member.profile.subscription?.hasPermanentSubscription ?? false,
         googleCalendarConnected: isGoogleConnectionActive(member.profile.googleConnection),
       }));
 

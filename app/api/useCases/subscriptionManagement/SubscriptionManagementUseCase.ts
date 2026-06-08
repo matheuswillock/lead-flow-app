@@ -372,8 +372,35 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
       const requesterProfile = await prisma.profile.findUnique({
         where: { supabaseId },
-        include: {
-          subscription: true,
+        select: {
+          id: true,
+          isMaster: true,
+          managerId: true,
+          fullName: true,
+          email: true,
+          cpfCnpj: true,
+          phone: true,
+          postalCode: true,
+          address: true,
+          addressNumber: true,
+          neighborhood: true,
+          complement: true,
+          timezone: true,
+          createdAt: true,
+          subscription: {
+            select: {
+              asaasCustomerId: true,
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+              subscriptionNextDueDate: true,
+              subscriptionCycle: true,
+              hasPermanentSubscription: true,
+              subscriptionPlan: true,
+              subscriptionStartDate: true,
+              subscriptionEndDate: true,
+              trialEndDate: true,
+            },
+          },
         },
       });
 
@@ -393,11 +420,36 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
       const profile =
         masterIdForBilling === requesterProfile.id
-          ? requesterProfile
+            ? requesterProfile
           : await prisma.profile.findUnique({
               where: { id: masterIdForBilling },
-              include: {
-                subscription: true,
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                cpfCnpj: true,
+                phone: true,
+                postalCode: true,
+                address: true,
+                addressNumber: true,
+                neighborhood: true,
+                complement: true,
+                timezone: true,
+                createdAt: true,
+                subscription: {
+                  select: {
+                    asaasCustomerId: true,
+                    asaasSubscriptionId: true,
+                    subscriptionStatus: true,
+                    subscriptionNextDueDate: true,
+                    subscriptionCycle: true,
+                    hasPermanentSubscription: true,
+                    subscriptionPlan: true,
+                    subscriptionStartDate: true,
+                    subscriptionEndDate: true,
+                    trialEndDate: true,
+                  },
+                },
               },
             });
 
@@ -684,7 +736,20 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
       // Buscar profile
       const profile = await prisma.profile.findUnique({
-        where: { supabaseId }
+        where: { supabaseId },
+        select: {
+          id: true,
+          subscription: {
+            select: {
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+              subscriptionPlan: true,
+              subscriptionStartDate: true,
+              subscriptionEndDate: true,
+              trialEndDate: true,
+            },
+          },
+        },
       });
 
       if (!profile || !profile.subscription?.asaasSubscriptionId) {
@@ -697,12 +762,17 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       }
 
       // Atualizar status da assinatura
-      await prisma.profile.update({
-        where: { id: profile.id },
-        data: {
+      await prisma.profileSubscription.upsert({
+        where: { profileId: profile.id },
+        create: {
+          profile: { connect: { id: profile.id } },
           subscriptionStatus: 'canceled',
-          subscriptionEndDate: new Date()
-        }
+          subscriptionEndDate: new Date(),
+        },
+        update: {
+          subscriptionStatus: 'canceled',
+          subscriptionEndDate: new Date(),
+        },
       });
 
       // TODO: Chamar API Asaas para cancelar assinatura
@@ -754,7 +824,20 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
       // Buscar profile
       const profile = await prisma.profile.findUnique({
-        where: { supabaseId }
+        where: { supabaseId },
+        select: {
+          id: true,
+          subscription: {
+            select: {
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+              subscriptionPlan: true,
+              subscriptionStartDate: true,
+              subscriptionEndDate: true,
+              trialEndDate: true,
+            },
+          },
+        },
       });
 
       if (!profile || !profile.subscription?.asaasSubscriptionId) {
@@ -813,7 +896,20 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
       // Buscar profile
       const profile = await prisma.profile.findUnique({
-        where: { supabaseId }
+        where: { supabaseId },
+        select: {
+          id: true,
+          subscription: {
+            select: {
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+              subscriptionPlan: true,
+              subscriptionStartDate: true,
+              subscriptionEndDate: true,
+              trialEndDate: true,
+            },
+          },
+        },
       });
 
       if (!profile || !profile.subscription?.asaasSubscriptionId) {

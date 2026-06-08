@@ -21,8 +21,16 @@ export async function POST(
     // 1. Buscar profile do usuário
     const profile = await prisma.profile.findUnique({
       where: { supabaseId },
-      include: {
-        subscription: true,
+      select: {
+        id: true,
+        supabaseId: true,
+        subscription: {
+          select: {
+            asaasCustomerId: true,
+            subscriptionStatus: true,
+            subscriptionPlan: true,
+          },
+        },
       },
     });
 
@@ -34,7 +42,8 @@ export async function POST(
     }
 
     // 2. Verificar se tem asaasCustomerId
-    if (!profile.subscription?.asaasCustomerId) {
+    const asaasCustomerId = profile.subscription?.asaasCustomerId ?? null;
+    if (!asaasCustomerId) {
       console.warn('⚠️ [SyncSubscription] Profile não possui asaasCustomerId');
       return NextResponse.json(
         new Output(false, [], ['Usuário não possui customer ID no Asaas'], null),
@@ -43,10 +52,10 @@ export async function POST(
     }
 
     // 3. Buscar assinaturas ativas no Asaas
-    console.info('📞 [SyncSubscription] Buscando assinaturas no Asaas para customer:', profile.subscription.asaasCustomerId);
+    console.info('📞 [SyncSubscription] Buscando assinaturas no Asaas para customer:', asaasCustomerId);
     
     const subscriptions = await AsaasSubscriptionService.listSubscriptions(
-      profile.subscription.asaasCustomerId,
+      asaasCustomerId,
       { status: 'ACTIVE', limit: 1 }
     );
 
@@ -105,14 +114,14 @@ export async function POST(
 
     const syncedAt = new Date();
     const [profileSubscription, updatedProfile] = await prisma.$transaction(async (tx) => {
-      const subscriptionRow = await tx.profileSubscription.upsert({
-        where: { profileId: profile.id },
-        create: {
-          profile: { connect: { id: profile.id } },
-          asaasCustomerId: profile.subscription.asaasCustomerId ?? undefined,
-          asaasSubscriptionId: activeSubscription.id,
-          subscriptionStatus: 'active',
-          subscriptionPlan: subscriptionPlan,
+        const subscriptionRow = await tx.profileSubscription.upsert({
+          where: { profileId: profile.id },
+          create: {
+            profile: { connect: { id: profile.id } },
+            asaasCustomerId,
+            asaasSubscriptionId: activeSubscription.id,
+            subscriptionStatus: 'active',
+            subscriptionPlan: subscriptionPlan,
           subscriptionCycle: activeSubscription.cycle as 'MONTHLY',
           subscriptionNextDueDate: activeSubscription.nextDueDate
             ? new Date(activeSubscription.nextDueDate)
@@ -121,9 +130,9 @@ export async function POST(
             ? new Date(activeSubscription.dateCreated)
             : null,
           subscriptionLastSyncedAt: syncedAt,
-        },
-        update: {
-          asaasCustomerId: profile.subscription.asaasCustomerId ?? undefined,
+          },
+          update: {
+          asaasCustomerId,
           asaasSubscriptionId: activeSubscription.id,
           subscriptionStatus: 'active',
           subscriptionPlan: subscriptionPlan,

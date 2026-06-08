@@ -17,8 +17,30 @@ export class SubscriptionRepository implements ISubscriptionRepository {
       where: {
         OR: orConditions,
       },
-      include: {
-        subscription: true,
+      select: {
+        id: true,
+        supabaseId: true,
+        email: true,
+        phone: true,
+        cpfCnpj: true,
+        fullName: true,
+        role: true,
+        isMaster: true,
+        managerId: true,
+        operatorCount: true,
+        subscription: {
+          select: {
+            asaasCustomerId: true,
+            asaasSubscriptionId: true,
+            subscriptionStatus: true,
+            subscriptionStartDate: true,
+            subscriptionEndDate: true,
+            subscriptionNextDueDate: true,
+            subscriptionPlan: true,
+            subscriptionCycle: true,
+            hasPermanentSubscription: true,
+          },
+        },
       },
     });
   }
@@ -28,8 +50,30 @@ export class SubscriptionRepository implements ISubscriptionRepository {
       where: {
         id,
       },
-      include: {
-        subscription: true,
+      select: {
+        id: true,
+        supabaseId: true,
+        email: true,
+        phone: true,
+        cpfCnpj: true,
+        fullName: true,
+        role: true,
+        isMaster: true,
+        managerId: true,
+        operatorCount: true,
+        subscription: {
+          select: {
+            asaasCustomerId: true,
+            asaasSubscriptionId: true,
+            subscriptionStatus: true,
+            subscriptionStartDate: true,
+            subscriptionEndDate: true,
+            subscriptionNextDueDate: true,
+            subscriptionPlan: true,
+            subscriptionCycle: true,
+            hasPermanentSubscription: true,
+          },
+        },
       },
     });
   }

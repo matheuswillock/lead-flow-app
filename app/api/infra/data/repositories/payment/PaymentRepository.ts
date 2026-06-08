@@ -1,6 +1,6 @@
 // app/api/infra/data/repositories/payment/PaymentRepository.ts
 
-import { ProfileSubscription, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
+import { SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 import { IPaymentRepository, PaymentProfile } from './IPaymentRepository';
 import prisma from '../../prisma';
 
