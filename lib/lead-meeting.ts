@@ -10,7 +10,11 @@ export const isMeetingOverdue = (meetingDateIso: string | null | undefined) => {
 export const isMeetingHealdResolved = (meetingHeald: LeadMeetingHeald) => meetingHeald === "yes";
 
 export const requiresMeetingHealdGate = (fromStatus: string | null | undefined, toStatus: string) =>
-  fromStatus === "scheduled" && toStatus !== "scheduled" && toStatus !== "no_show";
+  fromStatus === "scheduled" &&
+  toStatus !== "scheduled" &&
+  toStatus !== "no_show" &&
+  toStatus !== "new_opportunity" &&
+  toStatus !== "opportunityLost";
 
 export const canConfirmMeetingHeald = (params: {
   isTeamMaster: boolean;

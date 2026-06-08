@@ -1017,7 +1017,8 @@ export class LeadUseCase implements ILeadUseCase {
         isCurrentStatusScheduled &&
         status !== LeadStatus.scheduled &&
         status !== LeadStatus.no_show &&
-        status !== LeadStatus.new_opportunity;
+        status !== LeadStatus.new_opportunity &&
+        status !== LeadStatus.opportunityLost;
 
       if (isLeavingScheduled && existingLead.meetingHeald !== "yes") {
         const team = existingLead.teamId
