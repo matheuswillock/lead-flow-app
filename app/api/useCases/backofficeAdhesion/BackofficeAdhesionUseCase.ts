@@ -44,7 +44,34 @@ const EXPECTED_CREATE_ERROR_MESSAGES = new Set([
   "Convite só pode ser reenviado para adesões pagas",
   "Adesão paga sem e-mail para reenvio de convite",
   "Adesão paga sem e-mail para envio de convite",
+  "Informe a data de expiração do acesso Member PRO",
+  "Data de expiração do acesso Member PRO inválida",
+  "O acesso Member PRO deve ter validade de no mínimo 1 dia",
+  "O acesso Member PRO deve ter validade de no máximo 1 ano",
 ])
+
+const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
+const MEMBER_PRO_MIN_ACCESS_DAYS = 1
+const MEMBER_PRO_MAX_ACCESS_DAYS = 365
+
+function validateMemberProAccessExpiresAt(accessExpiresAt: string | null | undefined): void {
+  if (!accessExpiresAt) {
+    throw new Error("Informe a data de expiração do acesso Member PRO")
+  }
+
+  const expiresAt = new Date(accessExpiresAt)
+  if (Number.isNaN(expiresAt.getTime())) {
+    throw new Error("Data de expiração do acesso Member PRO inválida")
+  }
+
+  const now = Date.now()
+  if (expiresAt.getTime() < now + MEMBER_PRO_MIN_ACCESS_DAYS * MEMBER_PRO_DAY_MS) {
+    throw new Error("O acesso Member PRO deve ter validade de no mínimo 1 dia")
+  }
+  if (expiresAt.getTime() > now + MEMBER_PRO_MAX_ACCESS_DAYS * MEMBER_PRO_DAY_MS) {
+    throw new Error("O acesso Member PRO deve ter validade de no máximo 1 ano")
+  }
+}
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
@@ -89,6 +116,10 @@ export class BackofficeAdhesionUseCase implements IBackofficeAdhesionUseCase {
     createdByBackofficeUserId: string | null
   ): Promise<Output> {
     try {
+      if (input.userType === "member_pro") {
+        validateMemberProAccessExpiresAt(input.accessExpiresAt)
+      }
+
       const result = await this.service.create(input, createdByBackofficeUserId)
       return new Output(true, ["Nova adesão gerada com sucesso"], [], result)
     } catch (error) {

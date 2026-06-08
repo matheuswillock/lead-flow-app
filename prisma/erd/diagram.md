@@ -553,6 +553,8 @@ unsubscribed unsubscribed
     DateTime canceledAt "❓"
     String createdProfileId "❓"
     String createdSupabaseId "❓"
+    String requestedUserTypeSlug "❓"
+    DateTime requestedMemberProAccessExpiresAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1110,6 +1112,25 @@ unsubscribed unsubscribed
     DateTime updatedAt 
     }
   
+
+  "profile_user_types" {
+    String id "🗝️"
+    String slug 
+    String name 
+    String description "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "profile_user_type_assignments" {
+    String id "🗝️"
+    DateTime accessStartsAt "❓"
+    DateTime accessExpiresAt "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
@@ -1255,4 +1276,7 @@ unsubscribed unsubscribed
     "corretor_studio_profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
+    "profile_user_type_assignments" |o--|| corretor_studio_profiles : "profile"
+    "profile_user_type_assignments" }o--|| profile_user_types : "userType"
+    "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"
 ```

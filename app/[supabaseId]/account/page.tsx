@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/app/context/UserContext";
@@ -55,6 +56,8 @@ import { CircleCheckBig } from "@/components/animate-ui/icons/circle-check-big";
 import { GOOGLE_CALENDAR_SCOPES } from "@/lib/googleOAuth";
 import { getProfileTimezoneOptions, type TimezoneOption } from "@/lib/dates";
 import { useTimezone } from "@/app/context/TimezoneContext";
+import { useFeatureAccess } from "@/app/context/FeatureAccessContext";
+import { MemberProCountdownBadge } from "./features/components/MemberProCountdownBadge";
 
 const ALL_GOOGLE_SCOPES = [
   {
@@ -87,6 +90,11 @@ export default function AccountProfilePage() {
   const { user, isLoading, updateUser, updatePassword, uploadProfileIcon, deleteProfileIcon, refreshUser } =
     useUser();
   const { tz, setTz, loading: isTimezoneLoading } = useTimezone();
+  const { userRole } = useFeatureAccess();
+  const { userTypeSlug, memberProActive, memberProExpiresAt } = userRole;
+  const isMemberPro = userTypeSlug === "member_pro";
+  const memberProExpired = isMemberPro && !memberProActive;
+  const memberProBadgeLabel = memberProExpired ? "MEMBER PRO (EXPIRADO)" : "MEMBER PRO";
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -638,7 +646,20 @@ export default function AccountProfilePage() {
       <div className="container mx-auto max-w-3xl px-4 py-10">
         <Card className="border-border/60 shadow-sm">
           <CardHeader className="space-y-2">
-            <CardTitle className="text-2xl">Minha conta</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-2xl">Minha conta</CardTitle>
+              {isMemberPro && (
+                <Badge
+                  variant={memberProExpired ? "secondary" : "default"}
+                  className="uppercase"
+                >
+                  {memberProBadgeLabel}
+                </Badge>
+              )}
+              {isMemberPro && memberProActive && memberProExpiresAt && (
+                <MemberProCountdownBadge expiresAt={memberProExpiresAt} />
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">
               Gerencie seu perfil e configurações de segurança.
             </p>

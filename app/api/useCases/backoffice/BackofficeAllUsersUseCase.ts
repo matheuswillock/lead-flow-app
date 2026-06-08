@@ -7,10 +7,11 @@ import type {
   BackofficeAllUsersMasterRef,
   BackofficeAllUsersPlanFilter,
   BackofficeAllUsersRoleFilter,
+  BackofficeAllUsersUserTypeFilter,
   IBackofficeAllUsersRepository,
 } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/IBackofficeAllUsersRepository"
 
-export type { BackofficeAllUsersPlanFilter, BackofficeAllUsersRoleFilter }
+export type { BackofficeAllUsersPlanFilter, BackofficeAllUsersRoleFilter, BackofficeAllUsersUserTypeFilter }
 
 interface PlanInfo {
   label: string
@@ -66,6 +67,7 @@ function serializeListItem(record: BackofficeAllUsersListRecord) {
           plan: getPlanInfo(record.master),
         }
       : null,
+    userType: record.userType,
   }
 }
 

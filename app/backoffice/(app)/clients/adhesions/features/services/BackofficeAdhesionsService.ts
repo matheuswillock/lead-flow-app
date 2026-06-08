@@ -69,7 +69,9 @@ export class BackofficeAdhesionsService implements IBackofficeAdhesionsService {
     )
   }
 
-  async create(values: BackofficeAdhesionFormValues): Promise<BackofficeAdhesionCreationResult> {
+  async create(
+    values: BackofficeAdhesionFormValues & { accessExpiresAt?: string | null }
+  ): Promise<BackofficeAdhesionCreationResult> {
     return parseOutput<BackofficeAdhesionCreationResult>(
       await fetch("/api/v1/backoffice/adhesions", {
         method: "POST",

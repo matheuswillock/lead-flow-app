@@ -45,6 +45,14 @@ const CYCLE_MONTHS: Record<BackofficeAdhesionBillingCycleKey, number> = {
   semiannual: 6,
   annual: 12,
 }
+const MEMBER_PRO_MIN_DAYS = 1
+const MEMBER_PRO_MAX_DAYS = 365
+const MEMBER_PRO_DAY_MS = 24 * 60 * 60 * 1000
+
+function parsePositiveInt(value: string): number | null {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
 
 function sanitizePhone(value: string): string {
   return value.replace(/\D/g, "").slice(0, 11)
@@ -89,6 +97,8 @@ function defaultValues(): BackofficeAdhesionFormValues {
     sdrBackofficeUserId: null,
     closerBackofficeUserId: null,
     activationMode: "checkout",
+    userType: "common",
+    memberProAccessDays: "",
   }
 }
 
@@ -111,6 +121,8 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     sdrBackofficeUserId: adhesion.sdrBackofficeUserId,
     closerBackofficeUserId: adhesion.closerBackofficeUserId,
     activationMode: "checkout",
+    userType: "common",
+    memberProAccessDays: "",
   }
 }
 
@@ -251,6 +263,13 @@ export function BackofficeAdhesionDialog({
   const sanitizedCpfCnpj = sanitizeCpfCnpj(values.cpfCnpj)
   const hasValidOptionalCpfCnpj =
     sanitizedCpfCnpj.length === 0 || /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)
+  const isMemberPro = values.userType === "member_pro"
+  const memberProAccessDaysValue = parsePositiveInt(values.memberProAccessDays)
+  const memberProAccessDaysValid =
+    !isMemberPro ||
+    (memberProAccessDaysValue !== null &&
+      memberProAccessDaysValue >= MEMBER_PRO_MIN_DAYS &&
+      memberProAccessDaysValue <= MEMBER_PRO_MAX_DAYS)
   const canSubmit =
     values.fullName.trim().length >= 2 &&
     /^\d{10,11}$/.test(sanitizePhone(values.phone)) &&
@@ -259,6 +278,7 @@ export function BackofficeAdhesionDialog({
     (!(isExternalPaid || isExternalBilling) || isValidEmail(values.email.trim())) &&
     (!(isExternalPaid || isExternalBilling) || /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)) &&
     (isExternalBilling || values.billingType === "PIX" || values.billingType === "CREDIT_CARD") &&
+    (mode === "edit" || memberProAccessDaysValid) &&
     !isSubmitting
 
   useEffect(() => {
@@ -327,6 +347,11 @@ export function BackofficeAdhesionDialog({
         return
       }
 
+      const accessExpiresAt =
+        values.userType === "member_pro" && memberProAccessDaysValue !== null
+          ? new Date(Date.now() + memberProAccessDaysValue * MEMBER_PRO_DAY_MS).toISOString()
+          : null
+
       const created = await service.create({
         ...values,
         fullName: values.fullName.trim(),
@@ -334,6 +359,7 @@ export function BackofficeAdhesionDialog({
         email: values.email.trim().toLowerCase(),
         cpfCnpj: sanitizeCpfCnpj(values.cpfCnpj),
         billingType: chargeBillingType,
+        accessExpiresAt,
       })
       setResult(created)
       await onSaved?.()
@@ -585,6 +611,52 @@ export function BackofficeAdhesionDialog({
                 </Select>
               </div>
             </div>
+
+            {mode === "create" && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label>Tipo de usuário</Label>
+                  <Select
+                    value={values.userType}
+                    onValueChange={(value) =>
+                      updateValue("userType", value as BackofficeAdhesionFormValues["userType"])
+                    }
+                    disabled={isSubmitting}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="common">Comum</SelectItem>
+                        <SelectItem value="member_pro">Member PRO</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {isMemberPro && (
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="adhesion-member-pro-days">Validade do acesso (dias) *</Label>
+                    <Input
+                      id="adhesion-member-pro-days"
+                      type="number"
+                      min={MEMBER_PRO_MIN_DAYS}
+                      max={MEMBER_PRO_MAX_DAYS}
+                      placeholder="Ex.: 30"
+                      value={values.memberProAccessDays}
+                      onChange={(event) => updateValue("memberProAccessDays", event.target.value)}
+                      disabled={isSubmitting}
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Entre {MEMBER_PRO_MIN_DAYS} e {MEMBER_PRO_MAX_DAYS} dias a partir da criação da conta.
+                    </p>
+                    {values.memberProAccessDays.length > 0 && !memberProAccessDaysValid && (
+                      <p className="text-sm text-destructive">Informe um número entre 1 e 365</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex flex-col gap-2">
               <Label>Forma de pagamento *</Label>

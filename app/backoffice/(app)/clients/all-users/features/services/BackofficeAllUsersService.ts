@@ -1,9 +1,38 @@
-import type { IBackofficeAllUsersService } from "./IBackofficeAllUsersService"
+import type { BackofficeAllUsersUpdateUserTypeInput, IBackofficeAllUsersService } from "./IBackofficeAllUsersService"
 import type {
   BackofficeAllUsersDetail,
   BackofficeAllUsersFilters,
   BackofficeAllUsersListResult,
+  BackofficeAllUsersUserType,
 } from "../context/BackofficeAllUsersTypes"
+
+interface OutputResponse<T> {
+  isValid: boolean
+  successMessages?: string[]
+  errorMessages?: string[]
+  result?: T
+}
+
+const ERROR_MESSAGE_BY_STATUS: Record<number, string> = {
+  401: "Sessão expirada. Faça login novamente.",
+  403: "Você não tem permissão para esta ação.",
+  404: "Recurso não encontrado.",
+  500: "Erro interno do servidor. Tente novamente.",
+}
+
+async function parseOutput<T>(response: Response, fallbackMessage: string): Promise<T> {
+  const isJson = response.headers.get("content-type")?.includes("application/json") ?? false
+
+  if (!isJson) {
+    throw new Error(ERROR_MESSAGE_BY_STATUS[response.status] ?? fallbackMessage)
+  }
+
+  const data = (await response.json()) as OutputResponse<T>
+  if (!response.ok || !data.isValid || data.result === undefined) {
+    throw new Error(data.errorMessages?.[0] ?? fallbackMessage)
+  }
+  return data.result
+}
 
 export class BackofficeAllUsersService implements IBackofficeAllUsersService {
   async list(params?: {
@@ -27,13 +56,16 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
     const plan = params?.filters?.plan
     if (plan && plan !== "all") search.set("plan", plan)
 
-    const res = await fetch(`/api/v1/backoffice/clients/all-users?${search.toString()}`, {
-      cache: "no-store",
-    })
-    const data = await res.json()
-    if (!data.isValid) {
-      throw new Error(data.errorMessages?.[0] ?? "Erro ao carregar usuários")
-    }
+    const userType = params?.filters?.userType
+    if (userType && userType !== "all") search.set("userType", userType)
+
+    const result = await parseOutput<{
+      items?: BackofficeAllUsersListResult["items"]
+      pagination?: BackofficeAllUsersListResult["pagination"]
+    }>(
+      await fetch(`/api/v1/backoffice/clients/all-users?${search.toString()}`, { cache: "no-store" }),
+      "Erro ao carregar usuários"
+    )
 
     const fallbackPagination = {
       page,
@@ -45,19 +77,30 @@ export class BackofficeAllUsersService implements IBackofficeAllUsersService {
     }
 
     return {
-      items: data.result?.items ?? [],
-      pagination: data.result?.pagination ?? fallbackPagination,
+      items: result.items ?? [],
+      pagination: result.pagination ?? fallbackPagination,
     }
   }
 
   async getDetail(profileId: string): Promise<BackofficeAllUsersDetail> {
-    const res = await fetch(`/api/v1/backoffice/clients/all-users/${profileId}`, {
-      cache: "no-store",
-    })
-    const data = await res.json()
-    if (!data.isValid || !data.result) {
-      throw new Error(data.errorMessages?.[0] ?? "Erro ao carregar detalhes do usuário")
-    }
-    return data.result as BackofficeAllUsersDetail
+    return parseOutput<BackofficeAllUsersDetail>(
+      await fetch(`/api/v1/backoffice/clients/all-users/${profileId}`, { cache: "no-store" }),
+      "Erro ao carregar detalhes do usuário"
+    )
+  }
+
+  async updateUserType(
+    profileId: string,
+    payload: BackofficeAllUsersUpdateUserTypeInput
+  ): Promise<BackofficeAllUsersUserType> {
+    const result = await parseOutput<{ userType: BackofficeAllUsersUserType }>(
+      await fetch(`/api/v1/backoffice/clients/all-users/${profileId}/user-type`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
+      "Erro ao atualizar tipo de usuário"
+    )
+    return result.userType
   }
 }
