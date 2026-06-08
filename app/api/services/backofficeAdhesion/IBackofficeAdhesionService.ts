@@ -17,6 +17,8 @@ export interface BackofficeAdhesionCreateInput {
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   activationMode?: "checkout" | "external_paid"
+  userType?: "common" | "member_pro"
+  accessExpiresAt?: string | null
 }
 
 export interface BackofficeAdhesionUpdateInput {

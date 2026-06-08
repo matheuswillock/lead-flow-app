@@ -196,7 +196,7 @@ export function SubscriptionContainer() {
 
       {hasAccess(FEATURE_SLUGS.EMAIL) && (
         <div className="space-y-2">
-          <h2 className="text-lg font-semibold">Créditos de Email</h2>
+          <h2 className="text-lg font-semibold">Créditos de E-mail</h2>
           <EmailCreditsCard />
         </div>
       )}

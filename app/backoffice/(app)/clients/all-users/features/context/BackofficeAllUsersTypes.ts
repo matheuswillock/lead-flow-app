@@ -1,6 +1,14 @@
 export type BackofficeAllUsersRole = "manager" | "operator" | "backoffice"
 export type BackofficeAllUsersRoleFilter = "master" | "manager" | "operator"
 export type BackofficeAllUsersPlanFilter = "lifetime" | "monthly" | "trial" | "none"
+export type BackofficeAllUsersUserTypeFilter = "common" | "member_pro"
+
+export interface BackofficeAllUsersUserType {
+  slug: "common" | "member_pro"
+  label: string
+  accessExpiresAt: string | null
+  isExpired: boolean
+}
 
 export interface BackofficeAllUsersPlan {
   label: string
@@ -30,6 +38,7 @@ export interface BackofficeAllUsersItem {
   googleCalendarConnected: boolean
   createdAt: string
   master: BackofficeAllUsersMasterRef | null
+  userType: BackofficeAllUsersUserType
 }
 
 export interface BackofficeAllUsersTeamSummary {
@@ -50,6 +59,7 @@ export interface BackofficeAllUsersFilters {
   query: string
   role: BackofficeAllUsersRoleFilter | "all"
   plan: BackofficeAllUsersPlanFilter | "all"
+  userType: BackofficeAllUsersUserTypeFilter | "all"
 }
 
 export interface BackofficePagination {

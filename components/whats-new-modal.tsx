@@ -28,7 +28,7 @@ const WHATS_NEW_ITEMS: WhatsNewItem[] = [
     id: "wallet",
     title: "Carteira",
     description:
-      "Agora ficou mais facil acompanhar sua carteira com uma visao clara dos clientes e oportunidades para priorizar melhor suas acoes.",
+      "Agora ficou mais fácil acompanhar sua carteira com uma visão clara dos clientes e oportunidades para priorizar melhor suas ações.",
     roles: ["manager", "backoffice"],
     icon: Briefcase,
   },
@@ -36,7 +36,7 @@ const WHATS_NEW_ITEMS: WhatsNewItem[] = [
     id: "performance",
     title: "Performance",
     description:
-      "Acompanhe resultados com mais clareza por meio de metricas de desempenho para identificar gargalos e agir mais rapido.",
+      "Acompanhe resultados com mais clareza por meio de métricas de desempenho para identificar gargalos e agir mais rápido.",
     roles: ["manager", "backoffice"],
     icon: BarChart3,
   },
@@ -44,7 +44,7 @@ const WHATS_NEW_ITEMS: WhatsNewItem[] = [
     id: "plan-simulator",
     title: "Simulador de Planos",
     description:
-      "Faça simulacoes de planos de forma pratica e rapida para apoiar suas conversas comerciais com mais confianca.",
+      "Faça simulações de planos de forma prática e rápida para apoiar suas conversas comerciais com mais confiança.",
     roles: ["manager", "backoffice", "operator"],
     icon: Calculator,
   },
@@ -97,7 +97,7 @@ export function WhatsNewModal({ supabaseId, enabled = true }: WhatsNewModalProps
         <DialogHeader className="pr-6">
           <DialogTitle>🚀 Novidades no Corretor Studio</DialogTitle>
           <DialogDescription>
-            Tem recurso novo no ar para acelerar sua rotina. Da uma olhada no que ja esta disponivel para voce.
+            Tem recurso novo no ar para acelerar sua rotina. Dê uma olhada no que já está disponível para você.
           </DialogDescription>
         </DialogHeader>
         <div className="dialog-scrollbar flex flex-1 flex-col gap-3 overflow-y-auto pr-1">

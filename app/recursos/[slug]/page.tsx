@@ -24,8 +24,8 @@ export async function generateMetadata({ params }: ResourceDetailPageProps): Pro
 
   if (!resource) {
     return createPublicPageMetadata({
-      title: "Recurso nao encontrado | Corretor Studio",
-      description: "O recurso solicitado nao foi encontrado.",
+      title: "Recurso não encontrado | Corretor Studio",
+      description: "O recurso solicitado não foi encontrado.",
       canonicalPath: "/recursos",
       keywords: ["corretor studio", "recursos"],
     })

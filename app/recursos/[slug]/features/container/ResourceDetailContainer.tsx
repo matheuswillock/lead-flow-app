@@ -80,7 +80,7 @@ export function ResourceDetailContainer() {
         </section>
 
         <section className="mt-8 rounded-2xl border border-border p-6 md:p-8">
-          <h2 className="text-2xl font-bold tracking-tight">FAQ rapido</h2>
+          <h2 className="text-2xl font-bold tracking-tight">FAQ rápido</h2>
           <div className="mt-5 space-y-5">
             {resource.faq.map((faqItem) => (
               <article key={faqItem.question}>

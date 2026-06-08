@@ -161,7 +161,7 @@ export function BackofficeClientEditDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="edit-email">Email</Label>
+                <Label htmlFor="edit-email">E-mail</Label>
                 <Input
                   id="edit-email"
                   value={details.email}

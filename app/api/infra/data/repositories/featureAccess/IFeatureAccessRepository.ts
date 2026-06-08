@@ -13,6 +13,14 @@ export interface UserRoleInfo {
   functions: string[]
   canManageAccountTeams: boolean
   canCreateAccountUsers: boolean
+  userTypeSlug: string
+  memberProActive: boolean
+  memberProExpiresAt: string | null
+}
+
+export interface OwnerUserTypeAssignment {
+  slug: string
+  accessExpiresAt: string | null
 }
 
 export interface IFeatureAccessRepository {
@@ -28,4 +36,5 @@ export interface IFeatureAccessRepository {
   >
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>
   findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null>
+  findUserTypeAssignment(ownerProfileId: string): Promise<OwnerUserTypeAssignment | null>
 }

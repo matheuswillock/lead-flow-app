@@ -14,7 +14,7 @@ import { getAbsoluteUrl } from "@/lib/metadata/share"
 
 const homeTitle = "Corretor Studio | CRM e Marketing para Corretores de Saúde"
 const homeDescription =
-  "CRM para corretores de saúde. Pipeline Kanban, gestão de equipe, agenda e métricas para aumentar conversão. Campanhas de email em breve."
+  "CRM para corretores de saúde. Pipeline Kanban, gestão de equipe, agenda e métricas para aumentar conversão. Campanhas de e-mail em breve."
 
 export const metadata: Metadata = createPublicPageMetadata({
   title: homeTitle,
@@ -59,7 +59,7 @@ export default function HomePage() {
     inLanguage: "pt-BR",
     url: websiteUrl,
     description:
-      "Plataforma de gestão de leads para corretores de saúde com CRM, pipeline comercial, times e agendamento de reuniões. Campanhas de email em breve.",
+      "Plataforma de gestão de leads para corretores de saúde com CRM, pipeline comercial, times e agendamento de reuniões. Campanhas de e-mail em breve.",
   }
 
   const faqSchema = {
@@ -137,7 +137,7 @@ export default function HomePage() {
               >
                 <span className="inline-block h-1.5 w-1.5 rounded-full animate-pulse bg-primary" />
                 <span className="font-semibold text-primary">Em breve</span>
-                <span className="text-muted-foreground">Campanhas de Email no Corretor Studio</span>
+                <span className="text-muted-foreground">Campanhas de E-mail no Corretor Studio</span>
                 <ArrowRight className="h-3.5 w-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </Link>
 

@@ -40,7 +40,7 @@ const features: Feature[] = [
   },
   {
     icon: Mail,
-    title: "Campanhas de Email",
+    title: "Campanhas de E-mail",
     description:
       "Em breve: campanhas segmentadas para listas de contatos com editor visual, agendamento automático e analytics detalhados.",
     badge: "Em breve",
@@ -97,7 +97,7 @@ export function FeaturesSection() {
             </span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            CRM completo hoje, com modulo de campanhas de email chegando em breve para ampliar sua operação.
+            CRM completo hoje, com módulo de campanhas de e-mail chegando em breve para ampliar sua operação.
           </p>
         </MotionDiv>
 

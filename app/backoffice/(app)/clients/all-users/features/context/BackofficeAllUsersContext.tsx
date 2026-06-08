@@ -21,6 +21,7 @@ const DEFAULT_FILTERS: BackofficeAllUsersFilters = {
   query: "",
   role: "all",
   plan: "all",
+  userType: "all",
 }
 
 const DEFAULT_PAGINATION: BackofficePagination = {

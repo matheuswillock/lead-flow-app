@@ -131,7 +131,7 @@ export function ManagerTeamsContainer({
             data={tableData}
             loading={loading}
             toolbar={{
-              search: { columnId: "name", placeholder: "Buscar por nome ou email..." },
+              search: { columnId: "name", placeholder: "Buscar por nome ou e-mail..." },
               selectFilters: [
                 {
                   columnId: "role",

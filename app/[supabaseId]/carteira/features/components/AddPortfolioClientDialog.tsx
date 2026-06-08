@@ -186,7 +186,7 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="portfolio-client-email">Email *</Label>
+                <Label htmlFor="portfolio-client-email">E-mail *</Label>
                 <Input
                   id="portfolio-client-email"
                   type="email"

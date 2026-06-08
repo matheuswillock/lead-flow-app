@@ -87,6 +87,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           sdrBackofficeUserId: data.sdrBackofficeUserId ?? null,
           closerBackofficeUserId: data.closerBackofficeUserId ?? null,
           createdByBackofficeUserId: data.createdByBackofficeUserId ?? null,
+          requestedUserTypeSlug: data.requestedUserTypeSlug ?? null,
+          requestedMemberProAccessExpiresAt: data.requestedMemberProAccessExpiresAt ?? null,
         },
         include: backofficeAdhesionInclude,
       })

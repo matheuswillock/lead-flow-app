@@ -394,7 +394,7 @@ export function PublicLeadForm() {
                     name="email"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className={fieldLabelClassName}>Email</FormLabel>
+                        <FormLabel className={fieldLabelClassName}>E-mail</FormLabel>
                         <FormControl>
                           <Input className={fieldInputClassName} type="email" placeholder="email@exemplo.com" {...field} />
                         </FormControl>

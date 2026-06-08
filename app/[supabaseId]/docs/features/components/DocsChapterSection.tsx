@@ -361,7 +361,7 @@ export function DocsChapterSection({
 
               <div className="flex flex-wrap gap-3">
                 <Button onClick={() => onSelectChapter("visao-geral")} className="rounded-xl">
-                  Comecar pela visao geral
+                  Começar pela visão geral
                 </Button>
                 <Button
                   onClick={() => onSelectChapter("crm-kanban")}

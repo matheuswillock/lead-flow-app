@@ -14,6 +14,15 @@ type BackofficeAdhesionActivationMode = (typeof ACTIVATION_MODES)[number]
 const BILLING_TYPES = ["PIX", "CREDIT_CARD"] as const
 type BackofficeAdhesionBillingTypeValue = (typeof BILLING_TYPES)[number]
 
+const USER_TYPES = ["common", "member_pro"] as const
+type BackofficeAdhesionUserTypeValue = (typeof USER_TYPES)[number]
+
+function parseUserType(value: unknown): BackofficeAdhesionUserTypeValue | undefined {
+  return typeof value === "string" && (USER_TYPES as readonly string[]).includes(value)
+    ? (value as BackofficeAdhesionUserTypeValue)
+    : undefined
+}
+
 function parsePositiveInt(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
@@ -108,6 +117,8 @@ export async function POST(request: NextRequest) {
         sdrBackofficeUserId: optionalString(data, "sdrBackofficeUserId"),
         closerBackofficeUserId: optionalString(data, "closerBackofficeUserId"),
         activationMode: parseActivationMode(data.activationMode),
+        userType: parseUserType(data.userType),
+        accessExpiresAt: optionalString(data, "accessExpiresAt"),
       },
       access.access.backofficeUserId
     )

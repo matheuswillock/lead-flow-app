@@ -82,6 +82,8 @@ export interface BackofficeAdhesionFormValues {
   sdrBackofficeUserId: string | null
   closerBackofficeUserId: string | null
   activationMode: "checkout" | "external_paid"
+  userType: "common" | "member_pro"
+  memberProAccessDays: string
 }
 
 export interface BackofficeAdhesionFilters {

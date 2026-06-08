@@ -53,9 +53,9 @@ export function MeetingHealdBlockedDialog(props: {
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Nao foi possivel atualizar</AlertDialogTitle>
+          <AlertDialogTitle>Não foi possível atualizar</AlertDialogTitle>
           <AlertDialogDescription>
-            Nao foi possivel atualizar este lead porque o closer nao marcou a reuniao como realizada.
+            Não foi possível atualizar este lead porque o closer não marcou a reunião como realizada.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

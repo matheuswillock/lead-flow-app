@@ -19,7 +19,7 @@ export function PerformanceContainer() {
       "1d": "ultimas 24h",
       "7d": "últimos 7 dias",
       "15d": "últimos 15 dias",
-      "1m": "ultimo mes",
+      "1m": "último mês",
       "3m": "últimos 3 meses",
     } as Record<string, string>
   )[filters.preset] ?? "últimos 7 dias";

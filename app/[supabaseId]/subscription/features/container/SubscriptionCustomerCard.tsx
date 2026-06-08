@@ -24,7 +24,7 @@ export function SubscriptionCustomerCard({ subscription }: SubscriptionCustomerC
           <span className="font-medium">{subscription.customer.name}</span>
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-sm text-muted-foreground">Email</span>
+          <span className="text-sm text-muted-foreground">E-mail</span>
           <span className="font-medium">{subscription.customer.email}</span>
         </div>
         <div className="flex flex-col gap-1">

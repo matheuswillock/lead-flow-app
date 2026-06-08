@@ -27,6 +27,8 @@ import type { IBackofficeProductRepository } from "@/app/api/infra/data/reposito
 import { BackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository"
 import type { IBackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/IBackofficeUserSubscriptionRepository"
 import { BackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/BackofficeUserSubscriptionRepository"
+import type { IBackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/IBackofficeAllUsersRepository"
+import { BackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/BackofficeAllUsersRepository"
 import type {
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
@@ -259,7 +261,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   constructor(
     private readonly repo: IBackofficeAdhesionRepository = new BackofficeAdhesionRepository(),
     private readonly productRepo: IBackofficeProductRepository = new BackofficeProductRepository(),
-    private readonly userSubscriptionRepo: IBackofficeUserSubscriptionRepository = new BackofficeUserSubscriptionRepository()
+    private readonly userSubscriptionRepo: IBackofficeUserSubscriptionRepository = new BackofficeUserSubscriptionRepository(),
+    private readonly allUsersRepo: IBackofficeAllUsersRepository = new BackofficeAllUsersRepository()
   ) {}
 
   async list(input: {
@@ -379,6 +382,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       closerBackofficeUserId:
         normalized.closerBackofficeUserId ?? lead.closerBackofficeUserId,
       createdByBackofficeUserId,
+      requestedUserTypeSlug: normalized.userType === "member_pro" ? "member_pro" : null,
+      requestedMemberProAccessExpiresAt:
+        normalized.userType === "member_pro" && normalized.accessExpiresAt
+          ? new Date(normalized.accessExpiresAt)
+          : null,
     })
 
     if (normalized.activationMode === "external_paid") {
@@ -944,6 +952,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       closerBackofficeUserId: normalizeText(input.closerBackofficeUserId),
       activationMode,
       billingType,
+      userType: input.userType ?? "common",
+      accessExpiresAt: input.accessExpiresAt ?? null,
     }
   }
 
@@ -1253,6 +1263,14 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         createdProfileId: createdProfile.profileId,
         createdSupabaseId: createdProfile.supabaseId,
       })
+
+      if (adhesion.requestedUserTypeSlug === "member_pro" && adhesion.requestedMemberProAccessExpiresAt) {
+        await this.allUsersRepo.upsertUserTypeAssignment(createdProfile.profileId, {
+          userType: "member_pro",
+          accessExpiresAt: adhesion.requestedMemberProAccessExpiresAt,
+          assignedByProfileId: null,
+        })
+      }
 
       await this.ensureUserSubscriptionForPaidAdhesion(adhesion, createdProfile.profileId)
 

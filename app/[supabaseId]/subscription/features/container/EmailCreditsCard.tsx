@@ -117,11 +117,11 @@ export function EmailCreditsCard() {
     setCanceling(true)
     try {
       await cancelPlan()
-      toast.success('Créditos de email cancelados')
+      toast.success('Créditos de e-mail cancelados')
       await load()
     } catch (err) {
       console.error('[EmailCreditsCard] cancel error', err)
-      toast.error('Erro ao cancelar créditos de email')
+      toast.error('Erro ao cancelar créditos de e-mail')
     } finally {
       setCanceling(false)
       setCancelDialogOpen(false)
@@ -133,10 +133,10 @@ export function EmailCreditsCard() {
       <CardHeader>
         <div className="flex items-center gap-2">
           <Mail className="h-5 w-5 text-primary" />
-          <CardTitle className="text-lg">Créditos de Email</CardTitle>
+          <CardTitle className="text-lg">Créditos de E-mail</CardTitle>
         </div>
         <CardDescription>
-          Pacote mensal para disparo de campanhas de email. Créditos expiram no fim do ciclo e o
+          Pacote mensal para disparo de campanhas de e-mail. Créditos expiram no fim do ciclo e o
           excedente é cobrado automaticamente.
         </CardDescription>
       </CardHeader>
@@ -258,10 +258,10 @@ export function EmailCreditsCard() {
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar créditos de email?</AlertDialogTitle>
+            <AlertDialogTitle>Cancelar créditos de e-mail?</AlertDialogTitle>
             <AlertDialogDescription>
               Os créditos restantes serão perdidos ao fim do ciclo atual. Você não poderá mais
-              disparar campanhas de email.
+              disparar campanhas de e-mail.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

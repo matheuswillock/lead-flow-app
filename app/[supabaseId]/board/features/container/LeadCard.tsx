@@ -113,7 +113,7 @@ function LeadCardComponent({
             toast.success("ID copiado");
         } catch (error) {
             console.error("Erro ao copiar ID do lead:", error);
-            toast.error("Nao foi possivel copiar o ID");
+            toast.error("Não foi possível copiar o ID");
         }
     };
 
