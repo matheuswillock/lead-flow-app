@@ -88,6 +88,11 @@ jobs:
         continue-on-error: true
         run: bun run typecheck
 
+      - name: Spellcheck PT-BR
+        id: spellcheck-pt-br
+        continue-on-error: true
+        run: bun run lint:pt-br
+
       - name: Resolve Quality Result
         id: quality-result
         if: always()
@@ -96,8 +101,9 @@ jobs:
           echo "governance-check=${{ steps['governance-check'].outcome }}" >> "$GITHUB_OUTPUT"
           echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
           echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "spellcheck-pt-br=${{ steps['spellcheck-pt-br'].outcome }}" >> "$GITHUB_OUTPUT"
 
-          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" ]]; then
+          if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" && "${{ steps['spellcheck-pt-br'].outcome }}" == "success" ]]; then
             echo "passed=true" >> "$GITHUB_OUTPUT"
           else
             echo "passed=false" >> "$GITHUB_OUTPUT"
