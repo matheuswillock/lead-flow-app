@@ -42,14 +42,17 @@ export class PaymentRepository implements IPaymentRepository {
     const subData: any = { subscriptionStatus };
     if (subscriptionStartDate) subData.subscriptionStartDate = subscriptionStartDate;
 
-    await prisma.profileSubscription.upsert({
+    const subscription = await prisma.profileSubscription.upsert({
       where: { profileId },
       create: { profileId, ...subData },
       update: subData,
     });
 
     // Keep Profile in sync for legacy compatibility
-    const profileData: any = { subscriptionStatus };
+    const profileData: any = {
+      subscriptionId: subscription.id,
+      subscriptionStatus,
+    };
     if (subscriptionStartDate) profileData.subscriptionStartDate = subscriptionStartDate;
     return prisma.profile.update({ where: { id: profileId }, data: profileData });
   }
@@ -65,32 +68,27 @@ export class PaymentRepository implements IPaymentRepository {
       subscriptionEndDate?: Date;
     }
   ): Promise<Profile> {
-    // asaasCustomerId stays on Profile (customer identity, not subscription)
-    if (data.asaasCustomerId !== undefined) {
-      await prisma.profile.update({
-        where: { id: profileId },
-        data: { asaasCustomerId: data.asaasCustomerId },
-      });
-    }
-
     // Subscription fields go to ProfileSubscription
     const subData: any = {};
+    if (data.asaasCustomerId !== undefined) subData.asaasCustomerId = data.asaasCustomerId;
     if (data.subscriptionId !== undefined) subData.asaasSubscriptionId = data.subscriptionId;
     if (data.subscriptionPlan !== undefined) subData.subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
     if (data.subscriptionStatus !== undefined) subData.subscriptionStatus = data.subscriptionStatus as SubscriptionStatus;
     if (data.subscriptionStartDate !== undefined) subData.subscriptionStartDate = data.subscriptionStartDate;
     if (data.subscriptionEndDate !== undefined) subData.subscriptionEndDate = data.subscriptionEndDate;
 
-    if (Object.keys(subData).length > 0) {
-      await prisma.profileSubscription.upsert({
+    const subscription = Object.keys(subData).length > 0
+      ? await prisma.profileSubscription.upsert({
         where: { profileId },
         create: { profileId, ...subData },
         update: subData,
-      });
-    }
+      })
+      : await prisma.profileSubscription.findUnique({ where: { profileId } });
 
     // Keep Profile in sync for legacy compatibility
     const profileData: any = {};
+    if (data.asaasCustomerId !== undefined) profileData.asaasCustomerId = data.asaasCustomerId;
+    if (subscription?.id) profileData.subscriptionId = subscription.id;
     if (data.subscriptionPlan !== undefined) profileData.subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
     if (data.subscriptionStatus !== undefined) profileData.subscriptionStatus = data.subscriptionStatus as SubscriptionStatus;
     if (data.subscriptionStartDate !== undefined) profileData.subscriptionStartDate = data.subscriptionStartDate;

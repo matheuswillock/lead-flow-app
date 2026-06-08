@@ -7,6 +7,7 @@ export interface AsaasSubscriptionSyncSnapshot {
 }
 
 export interface AsaasSubscriptionSyncData {
+  asaasCustomerId?: string;
   subscriptionStatus?: SubscriptionStatus;
   subscriptionCycle?: string;
   subscriptionNextDueDate?: Date;
@@ -29,6 +30,7 @@ class PrismaAsaasSubscriptionSyncRepository {
         where: { id: profileId },
         select: {
           asaasSubscriptionId: true,
+          asaasCustomerId: true,
           hasPermanentSubscription: true,
         },
       }),
@@ -44,7 +46,7 @@ class PrismaAsaasSubscriptionSyncRepository {
   }
 
   async saveSyncData(profileId: string, asaasSubscriptionId: string, data: AsaasSubscriptionSyncData): Promise<void> {
-    await prisma.profileSubscription.upsert({
+    const subscription = await prisma.profileSubscription.upsert({
       where: { profileId },
       create: {
         profileId,
@@ -52,11 +54,15 @@ class PrismaAsaasSubscriptionSyncRepository {
         ...data,
       },
       update: data,
+      select: { id: true },
     });
 
     await prisma.profile.update({
       where: { id: profileId },
       data: {
+        subscriptionId: subscription.id,
+        asaasCustomerId: data.asaasCustomerId,
+        asaasSubscriptionId: asaasSubscriptionId,
         subscriptionStatus: data.subscriptionStatus,
         subscriptionCycle: data.subscriptionCycle,
         subscriptionNextDueDate: data.subscriptionNextDueDate,

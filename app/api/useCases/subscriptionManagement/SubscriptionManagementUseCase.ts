@@ -639,7 +639,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         where: { supabaseId }
       });
 
-      if (!profile || !profile.subscriptionId) {
+      if (!profile || !profile.asaasSubscriptionId) {
         return new Output(
           false,
           [],
@@ -658,7 +658,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       });
 
       // TODO: Chamar API Asaas para cancelar assinatura
-      // await asaasService.cancelSubscription(profile.subscriptionId);
+      // await asaasService.cancelSubscription(profile.asaasSubscriptionId);
 
       return new Output(
         true,
@@ -709,7 +709,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         where: { supabaseId }
       });
 
-      if (!profile || !profile.subscriptionId) {
+      if (!profile || !profile.asaasSubscriptionId) {
         return new Output(
           false,
           [],
@@ -720,7 +720,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
       // TODO: Atualizar método de pagamento na API Asaas
       // await asaasService.updatePaymentMethod(
-      //   profile.subscriptionId,
+      //   profile.asaasSubscriptionId,
       //   paymentData
       // );
 
@@ -768,7 +768,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         where: { supabaseId }
       });
 
-      if (!profile || !profile.subscriptionId) {
+      if (!profile || !profile.asaasSubscriptionId) {
         return new Output(
           false,
           [],

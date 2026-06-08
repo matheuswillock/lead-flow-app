@@ -34,7 +34,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         select: {
           id: true,
           asaasCustomerId: true,
-          subscriptionId: true,
+          asaasSubscriptionId: true,
           subscriptionStatus: true,
           fullName: true,
         },
@@ -48,7 +48,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         throw new Error('Manager não possui cliente Asaas. Crie uma assinatura primeiro.');
       }
 
-      if (!manager.subscriptionId) {
+      if (!manager.asaasSubscriptionId) {
         throw new Error('Manager não possui assinatura ativa. Crie a assinatura base primeiro.');
       }
 
@@ -59,7 +59,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
           id: true,
           fullName: true,
           email: true,
-          subscriptionId: true,
+          asaasSubscriptionId: true,
           managerId: true,
         },
       });
@@ -68,7 +68,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         throw new Error('Operador não encontrado');
       }
 
-      if (operator.subscriptionId) {
+      if (operator.asaasSubscriptionId) {
         throw new Error('Operador já possui assinatura ativa');
       }
 
@@ -90,7 +90,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
       await prisma.profile.update({
         where: { id: operatorId },
         data: {
-          subscriptionId: subscription.subscriptionId,
+          asaasSubscriptionId: subscription.subscriptionId,
           subscriptionStatus: 'active',
           managerId: managerId,
         },
@@ -147,7 +147,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         },
       });
 
-      if (!operator?.subscriptionId) {
+      if (!operator?.asaasSubscriptionId) {
         throw new Error('Operador não possui assinatura ativa');
       }
 
@@ -155,8 +155,8 @@ export class AsaasOperatorService implements IAsaasOperatorService {
 
       // 2. Cancelar assinatura no Asaas
       try {
-        await AsaasSubscriptionService.cancelSubscription(operator.subscriptionId);
-        console.info(`✅ Assinatura Asaas cancelada: ${operator.subscriptionId}`);
+        await AsaasSubscriptionService.cancelSubscription(operator.asaasSubscriptionId);
+        console.info(`✅ Assinatura Asaas cancelada: ${operator.asaasSubscriptionId}`);
       } catch (asaasError: any) {
         console.error('⚠️ Erro ao cancelar assinatura no Asaas:', asaasError.message);
         // Continua mesmo se falhar no Asaas (pode já estar cancelada)
@@ -166,7 +166,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
       await prisma.profile.update({
         where: { id: operatorId },
         data: {
-          subscriptionId: null,
+          asaasSubscriptionId: null,
           subscriptionStatus: 'canceled',
           managerId: null,
         },
@@ -267,7 +267,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
           fullName: true,
           phone: true,
           role: true,
-          subscriptionId: true,
+          asaasSubscriptionId: true,
           subscriptionStatus: true,
           createdAt: true,
         },
@@ -323,7 +323,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         where: { id: operatorId },
         select: {
           id: true,
-          subscriptionId: true,
+          asaasSubscriptionId: true,
           managerId: true,
         },
       });
@@ -332,15 +332,15 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         throw new Error('Operador não encontrado');
       }
 
-      if (operator.subscriptionId) {
-        await AsaasSubscriptionService.cancelSubscription(operator.subscriptionId);
+      if (operator.asaasSubscriptionId) {
+        await AsaasSubscriptionService.cancelSubscription(operator.asaasSubscriptionId);
       }
 
       await prisma.profile.update({
         where: { id: operatorId },
         data: {
           subscriptionStatus: 'suspended',
-          subscriptionId: null,
+          asaasSubscriptionId: null,
         },
       });
 

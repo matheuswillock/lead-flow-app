@@ -416,7 +416,7 @@ model Profile {
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
   asaasCustomerId          String?             @db.Text
-  subscriptionId           String?             @db.Text
+  subscriptionId           String?             @unique @db.Uuid
   subscriptionStatus       SubscriptionStatus?
   subscriptionPlan         SubscriptionPlan?
   operatorCount            Int                 @default(0)
@@ -476,11 +476,12 @@ model Profile {
   emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
 
   // Backoffice subscriptions
-  backofficeSubscriptions BackofficeUserSubscription[] @relation("BackofficeUserSubscriptions")
+  backofficeSubscriptions BackofficeUserProductSubscription[] @relation("BackofficeUserSubscriptions")
   backofficeFeatureGrants BackofficeFeatureGrant[]     @relation("BackofficeFeatureProfileGrants")
 
   // Product subscription (master only; operators inherit via managerId)
   subscription ProfileSubscription?
+  currentSubscription ProfileSubscription? @relation("ProfileCurrentSubscription", fields: [subscriptionId], references: [id], onDelete: SetNull)
 
   // User type (Comum / Member PRO)
   userTypeAssignment      ProfileUserTypeAssignment?  @relation("ProfileUserTypeAssignment")
@@ -1549,7 +1550,7 @@ model BackofficeProduct {
   updatedAt       DateTime                     @updatedAt @db.Timestamptz(6)
 
   paymentRules         BackofficeProductPaymentRule[]
-  userSubscriptions    BackofficeUserSubscription[]
+  userSubscriptions    BackofficeUserProductSubscription[]
   profileSubscriptions ProfileSubscription[]
   features             BackofficeFeature[]
 
@@ -1638,7 +1639,7 @@ model BackofficeProductPaymentRule {
   @@map("backoffice_product_payment_rules")
 }
 
-model BackofficeUserSubscription {
+model BackofficeUserProductSubscription {
   id         String                          @id @default(uuid()) @db.Uuid
   profileId  String                          @db.Uuid
   productId  String                          @db.Uuid
@@ -1657,7 +1658,7 @@ model BackofficeUserSubscription {
   @@index([profileId, status])
   @@index([productId])
   @@index([adhesionId])
-  @@map("backoffice_user_subscriptions")
+  @@map("backoffice_user_product_subscriptions")
 }
 
 // -----------------------------
@@ -1670,6 +1671,7 @@ model ProfileSubscription {
   profileId                String              @unique @db.Uuid
   adhesionId               String?             @unique @db.Uuid
   productId                String?             @db.Uuid
+  asaasCustomerId          String?             @db.Text
   asaasSubscriptionId      String?             @db.Text
   asaasInstallmentId       String?             @db.Text
   subscriptionStatus       SubscriptionStatus?
@@ -1685,6 +1687,7 @@ model ProfileSubscription {
   updatedAt                DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
 
   profile  Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscriptions_profileId_fkey")
+  currentProfile Profile?      @relation("ProfileCurrentSubscription")
   adhesion BackofficeAdhesion? @relation(fields: [adhesionId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_adhesionId_fkey")
   product  BackofficeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_productId_fkey")
   capacity ProfileSubscriptionCapacity?

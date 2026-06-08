@@ -103,7 +103,7 @@ class PrismaBillingRepository implements IBillingRepository {
     const adhesionIds = paidAdhesions.map((adhesion) => adhesion.id);
     const now = new Date();
     const subscriptions = adhesionIds.length
-      ? await prisma.backofficeUserSubscription.findMany({
+      ? await prisma.backofficeUserProductSubscription.findMany({
           where: {
             profileId: masterId,
             adhesionId: { in: adhesionIds },
@@ -172,9 +172,24 @@ class PrismaBillingRepository implements IBillingRepository {
   }
 
   async updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void> {
+    const subscription = await prisma.profileSubscription.upsert({
+      where: { profileId },
+      create: {
+        profileId,
+        asaasCustomerId,
+      },
+      update: {
+        asaasCustomerId,
+      },
+      select: { id: true },
+    });
+
     await prisma.profile.update({
       where: { id: profileId },
-      data: { asaasCustomerId },
+      data: {
+        subscriptionId: subscription.id,
+        asaasCustomerId,
+      },
     });
   }
 
@@ -183,21 +198,31 @@ class PrismaBillingRepository implements IBillingRepository {
     data: IUpdateBillingProfileSubscriptionData
   ): Promise<void> {
     const subData = {
+      asaasCustomerId: data.asaasCustomerId,
       asaasSubscriptionId: data.asaasSubscriptionId,
       subscriptionNextDueDate: data.subscriptionNextDueDate,
       subscriptionCycle: data.subscriptionCycle,
     };
 
-    await prisma.profileSubscription.upsert({
+    const subscription = await prisma.profileSubscription.upsert({
       where: { profileId },
-      create: { profileId, ...subData },
+      create: {
+        profileId,
+        ...subData,
+      },
       update: subData,
+      select: { id: true },
     });
 
-    // Keep Profile in sync for legacy compatibility
     await prisma.profile.update({
       where: { id: profileId },
-      data: subData,
+      data: {
+        subscriptionId: subscription.id,
+        asaasCustomerId: data.asaasCustomerId,
+        asaasSubscriptionId: data.asaasSubscriptionId,
+        subscriptionNextDueDate: data.subscriptionNextDueDate,
+        subscriptionCycle: data.subscriptionCycle,
+      },
     });
   }
 

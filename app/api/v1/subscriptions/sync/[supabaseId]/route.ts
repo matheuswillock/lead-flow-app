@@ -49,14 +49,30 @@ export async function POST(
 
     if (!subscriptions || subscriptions.length === 0) {
       console.warn('⚠️ [SyncSubscription] Nenhuma assinatura ativa encontrada no Asaas');
-      
-      // Atualizar profile para status sem assinatura
-      const updatedProfile = await prisma.profile.update({
-        where: { supabaseId },
-        data: {
-          subscriptionStatus: 'canceled',
-          updatedAt: new Date(),
-        },
+      const updatedProfile = await prisma.$transaction(async (tx) => {
+        const existingSubscription = await tx.profileSubscription.findUnique({
+          where: { profileId: profile.id },
+          select: { id: true },
+        });
+
+        if (existingSubscription) {
+          await tx.profileSubscription.update({
+            where: { profileId: profile.id },
+            data: {
+              subscriptionStatus: 'canceled',
+              subscriptionEndDate: new Date(),
+              subscriptionLastSyncedAt: new Date(),
+            },
+          });
+        }
+
+        return tx.profile.update({
+          where: { supabaseId },
+          data: {
+            subscriptionStatus: 'canceled',
+            subscriptionId: existingSubscription?.id ?? null,
+          },
+        });
       });
 
       return NextResponse.json(
@@ -85,27 +101,65 @@ export async function POST(
       subscriptionPlan = 'with_operators'; // Operador adicional
     }
 
-    // 6. Atualizar profile com dados da assinatura
-    const updatedProfile = await prisma.profile.update({
-      where: { supabaseId },
-      data: {
-        subscriptionId: activeSubscription.id,
-        asaasSubscriptionId: activeSubscription.id,
-        subscriptionStatus: 'active', // Asaas retornou ACTIVE
-        subscriptionPlan: subscriptionPlan,
-        subscriptionCycle: activeSubscription.cycle as 'MONTHLY',
-        subscriptionNextDueDate: activeSubscription.nextDueDate 
-          ? new Date(activeSubscription.nextDueDate) 
-          : null,
-        subscriptionStartDate: activeSubscription.dateCreated 
-          ? new Date(activeSubscription.dateCreated) 
-          : null,
-        updatedAt: new Date(),
-      },
+    const syncedAt = new Date();
+    const [profileSubscription, updatedProfile] = await prisma.$transaction(async (tx) => {
+      const subscriptionRow = await tx.profileSubscription.upsert({
+        where: { profileId: profile.id },
+        create: {
+          profileId: profile.id,
+          asaasCustomerId: profile.asaasCustomerId ?? undefined,
+          asaasSubscriptionId: activeSubscription.id,
+          subscriptionStatus: 'active',
+          subscriptionPlan: subscriptionPlan,
+          subscriptionCycle: activeSubscription.cycle as 'MONTHLY',
+          subscriptionNextDueDate: activeSubscription.nextDueDate
+            ? new Date(activeSubscription.nextDueDate)
+            : null,
+          subscriptionStartDate: activeSubscription.dateCreated
+            ? new Date(activeSubscription.dateCreated)
+            : null,
+          subscriptionLastSyncedAt: syncedAt,
+        },
+        update: {
+          asaasCustomerId: profile.asaasCustomerId ?? undefined,
+          asaasSubscriptionId: activeSubscription.id,
+          subscriptionStatus: 'active',
+          subscriptionPlan: subscriptionPlan,
+          subscriptionCycle: activeSubscription.cycle as 'MONTHLY',
+          subscriptionNextDueDate: activeSubscription.nextDueDate
+            ? new Date(activeSubscription.nextDueDate)
+            : null,
+          subscriptionStartDate: activeSubscription.dateCreated
+            ? new Date(activeSubscription.dateCreated)
+            : null,
+          subscriptionLastSyncedAt: syncedAt,
+        },
+        select: { id: true },
+      });
+
+      const profileRow = await tx.profile.update({
+        where: { supabaseId },
+        data: {
+          subscriptionId: subscriptionRow.id,
+          subscriptionStatus: 'active',
+          subscriptionPlan: subscriptionPlan,
+          subscriptionCycle: activeSubscription.cycle as 'MONTHLY',
+          subscriptionNextDueDate: activeSubscription.nextDueDate
+            ? new Date(activeSubscription.nextDueDate)
+            : null,
+          subscriptionStartDate: activeSubscription.dateCreated
+            ? new Date(activeSubscription.dateCreated)
+            : null,
+          asaasSubscriptionId: activeSubscription.id,
+          updatedAt: syncedAt,
+        },
+      });
+
+      return [subscriptionRow, profileRow] as const;
     });
 
     console.info('✅ [SyncSubscription] Profile atualizado com sucesso:', {
-      subscriptionId: updatedProfile.subscriptionId,
+      subscriptionId: profileSubscription.id,
       status: updatedProfile.subscriptionStatus,
       plan: updatedProfile.subscriptionPlan,
     });

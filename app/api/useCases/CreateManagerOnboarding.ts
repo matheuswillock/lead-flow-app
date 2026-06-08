@@ -46,6 +46,7 @@ export class CreateManagerOnboarding {
           email: true,
           phone: true,
           asaasCustomerId: true,
+          asaasSubscriptionId: true,
           subscriptionId: true,
         },
       });
@@ -58,7 +59,7 @@ export class CreateManagerOnboarding {
         throw new Error('Manager já possui cliente Asaas cadastrado');
       }
 
-      if (profile.subscriptionId) {
+      if (profile.subscriptionId || profile.asaasSubscriptionId) {
         throw new Error('Manager já possui assinatura ativa');
       }
 
@@ -95,10 +96,31 @@ export class CreateManagerOnboarding {
       console.info(`✅ Assinatura criada: ${subscription.subscriptionId}`);
 
       // 5. Atualizar profile com dados de assinatura
+      const profileSubscription = await prisma.profileSubscription.upsert({
+        where: { profileId },
+        create: {
+          profileId,
+          asaasCustomerId: customer.customerId,
+          asaasSubscriptionId: subscription.subscriptionId,
+          subscriptionStatus: 'active',
+          subscriptionPlan: 'manager_base',
+          subscriptionStartDate: new Date(),
+        },
+        update: {
+          asaasCustomerId: customer.customerId,
+          asaasSubscriptionId: subscription.subscriptionId,
+          subscriptionStatus: 'active',
+          subscriptionPlan: 'manager_base',
+          subscriptionStartDate: new Date(),
+        },
+        select: { id: true },
+      });
+
       await prisma.profile.update({
         where: { id: profileId },
         data: {
-          subscriptionId: subscription.subscriptionId,
+          subscriptionId: profileSubscription.id,
+          asaasSubscriptionId: subscription.subscriptionId,
           subscriptionStatus: 'active',
           subscriptionPlan: 'manager_base',
           subscriptionStartDate: new Date(),

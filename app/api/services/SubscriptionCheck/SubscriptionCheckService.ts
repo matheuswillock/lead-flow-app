@@ -59,7 +59,7 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
 
     // Se é MASTER, verifica sua própria assinatura
     if (profile.isMaster) {
-      const hasSubscription = !!profile.subscriptionId;
+      const hasSubscription = !!profile.asaasSubscriptionId;
       const isActive = profile.subscriptionStatus === 'active';
 
       if (hasSubscription && isActive) {
@@ -72,7 +72,7 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
           matchedIdentifier,
           userId: profile.supabaseId,
           subscription: {
-            id: profile.subscriptionId,
+            id: profile.asaasSubscriptionId,
             status: profile.subscriptionStatus,
             startDate: profile.subscriptionStartDate,
             endDate: profile.subscriptionEndDate,
@@ -97,7 +97,7 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         userId: profile.supabaseId,
         subscription: hasSubscription
           ? {
-              id: profile.subscriptionId,
+              id: profile.asaasSubscriptionId,
               status: profile.subscriptionStatus,
             }
           : undefined,
@@ -123,10 +123,10 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         };
       }
 
-      const hasSubscription = !!manager.subscriptionId;
+      const hasManagerSubscription = !!manager.asaasSubscriptionId;
       const isActive = manager.subscriptionStatus === 'active';
 
-      if (hasSubscription && isActive) {
+      if (hasManagerSubscription && isActive) {
         console.info('✅ [SubscriptionCheckService] Manager do operador/manager tem assinatura ativa');
         return {
           success: true,
@@ -137,7 +137,7 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
           userId: profile.supabaseId,
           userRole: profile.role,
           subscription: {
-            id: manager.subscriptionId,
+            id: manager.asaasSubscriptionId,
             status: manager.subscriptionStatus,
             startDate: manager.subscriptionStartDate,
             endDate: manager.subscriptionEndDate,
@@ -148,7 +148,7 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
       }
 
       // Manager sem assinatura ativa
-      const message = hasSubscription && !isActive
+      const message = hasManagerSubscription && !isActive
         ? 'Manager com assinatura inativa'
         : 'Manager sem assinatura';
       
@@ -161,9 +161,9 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         matchedIdentifier,
         userId: profile.supabaseId,
         userRole: profile.role,
-        subscription: hasSubscription
+        subscription: hasManagerSubscription
           ? {
-              id: manager.subscriptionId,
+              id: manager.asaasSubscriptionId,
               status: manager.subscriptionStatus,
             }
           : undefined,

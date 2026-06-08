@@ -314,7 +314,7 @@ class PrismaProfileRepository implements IProfileRepository {
         profileData.asaasCustomerId = asaasCustomerId;
       }
       if (subscriptionId) {
-        profileData.subscriptionId = subscriptionId;
+        profileData.asaasSubscriptionId = subscriptionId;
       }
       if (subscriptionStatus) {
         profileData.subscriptionStatus = subscriptionStatus;
@@ -356,11 +356,11 @@ class PrismaProfileRepository implements IProfileRepository {
       });
       
       console.info('📝 [ProfileRepository] profileData final:', {
-        hasSubscriptionId: !!profileData.subscriptionId,
+        hasSubscriptionId: !!profileData.asaasSubscriptionId,
         hasAsaasCustomerId: !!profileData.asaasCustomerId,
         hasSubscriptionPlan: !!profileData.subscriptionPlan,
         hasOperatorCount: profileData.operatorCount !== undefined,
-        subscriptionId: profileData.subscriptionId,
+        asaasSubscriptionId: profileData.asaasSubscriptionId,
         subscriptionPlan: profileData.subscriptionPlan,
         operatorCount: profileData.operatorCount,
         subscriptionStatus: profileData.subscriptionStatus,
@@ -371,17 +371,49 @@ class PrismaProfileRepository implements IProfileRepository {
         role: profileData.role
       });
 
-        const profile = await prisma.$transaction(async (tx) => {
+      const profile = await prisma.$transaction(async (tx) => {
           const createdProfile = await tx.profile.create({
             data: profileData
           });
+
+          if (profileData.asaasCustomerId || profileData.asaasSubscriptionId || profileData.subscriptionStatus || profileData.subscriptionPlan) {
+            const subscription = await tx.profileSubscription.upsert({
+              where: { profileId: createdProfile.id },
+              create: {
+                profileId: createdProfile.id,
+                asaasCustomerId: profileData.asaasCustomerId ?? undefined,
+                asaasSubscriptionId: profileData.asaasSubscriptionId ?? undefined,
+                subscriptionStatus: profileData.subscriptionStatus,
+                subscriptionPlan: profileData.subscriptionPlan,
+                subscriptionStartDate: profileData.subscriptionStartDate,
+                trialEndDate: profileData.trialEndDate,
+                hasPermanentSubscription: profileData.hasPermanentSubscription ?? false,
+              },
+              update: {
+                asaasCustomerId: profileData.asaasCustomerId ?? undefined,
+                asaasSubscriptionId: profileData.asaasSubscriptionId ?? undefined,
+                subscriptionStatus: profileData.subscriptionStatus,
+                subscriptionPlan: profileData.subscriptionPlan,
+                subscriptionStartDate: profileData.subscriptionStartDate,
+                trialEndDate: profileData.trialEndDate,
+              },
+              select: { id: true },
+            });
+
+            await tx.profile.update({
+              where: { id: createdProfile.id },
+              data: {
+                subscriptionId: subscription.id,
+              },
+            });
+          }
 
           await this.ensureDefaultTeamForMaster(tx, createdProfile);
 
           return createdProfile;
         });
 
-        console.info('✅ [ProfileRepository] Profile criado com sucesso:', {
+      console.info('✅ [ProfileRepository] Profile criado com sucesso:', {
           profileId: profile.id,
         hasSubscriptionId: !!profile.subscriptionId,
         subscriptionId: profile.subscriptionId,
@@ -503,7 +535,7 @@ class PrismaProfileRepository implements IProfileRepository {
         profileData.asaasCustomerId = asaasCustomerId;
       }
       if (subscriptionId) {
-        profileData.subscriptionId = subscriptionId;
+        profileData.asaasSubscriptionId = subscriptionId;
       }
       if (subscriptionStatus) {
         profileData.subscriptionStatus = subscriptionStatus;
@@ -531,6 +563,38 @@ class PrismaProfileRepository implements IProfileRepository {
 
       const profile = await prisma.$transaction(async (tx) => {
         const createdProfile = await tx.profile.create({ data: profileData });
+
+        if (profileData.asaasCustomerId || profileData.asaasSubscriptionId || profileData.subscriptionStatus || profileData.subscriptionPlan) {
+          const subscription = await tx.profileSubscription.upsert({
+            where: { profileId: createdProfile.id },
+            create: {
+              profileId: createdProfile.id,
+              asaasCustomerId: profileData.asaasCustomerId ?? undefined,
+              asaasSubscriptionId: profileData.asaasSubscriptionId ?? undefined,
+              subscriptionStatus: profileData.subscriptionStatus,
+              subscriptionPlan: profileData.subscriptionPlan,
+              subscriptionStartDate: profileData.subscriptionStartDate,
+              trialEndDate: profileData.trialEndDate,
+              hasPermanentSubscription: profileData.hasPermanentSubscription ?? false,
+            },
+            update: {
+              asaasCustomerId: profileData.asaasCustomerId ?? undefined,
+              asaasSubscriptionId: profileData.asaasSubscriptionId ?? undefined,
+              subscriptionStatus: profileData.subscriptionStatus,
+              subscriptionPlan: profileData.subscriptionPlan,
+              subscriptionStartDate: profileData.subscriptionStartDate,
+              trialEndDate: profileData.trialEndDate,
+            },
+            select: { id: true },
+          });
+
+          await tx.profile.update({
+            where: { id: createdProfile.id },
+            data: {
+              subscriptionId: subscription.id,
+            },
+          });
+        }
 
         await this.ensureDefaultTeamForMaster(tx, createdProfile);
 

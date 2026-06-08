@@ -97,8 +97,11 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       profileId = profile.id;
       
       // Verificar se é a primeira tentativa de checkout (processo de registro)
-      // Se não tem asaasCustomerId e não tem subscriptionId, é a primeira vez
-      isFirstCheckoutAttempt = !profile.asaasCustomerId && !profile.subscriptionId;
+      // Se não tem asaasCustomerId e não tem assinatura persistida, é a primeira vez
+      isFirstCheckoutAttempt =
+        !profile.asaasCustomerId &&
+        !profile.asaasSubscriptionId &&
+        !profile.subscriptionId;
       
       if (isFirstCheckoutAttempt) {
         console.info('🆕 [createSubscriptionCheckout] Primeira tentativa de checkout - rollback ativo');

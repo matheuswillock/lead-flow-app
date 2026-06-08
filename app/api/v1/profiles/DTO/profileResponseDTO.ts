@@ -109,7 +109,7 @@ export function createProfileResponseDTO(profile: any): ProfileResponseDTO {
     profileIconUrl: profile.profileIconUrl,
     googleCalendarConnected: isGoogleConnectionActive(profile.googleConnection),
     googleEmail: profile.googleConnection?.googleEmail ?? null,
-    subscriptionId: profile.subscriptionId ?? null,
+    subscriptionId: profile.subscription?.asaasSubscriptionId ?? profile.asaasSubscriptionId ?? null,
     subscriptionStatus: profile.subscriptionStatus ?? null,
     activeTeamId: profile.activeTeamId ?? null,
     createdAt: (profile.createdAt instanceof Date ? profile.createdAt.toISOString() : profile.createdAt) as string,

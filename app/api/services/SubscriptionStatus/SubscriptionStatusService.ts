@@ -12,12 +12,83 @@ export class SubscriptionStatusService implements ISubscriptionStatusService {
   
   async checkPaymentStatus(subscriptionId: string): Promise<SubscriptionStatusResult> {
     try {
-      console.info('🔍 [SubscriptionStatusService] Buscando profile no banco...');
+      console.info('🔍 [SubscriptionStatusService] Buscando assinatura no banco...');
 
-      // 1. Primeiro tentar buscar no banco de dados
+      // 1. Primeiro tentar buscar a assinatura centralizada
+      const profileSubscription = await prisma.profileSubscription.findFirst({
+        where: {
+          asaasSubscriptionId: subscriptionId,
+        },
+        select: {
+          id: true,
+          profileId: true,
+          asaasCustomerId: true,
+          asaasSubscriptionId: true,
+          subscriptionStatus: true,
+          subscriptionPlan: true,
+          subscriptionStartDate: true,
+          subscriptionEndDate: true,
+          subscriptionNextDueDate: true,
+          subscriptionCycle: true,
+          trialEndDate: true,
+          hasPermanentSubscription: true,
+          profile: {
+            select: {
+              email: true,
+              timezone: true,
+              supabaseId: true,
+            },
+          },
+        },
+      });
+
+      if (profileSubscription) {
+        const isPaid = profileSubscription.subscriptionStatus === 'active';
+        const timezone = resolveTimezone(profileSubscription.profile?.timezone);
+        let message = isPaid ? 'Assinatura ativa' : 'Assinatura pendente';
+
+        if (profileSubscription.subscriptionStatus === 'trial' && profileSubscription.trialEndDate) {
+          if (isPastInTz(profileSubscription.trialEndDate, timezone)) {
+            message = 'Período de teste expirado';
+          } else {
+            const remainingDays = Math.max(
+              0,
+              differenceInDaysInTz(profileSubscription.trialEndDate, new Date(), timezone)
+            );
+            message =
+              remainingDays > 0
+                ? `Período de teste ativo (${remainingDays} dia(s) restantes)`
+                : 'Período de teste ativo';
+          }
+        } else if (
+          profileSubscription.subscriptionEndDate &&
+          isPastInTz(profileSubscription.subscriptionEndDate, timezone) &&
+          profileSubscription.subscriptionStatus !== 'active'
+        ) {
+          message = 'Assinatura expirada';
+        }
+
+        console.info('📊 [SubscriptionStatusService] Assinatura encontrada:', {
+          profileId: profileSubscription.profileId,
+          isPaid,
+          subscriptionStatus: profileSubscription.subscriptionStatus,
+        });
+
+        return {
+          isPaid,
+          status: profileSubscription.subscriptionStatus || 'pending',
+          message,
+          subscriptionStatus: profileSubscription.subscriptionStatus || undefined,
+          subscriptionPlan: profileSubscription.subscriptionPlan || undefined,
+          subscriptionStartDate: profileSubscription.subscriptionStartDate,
+          subscriptionEndDate: profileSubscription.subscriptionEndDate,
+        };
+      }
+
+      // 2. Fallback para assinaturas antigas ainda espelhadas em Profile
       const profile = await prisma.profile.findFirst({
         where: {
-          subscriptionId: subscriptionId,
+          asaasSubscriptionId: subscriptionId,
         },
         select: {
           id: true,
@@ -31,7 +102,6 @@ export class SubscriptionStatusService implements ISubscriptionStatusService {
         },
       });
 
-      // 2. Se encontrou o profile, retornar status do banco
       if (profile) {
         const isPaid = profile.subscriptionStatus === 'active';
         const timezone = resolveTimezone(profile.timezone);
@@ -58,7 +128,7 @@ export class SubscriptionStatusService implements ISubscriptionStatusService {
           message = 'Assinatura expirada';
         }
 
-        console.info('📊 [SubscriptionStatusService] Profile encontrado:', {
+        console.info('📊 [SubscriptionStatusService] Profile legado encontrado:', {
           profileId: profile.id,
           isPaid,
           subscriptionStatus: profile.subscriptionStatus,
@@ -75,8 +145,8 @@ export class SubscriptionStatusService implements ISubscriptionStatusService {
         };
       }
 
-      // 3. Se não encontrou profile, consultar Asaas diretamente
-      console.warn('⚠️ [SubscriptionStatusService] Profile não encontrado - consultando Asaas');
+      // 3. Se não encontrou nada local, consultar Asaas diretamente
+      console.warn('⚠️ [SubscriptionStatusService] Assinatura não encontrada localmente - consultando Asaas');
 
       return await this.checkPaymentStatusFromAsaas(subscriptionId);
 
