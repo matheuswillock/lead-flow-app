@@ -44,7 +44,7 @@ async function ensureBackofficeUser(supabaseId: string, email: string, fullAcces
   })
 
   await prisma.backofficeUser.upsert({
-    where: { profileId: profile.id },
+    where: { email },
     create: {
       id: profile.id,
       profileId: profile.id,
@@ -53,6 +53,7 @@ async function ensureBackofficeUser(supabaseId: string, email: string, fullAcces
       isActive: true,
     },
     update: {
+      profileId: profile.id,
       fullAccess,
       isActive: true,
       email,

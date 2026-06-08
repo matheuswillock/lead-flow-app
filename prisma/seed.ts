@@ -9,6 +9,7 @@
 import { ensureUser, type SeedUser } from "./seed-helpers"
 import { PrismaClient, UserRole } from "@prisma/client"
 import { listUserByEmail } from "./seed-helpers"
+import { ensureAppSeedProfile } from "./seed-profile-helpers"
 
 const prisma = new PrismaClient()
 
@@ -18,6 +19,10 @@ const APP_USERS: SeedUser[] = [
   { email: "bruno@onsidemarketing.com.br", password: "Onside@2025" },
   { email: "nathielewillock@gmail.com", password: "Teste@2025" },
   { email: "matheuswillock@gmail.com", password: "Nath@1308" },
+]
+
+const APP_AUTH_USERS_TO_BACKFILL = [
+  "matheuswillock@outlook.com",
 ]
 
 // ── Backoffice users ──────────────────────────────────────────────────────────
@@ -52,7 +57,17 @@ async function main() {
   console.info("[seed] Iniciando (app + backoffice)...")
 
   for (const u of APP_USERS) {
-    await ensureUser(u)
+    const authUser = await ensureUser(u)
+    await ensureAppSeedProfile(prisma, authUser)
+  }
+
+  for (const email of APP_AUTH_USERS_TO_BACKFILL) {
+    const authUser = await listUserByEmail(email)
+    if (!authUser) {
+      console.warn(`[seed] Auth user não encontrado para backfill: ${email}`)
+      continue
+    }
+    await ensureAppSeedProfile(prisma, authUser)
   }
 
   for (const u of BACKOFFICE_USERS) {
