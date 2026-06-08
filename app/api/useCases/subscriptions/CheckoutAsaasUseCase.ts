@@ -87,7 +87,15 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       // 1. Buscar ou criar cliente Asaas
       const profile = await prisma.profile.findUnique({
-        where: { supabaseId: data.supabaseId }
+        where: { supabaseId: data.supabaseId },
+        include: {
+          subscription: {
+            select: {
+              asaasCustomerId: true,
+              asaasSubscriptionId: true,
+            },
+          },
+        },
       });
 
       if (!profile) {
@@ -99,15 +107,15 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       // Verificar se é a primeira tentativa de checkout (processo de registro)
       // Se não tem asaasCustomerId e não tem assinatura persistida, é a primeira vez
       isFirstCheckoutAttempt =
-        !profile.asaasCustomerId &&
-        !profile.asaasSubscriptionId &&
+        !profile.subscription?.asaasCustomerId &&
+        !profile.subscription?.asaasSubscriptionId &&
         !profile.subscriptionId;
       
       if (isFirstCheckoutAttempt) {
         console.info('🆕 [createSubscriptionCheckout] Primeira tentativa de checkout - rollback ativo');
       }
 
-      asaasCustomerId = profile.asaasCustomerId;
+      asaasCustomerId = profile.subscription?.asaasCustomerId;
 
       // Criar cliente no Asaas se não existir
       if (!asaasCustomerId) {
@@ -150,10 +158,21 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           asaasCustomerId = customer.id;
           customerWasCreated = true;
 
-          // Salvar customer ID no profile
+          const profileSubscription = await prisma.profileSubscription.upsert({
+            where: { profileId },
+            create: {
+              profileId,
+              asaasCustomerId,
+            },
+            update: {
+              asaasCustomerId,
+            },
+            select: { id: true },
+          });
+
           await prisma.profile.update({
-            where: { supabaseId: data.supabaseId },
-            data: { asaasCustomerId }
+            where: { id: profileId },
+            data: { subscriptionId: profileSubscription.id },
           });
 
           console.info('✅ [createSubscriptionCheckout] Cliente Asaas criado:', asaasCustomerId);
@@ -327,9 +346,9 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       if (customerWasCreated && asaasCustomerId) {
         try {
           console.warn('🔄 [createSubscriptionCheckout] Rollback parcial: Removendo asaasCustomerId...');
-          await prisma.profile.update({
-            where: { supabaseId: data.supabaseId },
-            data: { asaasCustomerId: null }
+          await prisma.profileSubscription.updateMany({
+            where: { profileId },
+            data: { asaasCustomerId: null },
           });
           console.info('✅ [createSubscriptionCheckout] Rollback parcial concluído');
         } catch (rollbackError) {
@@ -361,7 +380,16 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
 
       // 1. Buscar manager e validar
       const manager = await prisma.profile.findUnique({
-        where: { supabaseId: data.managerId }
+        where: { supabaseId: data.managerId },
+        include: {
+          subscription: {
+            select: {
+              asaasCustomerId: true,
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+            },
+          },
+        },
       });
 
       if (!manager) {
@@ -372,15 +400,15 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
         return new Output(false, [], ['Apenas managers podem adicionar operadores'], null);
       }
 
-      if (!manager.subscriptionStatus || manager.subscriptionStatus === 'canceled') {
+      if (!manager.subscription?.subscriptionStatus || manager.subscription.subscriptionStatus === 'canceled') {
         return new Output(false, [], ['Manager não possui assinatura ativa'], null);
       }
 
-      if (!manager.asaasCustomerId) {
+      if (!manager.subscription?.asaasCustomerId) {
         return new Output(false, [], ['Manager não possui customer Asaas configurado'], null);
       }
 
-      if (!manager.asaasSubscriptionId) {
+      if (!manager.subscription?.asaasSubscriptionId) {
         return new Output(false, [], ['Manager não possui assinatura Asaas configurada'], null);
       }
 
@@ -417,7 +445,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           role: data.operatorData.role,
           functions: data.operatorData.functions ?? [],
           paymentId: 'pending',
-          subscriptionId: manager.asaasSubscriptionId,
+          subscriptionId: manager.subscription.asaasSubscriptionId,
           paymentStatus: 'PENDING',
           paymentMethod: 'UNDEFINED',
         }
@@ -441,7 +469,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       });
 
       const checkoutData: any = {
-        customer: manager.asaasCustomerId,
+        customer: manager.subscription.asaasCustomerId,
         billingTypes: ['CREDIT_CARD'], // Apenas cartão para assinatura recorrente
         chargeTypes: ['RECURRENT'],
         subscription: {
@@ -578,7 +606,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
       // 3. CRÍTICO: Atualizar assinatura do manager no Asaas
       // Buscar assinatura antiga e nova
       const manager = pendingOperator.manager;
-      const oldSubscriptionId = manager.asaasSubscriptionId;
+      const oldSubscriptionId = manager.subscription.asaasSubscriptionId;
 
       if (!oldSubscriptionId) {
         return new Output(false, [], ['Manager não possui assinatura anterior'], null);

@@ -15,7 +15,11 @@ class PrismaBillingRepository implements IBillingRepository {
     const [master, hasUnlimitedUsers] = await Promise.all([
       prisma.profile.findUnique({
       where: { id: masterId },
-      select: { hasPermanentSubscription: true },
+      select: {
+        subscription: {
+          select: { hasPermanentSubscription: true },
+        },
+      },
       }),
       this.resolveHasUnlimitedUsers(masterId),
     ]);
@@ -42,7 +46,7 @@ class PrismaBillingRepository implements IBillingRepository {
     const quota = capacityQuota ?? legacyQuota;
 
     return {
-      hasPermanentSubscription: master.hasPermanentSubscription,
+      hasPermanentSubscription: master.subscription?.hasPermanentSubscription ?? false,
       hasUnlimitedUsers,
       teamCount,
       distinctUserCount,
@@ -188,7 +192,6 @@ class PrismaBillingRepository implements IBillingRepository {
       where: { id: profileId },
       data: {
         subscriptionId: subscription.id,
-        asaasCustomerId,
       },
     });
   }
@@ -218,10 +221,6 @@ class PrismaBillingRepository implements IBillingRepository {
       where: { id: profileId },
       data: {
         subscriptionId: subscription.id,
-        asaasCustomerId: data.asaasCustomerId,
-        asaasSubscriptionId: data.asaasSubscriptionId,
-        subscriptionNextDueDate: data.subscriptionNextDueDate,
-        subscriptionCycle: data.subscriptionCycle,
       },
     });
   }
@@ -233,12 +232,16 @@ class PrismaBillingRepository implements IBillingRepository {
         select: { subscriptionEndDate: true },
       }),
       prisma.profile.findUnique({
-        where: { id: profileId },
-        select: { subscriptionNextDueDate: true },
+      where: { id: profileId },
+      select: {
+        subscription: {
+          select: { subscriptionNextDueDate: true },
+        },
+      },
       }),
     ]);
 
-    return profileSub?.subscriptionEndDate ?? profile?.subscriptionNextDueDate ?? null;
+    return profileSub?.subscriptionEndDate ?? profile?.subscription?.subscriptionNextDueDate ?? null;
   }
 }
 

@@ -1,44 +1,50 @@
 // app/api/infra/data/repositories/payment/PaymentRepository.ts
 
-import { Profile, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
-import { IPaymentRepository } from './IPaymentRepository';
+import { ProfileSubscription, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
+import { IPaymentRepository, PaymentProfile } from './IPaymentRepository';
 import prisma from '../../prisma';
 
 export class PaymentRepository implements IPaymentRepository {
-  async findBySubscriptionId(subscriptionId: string): Promise<Profile | null> {
-    // Look in ProfileSubscription (new table) first
+  async findBySubscriptionId(subscriptionId: string): Promise<PaymentProfile | null> {
     const sub = await prisma.profileSubscription.findFirst({
       where: { asaasSubscriptionId: subscriptionId },
-      include: { profile: true },
+      include: { profile: { include: { subscription: true } } },
     });
-    if (sub) return sub.profile;
-    // Legacy fallback for profiles that still have subscriptionId on the Profile row
-    return prisma.profile.findFirst({ where: { subscriptionId } });
+    return sub?.profile ?? null;
   }
 
-  async findByAsaasCustomerId(asaasCustomerId: string): Promise<Profile | null> {
+  async findByAsaasCustomerId(asaasCustomerId: string): Promise<PaymentProfile | null> {
     return prisma.profile.findFirst({
       where: {
-        asaasCustomerId,
+        subscription: {
+          is: {
+            asaasCustomerId,
+          },
+        },
       },
+      include: { subscription: true },
     });
   }
 
-  async findByEmail(email: string): Promise<Profile | null> {
+  async findByEmail(email: string): Promise<PaymentProfile | null> {
     return prisma.profile.findFirst({
       where: { email },
+      include: { subscription: true },
     });
   }
 
-  async findById(id: string): Promise<Profile | null> {
-    return prisma.profile.findFirst({ where: { id } });
+  async findById(id: string): Promise<PaymentProfile | null> {
+    return prisma.profile.findFirst({
+      where: { id },
+      include: { subscription: true },
+    });
   }
 
   async updateSubscriptionStatus(
     profileId: string,
     subscriptionStatus: string,
     subscriptionStartDate?: Date
-  ): Promise<Profile> {
+  ): Promise<PaymentProfile> {
     const subData: any = { subscriptionStatus };
     if (subscriptionStartDate) subData.subscriptionStartDate = subscriptionStartDate;
 
@@ -48,13 +54,15 @@ export class PaymentRepository implements IPaymentRepository {
       update: subData,
     });
 
-    // Keep Profile in sync for legacy compatibility
-    const profileData: any = {
-      subscriptionId: subscription.id,
-      subscriptionStatus,
-    };
-    if (subscriptionStartDate) profileData.subscriptionStartDate = subscriptionStartDate;
-    return prisma.profile.update({ where: { id: profileId }, data: profileData });
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { subscriptionId: subscription.id },
+    });
+
+    return prisma.profile.findUniqueOrThrow({
+      where: { id: profileId },
+      include: { subscription: true },
+    });
   }
 
   async updateSubscriptionData(
@@ -67,7 +75,7 @@ export class PaymentRepository implements IPaymentRepository {
       subscriptionStartDate?: Date;
       subscriptionEndDate?: Date;
     }
-  ): Promise<Profile> {
+  ): Promise<PaymentProfile> {
     // Subscription fields go to ProfileSubscription
     const subData: any = {};
     if (data.asaasCustomerId !== undefined) subData.asaasCustomerId = data.asaasCustomerId;
@@ -85,18 +93,16 @@ export class PaymentRepository implements IPaymentRepository {
       })
       : await prisma.profileSubscription.findUnique({ where: { profileId } });
 
-    // Keep Profile in sync for legacy compatibility
-    const profileData: any = {};
-    if (data.asaasCustomerId !== undefined) profileData.asaasCustomerId = data.asaasCustomerId;
-    if (subscription?.id) profileData.subscriptionId = subscription.id;
-    if (data.subscriptionPlan !== undefined) profileData.subscriptionPlan = data.subscriptionPlan as SubscriptionPlan;
-    if (data.subscriptionStatus !== undefined) profileData.subscriptionStatus = data.subscriptionStatus as SubscriptionStatus;
-    if (data.subscriptionStartDate !== undefined) profileData.subscriptionStartDate = data.subscriptionStartDate;
-    if (data.subscriptionEndDate !== undefined) profileData.subscriptionEndDate = data.subscriptionEndDate;
-    if (Object.keys(profileData).length > 0) {
-      await prisma.profile.update({ where: { id: profileId }, data: profileData });
+    if (subscription?.id) {
+      await prisma.profile.update({
+        where: { id: profileId },
+        data: { subscriptionId: subscription.id },
+      });
     }
 
-    return prisma.profile.findUniqueOrThrow({ where: { id: profileId } });
+    return prisma.profile.findUniqueOrThrow({
+      where: { id: profileId },
+      include: { subscription: true },
+    });
   }
 }

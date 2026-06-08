@@ -412,20 +412,10 @@ model Profile {
   isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
   canCreateAccountUsers    Boolean             @default(false)
   canManageAccountTeams    Boolean             @default(false)
-  hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
   googleConnectionId       String?             @db.Uuid
   managerId                String?             @db.Uuid
-  asaasCustomerId          String?             @db.Text
   subscriptionId           String?             @unique @db.Uuid
-  subscriptionStatus       SubscriptionStatus?
-  subscriptionPlan         SubscriptionPlan?
   operatorCount            Int                 @default(0)
-  subscriptionStartDate    DateTime?           @db.Timestamptz(6)
-  subscriptionEndDate      DateTime?           @db.Timestamptz(6)
-  trialEndDate             DateTime?           @db.Timestamptz(6)
-  asaasSubscriptionId      String?             @db.Text // ID da assinatura no Asaas
-  subscriptionNextDueDate  DateTime?           @db.Timestamptz(6) // Próxima data de vencimento
-  subscriptionCycle        String?             @db.Text // MONTHLY, QUARTERLY, etc
   activeTeamId             String?             @db.Uuid
   timezone                 String              @default("America/Sao_Paulo") @db.Text
 

@@ -28,7 +28,11 @@ export class TogglePermanentSubscriptionUseCase implements ITogglePermanentSubsc
           email: true,
           fullName: true,
           role: true,
-          hasPermanentSubscription: true
+          subscription: {
+            select: {
+              hasPermanentSubscription: true,
+            },
+          },
         }
       });
 
@@ -42,32 +46,36 @@ export class TogglePermanentSubscriptionUseCase implements ITogglePermanentSubsc
       }
 
       // Atualizar status de assinatura permanente
-      const updatedProfile = await prisma.profile.update({
-        where: { id: profileId },
-        data: {
+      await prisma.profileSubscription.upsert({
+        where: { profileId },
+        create: {
+          profile: {
+            connect: { id: profileId },
+          },
           hasPermanentSubscription: enable,
-          updatedAt: new Date()
         },
-        select: {
-          id: true,
-          email: true,
-          fullName: true,
-          hasPermanentSubscription: true
-        }
+        update: {
+          hasPermanentSubscription: enable,
+        },
       });
 
       const action = enable ? 'ativada' : 'desativada';
       console.info(`✅ [TogglePermanentSubscription] Assinatura permanente ${action} para profile:`, {
-        profileId: updatedProfile.id,
-        email: updatedProfile.email,
-        hasPermanentSubscription: updatedProfile.hasPermanentSubscription
+        profileId,
+        email: profile.email,
+        hasPermanentSubscription: enable
       });
 
       return new Output(
         true,
         [`Assinatura permanente ${action} com sucesso`],
         [],
-        updatedProfile
+        {
+          id: profile.id,
+          email: profile.email,
+          fullName: profile.fullName,
+          hasPermanentSubscription: enable,
+        }
       );
 
     } catch (error) {

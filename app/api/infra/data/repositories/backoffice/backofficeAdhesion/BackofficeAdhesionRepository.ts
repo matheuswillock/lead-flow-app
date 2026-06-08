@@ -294,12 +294,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       isMaster: true,
       functions: ["SDR", "CLOSER"],
       cpfCnpj: data.cpfCnpj ?? undefined,
-      asaasCustomerId: data.asaasCustomerId ?? undefined,
-      asaasSubscriptionId: data.subscriptionId ?? undefined,
-      subscriptionStatus: "active",
-      subscriptionPlan: "manager_base",
       operatorCount: data.operatorCount,
-      subscriptionStartDate: data.subscriptionStartDate,
       postalCode: data.postalCode ?? undefined,
       address: data.address ?? undefined,
       addressNumber: data.addressNumber ?? undefined,
@@ -399,7 +394,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       where: { id: profileId },
       data: {
         subscriptionId: subscription.id,
-        ...data,
+        canCreateAccountUsers: data.canCreateAccountUsers,
+        canManageAccountTeams: data.canManageAccountTeams,
       },
     })
   }
@@ -436,12 +432,6 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       where: { id: data.profileId },
       data: {
         subscriptionId: subscription.id,
-        subscriptionStatus: data.subscriptionStatus as SubscriptionStatus,
-        subscriptionPlan: data.subscriptionPlan as SubscriptionPlan,
-        subscriptionStartDate: data.subscriptionStartDate,
-        subscriptionEndDate: data.subscriptionEndDate,
-        subscriptionNextDueDate: data.subscriptionNextDueDate,
-        subscriptionCycle: data.subscriptionCycle,
       },
     })
 

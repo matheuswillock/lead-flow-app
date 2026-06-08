@@ -108,7 +108,6 @@ export class ManagerUserRepository implements IManagerUserRepository {
                 email: data.email,
                 role: UserRole.manager,
                 functions: data.functions ?? [],
-                hasPermanentSubscription: data.hasPermanentSubscription || false,
                 managerId: data.managerId || null
             },
             select: {
@@ -117,6 +116,19 @@ export class ManagerUserRepository implements IManagerUserRepository {
                 email: true
             }
         });
+
+        if (data.hasPermanentSubscription) {
+            await prisma.profileSubscription.upsert({
+                where: { profileId: manager.id },
+                create: {
+                    profileId: manager.id,
+                    hasPermanentSubscription: true,
+                },
+                update: {
+                    hasPermanentSubscription: true,
+                },
+            });
+        }
 
         return {
             id: manager.id,
@@ -142,7 +154,6 @@ export class ManagerUserRepository implements IManagerUserRepository {
                 role: UserRole.operator,
                 functions: data.functions ?? [],
                 managerId: data.managerId,
-                hasPermanentSubscription: data.hasPermanentSubscription || false
             },
             select: {
                 id: true,
@@ -151,6 +162,19 @@ export class ManagerUserRepository implements IManagerUserRepository {
                 managerId: true
             }
         });
+
+        if (data.hasPermanentSubscription) {
+            await prisma.profileSubscription.upsert({
+                where: { profileId: operator.id },
+                create: {
+                    profileId: operator.id,
+                    hasPermanentSubscription: true,
+                },
+                update: {
+                    hasPermanentSubscription: true,
+                },
+            });
+        }
 
         return {
             id: operator.id,

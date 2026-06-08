@@ -85,67 +85,7 @@ export class SubscriptionStatusService implements ISubscriptionStatusService {
         };
       }
 
-      // 2. Fallback para assinaturas antigas ainda espelhadas em Profile
-      const profile = await prisma.profile.findFirst({
-        where: {
-          asaasSubscriptionId: subscriptionId,
-        },
-        select: {
-          id: true,
-          email: true,
-          timezone: true,
-          subscriptionStatus: true,
-          subscriptionPlan: true,
-          subscriptionStartDate: true,
-          subscriptionEndDate: true,
-          trialEndDate: true,
-        },
-      });
-
-      if (profile) {
-        const isPaid = profile.subscriptionStatus === 'active';
-        const timezone = resolveTimezone(profile.timezone);
-        let message = isPaid ? 'Assinatura ativa' : 'Assinatura pendente';
-
-        if (profile.subscriptionStatus === 'trial' && profile.trialEndDate) {
-          if (isPastInTz(profile.trialEndDate, timezone)) {
-            message = 'Período de teste expirado';
-          } else {
-            const remainingDays = Math.max(
-              0,
-              differenceInDaysInTz(profile.trialEndDate, new Date(), timezone)
-            );
-            message =
-              remainingDays > 0
-                ? `Período de teste ativo (${remainingDays} dia(s) restantes)`
-                : 'Período de teste ativo';
-          }
-        } else if (
-          profile.subscriptionEndDate &&
-          isPastInTz(profile.subscriptionEndDate, timezone) &&
-          profile.subscriptionStatus !== 'active'
-        ) {
-          message = 'Assinatura expirada';
-        }
-
-        console.info('📊 [SubscriptionStatusService] Profile legado encontrado:', {
-          profileId: profile.id,
-          isPaid,
-          subscriptionStatus: profile.subscriptionStatus,
-        });
-
-        return {
-          isPaid,
-          status: profile.subscriptionStatus || 'pending',
-          message,
-          subscriptionStatus: profile.subscriptionStatus || undefined,
-          subscriptionPlan: profile.subscriptionPlan || undefined,
-          subscriptionStartDate: profile.subscriptionStartDate,
-          subscriptionEndDate: profile.subscriptionEndDate,
-        };
-      }
-
-      // 3. Se não encontrou nada local, consultar Asaas diretamente
+      // 2. Se não encontrou nada local, consultar Asaas diretamente
       console.warn('⚠️ [SubscriptionStatusService] Assinatura não encontrada localmente - consultando Asaas');
 
       return await this.checkPaymentStatusFromAsaas(subscriptionId);

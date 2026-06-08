@@ -7,6 +7,7 @@ import { incrementalBillingService } from "@/app/api/services/billing/Incrementa
 import { billingRepository } from "@/app/api/infra/data/repositories/billing/BillingRepository";
 import { getFullUrl } from "@/lib/utils/app-url";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
+import type { BillingOwnerProfile } from "@/app/api/services/billing/IIncrementalBillingService";
 import type { 
   ISubscriptionManagementUseCase, 
   UpdatePaymentMethodDTO 
@@ -76,7 +77,7 @@ function shouldSync(lastSyncedAt: Date | null | undefined): boolean {
 const roundCurrency = (value: number) => Number(value.toFixed(2));
 
 export class SubscriptionManagementUseCase implements ISubscriptionManagementUseCase {
-  private async getBillingOwnerBySupabaseId(supabaseId: string, options?: { masterOnly?: boolean }) {
+  private async getBillingOwnerBySupabaseId(supabaseId: string, options?: { masterOnly?: boolean }): Promise<BillingOwnerProfile | null> {
     const requester = await prisma.profile.findUnique({
       where: { supabaseId },
       select: { id: true, isMaster: true, managerId: true },
@@ -88,7 +89,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
     const ownerId = requester.isMaster ? requester.id : requester.managerId;
     if (!ownerId) return null;
 
-    return prisma.profile.findUnique({
+    const owner = await prisma.profile.findUnique({
       where: { id: ownerId },
       select: {
         id: true,
@@ -101,16 +102,47 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         addressNumber: true,
         neighborhood: true,
         complement: true,
-        asaasCustomerId: true,
-        asaasSubscriptionId: true,
-        subscriptionStatus: true,
-        subscriptionNextDueDate: true,
-        subscriptionCycle: true,
-        hasPermanentSubscription: true,
+        subscription: {
+          select: {
+            asaasCustomerId: true,
+            asaasSubscriptionId: true,
+            subscriptionStatus: true,
+            subscriptionNextDueDate: true,
+            subscriptionCycle: true,
+            hasPermanentSubscription: true,
+            subscriptionPlan: true,
+            subscriptionStartDate: true,
+            subscriptionEndDate: true,
+          },
+        },
         timezone: true,
         isMaster: true,
       },
     });
+
+    if (!owner) {
+      return null;
+    }
+
+    return {
+      id: owner.id,
+      fullName: owner.fullName,
+      email: owner.email,
+      cpfCnpj: owner.cpfCnpj,
+      phone: owner.phone,
+      postalCode: owner.postalCode,
+      address: owner.address,
+      addressNumber: owner.addressNumber,
+      neighborhood: owner.neighborhood,
+      complement: owner.complement,
+      asaasCustomerId: owner.subscription?.asaasCustomerId ?? null,
+      asaasSubscriptionId: owner.subscription?.asaasSubscriptionId ?? null,
+      subscriptionStatus: owner.subscription?.subscriptionStatus ?? null,
+      subscriptionNextDueDate: owner.subscription?.subscriptionNextDueDate ?? null,
+      subscriptionCycle: owner.subscription?.subscriptionCycle ?? null,
+      hasPermanentSubscription: owner.subscription?.hasPermanentSubscription ?? false,
+      timezone: owner.timezone,
+    };
   }
 
   private async getProfileSubscription(profileId: string): Promise<ProfileSubscriptionSnapshot | null> {
@@ -339,7 +371,10 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       }
 
       const requesterProfile = await prisma.profile.findUnique({
-        where: { supabaseId }
+        where: { supabaseId },
+        include: {
+          subscription: true,
+        },
       });
 
       if (!requesterProfile) {
@@ -359,7 +394,12 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       const profile =
         masterIdForBilling === requesterProfile.id
           ? requesterProfile
-          : await prisma.profile.findUnique({ where: { id: masterIdForBilling } });
+          : await prisma.profile.findUnique({
+              where: { id: masterIdForBilling },
+              include: {
+                subscription: true,
+              },
+            });
 
       if (!profile) {
         return new Output(false, [], ['Master responsável pela assinatura não encontrado'], null);
@@ -367,8 +407,8 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
       const profileSubscription = await this.getProfileSubscription(masterIdForBilling);
       const hasPermanentSubscription =
-        profileSubscription?.hasPermanentSubscription === true || profile.hasPermanentSubscription;
-      const asaasSubscriptionId = profileSubscription?.asaasSubscriptionId ?? profile.asaasSubscriptionId;
+        profileSubscription?.hasPermanentSubscription === true || profile.subscription?.hasPermanentSubscription === true;
+      const asaasSubscriptionId = profileSubscription?.asaasSubscriptionId ?? profile.subscription?.asaasSubscriptionId;
 
       // Verificar se tem asaasSubscriptionId (campo mais confiável)
       if (!asaasSubscriptionId && !hasPermanentSubscription) {
@@ -415,16 +455,16 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         basePrice +
         legacyBillableTeams * extraTeamPrice +
         actualOperatorCount * extraUserPrice;
-      const subscriptionPlan = profileSubscription?.subscriptionPlan ?? profile.subscriptionPlan;
-      const subscriptionStatus = profileSubscription?.subscriptionStatus ?? profile.subscriptionStatus;
-      const subscriptionCycle = profileSubscription?.subscriptionCycle ?? profile.subscriptionCycle ?? "MONTHLY";
+      const subscriptionPlan = profileSubscription?.subscriptionPlan ?? profile.subscription?.subscriptionPlan;
+      const subscriptionStatus = profileSubscription?.subscriptionStatus ?? profile.subscription?.subscriptionStatus;
+      const subscriptionCycle = profileSubscription?.subscriptionCycle ?? profile.subscription?.subscriptionCycle ?? "MONTHLY";
       const subscriptionNextDueDate =
         profileSubscription?.subscriptionNextDueDate ??
-        profile.subscriptionNextDueDate ??
+        profile.subscription?.subscriptionNextDueDate ??
         profileSubscription?.subscriptionEndDate ??
-        profile.subscriptionEndDate;
+        profile.subscription?.subscriptionEndDate;
       const subscriptionStartedAt =
-        profileSubscription?.subscriptionStartDate ?? profile.subscriptionStartDate ?? profile.createdAt;
+        profileSubscription?.subscriptionStartDate ?? profile.subscription?.subscriptionStartDate ?? profile.createdAt;
       const lastSyncedAt = profileSubscription?.subscriptionLastSyncedAt ?? null;
       const totalValue =
         hasPermanentSubscription
@@ -460,7 +500,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
           name: profile.fullName || 'Usuário',
           email: profile.email
         },
-        externalReference: profile.asaasCustomerId || undefined,
+        externalReference: profile.subscription?.asaasCustomerId || undefined,
         createdAt: subscriptionStartedAt?.toISOString() || profile.createdAt.toISOString(),
         billingSummary: billingSummary
           ? {
@@ -478,7 +518,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
           operatorCount: billingSummary?.billableUsers ?? actualOperatorCount,
           teamCount: billingSummary?.teamCount,
           distinctUserCount: billingSummary?.distinctUserCount,
-          trialEndDate: (profileSubscription?.trialEndDate ?? profile.trialEndDate)?.toISOString()
+          trialEndDate: (profileSubscription?.trialEndDate ?? profile.subscription?.trialEndDate)?.toISOString()
         }
       };
 
@@ -522,8 +562,12 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
           email: true,
           isMaster: true,
           managerId: true,
-          asaasCustomerId: true,
-          asaasSubscriptionId: true,
+          subscription: {
+            select: {
+              asaasCustomerId: true,
+              asaasSubscriptionId: true,
+            },
+          },
         }
       });
 
@@ -545,8 +589,12 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
                 id: true,
                 fullName: true,
                 email: true,
-                asaasCustomerId: true,
-                asaasSubscriptionId: true,
+                subscription: {
+                  select: {
+                    asaasCustomerId: true,
+                    asaasSubscriptionId: true,
+                  },
+                },
               },
             })
           : profile;
@@ -556,8 +604,8 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       }
 
       const profileSubscription = await this.getProfileSubscription(billingOwner.id);
-      let customerId = billingOwner.asaasCustomerId;
-      const asaasSubscriptionId = profileSubscription?.asaasSubscriptionId ?? billingOwner.asaasSubscriptionId;
+      let customerId = billingOwner.subscription?.asaasCustomerId ?? null;
+      const asaasSubscriptionId = profileSubscription?.asaasSubscriptionId ?? billingOwner.subscription?.asaasSubscriptionId;
 
       // Fallback para cenários legados onde o customer não foi persistido no profile
       if (!customerId && asaasSubscriptionId) {
@@ -639,7 +687,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         where: { supabaseId }
       });
 
-      if (!profile || !profile.asaasSubscriptionId) {
+      if (!profile || !profile.subscription?.asaasSubscriptionId) {
         return new Output(
           false,
           [],
@@ -658,7 +706,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
       });
 
       // TODO: Chamar API Asaas para cancelar assinatura
-      // await asaasService.cancelSubscription(profile.asaasSubscriptionId);
+      // await asaasService.cancelSubscription(profile.subscription?.asaasSubscriptionId);
 
       return new Output(
         true,
@@ -709,7 +757,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         where: { supabaseId }
       });
 
-      if (!profile || !profile.asaasSubscriptionId) {
+      if (!profile || !profile.subscription?.asaasSubscriptionId) {
         return new Output(
           false,
           [],
@@ -720,7 +768,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
 
       // TODO: Atualizar método de pagamento na API Asaas
       // await asaasService.updatePaymentMethod(
-      //   profile.asaasSubscriptionId,
+      //   profile.subscription?.asaasSubscriptionId,
       //   paymentData
       // );
 
@@ -768,7 +816,7 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         where: { supabaseId }
       });
 
-      if (!profile || !profile.asaasSubscriptionId) {
+      if (!profile || !profile.subscription?.asaasSubscriptionId) {
         return new Output(
           false,
           [],

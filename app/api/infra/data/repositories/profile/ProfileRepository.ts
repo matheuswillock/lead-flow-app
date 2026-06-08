@@ -1,7 +1,7 @@
 import prisma, { withPrismaRetry } from "@/app/api/infra/data/prisma";
-import type { UserRole, Profile, Prisma } from "@prisma/client";
+import type { UserRole, Profile, Prisma, SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js"
-import type { IProfileRepository } from "./IProfileRepository";
+import type { IProfileRepository, ProfileWithSubscription } from "./IProfileRepository";
 import { isManagerLikeRole } from "@/lib/roles";
 import { GoogleOAuthConnectionRepository } from "../googleOAuthConnection/GoogleOAuthConnectionRepository";
 
@@ -73,9 +73,12 @@ class PrismaProfileRepository implements IProfileRepository {
         return { teamId: team.id };
     }
 
-    async findById(id: string): Promise<Profile | null> {
+    async findById(id: string): Promise<ProfileWithSubscription | null> {
         try {
-            const profile = await prisma.profile.findUnique({ where: { id } });
+            const profile = await prisma.profile.findUnique({
+                where: { id },
+                include: { subscription: true },
+            });
             return profile ?? null;
         } catch (error) {
             console.error("Error fetching profile by id:", error);
@@ -83,9 +86,12 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
-    async findBySupabaseId(supabaseId: string): Promise<Profile | null> {
+    async findBySupabaseId(supabaseId: string): Promise<ProfileWithSubscription | null> {
         try {
-            const profile = await prisma.profile.findUnique({ where: { supabaseId } });
+            const profile = await prisma.profile.findUnique({
+                where: { supabaseId },
+                include: { subscription: true },
+            });
             return profile ?? null;
         } catch (error) {
             console.error("Error fetching profile:", error);
@@ -93,12 +99,13 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
-    async findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null> {
+    async findBySupabaseIdWithRelations(supabaseId: string): Promise<ProfileWithSubscription | null> {
         try {
             const profile = await withPrismaRetry(async () => {
                 const found = await prisma.profile.findUnique({
                     where: { supabaseId },
                     include: {
+                        subscription: true,
                         googleConnection: {
                             select: { refreshToken: true, revokedAt: true, googleEmail: true },
                         },
@@ -197,9 +204,12 @@ class PrismaProfileRepository implements IProfileRepository {
 
     }
 
-    async findByEmail(email: string): Promise<Profile | null> {
+    async findByEmail(email: string): Promise<ProfileWithSubscription | null> {
         try {
-            const profile = await prisma.profile.findUnique({ where: { email } });
+            const profile = await prisma.profile.findUnique({
+                where: { email },
+                include: { subscription: true },
+            });
             return profile ?? null;
         } catch (error) {
             console.error("Error fetching profile by email:", error);
@@ -207,14 +217,15 @@ class PrismaProfileRepository implements IProfileRepository {
         }
     }
 
-    async findByGoogleEmail(googleEmail: string): Promise<Profile | null> {
+    async findByGoogleEmail(googleEmail: string): Promise<ProfileWithSubscription | null> {
         try {
             const profile = await prisma.profile.findFirst({
                 where: {
-                    googleConnection: {
-                        is: { googleEmail },
-                    },
+                  googleConnection: {
+                    is: { googleEmail },
+                  },
                 },
+                include: { subscription: true },
             });
             return profile ?? null;
         } catch (error) {
@@ -309,27 +320,35 @@ class PrismaProfileRepository implements IProfileRepository {
         profileData.cpfCnpj = cpfCnpj;
       }
 
-      // Adicionar dados do Asaas se fornecidos
-      if (asaasCustomerId) {
-        profileData.asaasCustomerId = asaasCustomerId;
-      }
-      if (subscriptionId) {
-        profileData.asaasSubscriptionId = subscriptionId;
-      }
-      if (subscriptionStatus) {
-        profileData.subscriptionStatus = subscriptionStatus;
-      }
-      if (subscriptionPlan) {
-        profileData.subscriptionPlan = subscriptionPlan;
-      }
       if (operatorCount !== undefined) {
         profileData.operatorCount = operatorCount;
       }
+
+      const subscriptionData: {
+        asaasCustomerId?: string;
+        asaasSubscriptionId?: string;
+        subscriptionStatus?: SubscriptionStatus;
+        subscriptionPlan?: SubscriptionPlan;
+        subscriptionStartDate?: Date;
+        trialEndDate?: Date;
+      } = {};
+      if (asaasCustomerId) {
+        subscriptionData.asaasCustomerId = asaasCustomerId;
+      }
+      if (subscriptionId) {
+        subscriptionData.asaasSubscriptionId = subscriptionId;
+      }
+      if (subscriptionStatus) {
+        subscriptionData.subscriptionStatus = subscriptionStatus as SubscriptionStatus;
+      }
+      if (subscriptionPlan) {
+        subscriptionData.subscriptionPlan = subscriptionPlan as SubscriptionPlan;
+      }
       if (subscriptionStartDate) {
-        profileData.subscriptionStartDate = subscriptionStartDate;
+        subscriptionData.subscriptionStartDate = subscriptionStartDate;
       }
       if (trialEndDate) {
-        profileData.trialEndDate = trialEndDate;
+        subscriptionData.trialEndDate = trialEndDate;
       }
 
       // Adicionar endereço se fornecido (undefined check ao invés de truthy)
@@ -356,16 +375,16 @@ class PrismaProfileRepository implements IProfileRepository {
       });
       
       console.info('📝 [ProfileRepository] profileData final:', {
-        hasSubscriptionId: !!profileData.asaasSubscriptionId,
-        hasAsaasCustomerId: !!profileData.asaasCustomerId,
-        hasSubscriptionPlan: !!profileData.subscriptionPlan,
+        hasSubscriptionId: !!subscriptionData.asaasSubscriptionId,
+        hasAsaasCustomerId: !!subscriptionData.asaasCustomerId,
+        hasSubscriptionPlan: !!subscriptionData.subscriptionPlan,
         hasOperatorCount: profileData.operatorCount !== undefined,
-        asaasSubscriptionId: profileData.asaasSubscriptionId,
-        subscriptionPlan: profileData.subscriptionPlan,
+        asaasSubscriptionId: subscriptionData.asaasSubscriptionId,
+        subscriptionPlan: subscriptionData.subscriptionPlan,
         operatorCount: profileData.operatorCount,
-        subscriptionStatus: profileData.subscriptionStatus,
-        hasSubscriptionStartDate: !!profileData.subscriptionStartDate,
-        subscriptionStartDate: profileData.subscriptionStartDate,
+        subscriptionStatus: subscriptionData.subscriptionStatus,
+        hasSubscriptionStartDate: !!subscriptionData.subscriptionStartDate,
+        subscriptionStartDate: subscriptionData.subscriptionStartDate,
         isMaster: profileData.isMaster,
         hasManagerId: !!profileData.managerId,
         role: profileData.role
@@ -376,26 +395,15 @@ class PrismaProfileRepository implements IProfileRepository {
             data: profileData
           });
 
-          if (profileData.asaasCustomerId || profileData.asaasSubscriptionId || profileData.subscriptionStatus || profileData.subscriptionPlan) {
+          if (Object.keys(subscriptionData).length > 0) {
             const subscription = await tx.profileSubscription.upsert({
               where: { profileId: createdProfile.id },
               create: {
                 profileId: createdProfile.id,
-                asaasCustomerId: profileData.asaasCustomerId ?? undefined,
-                asaasSubscriptionId: profileData.asaasSubscriptionId ?? undefined,
-                subscriptionStatus: profileData.subscriptionStatus,
-                subscriptionPlan: profileData.subscriptionPlan,
-                subscriptionStartDate: profileData.subscriptionStartDate,
-                trialEndDate: profileData.trialEndDate,
-                hasPermanentSubscription: profileData.hasPermanentSubscription ?? false,
-              },
-              update: {
-                asaasCustomerId: profileData.asaasCustomerId ?? undefined,
-                asaasSubscriptionId: profileData.asaasSubscriptionId ?? undefined,
-                subscriptionStatus: profileData.subscriptionStatus,
-                subscriptionPlan: profileData.subscriptionPlan,
-                subscriptionStartDate: profileData.subscriptionStartDate,
-                trialEndDate: profileData.trialEndDate,
+              ...subscriptionData,
+            },
+            update: {
+                ...subscriptionData,
               },
               select: { id: true },
             });
@@ -415,12 +423,12 @@ class PrismaProfileRepository implements IProfileRepository {
 
       console.info('✅ [ProfileRepository] Profile criado com sucesso:', {
           profileId: profile.id,
-        hasSubscriptionId: !!profile.subscriptionId,
-        subscriptionId: profile.subscriptionId,
-        subscriptionStatus: profile.subscriptionStatus,
-        subscriptionPlan: profile.subscriptionPlan,
-        subscriptionStartDate: profile.subscriptionStartDate,
-        asaasCustomerId: profile.asaasCustomerId
+        hasSubscriptionId: !!subscriptionData.asaasSubscriptionId,
+        subscriptionId: subscriptionData.asaasSubscriptionId,
+        subscriptionStatus: subscriptionData.subscriptionStatus,
+        subscriptionPlan: subscriptionData.subscriptionPlan,
+        subscriptionStartDate: subscriptionData.subscriptionStartDate,
+        asaasCustomerId: subscriptionData.asaasCustomerId
       });
 
         return { profileId: profile.id, supabaseId };
@@ -531,26 +539,35 @@ class PrismaProfileRepository implements IProfileRepository {
       if (cpfCnpj) {
         profileData.cpfCnpj = cpfCnpj;
       }
-      if (asaasCustomerId) {
-        profileData.asaasCustomerId = asaasCustomerId;
-      }
-      if (subscriptionId) {
-        profileData.asaasSubscriptionId = subscriptionId;
-      }
-      if (subscriptionStatus) {
-        profileData.subscriptionStatus = subscriptionStatus;
-      }
-      if (subscriptionPlan) {
-        profileData.subscriptionPlan = subscriptionPlan;
-      }
       if (operatorCount !== undefined) {
         profileData.operatorCount = operatorCount;
       }
+
+      const subscriptionData: {
+        asaasCustomerId?: string;
+        asaasSubscriptionId?: string;
+        subscriptionStatus?: SubscriptionStatus;
+        subscriptionPlan?: SubscriptionPlan;
+        subscriptionStartDate?: Date;
+        trialEndDate?: Date;
+      } = {};
+      if (asaasCustomerId) {
+        subscriptionData.asaasCustomerId = asaasCustomerId;
+      }
+      if (subscriptionId) {
+        subscriptionData.asaasSubscriptionId = subscriptionId;
+      }
+      if (subscriptionStatus) {
+        subscriptionData.subscriptionStatus = subscriptionStatus as SubscriptionStatus;
+      }
+      if (subscriptionPlan) {
+        subscriptionData.subscriptionPlan = subscriptionPlan as SubscriptionPlan;
+      }
       if (subscriptionStartDate) {
-        profileData.subscriptionStartDate = subscriptionStartDate;
+        subscriptionData.subscriptionStartDate = subscriptionStartDate;
       }
       if (trialEndDate) {
-        profileData.trialEndDate = trialEndDate;
+        subscriptionData.trialEndDate = trialEndDate;
       }
 
       if (postalCode !== undefined) profileData.postalCode = postalCode;
@@ -564,26 +581,15 @@ class PrismaProfileRepository implements IProfileRepository {
       const profile = await prisma.$transaction(async (tx) => {
         const createdProfile = await tx.profile.create({ data: profileData });
 
-        if (profileData.asaasCustomerId || profileData.asaasSubscriptionId || profileData.subscriptionStatus || profileData.subscriptionPlan) {
+        if (Object.keys(subscriptionData).length > 0) {
           const subscription = await tx.profileSubscription.upsert({
             where: { profileId: createdProfile.id },
             create: {
               profileId: createdProfile.id,
-              asaasCustomerId: profileData.asaasCustomerId ?? undefined,
-              asaasSubscriptionId: profileData.asaasSubscriptionId ?? undefined,
-              subscriptionStatus: profileData.subscriptionStatus,
-              subscriptionPlan: profileData.subscriptionPlan,
-              subscriptionStartDate: profileData.subscriptionStartDate,
-              trialEndDate: profileData.trialEndDate,
-              hasPermanentSubscription: profileData.hasPermanentSubscription ?? false,
+              ...subscriptionData,
             },
             update: {
-              asaasCustomerId: profileData.asaasCustomerId ?? undefined,
-              asaasSubscriptionId: profileData.asaasSubscriptionId ?? undefined,
-              subscriptionStatus: profileData.subscriptionStatus,
-              subscriptionPlan: profileData.subscriptionPlan,
-              subscriptionStartDate: profileData.subscriptionStartDate,
-              trialEndDate: profileData.trialEndDate,
+              ...subscriptionData,
             },
             select: { id: true },
           });

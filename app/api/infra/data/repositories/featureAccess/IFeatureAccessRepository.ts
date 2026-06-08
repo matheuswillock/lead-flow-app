@@ -3,7 +3,6 @@ import type {
   BackofficeFeatureAccessRule,
   BackofficeFeatureGrant,
   BackofficeUserProductSubscription,
-  Profile,
   ProfileSubscription,
 } from "@prisma/client"
 
@@ -25,7 +24,7 @@ export interface OwnerUserTypeAssignment {
 
 export interface IFeatureAccessRepository {
   listActiveFeatures(): Promise<Array<BackofficeFeature & { accessRules: BackofficeFeatureAccessRule[] }>>
-  findOwnerProfile(ownerProfileId: string): Promise<Pick<Profile, "hasPermanentSubscription" | "subscriptionStatus"> | null>
+  findOwnerProfile(ownerProfileId: string): Promise<Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> | null>
   findOwnerProfileSubscription(ownerProfileId: string): Promise<
     (Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> & {
       product: { slug: string } | null

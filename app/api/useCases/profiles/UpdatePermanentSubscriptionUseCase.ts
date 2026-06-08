@@ -74,10 +74,16 @@ export class UpdatePermanentSubscriptionUseCase {
         );
       }
 
-      // 5. Atualizar flag hasPermanentSubscription usando o ID interno
-      const updatedProfile = await prisma.profile.update({
-        where: { id: targetProfile.id },
-        data: { hasPermanentSubscription }
+      // 5. Atualizar flag hasPermanentSubscription na assinatura centralizada
+      await prisma.profileSubscription.upsert({
+        where: { profileId: targetProfile.id },
+        create: {
+          profile: {
+            connect: { id: targetProfile.id },
+          },
+          hasPermanentSubscription,
+        },
+        update: { hasPermanentSubscription },
       });
 
       return new Output(
@@ -85,10 +91,10 @@ export class UpdatePermanentSubscriptionUseCase {
         ['Assinatura permanente atualizada com sucesso'],
         [],
         {
-          id: updatedProfile.id,
-          email: updatedProfile.email,
-          fullName: updatedProfile.fullName,
-          hasPermanentSubscription: updatedProfile.hasPermanentSubscription
+          id: targetProfile.id,
+          email: targetProfile.email,
+          fullName: targetProfile.fullName,
+          hasPermanentSubscription,
         }
       );
 

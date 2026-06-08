@@ -18,30 +18,21 @@ export interface AsaasSubscriptionSyncData {
 
 class PrismaAsaasSubscriptionSyncRepository {
   async getSyncSnapshot(profileId: string): Promise<AsaasSubscriptionSyncSnapshot | null> {
-    const [profileSubscription, profile] = await Promise.all([
-      prisma.profileSubscription.findUnique({
-        where: { profileId },
-        select: {
-          asaasSubscriptionId: true,
-          hasPermanentSubscription: true,
-        },
-      }),
-      prisma.profile.findUnique({
-        where: { id: profileId },
-        select: {
-          asaasSubscriptionId: true,
-          asaasCustomerId: true,
-          hasPermanentSubscription: true,
-        },
-      }),
-    ]);
+    const profileSubscription = await prisma.profileSubscription.findUnique({
+      where: { profileId },
+      select: {
+        asaasSubscriptionId: true,
+        hasPermanentSubscription: true,
+      },
+    });
 
-    if (!profile && !profileSubscription) return null;
+    if (!profileSubscription) {
+      return null;
+    }
 
     return {
-      asaasSubscriptionId: profileSubscription?.asaasSubscriptionId ?? profile?.asaasSubscriptionId ?? null,
-      hasPermanentSubscription:
-        profileSubscription?.hasPermanentSubscription === true || profile?.hasPermanentSubscription === true,
+      asaasSubscriptionId: profileSubscription.asaasSubscriptionId ?? null,
+      hasPermanentSubscription: profileSubscription.hasPermanentSubscription,
     };
   }
 
@@ -61,13 +52,6 @@ class PrismaAsaasSubscriptionSyncRepository {
       where: { id: profileId },
       data: {
         subscriptionId: subscription.id,
-        asaasCustomerId: data.asaasCustomerId,
-        asaasSubscriptionId: asaasSubscriptionId,
-        subscriptionStatus: data.subscriptionStatus,
-        subscriptionCycle: data.subscriptionCycle,
-        subscriptionNextDueDate: data.subscriptionNextDueDate,
-        subscriptionStartDate: data.subscriptionStartDate,
-        subscriptionEndDate: data.subscriptionEndDate,
       },
     });
   }

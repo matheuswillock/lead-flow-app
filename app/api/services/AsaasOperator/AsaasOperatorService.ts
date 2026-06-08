@@ -33,9 +33,13 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         where: { id: managerId },
         select: {
           id: true,
-          asaasCustomerId: true,
-          asaasSubscriptionId: true,
-          subscriptionStatus: true,
+          subscription: {
+            select: {
+              asaasCustomerId: true,
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+            },
+          },
           fullName: true,
         },
       });
@@ -44,11 +48,11 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         throw new Error('Manager não encontrado');
       }
 
-      if (!manager.asaasCustomerId) {
+      if (!manager.subscription?.asaasCustomerId) {
         throw new Error('Manager não possui cliente Asaas. Crie uma assinatura primeiro.');
       }
 
-      if (!manager.asaasSubscriptionId) {
+      if (!manager.subscription?.asaasSubscriptionId) {
         throw new Error('Manager não possui assinatura ativa. Crie a assinatura base primeiro.');
       }
 
@@ -59,7 +63,12 @@ export class AsaasOperatorService implements IAsaasOperatorService {
           id: true,
           fullName: true,
           email: true,
-          asaasSubscriptionId: true,
+          subscription: {
+            select: {
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+            },
+          },
           managerId: true,
         },
       });
@@ -68,7 +77,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         throw new Error('Operador não encontrado');
       }
 
-      if (operator.asaasSubscriptionId) {
+      if (operator.subscription?.asaasSubscriptionId) {
         throw new Error('Operador já possui assinatura ativa');
       }
 
@@ -78,7 +87,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
 
       // 3. Criar assinatura do operador no Asaas
       const subscription = await AsaasSubscriptionService.createOperatorSubscription({
-        customer: manager.asaasCustomerId,
+        customer: manager.subscription.asaasCustomerId,
         billingType: 'CREDIT_CARD', // Herda do Manager ou define padrão
         value: 19.90,
         cycle: 'MONTHLY',
@@ -87,11 +96,35 @@ export class AsaasOperatorService implements IAsaasOperatorService {
       });
 
       // 4. Atualizar Operador
+      const operatorSubscription = await prisma.profileSubscription.upsert({
+        where: { profileId: operatorId },
+        create: {
+          profile: {
+            connect: { id: operatorId },
+          },
+          asaasCustomerId: manager.subscription.asaasCustomerId,
+          asaasSubscriptionId: subscription.subscriptionId,
+          subscriptionStatus: 'active',
+          subscriptionPlan: 'with_operators',
+          subscriptionCycle: 'MONTHLY',
+          subscriptionStartDate: new Date(),
+        },
+        update: {
+          asaasCustomerId: manager.subscription.asaasCustomerId,
+          asaasSubscriptionId: subscription.subscriptionId,
+          subscriptionStatus: 'active',
+          subscriptionPlan: 'with_operators',
+          subscriptionCycle: 'MONTHLY',
+          subscriptionStartDate: new Date(),
+          subscriptionEndDate: null,
+        },
+        select: { id: true },
+      });
+
       await prisma.profile.update({
         where: { id: operatorId },
         data: {
-          asaasSubscriptionId: subscription.subscriptionId,
-          subscriptionStatus: 'active',
+          subscriptionId: operatorSubscription.id,
           managerId: managerId,
         },
       });
@@ -100,7 +133,11 @@ export class AsaasOperatorService implements IAsaasOperatorService {
       const currentOperatorsCount = await prisma.profile.count({
         where: {
           managerId: managerId,
-          subscriptionStatus: 'active',
+          subscription: {
+            is: {
+              subscriptionStatus: 'active',
+            },
+          },
         },
       });
 
@@ -108,6 +145,18 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         where: { id: managerId },
         data: {
           operatorCount: currentOperatorsCount,
+        },
+      });
+
+      await prisma.profileSubscription.upsert({
+        where: { profileId: managerId },
+        create: {
+          profile: {
+            connect: { id: managerId },
+          },
+          subscriptionPlan: 'with_operators',
+        },
+        update: {
           subscriptionPlan: 'with_operators',
         },
       });
@@ -144,10 +193,16 @@ export class AsaasOperatorService implements IAsaasOperatorService {
               fullName: true,
             },
           },
+          subscription: {
+            select: {
+              id: true,
+              asaasSubscriptionId: true,
+            },
+          },
         },
       });
 
-      if (!operator?.asaasSubscriptionId) {
+      if (!operator?.subscription?.asaasSubscriptionId) {
         throw new Error('Operador não possui assinatura ativa');
       }
 
@@ -155,20 +210,19 @@ export class AsaasOperatorService implements IAsaasOperatorService {
 
       // 2. Cancelar assinatura no Asaas
       try {
-        await AsaasSubscriptionService.cancelSubscription(operator.asaasSubscriptionId);
-        console.info(`✅ Assinatura Asaas cancelada: ${operator.asaasSubscriptionId}`);
+        await AsaasSubscriptionService.cancelSubscription(operator.subscription.asaasSubscriptionId);
+        console.info(`✅ Assinatura Asaas cancelada: ${operator.subscription.asaasSubscriptionId}`);
       } catch (asaasError: any) {
         console.error('⚠️ Erro ao cancelar assinatura no Asaas:', asaasError.message);
         // Continua mesmo se falhar no Asaas (pode já estar cancelada)
       }
 
       // 3. Atualizar Operador
-      await prisma.profile.update({
-        where: { id: operatorId },
+      await prisma.profileSubscription.updateMany({
+        where: { profileId: operatorId },
         data: {
-          asaasSubscriptionId: null,
           subscriptionStatus: 'canceled',
-          managerId: null,
+          subscriptionEndDate: new Date(),
         },
       });
 
@@ -177,7 +231,11 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         const remainingOperators = await prisma.profile.count({
           where: {
             managerId: managerId,
-            subscriptionStatus: 'active',
+            subscription: {
+              is: {
+                subscriptionStatus: 'active',
+              },
+            },
           },
         });
 
@@ -185,6 +243,18 @@ export class AsaasOperatorService implements IAsaasOperatorService {
           where: { id: managerId },
           data: {
             operatorCount: remainingOperators,
+          },
+        });
+
+        await prisma.profileSubscription.upsert({
+          where: { profileId: managerId },
+          create: {
+            profile: {
+              connect: { id: managerId },
+            },
+            subscriptionPlan: remainingOperators === 0 ? 'manager_base' : 'with_operators',
+          },
+          update: {
             subscriptionPlan: remainingOperators === 0 ? 'manager_base' : 'with_operators',
           },
         });
@@ -214,13 +284,21 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         include: {
           operators: {
             where: {
-              subscriptionStatus: 'active',
+              subscription: {
+                is: {
+                  subscriptionStatus: 'active',
+                },
+              },
             },
             select: {
               id: true,
               fullName: true,
               email: true,
-              subscriptionStatus: true,
+              subscription: {
+                select: {
+                  subscriptionStatus: true,
+                },
+              },
             },
           },
         },
@@ -259,7 +337,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
       const operators = await prisma.profile.findMany({
         where: {
           managerId: managerId,
-          ...(includeInactive ? {} : { subscriptionStatus: 'active' }),
+          ...(includeInactive ? {} : { subscription: { is: { subscriptionStatus: 'active' } } }),
         },
         select: {
           id: true,
@@ -267,8 +345,12 @@ export class AsaasOperatorService implements IAsaasOperatorService {
           fullName: true,
           phone: true,
           role: true,
-          asaasSubscriptionId: true,
-          subscriptionStatus: true,
+          subscription: {
+            select: {
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+            },
+          },
           createdAt: true,
         },
         orderBy: {
@@ -323,8 +405,12 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         where: { id: operatorId },
         select: {
           id: true,
-          asaasSubscriptionId: true,
           managerId: true,
+          subscription: {
+            select: {
+              asaasSubscriptionId: true,
+            },
+          },
         },
       });
 
@@ -332,15 +418,14 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         throw new Error('Operador não encontrado');
       }
 
-      if (operator.asaasSubscriptionId) {
-        await AsaasSubscriptionService.cancelSubscription(operator.asaasSubscriptionId);
+      if (operator.subscription?.asaasSubscriptionId) {
+        await AsaasSubscriptionService.cancelSubscription(operator.subscription.asaasSubscriptionId);
       }
 
-      await prisma.profile.update({
-        where: { id: operatorId },
+      await prisma.profileSubscription.updateMany({
+        where: { profileId: operatorId },
         data: {
           subscriptionStatus: 'suspended',
-          asaasSubscriptionId: null,
         },
       });
 
@@ -349,7 +434,11 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         const activeOperators = await prisma.profile.count({
           where: {
             managerId: operator.managerId,
-            subscriptionStatus: 'active',
+            subscription: {
+              is: {
+                subscriptionStatus: 'active',
+              },
+            },
           },
         });
 
@@ -383,7 +472,11 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         select: {
           id: true,
           managerId: true,
-          subscriptionStatus: true,
+          subscription: {
+            select: {
+              subscriptionStatus: true,
+            },
+          },
         },
       });
 
@@ -395,7 +488,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
         throw new Error('Operador não está vinculado a um Manager');
       }
 
-      if (operator.subscriptionStatus === 'active') {
+      if (operator.subscription?.subscriptionStatus === 'active') {
         throw new Error('Operador já está ativo');
       }
 

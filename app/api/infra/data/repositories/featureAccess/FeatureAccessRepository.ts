@@ -4,7 +4,6 @@ import type {
   BackofficeFeatureAccessRule,
   BackofficeFeatureGrant,
   BackofficeUserProductSubscription,
-  Profile,
   ProfileSubscription,
 } from "@prisma/client"
 import type { IFeatureAccessRepository, OwnerUserTypeAssignment, UserRoleInfo } from "./IFeatureAccessRepository"
@@ -31,14 +30,18 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
     }
   }
 
-  async findOwnerProfile(ownerProfileId: string): Promise<Pick<Profile, "hasPermanentSubscription" | "subscriptionStatus"> | null> {
+  async findOwnerProfile(ownerProfileId: string): Promise<Pick<ProfileSubscription, "hasPermanentSubscription" | "subscriptionStatus"> | null> {
     return prisma.profile.findUnique({
       where: { id: ownerProfileId },
       select: {
-        hasPermanentSubscription: true,
-        subscriptionStatus: true,
+        subscription: {
+          select: {
+            hasPermanentSubscription: true,
+            subscriptionStatus: true,
+          },
+        },
       },
-    })
+    }).then((profile) => profile?.subscription ?? null)
   }
 
   async findOwnerProfileSubscription(

@@ -1,6 +1,10 @@
 // app/api/infra/data/repositories/payment/IPaymentRepository.ts
 
-import { Profile } from '@prisma/client';
+import { Profile, ProfileSubscription } from '@prisma/client';
+
+export type PaymentProfile = Profile & {
+  subscription: ProfileSubscription | null;
+};
 
 export interface IPaymentRepository {
   /**
@@ -8,24 +12,24 @@ export interface IPaymentRepository {
    * @param subscriptionId - ID da assinatura no Asaas
    * @returns Profile ou null se não encontrado
    */
-  findBySubscriptionId(subscriptionId: string): Promise<Profile | null>;
+  findBySubscriptionId(subscriptionId: string): Promise<PaymentProfile | null>;
 
   /**
    * Busca um Profile pelo ID do customer do Asaas
    * @param asaasCustomerId - ID do customer no Asaas
    * @returns Profile ou null se não encontrado
    */
-  findByAsaasCustomerId(asaasCustomerId: string): Promise<Profile | null>;
+  findByAsaasCustomerId(asaasCustomerId: string): Promise<PaymentProfile | null>;
 
   /**
    * Busca um Profile pelo email
    */
-  findByEmail(email: string): Promise<Profile | null>;
+  findByEmail(email: string): Promise<PaymentProfile | null>;
 
   /**
    * Busca um Profile pelo ID (UUID)
    */
-  findById(id: string): Promise<Profile | null>;
+  findById(id: string): Promise<PaymentProfile | null>;
 
   /**
    * Atualiza o status da assinatura de um Profile
@@ -38,7 +42,7 @@ export interface IPaymentRepository {
     profileId: string,
     subscriptionStatus: string,
     subscriptionStartDate?: Date
-  ): Promise<Profile>;
+  ): Promise<PaymentProfile>;
 
   /**
    * Upsert subscription linkage and status fields on the Profile.
@@ -53,5 +57,5 @@ export interface IPaymentRepository {
       subscriptionStartDate?: Date;
       subscriptionEndDate?: Date;
     }
-  ): Promise<Profile>;
+  ): Promise<PaymentProfile>;
 }
