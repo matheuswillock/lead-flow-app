@@ -198,7 +198,7 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
   useEffect(() => {
     if (!activeTeamId || !activeTeam) return;
     if (activeRole === "operator" && activeFunctions.length === 0) {
-      toast.info("Seu time atual nao possui funcoes atribuídas.");
+      toast.info("Seu time atual não possui funções atribuídas.");
     }
   }, [activeTeamId, activeTeam, activeRole, activeFunctions]);
 

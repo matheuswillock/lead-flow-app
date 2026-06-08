@@ -122,7 +122,7 @@ export function DocsContainer() {
             <DrawerHeader>
               <DrawerTitle>Capitulos da documentacao</DrawerTitle>
               <DrawerDescription>
-                Escolha a pagina que voce quer abrir no painel principal.
+                Escolha a página que você quer abrir no painel principal.
               </DrawerDescription>
             </DrawerHeader>
             <div className="px-4 pb-6">

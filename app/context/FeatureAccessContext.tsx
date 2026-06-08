@@ -11,6 +11,9 @@ interface UserRoleData {
   functions: string[]
   canCreateAccountUsers: boolean
   canManageAccountTeams: boolean
+  userTypeSlug: string
+  memberProActive: boolean
+  memberProExpiresAt: string | null
 }
 
 const DEFAULT_USER_ROLE: UserRoleData = {
@@ -19,6 +22,9 @@ const DEFAULT_USER_ROLE: UserRoleData = {
   functions: [],
   canCreateAccountUsers: false,
   canManageAccountTeams: false,
+  userTypeSlug: "common",
+  memberProActive: false,
+  memberProExpiresAt: null,
 }
 const ACCESS_CACHE_TTL_MS = 60_000
 const ACCESS_POLL_INTERVAL_MS = 60_000

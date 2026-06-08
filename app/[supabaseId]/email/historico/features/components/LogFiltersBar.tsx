@@ -20,7 +20,7 @@ export function LogFiltersBar() {
       <div className="relative min-w-52 flex-1">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Buscar por email ou assunto..."
+          placeholder="Buscar por e-mail ou assunto..."
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
           className="pl-9"

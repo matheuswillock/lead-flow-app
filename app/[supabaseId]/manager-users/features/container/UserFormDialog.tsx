@@ -222,7 +222,7 @@ export function UserFormDialog({
         if (!isAvailable) {
           notifyManagerUsersError({
             operation: "checkEmail",
-            errorMessages: payload?.errorMessages?.length ? payload.errorMessages : ["Email já está em uso"],
+            errorMessages: payload?.errorMessages?.length ? payload.errorMessages : ["E-mail já está em uso"],
             context: errorContext,
           });
           return;
@@ -310,7 +310,7 @@ export function UserFormDialog({
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>E-mail</FormLabel>
                   <FormControl>
                     <Input 
                       type="email"
@@ -320,7 +320,7 @@ export function UserFormDialog({
                     />
                   </FormControl>
                   <FormDescription>
-                    Email usado para login e comunicações.
+                    E-mail usado para login e comunicações.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

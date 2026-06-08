@@ -27,7 +27,7 @@ export default function LeadImportButton({ onImportComplete }: LeadImportButtonP
       return;
     }
     if (!supabaseId) {
-      toast.error("Usuario nao identificado");
+      toast.error("Usuário não identificado");
       return;
     }
     if (!activeTeamId) {

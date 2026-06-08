@@ -36,7 +36,7 @@ export function CsvUploadDropzone() {
         {uploadingCsv ? "Importando..." : "Importar CSV"}
       </Button>
       <p className="mt-1 text-xs text-muted-foreground">
-        Colunas esperadas: <span className="font-medium">email</span> (obrigatório), name (opcional)
+        Colunas esperadas: <span className="font-medium">e-mail</span> (obrigatório), name (opcional)
       </p>
     </div>
   )

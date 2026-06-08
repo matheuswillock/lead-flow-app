@@ -7,7 +7,7 @@ import type {
   Profile,
   ProfileSubscription,
 } from "@prisma/client"
-import type { IFeatureAccessRepository, UserRoleInfo } from "./IFeatureAccessRepository"
+import type { IFeatureAccessRepository, OwnerUserTypeAssignment, UserRoleInfo } from "./IFeatureAccessRepository"
 
 export class FeatureAccessRepository implements IFeatureAccessRepository {
   async listActiveFeatures(): Promise<Array<BackofficeFeature & { accessRules: BackofficeFeatureAccessRule[] }>> {
@@ -101,12 +101,32 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
       },
     })
     if (!profile) return null
+
     return {
       isMaster: profile.isMaster,
       role: profile.role,
       functions: profile.functions as string[],
       canManageAccountTeams: profile.canManageAccountTeams,
       canCreateAccountUsers: profile.canCreateAccountUsers,
+      userTypeSlug: "common",
+      memberProActive: false,
+      memberProExpiresAt: null,
+    }
+  }
+
+  async findUserTypeAssignment(ownerProfileId: string): Promise<OwnerUserTypeAssignment | null> {
+    const assignment = await prisma.profileUserTypeAssignment.findUnique({
+      where: { profileId: ownerProfileId },
+      select: {
+        accessExpiresAt: true,
+        userType: { select: { slug: true } },
+      },
+    })
+    if (!assignment) return null
+
+    return {
+      slug: assignment.userType.slug,
+      accessExpiresAt: assignment.accessExpiresAt ? assignment.accessExpiresAt.toISOString() : null,
     }
   }
 

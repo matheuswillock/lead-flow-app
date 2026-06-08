@@ -241,7 +241,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
 
       setTableColumnVisibility(nextVisibility);
     } catch (error) {
-      console.error("Erro ao carregar configuracoes da tabela pipeline:", error);
+      console.error("Erro ao carregar configurações da tabela pipeline:", error);
       setTableColumnVisibility(DEFAULT_PIPELINE_TABLE_COLUMN_VISIBILITY);
     }
   }, [pipelineColumnsStorageKey]);
@@ -261,7 +261,7 @@ export const PipelineProvider: React.FC<IPipelineProviderProps> = ({
         JSON.stringify(tableColumnVisibility)
       );
     } catch (error) {
-      console.error("Erro ao salvar configuracoes da tabela pipeline:", error);
+      console.error("Erro ao salvar configurações da tabela pipeline:", error);
     }
   }, [pipelineColumnsStorageKey, tableColumnVisibility]);
 

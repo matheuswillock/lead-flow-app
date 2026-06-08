@@ -104,7 +104,7 @@ export function ContactsTable() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Buscar por email ou nome..."
+          placeholder="Buscar por e-mail ou nome..."
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
           className="pl-9"
@@ -115,7 +115,7 @@ export function ContactsTable() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Email</TableHead>
+              <TableHead>E-mail</TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Adicionado em</TableHead>

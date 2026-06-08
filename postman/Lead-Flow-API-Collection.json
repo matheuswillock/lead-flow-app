@@ -7919,7 +7919,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 0,\n  \"extraUsers\": 0,\n  \"activationMode\": \"external_paid\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\"\n}"
+                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 0,\n  \"extraUsers\": 0,\n  \"activationMode\": \"external_paid\",\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T00:00:00.000Z\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\"\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/adhesions",
@@ -8326,6 +8326,48 @@
                   ]
                 },
                 "description": "Detalhes de um profile específico: dados básicos, plano do master vinculado, status do Google Calendar e lista de times em que participa."
+              }
+            },
+            {
+              "name": "PATCH User Type (convert to Member PRO / Comum)",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T23:59:59.000Z\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/clients/all-users/:profileId/user-type",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "clients",
+                    "all-users",
+                    ":profileId",
+                    "user-type"
+                  ],
+                  "variable": [
+                    {
+                      "key": "profileId",
+                      "value": "{{profileId}}"
+                    }
+                  ]
+                },
+                "description": "Converte/configura o tipo de usuário do profile (Comum <-> Member PRO). Exige backoffice com fullAccess. Para 'member_pro', accessExpiresAt é obrigatório (entre 1 dia e 1 ano a partir de agora) e os limites de usuários/times devem ser informados quando não ilimitados. Para 'common', os campos Member PRO são zerados."
               }
             }
           ]

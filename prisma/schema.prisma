@@ -482,6 +482,10 @@ model Profile {
   // Product subscription (master only; operators inherit via managerId)
   subscription ProfileSubscription?
 
+  // User type (Comum / Member PRO)
+  userTypeAssignment      ProfileUserTypeAssignment?  @relation("ProfileUserTypeAssignment")
+  assignedUserTypeChanges ProfileUserTypeAssignment[] @relation("ProfileUserTypeAssignmentAssignedBy")
+
   @@index([role])
   @@index([managerId])
   @@index([cpfCnpj])
@@ -715,6 +719,8 @@ model BackofficeAdhesion {
   canceledAt                DateTime?                      @map("canceledAt") @db.Timestamptz(6)
   createdProfileId          String?                        @map("createdProfileId") @db.Uuid
   createdSupabaseId         String?                        @map("createdSupabaseId") @db.Uuid
+  requestedUserTypeSlug             String?   @map("requestedUserTypeSlug") @db.Text
+  requestedMemberProAccessExpiresAt DateTime? @map("requestedMemberProAccessExpiresAt") @db.Timestamptz(6)
   createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt                 DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
@@ -1702,5 +1708,43 @@ model ProfileSubscriptionCapacity {
   profileSubscription ProfileSubscription @relation(fields: [profileSubscriptionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscription_capacities_subscription_id_fkey")
 
   @@map("corretor_studio_profile_subscription_capacities")
+}
+
+// -----------------------------
+// PROFILE USER TYPE (Comum / Member PRO)
+// Lookup table with the user type tiers, plus a 1:1 assignment table
+// linking each Profile to its current type (cascades from Profile).
+// -----------------------------
+
+model ProfileUserType {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String   @unique @db.Text
+  name        String   @db.Text
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  assignments ProfileUserTypeAssignment[]
+
+  @@map("profile_user_types")
+}
+
+model ProfileUserTypeAssignment {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId           String    @unique @db.Uuid
+  userTypeId          String    @db.Uuid
+  accessStartsAt      DateTime? @db.Timestamptz(6)
+  accessExpiresAt     DateTime? @db.Timestamptz(6)
+  assignedByProfileId String?   @db.Uuid
+  createdAt           DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  profile     Profile         @relation("ProfileUserTypeAssignment", fields: [profileId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "profile_user_type_assignments_profile_id_fkey")
+  userType    ProfileUserType @relation(fields: [userTypeId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "profile_user_type_assignments_user_type_id_fkey")
+  assignedBy  Profile?        @relation("ProfileUserTypeAssignmentAssignedBy", fields: [assignedByProfileId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_user_type_assignments_assigned_by_profile_id_fkey")
+
+  @@index([userTypeId])
+  @@index([accessExpiresAt])
+  @@map("profile_user_type_assignments")
 }
 

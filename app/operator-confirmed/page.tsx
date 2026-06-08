@@ -99,7 +99,7 @@ function OperatorConfirmedContent() {
       return {
         icon: <CheckCircle2 className="h-20 w-20 text-green-500" />,
         title: 'Operador Adicionado com Sucesso!',
-        description: 'O novo operador foi criado e receberá um email com as credenciais de acesso.',
+        description: 'O novo operador foi criado e receberá um e-mail com as credenciais de acesso.',
         color: 'text-green-600',
         bgColor: 'bg-green-50 dark:bg-green-950'
       };
@@ -165,7 +165,7 @@ function OperatorConfirmedContent() {
                   <span className="font-medium">{operatorData.name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Email:</span>
+                  <span className="text-muted-foreground">E-mail:</span>
                   <span className="font-medium">{operatorData.email}</span>
                 </div>
               </div>
@@ -202,7 +202,7 @@ function OperatorConfirmedContent() {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2">
                   <span className="text-primary">✓</span>
-                  <span>O operador receberá um email com as credenciais de acesso</span>
+                  <span>O operador receberá um e-mail com as credenciais de acesso</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-primary">✓</span>

@@ -155,7 +155,7 @@ export function BoardContainer({
   const handleNoShow = useCallback(
     async (lead: Lead) => {
       if (!supabaseId) {
-        toast.error("Usuario nao identificado");
+        toast.error("Usuário não identificado");
         return;
       }
 

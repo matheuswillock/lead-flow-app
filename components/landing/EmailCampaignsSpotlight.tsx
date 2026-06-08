@@ -70,7 +70,7 @@ export function EmailCampaignsSpotlight() {
             Campanhas de email <span className="landing-primary-gradient">em breve no CRM</span>
           </h2>
           <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-            Estamos finalizando o modulo para voce criar, agendar e medir campanhas sem sair do Corretor Studio.
+            Estamos finalizando o módulo para você criar, agendar e medir campanhas sem sair do Corretor Studio.
           </p>
         </MotionDiv>
 
@@ -165,9 +165,9 @@ export function EmailCampaignsSpotlight() {
             <div>
               <p className="text-sm font-semibold text-foreground mb-3">Disponibilidade de lançamento</p>
               <div className="rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-5">
-                <p className="text-base font-semibold text-foreground">Modulo de email em desenvolvimento</p>
+                <p className="text-base font-semibold text-foreground">Módulo de e-mail em desenvolvimento</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Voce pode solicitar acesso antecipado na demonstracao. Avisaremos assim que a funcionalidade for liberada.
+                  Você pode solicitar acesso antecipado na demonstração. Avisaremos assim que a funcionalidade for liberada.
                 </p>
                 <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
                   <li className="flex items-center gap-2">

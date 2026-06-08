@@ -83,8 +83,8 @@ export function ForgotPasswordContainer() {
               <div className="rounded-md border bg-muted/50 p-3 text-sm text-muted-foreground">
                 <p className="mb-1 font-medium">Dica:</p>
                 <p className="text-xs">
-                  Nao recebeu o email? Verifique sua pasta de spam ou lixo
-                  eletronico. O email pode levar alguns minutos para chegar.
+                  Não recebeu o e-mail? Verifique sua pasta de spam ou lixo
+                  eletrônico. O e-mail pode levar alguns minutos para chegar.
                 </p>
               </div>
             </CardContent>
@@ -188,7 +188,7 @@ export function ForgotPasswordContainer() {
         </Card>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          Ao solicitar a recuperacao, voce recebera um email com instrucoes para
+          Ao solicitar a recuperação, você receberá um e-mail com instruções para
           redefinir sua senha.
         </p>
       </div>
