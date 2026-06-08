@@ -289,7 +289,7 @@ export function BackofficeMetaIntegrationCard() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="default">name obrigatório</Badge>
-                      <Badge variant="secondary">email, phone, notes opcionais</Badge>
+                      <Badge variant="secondary">e-mail, phone, notes opcionais</Badge>
                       <Badge variant="secondary">external_id para idempotência</Badge>
                     </div>
                   </div>

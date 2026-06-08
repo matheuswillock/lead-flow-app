@@ -1495,12 +1495,12 @@ export default function LeadDialog({
             .replace(/[\u0300-\u036f]/g, "")
             .toLowerCase();
 
-          if (errorMessage.includes("Unique constraint") || normalizedMessage.includes("ja existe")) {
-            toast.error("Aviso: ja existe um lead com dados unicos em conflito (e-mail ou CNPJ)", {
+          if (errorMessage.includes("Unique constraint") || normalizedMessage.includes("já existe")) {
+            toast.error("Aviso: já existe um lead com dados únicos em conflito (e-mail ou CNPJ)", {
               id: loadingToast,
               duration: 6000,
             });
-          } else if (normalizedMessage.includes("validation") || normalizedMessage.includes("invalido")) {
+          } else if (normalizedMessage.includes("validation") || normalizedMessage.includes("inválido")) {
             toast.error(`Aviso: dados invalidos: ${errorMessage}`, {
               id: loadingToast,
               duration: 5000,

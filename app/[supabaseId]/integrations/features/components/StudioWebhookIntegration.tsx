@@ -483,7 +483,7 @@ export function StudioWebhookIntegration() {
                 <CircleAlert className="h-4 w-4" />
                 <AlertDescription className="flex flex-col gap-1">
                   <p>
-                    Obrigatórios: <strong>name</strong>, <strong>email</strong> e <strong>phone</strong>.
+                    Obrigatórios: <strong>name</strong>, <strong>e-mail</strong> e <strong>phone</strong>.
                   </p>
                   <p>
                     Opcionais: <strong>cnpj</strong>, <strong>ages</strong>, <strong>current_health_plan</strong>,{" "}
