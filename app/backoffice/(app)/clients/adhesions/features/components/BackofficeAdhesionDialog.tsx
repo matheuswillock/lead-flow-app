@@ -307,15 +307,13 @@ export function BackofficeAdhesionDialog({
     (memberProAccessDaysValue !== null &&
       memberProAccessDaysValue >= MEMBER_PRO_MIN_DAYS &&
       memberProAccessDaysValue <= MEMBER_PRO_MAX_DAYS)
-  // Documento is required for external flows except when Member PRO (no Asaas charge is generated)
-  const isDocRequired = (isExternalPaid || isExternalBilling) && !(isExternalPaid && isMemberPro)
+  const isDocRequired = mode === "create" || isExternalBilling
   const canSubmit =
     values.fullName.trim().length >= 2 &&
     (sanitizePhone(values.phone).length === 0 || /^\d{10,11}$/.test(sanitizePhone(values.phone))) &&
     (mode === "edit" || Boolean(values.leadId)) &&
-    hasValidOptionalCpfCnpj &&
+    (!isDocRequired ? hasValidOptionalCpfCnpj : /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)) &&
     (!(isExternalPaid || isExternalBilling) || isValidEmail(values.email.trim())) &&
-    (!isDocRequired || /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)) &&
     (isExternalBilling || values.billingType === "PIX" || values.billingType === "CREDIT_CARD") &&
     (mode === "edit" || memberProAccessDaysValid) &&
     !isSubmitting
@@ -626,7 +624,7 @@ export function BackofficeAdhesionDialog({
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="adhesion-cpf-cnpj">Documento</Label>
+                <Label htmlFor="adhesion-cpf-cnpj">Documento{isDocRequired ? " *" : ""}</Label>
                 <Input
                   id="adhesion-cpf-cnpj"
                   placeholder="000.000.000-00 ou 00.000.000/0000-00"
