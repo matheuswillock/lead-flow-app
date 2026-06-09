@@ -307,6 +307,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
                     },
                   },
                   isMaster: true,
+                  canCreateAccountUsers: true,
+                  canManageAccountTeams: true,
                 },
               },
             },
@@ -377,6 +379,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           googleEmail: member.profile.googleConnection?.googleEmail ?? null,
           functions: member.functions,
           isMaster: member.profile.isMaster,
+          canCreateAccountUsers: member.profile.canCreateAccountUsers,
+          canManageAccountTeams: member.profile.canManageAccountTeams,
         })),
       })),
     }
@@ -674,6 +678,29 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       })
 
       return team
+    })
+  }
+
+  async updateTeam(
+    teamId: string,
+    masterId: string,
+    data: { name: string }
+  ): Promise<{ id: string } | null> {
+    try {
+      return await prisma.team.update({
+        where: { id: teamId, masterId },
+        data: { name: data.name },
+        select: { id: true },
+      })
+    } catch {
+      return null
+    }
+  }
+
+  async deleteTeam(teamId: string, masterId: string): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      await tx.teamMember.deleteMany({ where: { teamId } })
+      await tx.team.delete({ where: { id: teamId, masterId } })
     })
   }
 

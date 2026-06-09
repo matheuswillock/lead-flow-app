@@ -18,6 +18,8 @@ export interface TeamMemberRecord {
   googleEmail: string | null
   functions: string[]
   isMaster: boolean
+  canCreateAccountUsers: boolean
+  canManageAccountTeams: boolean
 }
 
 export interface MasterPlatformUserRecord {
@@ -175,6 +177,14 @@ export interface IBackofficePlatformUsersRepository {
     masterProfileId: string,
     name: string
   ): Promise<{ id: string; name: string }>
+
+  updateTeam(
+    teamId: string,
+    masterId: string,
+    data: { name: string }
+  ): Promise<{ id: string } | null>
+
+  deleteTeam(teamId: string, masterId: string): Promise<void>
 
   updateSupabaseIdForProfile(profileId: string, supabaseId: string): Promise<void>
 }

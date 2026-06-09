@@ -52,7 +52,7 @@ const backofficeAdhesionInclude = {
   },
 } satisfies Prisma.BackofficeAdhesionInclude
 
-const eligibleLeadStatuses = ["new_opportunity", "scheduled", "no_show"] as const
+const eligibleLeadStatuses = ["new_opportunity", "scheduled", "no_show", "new_adhesion"] as const
 
 function toDecimal(value: number): Prisma.Decimal {
   return new Prisma.Decimal(value)
