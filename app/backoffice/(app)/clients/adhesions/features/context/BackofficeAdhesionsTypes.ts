@@ -1,3 +1,14 @@
+export interface BackofficeAdhesionAdditionalUser {
+  name: string
+  email: string
+  role: "manager" | "backoffice" | "operator"
+  functions: ("SDR" | "CLOSER")[]
+}
+
+export interface BackofficeAdhesionAdditionalTeam {
+  name: string
+}
+
 export type BackofficeAdhesionStatusKey =
   | "pending"
   | "paid"
@@ -84,6 +95,8 @@ export interface BackofficeAdhesionFormValues {
   activationMode: "checkout" | "external_paid"
   userType: "common" | "member_pro"
   memberProAccessDays: string
+  additionalUsers: BackofficeAdhesionAdditionalUser[]
+  additionalTeams: BackofficeAdhesionAdditionalTeam[]
 }
 
 export interface BackofficeAdhesionFilters {

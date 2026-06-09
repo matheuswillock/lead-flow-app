@@ -3,7 +3,8 @@ import { createClient } from "@supabase/supabase-js"
 import { Output } from "@/lib/output"
 import { asaasApi, asaasFetch } from "@/lib/asaas"
 import { createEmailService } from "@/lib/services/EmailService"
-import { getAppUrl } from "@/lib/utils/app-url"
+import { getAppUrl, getFullUrl } from "@/lib/utils/app-url"
+import { buildSetPasswordEmailAuthLink } from "@/lib/supabase/email-auth-link"
 import type { IBackofficePlatformUsersUseCase } from "./IBackofficePlatformUsersUseCase"
 import {
   startOfMonthInTz,
@@ -756,6 +757,112 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
     } catch (error) {
       console.error("[BackofficePlatformUsersUseCase][deleteMasterUser]", error)
       return new Output(false, [], ["Erro ao excluir conta do cliente"], null)
+    }
+  }
+
+  async addMemberToMasterUser(
+    masterProfileId: string,
+    data: {
+      fullName: string
+      email: string
+      phone?: string | null
+      role: "manager" | "backoffice" | "operator"
+      functions: ("SDR" | "CLOSER")[]
+    }
+  ): Promise<Output> {
+    try {
+      const trimmedName = data.fullName.trim()
+      if (trimmedName.length < 2) {
+        return new Output(false, [], ["Nome completo deve ter pelo menos 2 caracteres"], null)
+      }
+
+      const email = data.email.trim().toLowerCase()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return new Output(false, [], ["E-mail inválido"], null)
+      }
+
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      const defaultTeam = await this.platformUsersRepository.findDefaultTeamByMasterId(masterProfileId)
+      if (!defaultTeam) {
+        return new Output(false, [], ["Time padrão do cliente não encontrado"], null)
+      }
+
+      const { profileId } = await this.platformUsersRepository.createMemberForMaster(
+        masterProfileId,
+        { ...data, fullName: trimmedName, email, phone: data.phone ?? null },
+        defaultTeam.id
+      )
+
+      const supabaseAdmin = createSupabaseAdmin()
+      const redirectTo = getFullUrl("/set-password")
+
+      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+        type: "invite",
+        email,
+        options: {
+          redirectTo,
+          data: { name: trimmedName, invited: true, first_access: true },
+        },
+      })
+
+      if (linkError || !linkData?.properties?.action_link) {
+        console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Erro ao gerar link:", linkError)
+        return new Output(false, [], ["Erro ao gerar link de convite"], null)
+      }
+
+      const supabaseUserId = (linkData as { user?: { id?: string } })?.user?.id
+      if (supabaseUserId) {
+        await this.platformUsersRepository.updateSupabaseIdForProfile(profileId, supabaseUserId)
+          .catch((err: unknown) => {
+            console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Erro ao salvar supabaseId:", err)
+          })
+      }
+
+      const inviteLink = buildSetPasswordEmailAuthLink(linkData, "invite")
+
+      const emailService = createEmailService()
+      await emailService.sendOperatorInviteEmail({
+        operatorName: trimmedName,
+        operatorEmail: email,
+        operatorRole: data.role,
+        managerName: master.fullName ?? master.email,
+        inviteUrl: inviteLink,
+      })
+
+      console.info("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Membro adicionado:", email)
+      return new Output(true, ["Usuário convidado com sucesso"], [], { profileId })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser]", error)
+      return new Output(false, [], ["Erro ao adicionar usuário"], null)
+    }
+  }
+
+  async addTeamToMasterUser(
+    masterProfileId: string,
+    data: { name: string }
+  ): Promise<Output> {
+    try {
+      const name = data.name.trim()
+      if (name.length < 2) {
+        return new Output(false, [], ["Nome do time deve ter pelo menos 2 caracteres"], null)
+      }
+
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      const team = await this.platformUsersRepository.createTeamForMaster(masterProfileId, name)
+
+      console.info("[BackofficePlatformUsersUseCase][addTeamToMasterUser] Time criado:", team.id)
+      return new Output(true, ["Time criado com sucesso"], [], { teamId: team.id, name: team.name })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][addTeamToMasterUser]", error)
+      return new Output(false, [], ["Erro ao criar time"], null)
     }
   }
 }

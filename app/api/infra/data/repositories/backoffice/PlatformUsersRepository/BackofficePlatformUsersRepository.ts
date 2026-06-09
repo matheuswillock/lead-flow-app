@@ -1,5 +1,5 @@
 import { prisma } from "@/app/api/infra/data/prisma"
-import type { Prisma } from "@prisma/client"
+import type { Prisma, UserRole, UserFunction } from "@prisma/client"
 import { isGoogleConnectionActive } from "@/lib/google/connection"
 import type {
   IBackofficePlatformUsersRepository,
@@ -557,5 +557,87 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     })
 
     return result
+  }
+
+  async findDefaultTeamByMasterId(masterProfileId: string): Promise<{ id: string; name: string } | null> {
+    const team = await prisma.team.findFirst({
+      where: { masterId: masterProfileId, isDefault: true },
+      select: { id: true, name: true },
+    })
+    if (team) return team
+
+    return prisma.team.findFirst({
+      where: { masterId: masterProfileId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, name: true },
+    })
+  }
+
+  async createMemberForMaster(
+    masterProfileId: string,
+    data: {
+      fullName: string
+      email: string
+      phone?: string | null
+      role: "manager" | "backoffice" | "operator"
+      functions: ("SDR" | "CLOSER")[]
+    },
+    teamId: string
+  ): Promise<{ profileId: string; teamMemberId: string }> {
+    return prisma.$transaction(async (tx) => {
+      const profile = await tx.profile.create({
+        data: {
+          fullName: data.fullName,
+          email: data.email,
+          phone: data.phone ?? null,
+          role: data.role as UserRole,
+          functions: data.functions as UserFunction[],
+          managerId: masterProfileId,
+          isMaster: false,
+          canCreateAccountUsers: false,
+          canManageAccountTeams: false,
+        },
+        select: { id: true },
+      })
+
+      const teamMember = await tx.teamMember.create({
+        data: {
+          teamId,
+          profileId: profile.id,
+          role: data.role as UserRole,
+          functions: data.functions as UserFunction[],
+        },
+        select: { id: true },
+      })
+
+      return { profileId: profile.id, teamMemberId: teamMember.id }
+    })
+  }
+
+  async createTeamForMaster(masterProfileId: string, name: string): Promise<{ id: string; name: string }> {
+    return prisma.$transaction(async (tx) => {
+      const team = await tx.team.create({
+        data: { name, masterId: masterProfileId, isDefault: false },
+        select: { id: true, name: true },
+      })
+
+      await tx.teamMember.create({
+        data: {
+          teamId: team.id,
+          profileId: masterProfileId,
+          role: "manager" as UserRole,
+          functions: [],
+        },
+      })
+
+      return team
+    })
+  }
+
+  async updateSupabaseIdForProfile(profileId: string, supabaseId: string): Promise<void> {
+    await prisma.profile.update({
+      where: { id: profileId },
+      data: { supabaseId },
+    })
   }
 }
