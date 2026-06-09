@@ -42,7 +42,7 @@ jobs:
             if [ "$COUNT" -eq 1 ] && echo "$CONFLICTS" | grep -q "^UU package.json"; then
               git checkout --ours package.json
               git add package.json
-              git commit -m "chore: sync develop ← main (auto-resolved package.json version)"
+              git commit -m "chore: sync develop ← main (auto-resolved package.json version) [skip ci]"
             else
               echo "::error::Unexpected merge conflicts. Manual resolution required:"
               git status --porcelain
@@ -52,7 +52,15 @@ jobs:
           }
 
       - name: Push develop
-        run: git push origin develop
+        run: |
+          # Ensure HEAD carries [skip ci] so ci-develop does not re-fire after a sync.
+          # A fast-forward brings main's merge commit which lacks [skip ci], triggering
+          # a spurious release PR with only a version bump — this prevents that.
+          LAST_MSG=$(git log -1 --format="%s")
+          if ! echo "$LAST_MSG" | grep -q "\[skip ci\]"; then
+            git commit --allow-empty -m "chore: sync develop ← main [skip ci]"
+          fi
+          git push origin develop
 
       - name: Summary
         run: |
