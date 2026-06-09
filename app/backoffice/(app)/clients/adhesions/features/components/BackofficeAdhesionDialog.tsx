@@ -307,14 +307,13 @@ export function BackofficeAdhesionDialog({
     (memberProAccessDaysValue !== null &&
       memberProAccessDaysValue >= MEMBER_PRO_MIN_DAYS &&
       memberProAccessDaysValue <= MEMBER_PRO_MAX_DAYS)
-  const isDocRequired = isExternalPaid || isExternalBilling
+  const isDocRequired = mode === "create" || isExternalBilling
   const canSubmit =
     values.fullName.trim().length >= 2 &&
     (sanitizePhone(values.phone).length === 0 || /^\d{10,11}$/.test(sanitizePhone(values.phone))) &&
     (mode === "edit" || Boolean(values.leadId)) &&
-    hasValidOptionalCpfCnpj &&
+    (!isDocRequired ? hasValidOptionalCpfCnpj : /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)) &&
     (!(isExternalPaid || isExternalBilling) || isValidEmail(values.email.trim())) &&
-    (!isDocRequired || /^\d{11}$|^\d{14}$/.test(sanitizedCpfCnpj)) &&
     (isExternalBilling || values.billingType === "PIX" || values.billingType === "CREDIT_CARD") &&
     (mode === "edit" || memberProAccessDaysValid) &&
     !isSubmitting
