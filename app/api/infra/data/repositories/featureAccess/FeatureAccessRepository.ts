@@ -3,7 +3,7 @@ import type {
   BackofficeFeature,
   BackofficeFeatureAccessRule,
   BackofficeFeatureGrant,
-  BackofficeUserSubscription,
+  BackofficeUserProductSubscription,
   Profile,
   ProfileSubscription,
 } from "@prisma/client"
@@ -60,9 +60,9 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
 
   async listActiveUserSubscriptions(
     profileId: string
-  ): Promise<Array<BackofficeUserSubscription & { product: { slug: string } }>> {
+  ): Promise<Array<BackofficeUserProductSubscription & { product: { slug: string } }>> {
     const now = new Date()
-    return prisma.backofficeUserSubscription.findMany({
+    return prisma.backofficeUserProductSubscription.findMany({
       where: {
         profileId,
         status: "active",

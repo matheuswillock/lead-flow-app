@@ -18,7 +18,7 @@ async function getLegacyQuota(masterId: string) {
   const adhesionIds = paidAdhesions.map((adhesion) => adhesion.id);
   const now = new Date();
   const subscriptions = adhesionIds.length
-    ? await prisma.backofficeUserSubscription.findMany({
+    ? await prisma.backofficeUserProductSubscription.findMany({
         where: {
           profileId: masterId,
           adhesionId: { in: adhesionIds },

@@ -25,8 +25,8 @@ import type {
 import { BackofficeAdhesionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeAdhesion/BackofficeAdhesionRepository"
 import type { IBackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/IBackofficeProductRepository"
 import { BackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository"
-import type { IBackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/IBackofficeUserSubscriptionRepository"
-import { BackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/BackofficeUserSubscriptionRepository"
+import type { IBackofficeUserProductSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserProductSubscription/IBackofficeUserProductSubscriptionRepository"
+import { BackofficeUserProductSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserProductSubscription/BackofficeUserProductSubscriptionRepository"
 import type { IBackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/IBackofficeAllUsersRepository"
 import { BackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/BackofficeAllUsersRepository"
 import type {
@@ -261,7 +261,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   constructor(
     private readonly repo: IBackofficeAdhesionRepository = new BackofficeAdhesionRepository(),
     private readonly productRepo: IBackofficeProductRepository = new BackofficeProductRepository(),
-    private readonly userSubscriptionRepo: IBackofficeUserSubscriptionRepository = new BackofficeUserSubscriptionRepository(),
+    private readonly userSubscriptionRepo: IBackofficeUserProductSubscriptionRepository = new BackofficeUserProductSubscriptionRepository(),
     private readonly allUsersRepo: IBackofficeAllUsersRepository = new BackofficeAllUsersRepository()
   ) {}
 

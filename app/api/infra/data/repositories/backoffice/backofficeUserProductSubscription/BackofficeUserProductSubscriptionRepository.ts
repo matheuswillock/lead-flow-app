@@ -1,16 +1,16 @@
-import type { BackofficeSubscriptionStatus, BackofficeUserSubscription } from "@prisma/client"
+import type { BackofficeSubscriptionStatus, BackofficeUserProductSubscription } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
-  BackofficeUserSubscriptionWithProduct,
-  IBackofficeUserSubscriptionRepository,
-  UpsertBackofficeUserSubscriptionInput,
-} from "./IBackofficeUserSubscriptionRepository"
+  BackofficeUserProductSubscriptionWithProduct,
+  IBackofficeUserProductSubscriptionRepository,
+  UpsertBackofficeUserProductSubscriptionInput,
+} from "./IBackofficeUserProductSubscriptionRepository"
 
-export class BackofficeUserSubscriptionRepository
-  implements IBackofficeUserSubscriptionRepository
+export class BackofficeUserProductSubscriptionRepository
+  implements IBackofficeUserProductSubscriptionRepository
 {
-  async findByProfileId(profileId: string): Promise<BackofficeUserSubscriptionWithProduct[]> {
-    return prisma.backofficeUserSubscription.findMany({
+  async findByProfileId(profileId: string): Promise<BackofficeUserProductSubscriptionWithProduct[]> {
+    return prisma.backofficeUserProductSubscription.findMany({
       where: { profileId },
       include: { product: true },
       orderBy: { createdAt: "desc" },
@@ -18,9 +18,9 @@ export class BackofficeUserSubscriptionRepository
   }
 
   async upsertForAdhesion(
-    data: UpsertBackofficeUserSubscriptionInput
-  ): Promise<BackofficeUserSubscription> {
-    const existing = await prisma.backofficeUserSubscription.findFirst({
+    data: UpsertBackofficeUserProductSubscriptionInput
+  ): Promise<BackofficeUserProductSubscription> {
+    const existing = await prisma.backofficeUserProductSubscription.findFirst({
       where: {
         profileId: data.profileId,
         productId: data.productId,
@@ -29,7 +29,7 @@ export class BackofficeUserSubscriptionRepository
     })
 
     if (existing) {
-      return prisma.backofficeUserSubscription.update({
+      return prisma.backofficeUserProductSubscription.update({
         where: { id: existing.id },
         data: {
           status: data.status,
@@ -41,7 +41,7 @@ export class BackofficeUserSubscriptionRepository
       })
     }
 
-    return prisma.backofficeUserSubscription.create({
+    return prisma.backofficeUserProductSubscription.create({
       data: {
         profileId: data.profileId,
         productId: data.productId,
@@ -57,8 +57,8 @@ export class BackofficeUserSubscriptionRepository
   async updateStatus(
     id: string,
     status: BackofficeSubscriptionStatus
-  ): Promise<BackofficeUserSubscription> {
-    return prisma.backofficeUserSubscription.update({
+  ): Promise<BackofficeUserProductSubscription> {
+    return prisma.backofficeUserProductSubscription.update({
       where: { id },
       data: { status },
     })

@@ -14,6 +14,7 @@
 
 import type { IAsaasCustomerService, IAsaasSubscriptionService } from '@/app/api/services';
 import { prisma } from '@/app/api/infra/data/prisma';
+import { upsertProfileSubscription } from '@/lib/subscription/upsertProfileSubscription';
 
 export interface CreateManagerOnboardingInput {
   profileId: string;
@@ -80,6 +81,7 @@ export class CreateManagerOnboarding {
         where: { id: profileId },
         data: { asaasCustomerId: customer.customerId },
       });
+      await upsertProfileSubscription(profileId, { asaasCustomerId: customer.customerId });
 
       // 4. Criar assinatura base (R$ 59,90/mês)
       console.info('💰 Criando assinatura Manager...');
@@ -103,6 +105,12 @@ export class CreateManagerOnboarding {
           subscriptionPlan: 'manager_base',
           subscriptionStartDate: new Date(),
         },
+      });
+      await upsertProfileSubscription(profileId, {
+        asaasSubscriptionId: subscription.subscriptionId,
+        subscriptionStatus: 'active',
+        subscriptionPlan: 'manager_base',
+        subscriptionStartDate: new Date(),
       });
 
       console.info('🎉 Onboarding completo!');

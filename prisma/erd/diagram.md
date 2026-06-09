@@ -415,11 +415,11 @@ unsubscribed unsubscribed
     String id "🗝️"
     String name 
     String normalizedName 
+    DateTime createdAt 
+    DateTime updatedAt 
     Boolean isActive 
     Boolean isDefault 
     String iconUrl "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
     DateTime activatedAt "❓"
     DateTime deactivatedAt "❓"
     }
@@ -553,10 +553,10 @@ unsubscribed unsubscribed
     DateTime canceledAt "❓"
     String createdProfileId "❓"
     String createdSupabaseId "❓"
-    String requestedUserTypeSlug "❓"
-    DateTime requestedMemberProAccessExpiresAt "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    String requestedUserTypeSlug "❓"
+    DateTime requestedMemberProAccessExpiresAt "❓"
     }
   
 
@@ -646,7 +646,6 @@ unsubscribed unsubscribed
     String meetingNotes "❓"
     String meetingLink "❓"
     MeetingHeald meetingHeald "❓"
-    String meetingType "❓"
     DateTime followUpAt "❓"
     String followUpNotes "❓"
     LeadStatus followUpSourceStatus "❓"
@@ -657,11 +656,12 @@ unsubscribed unsubscribed
     Decimal ticket "❓"
     DateTime contractDueDate "❓"
     String soldPlan "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    String meetingType "❓"
     Boolean isReferral "❓"
     String referrerName "❓"
     String referrerPhone "❓"
-    DateTime createdAt 
-    DateTime updatedAt 
     }
   
 
@@ -713,7 +713,6 @@ unsubscribed unsubscribed
     String meetingTitle "❓"
     String notes "❓"
     String meetingLink "❓"
-    String meetingType "❓"
     String extraGuests 
     String googleEventId "❓"
     String googleCalendarId "❓"
@@ -724,6 +723,7 @@ unsubscribed unsubscribed
     Json inviteDispatchLastPayload "❓"
     DateTime createdAt 
     DateTime updatedAt 
+    String meetingType "❓"
     }
   
 
@@ -1017,11 +1017,11 @@ unsubscribed unsubscribed
     Decimal priceMonthly "❓"
     Decimal priceQuarterly "❓"
     Decimal priceSemiannual "❓"
-    Decimal priceAnnual "❓"
     Decimal priceLifetime "❓"
     Boolean isActive 
     DateTime createdAt 
     DateTime updatedAt 
+    Decimal priceAnnual "❓"
     }
   
 
@@ -1072,7 +1072,7 @@ unsubscribed unsubscribed
     }
   
 
-  "backoffice_user_subscriptions" {
+  "backoffice_user_product_subscriptions" {
     String id "🗝️"
     BackofficeSubscriptionStatus status 
     BackofficeAdhesionBillingCycle cycle "❓"
@@ -1099,6 +1099,7 @@ unsubscribed unsubscribed
     Boolean hasPermanentSubscription 
     DateTime createdAt 
     DateTime updatedAt 
+    String asaasCustomerId "❓"
     }
   
 
@@ -1135,33 +1136,33 @@ unsubscribed unsubscribed
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
     "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "corretor_studio_profiles" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
-    "corretor_studio_profiles" |o--|o corretor_studio_profiles : "manager"
     "corretor_studio_profiles" }o--|o google_oauth_connections : "googleConnection"
+    "corretor_studio_profiles" |o--|o corretor_studio_profiles : "manager"
     "corretor_studio_health_plan_options" }o--|o corretor_studio_profiles : "creator"
-    "backoffice_users" |o--|| corretor_studio_profiles : "profile"
     "backoffice_users" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" }o--|o google_oauth_connections : "googleConnection"
     "backoffice_users" }o--|o corretor_studio_profiles : "linkedCorretorStudioProfile"
+    "backoffice_users" |o--|| corretor_studio_profiles : "profile"
     "google_oauth_connections" }o--|o corretor_studio_profiles : "ownerProfile"
     "backoffice_clients" }o--|o corretor_studio_profiles : "creator"
     "backoffice_payments" }o--|| backoffice_clients : "client"
     "backoffice_payments" }o--|o corretor_studio_profiles : "creator"
     "backoffice_leads" |o--|| "BackofficeLeadStatus" : "enum:status"
     "backoffice_leads" |o--|| "BackofficeLeadOrigin" : "enum:origin"
-    "backoffice_leads" }o--|o corretor_studio_profiles : "creator"
-    "backoffice_leads" |o--|o backoffice_webhook_events : "sourceWebhookEvent"
-    "backoffice_leads" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_leads" }o--|o backoffice_users : "closerBackofficeUser"
+    "backoffice_leads" }o--|o corretor_studio_profiles : "creator"
+    "backoffice_leads" }o--|o backoffice_users : "sdrBackofficeUser"
+    "backoffice_leads" |o--|o backoffice_webhook_events : "sourceWebhookEvent"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionPlan" : "enum:plan"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionBillingCycle" : "enum:cycle"
     "backoffice_adhesions" |o--|| "BackofficeAdhesionStatus" : "enum:status"
-    "backoffice_adhesions" |o--|| backoffice_leads : "lead"
-    "backoffice_adhesions" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "closerBackofficeUser"
     "backoffice_adhesions" }o--|o backoffice_users : "createdByBackofficeUser"
+    "backoffice_adhesions" |o--|| backoffice_leads : "lead"
+    "backoffice_adhesions" }o--|o backoffice_users : "sdrBackofficeUser"
     "backoffice_leads_schedule" |o--|o "BackofficeInviteDispatchStatus" : "enum:inviteDispatchStatus"
-    "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_leads_schedule" }o--|o backoffice_users : "closer"
+    "backoffice_leads_schedule" }o--|| backoffice_leads : "lead"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookSource" : "enum:source"
     "backoffice_webhook_events" |o--|| "BackofficeWebhookEventStatus" : "enum:status"
     "backoffice_webhook_tokens" |o--|| "BackofficeWebhookSource" : "enum:source"
@@ -1172,29 +1173,29 @@ unsubscribed unsubscribed
     "corretor_studio_leads" |o--|| "LeadStatus" : "enum:status"
     "corretor_studio_leads" |o--|o "MeetingHeald" : "enum:meetingHeald"
     "corretor_studio_leads" |o--|o "LeadStatus" : "enum:followUpSourceStatus"
-    "corretor_studio_leads" }o--|| corretor_studio_profiles : "manager"
-    "corretor_studio_leads" }o--|o corretor_studio_teams : "team"
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "assignee"
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "closer"
     "corretor_studio_leads" }o--|o corretor_studio_profiles : "creator"
-    "corretor_studio_leads" }o--|o corretor_studio_profiles : "updater"
+    "corretor_studio_leads" }o--|| corretor_studio_profiles : "manager"
     "corretor_studio_leads" |o--|o corretor_studio_leads : "referrerLead"
+    "corretor_studio_leads" }o--|o corretor_studio_teams : "team"
+    "corretor_studio_leads" }o--|o corretor_studio_profiles : "updater"
     "corretor_studio_lead_activities" |o--|| "ActivityType" : "enum:type"
-    "corretor_studio_lead_activities" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_activities" }o--|o corretor_studio_profiles : "author"
+    "corretor_studio_lead_activities" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_activity_reactions" }o--|| corretor_studio_lead_activities : "activity"
     "corretor_studio_lead_activity_reactions" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_tasks" |o--|| "TaskType" : "enum:taskType"
-    "corretor_studio_tasks" }o--|| corretor_studio_leads : "lead"
-    "corretor_studio_tasks" }o--|| corretor_studio_profiles : "creator"
     "corretor_studio_tasks" |o--|o corretor_studio_lead_activities : "activity"
+    "corretor_studio_tasks" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_tasks" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_task_assignees" |o--|| "TaskAssigneeStatus" : "enum:status"
-    "corretor_studio_task_assignees" }o--|| corretor_studio_tasks : "task"
     "corretor_studio_task_assignees" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_task_assignees" }o--|| corretor_studio_tasks : "task"
     "corretor_studio_leads_schedule" |o--|o "InviteDispatchStatus" : "enum:inviteDispatchStatus"
-    "corretor_studio_leads_schedule" }o--|| corretor_studio_leads : "lead"
-    "corretor_studio_lead_finalized" }o--|| corretor_studio_leads : "lead"
+    "corretor_studio_leads_schedule" |o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_finalized" }o--|o corretor_studio_profiles : "closer"
+    "corretor_studio_lead_finalized" }o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_finalized_holders" |o--|| corretor_studio_lead_finalized : "leadFinalized"
     "corretor_studio_lead_finalized_dependents" }o--|| corretor_studio_lead_finalized : "leadFinalized"
     "corretor_studio_lead_portfolio" |o--|| "PortfolioStatus" : "enum:portfolioStatus"
@@ -1207,21 +1208,21 @@ unsubscribed unsubscribed
     "corretor_studio_pending_operators" }o--|| corretor_studio_profiles : "manager"
     "corretor_studio_pending_operators" }o--|o corretor_studio_teams : "team"
     "corretor_studio_teams" }o--|| corretor_studio_profiles : "master"
-    "corretor_studio_team_filter_presets" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_filter_presets" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_team_filter_presets" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_status_rules" |o--|| "TeamStatusRuleType" : "enum:type"
     "corretor_studio_team_status_rules" |o--|| "LeadStatus" : "enum:targetStatus"
     "corretor_studio_team_status_rules" |o--|o "LeadStatus" : "enum:requiredStatus"
     "corretor_studio_team_status_rules" |o--|o "TeamLeadTimeUnit" : "enum:leadTimeUnit"
-    "corretor_studio_team_status_rules" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_status_rules" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_team_status_rules" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_studio_webhook_configs" |o--|| "StudioWebhookTokenExpiryMode" : "enum:expiryMode"
     "corretor_studio_team_studio_webhook_configs" |o--|| corretor_studio_teams : "team"
     "corretor_studio_team_studio_webhook_configs" }o--|| corretor_studio_profiles : "updatedBy"
     "corretor_studio_team_studio_webhook_request_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_notifications" |o--|| "NotificationType" : "enum:type"
-    "corretor_studio_notifications" }o--|| corretor_studio_profiles : "recipient"
     "corretor_studio_notifications" }o--|o corretor_studio_profiles : "actor"
+    "corretor_studio_notifications" }o--|| corretor_studio_profiles : "recipient"
     "corretor_studio_notifications" }o--|| corretor_studio_teams : "team"
     "corretor_studio_pending_actions" |o--|| "PendingActionType" : "enum:actionType"
     "corretor_studio_pending_actions" |o--|| "PendingActionStatus" : "enum:status"
@@ -1229,25 +1230,25 @@ unsubscribed unsubscribed
     "corretor_studio_pending_actions" }o--|o corretor_studio_teams : "team"
     "corretor_studio_team_members" |o--|| "UserRole" : "enum:role"
     "corretor_studio_team_members" |o--}o "UserFunction" : "enum:functions"
-    "corretor_studio_team_members" }o--|| corretor_studio_teams : "team"
     "corretor_studio_team_members" }o--|| corretor_studio_profiles : "profile"
+    "corretor_studio_team_members" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditPlan" : "enum:plan"
     "corretor_studio_email_credit_subscriptions" |o--|| "EmailCreditSubscriptionStatus" : "enum:status"
     "corretor_studio_email_credit_subscriptions" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_email_credit_usages" }o--|| corretor_studio_email_credit_subscriptions : "subscription"
-    "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_templates" }o--|| corretor_studio_profiles : "creator"
-    "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_templates" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contact_lists" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_email_contact_lists" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_contacts" }o--|| corretor_studio_email_contact_lists : "list"
     "corretor_studio_email_campaigns" |o--|| "EmailCampaignStatus" : "enum:status"
-    "corretor_studio_email_campaigns" }o--|| corretor_studio_teams : "team"
-    "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
-    "corretor_studio_email_campaigns" }o--|| corretor_studio_email_templates : "template"
     "corretor_studio_email_campaigns" }o--|| corretor_studio_email_contact_lists : "contactList"
+    "corretor_studio_email_campaigns" }o--|| corretor_studio_profiles : "creator"
+    "corretor_studio_email_campaigns" }o--|| corretor_studio_teams : "team"
+    "corretor_studio_email_campaigns" }o--|| corretor_studio_email_templates : "template"
     "corretor_studio_email_logs" |o--|| "EmailLogStatus" : "enum:status"
-    "corretor_studio_email_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_logs" }o--|o corretor_studio_email_campaigns : "campaign"
+    "corretor_studio_email_logs" }o--|| corretor_studio_teams : "team"
     "corretor_studio_email_events" |o--|| "EmailEventType" : "enum:type"
     "corretor_studio_email_events" }o--|| corretor_studio_email_logs : "log"
     "backoffice_products" |o--|| "BackofficeProductType" : "enum:type"
@@ -1266,17 +1267,17 @@ unsubscribed unsubscribed
     "backoffice_product_payment_rules" |o--|| "BackofficePaymentMethod" : "enum:paymentMethod"
     "backoffice_product_payment_rules" |o--|| "BackofficeAdhesionBillingCycle" : "enum:billingCycle"
     "backoffice_product_payment_rules" }o--|| backoffice_products : "product"
-    "backoffice_user_subscriptions" |o--|| "BackofficeSubscriptionStatus" : "enum:status"
-    "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
-    "backoffice_user_subscriptions" }o--|| corretor_studio_profiles : "profile"
-    "backoffice_user_subscriptions" }o--|| backoffice_products : "product"
+    "backoffice_user_product_subscriptions" |o--|| "BackofficeSubscriptionStatus" : "enum:status"
+    "backoffice_user_product_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
+    "backoffice_user_product_subscriptions" }o--|| backoffice_products : "product"
+    "backoffice_user_product_subscriptions" }o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_subscriptions" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "corretor_studio_profile_subscriptions" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
-    "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_subscriptions" |o--|o backoffice_adhesions : "adhesion"
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
+    "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
+    "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"
     "profile_user_type_assignments" |o--|| corretor_studio_profiles : "profile"
     "profile_user_type_assignments" }o--|| profile_user_types : "userType"
-    "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"
 ```

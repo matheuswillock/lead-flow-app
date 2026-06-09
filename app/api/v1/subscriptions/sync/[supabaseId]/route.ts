@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Output } from '@/lib/output';
 import { prisma } from '@/app/api/infra/data/prisma';
+import { upsertProfileSubscription } from '@/lib/subscription/upsertProfileSubscription';
 import { AsaasSubscriptionService } from '@/app/api/services/AsaasSubscription/AsaasSubscriptionService';
 
 /**
@@ -53,11 +54,9 @@ export async function POST(
       // Atualizar profile para status sem assinatura
       const updatedProfile = await prisma.profile.update({
         where: { supabaseId },
-        data: {
-          subscriptionStatus: 'canceled',
-          updatedAt: new Date(),
-        },
+        data: { subscriptionStatus: 'canceled', updatedAt: new Date() },
       });
+      await upsertProfileSubscription(updatedProfile.id, { subscriptionStatus: 'canceled' });
 
       return NextResponse.json(
         new Output(
@@ -86,23 +85,23 @@ export async function POST(
     }
 
     // 6. Atualizar profile com dados da assinatura
+    const subscriptionData = {
+      asaasSubscriptionId: activeSubscription.id,
+      subscriptionStatus: 'active' as const,
+      subscriptionPlan: subscriptionPlan,
+      subscriptionCycle: activeSubscription.cycle as string,
+      subscriptionNextDueDate: activeSubscription.nextDueDate ? new Date(activeSubscription.nextDueDate) : null,
+      subscriptionStartDate: activeSubscription.dateCreated ? new Date(activeSubscription.dateCreated) : null,
+    };
     const updatedProfile = await prisma.profile.update({
       where: { supabaseId },
       data: {
         subscriptionId: activeSubscription.id,
-        asaasSubscriptionId: activeSubscription.id,
-        subscriptionStatus: 'active', // Asaas retornou ACTIVE
-        subscriptionPlan: subscriptionPlan,
-        subscriptionCycle: activeSubscription.cycle as 'MONTHLY',
-        subscriptionNextDueDate: activeSubscription.nextDueDate 
-          ? new Date(activeSubscription.nextDueDate) 
-          : null,
-        subscriptionStartDate: activeSubscription.dateCreated 
-          ? new Date(activeSubscription.dateCreated) 
-          : null,
+        ...subscriptionData,
         updatedAt: new Date(),
       },
     });
+    await upsertProfileSubscription(updatedProfile.id, subscriptionData);
 
     console.info('✅ [SyncSubscription] Profile atualizado com sucesso:', {
       subscriptionId: updatedProfile.subscriptionId,

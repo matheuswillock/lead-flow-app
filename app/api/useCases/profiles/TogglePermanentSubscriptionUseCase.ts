@@ -1,5 +1,6 @@
 // app/api/useCases/profiles/TogglePermanentSubscriptionUseCase.ts
 import { prisma } from "@/app/api/infra/data/prisma";
+import { upsertProfileSubscription } from "@/lib/subscription/upsertProfileSubscription";
 import { Output } from "@/lib/output";
 import type { ITogglePermanentSubscriptionUseCase } from "./ITogglePermanentSubscriptionUseCase";
 
@@ -55,6 +56,8 @@ export class TogglePermanentSubscriptionUseCase implements ITogglePermanentSubsc
           hasPermanentSubscription: true
         }
       });
+
+      await upsertProfileSubscription(profileId, { hasPermanentSubscription: enable });
 
       const action = enable ? 'ativada' : 'desativada';
       console.info(`✅ [TogglePermanentSubscription] Assinatura permanente ${action} para profile:`, {

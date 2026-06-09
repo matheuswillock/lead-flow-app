@@ -83,7 +83,7 @@
       "app/api/infra/data/repositories/backoffice/backofficeFeature/BackofficeFeatureRepository.ts",
       "app/api/infra/data/repositories/backoffice/backofficeLead/BackofficeLeadRepository.ts",
       "app/api/infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository.ts",
-      "app/api/infra/data/repositories/backoffice/backofficeUserSubscription/BackofficeUserSubscriptionRepository.ts",
+      "app/api/infra/data/repositories/backoffice/backofficeUserProductSubscription/BackofficeUserProductSubscriptionRepository.ts",
       "app/api/infra/data/repositories/backoffice/UserRepository/BackofficeUserRepository.ts",
       "app/api/infra/data/repositories/featureAccess/FeatureAccessRepository.ts",
       "app/api/infra/data/repositories/lead/LeadRepository.ts",

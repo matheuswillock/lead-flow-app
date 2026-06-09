@@ -1,4 +1,5 @@
 import prisma from "@/app/api/infra/data/prisma";
+import { upsertProfileSubscription } from "@/lib/subscription/upsertProfileSubscription";
 import type {
   BillingSnapshot,
   IBillingRepository,
@@ -103,7 +104,7 @@ class PrismaBillingRepository implements IBillingRepository {
     const adhesionIds = paidAdhesions.map((adhesion) => adhesion.id);
     const now = new Date();
     const subscriptions = adhesionIds.length
-      ? await prisma.backofficeUserSubscription.findMany({
+      ? await prisma.backofficeUserProductSubscription.findMany({
           where: {
             profileId: masterId,
             adhesionId: { in: adhesionIds },
@@ -172,10 +173,8 @@ class PrismaBillingRepository implements IBillingRepository {
   }
 
   async updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void> {
-    await prisma.profile.update({
-      where: { id: profileId },
-      data: { asaasCustomerId },
-    });
+    await prisma.profile.update({ where: { id: profileId }, data: { asaasCustomerId } });
+    await upsertProfileSubscription(profileId, { asaasCustomerId });
   }
 
   async updateSubscriptionData(

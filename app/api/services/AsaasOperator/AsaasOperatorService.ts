@@ -1,6 +1,7 @@
 // app/api/services/AsaasOperatorService.ts
 import { AsaasSubscriptionService } from '../AsaasSubscription/AsaasSubscriptionService';
 import { prisma } from '@/app/api/infra/data/prisma';
+import { upsertProfileSubscription } from '@/lib/subscription/upsertProfileSubscription';
 
 export interface OperatorBilling {
   basePlan: number;
@@ -111,6 +112,7 @@ export class AsaasOperatorService implements IAsaasOperatorService {
           subscriptionPlan: 'with_operators',
         },
       });
+      await upsertProfileSubscription(managerId, { subscriptionPlan: 'with_operators' });
 
       console.info(`✅ Operador adicionado: ${operatorId} ao Manager: ${managerId}`);
 
@@ -181,13 +183,15 @@ export class AsaasOperatorService implements IAsaasOperatorService {
           },
         });
 
+        const newPlan = remainingOperators === 0 ? 'manager_base' : 'with_operators';
         await prisma.profile.update({
           where: { id: managerId },
           data: {
             operatorCount: remainingOperators,
-            subscriptionPlan: remainingOperators === 0 ? 'manager_base' : 'with_operators',
+            subscriptionPlan: newPlan,
           },
         });
+        await upsertProfileSubscription(managerId, { subscriptionPlan: newPlan });
       }
 
       console.info(`✅ Operador removido: ${operatorId}`);
