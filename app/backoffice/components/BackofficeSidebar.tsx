@@ -9,6 +9,7 @@ import {
   CreditCard,
   UserPlus,
   Kanban,
+  Mail,
   Plug,
   CalendarDays,
   Tag,
@@ -55,6 +56,7 @@ const navigationItems = [
   { title: "Precificação", url: "/backoffice/pricing", icon: Tag },
   { title: "Funcionalidades", url: "/backoffice/features", icon: Zap },
   { title: "Integrações", url: "/backoffice/integracoes", icon: Plug },
+  { title: "Templates de E-mail", url: "/backoffice/email-templates", icon: Mail },
   { title: "Usuários", url: "/backoffice/users", icon: UserPlus },
   { title: "Operadoras", url: "/backoffice/health-plans", icon: Building2 },
 ]
