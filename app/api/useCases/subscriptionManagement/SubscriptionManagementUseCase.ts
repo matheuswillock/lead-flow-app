@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { upsertProfileSubscription } from "@/lib/subscription/upsertProfileSubscription";
 import { getBillingSummary } from "@/app/api/services/billing/TeamBillingService";
 import { asaasSubscriptionSyncService } from "@/app/api/services/billing/AsaasSubscriptionSyncService";
 import { subscriptionCreditService } from "@/app/api/services/billing/SubscriptionCreditService";
@@ -648,14 +649,9 @@ export class SubscriptionManagementUseCase implements ISubscriptionManagementUse
         );
       }
 
-      // Atualizar status da assinatura
-      await prisma.profile.update({
-        where: { id: profile.id },
-        data: {
-          subscriptionStatus: 'canceled',
-          subscriptionEndDate: new Date()
-        }
-      });
+      const cancelData = { subscriptionStatus: 'canceled' as const, subscriptionEndDate: new Date() };
+      await prisma.profile.update({ where: { id: profile.id }, data: cancelData });
+      await upsertProfileSubscription(profile.id, cancelData);
 
       // TODO: Chamar API Asaas para cancelar assinatura
       // await asaasService.cancelSubscription(profile.subscriptionId);

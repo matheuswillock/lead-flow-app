@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { upsertProfileSubscription } from "@/lib/subscription/upsertProfileSubscription";
 import { asaasApi, asaasFetch } from "@/lib/asaas";
 import { asaasCustomerService } from "@/app/api/services/AsaasCustomer/AsaasCustomerService";
 import { getFullUrl } from "@/lib/utils/app-url";
@@ -67,6 +68,7 @@ export async function POST(request: NextRequest) {
         where: { id: profile.id },
         data: { asaasCustomerId: customerId },
       });
+      await upsertProfileSubscription(profile.id, { asaasCustomerId: customerId });
     }
 
     const dueDate = new Date().toISOString().slice(0, 10);

@@ -135,7 +135,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
   }
 
   async hasActiveSubscriptions(id: string): Promise<boolean> {
-    const count = await prisma.backofficeUserSubscription.count({
+    const count = await prisma.backofficeUserProductSubscription.count({
       where: { productId: id, status: "active" },
     })
     return count > 0

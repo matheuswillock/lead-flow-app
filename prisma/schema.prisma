@@ -1,14 +1,3 @@
-// Prisma schema for Lead Flow (Supabase Postgres)
-// - Mirrors the data model discussed (manager/operator, leads, activities)
-// - Integrates with Supabase Auth via auth.users (User model)
-// - Uses @updatedAt for updated_at columns
-// - Adds sensible indexes and referential actions
-// NOTE: RLS policies & triggers are not expressible in Prisma; create them via SQL migrations if needed.
-
-// -----------------------------
-// GENERATOR & DATASOURCE
-// -----------------------------
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -25,9 +14,1229 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// -----------------------------
-// ENUMS
-// -----------------------------
+model Profile {
+  id                             String                              @id @unique @default(uuid()) @db.Uuid
+  email                          String                              @unique
+  supabaseId                     String?                             @unique @db.Uuid
+  fullName                       String?
+  phone                          String?
+  cpfCnpj                        String?
+  postalCode                     String?
+  address                        String?
+  addressNumber                  String?
+  neighborhood                   String?
+  complement                     String?
+  city                           String?
+  state                          String?
+  profileIconId                  String?
+  profileIconUrl                 String?
+  role                           UserRole                            @default(manager)
+  functions                      UserFunction[]                      @default([])
+  isMaster                       Boolean                             @default(false)
+  canCreateAccountUsers          Boolean                             @default(false)
+  canManageAccountTeams          Boolean                             @default(false)
+  hasPermanentSubscription       Boolean                             @default(false)
+  managerId                      String?                             @db.Uuid
+  asaasCustomerId                String?
+  subscriptionId                 String?
+  subscriptionStatus             SubscriptionStatus?
+  subscriptionPlan               SubscriptionPlan?
+  operatorCount                  Int                                 @default(0)
+  subscriptionStartDate          DateTime?                           @db.Timestamptz(6)
+  subscriptionEndDate            DateTime?                           @db.Timestamptz(6)
+  trialEndDate                   DateTime?                           @db.Timestamptz(6)
+  asaasSubscriptionId            String?
+  subscriptionNextDueDate        DateTime?                           @db.Timestamptz(6)
+  subscriptionCycle              String?
+  activeTeamId                   String?                             @db.Uuid
+  timezone                       String                              @default("America/Sao_Paulo")
+  createdAt                      DateTime                            @default(now()) @db.Timestamptz(6)
+  updatedAt                      DateTime                            @updatedAt @db.Timestamptz(6)
+  googleConnectionId             String?                             @db.Uuid
+  createdBackofficeClients       BackofficeClient[]                  @relation("BackofficeClientCreator")
+  backofficeFeatureGrants        BackofficeFeatureGrant[]            @relation("BackofficeFeatureProfileGrants")
+  createdBackofficeLeads         BackofficeLead[]                    @relation("BackofficeLeadCreator")
+  createdBackofficePayments      BackofficePayment[]                 @relation("BackofficePaymentCreator")
+  backofficeProductSubscriptions BackofficeUserProductSubscription[] @relation("BackofficeUserProductSubscriptions")
+  createdBackofficeUsers         BackofficeUser[]                    @relation("BackofficeUserCreator")
+  linkedFromBackofficeUsers      BackofficeUser[]                    @relation("BackofficeUserLinkedProfile")
+  backofficeUser                 BackofficeUser?                     @relation("BackofficeUserProfile")
+  emailCampaignsCreated          EmailCampaign[]                     @relation("EmailCampaignCreator")
+  emailContactListsCreated       EmailContactList[]                  @relation("EmailContactListCreator")
+  emailCreditSubscription        EmailCreditSubscription?            @relation("EmailCreditSubscriptionOwner")
+  emailTemplatesCreated          EmailTemplate[]                     @relation("EmailTemplateCreator")
+  createdHealthPlanOptions       HealthPlanOption[]                  @relation("HealthPlanOptionCreator")
+  activities                     LeadActivity[]
+  activityReactions              LeadActivityReaction[]
+  attachments                    LeadAttachment[]                    @relation("AttachmentUploader")
+  finalizedContracts             LeadFinalized[]                     @relation("LeadFinalizedCloser")
+  leadsAsAssignee                Lead[]                              @relation("LeadAssignee")
+  leadsAsCloser                  Lead[]                              @relation("LeadCloser")
+  leadsAsCreator                 Lead[]                              @relation("LeadCreator")
+  leadsAsManager                 Lead[]                              @relation("LeadManager")
+  leadsAsUpdater                 Lead[]                              @relation("LeadUpdater")
+  sentNotifications              Notification[]                      @relation("NotificationActor")
+  receivedNotifications          Notification[]                      @relation("NotificationRecipient")
+  pendingActions                 PendingAction[]                     @relation("PendingActionMaster")
+  pendingOperators               PendingOperator[]                   @relation("PendingOperatorManager")
+  subscription                   ProfileSubscription?
+  googleConnection               GoogleOAuthConnection?              @relation("ProfileGoogleConnection", fields: [googleConnectionId], references: [id], onUpdate: NoAction)
+  manager                        Profile?                            @relation("ManagerOperators", fields: [managerId], references: [id], onDelete: Restrict)
+  operators                      Profile[]                           @relation("ManagerOperators")
+  taskAssignments                TaskAssignee[]                      @relation("TaskAssigneeProfile")
+  createdTasks                   Task[]                              @relation("TaskCreator")
+  createdTeamFilterPresets       TeamFilterPreset[]                  @relation("TeamFilterPresetCreator")
+  teamMemberships                TeamMember[]
+  createdTeamStatusRules         TeamStatusRule[]                    @relation("TeamStatusRuleCreator")
+  updatedStudioWebhookConfigs    TeamStudioWebhookConfig[]           @relation("StudioWebhookConfigUpdater")
+  teamsOwned                     Team[]                              @relation("TeamMaster")
+  ownedGoogleConnections         GoogleOAuthConnection[]             @relation("GoogleConnectionOwnerProfile")
+  assignedUserTypeChanges        ProfileUserTypeAssignment[]         @relation("ProfileUserTypeAssignmentAssignedBy")
+  userTypeAssignment             ProfileUserTypeAssignment?          @relation("ProfileUserTypeAssignment")
+
+  @@index([role])
+  @@index([managerId])
+  @@index([cpfCnpj])
+  @@index([googleConnectionId], map: "corretor_studio_profiles_google_connection_id_idx")
+  @@map("corretor_studio_profiles")
+}
+
+model HealthPlanOption {
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String
+  normalizedName String    @unique
+  createdBy      String?   @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
+  isActive       Boolean   @default(true)
+  isDefault      Boolean   @default(false)
+  iconUrl        String?
+  activatedAt    DateTime? @db.Timestamptz(6)
+  deactivatedAt  DateTime? @db.Timestamptz(6)
+  creator        Profile?  @relation("HealthPlanOptionCreator", fields: [createdBy], references: [id])
+
+  @@index([name])
+  @@index([createdBy])
+  @@map("corretor_studio_health_plan_options")
+}
+
+model BackofficeUser {
+  id                            String                   @id @default(uuid()) @db.Uuid
+  profileId                     String                   @unique @map("profileId") @db.Uuid
+  email                         String                   @unique
+  fullAccess                    Boolean                  @default(false) @map("fullAccess")
+  isActive                      Boolean                  @default(true) @map("isActive")
+  isSdr                         Boolean                  @default(true) @map("isSdr")
+  isCloser                      Boolean                  @default(true) @map("isCloser")
+  timezone                      String                   @default("America/Sao_Paulo")
+  mailboxStatus                 String                   @default("pending_manual_action") @map("mailboxStatus")
+  mailboxAddress                String?                  @map("mailboxAddress")
+  mailboxProvisionedAt          DateTime?                @map("mailboxProvisionedAt") @db.Timestamptz(6)
+  createdByProfileId            String?                  @map("createdByProfileId") @db.Uuid
+  createdAt                     DateTime                 @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                     DateTime                 @default(now()) @map("updatedAt") @db.Timestamptz(6)
+  googleConnectionId            String?                  @map("googleConnectionId") @db.Uuid
+  linkedCorretorStudioProfileId String?                  @map("linkedCorretorStudioProfileId") @db.Uuid
+  closerAdhesions               BackofficeAdhesion[]     @relation("BackofficeAdhesionCloser")
+  createdAdhesions              BackofficeAdhesion[]     @relation("BackofficeAdhesionCreator")
+  sdrAdhesions                  BackofficeAdhesion[]     @relation("BackofficeAdhesionSdr")
+  closerLeads                   BackofficeLead[]         @relation("BackofficeLeadCloser")
+  sdrLeads                      BackofficeLead[]         @relation("BackofficeLeadSdr")
+  schedulesAsCloser             BackofficeLeadSchedule[] @relation("BackofficeLeadScheduleCloser")
+  creator                       Profile?                 @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id])
+  googleConnection              GoogleOAuthConnection?   @relation("BackofficeUserGoogleConnection", fields: [googleConnectionId], references: [id], onUpdate: NoAction)
+  linkedCorretorStudioProfile   Profile?                 @relation("BackofficeUserLinkedProfile", fields: [linkedCorretorStudioProfileId], references: [id], onUpdate: NoAction)
+  profile                       Profile                  @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  generatedWebhookTokens        BackofficeWebhookToken[] @relation("BackofficeWebhookTokenGenerator")
+
+  @@index([isActive], map: "backoffice_users_is_active_idx")
+  @@index([isSdr], map: "backoffice_users_is_sdr_idx")
+  @@index([isCloser], map: "backoffice_users_is_closer_idx")
+  @@index([googleConnectionId], map: "backoffice_users_google_connection_id_idx")
+  @@index([linkedCorretorStudioProfileId], map: "backoffice_users_linked_profile_id_idx")
+  @@index([createdByProfileId], map: "backoffice_users_created_by_profile_id_idx")
+  @@map("backoffice_users")
+}
+
+model GoogleOAuthConnection {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  googleEmail      String           @unique
+  accessToken      String?
+  refreshToken     String?
+  tokenExpiresAt   DateTime?        @db.Timestamptz(6)
+  scopes           String[]         @default([])
+  ownerProfileId   String?          @db.Uuid
+  lastRefreshedAt  DateTime?        @db.Timestamptz(6)
+  lastRefreshError String?
+  revokedAt        DateTime?        @db.Timestamptz(6)
+  createdAt        DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime         @default(now()) @updatedAt @db.Timestamptz(6)
+  backofficeUsers  BackofficeUser[] @relation("BackofficeUserGoogleConnection")
+  profiles         Profile[]        @relation("ProfileGoogleConnection")
+  ownerProfile     Profile?         @relation("GoogleConnectionOwnerProfile", fields: [ownerProfileId], references: [id], onUpdate: NoAction)
+
+  @@index([googleEmail], map: "google_oauth_connections_google_email_idx")
+  @@index([ownerProfileId], map: "google_oauth_connections_owner_profile_id_idx")
+  @@map("google_oauth_connections")
+}
+
+model BackofficeClient {
+  id                 String              @id @default(uuid()) @db.Uuid
+  fullName           String              @map("fullName")
+  email              String?
+  phone              String?
+  cpfCnpj            String?             @map("cpfCnpj")
+  notes              String?
+  asaasCustomerId    String?             @unique @map("asaasCustomerId")
+  isActive           Boolean             @default(true) @map("isActive")
+  createdByProfileId String?             @map("createdByProfileId") @db.Uuid
+  createdAt          DateTime            @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt          DateTime            @default(now()) @map("updatedAt") @db.Timestamptz(6)
+  creator            Profile?            @relation("BackofficeClientCreator", fields: [createdByProfileId], references: [id])
+  payments           BackofficePayment[]
+
+  @@index([email])
+  @@index([cpfCnpj], map: "backoffice_clients_cpf_cnpj_idx")
+  @@index([isActive], map: "backoffice_clients_is_active_idx")
+  @@map("backoffice_clients")
+}
+
+model BackofficePayment {
+  id                 String           @id @default(uuid()) @db.Uuid
+  clientId           String           @map("clientId") @db.Uuid
+  asaasPaymentId     String?          @unique @map("asaasPaymentId")
+  billingType        String           @default("PIX") @map("billingType")
+  status             String           @default("PENDING")
+  amount             Decimal          @db.Decimal(12, 2)
+  dueDate            DateTime?        @map("dueDate") @db.Timestamptz(6)
+  description        String?
+  invoiceUrl         String?          @map("invoiceUrl")
+  pixQrCode          String?          @map("pixQrCode")
+  pixPayload         String?          @map("pixPayload")
+  createdByProfileId String?          @map("createdByProfileId") @db.Uuid
+  createdAt          DateTime         @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt          DateTime         @default(now()) @map("updatedAt") @db.Timestamptz(6)
+  client             BackofficeClient @relation(fields: [clientId], references: [id])
+  creator            Profile?         @relation("BackofficePaymentCreator", fields: [createdByProfileId], references: [id])
+
+  @@index([clientId], map: "backoffice_payments_client_id_idx")
+  @@index([status])
+  @@index([dueDate], map: "backoffice_payments_due_date_idx")
+  @@map("backoffice_payments")
+}
+
+model BackofficeLead {
+  id                            String                   @id @default(uuid()) @db.Uuid
+  name                          String
+  email                         String?
+  phone                         String?
+  cpfCnpj                       String?
+  notes                         String?
+  status                        BackofficeLeadStatus     @default(new_opportunity)
+  origin                        BackofficeLeadOrigin     @default(manual)
+  sourceExternalId              String?                  @unique(map: "backoffice_leads_source_external_id_key") @map("sourceExternalId")
+  sourceWebhookEventId          String?                  @unique(map: "backoffice_leads_source_webhook_event_id_key") @map("sourceWebhookEventId") @db.Uuid
+  sdrBackofficeUserId           String?                  @map("sdrBackofficeUserId") @db.Uuid
+  closerBackofficeUserId        String?                  @map("closerBackofficeUserId") @db.Uuid
+  meetingDate                   DateTime?                @map("meetingDate") @db.Timestamptz(6)
+  meetingTitle                  String?                  @map("meetingTitle")
+  meetingNotes                  String?                  @map("meetingNotes")
+  meetingLink                   String?                  @map("meetingLink")
+  meetingExtraGuests            String[]                 @default([]) @map("meetingExtraGuests")
+  statusEnteredAt               DateTime                 @default(now()) @map("statusEnteredAt") @db.Timestamptz(6)
+  createdByProfileId            String?                  @map("createdByProfileId") @db.Uuid
+  createdAt                     DateTime                 @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                     DateTime                 @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  qualificationLeadOrganization String?                  @map("qualification_lead_organization")
+  qualificationAvgUsers         String?                  @map("qualification_avg_users")
+  qualificationProfileFit       String?                  @map("qualification_profile_fit")
+  adhesion                      BackofficeAdhesion?
+  closerBackofficeUser          BackofficeUser?          @relation("BackofficeLeadCloser", fields: [closerBackofficeUserId], references: [id], map: "backoffice_leads_closer_backoffice_user_id_fkey")
+  creator                       Profile?                 @relation("BackofficeLeadCreator", fields: [createdByProfileId], references: [id])
+  sdrBackofficeUser             BackofficeUser?          @relation("BackofficeLeadSdr", fields: [sdrBackofficeUserId], references: [id], map: "backoffice_leads_sdr_backoffice_user_id_fkey")
+  sourceWebhookEvent            BackofficeWebhookEvent?  @relation("BackofficeLeadSourceWebhookEvent", fields: [sourceWebhookEventId], references: [id], map: "backoffice_leads_source_webhook_event_id_fkey")
+  schedules                     BackofficeLeadSchedule[]
+
+  @@index([status])
+  @@index([origin])
+  @@index([sdrBackofficeUserId], map: "backoffice_leads_sdr_user_id_idx")
+  @@index([closerBackofficeUserId], map: "backoffice_leads_closer_user_id_idx")
+  @@index([meetingDate], map: "backoffice_leads_meeting_date_idx")
+  @@index([createdByProfileId], map: "backoffice_leads_created_by_profile_id_idx")
+  @@index([email])
+  @@index([cpfCnpj], map: "backoffice_leads_cpf_cnpj_idx")
+  @@map("backoffice_leads")
+}
+
+model BackofficeAdhesion {
+  id                                String                         @id @default(uuid()) @db.Uuid
+  leadId                            String                         @unique @map("leadId") @db.Uuid
+  fullName                          String                         @map("fullName")
+  phone                             String
+  email                             String?
+  cpfCnpj                           String?                        @map("cpfCnpj")
+  postalCode                        String?                        @map("postalCode")
+  address                           String?
+  addressNumber                     String?                        @map("addressNumber")
+  neighborhood                      String?
+  complement                        String?
+  city                              String?
+  state                             String?
+  plan                              BackofficeAdhesionPlan         @default(crm)
+  cycle                             BackofficeAdhesionBillingCycle
+  modules                           String[]                       @default(["crm"])
+  extraTeams                        Int                            @default(0) @map("extraTeams")
+  extraUsers                        Int                            @default(0) @map("extraUsers")
+  monthlyBaseAmount                 Decimal                        @map("monthlyBaseAmount") @db.Decimal(12, 2)
+  monthlyExtraTeamsAmount           Decimal                        @map("monthlyExtraTeamsAmount") @db.Decimal(12, 2)
+  monthlyExtraUsersAmount           Decimal                        @map("monthlyExtraUsersAmount") @db.Decimal(12, 2)
+  monthlyTotalAmount                Decimal                        @map("monthlyTotalAmount") @db.Decimal(12, 2)
+  totalAmount                       Decimal                        @map("totalAmount") @db.Decimal(12, 2)
+  tokenHash                         String                         @unique @map("tokenHash")
+  tokenPreview                      String                         @map("tokenPreview")
+  expiresAt                         DateTime                       @map("expiresAt") @db.Timestamptz(6)
+  status                            BackofficeAdhesionStatus       @default(pending)
+  tokenPlain                        String?                        @map("tokenPlain")
+  sdrBackofficeUserId               String?                        @map("sdrBackofficeUserId") @db.Uuid
+  closerBackofficeUserId            String?                        @map("closerBackofficeUserId") @db.Uuid
+  createdByBackofficeUserId         String?                        @map("createdByBackofficeUserId") @db.Uuid
+  asaasCustomerId                   String?                        @map("asaasCustomerId")
+  asaasPaymentId                    String?                        @unique @map("asaasPaymentId")
+  asaasInstallmentId                String?                        @unique(map: "backoffice_adhesions_asaasinstallmentid_key") @map("asaasInstallmentId")
+  installmentCount                  Int?                           @map("installmentCount")
+  billingType                       String?                        @map("billingType")
+  paymentDueDate                    DateTime?                      @map("paymentDueDate") @db.Timestamptz(6)
+  invoiceUrl                        String?                        @map("invoiceUrl")
+  bankSlipUrl                       String?                        @map("bankSlipUrl")
+  pixQrCode                         String?                        @map("pixQrCode")
+  pixPayload                        String?                        @map("pixPayload")
+  paidAt                            DateTime?                      @map("paidAt") @db.Timestamptz(6)
+  overdueAt                         DateTime?                      @map("overdueAt") @db.Timestamptz(6)
+  canceledAt                        DateTime?                      @map("canceledAt") @db.Timestamptz(6)
+  createdProfileId                  String?                        @map("createdProfileId") @db.Uuid
+  createdSupabaseId                 String?                        @map("createdSupabaseId") @db.Uuid
+  createdAt                         DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                         DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  requestedUserTypeSlug             String?                        @map("requestedUserTypeSlug")
+  requestedMemberProAccessExpiresAt DateTime?                      @map("requestedMemberProAccessExpiresAt") @db.Timestamptz(6)
+  closerBackofficeUser              BackofficeUser?                @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id])
+  createdByBackofficeUser           BackofficeUser?                @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id])
+  lead                              BackofficeLead                 @relation(fields: [leadId], references: [id])
+  sdrBackofficeUser                 BackofficeUser?                @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id])
+  profileSubscription               ProfileSubscription?
+
+  @@index([status])
+  @@index([expiresAt], map: "backoffice_adhesions_expires_at_idx")
+  @@index([leadId], map: "backoffice_adhesions_lead_id_idx")
+  @@index([sdrBackofficeUserId], map: "backoffice_adhesions_sdr_user_id_idx")
+  @@index([closerBackofficeUserId], map: "backoffice_adhesions_closer_user_id_idx")
+  @@map("backoffice_adhesions")
+}
+
+model BackofficeLeadSchedule {
+  id                          String                          @id @default(uuid()) @db.Uuid
+  leadId                      String                          @map("leadId") @db.Uuid
+  closerBackofficeUserId      String?                         @map("closerBackofficeUserId") @db.Uuid
+  date                        DateTime                        @db.Timestamptz(6)
+  meetingTitle                String?                         @map("meetingTitle")
+  notes                       String?
+  meetingLink                 String?                         @map("meetingLink")
+  extraGuests                 String[]                        @default([]) @map("extraGuests")
+  googleEventId               String?                         @map("googleEventId")
+  googleCalendarId            String?                         @map("googleCalendarId")
+  inviteDispatchStatus        BackofficeInviteDispatchStatus? @map("inviteDispatchStatus")
+  inviteDispatchProvider      String?                         @map("inviteDispatchProvider")
+  inviteDispatchFallbackUsed  Boolean                         @default(false) @map("inviteDispatchFallbackUsed")
+  inviteDispatchLastAttemptAt DateTime?                       @map("inviteDispatchLastAttemptAt") @db.Timestamptz(6)
+  inviteDispatchLastError     String?                         @map("inviteDispatchLastError")
+  inviteDispatchLastPayload   Json?                           @map("inviteDispatchLastPayload")
+  isCanceled                  Boolean                         @default(false) @map("isCanceled")
+  canceledAt                  DateTime?                       @map("canceledAt") @db.Timestamptz(6)
+  canceledByProfileId         String?                         @map("canceledByProfileId") @db.Uuid
+  cancelReason                String?                         @map("cancelReason")
+  createdByProfileId          String?                         @map("createdByProfileId") @db.Uuid
+  createdAt                   DateTime                        @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                   DateTime                        @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  closer                      BackofficeUser?                 @relation("BackofficeLeadScheduleCloser", fields: [closerBackofficeUserId], references: [id], map: "backoffice_leads_schedule_closer_backoffice_user_id_fkey")
+  lead                        BackofficeLead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId], map: "backoffice_leads_schedule_lead_id_idx")
+  @@index([closerBackofficeUserId], map: "backoffice_leads_schedule_closer_user_id_idx")
+  @@index([date])
+  @@index([isCanceled], map: "backoffice_leads_schedule_is_canceled_idx")
+  @@map("backoffice_leads_schedule")
+}
+
+model BackofficeWebhookEvent {
+  id           String                       @id @default(uuid()) @db.Uuid
+  source       BackofficeWebhookSource
+  eventType    String?                      @map("eventType")
+  payload      Json
+  signature    String?
+  status       BackofficeWebhookEventStatus @default(received)
+  errorMessage String?                      @map("errorMessage")
+  receivedAt   DateTime                     @default(now()) @map("receivedAt") @db.Timestamptz(6)
+  processedAt  DateTime?                    @map("processedAt") @db.Timestamptz(6)
+  createdLead  BackofficeLead?              @relation("BackofficeLeadSourceWebhookEvent")
+
+  @@index([source, receivedAt(sort: Desc)], map: "backoffice_webhook_events_source_received_at_idx")
+  @@index([status])
+  @@map("backoffice_webhook_events")
+}
+
+model BackofficeWebhookToken {
+  id                          String                           @id @default(uuid()) @db.Uuid
+  source                      BackofficeWebhookSource
+  tokenHash                   String                           @map("tokenHash")
+  tokenCipher                 String                           @map("tokenCipher")
+  tokenPreview                String                           @map("tokenPreview")
+  status                      BackofficeWebhookTokenStatus     @default(active)
+  expiryMode                  BackofficeWebhookTokenExpiryMode @default(indeterminate) @map("expiryMode")
+  expiresAt                   DateTime?                        @map("expiresAt") @db.Timestamptz(6)
+  lastUsedAt                  DateTime?                        @map("lastUsedAt") @db.Timestamptz(6)
+  generatedByBackofficeUserId String                           @map("generatedByBackofficeUserId") @db.Uuid
+  generatedByEmailSnapshot    String                           @map("generatedByEmailSnapshot")
+  generatedAt                 DateTime                         @default(now()) @map("generatedAt") @db.Timestamptz(6)
+  updatedAt                   DateTime                         @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  generatedBy                 BackofficeUser                   @relation("BackofficeWebhookTokenGenerator", fields: [generatedByBackofficeUserId], references: [id])
+
+  @@index([source, status])
+  @@index([generatedAt(sort: Desc)], map: "backoffice_webhook_tokens_generated_at_idx")
+  @@index([expiresAt], map: "backoffice_webhook_tokens_expires_at_idx")
+  @@index([generatedByBackofficeUserId], map: "backoffice_webhook_tokens_generated_by_idx")
+  @@map("backoffice_webhook_tokens")
+}
+
+model BackofficeWebhookRequestLog {
+  id              String                  @id @default(uuid()) @db.Uuid
+  source          BackofficeWebhookSource
+  method          String
+  endpoint        String
+  statusCode      Int                     @map("statusCode")
+  resultType      String                  @map("resultType")
+  requestPayload  Json?                   @map("requestPayload")
+  responsePayload Json?                   @map("responsePayload")
+  errorMessage    String?                 @map("errorMessage")
+  createdAt       DateTime                @default(now()) @map("createdAt") @db.Timestamptz(6)
+
+  @@index([source, createdAt(sort: Desc)], map: "backoffice_webhook_request_logs_source_created_at_idx")
+  @@index([statusCode], map: "backoffice_webhook_request_logs_status_code_idx")
+  @@map("backoffice_webhook_request_logs")
+}
+
+model Lead {
+  id                   String           @id @unique @default(uuid()) @db.Uuid
+  leadCode             String           @unique
+  managerId            String           @db.Uuid
+  teamId               String?          @db.Uuid
+  assignedTo           String?          @db.Uuid
+  closerId             String?          @db.Uuid
+  status               LeadStatus       @default(new_opportunity)
+  name                 String
+  email                String?
+  phone                String?
+  cnpj                 String?
+  age                  String?
+  currentHealthPlan    String?
+  currentValue         Decimal?         @db.Decimal(12, 2)
+  referenceHospital    String?
+  currentTreatment     String?
+  meetingDate          DateTime?        @db.Timestamptz(6)
+  meetingTitle         String?
+  meetingNotes         String?
+  meetingLink          String?
+  meetingHeald         MeetingHeald?
+  followUpAt           DateTime?        @db.Timestamptz(6)
+  followUpNotes        String?
+  followUpSourceStatus LeadStatus?
+  lossReason           String?
+  lossReasonDetails    String?
+  statusEnteredAt      DateTime         @default(now()) @db.Timestamptz(6)
+  notes                String?
+  ticket               Decimal?         @db.Decimal(12, 2)
+  contractDueDate      DateTime?        @db.Timestamptz(6)
+  soldPlan             String?
+  createdBy            String?          @db.Uuid
+  updatedBy            String?          @db.Uuid
+  createdAt            DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime         @updatedAt @db.Timestamptz(6)
+  meetingType          String?
+  isReferral           Boolean?         @default(false)
+  referrerLeadId       String?          @db.Uuid
+  referrerName         String?
+  referrerPhone        String?
+  activities           LeadActivity[]
+  attachments          LeadAttachment[]
+  LeadFinalized        LeadFinalized[]
+  portfolio            LeadPortfolio?
+  assignee             Profile?         @relation("LeadAssignee", fields: [assignedTo], references: [id])
+  closer               Profile?         @relation("LeadCloser", fields: [closerId], references: [id])
+  creator              Profile?         @relation("LeadCreator", fields: [createdBy], references: [id])
+  manager              Profile          @relation("LeadManager", fields: [managerId], references: [id], onDelete: Cascade)
+  referrerLead         Lead?            @relation("LeadReferrer", fields: [referrerLeadId], references: [id], onUpdate: NoAction, map: "corretor_studio_leads_referrer_lead_fkey")
+  referredLeads        Lead[]           @relation("LeadReferrer")
+  team                 Team?            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  updater              Profile?         @relation("LeadUpdater", fields: [updatedBy], references: [id])
+  LeadsSchedule        LeadsSchedule?
+  tasks                Task[]
+
+  @@unique([teamId, email])
+  @@unique([teamId, cnpj])
+  @@index([teamId])
+  @@index([assignedTo])
+  @@index([closerId])
+  @@index([createdBy])
+  @@index([updatedBy])
+  @@index([meetingDate])
+  @@index([followUpAt])
+  @@index([statusEnteredAt])
+  @@index([referrerLeadId], map: "corretor_studio_leads_referrer_lead_idx")
+  @@map("corretor_studio_leads")
+}
+
+model LeadActivity {
+  id        String                 @id @default(uuid()) @db.Uuid
+  leadId    String                 @db.Uuid
+  type      ActivityType
+  body      String?
+  payload   Json?
+  createdBy String?                @db.Uuid
+  createdAt DateTime               @default(now()) @db.Timestamptz(6)
+  author    Profile?               @relation(fields: [createdBy], references: [id])
+  lead      Lead                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  reactions LeadActivityReaction[]
+  task      Task?
+
+  @@index([leadId])
+  @@index([createdBy])
+  @@map("corretor_studio_lead_activities")
+}
+
+model LeadActivityReaction {
+  id           String       @id @default(uuid()) @db.Uuid
+  activityId   String       @db.Uuid
+  profileId    String       @db.Uuid
+  emoji        String
+  emojiUnified String
+  createdAt    DateTime     @default(now()) @db.Timestamptz(6)
+  activity     LeadActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  profile      Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, profileId, emojiUnified])
+  @@index([activityId])
+  @@index([profileId])
+  @@map("corretor_studio_lead_activity_reactions")
+}
+
+model Task {
+  id         String         @id @default(uuid()) @db.Uuid
+  leadId     String         @db.Uuid
+  activityId String?        @unique @db.Uuid
+  title      String
+  taskType   TaskType
+  body       String
+  isUrgent   Boolean        @default(false)
+  startAt    DateTime?      @db.Timestamptz(6)
+  endAt      DateTime?      @db.Timestamptz(6)
+  createdBy  String         @db.Uuid
+  createdAt  DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime       @updatedAt @db.Timestamptz(6)
+  assignees  TaskAssignee[]
+  activity   LeadActivity?  @relation(fields: [activityId], references: [id])
+  creator    Profile        @relation("TaskCreator", fields: [createdBy], references: [id])
+  lead       Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([createdBy])
+  @@index([startAt])
+  @@index([endAt])
+  @@map("corretor_studio_tasks")
+}
+
+model TaskAssignee {
+  id               String             @id @default(uuid()) @db.Uuid
+  taskId           String             @db.Uuid
+  profileId        String             @db.Uuid
+  status           TaskAssigneeStatus @default(PENDING)
+  googleEventId    String?
+  googleCalendarId String?
+  googleSynced     Boolean            @default(false)
+  assignedAt       DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(6)
+  profile          Profile            @relation("TaskAssigneeProfile", fields: [profileId], references: [id])
+  task             Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, profileId])
+  @@index([taskId])
+  @@index([profileId])
+  @@index([status])
+  @@map("corretor_studio_task_assignees")
+}
+
+model LeadsSchedule {
+  id                          String                @id @default(uuid()) @db.Uuid
+  leadId                      String                @unique @db.Uuid
+  date                        DateTime              @db.Timestamptz(6)
+  noShowCount                 Int                   @default(0) @map("noShowCount")
+  meetingTitle                String?
+  notes                       String?
+  meetingLink                 String?
+  extraGuests                 String[]              @default([])
+  googleEventId               String?
+  googleCalendarId            String?
+  inviteDispatchStatus        InviteDispatchStatus?
+  inviteDispatchFallbackUsed  Boolean               @default(false)
+  inviteDispatchLastAttemptAt DateTime?             @db.Timestamptz(6)
+  inviteDispatchLastError     String?
+  inviteDispatchLastPayload   Json?
+  createdAt                   DateTime              @default(now()) @db.Timestamptz(6)
+  updatedAt                   DateTime              @updatedAt @db.Timestamptz(6)
+  meetingType                 String?
+  lead                        Lead                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@map("corretor_studio_leads_schedule")
+}
+
+model LeadFinalized {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  leadId              String                   @db.Uuid
+  finalizedDateAt     DateTime                 @db.Timestamptz(6)
+  startDateAt         DateTime                 @db.Timestamptz(6)
+  duration            Int
+  amount              Decimal                  @db.Decimal(12, 2)
+  notes               String?
+  closerId            String?                  @db.Uuid
+  operadora           String?
+  productName         String?
+  contractFileUrl     String?
+  contractStoragePath String?
+  createdAt           DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime                 @updatedAt @db.Timestamptz(6)
+  closer              Profile?                 @relation("LeadFinalizedCloser", fields: [closerId], references: [id])
+  lead                Lead                     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  dependents          LeadFinalizedDependent[]
+  holder              LeadFinalizedHolder?
+
+  @@index([leadId])
+  @@map("corretor_studio_lead_finalized")
+}
+
+model LeadFinalizedHolder {
+  id              String        @id @default(uuid()) @db.Uuid
+  leadFinalizedId String        @unique @db.Uuid
+  name            String
+  birthDate       DateTime      @db.Date
+  document        String
+  cnpj            String?
+  createdAt       DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(6)
+  leadFinalized   LeadFinalized @relation(fields: [leadFinalizedId], references: [id], onDelete: Cascade)
+
+  @@map("corretor_studio_lead_finalized_holders")
+}
+
+model LeadFinalizedDependent {
+  id              String        @id @default(uuid()) @db.Uuid
+  leadFinalizedId String        @db.Uuid
+  name            String
+  birthDate       DateTime      @db.Date
+  parentesco      String
+  document        String?
+  createdAt       DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(6)
+  leadFinalized   LeadFinalized @relation(fields: [leadFinalizedId], references: [id], onDelete: Cascade)
+
+  @@index([leadFinalizedId])
+  @@map("corretor_studio_lead_finalized_dependents")
+}
+
+model LeadPortfolio {
+  id              String          @id @default(uuid()) @db.Uuid
+  leadId          String          @unique @db.Uuid
+  teamId          String          @db.Uuid
+  portfolioStatus PortfolioStatus @default(active)
+  source          PortfolioSource @default(crm)
+  note            String?
+  lastContactAt   DateTime?       @db.Timestamptz(6)
+  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(6)
+  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  team            Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([teamId, portfolioStatus])
+  @@map("corretor_studio_lead_portfolio")
+}
+
+model LeadAttachment {
+  id          String   @id @default(uuid()) @db.Uuid
+  leadId      String   @db.Uuid
+  fileName    String
+  fileUrl     String
+  storagePath String   @default("")
+  fileType    String
+  fileSize    Int
+  uploadedBy  String   @db.Uuid
+  uploadedAt  DateTime @default(now()) @db.Timestamptz(6)
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  uploader    Profile  @relation("AttachmentUploader", fields: [uploadedBy], references: [id])
+
+  @@index([leadId])
+  @@index([uploadedBy])
+  @@map("corretor_studio_lead_attachments")
+}
+
+model PendingOperator {
+  id              String         @id @default(uuid()) @db.Uuid
+  managerId       String         @db.Uuid
+  teamId          String?        @db.Uuid
+  name            String
+  email           String
+  role            String
+  functions       UserFunction[] @default([])
+  paymentId       String?        @unique
+  subscriptionId  String?
+  paymentStatus   String
+  paymentMethod   String
+  operatorCreated Boolean        @default(false)
+  operatorId      String?        @db.Uuid
+  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(6)
+  manager         Profile        @relation("PendingOperatorManager", fields: [managerId], references: [id], onDelete: Cascade)
+  team            Team?          @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([managerId])
+  @@index([subscriptionId])
+  @@index([email])
+  @@map("corretor_studio_pending_operators")
+}
+
+model Team {
+  id                       String                        @id @default(uuid()) @db.Uuid
+  name                     String
+  masterId                 String                        @db.Uuid
+  isDefault                Boolean                       @default(false)
+  createdAt                DateTime                      @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime                      @updatedAt @db.Timestamptz(6)
+  emailCampaigns           EmailCampaign[]               @relation("TeamEmailCampaigns")
+  emailContactLists        EmailContactList[]            @relation("TeamEmailContactLists")
+  emailLogs                EmailLog[]                    @relation("TeamEmailLogs")
+  emailTemplates           EmailTemplate[]               @relation("TeamEmailTemplates")
+  portfolioEntries         LeadPortfolio[]
+  leads                    Lead[]
+  notifications            Notification[]
+  pendingActions           PendingAction[]
+  pendingOperators         PendingOperator[]
+  filterPresets            TeamFilterPreset[]
+  members                  TeamMember[]
+  statusRules              TeamStatusRule[]
+  studioWebhookConfig      TeamStudioWebhookConfig?
+  studioWebhookRequestLogs TeamStudioWebhookRequestLog[]
+  master                   Profile                       @relation("TeamMaster", fields: [masterId], references: [id], onDelete: Cascade)
+
+  @@index([masterId])
+  @@map("corretor_studio_teams")
+}
+
+model TeamFilterPreset {
+  id          String    @id @default(uuid()) @db.Uuid
+  teamId      String    @db.Uuid
+  createdBy   String    @db.Uuid
+  name        String
+  description String?
+  queryJson   Json
+  lastUsedAt  DateTime? @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
+  creator     Profile   @relation("TeamFilterPresetCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  team        Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdBy])
+  @@index([teamId, lastUsedAt(sort: Desc)])
+  @@map("corretor_studio_team_filter_presets")
+}
+
+model TeamStatusRule {
+  id                  String             @id @default(uuid()) @db.Uuid
+  teamId              String             @db.Uuid
+  createdBy           String             @db.Uuid
+  type                TeamStatusRuleType
+  targetStatus        LeadStatus
+  requiredStatus      LeadStatus?
+  leadTimeValue       Int?
+  leadTimeUnit        TeamLeadTimeUnit?
+  requireConfirmation Boolean            @default(false)
+  confirmationMessage String?
+  isEnabled           Boolean            @default(true)
+  createdAt           DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime           @updatedAt @db.Timestamptz(6)
+  creator             Profile            @relation("TeamStatusRuleCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  team                Team               @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, isEnabled])
+  @@index([teamId, type, targetStatus, isEnabled])
+  @@map("corretor_studio_team_status_rules")
+}
+
+model TeamStudioWebhookConfig {
+  id                 String                       @id @default(uuid()) @db.Uuid
+  teamId             String                       @unique @db.Uuid
+  tokenHash          String
+  tokenCipher        String?
+  tokenPreview       String
+  expiryMode         StudioWebhookTokenExpiryMode @default(indeterminate)
+  expiresAt          DateTime?                    @db.Timestamptz(6)
+  lastUsedAt         DateTime?                    @db.Timestamptz(6)
+  updatedByProfileId String                       @db.Uuid
+  createdAt          DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                     @updatedAt @db.Timestamptz(6)
+  team               Team                         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  updatedBy          Profile                      @relation("StudioWebhookConfigUpdater", fields: [updatedByProfileId], references: [id])
+
+  @@index([updatedByProfileId])
+  @@index([expiresAt])
+  @@map("corretor_studio_team_studio_webhook_configs")
+}
+
+model TeamStudioWebhookRequestLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  teamId          String   @db.Uuid
+  method          String
+  endpoint        String
+  statusCode      Int
+  resultType      String
+  requestPayload  Json?
+  responsePayload Json?
+  errorMessage    String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(6)
+  team            Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("corretor_studio_team_studio_webhook_request_logs")
+}
+
+model Notification {
+  id                 String           @id @default(uuid()) @db.Uuid
+  recipientProfileId String           @db.Uuid
+  actorProfileId     String?          @db.Uuid
+  teamId             String           @db.Uuid
+  type               NotificationType
+  message            String
+  metadata           Json?
+  isRead             Boolean          @default(false)
+  readAt             DateTime?        @db.Timestamptz(6)
+  createdAt          DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(6)
+  actor              Profile?         @relation("NotificationActor", fields: [actorProfileId], references: [id])
+  recipient          Profile          @relation("NotificationRecipient", fields: [recipientProfileId], references: [id], onDelete: Cascade)
+  team               Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([recipientProfileId, teamId, isRead])
+  @@index([recipientProfileId, createdAt])
+  @@index([teamId, createdAt])
+  @@map("corretor_studio_notifications")
+}
+
+model PendingAction {
+  id         String              @id @default(uuid()) @db.Uuid
+  masterId   String              @db.Uuid
+  teamId     String?             @db.Uuid
+  actionType PendingActionType
+  status     PendingActionStatus @default(pending)
+  payload    Json
+  checkoutId String?
+  paymentId  String?
+  createdAt  DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime            @updatedAt @db.Timestamptz(6)
+  master     Profile             @relation("PendingActionMaster", fields: [masterId], references: [id], onDelete: Cascade)
+  team       Team?               @relation(fields: [teamId], references: [id])
+
+  @@index([masterId])
+  @@index([checkoutId])
+  @@index([paymentId])
+  @@map("corretor_studio_pending_actions")
+}
+
+model TeamMember {
+  id        String         @id @default(uuid()) @db.Uuid
+  teamId    String         @db.Uuid
+  profileId String         @db.Uuid
+  role      UserRole
+  functions UserFunction[] @default([])
+  createdAt DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime       @updatedAt @db.Timestamptz(6)
+  profile   Profile        @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  team      Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, profileId])
+  @@index([profileId])
+  @@map("corretor_studio_team_members")
+}
+
+model EmailCreditSubscription {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  profileId          String                        @unique @db.Uuid
+  plan               EmailCreditPlan
+  monthlyCredits     Int
+  status             EmailCreditSubscriptionStatus @default(active)
+  currentPeriodStart DateTime                      @db.Timestamptz(6)
+  currentPeriodEnd   DateTime                      @db.Timestamptz(6)
+  canceledAt         DateTime?                     @db.Timestamptz(6)
+  createdAt          DateTime                      @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                      @updatedAt @db.Timestamptz(6)
+  profile            Profile                       @relation("EmailCreditSubscriptionOwner", fields: [profileId], references: [id], onDelete: Cascade)
+  usages             EmailCreditUsage[]
+
+  @@index([currentPeriodEnd])
+  @@map("corretor_studio_email_credit_subscriptions")
+}
+
+model EmailCreditUsage {
+  id             String                  @id @default(uuid()) @db.Uuid
+  subscriptionId String                  @db.Uuid
+  periodStart    DateTime                @db.Timestamptz(6)
+  periodEnd      DateTime                @db.Timestamptz(6)
+  creditsUsed    Int                     @default(0)
+  overageCount   Int                     @default(0)
+  overageCharged Decimal                 @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime                @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                @updatedAt @db.Timestamptz(6)
+  subscription   EmailCreditSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, periodStart])
+  @@map("corretor_studio_email_credit_usages")
+}
+
+model EmailTemplate {
+  id          String          @id @default(uuid()) @db.Uuid
+  teamId      String          @db.Uuid
+  createdBy   String          @db.Uuid
+  name        String
+  subject     String
+  previewText String?
+  mailyJson   Json?
+  html        String?
+  isArchived  Boolean         @default(false)
+  createdAt   DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime        @updatedAt @db.Timestamptz(6)
+  campaigns   EmailCampaign[]
+  creator     Profile         @relation("EmailTemplateCreator", fields: [createdBy], references: [id])
+  team        Team            @relation("TeamEmailTemplates", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, isArchived])
+  @@index([createdBy])
+  @@map("corretor_studio_email_templates")
+}
+
+model EmailContactList {
+  id             String          @id @default(uuid()) @db.Uuid
+  teamId         String          @db.Uuid
+  createdBy      String          @db.Uuid
+  name           String
+  description    String?
+  csvStoragePath String?
+  totalContacts  Int             @default(0)
+  isArchived     Boolean         @default(false)
+  createdAt      DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(6)
+  campaigns      EmailCampaign[]
+  creator        Profile         @relation("EmailContactListCreator", fields: [createdBy], references: [id])
+  team           Team            @relation("TeamEmailContactLists", fields: [teamId], references: [id], onDelete: Cascade)
+  contacts       EmailContact[]
+
+  @@index([teamId, isArchived])
+  @@index([createdBy])
+  @@map("corretor_studio_email_contact_lists")
+}
+
+model EmailContact {
+  id             String           @id @default(uuid()) @db.Uuid
+  listId         String           @db.Uuid
+  email          String
+  name           String?
+  customFields   Json?
+  isUnsubscribed Boolean          @default(false)
+  isBounced      Boolean          @default(false)
+  isComplained   Boolean          @default(false)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @db.Timestamptz(6)
+  list           EmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, email])
+  @@index([listId, isUnsubscribed])
+  @@index([listId, isBounced])
+  @@map("corretor_studio_email_contacts")
+}
+
+model EmailCampaign {
+  id              String              @id @default(uuid()) @db.Uuid
+  teamId          String              @db.Uuid
+  createdBy       String              @db.Uuid
+  name            String
+  templateId      String              @db.Uuid
+  contactListId   String              @db.Uuid
+  status          EmailCampaignStatus @default(draft)
+  scheduledAt     DateTime?           @db.Timestamptz(6)
+  sentAt          DateTime?           @db.Timestamptz(6)
+  totalRecipients Int                 @default(0)
+  totalSent       Int                 @default(0)
+  totalDelivered  Int                 @default(0)
+  totalOpened     Int                 @default(0)
+  totalClicked    Int                 @default(0)
+  totalBounced    Int                 @default(0)
+  totalComplained Int                 @default(0)
+  errorMessage    String?
+  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime            @updatedAt @db.Timestamptz(6)
+  contactList     EmailContactList    @relation(fields: [contactListId], references: [id])
+  creator         Profile             @relation("EmailCampaignCreator", fields: [createdBy], references: [id])
+  team            Team                @relation("TeamEmailCampaigns", fields: [teamId], references: [id], onDelete: Cascade)
+  template        EmailTemplate       @relation(fields: [templateId], references: [id])
+  logs            EmailLog[]
+
+  @@index([teamId, status])
+  @@index([teamId, scheduledAt])
+  @@index([createdBy])
+  @@map("corretor_studio_email_campaigns")
+}
+
+model EmailLog {
+  id             String         @id @default(uuid()) @db.Uuid
+  teamId         String         @db.Uuid
+  campaignId     String?        @db.Uuid
+  resendEmailId  String?        @unique
+  recipientEmail String
+  recipientName  String?
+  subject        String
+  status         EmailLogStatus @default(queued)
+  sentAt         DateTime?      @db.Timestamptz(6)
+  deliveredAt    DateTime?      @db.Timestamptz(6)
+  openedAt       DateTime?      @db.Timestamptz(6)
+  clickedAt      DateTime?      @db.Timestamptz(6)
+  bouncedAt      DateTime?      @db.Timestamptz(6)
+  complainedAt   DateTime?      @db.Timestamptz(6)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(6)
+  events         EmailEvent[]
+  campaign       EmailCampaign? @relation(fields: [campaignId], references: [id])
+  team           Team           @relation("TeamEmailLogs", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, status])
+  @@index([teamId, campaignId])
+  @@index([recipientEmail])
+  @@index([sentAt(sort: Desc)])
+  @@map("corretor_studio_email_logs")
+}
+
+model EmailEvent {
+  id         String         @id @default(uuid()) @db.Uuid
+  logId      String         @db.Uuid
+  type       EmailEventType
+  occurredAt DateTime       @db.Timestamptz(6)
+  metadata   Json?
+  createdAt  DateTime       @default(now()) @db.Timestamptz(6)
+  log        EmailLog       @relation(fields: [logId], references: [id], onDelete: Cascade)
+
+  @@index([logId, occurredAt(sort: Desc)])
+  @@map("corretor_studio_email_events")
+}
+
+model BackofficeProduct {
+  id                       String                              @id @default(uuid()) @db.Uuid
+  name                     String
+  slug                     String                              @unique
+  description              String?
+  type                     BackofficeProductType
+  billingMode              BackofficeProductBillingMode        @default(RECURRING)
+  priceMonthly             Decimal?                            @db.Decimal(10, 2)
+  priceQuarterly           Decimal?                            @db.Decimal(10, 2)
+  priceSemiannual          Decimal?                            @db.Decimal(10, 2)
+  priceLifetime            Decimal?                            @db.Decimal(10, 2)
+  isActive                 Boolean                             @default(true)
+  createdAt                DateTime                            @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime                            @updatedAt @db.Timestamptz(6)
+  priceAnnual              Decimal?                            @db.Decimal(10, 2)
+  features                 BackofficeFeature[]
+  paymentRules             BackofficeProductPaymentRule[]
+  userProductSubscriptions BackofficeUserProductSubscription[]
+  profileSubscriptions     ProfileSubscription[]
+
+  @@index([slug])
+  @@index([type, isActive])
+  @@map("backoffice_products")
+}
+
+model BackofficeFeature {
+  id                    String                        @id @default(uuid()) @db.Uuid
+  slug                  String                        @unique
+  name                  String
+  description           String?
+  parentId              String?                       @db.Uuid
+  productSlug           String?
+  accessMode            BackofficeFeatureAccessMode   @default(PUBLIC)
+  defaultAccessLevel    BackofficeFeatureAccessLevel  @default(FULL)
+  betaEnabled           Boolean                       @default(false)
+  inheritParentSettings Boolean                       @default(false)
+  isActive              Boolean                       @default(true)
+  sortOrder             Int                           @default(0)
+  createdAt             DateTime                      @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime                      @updatedAt @db.Timestamptz(6)
+  accessRules           BackofficeFeatureAccessRule[]
+  grants                BackofficeFeatureGrant[]
+  parent                BackofficeFeature?            @relation("BackofficeFeatureTree", fields: [parentId], references: [id])
+  children              BackofficeFeature[]           @relation("BackofficeFeatureTree")
+  product               BackofficeProduct?            @relation(fields: [productSlug], references: [slug])
+
+  @@index([parentId], map: "backoffice_features_parent_id_idx")
+  @@index([productSlug], map: "backoffice_features_product_slug_idx")
+  @@index([isActive, sortOrder], map: "backoffice_features_active_sort_idx")
+  @@map("backoffice_features")
+}
+
+model BackofficeFeatureAccessRule {
+  id          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  featureId   String                       @db.Uuid
+  principal   BackofficeAccessPrincipal
+  accessLevel BackofficeFeatureAccessLevel
+  createdAt   DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime                     @updatedAt @db.Timestamptz(6)
+  feature     BackofficeFeature            @relation(fields: [featureId], references: [id], onDelete: Cascade)
+
+  @@unique([featureId, principal], map: "backoffice_feature_access_rules_feature_principal_key")
+  @@index([featureId], map: "backoffice_feature_access_rules_feature_id_idx")
+  @@map("backoffice_feature_access_rules")
+}
+
+model BackofficeFeatureGrant {
+  id          String                       @id @default(uuid()) @db.Uuid
+  featureId   String                       @db.Uuid
+  profileId   String                       @db.Uuid
+  grantType   BackofficeFeatureGrantType   @default(BETA)
+  accessLevel BackofficeFeatureAccessLevel @default(FULL)
+  isActive    Boolean                      @default(true)
+  createdAt   DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime                     @updatedAt @db.Timestamptz(6)
+  feature     BackofficeFeature            @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  profile     Profile                      @relation("BackofficeFeatureProfileGrants", fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([featureId, profileId, grantType], map: "backoffice_feature_grants_feature_profile_grant_type_key")
+  @@index([profileId, grantType, isActive], map: "backoffice_feature_grants_profile_grant_type_active_idx")
+  @@index([featureId, isActive], map: "backoffice_feature_grants_feature_active_idx")
+  @@map("backoffice_feature_grants")
+}
+
+model BackofficeProductPaymentRule {
+  id              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productId       String                         @db.Uuid
+  paymentMethod   BackofficePaymentMethod
+  billingCycle    BackofficeAdhesionBillingCycle
+  price           Decimal                        @db.Decimal(10, 2)
+  canInstallment  Boolean                        @default(false)
+  maxInstallments Int                            @default(1)
+  createdAt       DateTime                       @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime                       @default(now()) @updatedAt @db.Timestamptz(6)
+  product         BackofficeProduct              @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "backoffice_product_payment_rules_productid_fkey")
+
+  @@unique([productId, paymentMethod, billingCycle], map: "backoffice_product_payment_rules_unique")
+  @@index([productId], map: "backoffice_product_payment_rules_productid_idx")
+  @@map("backoffice_product_payment_rules")
+}
+
+model BackofficeUserProductSubscription {
+  id         String                          @id @default(uuid()) @db.Uuid
+  profileId  String                          @db.Uuid
+  productId  String                          @db.Uuid
+  status     BackofficeSubscriptionStatus    @default(active)
+  cycle      BackofficeAdhesionBillingCycle?
+  startDate  DateTime                        @db.Timestamptz(6)
+  endDate    DateTime?                       @db.Timestamptz(6)
+  adhesionId String?                         @db.Uuid
+  createdAt  DateTime                        @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime                        @updatedAt @db.Timestamptz(6)
+  product    BackofficeProduct               @relation(fields: [productId], references: [id], map: "backoffice_user_subscriptions_productId_fkey")
+  profile    Profile                         @relation("BackofficeUserProductSubscriptions", fields: [profileId], references: [id], onDelete: Cascade, map: "backoffice_user_subscriptions_profileId_fkey")
+
+  @@unique([profileId, productId], map: "backoffice_user_product_subscriptions_profile_id_product_id_key")
+  @@index([profileId, status])
+  @@index([productId])
+  @@index([adhesionId])
+  @@map("backoffice_user_product_subscriptions")
+}
+
+model ProfileSubscription {
+  id                       String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId                String                       @unique @db.Uuid
+  adhesionId               String?                      @unique @db.Uuid
+  productId                String?                      @db.Uuid
+  asaasSubscriptionId      String?
+  asaasInstallmentId       String?
+  subscriptionStatus       SubscriptionStatus?
+  subscriptionPlan         SubscriptionPlan?
+  subscriptionStartDate    DateTime?                    @db.Timestamptz(6)
+  subscriptionEndDate      DateTime?                    @db.Timestamptz(6)
+  trialEndDate             DateTime?                    @db.Timestamptz(6)
+  subscriptionNextDueDate  DateTime?                    @db.Timestamptz(6)
+  subscriptionCycle        String?
+  subscriptionLastSyncedAt DateTime?                    @db.Timestamptz(6)
+  hasPermanentSubscription Boolean                      @default(false)
+  createdAt                DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime                     @default(now()) @updatedAt @db.Timestamptz(6)
+  asaasCustomerId          String?
+  capacity                 ProfileSubscriptionCapacity?
+  adhesion                 BackofficeAdhesion?          @relation(fields: [adhesionId], references: [id], onUpdate: NoAction, map: "profile_subscriptions_adhesionId_fkey")
+  product                  BackofficeProduct?           @relation(fields: [productId], references: [id], onUpdate: NoAction, map: "profile_subscriptions_productId_fkey")
+  profile                  Profile                      @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscriptions_profileId_fkey")
+
+  @@index([adhesionId], map: "profile_subscriptions_adhesion_id_idx")
+  @@index([productId], map: "profile_subscriptions_product_id_idx")
+  @@index([subscriptionStatus], map: "profile_subscriptions_status_idx")
+  @@map("corretor_studio_profile_subscriptions")
+}
+
+model ProfileSubscriptionCapacity {
+  id                         String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileSubscriptionId      String              @unique @db.Uuid
+  includedExtraTeams         Int                 @default(0)
+  includedExtraUsers         Int                 @default(0)
+  manualAdjustmentExtraTeams Int                 @default(0)
+  manualAdjustmentExtraUsers Int                 @default(0)
+  createdAt                  DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt                  DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
+  profileSubscription        ProfileSubscription @relation(fields: [profileSubscriptionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscription_capacities_subscription_id_fkey")
+
+  @@map("corretor_studio_profile_subscription_capacities")
+}
+
+model ProfileUserType {
+  id          String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String                      @unique
+  name        String
+  description String?
+  createdAt   DateTime                    @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime                    @default(now()) @updatedAt @db.Timestamptz(6)
+  assignments ProfileUserTypeAssignment[]
+
+  @@map("profile_user_types")
+}
+
+model ProfileUserTypeAssignment {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileId           String          @unique(map: "profile_user_type_assignments_profile_id_key") @db.Uuid
+  userTypeId          String          @db.Uuid
+  accessStartsAt      DateTime?       @db.Timestamptz(6)
+  accessExpiresAt     DateTime?       @db.Timestamptz(6)
+  assignedByProfileId String?         @db.Uuid
+  createdAt           DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime        @default(now()) @updatedAt @db.Timestamptz(6)
+  assignedBy          Profile?        @relation("ProfileUserTypeAssignmentAssignedBy", fields: [assignedByProfileId], references: [id], onUpdate: NoAction, map: "profile_user_type_assignments_assigned_by_profile_id_fkey")
+  profile             Profile         @relation("ProfileUserTypeAssignment", fields: [profileId], references: [id], onDelete: Cascade, map: "profile_user_type_assignments_profile_id_fkey")
+  userType            ProfileUserType @relation(fields: [userTypeId], references: [id], onUpdate: NoAction, map: "profile_user_type_assignments_user_type_id_fkey")
+
+  @@index([accessExpiresAt], map: "profile_user_type_assignments_access_expires_at_idx")
+  @@index([userTypeId], map: "profile_user_type_assignments_user_type_id_idx")
+  @@map("profile_user_type_assignments")
+}
 
 enum UserRole {
   manager
@@ -256,22 +1465,20 @@ enum BackofficeAccessPrincipal {
   @@map("backoffice_access_principal")
 }
 
-// AgeRange foi alterado para String - formato livre: "36, 32, 13"
-
 enum SubscriptionStatus {
-  trial // Período de teste (7-30 dias)
-  active // Ativa e paga
-  past_due // Pagamento atrasado (ainda com acesso)
-  suspended // Suspensa por falta de pagamento
-  canceled // Cancelada pelo usuário
+  trial
+  active
+  past_due
+  suspended
+  canceled
 
   @@map("subscription_status")
 }
 
 enum SubscriptionPlan {
-  free_trial // Trial gratuito
-  manager_base // R$ 59,90 - Somente Manager
-  with_operators // R$ 59,90 + (N × R$ 19,90)
+  free_trial
+  manager_base
+  with_operators
 
   @@map("subscription_plan")
 }
@@ -384,1367 +1591,3 @@ enum EmailEventType {
 
   @@map("email_event_type")
 }
-
-// -----------------------------
-// PROFILES (public.profiles)
-// - Primary key is also a FK to auth.users.id (1:1)
-// - Self-relation: operator -> manager
-// -----------------------------
-
-model Profile {
-  id                       String              @id @unique @default(uuid()) @db.Uuid
-  email                    String              @unique @db.Text
-  supabaseId               String?             @unique @db.Uuid
-  fullName                 String?             @db.Text
-  phone                    String?             @db.Text
-  cpfCnpj                  String?             @db.Text
-  postalCode               String?             @db.Text
-  address                  String?             @db.Text
-  addressNumber            String?             @db.Text
-  neighborhood             String?             @db.Text
-  complement               String?             @db.Text
-  city                     String?             @db.Text
-  state                    String?             @db.Text
-  profileIconId            String?             @db.Text
-  profileIconUrl           String?             @db.Text
-  role                     UserRole            @default(manager)
-  functions                UserFunction[]      @default([])
-  isMaster                 Boolean             @default(false) // Indica se é o dono da assinatura
-  canCreateAccountUsers    Boolean             @default(false)
-  canManageAccountTeams    Boolean             @default(false)
-  hasPermanentSubscription Boolean             @default(false) // Indica se tem assinatura permanente (não precisa pagar)
-  googleConnectionId       String?             @db.Uuid
-  managerId                String?             @db.Uuid
-  asaasCustomerId          String?             @db.Text
-  subscriptionId           String?             @db.Text
-  subscriptionStatus       SubscriptionStatus?
-  subscriptionPlan         SubscriptionPlan?
-  operatorCount            Int                 @default(0)
-  subscriptionStartDate    DateTime?           @db.Timestamptz(6)
-  subscriptionEndDate      DateTime?           @db.Timestamptz(6)
-  trialEndDate             DateTime?           @db.Timestamptz(6)
-  asaasSubscriptionId      String?             @db.Text // ID da assinatura no Asaas
-  subscriptionNextDueDate  DateTime?           @db.Timestamptz(6) // Próxima data de vencimento
-  subscriptionCycle        String?             @db.Text // MONTHLY, QUARTERLY, etc
-  activeTeamId             String?             @db.Uuid
-  timezone                 String              @default("America/Sao_Paulo") @db.Text
-
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @db.Timestamptz(6)
-
-  // Relations
-  manager   Profile?  @relation("ManagerOperators", fields: [managerId], references: [id], onDelete: Restrict)
-  operators Profile[] @relation("ManagerOperators")
-
-  // Lead relations
-  leadsAsManager    Lead[]                 @relation("LeadManager")
-  leadsAsAssignee   Lead[]                 @relation("LeadAssignee")
-  leadsAsCloser     Lead[]                 @relation("LeadCloser")
-  leadsAsCreator    Lead[]                 @relation("LeadCreator")
-  leadsAsUpdater    Lead[]                 @relation("LeadUpdater")
-  activities        LeadActivity[]
-  activityReactions LeadActivityReaction[]
-  attachments       LeadAttachment[]       @relation("AttachmentUploader")
-
-  // Pending Operators relations
-  pendingOperators            PendingOperator[]         @relation("PendingOperatorManager")
-  pendingActions              PendingAction[]           @relation("PendingActionMaster")
-  teamsOwned                  Team[]                    @relation("TeamMaster")
-  teamMemberships             TeamMember[]
-  createdHealthPlanOptions    HealthPlanOption[]        @relation("HealthPlanOptionCreator")
-  backofficeUser              BackofficeUser?           @relation("BackofficeUserProfile")
-  googleConnection            GoogleOAuthConnection?    @relation("ProfileGoogleConnection", fields: [googleConnectionId], references: [id], onDelete: SetNull)
-  ownedGoogleConnections      GoogleOAuthConnection[]   @relation("GoogleConnectionOwnerProfile")
-  linkedFromBackofficeUsers   BackofficeUser[]          @relation("BackofficeUserLinkedProfile")
-  createdBackofficeUsers      BackofficeUser[]          @relation("BackofficeUserCreator")
-  createdBackofficeClients    BackofficeClient[]        @relation("BackofficeClientCreator")
-  createdBackofficePayments   BackofficePayment[]       @relation("BackofficePaymentCreator")
-  createdBackofficeLeads      BackofficeLead[]          @relation("BackofficeLeadCreator")
-  receivedNotifications       Notification[]            @relation("NotificationRecipient")
-  sentNotifications           Notification[]            @relation("NotificationActor")
-  updatedStudioWebhookConfigs TeamStudioWebhookConfig[] @relation("StudioWebhookConfigUpdater")
-  createdTeamFilterPresets    TeamFilterPreset[]        @relation("TeamFilterPresetCreator")
-  createdTeamStatusRules      TeamStatusRule[]          @relation("TeamStatusRuleCreator")
-  finalizedContracts          LeadFinalized[]           @relation("LeadFinalizedCloser")
-  createdTasks                Task[]                    @relation("TaskCreator")
-  taskAssignments             TaskAssignee[]            @relation("TaskAssigneeProfile")
-
-  // Email campaigns relations
-  emailCreditSubscription  EmailCreditSubscription? @relation("EmailCreditSubscriptionOwner")
-  emailTemplatesCreated    EmailTemplate[]          @relation("EmailTemplateCreator")
-  emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
-  emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
-
-  // Backoffice subscriptions
-  backofficeSubscriptions BackofficeUserSubscription[] @relation("BackofficeUserSubscriptions")
-  backofficeFeatureGrants BackofficeFeatureGrant[]     @relation("BackofficeFeatureProfileGrants")
-
-  // Product subscription (master only; operators inherit via managerId)
-  subscription ProfileSubscription?
-
-  // User type (Comum / Member PRO)
-  userTypeAssignment      ProfileUserTypeAssignment?  @relation("ProfileUserTypeAssignment")
-  assignedUserTypeChanges ProfileUserTypeAssignment[] @relation("ProfileUserTypeAssignmentAssignedBy")
-
-  @@index([role])
-  @@index([managerId])
-  @@index([cpfCnpj])
-  @@index([googleConnectionId])
-  @@map("corretor_studio_profiles")
-}
-
-model HealthPlanOption {
-  id             String   @id @default(uuid()) @db.Uuid
-  name           String   @db.Text
-  normalizedName String   @unique @db.Text
-  isActive       Boolean  @default(true)
-  isDefault      Boolean  @default(false)
-  iconUrl        String?  @db.Text
-  createdBy      String?   @db.Uuid
-  createdAt      DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
-  activatedAt    DateTime? @db.Timestamptz(6)
-  deactivatedAt  DateTime? @db.Timestamptz(6)
-
-  creator Profile? @relation("HealthPlanOptionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-
-  @@index([name])
-  @@index([isActive, isDefault])
-  @@index([createdBy])
-  @@map("corretor_studio_health_plan_options")
-}
-
-// -----------------------------
-// BACKOFFICE MODULE (public.backoffice_*)
-// -----------------------------
-
-model BackofficeUser {
-  id                      String    @id @default(uuid()) @db.Uuid
-  profileId               String    @unique @map("profileId") @db.Uuid
-  email                   String    @unique @db.Text
-  fullAccess              Boolean   @default(false) @map("fullAccess")
-  isActive                Boolean   @default(true) @map("isActive")
-  isSdr                   Boolean   @default(true) @map("isSdr")
-  isCloser                Boolean   @default(true) @map("isCloser")
-  googleConnectionId      String?   @map("googleConnectionId") @db.Uuid
-  linkedCorretorStudioProfileId String? @map("linkedCorretorStudioProfileId") @db.Uuid
-  timezone                String    @default("America/Sao_Paulo") @db.Text
-  mailboxStatus           String    @default("pending_manual_action") @map("mailboxStatus") @db.Text
-  mailboxAddress          String?   @map("mailboxAddress") @db.Text
-  mailboxProvisionedAt    DateTime? @map("mailboxProvisionedAt") @db.Timestamptz(6)
-  createdByProfileId      String?   @map("createdByProfileId") @db.Uuid
-  createdAt               DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt               DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
-
-  profile                Profile                  @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
-  creator                Profile?                 @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
-  googleConnection       GoogleOAuthConnection?   @relation("BackofficeUserGoogleConnection", fields: [googleConnectionId], references: [id], onDelete: SetNull)
-  linkedCorretorStudioProfile Profile?            @relation("BackofficeUserLinkedProfile", fields: [linkedCorretorStudioProfileId], references: [id], onDelete: SetNull)
-  generatedWebhookTokens BackofficeWebhookToken[] @relation("BackofficeWebhookTokenGenerator")
-  sdrLeads               BackofficeLead[]         @relation("BackofficeLeadSdr")
-  closerLeads            BackofficeLead[]         @relation("BackofficeLeadCloser")
-  schedulesAsCloser      BackofficeLeadSchedule[] @relation("BackofficeLeadScheduleCloser")
-  sdrAdhesions           BackofficeAdhesion[]     @relation("BackofficeAdhesionSdr")
-  closerAdhesions        BackofficeAdhesion[]     @relation("BackofficeAdhesionCloser")
-  createdAdhesions       BackofficeAdhesion[]     @relation("BackofficeAdhesionCreator")
-
-  @@index([isActive], map: "backoffice_users_is_active_idx")
-  @@index([isSdr], map: "backoffice_users_is_sdr_idx")
-  @@index([isCloser], map: "backoffice_users_is_closer_idx")
-  @@index([googleConnectionId], map: "backoffice_users_google_connection_id_idx")
-  @@index([linkedCorretorStudioProfileId], map: "backoffice_users_linked_profile_id_idx")
-  @@index([createdByProfileId], map: "backoffice_users_created_by_profile_id_idx")
-  @@map("backoffice_users")
-}
-
-model GoogleOAuthConnection {
-  id               String    @id @default(uuid()) @db.Uuid
-  googleEmail      String    @unique @db.Text
-  accessToken      String?   @db.Text
-  refreshToken     String?   @db.Text
-  tokenExpiresAt   DateTime? @db.Timestamptz(6)
-  scopes           String[]  @default([]) @db.Text
-  ownerProfileId   String?   @db.Uuid
-  lastRefreshedAt  DateTime? @db.Timestamptz(6)
-  lastRefreshError String?   @db.Text
-  revokedAt        DateTime? @db.Timestamptz(6)
-  createdAt        DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
-
-  ownerProfile   Profile?         @relation("GoogleConnectionOwnerProfile", fields: [ownerProfileId], references: [id], onDelete: SetNull)
-  profiles       Profile[]        @relation("ProfileGoogleConnection")
-  backofficeUsers BackofficeUser[] @relation("BackofficeUserGoogleConnection")
-
-  @@index([ownerProfileId])
-  @@index([googleEmail])
-  @@map("google_oauth_connections")
-}
-
-model BackofficeClient {
-  id                 String   @id @default(uuid()) @db.Uuid
-  fullName           String   @map("fullName") @db.Text
-  email              String?  @db.Text
-  phone              String?  @db.Text
-  cpfCnpj            String?  @map("cpfCnpj") @db.Text
-  notes              String?  @db.Text
-  asaasCustomerId    String?  @unique @map("asaasCustomerId") @db.Text
-  isActive           Boolean  @default(true) @map("isActive")
-  createdByProfileId String?  @map("createdByProfileId") @db.Uuid
-  createdAt          DateTime @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt          DateTime @default(now()) @map("updatedAt") @db.Timestamptz(6)
-
-  creator  Profile?            @relation("BackofficeClientCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
-  payments BackofficePayment[]
-
-  @@index([email], map: "backoffice_clients_email_idx")
-  @@index([cpfCnpj], map: "backoffice_clients_cpf_cnpj_idx")
-  @@index([isActive], map: "backoffice_clients_is_active_idx")
-  @@map("backoffice_clients")
-}
-
-model BackofficePayment {
-  id                 String    @id @default(uuid()) @db.Uuid
-  clientId           String    @map("clientId") @db.Uuid
-  asaasPaymentId     String?   @unique @map("asaasPaymentId") @db.Text
-  billingType        String    @default("PIX") @map("billingType") @db.Text
-  status             String    @default("PENDING") @db.Text
-  amount             Decimal   @db.Decimal(12, 2)
-  dueDate            DateTime? @map("dueDate") @db.Timestamptz(6)
-  description        String?   @db.Text
-  invoiceUrl         String?   @map("invoiceUrl") @db.Text
-  pixQrCode          String?   @map("pixQrCode") @db.Text
-  pixPayload         String?   @map("pixPayload") @db.Text
-  createdByProfileId String?   @map("createdByProfileId") @db.Uuid
-  createdAt          DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt          DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
-
-  client  BackofficeClient @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  creator Profile?         @relation("BackofficePaymentCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
-
-  @@index([clientId], map: "backoffice_payments_client_id_idx")
-  @@index([status], map: "backoffice_payments_status_idx")
-  @@index([dueDate], map: "backoffice_payments_due_date_idx")
-  @@map("backoffice_payments")
-}
-
-model BackofficeLead {
-  id                     String               @id @default(uuid()) @db.Uuid
-  name                   String               @db.Text
-  email                  String?              @db.Text
-  phone                  String?              @db.Text
-  cpfCnpj                String?              @db.Text
-  notes                  String?              @db.Text
-  status                 BackofficeLeadStatus @default(new_opportunity)
-  origin                 BackofficeLeadOrigin @default(manual)
-  sourceExternalId       String?              @unique(map: "backoffice_leads_source_external_id_key") @map("sourceExternalId") @db.Text
-  sourceWebhookEventId   String?              @unique(map: "backoffice_leads_source_webhook_event_id_key") @map("sourceWebhookEventId") @db.Uuid
-  sdrBackofficeUserId    String?              @map("sdrBackofficeUserId") @db.Uuid
-  closerBackofficeUserId String?              @map("closerBackofficeUserId") @db.Uuid
-  meetingDate            DateTime?            @map("meetingDate") @db.Timestamptz(6)
-  meetingTitle           String?              @map("meetingTitle") @db.Text
-  meetingNotes           String?              @map("meetingNotes") @db.Text
-  meetingLink            String?              @map("meetingLink") @db.Text
-  meetingExtraGuests     String[]             @default([]) @map("meetingExtraGuests")
-  statusEnteredAt        DateTime             @default(now()) @map("statusEnteredAt") @db.Timestamptz(6)
-  createdByProfileId     String?              @map("createdByProfileId") @db.Uuid
-  createdAt              DateTime             @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt              DateTime             @updatedAt @map("updatedAt") @db.Timestamptz(6)
-
-  qualificationLeadOrganization String? @map("qualification_lead_organization") @db.Text
-  qualificationAvgUsers         String? @map("qualification_avg_users") @db.Text
-  qualificationProfileFit       String? @map("qualification_profile_fit") @db.Text
-
-  creator              Profile?                 @relation("BackofficeLeadCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
-  sourceWebhookEvent   BackofficeWebhookEvent?  @relation("BackofficeLeadSourceWebhookEvent", fields: [sourceWebhookEventId], references: [id], onDelete: SetNull, map: "backoffice_leads_source_webhook_event_id_fkey")
-  sdrBackofficeUser    BackofficeUser?          @relation("BackofficeLeadSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_sdr_backoffice_user_id_fkey")
-  closerBackofficeUser BackofficeUser?          @relation("BackofficeLeadCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_closer_backoffice_user_id_fkey")
-  schedules            BackofficeLeadSchedule[]
-  adhesion             BackofficeAdhesion?
-
-  @@index([status], map: "backoffice_leads_status_idx")
-  @@index([origin], map: "backoffice_leads_origin_idx")
-  @@index([sdrBackofficeUserId], map: "backoffice_leads_sdr_user_id_idx")
-  @@index([closerBackofficeUserId], map: "backoffice_leads_closer_user_id_idx")
-  @@index([meetingDate], map: "backoffice_leads_meeting_date_idx")
-  @@index([createdByProfileId], map: "backoffice_leads_created_by_profile_id_idx")
-  @@index([email], map: "backoffice_leads_email_idx")
-  @@index([cpfCnpj], map: "backoffice_leads_cpf_cnpj_idx")
-  @@map("backoffice_leads")
-}
-
-model BackofficeAdhesion {
-  id                        String                         @id @default(uuid()) @db.Uuid
-  leadId                    String                         @unique @map("leadId") @db.Uuid
-  fullName                  String                         @map("fullName") @db.Text
-  phone                     String                         @db.Text
-  email                     String?                        @db.Text
-  cpfCnpj                   String?                        @map("cpfCnpj") @db.Text
-  postalCode                String?                        @map("postalCode") @db.Text
-  address                   String?                        @db.Text
-  addressNumber             String?                        @map("addressNumber") @db.Text
-  neighborhood              String?                        @db.Text
-  complement                String?                        @db.Text
-  city                      String?                        @db.Text
-  state                     String?                        @db.Text
-  plan                      BackofficeAdhesionPlan         @default(crm)
-  cycle                     BackofficeAdhesionBillingCycle
-  modules                   String[]                       @default(["crm"])
-  extraTeams                Int                            @default(0) @map("extraTeams")
-  extraUsers                Int                            @default(0) @map("extraUsers")
-  monthlyBaseAmount         Decimal                        @map("monthlyBaseAmount") @db.Decimal(12, 2)
-  monthlyExtraTeamsAmount   Decimal                        @map("monthlyExtraTeamsAmount") @db.Decimal(12, 2)
-  monthlyExtraUsersAmount   Decimal                        @map("monthlyExtraUsersAmount") @db.Decimal(12, 2)
-  monthlyTotalAmount        Decimal                        @map("monthlyTotalAmount") @db.Decimal(12, 2)
-  totalAmount               Decimal                        @map("totalAmount") @db.Decimal(12, 2)
-  tokenHash                 String                         @unique @map("tokenHash") @db.Text
-  tokenPreview              String                         @map("tokenPreview") @db.Text
-  expiresAt                 DateTime                       @map("expiresAt") @db.Timestamptz(6)
-  status                    BackofficeAdhesionStatus       @default(pending)
-  tokenPlain                String?                        @map("tokenPlain") @db.Text
-  sdrBackofficeUserId       String?                        @map("sdrBackofficeUserId") @db.Uuid
-  closerBackofficeUserId    String?                        @map("closerBackofficeUserId") @db.Uuid
-  createdByBackofficeUserId String?                        @map("createdByBackofficeUserId") @db.Uuid
-  asaasCustomerId           String?                        @map("asaasCustomerId") @db.Text
-  asaasPaymentId            String?                        @unique @map("asaasPaymentId") @db.Text
-  asaasInstallmentId        String?                        @unique(map: "backoffice_adhesions_asaasinstallmentid_key") @map("asaasInstallmentId") @db.Text
-  installmentCount          Int?                           @map("installmentCount")
-  billingType               String?                        @map("billingType") @db.Text
-  paymentDueDate            DateTime?                      @map("paymentDueDate") @db.Timestamptz(6)
-  invoiceUrl                String?                        @map("invoiceUrl") @db.Text
-  bankSlipUrl               String?                        @map("bankSlipUrl") @db.Text
-  pixQrCode                 String?                        @map("pixQrCode") @db.Text
-  pixPayload                String?                        @map("pixPayload") @db.Text
-  paidAt                    DateTime?                      @map("paidAt") @db.Timestamptz(6)
-  overdueAt                 DateTime?                      @map("overdueAt") @db.Timestamptz(6)
-  canceledAt                DateTime?                      @map("canceledAt") @db.Timestamptz(6)
-  createdProfileId          String?                        @map("createdProfileId") @db.Uuid
-  createdSupabaseId         String?                        @map("createdSupabaseId") @db.Uuid
-  requestedUserTypeSlug             String?   @map("requestedUserTypeSlug") @db.Text
-  requestedMemberProAccessExpiresAt DateTime? @map("requestedMemberProAccessExpiresAt") @db.Timestamptz(6)
-  createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt                 DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
-
-  lead                    BackofficeLead  @relation(fields: [leadId], references: [id], onDelete: Restrict)
-  sdrBackofficeUser       BackofficeUser? @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
-  closerBackofficeUser    BackofficeUser? @relation("BackofficeAdhesionCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull)
-  createdByBackofficeUser BackofficeUser? @relation("BackofficeAdhesionCreator", fields: [createdByBackofficeUserId], references: [id], onDelete: SetNull)
-
-  profileSubscription ProfileSubscription?
-
-  @@index([status], map: "backoffice_adhesions_status_idx")
-  @@index([expiresAt], map: "backoffice_adhesions_expires_at_idx")
-  @@index([leadId], map: "backoffice_adhesions_lead_id_idx")
-  @@index([sdrBackofficeUserId], map: "backoffice_adhesions_sdr_user_id_idx")
-  @@index([closerBackofficeUserId], map: "backoffice_adhesions_closer_user_id_idx")
-  @@map("backoffice_adhesions")
-}
-
-model BackofficeLeadSchedule {
-  id                          String                          @id @default(uuid()) @db.Uuid
-  leadId                      String                          @map("leadId") @db.Uuid
-  closerBackofficeUserId      String?                         @map("closerBackofficeUserId") @db.Uuid
-  date                        DateTime                        @db.Timestamptz(6)
-  meetingTitle                String?                         @map("meetingTitle") @db.Text
-  notes                       String?                         @db.Text
-  meetingLink                 String?                         @map("meetingLink") @db.Text
-  extraGuests                 String[]                        @default([]) @map("extraGuests")
-  googleEventId               String?                         @map("googleEventId") @db.Text
-  googleCalendarId            String?                         @map("googleCalendarId") @db.Text
-  inviteDispatchStatus        BackofficeInviteDispatchStatus? @map("inviteDispatchStatus")
-  inviteDispatchProvider      String?                         @map("inviteDispatchProvider") @db.Text
-  inviteDispatchFallbackUsed  Boolean                         @default(false) @map("inviteDispatchFallbackUsed")
-  inviteDispatchLastAttemptAt DateTime?                       @map("inviteDispatchLastAttemptAt") @db.Timestamptz(6)
-  inviteDispatchLastError     String?                         @map("inviteDispatchLastError") @db.Text
-  inviteDispatchLastPayload   Json?                           @map("inviteDispatchLastPayload")
-  isCanceled                  Boolean                         @default(false) @map("isCanceled")
-  canceledAt                  DateTime?                       @map("canceledAt") @db.Timestamptz(6)
-  canceledByProfileId         String?                         @map("canceledByProfileId") @db.Uuid
-  cancelReason                String?                         @map("cancelReason") @db.Text
-  createdByProfileId          String?                         @map("createdByProfileId") @db.Uuid
-  createdAt                   DateTime                        @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt                   DateTime                        @updatedAt @map("updatedAt") @db.Timestamptz(6)
-
-  lead   BackofficeLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  closer BackofficeUser? @relation("BackofficeLeadScheduleCloser", fields: [closerBackofficeUserId], references: [id], onDelete: SetNull, map: "backoffice_leads_schedule_closer_backoffice_user_id_fkey")
-
-  @@index([leadId], map: "backoffice_leads_schedule_lead_id_idx")
-  @@index([closerBackofficeUserId], map: "backoffice_leads_schedule_closer_user_id_idx")
-  @@index([date], map: "backoffice_leads_schedule_date_idx")
-  @@index([isCanceled], map: "backoffice_leads_schedule_is_canceled_idx")
-  @@map("backoffice_leads_schedule")
-}
-
-model BackofficeWebhookEvent {
-  id           String                       @id @default(uuid()) @db.Uuid
-  source       BackofficeWebhookSource
-  eventType    String?                      @map("eventType") @db.Text
-  payload      Json
-  signature    String?                      @db.Text
-  status       BackofficeWebhookEventStatus @default(received)
-  errorMessage String?                      @map("errorMessage") @db.Text
-  receivedAt   DateTime                     @default(now()) @map("receivedAt") @db.Timestamptz(6)
-  processedAt  DateTime?                    @map("processedAt") @db.Timestamptz(6)
-
-  createdLead BackofficeLead? @relation("BackofficeLeadSourceWebhookEvent")
-
-  @@index([source, receivedAt(sort: Desc)], map: "backoffice_webhook_events_source_received_at_idx")
-  @@index([status], map: "backoffice_webhook_events_status_idx")
-  @@map("backoffice_webhook_events")
-}
-
-model BackofficeWebhookToken {
-  id                          String                           @id @default(uuid()) @db.Uuid
-  source                      BackofficeWebhookSource
-  tokenHash                   String                           @map("tokenHash") @db.Text
-  tokenCipher                 String                           @map("tokenCipher") @db.Text
-  tokenPreview                String                           @map("tokenPreview") @db.Text
-  status                      BackofficeWebhookTokenStatus     @default(active)
-  expiryMode                  BackofficeWebhookTokenExpiryMode @default(indeterminate) @map("expiryMode")
-  expiresAt                   DateTime?                        @map("expiresAt") @db.Timestamptz(6)
-  lastUsedAt                  DateTime?                        @map("lastUsedAt") @db.Timestamptz(6)
-  generatedByBackofficeUserId String                           @map("generatedByBackofficeUserId") @db.Uuid
-  generatedByEmailSnapshot    String                           @map("generatedByEmailSnapshot") @db.Text
-  generatedAt                 DateTime                         @default(now()) @map("generatedAt") @db.Timestamptz(6)
-  updatedAt                   DateTime                         @updatedAt @map("updatedAt") @db.Timestamptz(6)
-
-  generatedBy BackofficeUser @relation("BackofficeWebhookTokenGenerator", fields: [generatedByBackofficeUserId], references: [id], onDelete: Restrict)
-
-  @@index([source, status], map: "backoffice_webhook_tokens_source_status_idx")
-  @@index([generatedAt(sort: Desc)], map: "backoffice_webhook_tokens_generated_at_idx")
-  @@index([expiresAt], map: "backoffice_webhook_tokens_expires_at_idx")
-  @@index([generatedByBackofficeUserId], map: "backoffice_webhook_tokens_generated_by_idx")
-  @@map("backoffice_webhook_tokens")
-}
-
-model BackofficeWebhookRequestLog {
-  id              String                  @id @default(uuid()) @db.Uuid
-  source          BackofficeWebhookSource
-  method          String                  @db.Text
-  endpoint        String                  @db.Text
-  statusCode      Int                     @map("statusCode")
-  resultType      String                  @map("resultType") @db.Text
-  requestPayload  Json?                   @map("requestPayload")
-  responsePayload Json?                   @map("responsePayload")
-  errorMessage    String?                 @map("errorMessage") @db.Text
-  createdAt       DateTime                @default(now()) @map("createdAt") @db.Timestamptz(6)
-
-  @@index([source, createdAt(sort: Desc)], map: "backoffice_webhook_request_logs_source_created_at_idx")
-  @@index([statusCode], map: "backoffice_webhook_request_logs_status_code_idx")
-  @@map("backoffice_webhook_request_logs")
-}
-
-// -----------------------------
-// LEADS (public.leads)
-// - tenant fence by managerId (uuid of manager profile)
-// - assignedTo must be operator (validate at app layer or with DB trigger via SQL)
-// -----------------------------
-
-model Lead {
-  id                   String        @id @unique @default(uuid()) @db.Uuid
-  leadCode             String        @unique @db.Text
-  managerId            String        @db.Uuid
-  teamId               String?       @db.Uuid
-  assignedTo           String?       @db.Uuid
-  closerId             String?       @db.Uuid
-  status               LeadStatus    @default(new_opportunity)
-  name                 String        @db.Text
-  email                String?       @db.Text
-  phone                String?       @db.Text
-  cnpj                 String?       @db.Text
-  age                  String?       @db.Text
-  currentHealthPlan    String?       @db.Text
-  currentValue         Decimal?      @db.Decimal(12, 2)
-  referenceHospital    String?       @db.Text
-  currentTreatment     String?       @db.Text
-  meetingDate          DateTime?     @db.Timestamptz(6)
-  meetingTitle         String?       @db.Text
-  meetingNotes         String?       @db.Text
-  meetingLink          String?       @db.Text
-  meetingHeald         MeetingHeald?
-  meetingType          String?       @db.Text
-  followUpAt           DateTime?     @db.Timestamptz(6)
-  followUpNotes        String?       @db.Text
-  followUpSourceStatus LeadStatus?
-  lossReason           String?       @db.Text
-  lossReasonDetails    String?       @db.Text
-  statusEnteredAt      DateTime      @default(now()) @db.Timestamptz(6)
-  notes                String?       @db.Text
-
-  // Novos campos para leads finalizados (apenas em edição)
-  ticket          Decimal?  @db.Decimal(12, 2) // Valor que foi vendido
-  contractDueDate DateTime? @db.Timestamptz(6) // Data de vigência do contrato
-  soldPlan        String?   @db.Text // Plano vendido
-
-  // Indicação / Referral
-  isReferral      Boolean?  @default(false)
-  referrerLeadId  String?   @db.Uuid
-  referrerName    String?   @db.Text
-  referrerPhone   String?   @db.Text
-
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @db.Timestamptz(6)
-
-  // Relations
-  manager       Profile          @relation("LeadManager", fields: [managerId], references: [id], onDelete: Cascade)
-  team          Team?            @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  assignee      Profile?         @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
-  closer        Profile?         @relation("LeadCloser", fields: [closerId], references: [id], onDelete: SetNull)
-  creator       Profile?         @relation("LeadCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-  updater       Profile?         @relation("LeadUpdater", fields: [updatedBy], references: [id], onDelete: SetNull)
-  referrerLead  Lead?            @relation("LeadReferrer", fields: [referrerLeadId], references: [id], onDelete: SetNull)
-  referredLeads Lead[]           @relation("LeadReferrer")
-  activities    LeadActivity[]
-  tasks         Task[]
-  LeadsSchedule LeadsSchedule[]
-  LeadFinalized LeadFinalized[]
-  portfolio     LeadPortfolio?
-  attachments   LeadAttachment[]
-
-  // Unique per tenant
-  @@unique([teamId, email])
-  @@unique([teamId, cnpj])
-  @@index([teamId])
-  @@index([assignedTo])
-  @@index([closerId])
-  @@index([createdBy])
-  @@index([updatedBy])
-  @@index([meetingDate])
-  @@index([followUpAt])
-  @@index([statusEnteredAt])
-  @@map("corretor_studio_leads")
-}
-
-// -----------------------------
-// LEAD ACTIVITIES (public.lead_activities)
-// -----------------------------
-
-model LeadActivity {
-  id        String       @id @default(uuid()) @db.Uuid
-  leadId    String       @db.Uuid
-  type      ActivityType
-  body      String?      @db.Text
-  payload   Json?
-  createdBy String?      @db.Uuid
-  createdAt DateTime     @default(now()) @db.Timestamptz(6)
-
-  lead      Lead                   @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  author    Profile?               @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-  reactions LeadActivityReaction[]
-  task      Task?
-
-  @@index([leadId])
-  @@index([createdBy])
-  @@map("corretor_studio_lead_activities")
-}
-
-model LeadActivityReaction {
-  id           String   @id @default(uuid()) @db.Uuid
-  activityId   String   @db.Uuid
-  profileId    String   @db.Uuid
-  emoji        String   @db.Text
-  emojiUnified String   @db.Text
-  createdAt    DateTime @default(now()) @db.Timestamptz(6)
-
-  activity LeadActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  profile  Profile      @relation(fields: [profileId], references: [id], onDelete: Cascade)
-
-  @@unique([activityId, profileId, emojiUnified])
-  @@index([activityId])
-  @@index([profileId])
-  @@map("corretor_studio_lead_activity_reactions")
-}
-
-// -----------------------------
-// TASKS (public.tasks)
-// -----------------------------
-
-model Task {
-  id         String    @id @default(uuid()) @db.Uuid
-  leadId     String    @db.Uuid
-  activityId String?   @unique @db.Uuid
-  title      String    @db.Text
-  taskType   TaskType
-  body       String    @db.Text
-  isUrgent   Boolean   @default(false)
-  startAt    DateTime? @db.Timestamptz(6)
-  endAt      DateTime? @db.Timestamptz(6)
-  createdBy  String    @db.Uuid
-  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
-
-  lead      Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  creator   Profile        @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: Restrict)
-  activity  LeadActivity?  @relation(fields: [activityId], references: [id], onDelete: SetNull)
-  assignees TaskAssignee[]
-
-  @@index([leadId])
-  @@index([createdBy])
-  @@index([startAt])
-  @@index([endAt])
-  @@map("corretor_studio_tasks")
-}
-
-model TaskAssignee {
-  id             String             @id @default(uuid()) @db.Uuid
-  taskId         String             @db.Uuid
-  profileId      String             @db.Uuid
-  status         TaskAssigneeStatus @default(PENDING)
-  googleEventId  String?            @db.Text
-  googleCalendarId String?          @db.Text
-  googleSynced   Boolean            @default(false)
-  assignedAt     DateTime           @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime           @updatedAt @db.Timestamptz(6)
-
-  task    Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  profile Profile @relation("TaskAssigneeProfile", fields: [profileId], references: [id], onDelete: Restrict)
-
-  @@unique([taskId, profileId])
-  @@index([taskId])
-  @@index([profileId])
-  @@index([status])
-  @@map("corretor_studio_task_assignees")
-}
-
-model LeadsSchedule {
-  id                          String                @id @default(uuid()) @db.Uuid
-  leadId                      String                @db.Uuid
-  date                        DateTime              @db.Timestamptz(6)
-  noShowCount                 Int                   @default(0) @map("noShowCount")
-  meetingTitle                String?               @db.Text
-  notes                       String?               @db.Text
-  meetingLink                 String?               @db.Text
-  meetingType                 String?               @db.Text
-  extraGuests                 String[]              @default([])
-  googleEventId               String?               @db.Text
-  googleCalendarId            String?               @db.Text
-  inviteDispatchStatus        InviteDispatchStatus?
-  inviteDispatchFallbackUsed  Boolean               @default(false)
-  inviteDispatchLastAttemptAt DateTime?             @db.Timestamptz(6)
-  inviteDispatchLastError     String?               @db.Text
-  inviteDispatchLastPayload   Json?
-  createdAt                   DateTime              @default(now()) @db.Timestamptz(6)
-  updatedAt                   DateTime              @updatedAt @db.Timestamptz(6)
-
-  // Relations
-  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
-
-  @@unique([leadId])
-  @@map("corretor_studio_leads_schedule")
-}
-
-model LeadFinalized {
-  id                  String   @id @default(uuid()) @db.Uuid
-  leadId              String   @db.Uuid
-  finalizedDateAt     DateTime @db.Timestamptz(6)
-  startDateAt         DateTime @db.Timestamptz(6)
-  duration            Int // duration in days from lead creation to finalization
-  amount              Decimal  @db.Decimal(12, 2)
-  notes               String?  @db.Text
-  closerId            String?  @db.Uuid
-  operadora           String?  @db.Text
-  productName         String?  @db.Text
-  contractFileUrl     String?  @db.Text
-  contractStoragePath String?  @db.Text
-  createdAt           DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime @updatedAt @db.Timestamptz(6)
-
-  // Relations
-  lead       Lead                     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  closer     Profile?                 @relation("LeadFinalizedCloser", fields: [closerId], references: [id])
-  holder     LeadFinalizedHolder?
-  dependents LeadFinalizedDependent[]
-
-  @@index([leadId])
-  @@map("corretor_studio_lead_finalized")
-}
-
-model LeadFinalizedHolder {
-  id              String   @id @default(uuid()) @db.Uuid
-  leadFinalizedId String   @unique @db.Uuid
-  name            String   @db.Text
-  birthDate       DateTime @db.Date
-  document        String   @db.Text
-  cnpj            String?  @db.Text
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
-
-  leadFinalized LeadFinalized @relation(fields: [leadFinalizedId], references: [id], onDelete: Cascade)
-
-  @@map("corretor_studio_lead_finalized_holders")
-}
-
-model LeadFinalizedDependent {
-  id              String   @id @default(uuid()) @db.Uuid
-  leadFinalizedId String   @db.Uuid
-  name            String   @db.Text
-  birthDate       DateTime @db.Date
-  parentesco      String   @db.Text
-  document        String?  @db.Text
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(6)
-
-  leadFinalized LeadFinalized @relation(fields: [leadFinalizedId], references: [id], onDelete: Cascade)
-
-  @@index([leadFinalizedId])
-  @@map("corretor_studio_lead_finalized_dependents")
-}
-
-model LeadPortfolio {
-  id              String          @id @default(uuid()) @db.Uuid
-  leadId          String          @unique @db.Uuid
-  teamId          String          @db.Uuid
-  portfolioStatus PortfolioStatus @default(active)
-  source          PortfolioSource @default(crm)
-  note            String?         @db.Text
-  lastContactAt   DateTime?       @db.Timestamptz(6)
-  createdAt       DateTime        @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime        @updatedAt @db.Timestamptz(6)
-
-  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
-
-  @@index([teamId])
-  @@index([teamId, portfolioStatus])
-  @@map("corretor_studio_lead_portfolio")
-}
-
-// -----------------------------
-// LEAD ATTACHMENTS (public.lead_attachments)
-// -----------------------------
-
-model LeadAttachment {
-  id          String   @id @default(uuid()) @db.Uuid
-  leadId      String   @db.Uuid
-  fileName    String   @db.Text
-  fileUrl     String   @db.Text
-  storagePath String   @default("") @db.Text // Caminho do arquivo no storage: "leadId/timestamp-random-filename"
-  fileType    String   @db.Text // mime type: application/pdf, image/png, etc
-  fileSize    Int // size in bytes
-  uploadedBy  String   @db.Uuid
-  uploadedAt  DateTime @default(now()) @db.Timestamptz(6)
-
-  // Relations
-  lead     Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  uploader Profile @relation("AttachmentUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
-
-  @@index([leadId])
-  @@index([uploadedBy])
-  @@map("corretor_studio_lead_attachments")
-}
-
-// -----------------------------
-// PENDING OPERATOR (Operador aguardando pagamento)
-// -----------------------------
-model PendingOperator {
-  id              String         @id @default(uuid()) @db.Uuid
-  managerId       String         @db.Uuid
-  teamId          String?        @db.Uuid
-  name            String         @db.Text
-  email           String         @db.Text
-  role            String         @db.Text // "operator" geralmente
-  functions       UserFunction[] @default([])
-  paymentId       String?        @unique @db.Text // ID do pagamento no Asaas (opcional para assinaturas)
-  subscriptionId  String?        @db.Text // ID da assinatura no Asaas
-  paymentStatus   String         @db.Text // PENDING, CONFIRMED, FAILED
-  paymentMethod   String         @db.Text // PIX, CREDIT_CARD
-  operatorCreated Boolean        @default(false)
-  operatorId      String?        @db.Uuid // ID do operador criado (quando confirmado)
-  createdAt       DateTime       @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime       @updatedAt @db.Timestamptz(6)
-
-  // Relations
-  manager Profile @relation("PendingOperatorManager", fields: [managerId], references: [id], onDelete: Cascade)
-  team    Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
-
-  @@index([managerId])
-  @@index([subscriptionId])
-  @@index([email])
-  @@map("corretor_studio_pending_operators")
-}
-
-// -----------------------------
-// TEAMS (public.teams)
-// -----------------------------
-
-model Team {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String   @db.Text
-  masterId  String   @db.Uuid
-  isDefault Boolean  @default(false)
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @db.Timestamptz(6)
-
-  master                   Profile                       @relation("TeamMaster", fields: [masterId], references: [id], onDelete: Cascade)
-  members                  TeamMember[]
-  leads                    Lead[]
-  pendingOperators         PendingOperator[]
-  pendingActions           PendingAction[]
-  notifications            Notification[]
-  studioWebhookConfig      TeamStudioWebhookConfig?
-  studioWebhookRequestLogs TeamStudioWebhookRequestLog[]
-  filterPresets            TeamFilterPreset[]
-  statusRules              TeamStatusRule[]
-  portfolioEntries         LeadPortfolio[]
-
-  // Email campaigns relations
-  emailTemplates    EmailTemplate[]    @relation("TeamEmailTemplates")
-  emailContactLists EmailContactList[] @relation("TeamEmailContactLists")
-  emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
-  emailLogs         EmailLog[]         @relation("TeamEmailLogs")
-
-  @@index([masterId])
-  @@map("corretor_studio_teams")
-}
-
-model TeamFilterPreset {
-  id          String    @id @default(uuid()) @db.Uuid
-  teamId      String    @db.Uuid
-  createdBy   String    @db.Uuid
-  name        String    @db.Text
-  description String?   @db.Text
-  queryJson   Json
-  lastUsedAt  DateTime? @db.Timestamptz(6)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(6)
-
-  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  creator Profile @relation("TeamFilterPresetCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-
-  @@index([teamId, createdBy])
-  @@index([teamId, lastUsedAt(sort: Desc)])
-  @@map("corretor_studio_team_filter_presets")
-}
-
-model TeamStatusRule {
-  id                  String             @id @default(uuid()) @db.Uuid
-  teamId              String             @db.Uuid
-  createdBy           String             @db.Uuid
-  type                TeamStatusRuleType
-  targetStatus        LeadStatus
-  requiredStatus      LeadStatus?
-  leadTimeValue       Int?
-  leadTimeUnit        TeamLeadTimeUnit?
-  requireConfirmation Boolean            @default(false)
-  confirmationMessage String?            @db.Text
-  isEnabled           Boolean            @default(true)
-  createdAt           DateTime           @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime           @updatedAt @db.Timestamptz(6)
-
-  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  creator Profile @relation("TeamStatusRuleCreator", fields: [createdBy], references: [id], onDelete: Cascade)
-
-  @@index([teamId, isEnabled])
-  @@index([teamId, type, targetStatus, isEnabled])
-  @@map("corretor_studio_team_status_rules")
-}
-
-model TeamStudioWebhookConfig {
-  id                 String                       @id @default(uuid()) @db.Uuid
-  teamId             String                       @unique @db.Uuid
-  tokenHash          String                       @db.Text
-  tokenCipher        String?                      @db.Text
-  tokenPreview       String                       @db.Text
-  expiryMode         StudioWebhookTokenExpiryMode @default(indeterminate)
-  expiresAt          DateTime?                    @db.Timestamptz(6)
-  lastUsedAt         DateTime?                    @db.Timestamptz(6)
-  updatedByProfileId String                       @db.Uuid
-  createdAt          DateTime                     @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime                     @updatedAt @db.Timestamptz(6)
-
-  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  updatedBy Profile @relation("StudioWebhookConfigUpdater", fields: [updatedByProfileId], references: [id], onDelete: Restrict)
-
-  @@index([updatedByProfileId])
-  @@index([expiresAt])
-  @@map("corretor_studio_team_studio_webhook_configs")
-}
-
-model TeamStudioWebhookRequestLog {
-  id              String   @id @default(uuid()) @db.Uuid
-  teamId          String   @db.Uuid
-  method          String   @db.Text
-  endpoint        String   @db.Text
-  statusCode      Int
-  resultType      String   @db.Text
-  requestPayload  Json?
-  responsePayload Json?
-  errorMessage    String?  @db.Text
-  createdAt       DateTime @default(now()) @db.Timestamptz(6)
-
-  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
-
-  @@index([teamId, createdAt(sort: Desc)])
-  @@index([createdAt(sort: Desc)])
-  @@map("corretor_studio_team_studio_webhook_request_logs")
-}
-
-model Notification {
-  id                 String           @id @default(uuid()) @db.Uuid
-  recipientProfileId String           @db.Uuid
-  actorProfileId     String?          @db.Uuid
-  teamId             String           @db.Uuid
-  type               NotificationType
-  message            String           @db.Text
-  metadata           Json?
-  isRead             Boolean          @default(false)
-  readAt             DateTime?        @db.Timestamptz(6)
-  createdAt          DateTime         @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime         @updatedAt @db.Timestamptz(6)
-
-  recipient Profile  @relation("NotificationRecipient", fields: [recipientProfileId], references: [id], onDelete: Cascade)
-  actor     Profile? @relation("NotificationActor", fields: [actorProfileId], references: [id], onDelete: SetNull)
-  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
-
-  @@index([recipientProfileId, teamId, isRead])
-  @@index([recipientProfileId, createdAt])
-  @@index([teamId, createdAt])
-  @@map("corretor_studio_notifications")
-}
-
-// -----------------------------
-// PENDING ACTIONS (public.pending_actions)
-// -----------------------------
-model PendingAction {
-  id         String              @id @default(uuid()) @db.Uuid
-  masterId   String              @db.Uuid
-  teamId     String?             @db.Uuid
-  actionType PendingActionType
-  status     PendingActionStatus @default(pending)
-  payload    Json
-  checkoutId String?             @db.Text
-  paymentId  String?             @db.Text
-  createdAt  DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime            @updatedAt @db.Timestamptz(6)
-
-  master Profile @relation("PendingActionMaster", fields: [masterId], references: [id], onDelete: Cascade)
-  team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
-
-  @@index([masterId])
-  @@index([checkoutId])
-  @@index([paymentId])
-  @@map("corretor_studio_pending_actions")
-}
-
-// -----------------------------
-// TEAM MEMBERS (public.team_members)
-// -----------------------------
-
-model TeamMember {
-  id        String         @id @default(uuid()) @db.Uuid
-  teamId    String         @db.Uuid
-  profileId String         @db.Uuid
-  role      UserRole
-  functions UserFunction[] @default([])
-  createdAt DateTime       @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime       @updatedAt @db.Timestamptz(6)
-
-  team    Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-
-  @@unique([teamId, profileId])
-  @@index([profileId])
-  @@map("corretor_studio_team_members")
-}
-
-// -----------------------------
-// EMAIL CAMPAIGNS MODULE
-// -----------------------------
-
-model EmailCreditSubscription {
-  id                 String                        @id @default(uuid()) @db.Uuid
-  profileId          String                        @unique @db.Uuid
-  plan               EmailCreditPlan
-  monthlyCredits     Int
-  status             EmailCreditSubscriptionStatus @default(active)
-  currentPeriodStart DateTime                      @db.Timestamptz(6)
-  currentPeriodEnd   DateTime                      @db.Timestamptz(6)
-  canceledAt         DateTime?                     @db.Timestamptz(6)
-  createdAt          DateTime                      @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime                      @updatedAt @db.Timestamptz(6)
-
-  profile Profile            @relation("EmailCreditSubscriptionOwner", fields: [profileId], references: [id], onDelete: Cascade)
-  usages  EmailCreditUsage[]
-
-  @@index([currentPeriodEnd])
-  @@map("corretor_studio_email_credit_subscriptions")
-}
-
-model EmailCreditUsage {
-  id             String   @id @default(uuid()) @db.Uuid
-  subscriptionId String   @db.Uuid
-  periodStart    DateTime @db.Timestamptz(6)
-  periodEnd      DateTime @db.Timestamptz(6)
-  creditsUsed    Int      @default(0)
-  overageCount   Int      @default(0)
-  overageCharged Decimal  @default(0) @db.Decimal(12, 2)
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
-
-  subscription EmailCreditSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-
-  @@unique([subscriptionId, periodStart])
-  @@map("corretor_studio_email_credit_usages")
-}
-
-model EmailTemplate {
-  id          String   @id @default(uuid()) @db.Uuid
-  teamId      String   @db.Uuid
-  createdBy   String   @db.Uuid
-  name        String   @db.Text
-  subject     String   @db.Text
-  previewText String?  @db.Text
-  mailyJson   Json?
-  html        String?  @db.Text
-  isArchived  Boolean  @default(false)
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
-
-  team      Team            @relation("TeamEmailTemplates", fields: [teamId], references: [id], onDelete: Cascade)
-  creator   Profile         @relation("EmailTemplateCreator", fields: [createdBy], references: [id], onDelete: Restrict)
-  campaigns EmailCampaign[]
-
-  @@index([teamId, isArchived])
-  @@index([createdBy])
-  @@map("corretor_studio_email_templates")
-}
-
-model EmailContactList {
-  id             String   @id @default(uuid()) @db.Uuid
-  teamId         String   @db.Uuid
-  createdBy      String   @db.Uuid
-  name           String   @db.Text
-  description    String?  @db.Text
-  csvStoragePath String?  @db.Text
-  totalContacts  Int      @default(0)
-  isArchived     Boolean  @default(false)
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
-
-  team      Team            @relation("TeamEmailContactLists", fields: [teamId], references: [id], onDelete: Cascade)
-  creator   Profile         @relation("EmailContactListCreator", fields: [createdBy], references: [id], onDelete: Restrict)
-  contacts  EmailContact[]
-  campaigns EmailCampaign[]
-
-  @@index([teamId, isArchived])
-  @@index([createdBy])
-  @@map("corretor_studio_email_contact_lists")
-}
-
-model EmailContact {
-  id             String   @id @default(uuid()) @db.Uuid
-  listId         String   @db.Uuid
-  email          String   @db.Text
-  name           String?  @db.Text
-  customFields   Json?
-  isUnsubscribed Boolean  @default(false)
-  isBounced      Boolean  @default(false)
-  isComplained   Boolean  @default(false)
-  createdAt      DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
-
-  list EmailContactList @relation(fields: [listId], references: [id], onDelete: Cascade)
-
-  @@unique([listId, email])
-  @@index([listId, isUnsubscribed])
-  @@index([listId, isBounced])
-  @@map("corretor_studio_email_contacts")
-}
-
-model EmailCampaign {
-  id              String              @id @default(uuid()) @db.Uuid
-  teamId          String              @db.Uuid
-  createdBy       String              @db.Uuid
-  name            String              @db.Text
-  templateId      String              @db.Uuid
-  contactListId   String              @db.Uuid
-  status          EmailCampaignStatus @default(draft)
-  scheduledAt     DateTime?           @db.Timestamptz(6)
-  sentAt          DateTime?           @db.Timestamptz(6)
-  totalRecipients Int                 @default(0)
-  totalSent       Int                 @default(0)
-  totalDelivered  Int                 @default(0)
-  totalOpened     Int                 @default(0)
-  totalClicked    Int                 @default(0)
-  totalBounced    Int                 @default(0)
-  totalComplained Int                 @default(0)
-  errorMessage    String?             @db.Text
-  createdAt       DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime            @updatedAt @db.Timestamptz(6)
-
-  team        Team             @relation("TeamEmailCampaigns", fields: [teamId], references: [id], onDelete: Cascade)
-  creator     Profile          @relation("EmailCampaignCreator", fields: [createdBy], references: [id], onDelete: Restrict)
-  template    EmailTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  contactList EmailContactList @relation(fields: [contactListId], references: [id], onDelete: Restrict)
-  logs        EmailLog[]
-
-  @@index([teamId, status])
-  @@index([teamId, scheduledAt])
-  @@index([createdBy])
-  @@map("corretor_studio_email_campaigns")
-}
-
-model EmailLog {
-  id             String         @id @default(uuid()) @db.Uuid
-  teamId         String         @db.Uuid
-  campaignId     String?        @db.Uuid
-  resendEmailId  String?        @unique @db.Text
-  recipientEmail String         @db.Text
-  recipientName  String?        @db.Text
-  subject        String         @db.Text
-  status         EmailLogStatus @default(queued)
-  sentAt         DateTime?      @db.Timestamptz(6)
-  deliveredAt    DateTime?      @db.Timestamptz(6)
-  openedAt       DateTime?      @db.Timestamptz(6)
-  clickedAt      DateTime?      @db.Timestamptz(6)
-  bouncedAt      DateTime?      @db.Timestamptz(6)
-  complainedAt   DateTime?      @db.Timestamptz(6)
-  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime       @updatedAt @db.Timestamptz(6)
-
-  team     Team           @relation("TeamEmailLogs", fields: [teamId], references: [id], onDelete: Cascade)
-  campaign EmailCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
-  events   EmailEvent[]
-
-  @@index([teamId, status])
-  @@index([teamId, campaignId])
-  @@index([recipientEmail])
-  @@index([sentAt(sort: Desc)])
-  @@map("corretor_studio_email_logs")
-}
-
-model EmailEvent {
-  id         String         @id @default(uuid()) @db.Uuid
-  logId      String         @db.Uuid
-  type       EmailEventType
-  occurredAt DateTime       @db.Timestamptz(6)
-  metadata   Json?
-  createdAt  DateTime       @default(now()) @db.Timestamptz(6)
-
-  log EmailLog @relation(fields: [logId], references: [id], onDelete: Cascade)
-
-  @@index([logId, occurredAt(sort: Desc)])
-  @@map("corretor_studio_email_events")
-}
-
-// -----------------------------
-// BACKOFFICE PRODUCTS & SUBSCRIPTIONS
-// -----------------------------
-
-model BackofficeProduct {
-  id              String                       @id @default(uuid()) @db.Uuid
-  name            String                       @db.Text
-  slug            String                       @unique @db.Text
-  description     String?                      @db.Text
-  type            BackofficeProductType
-  billingMode     BackofficeProductBillingMode @default(RECURRING)
-  priceMonthly    Decimal?                     @db.Decimal(10, 2)
-  priceQuarterly  Decimal?                     @db.Decimal(10, 2)
-  priceSemiannual Decimal?                     @db.Decimal(10, 2)
-  priceAnnual     Decimal?                     @db.Decimal(10, 2)
-  priceLifetime   Decimal?                     @db.Decimal(10, 2)
-  isActive        Boolean                      @default(true)
-  createdAt       DateTime                     @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime                     @updatedAt @db.Timestamptz(6)
-
-  paymentRules         BackofficeProductPaymentRule[]
-  userSubscriptions    BackofficeUserSubscription[]
-  profileSubscriptions ProfileSubscription[]
-  features             BackofficeFeature[]
-
-  @@index([slug])
-  @@index([type, isActive])
-  @@map("backoffice_products")
-}
-
-model BackofficeFeature {
-  id                 String                       @id @default(uuid()) @db.Uuid
-  slug               String                       @unique @db.Text
-  name               String                       @db.Text
-  description        String?                      @db.Text
-  parentId           String?                      @db.Uuid
-  productSlug        String?                      @db.Text
-  accessMode         BackofficeFeatureAccessMode  @default(PUBLIC)
-  defaultAccessLevel BackofficeFeatureAccessLevel @default(FULL)
-  betaEnabled        Boolean                      @default(false)
-  inheritParentSettings Boolean                   @default(false)
-  isActive           Boolean                      @default(true)
-  sortOrder          Int                          @default(0)
-  createdAt          DateTime                     @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime                     @updatedAt @db.Timestamptz(6)
-
-  parent   BackofficeFeature?  @relation("BackofficeFeatureTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children BackofficeFeature[] @relation("BackofficeFeatureTree")
-  product  BackofficeProduct?  @relation(fields: [productSlug], references: [slug], onDelete: SetNull)
-  grants   BackofficeFeatureGrant[]
-  accessRules BackofficeFeatureAccessRule[]
-
-  @@index([parentId], map: "backoffice_features_parent_id_idx")
-  @@index([productSlug], map: "backoffice_features_product_slug_idx")
-  @@index([isActive, sortOrder], map: "backoffice_features_active_sort_idx")
-  @@map("backoffice_features")
-}
-
-model BackofficeFeatureAccessRule {
-  id          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  featureId   String                       @db.Uuid
-  principal   BackofficeAccessPrincipal
-  accessLevel BackofficeFeatureAccessLevel
-  createdAt   DateTime                     @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime                     @updatedAt @db.Timestamptz(6)
-
-  feature BackofficeFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-
-  @@unique([featureId, principal], map: "backoffice_feature_access_rules_feature_principal_key")
-  @@index([featureId], map: "backoffice_feature_access_rules_feature_id_idx")
-  @@map("backoffice_feature_access_rules")
-}
-
-model BackofficeFeatureGrant {
-  id          String                       @id @default(uuid()) @db.Uuid
-  featureId   String                       @db.Uuid
-  profileId   String                       @db.Uuid
-  grantType   BackofficeFeatureGrantType   @default(BETA)
-  accessLevel BackofficeFeatureAccessLevel @default(FULL)
-  isActive    Boolean                      @default(true)
-  createdAt   DateTime                     @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime                     @updatedAt @db.Timestamptz(6)
-
-  feature BackofficeFeature @relation(fields: [featureId], references: [id], onDelete: Cascade)
-  profile Profile           @relation("BackofficeFeatureProfileGrants", fields: [profileId], references: [id], onDelete: Cascade)
-
-  @@unique([featureId, profileId, grantType], map: "backoffice_feature_grants_feature_profile_grant_type_key")
-  @@index([profileId, grantType, isActive], map: "backoffice_feature_grants_profile_grant_type_active_idx")
-  @@index([featureId, isActive], map: "backoffice_feature_grants_feature_active_idx")
-  @@map("backoffice_feature_grants")
-}
-
-model BackofficeProductPaymentRule {
-  id              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  productId       String                         @db.Uuid
-  paymentMethod   BackofficePaymentMethod
-  billingCycle    BackofficeAdhesionBillingCycle
-  price           Decimal                        @db.Decimal(10, 2)
-  canInstallment  Boolean                        @default(false)
-  maxInstallments Int                            @default(1)
-  createdAt       DateTime                       @default(now()) @db.Timestamptz(6)
-  updatedAt       DateTime                       @default(now()) @updatedAt @db.Timestamptz(6)
-
-  product BackofficeProduct @relation(fields: [productId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "backoffice_product_payment_rules_productid_fkey")
-
-  @@unique([productId, paymentMethod, billingCycle], map: "backoffice_product_payment_rules_unique")
-  @@index([productId], map: "backoffice_product_payment_rules_productid_idx")
-  @@map("backoffice_product_payment_rules")
-}
-
-model BackofficeUserSubscription {
-  id         String                          @id @default(uuid()) @db.Uuid
-  profileId  String                          @db.Uuid
-  productId  String                          @db.Uuid
-  status     BackofficeSubscriptionStatus    @default(active)
-  cycle      BackofficeAdhesionBillingCycle?
-  startDate  DateTime                        @db.Timestamptz(6)
-  endDate    DateTime?                       @db.Timestamptz(6)
-  adhesionId String?                         @db.Uuid
-  createdAt  DateTime                        @default(now()) @db.Timestamptz(6)
-  updatedAt  DateTime                        @updatedAt @db.Timestamptz(6)
-
-  profile Profile           @relation("BackofficeUserSubscriptions", fields: [profileId], references: [id], onDelete: Cascade)
-  product BackofficeProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
-
-  @@unique([profileId, productId], map: "backoffice_user_subscriptions_profile_id_product_id_key")
-  @@index([profileId, status])
-  @@index([productId])
-  @@index([adhesionId])
-  @@map("backoffice_user_subscriptions")
-}
-
-// -----------------------------
-// PROFILE SUBSCRIPTION (public.profile_subscriptions)
-// One record per master Profile. Operators inherit via Profile.managerId.
-// -----------------------------
-
-model ProfileSubscription {
-  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profileId                String              @unique @db.Uuid
-  adhesionId               String?             @unique @db.Uuid
-  productId                String?             @db.Uuid
-  asaasSubscriptionId      String?             @db.Text
-  asaasInstallmentId       String?             @db.Text
-  subscriptionStatus       SubscriptionStatus?
-  subscriptionPlan         SubscriptionPlan?
-  subscriptionStartDate    DateTime?           @db.Timestamptz(6)
-  subscriptionEndDate      DateTime?           @db.Timestamptz(6)
-  trialEndDate             DateTime?           @db.Timestamptz(6)
-  subscriptionNextDueDate  DateTime?           @db.Timestamptz(6)
-  subscriptionCycle        String?             @db.Text
-  subscriptionLastSyncedAt DateTime?           @db.Timestamptz(6)
-  hasPermanentSubscription Boolean             @default(false)
-  createdAt                DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt                DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
-
-  profile  Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscriptions_profileId_fkey")
-  adhesion BackofficeAdhesion? @relation(fields: [adhesionId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_adhesionId_fkey")
-  product  BackofficeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_productId_fkey")
-  capacity ProfileSubscriptionCapacity?
-
-  @@index([adhesionId], map: "profile_subscriptions_adhesion_id_idx")
-  @@index([productId], map: "profile_subscriptions_product_id_idx")
-  @@index([subscriptionStatus], map: "profile_subscriptions_status_idx")
-  @@map("corretor_studio_profile_subscriptions")
-}
-
-model ProfileSubscriptionCapacity {
-  id                              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profileSubscriptionId           String              @unique @db.Uuid
-  includedExtraTeams              Int                 @default(0)
-  includedExtraUsers              Int                 @default(0)
-  manualAdjustmentExtraTeams      Int                 @default(0)
-  manualAdjustmentExtraUsers      Int                 @default(0)
-  createdAt                       DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt                       DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
-
-  profileSubscription ProfileSubscription @relation(fields: [profileSubscriptionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscription_capacities_subscription_id_fkey")
-
-  @@map("corretor_studio_profile_subscription_capacities")
-}
-
-// -----------------------------
-// PROFILE USER TYPE (Comum / Member PRO)
-// Lookup table with the user type tiers, plus a 1:1 assignment table
-// linking each Profile to its current type (cascades from Profile).
-// -----------------------------
-
-model ProfileUserType {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  slug        String   @unique @db.Text
-  name        String   @db.Text
-  description String?  @db.Text
-  createdAt   DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamptz(6)
-
-  assignments ProfileUserTypeAssignment[]
-
-  @@map("profile_user_types")
-}
-
-model ProfileUserTypeAssignment {
-  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profileId           String    @unique @db.Uuid
-  userTypeId          String    @db.Uuid
-  accessStartsAt      DateTime? @db.Timestamptz(6)
-  accessExpiresAt     DateTime? @db.Timestamptz(6)
-  assignedByProfileId String?   @db.Uuid
-  createdAt           DateTime  @default(now()) @db.Timestamptz(6)
-  updatedAt           DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
-
-  profile     Profile         @relation("ProfileUserTypeAssignment", fields: [profileId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "profile_user_type_assignments_profile_id_fkey")
-  userType    ProfileUserType @relation(fields: [userTypeId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "profile_user_type_assignments_user_type_id_fkey")
-  assignedBy  Profile?        @relation("ProfileUserTypeAssignmentAssignedBy", fields: [assignedByProfileId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_user_type_assignments_assigned_by_profile_id_fkey")
-
-  @@index([userTypeId])
-  @@index([accessExpiresAt])
-  @@map("profile_user_type_assignments")
-}
-

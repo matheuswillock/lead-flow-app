@@ -2,7 +2,7 @@ import type {
   BackofficeFeature,
   BackofficeFeatureAccessRule,
   BackofficeFeatureGrant,
-  BackofficeUserSubscription,
+  BackofficeUserProductSubscription,
   Profile,
   ProfileSubscription,
 } from "@prisma/client"
@@ -32,7 +32,7 @@ export interface IFeatureAccessRepository {
     }) | null
   >
   listActiveUserSubscriptions(profileId: string): Promise<
-    Array<BackofficeUserSubscription & { product: { slug: string } }>
+    Array<BackofficeUserProductSubscription & { product: { slug: string } }>
   >
   listActiveBetaGrantsForProfile(profileId: string): Promise<Array<Pick<BackofficeFeatureGrant, "featureId">>>
   findCurrentUserRoleInfo(profileId: string): Promise<UserRoleInfo | null>

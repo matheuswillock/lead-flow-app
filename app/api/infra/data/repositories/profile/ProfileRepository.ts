@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js"
 import type { IProfileRepository } from "./IProfileRepository";
 import { isManagerLikeRole } from "@/lib/roles";
 import { GoogleOAuthConnectionRepository } from "../googleOAuthConnection/GoogleOAuthConnectionRepository";
+import { upsertProfileSubscription, type ProfileSubscriptionData } from "@/lib/subscription/upsertProfileSubscription";
 
 // Função para criar cliente Supabase de forma segura
 function createSupabaseClient() {
@@ -372,12 +373,21 @@ class PrismaProfileRepository implements IProfileRepository {
       });
 
         const profile = await prisma.$transaction(async (tx) => {
-          const createdProfile = await tx.profile.create({
-            data: profileData
-          });
-
+          const createdProfile = await tx.profile.create({ data: profileData });
           await this.ensureDefaultTeamForMaster(tx, createdProfile);
-
+          if (createdProfile.isMaster) {
+            const subData: ProfileSubscriptionData = {
+              asaasCustomerId: profileData.asaasCustomerId ?? null,
+              asaasSubscriptionId: profileData.subscriptionId ?? null,
+              subscriptionStatus: profileData.subscriptionStatus ?? null,
+              subscriptionPlan: profileData.subscriptionPlan ?? null,
+              subscriptionStartDate: profileData.subscriptionStartDate ?? null,
+              trialEndDate: profileData.trialEndDate ?? null,
+            };
+            if (Object.values(subData).some((v) => v !== null && v !== undefined)) {
+              await upsertProfileSubscription(createdProfile.id, subData, tx);
+            }
+          }
           return createdProfile;
         });
 
@@ -531,9 +541,20 @@ class PrismaProfileRepository implements IProfileRepository {
 
       const profile = await prisma.$transaction(async (tx) => {
         const createdProfile = await tx.profile.create({ data: profileData });
-
         await this.ensureDefaultTeamForMaster(tx, createdProfile);
-
+        if (createdProfile.isMaster) {
+          const subData: ProfileSubscriptionData = {
+            asaasCustomerId: profileData.asaasCustomerId ?? null,
+            asaasSubscriptionId: profileData.subscriptionId ?? null,
+            subscriptionStatus: profileData.subscriptionStatus ?? null,
+            subscriptionPlan: profileData.subscriptionPlan ?? null,
+            subscriptionStartDate: profileData.subscriptionStartDate ?? null,
+            trialEndDate: profileData.trialEndDate ?? null,
+          };
+          if (Object.values(subData).some((v) => v !== null && v !== undefined)) {
+            await upsertProfileSubscription(createdProfile.id, subData, tx);
+          }
+        }
         return createdProfile;
       });
 

@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { upsertProfileSubscription } from "@/lib/subscription/upsertProfileSubscription";
 import type { IProfileRepository } from "@/app/api/infra/data/repositories/profile/IProfileRepository";
 
 /**
@@ -79,6 +80,7 @@ export class UpdatePermanentSubscriptionUseCase {
         where: { id: targetProfile.id },
         data: { hasPermanentSubscription }
       });
+      await upsertProfileSubscription(targetProfile.id, { hasPermanentSubscription });
 
       return new Output(
         true,

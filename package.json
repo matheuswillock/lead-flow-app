@@ -46,6 +46,7 @@
     "prisma:import-onside-backstage-leads": "bunx tsx scripts/import-onside-backstage-leads.ts --confirm",
     "prisma:backfill-teams": "bunx tsx scripts/backfill-teams.ts",
     "prisma:backfill-subscription-capacities": "bunx tsx scripts/backfill-subscription-capacities.ts",
+    "db:check-subscription-parity": "bunx tsx scripts/check-subscription-parity.ts",
     "prisma:migrate:status": "bunx prisma migrate status",
     "prisma:studio": "bunx prisma studio",
     "prisma:generate": "bunx prisma generate",

@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { upsertProfileSubscription } from "@/lib/subscription/upsertProfileSubscription";
 import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { getEmailService } from "@/lib/services/EmailService";
 import { createClient } from "@supabase/supabase-js";
@@ -152,6 +153,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
             where: { supabaseId: data.supabaseId },
             data: { asaasCustomerId }
           });
+          if (profileId) await upsertProfileSubscription(profileId, { asaasCustomerId });
 
           console.info('✅ [createSubscriptionCheckout] Cliente Asaas criado:', asaasCustomerId);
         } catch (customerError: any) {
@@ -240,6 +242,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           subscriptionPlan: 'manager_base',
         }
       });
+      if (profileId) await upsertProfileSubscription(profileId, { subscriptionStatus: 'trial', subscriptionPlan: 'manager_base' });
 
       console.info('🎉 [createSubscriptionCheckout] Checkout criado com sucesso!');
 
@@ -328,6 +331,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
             where: { supabaseId: data.supabaseId },
             data: { asaasCustomerId: null }
           });
+          if (profileId) await upsertProfileSubscription(profileId, { asaasCustomerId: null });
           console.info('✅ [createSubscriptionCheckout] Rollback parcial concluído');
         } catch (rollbackError) {
           console.error('❌ [createSubscriptionCheckout] Erro no rollback parcial:', rollbackError);
@@ -806,6 +810,7 @@ export class CheckoutAsaasUseCase implements ICheckoutAsaasUseCase {
           subscriptionStartDate: new Date(),
         }
       });
+      await upsertProfileSubscription(profile.id, { subscriptionStatus: 'active', subscriptionStartDate: new Date() });
 
       console.info('✅ [processCheckoutPaid] Assinatura ativada para:', profile.email);
 

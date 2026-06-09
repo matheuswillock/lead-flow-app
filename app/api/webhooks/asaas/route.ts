@@ -315,7 +315,7 @@ export async function POST(request: NextRequest) {
               isValid: nextDueDate !== null
             });
 
-            // Atualizar subscriptionId e nextDueDate no Profile
+            // Atualizar subscriptionId e nextDueDate no Profile + ProfileSubscription
             const updateData: any = {
               asaasSubscriptionId: subscription.id,
               subscriptionCycle: subscription.cycle || 'MONTHLY',
@@ -325,10 +325,9 @@ export async function POST(request: NextRequest) {
               updateData.subscriptionNextDueDate = nextDueDate;
             }
 
-            await prisma.profile.update({
-              where: { id: manager.id },
-              data: updateData
-            });
+            await prisma.profile.update({ where: { id: manager.id }, data: updateData });
+            const { upsertProfileSubscription } = await import('@/lib/subscription/upsertProfileSubscription');
+            await upsertProfileSubscription(manager.id, updateData);
 
             console.info('✅ [Webhook Asaas] Assinatura sincronizada para manager:', {
               managerId: manager.id,

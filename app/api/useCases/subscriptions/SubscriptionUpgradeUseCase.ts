@@ -1,5 +1,6 @@
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
+import { upsertProfileSubscription } from "@/lib/subscription/upsertProfileSubscription";
 import { asaasFetch, asaasApi } from "@/lib/asaas";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { AsaasSubscriptionService } from "@/app/api/services/AsaasSubscription/AsaasSubscriptionService";
@@ -149,7 +150,8 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           where: { id: manager.id },
           data: { asaasCustomerId: newCustomer.customerId }
         });
-        
+        await upsertProfileSubscription(manager.id, { asaasCustomerId: newCustomer.customerId });
+
         asaasCustomerId = newCustomer.customerId;
         console.info('✅ [createOperatorPayment] Novo customer criado:', asaasCustomerId);
       }
@@ -1158,6 +1160,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         subscriptionCycle: newSubscription.data.cycle || 'MONTHLY',
       }
     });
+    await upsertProfileSubscription(manager.id, {
+      asaasSubscriptionId: newSubscription.subscriptionId,
+      subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+      subscriptionCycle: newSubscription.data.cycle || 'MONTHLY',
+    });
 
     try {
       await AsaasSubscriptionService.cancelSubscription(currentSubscription.id);
@@ -1274,6 +1281,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
           operatorCount: manager.operators.length,
         }
+      });
+      await upsertProfileSubscription(manager.id, {
+        asaasSubscriptionId: newSubscription.subscriptionId,
+        subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
       });
 
       console.info('💾 [updateManagerSubscription] Profile atualizado com nova assinatura');
@@ -1467,6 +1478,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           operatorCount: data.operatorCount,
           updatedAt: new Date()
         }
+      });
+      await upsertProfileSubscription(manager.id, {
+        asaasSubscriptionId: newSubscription.data.id,
+        subscriptionNextDueDate: nextDueDate,
+        subscriptionCycle: 'MONTHLY',
       });
 
       console.info('✅ [reactivateSubscription] Profile atualizado no banco');
