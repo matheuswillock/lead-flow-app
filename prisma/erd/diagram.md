@@ -555,6 +555,8 @@ unsubscribed unsubscribed
     String createdSupabaseId "❓"
     String requestedUserTypeSlug "❓"
     DateTime requestedMemberProAccessExpiresAt "❓"
+    Json additional_users_data 
+    Json additional_teams_data 
     DateTime createdAt 
     DateTime updatedAt 
     }

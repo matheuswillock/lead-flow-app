@@ -89,8 +89,8 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           createdByBackofficeUserId: data.createdByBackofficeUserId ?? null,
           requestedUserTypeSlug: data.requestedUserTypeSlug ?? null,
           requestedMemberProAccessExpiresAt: data.requestedMemberProAccessExpiresAt ?? null,
-          additionalUsersData: data.additionalUsersData ?? [],
-          additionalTeamsData: data.additionalTeamsData ?? [],
+          additionalUsersData: (data.additionalUsersData ?? []) as Prisma.InputJsonValue,
+          additionalTeamsData: (data.additionalTeamsData ?? []) as Prisma.InputJsonValue,
         },
         include: backofficeAdhesionInclude,
       })
