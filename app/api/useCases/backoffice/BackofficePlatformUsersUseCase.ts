@@ -16,6 +16,7 @@ import {
   resolveTimezone,
 } from "@/lib/dates"
 import { IBackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
+import { BackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/BackofficePlatformUsersRepository"
 
 function buildMasterNotificationEmail(params: {
   masterName: string
@@ -1002,4 +1003,62 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       return new Output(false, [], ["Erro ao criar time"], null)
     }
   }
+
+  async updateTeamForMasterUser(
+    masterProfileId: string,
+    teamId: string,
+    data: { name: string }
+  ): Promise<Output> {
+    try {
+      const name = data.name.trim()
+      if (name.length < 2) {
+        return new Output(false, [], ["Nome do time deve ter pelo menos 2 caracteres"], null)
+      }
+
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      const updated = await this.platformUsersRepository.updateTeam(teamId, masterProfileId, { name })
+      if (!updated) {
+        return new Output(false, [], ["Time não encontrado"], null)
+      }
+
+      console.info("[BackofficePlatformUsersUseCase][updateTeamForMasterUser] Time atualizado:", teamId)
+      return new Output(true, ["Time atualizado com sucesso"], [], { teamId })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][updateTeamForMasterUser]", error)
+      return new Output(false, [], ["Erro ao atualizar time"], null)
+    }
+  }
+
+  async deleteTeamFromMasterUser(
+    masterProfileId: string,
+    teamId: string
+  ): Promise<Output> {
+    try {
+      const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
+      if (!master) {
+        return new Output(false, [], ["Usuário master não encontrado"], null)
+      }
+
+      const team = await this.platformUsersRepository.findTeamByIdAndMasterId(teamId, masterProfileId)
+      if (!team) {
+        return new Output(false, [], ["Time não encontrado"], null)
+      }
+
+      await this.platformUsersRepository.deleteTeam(teamId, masterProfileId)
+
+      console.info("[BackofficePlatformUsersUseCase][deleteTeamFromMasterUser] Time excluído:", teamId)
+      return new Output(true, ["Time excluído com sucesso"], [], { teamId })
+    } catch (error) {
+      console.error("[BackofficePlatformUsersUseCase][deleteTeamFromMasterUser]", error)
+      return new Output(false, [], ["Erro ao excluir time"], null)
+    }
+  }
 }
+
+export const backofficePlatformUsersUseCase = new BackofficePlatformUsersUseCase(
+  new BackofficePlatformUsersRepository()
+)

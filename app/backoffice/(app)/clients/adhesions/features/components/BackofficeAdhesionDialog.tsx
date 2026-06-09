@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Copy, Minus, Plus } from "lucide-react"
+import { Check, ChevronsUpDown, Copy, Minus, Plus } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -23,6 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -47,6 +50,12 @@ const CYCLE_MONTHS: Record<BackofficeAdhesionBillingCycleKey, number> = {
   quarterly: 3,
   semiannual: 6,
   annual: 12,
+}
+const CYCLE_DAYS: Record<BackofficeAdhesionBillingCycleKey, number> = {
+  monthly: 30,
+  quarterly: 90,
+  semiannual: 180,
+  annual: 365,
 }
 const MEMBER_PRO_MIN_DAYS = 1
 const MEMBER_PRO_MAX_DAYS = 365
@@ -226,6 +235,7 @@ export function BackofficeAdhesionDialog({
   const [isLoadingOptions, setIsLoadingOptions] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [result, setResult] = useState<BackofficeAdhesionCreationResult | null>(null)
+  const [leadComboOpen, setLeadComboOpen] = useState(false)
 
   const selectedLead = useMemo(
     () => options?.leads.find((lead) => lead.id === values.leadId) ?? null,
@@ -343,6 +353,15 @@ export function BackofficeAdhesionDialog({
           value as number,
           defaultAdditionalTeam
         )
+      }
+      if (key === "cycle" && current.userType === "member_pro") {
+        next.memberProAccessDays = String(CYCLE_DAYS[value as BackofficeAdhesionBillingCycleKey])
+      }
+      if (key === "userType" && value === "member_pro") {
+        next.memberProAccessDays = String(CYCLE_DAYS[current.cycle])
+      }
+      if (key === "userType" && value !== "member_pro") {
+        next.memberProAccessDays = ""
       }
       return next
     })
@@ -500,30 +519,49 @@ export function BackofficeAdhesionDialog({
             {mode === "create" ? (
               <div className="flex flex-col gap-2">
                 <Label>Lead *</Label>
-                <Select
-                  value={values.leadId || NO_SELECTION_VALUE}
-                  onValueChange={(value) =>
-                    handleLeadChange(value === NO_SELECTION_VALUE ? "" : value)
-                  }
-                  disabled={isLoadingOptions || isSubmitting}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um lead elegível" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value={NO_SELECTION_VALUE}>Selecione um lead</SelectItem>
-                      {(options?.leads ?? []).map((lead) => (
-                        <SelectItem key={lead.id} value={lead.id}>
-                          {lead.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
+                <Popover open={leadComboOpen} onOpenChange={setLeadComboOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={leadComboOpen}
+                      disabled={isLoadingOptions || isSubmitting}
+                      className="w-full justify-between font-normal"
+                    >
+                      {values.leadId
+                        ? (options?.leads.find((l) => l.id === values.leadId)?.name ?? "Selecione um lead elegível")
+                        : "Selecione um lead elegível"}
+                      <ChevronsUpDown className="ml-2 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar lead pelo nome..." />
+                      <CommandList>
+                        <CommandEmpty>Nenhum lead encontrado.</CommandEmpty>
+                        <CommandGroup>
+                          {(options?.leads ?? []).map((lead) => (
+                            <CommandItem
+                              key={lead.id}
+                              value={lead.name}
+                              onSelect={() => {
+                                handleLeadChange(lead.id)
+                                setLeadComboOpen(false)
+                              }}
+                            >
+                              <Check
+                                className={cn("mr-2 size-4", values.leadId === lead.id ? "opacity-100" : "opacity-0")}
+                              />
+                              {lead.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 <p className="text-xs text-muted-foreground">
-                  Disponíveis: Nova oportunidade, Agendado e No-show.
+                  Disponíveis: Nova oportunidade, Agendado, No-show e Nova adesão.
                 </p>
               </div>
             ) : null}
@@ -725,7 +763,7 @@ export function BackofficeAdhesionDialog({
                       disabled={isSubmitting}
                     />
                     <p className="text-sm text-muted-foreground">
-                      Entre {MEMBER_PRO_MIN_DAYS} e {MEMBER_PRO_MAX_DAYS} dias a partir da criação da conta.
+                      Calculado automaticamente pelo ciclo. Ajuste se necessário (entre {MEMBER_PRO_MIN_DAYS} e {MEMBER_PRO_MAX_DAYS} dias).
                     </p>
                     {values.memberProAccessDays.length > 0 && !memberProAccessDaysValid && (
                       <p className="text-sm text-destructive">Informe um número entre 1 e 365</p>

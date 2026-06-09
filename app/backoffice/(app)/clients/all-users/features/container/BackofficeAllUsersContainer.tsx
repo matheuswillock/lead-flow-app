@@ -239,6 +239,8 @@ export function BackofficeAllUsersContainer() {
       googleEmail: null,
       functions: [],
       isMaster: item.isMaster,
+      canCreateAccountUsers: false,
+      canManageAccountTeams: false,
     }
   }
 

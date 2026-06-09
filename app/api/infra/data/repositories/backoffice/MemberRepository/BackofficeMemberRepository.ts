@@ -1,3 +1,4 @@
+import type { UserFunction, UserRole } from "@prisma/client"
 import { prisma } from "@/app/api/infra/data/prisma"
 import type {
   IBackofficeMemberRepository,
@@ -33,17 +34,25 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
 
   async updateMemberProfile(
     memberId: string,
-    data: { fullName?: string | null; phone?: string | null; email?: string }
-  ): Promise<{ id: string } | null> {
-    const payload: {
+    data: {
       fullName?: string | null
       phone?: string | null
       email?: string
-    } = {}
+      role?: string
+      functions?: string[]
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+    }
+  ): Promise<{ id: string } | null> {
+    const payload: Record<string, unknown> = {}
 
     if (data.fullName !== undefined) payload.fullName = data.fullName
     if (data.phone !== undefined) payload.phone = data.phone
     if (data.email !== undefined) payload.email = data.email
+    if (data.role !== undefined) payload.role = data.role
+    if (data.functions !== undefined) payload.functions = data.functions
+    if (data.canCreateAccountUsers !== undefined) payload.canCreateAccountUsers = data.canCreateAccountUsers
+    if (data.canManageAccountTeams !== undefined) payload.canManageAccountTeams = data.canManageAccountTeams
 
     if (Object.keys(payload).length === 0) {
       const existing = await prisma.profile.findUnique({
@@ -114,6 +123,17 @@ export class BackofficeMemberRepository implements IBackofficeMemberRepository {
   async deleteTeamMembership(teamId: string, profileId: string): Promise<void> {
     await prisma.teamMember.delete({
       where: { teamId_profileId: { teamId, profileId } },
+    })
+  }
+
+  async updateAllTeamMembershipsRoleAndFunctions(
+    profileId: string,
+    role: string,
+    functions: string[]
+  ): Promise<void> {
+    await prisma.teamMember.updateMany({
+      where: { profileId },
+      data: { role: role as UserRole, functions: functions as UserFunction[] },
     })
   }
 }
