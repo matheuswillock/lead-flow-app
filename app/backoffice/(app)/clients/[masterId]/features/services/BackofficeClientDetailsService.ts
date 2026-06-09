@@ -196,6 +196,9 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       phone?: string | null
       role: "manager" | "backoffice" | "operator"
       functions: ("SDR" | "CLOSER")[]
+      teamId: string
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
     }
   ): Promise<void> {
     const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/members`, {

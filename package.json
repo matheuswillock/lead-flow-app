@@ -34,6 +34,7 @@
     "db:seed:backoffice-products": "bunx tsx prisma/seed-backoffice-products.ts",
     "db:seed:leads": "bunx tsx prisma/seed-leads.ts",
     "db:migrate:new": "supabase migration new",
+    "db:migrate:apply:local": "supabase migration up --local",
     "db:migrate:push": "supabase db push --linked --include-all",
     "db:migrate:push:dry-run": "supabase db push --linked --dry-run",
     "db:migrate:status": "supabase migration list",

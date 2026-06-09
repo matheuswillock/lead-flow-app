@@ -145,6 +145,8 @@ export interface IBackofficePlatformUsersRepository {
 
   findDefaultTeamByMasterId(masterProfileId: string): Promise<{ id: string; name: string } | null>
 
+  findProfileByEmail(email: string): Promise<{ id: string; isMaster: boolean; managerId: string | null } | null>
+
   createMemberForMaster(
     masterProfileId: string,
     data: {
@@ -153,9 +155,18 @@ export interface IBackofficePlatformUsersRepository {
       phone?: string | null
       role: "manager" | "backoffice" | "operator"
       functions: ("SDR" | "CLOSER")[]
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
     },
     teamId: string
   ): Promise<{ profileId: string; teamMemberId: string }>
+
+  addExistingProfileToTeam(
+    profileId: string,
+    teamId: string,
+    role: "manager" | "backoffice" | "operator",
+    functions: ("SDR" | "CLOSER")[]
+  ): Promise<{ teamMemberId: string }>
 
   createTeamForMaster(
     masterProfileId: string,
