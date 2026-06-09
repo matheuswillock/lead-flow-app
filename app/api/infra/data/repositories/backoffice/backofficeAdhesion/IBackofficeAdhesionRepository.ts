@@ -59,6 +59,8 @@ export interface CreateBackofficeAdhesionInput {
   createdByBackofficeUserId?: string | null
   requestedUserTypeSlug?: "common" | "member_pro" | null
   requestedMemberProAccessExpiresAt?: Date | null
+  additionalUsersData?: unknown[]
+  additionalTeamsData?: unknown[]
 }
 
 export interface UpdateBackofficeAdhesionInput {

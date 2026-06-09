@@ -4,6 +4,17 @@ import type {
 } from "@prisma/client"
 import type { BackofficeAdhesionTokenValidationStatus } from "@/lib/backoffice-adhesions/adhesion-token-validation"
 
+export interface BackofficeAdhesionAdditionalUser {
+  name: string
+  email: string
+  role: "manager" | "backoffice" | "operator"
+  functions: ("SDR" | "CLOSER")[]
+}
+
+export interface BackofficeAdhesionAdditionalTeam {
+  name: string
+}
+
 export interface BackofficeAdhesionCreateInput {
   leadId: string
   fullName: string
@@ -19,6 +30,8 @@ export interface BackofficeAdhesionCreateInput {
   activationMode?: "checkout" | "external_paid"
   userType?: "common" | "member_pro"
   accessExpiresAt?: string | null
+  additionalUsers?: BackofficeAdhesionAdditionalUser[]
+  additionalTeams?: BackofficeAdhesionAdditionalTeam[]
 }
 
 export interface BackofficeAdhesionUpdateInput {

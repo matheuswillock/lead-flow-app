@@ -47,6 +47,8 @@ import { BackofficeClientDeleteDialog } from "../components/BackofficeClientDele
 import { BackofficeMemberProfileSheet } from "../components/BackofficeMemberProfileSheet"
 import { BackofficeMemberEditDialog } from "../components/BackofficeMemberEditDialog"
 import { BackofficeMemberDeleteDialog } from "../components/BackofficeMemberDeleteDialog"
+import { BackofficeAddMemberDialog } from "../components/BackofficeAddMemberDialog"
+import { BackofficeAddTeamDialog } from "../components/BackofficeAddTeamDialog"
 import type { BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
@@ -161,6 +163,8 @@ export function BackofficeClientDetailsContainer() {
   const [memberSheetOpen, setMemberSheetOpen] = useState(false)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
+  const [addMemberOpen, setAddMemberOpen] = useState(false)
+  const [addTeamOpen, setAddTeamOpen] = useState(false)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -340,6 +344,15 @@ export function BackofficeClientDetailsContainer() {
             </TabsList>
 
             <TabsContent value="teams" className="mt-4">
+              <div className="mb-3 flex justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => setAddTeamOpen(true)}>
+                  Adicionar time
+                </Button>
+                <Button size="sm" onClick={() => setAddMemberOpen(true)}>
+                  Adicionar usuário
+                </Button>
+              </div>
+
               <div className="rounded-md border overflow-hidden">
                 <div className="grid grid-cols-[2fr_1fr_1fr] gap-3 border-b bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <span className="text-center">Time</span>
@@ -798,6 +811,23 @@ export function BackofficeClientDetailsContainer() {
         member={selectedMember}
         service={service}
         onSuccess={reload}
+      />
+
+      <BackofficeAddMemberDialog
+        open={addMemberOpen}
+        masterId={masterId}
+        teams={(details?.teams ?? []).map((t) => ({ id: t.id, name: t.name }))}
+        service={service}
+        onOpenChange={setAddMemberOpen}
+        onSaved={reload}
+      />
+
+      <BackofficeAddTeamDialog
+        open={addTeamOpen}
+        masterId={masterId}
+        service={service}
+        onOpenChange={setAddTeamOpen}
+        onSaved={reload}
       />
     </div>
   )

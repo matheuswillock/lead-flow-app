@@ -387,6 +387,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         normalized.userType === "member_pro" && normalized.accessExpiresAt
           ? new Date(normalized.accessExpiresAt)
           : null,
+      additionalUsersData: normalized.additionalUsers ?? [],
+      additionalTeamsData: normalized.additionalTeams ?? [],
     })
 
     if (normalized.activationMode === "external_paid") {
@@ -954,6 +956,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       billingType,
       userType: input.userType ?? "common",
       accessExpiresAt: input.accessExpiresAt ?? null,
+      additionalUsers: input.additionalUsers ?? [],
+      additionalTeams: input.additionalTeams ?? [],
     }
   }
 

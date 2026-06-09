@@ -721,6 +721,8 @@ model BackofficeAdhesion {
   createdSupabaseId         String?                        @map("createdSupabaseId") @db.Uuid
   requestedUserTypeSlug             String?   @map("requestedUserTypeSlug") @db.Text
   requestedMemberProAccessExpiresAt DateTime? @map("requestedMemberProAccessExpiresAt") @db.Timestamptz(6)
+  additionalUsersData       Json                           @default("[]") @map("additional_users_data")
+  additionalTeamsData       Json                           @default("[]") @map("additional_teams_data")
   createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
   updatedAt                 DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
