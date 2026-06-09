@@ -12,38 +12,48 @@ export class SubscriptionStatusService implements ISubscriptionStatusService {
   
   async checkPaymentStatus(subscriptionId: string): Promise<SubscriptionStatusResult> {
     try {
-      console.info('🔍 [SubscriptionStatusService] Buscando profile no banco...');
+      console.info('🔍 [SubscriptionStatusService] Buscando assinatura no banco...');
 
-      // 1. Primeiro tentar buscar no banco de dados
-      const profile = await prisma.profile.findFirst({
+      // 1. Primeiro tentar buscar a assinatura centralizada
+      const profileSubscription = await prisma.profileSubscription.findFirst({
         where: {
-          subscriptionId: subscriptionId,
+          asaasSubscriptionId: subscriptionId,
         },
         select: {
           id: true,
-          email: true,
-          timezone: true,
+          profileId: true,
+          asaasCustomerId: true,
+          asaasSubscriptionId: true,
           subscriptionStatus: true,
           subscriptionPlan: true,
           subscriptionStartDate: true,
           subscriptionEndDate: true,
+          subscriptionNextDueDate: true,
+          subscriptionCycle: true,
           trialEndDate: true,
+          hasPermanentSubscription: true,
+          profile: {
+            select: {
+              email: true,
+              timezone: true,
+              supabaseId: true,
+            },
+          },
         },
       });
 
-      // 2. Se encontrou o profile, retornar status do banco
-      if (profile) {
-        const isPaid = profile.subscriptionStatus === 'active';
-        const timezone = resolveTimezone(profile.timezone);
+      if (profileSubscription) {
+        const isPaid = profileSubscription.subscriptionStatus === 'active';
+        const timezone = resolveTimezone(profileSubscription.profile?.timezone);
         let message = isPaid ? 'Assinatura ativa' : 'Assinatura pendente';
 
-        if (profile.subscriptionStatus === 'trial' && profile.trialEndDate) {
-          if (isPastInTz(profile.trialEndDate, timezone)) {
+        if (profileSubscription.subscriptionStatus === 'trial' && profileSubscription.trialEndDate) {
+          if (isPastInTz(profileSubscription.trialEndDate, timezone)) {
             message = 'Período de teste expirado';
           } else {
             const remainingDays = Math.max(
               0,
-              differenceInDaysInTz(profile.trialEndDate, new Date(), timezone)
+              differenceInDaysInTz(profileSubscription.trialEndDate, new Date(), timezone)
             );
             message =
               remainingDays > 0
@@ -51,32 +61,32 @@ export class SubscriptionStatusService implements ISubscriptionStatusService {
                 : 'Período de teste ativo';
           }
         } else if (
-          profile.subscriptionEndDate &&
-          isPastInTz(profile.subscriptionEndDate, timezone) &&
-          profile.subscriptionStatus !== 'active'
+          profileSubscription.subscriptionEndDate &&
+          isPastInTz(profileSubscription.subscriptionEndDate, timezone) &&
+          profileSubscription.subscriptionStatus !== 'active'
         ) {
           message = 'Assinatura expirada';
         }
 
-        console.info('📊 [SubscriptionStatusService] Profile encontrado:', {
-          profileId: profile.id,
+        console.info('📊 [SubscriptionStatusService] Assinatura encontrada:', {
+          profileId: profileSubscription.profileId,
           isPaid,
-          subscriptionStatus: profile.subscriptionStatus,
+          subscriptionStatus: profileSubscription.subscriptionStatus,
         });
 
         return {
           isPaid,
-          status: profile.subscriptionStatus || 'pending',
+          status: profileSubscription.subscriptionStatus || 'pending',
           message,
-          subscriptionStatus: profile.subscriptionStatus || undefined,
-          subscriptionPlan: profile.subscriptionPlan || undefined,
-          subscriptionStartDate: profile.subscriptionStartDate,
-          subscriptionEndDate: profile.subscriptionEndDate,
+          subscriptionStatus: profileSubscription.subscriptionStatus || undefined,
+          subscriptionPlan: profileSubscription.subscriptionPlan || undefined,
+          subscriptionStartDate: profileSubscription.subscriptionStartDate,
+          subscriptionEndDate: profileSubscription.subscriptionEndDate,
         };
       }
 
-      // 3. Se não encontrou profile, consultar Asaas diretamente
-      console.warn('⚠️ [SubscriptionStatusService] Profile não encontrado - consultando Asaas');
+      // 2. Se não encontrou nada local, consultar Asaas diretamente
+      console.warn('⚠️ [SubscriptionStatusService] Assinatura não encontrada localmente - consultando Asaas');
 
       return await this.checkPaymentStatusFromAsaas(subscriptionId);
 

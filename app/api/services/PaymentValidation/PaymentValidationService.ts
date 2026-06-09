@@ -252,7 +252,7 @@ export class PaymentValidationService implements IPaymentValidationService {
                 userName,
                 userEmail,
                 subscriptionId: payment.subscription,
-                planName: profile?.subscriptionPlan || 'manager_base',
+                planName: profile?.subscription?.subscriptionPlan || 'manager_base',
                 value: payment.value,
                 nextDueDate: payment.dueDate,
                 manageUrl,

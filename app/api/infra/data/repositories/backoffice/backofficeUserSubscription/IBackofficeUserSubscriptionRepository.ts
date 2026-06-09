@@ -2,14 +2,14 @@ import type {
   BackofficeAdhesionBillingCycle,
   BackofficeProduct,
   BackofficeSubscriptionStatus,
-  BackofficeUserSubscription,
+  BackofficeUserProductSubscription,
 } from "@prisma/client"
 
-export type BackofficeUserSubscriptionWithProduct = BackofficeUserSubscription & {
+export type BackofficeUserProductSubscriptionWithProduct = BackofficeUserProductSubscription & {
   product: BackofficeProduct
 }
 
-export interface UpsertBackofficeUserSubscriptionInput {
+export interface UpsertBackofficeUserProductSubscriptionInput {
   profileId: string
   productId: string
   status: BackofficeSubscriptionStatus
@@ -19,8 +19,8 @@ export interface UpsertBackofficeUserSubscriptionInput {
   adhesionId?: string | null
 }
 
-export interface IBackofficeUserSubscriptionRepository {
-  findByProfileId(profileId: string): Promise<BackofficeUserSubscriptionWithProduct[]>
-  upsertForAdhesion(data: UpsertBackofficeUserSubscriptionInput): Promise<BackofficeUserSubscription>
-  updateStatus(id: string, status: BackofficeSubscriptionStatus): Promise<BackofficeUserSubscription>
+export interface IBackofficeUserProductSubscriptionRepository {
+  findByProfileId(profileId: string): Promise<BackofficeUserProductSubscriptionWithProduct[]>
+  upsertForAdhesion(data: UpsertBackofficeUserProductSubscriptionInput): Promise<BackofficeUserProductSubscription>
+  updateStatus(id: string, status: BackofficeSubscriptionStatus): Promise<BackofficeUserProductSubscription>
 }

@@ -86,12 +86,15 @@ export async function GET(
     const profile = await prisma.profile.findFirst({
       where: {
         subscriptionId: subscriptionId,
-        subscriptionStatus: 'active'
+        subscription: {
+          is: {
+            subscriptionStatus: 'active'
+          }
+        }
       },
       select: {
         id: true,
         subscriptionId: true,
-        subscriptionStatus: true
       }
     });
 

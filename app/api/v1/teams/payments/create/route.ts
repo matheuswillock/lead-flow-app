@@ -65,7 +65,6 @@ export async function POST(request: NextRequest) {
           id: true,
           fullName: true,
           email: true,
-          hasPermanentSubscription: true,
           cpfCnpj: true,
           phone: true,
           postalCode: true,
@@ -73,13 +72,18 @@ export async function POST(request: NextRequest) {
           addressNumber: true,
           neighborhood: true,
           complement: true,
-          asaasCustomerId: true,
-          asaasSubscriptionId: true,
-          subscriptionStatus: true,
-          subscriptionNextDueDate: true,
-          subscriptionEndDate: true,
-          subscriptionCycle: true,
           timezone: true,
+          subscription: {
+            select: {
+              asaasCustomerId: true,
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+              subscriptionNextDueDate: true,
+              subscriptionEndDate: true,
+              subscriptionCycle: true,
+              hasPermanentSubscription: true,
+            },
+          },
         },
       }),
     ]);
@@ -90,7 +94,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    if (master.hasPermanentSubscription) {
+    if (master.subscription?.hasPermanentSubscription) {
       const newTeam = await prisma.team.create({
         data: {
           masterId: master.id,
@@ -123,15 +127,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!master.subscriptionStatus || master.subscriptionStatus === "canceled") {
+    if (!master.subscription?.subscriptionStatus || master.subscription.subscriptionStatus === "canceled") {
       return NextResponse.json(
         new Output(false, [], ["Master nao possui assinatura ativa"], null),
         { status: 400 }
       );
     }
 
-    const isExternalSubscription = !master.asaasSubscriptionId;
-    const subscriptionEnd = master.subscriptionEndDate ?? master.subscriptionNextDueDate;
+    const isExternalSubscription = !master.subscription?.asaasSubscriptionId;
+    const subscriptionEnd = master.subscription?.subscriptionEndDate ?? master.subscription?.subscriptionNextDueDate;
     if (
       isExternalSubscription &&
       subscriptionEnd &&

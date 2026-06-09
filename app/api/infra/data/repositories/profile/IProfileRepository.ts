@@ -1,13 +1,17 @@
-import type { Profile, UserRole } from "@prisma/client";
+import type { Profile, ProfileSubscription, UserRole } from "@prisma/client";
+
+export type ProfileWithSubscription = Profile & {
+  subscription: ProfileSubscription | null;
+};
 
 export interface IProfileRepository {
-  findById(id: string): Promise<Profile | null>;
-  findBySupabaseId(supabaseId: string): Promise<Profile | null>;
-  findBySupabaseIdWithRelations(supabaseId: string): Promise<Profile | null>;
+  findById(id: string): Promise<ProfileWithSubscription | null>;
+  findBySupabaseId(supabaseId: string): Promise<ProfileWithSubscription | null>;
+  findBySupabaseIdWithRelations(supabaseId: string): Promise<ProfileWithSubscription | null>;
   findFirstTeamIdByProfileId(profileId: string): Promise<string | null>;
   existingByEmailOrPhone(email: string, phone: string): Promise<boolean>;
-  findByEmail(email: string): Promise<Profile | null>;
-  findByGoogleEmail(googleEmail: string): Promise<Profile | null>;
+  findByEmail(email: string): Promise<ProfileWithSubscription | null>;
+  findByGoogleEmail(googleEmail: string): Promise<ProfileWithSubscription | null>;
   createProfile(
     fullName: string,
     phone: string,

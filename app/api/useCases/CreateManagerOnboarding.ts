@@ -45,8 +45,13 @@ export class CreateManagerOnboarding {
           fullName: true,
           email: true,
           phone: true,
-          asaasCustomerId: true,
           subscriptionId: true,
+          subscription: {
+            select: {
+              asaasCustomerId: true,
+              asaasSubscriptionId: true,
+            },
+          },
         },
       });
 
@@ -54,11 +59,11 @@ export class CreateManagerOnboarding {
         throw new Error('Profile não encontrado');
       }
 
-      if (profile.asaasCustomerId) {
+      if (profile.subscription?.asaasCustomerId) {
         throw new Error('Manager já possui cliente Asaas cadastrado');
       }
 
-      if (profile.subscriptionId) {
+      if (profile.subscriptionId || profile.subscription?.asaasSubscriptionId) {
         throw new Error('Manager já possui assinatura ativa');
       }
 
@@ -75,13 +80,7 @@ export class CreateManagerOnboarding {
 
       console.info(`✅ Cliente Asaas criado: ${customer.customerId}`);
 
-      // 3. Atualizar profile com customerId
-      await prisma.profile.update({
-        where: { id: profileId },
-        data: { asaasCustomerId: customer.customerId },
-      });
-
-      // 4. Criar assinatura base (R$ 59,90/mês)
+      // 3. Criar assinatura base (R$ 59,90/mês)
       console.info('💰 Criando assinatura Manager...');
       const subscription = await this.subscriptionService.createManagerSubscription({
         customer: customer.customerId,
@@ -94,14 +93,31 @@ export class CreateManagerOnboarding {
 
       console.info(`✅ Assinatura criada: ${subscription.subscriptionId}`);
 
-      // 5. Atualizar profile com dados de assinatura
-      await prisma.profile.update({
-        where: { id: profileId },
-        data: {
-          subscriptionId: subscription.subscriptionId,
+      // 4. Atualizar profile com ponteiro da assinatura
+      const profileSubscription = await prisma.profileSubscription.upsert({
+        where: { profileId },
+        create: {
+          profileId,
+          asaasCustomerId: customer.customerId,
+          asaasSubscriptionId: subscription.subscriptionId,
           subscriptionStatus: 'active',
           subscriptionPlan: 'manager_base',
           subscriptionStartDate: new Date(),
+        },
+        update: {
+          asaasCustomerId: customer.customerId,
+          asaasSubscriptionId: subscription.subscriptionId,
+          subscriptionStatus: 'active',
+          subscriptionPlan: 'manager_base',
+          subscriptionStartDate: new Date(),
+        },
+        select: { id: true },
+      });
+
+      await prisma.profile.update({
+        where: { id: profileId },
+        data: {
+          subscriptionId: profileSubscription.id,
         },
       });
 

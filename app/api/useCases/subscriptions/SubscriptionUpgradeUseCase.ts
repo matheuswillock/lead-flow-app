@@ -42,6 +42,9 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       // 1. Validar manager
       const manager = await prisma.profile.findUnique({
         where: { supabaseId: data.managerId },
+        include: {
+          subscription: true,
+        },
       });
 
       if (!manager) {
@@ -52,7 +55,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         return new Output(false, [], ['Apenas managers podem adicionar usuário'], null);
       }
 
-      if (!manager.subscriptionStatus || manager.subscriptionStatus === 'canceled') {
+      if (!manager.subscription?.subscriptionStatus || manager.subscription.subscriptionStatus === 'canceled') {
         return new Output(false, [], ['Manager não possui assinatura ativa'], null);
       }
 
@@ -85,7 +88,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('💾 [createOperatorPayment] PendingOperator criado:', pendingOperator.id);
 
       // 4. Validar ou criar customer no Asaas
-      let asaasCustomerId = manager.asaasCustomerId;
+      let asaasCustomerId = manager.subscription?.asaasCustomerId ?? null;
       
       if (!asaasCustomerId) {
         console.error('❌ [createOperatorPayment] Manager sem asaasCustomerId:', {
@@ -145,9 +148,15 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         }
         
         // Atualizar profile com novo customerId
-        await prisma.profile.update({
-          where: { id: manager.id },
-          data: { asaasCustomerId: newCustomer.customerId }
+        await prisma.profileSubscription.upsert({
+          where: { profileId: manager.id },
+          create: {
+            profile: { connect: { id: manager.id } },
+            asaasCustomerId: newCustomer.customerId,
+          },
+          update: {
+            asaasCustomerId: newCustomer.customerId,
+          },
         });
         
         asaasCustomerId = newCustomer.customerId;
@@ -405,7 +414,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       
       try {
         const manager = await prisma.profile.findUnique({
-          where: { id: pendingOperator.managerId }
+          where: { id: pendingOperator.managerId },
+          include: {
+            subscription: true,
+          },
         });
 
         if (!manager) {
@@ -422,10 +434,12 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           id: manager.id,
           supabaseId: manager.supabaseId,
           fullName: manager.fullName,
-          asaasSubscriptionId: manager.asaasSubscriptionId
+          asaasSubscriptionId: manager.subscription?.asaasSubscriptionId
         });
 
-        if (!manager.asaasSubscriptionId) {
+        const managerSubscription = manager.subscription;
+
+        if (!managerSubscription?.asaasSubscriptionId) {
           console.error('❌ [createOperatorFromPending] Manager não possui assinatura Asaas:', {
             managerId: manager.id,
             managerName: manager.fullName,
@@ -441,12 +455,12 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
         // Buscar assinatura atual no Asaas
         console.info('🔍 [createOperatorFromPending] Buscando assinatura atual no Asaas...');
-        const currentSubscription = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        const currentSubscription = await AsaasSubscriptionService.getSubscription(managerSubscription.asaasSubscriptionId);
         
         if (!currentSubscription) {
           console.error('❌ [createOperatorFromPending] Assinatura não encontrada no Asaas:', {
             managerId: manager.id,
-            asaasSubscriptionId: manager.asaasSubscriptionId,
+            asaasSubscriptionId: managerSubscription.asaasSubscriptionId,
             operadorTentandoAdicionar: pendingOperator.name
           });
           return new Output(
@@ -464,7 +478,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
           managerId: manager.id,
           managerName: manager.fullName,
           supabaseId: manager.supabaseId,
-          asaasSubscriptionId: manager.asaasSubscriptionId,
+          asaasSubscriptionId: managerSubscription.asaasSubscriptionId,
           valorAnterior: currentSubscription.value,
           valorNovo: newValue,
           operadorAdicionado: pendingOperator.name,
@@ -505,13 +519,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
             supabaseId: supabaseUser.userId,
             fullName: pendingOperator.name,
             email: pendingOperator.email,
-            role: pendingOperator.role as any,
-            functions: pendingOperator.functions ?? [],
-            managerId: pendingOperator.managerId,
-            asaasSubscriptionId: pendingOperator.subscriptionId || undefined,
-            subscriptionCycle: pendingOperator.subscriptionId ? 'MONTHLY' : undefined,
-          }
-        });
+          role: pendingOperator.role as any,
+          functions: pendingOperator.functions ?? [],
+          managerId: pendingOperator.managerId,
+        }
+      });
 
         console.info('✅ [createOperatorFromPending] Perfil criado:', {
           id: operator.id,
@@ -1000,12 +1012,14 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     operatorName: string;
   }): Promise<void> {
     const { manager, currentSubscription, newValue, operatorName } = params;
+    const managerSubscriptionId = manager.subscription?.asaasSubscriptionId;
 
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
     const isCreditCard = currentSubscription.billingType === 'CREDIT_CARD';
     const verifyUpdatedValue = async () => {
       try {
-        const latest = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        if (!managerSubscriptionId) return false;
+        const latest = await AsaasSubscriptionService.getSubscription(managerSubscriptionId);
         const latestValue = Number(latest?.value);
         if (!Number.isFinite(latestValue)) {
           return false;
@@ -1018,10 +1032,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     };
     const logLatestValue = async (context: string) => {
       try {
-        const latest = await AsaasSubscriptionService.getSubscription(manager.asaasSubscriptionId);
+        if (!managerSubscriptionId) return;
+        const latest = await AsaasSubscriptionService.getSubscription(managerSubscriptionId);
         console.warn('⚠️ [updateManagerSubscriptionValue] Valor atual da assinatura:', {
           context,
-          subscriptionId: manager.asaasSubscriptionId,
+          subscriptionId: managerSubscriptionId,
           latestValue: latest?.value,
           expectedValue: newValue
         });
@@ -1033,8 +1048,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     if (!isCreditCard) {
       console.info('📄 [updateManagerSubscriptionValue] Atualizando assinatura para proxima cobranca (PIX/Boleto)...');
       try {
+        if (!managerSubscriptionId) {
+          throw new Error('Manager sem assinatura Asaas');
+        }
         await AsaasSubscriptionService.updateSubscription(
-          manager.asaasSubscriptionId,
+          managerSubscriptionId,
           { value: newValue }
         );
         console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada - novo valor sera cobrado na proxima fatura');
@@ -1051,8 +1069,11 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     console.info('💳 [updateManagerSubscriptionValue] Atualizando assinatura com cobranca automatica (Cartao)...');
 
     try {
+      if (!managerSubscriptionId) {
+        throw new Error('Manager sem assinatura Asaas');
+      }
       await AsaasSubscriptionService.updateSubscription(
-        manager.asaasSubscriptionId,
+        managerSubscriptionId,
         { value: newValue }
       );
       console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada com sucesso no cartao');
@@ -1078,7 +1099,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
               await sleep(500 * attempt);
             }
             await AsaasSubscriptionService.updateSubscription(
-              manager.asaasSubscriptionId,
+              managerSubscriptionId,
               { value: newValue }
             );
             console.info('✅ [updateManagerSubscriptionValue] Assinatura atualizada com sucesso no cartao (re-tentativa)');
@@ -1098,7 +1119,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       console.warn('⚠️ [updateManagerSubscriptionValue] Alteracao de valor bloqueada para cartao. Recriando assinatura...', {
         managerId: manager.id,
-        subscriptionId: manager.asaasSubscriptionId,
+        subscriptionId: managerSubscriptionId,
         operatorName,
         errorMessage
       });
@@ -1117,19 +1138,21 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
     newValue: number;
   }): Promise<void> {
     const { manager, currentSubscription, newValue } = params;
+    const managerCustomerId = manager.subscription?.asaasCustomerId;
+    const managerNextDueDate = manager.subscription?.subscriptionNextDueDate;
 
-    if (!manager.asaasCustomerId) {
+    if (!managerCustomerId) {
       throw new Error('Manager sem customer Asaas para recriar assinatura');
     }
 
-    const currentNextDueDate = manager.subscriptionNextDueDate
-      ? new Date(manager.subscriptionNextDueDate)
+    const currentNextDueDate = managerNextDueDate
+      ? new Date(managerNextDueDate)
       : (currentSubscription.nextDueDate ? new Date(currentSubscription.nextDueDate) : null);
 
     const { nextDueDateStr } = this.resolveAsaasNextDueDate(currentNextDueDate, manager.timezone);
 
     const payload: any = {
-      customer: manager.asaasCustomerId,
+      customer: managerCustomerId,
       billingType: 'CREDIT_CARD',
       value: newValue,
       cycle: currentSubscription.cycle || 'MONTHLY',
@@ -1150,13 +1173,21 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
     const newSubscription = await AsaasSubscriptionService.createSubscription(payload);
 
-    await prisma.profile.update({
-      where: { id: manager.id },
-      data: {
+    await prisma.profileSubscription.upsert({
+      where: { profileId: manager.id },
+      create: {
+        profile: { connect: { id: manager.id } },
+        asaasCustomerId: managerCustomerId,
         asaasSubscriptionId: newSubscription.subscriptionId,
         subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
         subscriptionCycle: newSubscription.data.cycle || 'MONTHLY',
-      }
+      },
+      update: {
+        asaasCustomerId: managerCustomerId,
+        asaasSubscriptionId: newSubscription.subscriptionId,
+        subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+        subscriptionCycle: newSubscription.data.cycle || 'MONTHLY',
+      },
     });
 
     try {
@@ -1179,6 +1210,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       const manager = await prisma.profile.findUnique({
         where: { id: managerId },
         include: {
+          subscription: true,
           operators: {
             where: {
               role: 'operator'
@@ -1191,19 +1223,21 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         return new Output(false, [], ['Manager não encontrado'], null);
       }
 
+      const managerSubscription = manager.subscription;
+
       console.info('📊 [updateManagerSubscription] Manager encontrado:', {
         id: manager.id,
         email: manager.email,
         operatorCount: manager.operators.length,
-        currentSubscriptionId: manager.asaasSubscriptionId
+        currentSubscriptionId: managerSubscription?.asaasSubscriptionId
       });
 
       // 2. Verificar se tem assinatura ativa
-      if (!manager.asaasSubscriptionId) {
+      if (!managerSubscription?.asaasSubscriptionId) {
         return new Output(false, [], ['Manager não possui assinatura ativa'], null);
       }
 
-      if (!manager.asaasCustomerId) {
+      if (!managerSubscription?.asaasCustomerId) {
         return new Output(false, [], ['Cliente Asaas não encontrado'], null);
       }
 
@@ -1217,10 +1251,10 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // 4. Cancelar assinatura antiga
-      console.info('❌ [updateManagerSubscription] Cancelando assinatura antiga:', manager.asaasSubscriptionId);
+      console.info('❌ [updateManagerSubscription] Cancelando assinatura antiga:', managerSubscription.asaasSubscriptionId);
       
       try {
-        await AsaasSubscriptionService.cancelSubscription(manager.asaasSubscriptionId);
+        await AsaasSubscriptionService.cancelSubscription(managerSubscription.asaasSubscriptionId);
         console.info('✅ [updateManagerSubscription] Assinatura antiga cancelada');
       } catch (error) {
         console.error('⚠️ [updateManagerSubscription] Erro ao cancelar assinatura antiga:', error);
@@ -1230,17 +1264,17 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       // 5. Criar nova assinatura com valor atualizado
       // Mantém a mesma data de vencimento da assinatura anterior
       const { nextDueDate, nextDueDateStr } = this.resolveAsaasNextDueDate(
-        manager.subscriptionNextDueDate,
+        managerSubscription.subscriptionNextDueDate,
         manager.timezone
       );
 
       console.info('📝 [updateManagerSubscription] Criando nova assinatura...', {
-        originalNextDueDate: manager.subscriptionNextDueDate,
+        originalNextDueDate: managerSubscription.subscriptionNextDueDate,
         newNextDueDate: nextDueDate
       });
 
       const newSubscriptionData = {
-        customer: manager.asaasCustomerId,
+        customer: managerSubscription.asaasCustomerId,
         billingType: 'CREDIT_CARD' as const, // Assumindo cartão, pode ser ajustado
         value,
         cycle: 'MONTHLY' as const,
@@ -1267,13 +1301,21 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       });
 
       // 6. Atualizar Profile com novo subscriptionId
-      await prisma.profile.update({
-        where: { id: manager.id },
-        data: {
+      await prisma.profileSubscription.upsert({
+        where: { profileId: manager.id },
+        create: {
+          profile: { connect: { id: manager.id } },
+          asaasCustomerId: managerSubscription.asaasCustomerId,
           asaasSubscriptionId: newSubscription.subscriptionId,
           subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
-          operatorCount: manager.operators.length,
-        }
+          subscriptionCycle: 'MONTHLY',
+        },
+        update: {
+          asaasCustomerId: managerSubscription.asaasCustomerId,
+          asaasSubscriptionId: newSubscription.subscriptionId,
+          subscriptionNextDueDate: new Date(newSubscription.data.nextDueDate),
+          subscriptionCycle: 'MONTHLY',
+        },
       });
 
       console.info('💾 [updateManagerSubscription] Profile atualizado com nova assinatura');
@@ -1283,7 +1325,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         ['Assinatura atualizada com sucesso'],
         [],
         {
-          oldSubscriptionId: manager.asaasSubscriptionId,
+          oldSubscriptionId: managerSubscription.asaasSubscriptionId,
           newSubscriptionId: newSubscription.subscriptionId,
           newValue: value,
           operatorCount: manager.operators.length,
@@ -1386,29 +1428,34 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       // 1. Buscar manager pelo supabaseId
       const manager = await prisma.profile.findUnique({
-        where: { supabaseId: data.supabaseId }
+        where: { supabaseId: data.supabaseId },
+        include: {
+          subscription: true,
+        },
       });
 
       if (!manager) {
         return new Output(false, [], ['Manager não encontrado'], null);
       }
 
-      if (!manager.asaasCustomerId) {
+      const managerSubscription = manager.subscription;
+
+      if (!managerSubscription?.asaasCustomerId) {
         return new Output(false, [], ['Manager não possui cliente Asaas'], null);
       }
 
       console.info('👤 [reactivateSubscription] Manager encontrado:', {
         id: manager.id,
         fullName: manager.fullName,
-        asaasCustomerId: manager.asaasCustomerId,
-        oldSubscriptionId: manager.asaasSubscriptionId
+        asaasCustomerId: managerSubscription.asaasCustomerId,
+        oldSubscriptionId: managerSubscription.asaasSubscriptionId
       });
 
       // 2. Cancelar assinatura antiga se existir
-      if (manager.asaasSubscriptionId) {
-        console.info('❌ [reactivateSubscription] Cancelando assinatura antiga:', manager.asaasSubscriptionId);
+      if (managerSubscription.asaasSubscriptionId) {
+        console.info('❌ [reactivateSubscription] Cancelando assinatura antiga:', managerSubscription.asaasSubscriptionId);
         try {
-          await AsaasSubscriptionService.cancelSubscription(manager.asaasSubscriptionId);
+          await AsaasSubscriptionService.cancelSubscription(managerSubscription.asaasSubscriptionId);
           console.info('✅ [reactivateSubscription] Assinatura antiga cancelada');
         } catch (error) {
           console.error('⚠️ [reactivateSubscription] Erro ao cancelar assinatura antiga:', error);
@@ -1422,7 +1469,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
 
       // 4. Preparar nextDueDate (manter data antiga ou usar nova)
       const { nextDueDate, nextDueDateStr } = this.resolveAsaasNextDueDate(
-        manager.subscriptionNextDueDate,
+        managerSubscription.subscriptionNextDueDate,
         manager.timezone
       );
 
@@ -1430,7 +1477,7 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
       console.info('📝 [reactivateSubscription] Criando nova assinatura...');
       
       const subscriptionPayload: any = {
-        customer: manager.asaasCustomerId,
+        customer: managerSubscription.asaasCustomerId,
         billingType: data.paymentMethod,
         value,
         nextDueDate: nextDueDateStr,
@@ -1457,19 +1504,25 @@ export class SubscriptionUpgradeUseCase implements ISubscriptionUpgradeUseCase {
         status: newSubscription.data.status
       });
 
-      // 6. Atualizar Profile no banco
-      await prisma.profile.update({
-        where: { id: manager.id },
-        data: {
+      // 6. Atualizar assinatura no banco
+      await prisma.profileSubscription.upsert({
+        where: { profileId: manager.id },
+        create: {
+          profile: { connect: { id: manager.id } },
+          asaasCustomerId: managerSubscription.asaasCustomerId,
           asaasSubscriptionId: newSubscription.data.id,
           subscriptionNextDueDate: nextDueDate,
           subscriptionCycle: 'MONTHLY',
-          operatorCount: data.operatorCount,
-          updatedAt: new Date()
-        }
+        },
+        update: {
+          asaasCustomerId: managerSubscription.asaasCustomerId,
+          asaasSubscriptionId: newSubscription.data.id,
+          subscriptionNextDueDate: nextDueDate,
+          subscriptionCycle: 'MONTHLY',
+        },
       });
 
-      console.info('✅ [reactivateSubscription] Profile atualizado no banco');
+      console.info('✅ [reactivateSubscription] Assinatura atualizada no banco');
 
       // 7. Preparar resposta com dados PIX se necessário
       const resultData: any = {

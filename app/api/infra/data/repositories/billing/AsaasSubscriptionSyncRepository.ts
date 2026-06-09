@@ -7,6 +7,7 @@ export interface AsaasSubscriptionSyncSnapshot {
 }
 
 export interface AsaasSubscriptionSyncData {
+  asaasCustomerId?: string;
   subscriptionStatus?: SubscriptionStatus;
   subscriptionCycle?: string;
   subscriptionNextDueDate?: Date;
@@ -17,34 +18,26 @@ export interface AsaasSubscriptionSyncData {
 
 class PrismaAsaasSubscriptionSyncRepository {
   async getSyncSnapshot(profileId: string): Promise<AsaasSubscriptionSyncSnapshot | null> {
-    const [profileSubscription, profile] = await Promise.all([
-      prisma.profileSubscription.findUnique({
-        where: { profileId },
-        select: {
-          asaasSubscriptionId: true,
-          hasPermanentSubscription: true,
-        },
-      }),
-      prisma.profile.findUnique({
-        where: { id: profileId },
-        select: {
-          asaasSubscriptionId: true,
-          hasPermanentSubscription: true,
-        },
-      }),
-    ]);
+    const profileSubscription = await prisma.profileSubscription.findUnique({
+      where: { profileId },
+      select: {
+        asaasSubscriptionId: true,
+        hasPermanentSubscription: true,
+      },
+    });
 
-    if (!profile && !profileSubscription) return null;
+    if (!profileSubscription) {
+      return null;
+    }
 
     return {
-      asaasSubscriptionId: profileSubscription?.asaasSubscriptionId ?? profile?.asaasSubscriptionId ?? null,
-      hasPermanentSubscription:
-        profileSubscription?.hasPermanentSubscription === true || profile?.hasPermanentSubscription === true,
+      asaasSubscriptionId: profileSubscription.asaasSubscriptionId ?? null,
+      hasPermanentSubscription: profileSubscription.hasPermanentSubscription,
     };
   }
 
   async saveSyncData(profileId: string, asaasSubscriptionId: string, data: AsaasSubscriptionSyncData): Promise<void> {
-    await prisma.profileSubscription.upsert({
+    const subscription = await prisma.profileSubscription.upsert({
       where: { profileId },
       create: {
         profileId,
@@ -52,16 +45,13 @@ class PrismaAsaasSubscriptionSyncRepository {
         ...data,
       },
       update: data,
+      select: { id: true },
     });
 
     await prisma.profile.update({
       where: { id: profileId },
       data: {
-        subscriptionStatus: data.subscriptionStatus,
-        subscriptionCycle: data.subscriptionCycle,
-        subscriptionNextDueDate: data.subscriptionNextDueDate,
-        subscriptionStartDate: data.subscriptionStartDate,
-        subscriptionEndDate: data.subscriptionEndDate,
+        subscriptionId: subscription.id,
       },
     });
   }

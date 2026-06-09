@@ -313,8 +313,12 @@ export class MetaLeadUseCase implements IMetaLeadUseCase {
         where: {
           role: 'manager',
           isMaster: true,
-          subscriptionStatus: {
-            in: ['active', 'trial']
+          subscription: {
+            is: {
+              subscriptionStatus: {
+                in: ['active', 'trial']
+              }
+            }
           }
         }
       });

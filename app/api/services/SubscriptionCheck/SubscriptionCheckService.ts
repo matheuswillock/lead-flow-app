@@ -25,7 +25,7 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
     }
 
     // Verificar se tem assinatura permanente (BYPASS ASAAS)
-    if (profile.hasPermanentSubscription) {
+    if (profile.subscription?.hasPermanentSubscription) {
       return {
         success: true,
         hasActiveSubscription: true,
@@ -36,9 +36,9 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         userId: profile.supabaseId,
         userRole: profile.isMaster ? 'master' : profile.role,
         subscription: {
-          id: 'PERMANENT',
-          status: 'active',
-          plan: 'Assinatura Permanente',
+            id: 'PERMANENT',
+            status: 'active',
+            plan: 'Assinatura Permanente',
         },
       };
     }
@@ -59,8 +59,8 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
 
     // Se é MASTER, verifica sua própria assinatura
     if (profile.isMaster) {
-      const hasSubscription = !!profile.subscriptionId;
-      const isActive = profile.subscriptionStatus === 'active';
+      const hasSubscription = !!profile.subscription?.asaasSubscriptionId;
+      const isActive = profile.subscription?.subscriptionStatus === 'active';
 
       if (hasSubscription && isActive) {
         console.info('✅ [SubscriptionCheckService] Master com assinatura ativa');
@@ -72,11 +72,11 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
           matchedIdentifier,
           userId: profile.supabaseId,
           subscription: {
-            id: profile.subscriptionId,
-            status: profile.subscriptionStatus,
-            startDate: profile.subscriptionStartDate,
-            endDate: profile.subscriptionEndDate,
-            plan: profile.subscriptionPlan,
+            id: profile.subscription?.asaasSubscriptionId ?? null,
+            status: profile.subscription?.subscriptionStatus ?? null,
+            startDate: profile.subscription?.subscriptionStartDate,
+            endDate: profile.subscription?.subscriptionEndDate,
+            plan: profile.subscription?.subscriptionPlan,
             operatorCount: profile.operatorCount,
           },
         };
@@ -97,8 +97,8 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         userId: profile.supabaseId,
         subscription: hasSubscription
           ? {
-              id: profile.subscriptionId,
-              status: profile.subscriptionStatus,
+              id: profile.subscription?.asaasSubscriptionId ?? null,
+              status: profile.subscription?.subscriptionStatus ?? null,
             }
           : undefined,
       };
@@ -123,10 +123,10 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         };
       }
 
-      const hasSubscription = !!manager.subscriptionId;
-      const isActive = manager.subscriptionStatus === 'active';
+      const hasManagerSubscription = !!manager.subscription?.asaasSubscriptionId;
+      const isActive = manager.subscription?.subscriptionStatus === 'active';
 
-      if (hasSubscription && isActive) {
+      if (hasManagerSubscription && isActive) {
         console.info('✅ [SubscriptionCheckService] Manager do operador/manager tem assinatura ativa');
         return {
           success: true,
@@ -137,18 +137,18 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
           userId: profile.supabaseId,
           userRole: profile.role,
           subscription: {
-            id: manager.subscriptionId,
-            status: manager.subscriptionStatus,
-            startDate: manager.subscriptionStartDate,
-            endDate: manager.subscriptionEndDate,
-            plan: manager.subscriptionPlan,
+            id: manager.subscription?.asaasSubscriptionId ?? null,
+            status: manager.subscription?.subscriptionStatus ?? null,
+            startDate: manager.subscription?.subscriptionStartDate,
+            endDate: manager.subscription?.subscriptionEndDate,
+            plan: manager.subscription?.subscriptionPlan,
             operatorCount: manager.operatorCount,
           },
         };
       }
 
       // Manager sem assinatura ativa
-      const message = hasSubscription && !isActive
+      const message = hasManagerSubscription && !isActive
         ? 'Manager com assinatura inativa'
         : 'Manager sem assinatura';
       
@@ -161,10 +161,10 @@ export class SubscriptionCheckService implements ISubscriptionCheckService {
         matchedIdentifier,
         userId: profile.supabaseId,
         userRole: profile.role,
-        subscription: hasSubscription
+        subscription: hasManagerSubscription
           ? {
-              id: manager.subscriptionId,
-              status: manager.subscriptionStatus,
+              id: manager.subscription?.asaasSubscriptionId ?? null,
+              status: manager.subscription?.subscriptionStatus ?? null,
             }
           : undefined,
       };

@@ -164,7 +164,6 @@ async function recreateAndAttachToTeam(opts: {
       role: "manager",
       functions: ["SDR", "CLOSER"],
       isMaster: false,
-      hasPermanentSubscription: false,
       managerId: BRUNO.profileId,
       activeTeamId: BRUNO.teamId,
     },

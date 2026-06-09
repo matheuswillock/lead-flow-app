@@ -11,6 +11,7 @@ export interface BillingSnapshot {
 }
 
 export interface IUpdateBillingProfileSubscriptionData {
+  asaasCustomerId?: string;
   asaasSubscriptionId: string;
   subscriptionNextDueDate: Date;
   subscriptionCycle: string;

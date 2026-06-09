@@ -517,19 +517,19 @@ export class ManagerUserUseCase implements IManagerUserUseCase {
             console.info(`👑 [deleteOperatorWithSubscriptionUpdate] Master encontrado: ${masterUser.fullName}`);
 
             // 3. Atualizar assinatura do master (remover R$ 19,90)
-            if (masterUser.asaasSubscriptionId) {
+            if (masterUser.subscription?.asaasSubscriptionId) {
                 try {
                     const { AsaasSubscriptionService } = await import('../../services/AsaasSubscription/AsaasSubscriptionService');
                     
                     // Buscar assinatura atual
-                    const currentSubscription = await AsaasSubscriptionService.getSubscription(masterUser.asaasSubscriptionId);
+                    const currentSubscription = await AsaasSubscriptionService.getSubscription(masterUser.subscription.asaasSubscriptionId);
                     
                     const newValue = Math.max(59.90, currentSubscription.value - 19.90);
                     
                     console.info(`💰 [deleteOperatorWithSubscriptionUpdate] Atualizando assinatura de R$ ${currentSubscription.value} para R$ ${newValue}`);
                     
                     await AsaasSubscriptionService.updateSubscription(
-                        masterUser.asaasSubscriptionId,
+                        masterUser.subscription.asaasSubscriptionId,
                         { value: newValue }
                     );
 

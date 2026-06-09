@@ -118,7 +118,11 @@ class PrismaSubscriptionCreditRepository {
   private async getSnapshotWithTx(tx: TransactionClient, masterId: string): Promise<BillingSnapshot | null> {
     const master = await tx.profile.findUnique({
       where: { id: masterId },
-      select: { hasPermanentSubscription: true },
+      select: {
+        subscription: {
+          select: { hasPermanentSubscription: true },
+        },
+      },
     });
 
     if (!master) return null;
@@ -166,7 +170,7 @@ class PrismaSubscriptionCreditRepository {
     const hasUnlimitedUsers = hasYearlySubscription || annualAdhesionCount > 0;
 
     return {
-      hasPermanentSubscription: master.hasPermanentSubscription,
+      hasPermanentSubscription: master.subscription?.hasPermanentSubscription ?? false,
       hasUnlimitedUsers,
       teamCount,
       distinctUserCount,

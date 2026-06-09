@@ -90,8 +90,12 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
           phone: true,
           profileIconUrl: true,
           createdAt: true,
-          hasPermanentSubscription: true,
-          subscriptionPlan: true,
+          subscription: {
+            select: {
+              hasPermanentSubscription: true,
+              subscriptionPlan: true,
+            },
+          },
           operatorCount: true,
           googleConnection: {
             select: {
@@ -164,8 +168,8 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       phone: master.phone,
       profileIconUrl: master.profileIconUrl,
       createdAt: master.createdAt,
-      hasPermanentSubscription: master.hasPermanentSubscription,
-      subscriptionPlan: master.subscriptionPlan,
+      hasPermanentSubscription: master.subscription?.hasPermanentSubscription ?? false,
+      subscriptionPlan: master.subscription?.subscriptionPlan ?? null,
       operatorCount: master.operatorCount,
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
       linkedUsersCount: membersByMaster.get(master.id)?.size ?? 0,
@@ -212,16 +216,21 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         city: true,
         state: true,
         functions: true,
-        profileIconUrl: true,
-        createdAt: true,
-        hasPermanentSubscription: true,
-        subscriptionPlan: true,
-        subscriptionStatus: true,
-        subscriptionId: true,
-        operatorCount: true,
-        googleConnection: {
-          select: {
-            refreshToken: true,
+          profileIconUrl: true,
+          createdAt: true,
+          subscription: {
+            select: {
+              hasPermanentSubscription: true,
+              subscriptionPlan: true,
+              subscriptionStatus: true,
+              asaasSubscriptionId: true,
+              asaasCustomerId: true,
+            },
+          },
+          operatorCount: true,
+          googleConnection: {
+            select: {
+              refreshToken: true,
             revokedAt: true,
           },
         },
@@ -353,10 +362,10 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       functions: master.functions,
       profileIconUrl: master.profileIconUrl,
       createdAt: master.createdAt,
-      hasPermanentSubscription: master.hasPermanentSubscription,
-      subscriptionPlan: master.subscriptionPlan,
-      subscriptionStatus: master.subscriptionStatus,
-      subscriptionId: master.subscriptionId,
+      hasPermanentSubscription: master.subscription?.hasPermanentSubscription ?? false,
+      subscriptionPlan: master.subscription?.subscriptionPlan ?? null,
+      subscriptionStatus: master.subscription?.subscriptionStatus ?? null,
+      subscriptionId: master.subscription?.asaasSubscriptionId ?? null,
       operatorCount: master.operatorCount,
       googleCalendarConnected: isGoogleConnectionActive(master.googleConnection),
       linkedUsersCount: linkedUsers.size,
@@ -385,7 +394,7 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
   async findMasterUserBillingById(
     masterProfileId: string
   ): Promise<MasterPlatformUserBillingRecord | null> {
-    return prisma.profile.findFirst({
+    const master = await prisma.profile.findFirst({
       where: {
         id: masterProfileId,
         isMaster: true,
@@ -395,10 +404,26 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
         id: true,
         fullName: true,
         email: true,
-        asaasCustomerId: true,
-        hasPermanentSubscription: true,
+        subscription: {
+          select: {
+            asaasCustomerId: true,
+            hasPermanentSubscription: true,
+          },
+        },
       },
     })
+
+    if (!master) {
+      return null
+    }
+
+    return {
+      id: master.id,
+      fullName: master.fullName,
+      email: master.email,
+      asaasCustomerId: master.subscription?.asaasCustomerId ?? null,
+      hasPermanentSubscription: master.subscription?.hasPermanentSubscription ?? false,
+    }
   }
 
   async updateMasterUserProfile(
@@ -431,19 +456,49 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
       if (data.city !== undefined) updateData.city = data.city
       if (data.state !== undefined) updateData.state = data.state
       if (data.functions !== undefined) updateData.functions = data.functions
-      if (data.hasPermanentSubscription !== undefined) updateData.hasPermanentSubscription = data.hasPermanentSubscription
+      if (Object.keys(updateData).length > 0) {
+        const profileUpdate = await prisma.profile.update({
+          where: {
+            id: masterProfileId,
+            isMaster: true,
+            role: "manager",
+          },
+          data: updateData,
+          select: { id: true },
+        })
 
-      if (Object.keys(updateData).length === 0) return null
+        if (data.hasPermanentSubscription !== undefined) {
+          await prisma.profileSubscription.upsert({
+            where: { profileId: masterProfileId },
+            create: {
+              profileId: masterProfileId,
+              hasPermanentSubscription: data.hasPermanentSubscription,
+            },
+            update: {
+              hasPermanentSubscription: data.hasPermanentSubscription,
+            },
+          })
+        }
 
-      return await prisma.profile.update({
-        where: {
-          id: masterProfileId,
-          isMaster: true,
-          role: "manager",
-        },
-        data: updateData,
-        select: { id: true },
-      })
+        return profileUpdate
+      }
+
+      if (data.hasPermanentSubscription !== undefined) {
+        await prisma.profileSubscription.upsert({
+          where: { profileId: masterProfileId },
+          create: {
+            profileId: masterProfileId,
+            hasPermanentSubscription: data.hasPermanentSubscription,
+          },
+          update: {
+            hasPermanentSubscription: data.hasPermanentSubscription,
+          },
+        })
+
+        return { id: masterProfileId }
+      }
+
+      return null
     } catch {
       return null
     }

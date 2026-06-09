@@ -35,6 +35,27 @@ export async function POST(request: NextRequest) {
 
     const manager = await prisma.profile.findUnique({
       where: { supabaseId: managerId },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        cpfCnpj: true,
+        phone: true,
+        postalCode: true,
+        address: true,
+        addressNumber: true,
+        complement: true,
+        neighborhood: true,
+        role: true,
+        subscription: {
+          select: {
+            subscriptionStatus: true,
+            asaasSubscriptionId: true,
+            subscriptionEndDate: true,
+            subscriptionNextDueDate: true,
+          },
+        },
+      },
     });
 
     if (!manager || !isManagerLikeRole(manager.role)) {
@@ -63,15 +84,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!manager.subscriptionStatus || manager.subscriptionStatus === "canceled") {
+    if (!manager.subscription?.subscriptionStatus || manager.subscription.subscriptionStatus === "canceled") {
       return NextResponse.json(
         new Output(false, [], ["Manager nao possui assinatura ativa"], null),
         { status: 400 }
       );
     }
 
-    const isExternalSubscription = !manager.asaasSubscriptionId;
-    const subscriptionEnd = manager.subscriptionEndDate ?? manager.subscriptionNextDueDate;
+    const isExternalSubscription = !manager.subscription?.asaasSubscriptionId;
+    const subscriptionEnd = manager.subscription?.subscriptionEndDate ?? manager.subscription?.subscriptionNextDueDate;
     if (
       isExternalSubscription &&
       subscriptionEnd &&

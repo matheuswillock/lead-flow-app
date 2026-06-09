@@ -144,7 +144,7 @@ export async function DELETE(
       );
     }
 
-    const [requester, billingOwner] = await Promise.all([
+    const [requester, billingOwnerRecord] = await Promise.all([
       prisma.profile.findUnique({
         where: { supabaseId },
         select: { id: true, email: true },
@@ -162,20 +162,44 @@ export async function DELETE(
           addressNumber: true,
           neighborhood: true,
           complement: true,
-          asaasCustomerId: true,
-          asaasSubscriptionId: true,
-          subscriptionStatus: true,
-          subscriptionNextDueDate: true,
-          subscriptionCycle: true,
-          hasPermanentSubscription: true,
           timezone: true,
+          subscription: {
+            select: {
+              asaasCustomerId: true,
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+              subscriptionNextDueDate: true,
+              subscriptionCycle: true,
+              hasPermanentSubscription: true,
+            },
+          },
         },
       }),
     ]);
 
-    if (!requester || !billingOwner) {
+    if (!requester || !billingOwnerRecord) {
       return NextResponse.json(new Output(false, [], ["Perfil não encontrado"], null), { status: 404 });
     }
+
+    const billingOwner = {
+      id: billingOwnerRecord.id,
+      fullName: billingOwnerRecord.fullName,
+      email: billingOwnerRecord.email,
+      cpfCnpj: billingOwnerRecord.cpfCnpj,
+      phone: billingOwnerRecord.phone,
+      postalCode: billingOwnerRecord.postalCode,
+      address: billingOwnerRecord.address,
+      addressNumber: billingOwnerRecord.addressNumber,
+      neighborhood: billingOwnerRecord.neighborhood,
+      complement: billingOwnerRecord.complement,
+      asaasCustomerId: billingOwnerRecord.subscription?.asaasCustomerId ?? null,
+      asaasSubscriptionId: billingOwnerRecord.subscription?.asaasSubscriptionId ?? null,
+      subscriptionStatus: billingOwnerRecord.subscription?.subscriptionStatus ?? null,
+      subscriptionNextDueDate: billingOwnerRecord.subscription?.subscriptionNextDueDate ?? null,
+      subscriptionCycle: billingOwnerRecord.subscription?.subscriptionCycle ?? null,
+      hasPermanentSubscription: billingOwnerRecord.subscription?.hasPermanentSubscription ?? false,
+      timezone: billingOwnerRecord.timezone,
+    };
 
     const supabaseAdmin = createSupabaseAdminClient();
     if (!supabaseAdmin) {

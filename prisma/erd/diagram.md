@@ -392,18 +392,7 @@ unsubscribed unsubscribed
     Boolean isMaster 
     Boolean canCreateAccountUsers 
     Boolean canManageAccountTeams 
-    Boolean hasPermanentSubscription 
-    String asaasCustomerId "❓"
-    String subscriptionId "❓"
-    SubscriptionStatus subscriptionStatus "❓"
-    SubscriptionPlan subscriptionPlan "❓"
     Int operatorCount 
-    DateTime subscriptionStartDate "❓"
-    DateTime subscriptionEndDate "❓"
-    DateTime trialEndDate "❓"
-    String asaasSubscriptionId "❓"
-    DateTime subscriptionNextDueDate "❓"
-    String subscriptionCycle "❓"
     String activeTeamId "❓"
     String timezone 
     DateTime createdAt 
@@ -1074,7 +1063,7 @@ unsubscribed unsubscribed
     }
   
 
-  "backoffice_user_subscriptions" {
+  "backoffice_user_product_subscriptions" {
     String id "🗝️"
     BackofficeSubscriptionStatus status 
     BackofficeAdhesionBillingCycle cycle "❓"
@@ -1088,6 +1077,7 @@ unsubscribed unsubscribed
 
   "corretor_studio_profile_subscriptions" {
     String id "🗝️"
+    String asaasCustomerId "❓"
     String asaasSubscriptionId "❓"
     String asaasInstallmentId "❓"
     SubscriptionStatus subscriptionStatus "❓"
@@ -1135,10 +1125,9 @@ unsubscribed unsubscribed
   
     "corretor_studio_profiles" |o--|| "UserRole" : "enum:role"
     "corretor_studio_profiles" |o--}o "UserFunction" : "enum:functions"
-    "corretor_studio_profiles" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
-    "corretor_studio_profiles" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
     "corretor_studio_profiles" |o--|o corretor_studio_profiles : "manager"
     "corretor_studio_profiles" }o--|o google_oauth_connections : "googleConnection"
+    "corretor_studio_profiles" |o--|o corretor_studio_profile_subscriptions : "currentSubscription"
     "corretor_studio_health_plan_options" }o--|o corretor_studio_profiles : "creator"
     "backoffice_users" |o--|| corretor_studio_profiles : "profile"
     "backoffice_users" }o--|o corretor_studio_profiles : "creator"
@@ -1268,10 +1257,10 @@ unsubscribed unsubscribed
     "backoffice_product_payment_rules" |o--|| "BackofficePaymentMethod" : "enum:paymentMethod"
     "backoffice_product_payment_rules" |o--|| "BackofficeAdhesionBillingCycle" : "enum:billingCycle"
     "backoffice_product_payment_rules" }o--|| backoffice_products : "product"
-    "backoffice_user_subscriptions" |o--|| "BackofficeSubscriptionStatus" : "enum:status"
-    "backoffice_user_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
-    "backoffice_user_subscriptions" }o--|| corretor_studio_profiles : "profile"
-    "backoffice_user_subscriptions" }o--|| backoffice_products : "product"
+    "backoffice_user_product_subscriptions" |o--|| "BackofficeSubscriptionStatus" : "enum:status"
+    "backoffice_user_product_subscriptions" |o--|o "BackofficeAdhesionBillingCycle" : "enum:cycle"
+    "backoffice_user_product_subscriptions" }o--|| corretor_studio_profiles : "profile"
+    "backoffice_user_product_subscriptions" }o--|| backoffice_products : "product"
     "corretor_studio_profile_subscriptions" |o--|o "SubscriptionStatus" : "enum:subscriptionStatus"
     "corretor_studio_profile_subscriptions" |o--|o "SubscriptionPlan" : "enum:subscriptionPlan"
     "corretor_studio_profile_subscriptions" |o--|| corretor_studio_profiles : "profile"

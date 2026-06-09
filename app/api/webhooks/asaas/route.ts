@@ -300,10 +300,25 @@ export async function POST(request: NextRequest) {
           // Buscar manager pelo asaasCustomerId
           const { prisma } = await import('@/app/api/infra/data/prisma');
           const manager = await prisma.profile.findFirst({
-            where: { 
-              asaasCustomerId: subscription.customer,
-              role: 'manager'
-            }
+            where: {
+              role: 'manager',
+              subscription: {
+                is: {
+                  asaasCustomerId: subscription.customer,
+                },
+              },
+            },
+            select: {
+              id: true,
+              email: true,
+              subscription: {
+                select: {
+                  asaasCustomerId: true,
+                  asaasSubscriptionId: true,
+                  subscriptionCycle: true,
+                },
+              },
+            },
           });
 
           if (manager) {
@@ -315,19 +330,21 @@ export async function POST(request: NextRequest) {
               isValid: nextDueDate !== null
             });
 
-            // Atualizar subscriptionId e nextDueDate no Profile
-            const updateData: any = {
-              asaasSubscriptionId: subscription.id,
-              subscriptionCycle: subscription.cycle || 'MONTHLY',
-            };
-
-            if (nextDueDate) {
-              updateData.subscriptionNextDueDate = nextDueDate;
-            }
-
-            await prisma.profile.update({
-              where: { id: manager.id },
-              data: updateData
+            await prisma.profileSubscription.upsert({
+              where: { profileId: manager.id },
+              create: {
+                profile: { connect: { id: manager.id } },
+                asaasCustomerId: subscription.customer,
+                asaasSubscriptionId: subscription.id,
+                subscriptionCycle: subscription.cycle || 'MONTHLY',
+                subscriptionNextDueDate: nextDueDate,
+              },
+              update: {
+                asaasCustomerId: subscription.customer,
+                asaasSubscriptionId: subscription.id,
+                subscriptionCycle: subscription.cycle || 'MONTHLY',
+                subscriptionNextDueDate: nextDueDate,
+              },
             });
 
             console.info('✅ [Webhook Asaas] Assinatura sincronizada para manager:', {

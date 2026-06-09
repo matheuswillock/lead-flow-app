@@ -111,17 +111,23 @@ export async function POST(
         addressNumber: true,
         complement: true,
         neighborhood: true,
-        asaasCustomerId: true,
-        asaasSubscriptionId: true,
-        hasPermanentSubscription: true,
         isMaster: true,
         supabaseId: true,
+        subscription: {
+          select: {
+            asaasCustomerId: true,
+            asaasSubscriptionId: true,
+            hasPermanentSubscription: true,
+          },
+        },
       },
     });
 
     if (!newMaster) {
       return NextResponse.json(new Output(false, [], ["Novo master não encontrado"], null), { status: 404 });
     }
+
+    const newMasterSubscription = newMaster.subscription;
 
     if (newMaster.id === team.masterId) {
       return NextResponse.json(
@@ -152,7 +158,7 @@ export async function POST(
       );
     }
 
-    if (!newMaster.hasPermanentSubscription && !newMaster.asaasCustomerId && !newMaster.cpfCnpj) {
+    if (!newMasterSubscription?.hasPermanentSubscription && !newMasterSubscription?.asaasCustomerId && !newMaster.cpfCnpj) {
       return NextResponse.json(
         new Output(false, [], ["Novo master precisa ter CPF/CNPJ para criar assinatura"], null),
         { status: 400 }
@@ -220,11 +226,20 @@ export async function POST(
     if (!oldSummary.hasPermanentSubscription && oldSummary.totalPrice >= 0) {
       const oldMasterProfile = await prisma.profile.findUnique({
         where: { id: oldMasterId },
-        select: { asaasSubscriptionId: true, hasPermanentSubscription: true },
+        select: {
+          subscription: {
+            select: {
+              asaasSubscriptionId: true,
+              hasPermanentSubscription: true,
+            },
+          },
+        },
       });
 
-      if (oldMasterProfile?.asaasSubscriptionId && !oldMasterProfile.hasPermanentSubscription) {
-        await AsaasSubscriptionService.updateSubscription(oldMasterProfile.asaasSubscriptionId, {
+      const oldMasterSubscription = oldMasterProfile?.subscription;
+
+      if (oldMasterSubscription?.asaasSubscriptionId && !oldMasterSubscription.hasPermanentSubscription) {
+        await AsaasSubscriptionService.updateSubscription(oldMasterSubscription.asaasSubscriptionId, {
           value: oldSummary.totalPrice,
         });
       }
@@ -232,7 +247,7 @@ export async function POST(
 
     const newSummary = await getBillingSummary(newMaster.id);
     if (!newSummary.hasPermanentSubscription) {
-      let customerId = newMaster.asaasCustomerId;
+      let customerId = newMasterSubscription?.asaasCustomerId ?? null;
 
       if (!customerId && newMaster.cpfCnpj) {
         const created = await asaasCustomerService.createCustomer({
@@ -249,14 +264,18 @@ export async function POST(
         });
 
         customerId = created.customerId;
-        await prisma.profile.update({
-          where: { id: newMaster.id },
-          data: { asaasCustomerId: customerId },
+        await prisma.profileSubscription.upsert({
+          where: { profileId: newMaster.id },
+          create: {
+            profile: { connect: { id: newMaster.id } },
+            asaasCustomerId: customerId,
+          },
+          update: { asaasCustomerId: customerId },
         });
       }
 
-      if (newMaster.asaasSubscriptionId) {
-        await AsaasSubscriptionService.updateSubscription(newMaster.asaasSubscriptionId, {
+      if (newMasterSubscription?.asaasSubscriptionId) {
+        await AsaasSubscriptionService.updateSubscription(newMasterSubscription.asaasSubscriptionId, {
           value: newSummary.totalPrice,
         });
       } else if (customerId) {
@@ -269,12 +288,23 @@ export async function POST(
         } as any);
 
         if (createdSubscription?.subscriptionId) {
-          await prisma.profile.update({
-            where: { id: newMaster.id },
-            data: {
+          await prisma.profileSubscription.upsert({
+            where: { profileId: newMaster.id },
+            create: {
+              profile: { connect: { id: newMaster.id } },
+              asaasCustomerId: customerId,
               asaasSubscriptionId: createdSubscription.subscriptionId,
               subscriptionStatus: "active",
             },
+            update: {
+              asaasCustomerId: customerId,
+              asaasSubscriptionId: createdSubscription.subscriptionId,
+              subscriptionStatus: "active",
+            },
+          });
+          await prisma.profile.update({
+            where: { id: newMaster.id },
+            data: { subscriptionId: createdSubscription.subscriptionId },
           });
         }
       }

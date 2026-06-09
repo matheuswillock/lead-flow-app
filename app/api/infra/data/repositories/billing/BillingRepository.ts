@@ -15,7 +15,11 @@ class PrismaBillingRepository implements IBillingRepository {
     const [master, hasUnlimitedUsers] = await Promise.all([
       prisma.profile.findUnique({
       where: { id: masterId },
-      select: { hasPermanentSubscription: true },
+      select: {
+        subscription: {
+          select: { hasPermanentSubscription: true },
+        },
+      },
       }),
       this.resolveHasUnlimitedUsers(masterId),
     ]);
@@ -42,7 +46,7 @@ class PrismaBillingRepository implements IBillingRepository {
     const quota = capacityQuota ?? legacyQuota;
 
     return {
-      hasPermanentSubscription: master.hasPermanentSubscription,
+      hasPermanentSubscription: master.subscription?.hasPermanentSubscription ?? false,
       hasUnlimitedUsers,
       teamCount,
       distinctUserCount,
@@ -103,7 +107,7 @@ class PrismaBillingRepository implements IBillingRepository {
     const adhesionIds = paidAdhesions.map((adhesion) => adhesion.id);
     const now = new Date();
     const subscriptions = adhesionIds.length
-      ? await prisma.backofficeUserSubscription.findMany({
+      ? await prisma.backofficeUserProductSubscription.findMany({
           where: {
             profileId: masterId,
             adhesionId: { in: adhesionIds },
@@ -172,9 +176,23 @@ class PrismaBillingRepository implements IBillingRepository {
   }
 
   async updateAsaasCustomerId(profileId: string, asaasCustomerId: string): Promise<void> {
+    const subscription = await prisma.profileSubscription.upsert({
+      where: { profileId },
+      create: {
+        profileId,
+        asaasCustomerId,
+      },
+      update: {
+        asaasCustomerId,
+      },
+      select: { id: true },
+    });
+
     await prisma.profile.update({
       where: { id: profileId },
-      data: { asaasCustomerId },
+      data: {
+        subscriptionId: subscription.id,
+      },
     });
   }
 
@@ -183,21 +201,27 @@ class PrismaBillingRepository implements IBillingRepository {
     data: IUpdateBillingProfileSubscriptionData
   ): Promise<void> {
     const subData = {
+      asaasCustomerId: data.asaasCustomerId,
       asaasSubscriptionId: data.asaasSubscriptionId,
       subscriptionNextDueDate: data.subscriptionNextDueDate,
       subscriptionCycle: data.subscriptionCycle,
     };
 
-    await prisma.profileSubscription.upsert({
+    const subscription = await prisma.profileSubscription.upsert({
       where: { profileId },
-      create: { profileId, ...subData },
+      create: {
+        profileId,
+        ...subData,
+      },
       update: subData,
+      select: { id: true },
     });
 
-    // Keep Profile in sync for legacy compatibility
     await prisma.profile.update({
       where: { id: profileId },
-      data: subData,
+      data: {
+        subscriptionId: subscription.id,
+      },
     });
   }
 
@@ -208,12 +232,16 @@ class PrismaBillingRepository implements IBillingRepository {
         select: { subscriptionEndDate: true },
       }),
       prisma.profile.findUnique({
-        where: { id: profileId },
-        select: { subscriptionNextDueDate: true },
+      where: { id: profileId },
+      select: {
+        subscription: {
+          select: { subscriptionNextDueDate: true },
+        },
+      },
       }),
     ]);
 
-    return profileSub?.subscriptionEndDate ?? profile?.subscriptionNextDueDate ?? null;
+    return profileSub?.subscriptionEndDate ?? profile?.subscription?.subscriptionNextDueDate ?? null;
   }
 }
 

@@ -37,17 +37,22 @@ export class GetSubscriptionBySupabaseIdUseCase {
           supabaseId: true,
           email: true,
           fullName: true,
-          hasPermanentSubscription: true,
-          asaasCustomerId: true,
-          asaasSubscriptionId: true,
           subscriptionId: true,
-          subscriptionStatus: true,
-          subscriptionPlan: true,
-          subscriptionCycle: true,
-          subscriptionStartDate: true,
-          subscriptionEndDate: true,
-          subscriptionNextDueDate: true,
-          trialEndDate: true,
+          subscription: {
+            select: {
+              id: true,
+              asaasCustomerId: true,
+              asaasSubscriptionId: true,
+              subscriptionStatus: true,
+              subscriptionPlan: true,
+              subscriptionCycle: true,
+              subscriptionStartDate: true,
+              subscriptionEndDate: true,
+              subscriptionNextDueDate: true,
+              trialEndDate: true,
+              hasPermanentSubscription: true,
+            },
+          },
         },
       });
 
@@ -56,20 +61,21 @@ export class GetSubscriptionBySupabaseIdUseCase {
       }
 
       const resolvedSubscriptionId =
-        profile.asaasSubscriptionId?.trim() || profile.subscriptionId?.trim() || null;
+        profile.subscription?.asaasSubscriptionId?.trim() ||
+        null;
 
       const localSubscription = {
-        asaasCustomerId: profile.asaasCustomerId,
-        asaasSubscriptionId: profile.asaasSubscriptionId,
-        subscriptionId: profile.subscriptionId,
-        subscriptionStatus: profile.subscriptionStatus,
-        subscriptionPlan: profile.subscriptionPlan,
-        subscriptionCycle: profile.subscriptionCycle,
-        subscriptionStartDate: profile.subscriptionStartDate,
-        subscriptionEndDate: profile.subscriptionEndDate,
-        subscriptionNextDueDate: profile.subscriptionNextDueDate,
-        trialEndDate: profile.trialEndDate,
-        hasPermanentSubscription: profile.hasPermanentSubscription,
+        asaasCustomerId: profile.subscription?.asaasCustomerId ?? null,
+        asaasSubscriptionId: profile.subscription?.asaasSubscriptionId ?? null,
+        subscriptionId: profile.subscription?.asaasSubscriptionId ?? null,
+        subscriptionStatus: profile.subscription?.subscriptionStatus ?? null,
+        subscriptionPlan: profile.subscription?.subscriptionPlan ?? null,
+        subscriptionCycle: profile.subscription?.subscriptionCycle ?? null,
+        subscriptionStartDate: profile.subscription?.subscriptionStartDate ?? null,
+        subscriptionEndDate: profile.subscription?.subscriptionEndDate ?? null,
+        subscriptionNextDueDate: profile.subscription?.subscriptionNextDueDate ?? null,
+        trialEndDate: profile.subscription?.trialEndDate ?? null,
+        hasPermanentSubscription: profile.subscription?.hasPermanentSubscription ?? false,
       };
 
       if (!resolvedSubscriptionId) {

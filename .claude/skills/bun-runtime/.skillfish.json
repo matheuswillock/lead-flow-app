@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "bun-runtime",
+  "owner": "affaan-m",
+  "repo": "everything-claude-code",
+  "path": ".agents/skills/bun-runtime",
+  "branch": "main",
+  "sha": "19c3dd143558959b341fcabf36402f4ea784aa27",
+  "source": "manual"
+}

@@ -40,8 +40,7 @@ const PROFILE_LIST_SELECT = {
     select: {
       id: true,
       fullName: true,
-      hasPermanentSubscription: true,
-      subscription: { select: { subscriptionPlan: true } },
+      subscription: { select: { hasPermanentSubscription: true, subscriptionPlan: true } },
       _count: { select: { operators: true } },
       userTypeAssignment: {
         select: {
@@ -51,8 +50,7 @@ const PROFILE_LIST_SELECT = {
       },
     },
   },
-  hasPermanentSubscription: true,
-  subscription: { select: { subscriptionPlan: true } },
+  subscription: { select: { hasPermanentSubscription: true, subscriptionPlan: true } },
   _count: { select: { operators: true } },
   userTypeAssignment: {
     select: {
@@ -71,7 +69,7 @@ function mapRow(profile: ProfileListRow): BackofficeAllUsersListRecord {
     masterRef = {
       id: profile.id,
       fullName: profile.fullName,
-      hasPermanentSubscription: profile.hasPermanentSubscription,
+      hasPermanentSubscription: profile.subscription?.hasPermanentSubscription ?? false,
       subscriptionPlan: profile.subscription?.subscriptionPlan ?? null,
       operatorCount: profile._count.operators,
     }
@@ -79,7 +77,7 @@ function mapRow(profile: ProfileListRow): BackofficeAllUsersListRecord {
     masterRef = {
       id: profile.manager.id,
       fullName: profile.manager.fullName,
-      hasPermanentSubscription: profile.manager.hasPermanentSubscription,
+      hasPermanentSubscription: profile.manager.subscription?.hasPermanentSubscription ?? false,
       subscriptionPlan: profile.manager.subscription?.subscriptionPlan ?? null,
       operatorCount: profile.manager._count.operators,
     }
@@ -106,8 +104,8 @@ function buildPlanFilter(plan: BackofficeAllUsersFiltersInput["plan"]): Prisma.P
   if (plan === "lifetime") {
     return {
       OR: [
-        { isMaster: true, hasPermanentSubscription: true },
-        { isMaster: false, manager: { is: { hasPermanentSubscription: true } } },
+        { isMaster: true, subscription: { is: { hasPermanentSubscription: true } } },
+        { isMaster: false, manager: { is: { subscription: { is: { hasPermanentSubscription: true } } } } },
       ],
     }
   }
@@ -115,13 +113,12 @@ function buildPlanFilter(plan: BackofficeAllUsersFiltersInput["plan"]): Prisma.P
   if (plan === "trial") {
     return {
       OR: [
-        { isMaster: true, hasPermanentSubscription: false, subscription: { is: { subscriptionPlan: "free_trial" } } },
+        { isMaster: true, subscription: { is: { hasPermanentSubscription: false, subscriptionPlan: "free_trial" } } },
         {
           isMaster: false,
           manager: {
             is: {
-              hasPermanentSubscription: false,
-              subscription: { is: { subscriptionPlan: "free_trial" } },
+              subscription: { is: { hasPermanentSubscription: false, subscriptionPlan: "free_trial" } },
             },
           },
         },
@@ -134,15 +131,13 @@ function buildPlanFilter(plan: BackofficeAllUsersFiltersInput["plan"]): Prisma.P
       OR: [
         {
           isMaster: true,
-          hasPermanentSubscription: false,
-          subscription: { is: { subscriptionPlan: { in: ["manager_base", "with_operators"] } } },
+          subscription: { is: { hasPermanentSubscription: false, subscriptionPlan: { in: ["manager_base", "with_operators"] } } },
         },
         {
           isMaster: false,
           manager: {
             is: {
-              hasPermanentSubscription: false,
-              subscription: { is: { subscriptionPlan: { in: ["manager_base", "with_operators"] } } },
+              subscription: { is: { hasPermanentSubscription: false, subscriptionPlan: { in: ["manager_base", "with_operators"] } } },
             },
           },
         },
@@ -153,10 +148,10 @@ function buildPlanFilter(plan: BackofficeAllUsersFiltersInput["plan"]): Prisma.P
   if (plan === "none") {
     return {
       OR: [
-        { isMaster: true, hasPermanentSubscription: false, subscription: { is: null } },
+        { isMaster: true, subscription: { is: null } },
         {
           isMaster: false,
-          manager: { is: { hasPermanentSubscription: false, subscription: { is: null } } },
+          manager: { is: { subscription: { is: null } } },
         },
       ],
     }

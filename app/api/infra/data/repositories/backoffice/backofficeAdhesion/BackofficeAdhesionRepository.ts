@@ -296,12 +296,7 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       isMaster: true,
       functions: ["SDR", "CLOSER"],
       cpfCnpj: data.cpfCnpj ?? undefined,
-      asaasCustomerId: data.asaasCustomerId ?? undefined,
-      subscriptionId: data.subscriptionId ?? undefined,
-      subscriptionStatus: "active",
-      subscriptionPlan: "manager_base",
       operatorCount: data.operatorCount,
-      subscriptionStartDate: data.subscriptionStartDate,
       postalCode: data.postalCode ?? undefined,
       address: data.address ?? undefined,
       addressNumber: data.addressNumber ?? undefined,
@@ -330,6 +325,36 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
         },
       })
 
+      if (data.subscriptionId || data.asaasCustomerId) {
+        const subscription = await tx.profileSubscription.upsert({
+          where: { profileId: createdProfile.id },
+          create: {
+            profileId: createdProfile.id,
+            asaasCustomerId: data.asaasCustomerId ?? undefined,
+            asaasSubscriptionId: data.subscriptionId ?? undefined,
+            subscriptionStatus: "active",
+            subscriptionPlan: "manager_base",
+            subscriptionStartDate: data.subscriptionStartDate,
+            hasPermanentSubscription: false,
+          },
+          update: {
+            asaasCustomerId: data.asaasCustomerId ?? undefined,
+            asaasSubscriptionId: data.subscriptionId ?? undefined,
+            subscriptionStatus: "active",
+            subscriptionPlan: "manager_base",
+            subscriptionStartDate: data.subscriptionStartDate,
+          },
+          select: { id: true },
+        })
+
+        await tx.profile.update({
+          where: { id: createdProfile.id },
+          data: {
+            subscriptionId: subscription.id,
+          },
+        })
+      }
+
       await tx.profile.update({
         where: { id: createdProfile.id },
         data: { activeTeamId: team.id },
@@ -351,9 +376,29 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       canManageAccountTeams: boolean
     }
   ): Promise<void> {
+    const subscription = await prisma.profileSubscription.upsert({
+      where: { profileId },
+      create: {
+        profileId,
+        subscriptionEndDate: data.subscriptionEndDate,
+        subscriptionCycle: data.subscriptionCycle,
+        subscriptionNextDueDate: data.subscriptionNextDueDate,
+      },
+      update: {
+        subscriptionEndDate: data.subscriptionEndDate,
+        subscriptionCycle: data.subscriptionCycle,
+        subscriptionNextDueDate: data.subscriptionNextDueDate,
+      },
+      select: { id: true },
+    })
+
     await prisma.profile.update({
       where: { id: profileId },
-      data,
+      data: {
+        subscriptionId: subscription.id,
+        canCreateAccountUsers: data.canCreateAccountUsers,
+        canManageAccountTeams: data.canManageAccountTeams,
+      },
     })
   }
 
@@ -383,6 +428,13 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
       create: { profileId: data.profileId, ...payload, hasPermanentSubscription: false },
       update: payload,
       select: { id: true },
+    })
+
+    await prisma.profile.update({
+      where: { id: data.profileId },
+      data: {
+        subscriptionId: subscription.id,
+      },
     })
 
     const activeAdhesions = await prisma.backofficeAdhesion.findMany({
