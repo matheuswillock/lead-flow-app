@@ -1570,6 +1570,7 @@ export class LeadUseCase implements ILeadUseCase {
 
   async transferLeadBetweenTeams(
     supabaseId: string,
+    callerTeamId: string,
     id: string,
     data: TransferLeadBetweenTeamsRequest
   ): Promise<Output> {
@@ -1586,6 +1587,11 @@ export class LeadUseCase implements ILeadUseCase {
       const lead = await this.leadRepository.findById(id);
       if (!lead) {
         return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      // P1: non-master managers can only transfer leads from their own team
+      if (!profileInfo.isMaster && lead.teamId !== callerTeamId) {
+        return new Output(false, [], ["Acesso negado: o lead não pertence ao seu time"], null);
       }
 
       const sourceTeam = lead.teamId
@@ -1646,7 +1652,7 @@ export class LeadUseCase implements ILeadUseCase {
       );
 
       if (data.schedule) {
-        await leadScheduleService.createSchedule({
+        const scheduleOutput = await leadScheduleService.createSchedule({
           leadId: transferredLead.id,
           leadName: transferredLead.name,
           leadEmail: transferredLead.email ?? null,
@@ -1667,6 +1673,15 @@ export class LeadUseCase implements ILeadUseCase {
           createdByProfileId: profileInfo.id,
           transitionStatusToScheduled: data.schedule.transitionStatusToScheduled,
         });
+
+        if (!scheduleOutput.isValid) {
+          return new Output(
+            false,
+            [],
+            ["Lead transferido, mas o agendamento falhou: " + (scheduleOutput.errorMessages?.[0] ?? "erro desconhecido")],
+            this.transformToDTO(transferredLead)
+          );
+        }
       }
 
       return new Output(true, [], ["Lead transferido entre times com sucesso"], this.transformToDTO(transferredLead));

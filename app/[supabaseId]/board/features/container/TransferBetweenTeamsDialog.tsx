@@ -156,7 +156,7 @@ export function TransferBetweenTeamsDialog({
         body: JSON.stringify({
           targetTeamId,
           closerId,
-          sdrId: sdrId || null,
+          sdrId: sdrId && sdrId !== "_none" ? sdrId : null,
           schedule: schedulePayload,
         }),
       });
@@ -235,7 +235,7 @@ export function TransferBetweenTeamsDialog({
                 <SelectValue placeholder="Sem SDR" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Sem SDR</SelectItem>
+                <SelectItem value="_none">Sem SDR</SelectItem>
                 {sdrs.map((m) => (
                   <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                 ))}

@@ -40,7 +40,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    const output = await leadUseCase.transferLeadBetweenTeams(access.supabaseId, id, validation.data);
+    const output = await leadUseCase.transferLeadBetweenTeams(access.supabaseId, access.teamId, id, validation.data);
 
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {

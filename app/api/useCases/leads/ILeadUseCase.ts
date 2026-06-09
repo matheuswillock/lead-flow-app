@@ -70,6 +70,6 @@ export interface ILeadUseCase {
   ): Promise<Output>;
   assignLeadToOperator(supabaseId: string, id: string, operatorId: string): Promise<Output>;
   transferLead(supabaseId: string, id: string, data: TransferLeadRequest): Promise<Output>;
-  transferLeadBetweenTeams(supabaseId: string, id: string, data: TransferLeadBetweenTeamsRequest): Promise<Output>;
+  transferLeadBetweenTeams(supabaseId: string, callerTeamId: string, id: string, data: TransferLeadBetweenTeamsRequest): Promise<Output>;
   getLeadsByStatus(supabaseId: string, status: LeadStatus): Promise<Output>;
 }
