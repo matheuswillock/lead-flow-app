@@ -322,7 +322,7 @@ export function BackofficeClientDetailsContainer() {
               placeholder="Buscar por time, nome ou e-mail de membro"
               value={localFilters.query}
               onChange={(e) => updateFilter(e.target.value)}
-              className="h-8 w-[250px] lg:w-[420px]"
+              className="h-8 w-62.5 lg:w-105"
             />
             <Button size="sm" onClick={handleSearch} disabled={isTeamsLoading}>
               <Search className="mr-1 h-4 w-4" />
@@ -514,7 +514,7 @@ export function BackofficeClientDetailsContainer() {
                       }}
                       disabled={isTeamsLoading}
                     >
-                      <SelectTrigger className="w-[92px]">
+                      <SelectTrigger className="w-23">
                         <SelectValue placeholder="10" />
                       </SelectTrigger>
                       <SelectContent>
@@ -594,7 +594,7 @@ export function BackofficeClientDetailsContainer() {
                       }}
                       disabled={isInvoicesLoading}
                     >
-                      <SelectTrigger className="w-[210px]">
+                      <SelectTrigger className="w-52.5">
                         <SelectValue placeholder="Status" />
                       </SelectTrigger>
                       <SelectContent>
@@ -615,7 +615,7 @@ export function BackofficeClientDetailsContainer() {
                       }}
                       disabled={isInvoicesLoading}
                     >
-                      <SelectTrigger className="w-[210px]">
+                      <SelectTrigger className="w-52.5">
                         <SelectValue placeholder="Período" />
                       </SelectTrigger>
                       <SelectContent>

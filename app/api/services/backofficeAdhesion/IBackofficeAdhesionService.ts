@@ -18,7 +18,7 @@ export interface BackofficeAdhesionAdditionalTeam {
 export interface BackofficeAdhesionCreateInput {
   leadId: string
   fullName: string
-  phone: string
+  phone?: string | null
   email?: string | null
   cpfCnpj?: string | null
   cycle: BackofficeAdhesionBillingCycle

@@ -68,7 +68,7 @@ export function BackofficeTeamEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={isSubmitting ? undefined : onOpenChange}>
-      <DialogContent className="sm:max-w-[440px]">
+      <DialogContent className="sm:max-w-110">
         <DialogHeader>
           <DialogTitle>Editar time</DialogTitle>
         </DialogHeader>

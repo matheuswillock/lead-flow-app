@@ -309,7 +309,7 @@ export function BackofficeAdhesionDialog({
       memberProAccessDaysValue <= MEMBER_PRO_MAX_DAYS)
   const canSubmit =
     values.fullName.trim().length >= 2 &&
-    /^\d{10,11}$/.test(sanitizePhone(values.phone)) &&
+    (sanitizePhone(values.phone).length === 0 || /^\d{10,11}$/.test(sanitizePhone(values.phone))) &&
     (mode === "edit" || Boolean(values.leadId)) &&
     hasValidOptionalCpfCnpj &&
     (!(isExternalPaid || isExternalBilling) || isValidEmail(values.email.trim())) &&
@@ -601,14 +601,13 @@ export function BackofficeAdhesionDialog({
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="adhesion-phone">Telefone *</Label>
+                <Label htmlFor="adhesion-phone">Telefone</Label>
                 <Input
                   id="adhesion-phone"
                   placeholder="(99) 99999-9999"
                   value={maskPhone(values.phone)}
                   onChange={(event) => updateValue("phone", sanitizePhone(event.target.value))}
                   disabled={isSubmitting}
-                  required
                 />
               </div>
             </div>
