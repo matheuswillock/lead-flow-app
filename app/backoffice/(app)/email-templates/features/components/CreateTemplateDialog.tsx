@@ -54,7 +54,7 @@ export function CreateTemplateDialog({ open, isCreating, onOpenChange, onSubmit 
   function addVariable() {
     setForm((prev) => ({
       ...prev,
-      variables: [...prev.variables, { key: "", type: "string", fallbackValue: "" }],
+      variables: [{ key: "", type: "string", fallbackValue: "" }, ...prev.variables],
     }))
   }
 
