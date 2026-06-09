@@ -62,7 +62,8 @@ export class BackofficeEmailTemplatesUseCase {
       return new Output(true, ["Template criado com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeEmailTemplatesUseCase][create]", error)
-      return new Output(false, [], ["Erro ao criar template de e-mail"], null)
+      const message = error instanceof Error ? error.message : "Erro ao criar template de e-mail"
+      return new Output(false, [], [message], null)
     }
   }
 
@@ -96,7 +97,8 @@ export class BackofficeEmailTemplatesUseCase {
       return new Output(true, ["Template atualizado com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeEmailTemplatesUseCase][update]", error)
-      return new Output(false, [], ["Erro ao atualizar template de e-mail"], null)
+      const message = error instanceof Error ? error.message : "Erro ao atualizar template de e-mail"
+      return new Output(false, [], [message], null)
     }
   }
 
@@ -106,7 +108,8 @@ export class BackofficeEmailTemplatesUseCase {
       return new Output(true, ["Template excluído com sucesso"], [], null)
     } catch (error) {
       console.error("[BackofficeEmailTemplatesUseCase][remove]", error)
-      return new Output(false, [], ["Erro ao excluir template de e-mail"], null)
+      const message = error instanceof Error ? error.message : "Erro ao excluir template de e-mail"
+      return new Output(false, [], [message], null)
     }
   }
 
@@ -116,7 +119,8 @@ export class BackofficeEmailTemplatesUseCase {
       return new Output(true, ["Template publicado com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeEmailTemplatesUseCase][publish]", error)
-      return new Output(false, [], ["Erro ao publicar template de e-mail"], null)
+      const message = error instanceof Error ? error.message : "Erro ao publicar template de e-mail"
+      return new Output(false, [], [message], null)
     }
   }
 
@@ -126,7 +130,8 @@ export class BackofficeEmailTemplatesUseCase {
       return new Output(true, ["Template duplicado com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeEmailTemplatesUseCase][duplicate]", error)
-      return new Output(false, [], ["Erro ao duplicar template de e-mail"], null)
+      const message = error instanceof Error ? error.message : "Erro ao duplicar template de e-mail"
+      return new Output(false, [], [message], null)
     }
   }
 }
