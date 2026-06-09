@@ -29,8 +29,22 @@ export interface IBackofficeMemberRepository {
 
   updateMemberProfile(
     memberId: string,
-    data: { fullName?: string | null; phone?: string | null; email?: string }
+    data: {
+      fullName?: string | null
+      phone?: string | null
+      email?: string
+      role?: string
+      functions?: string[]
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+    }
   ): Promise<{ id: string } | null>
+
+  updateAllTeamMembershipsRoleAndFunctions(
+    profileId: string,
+    role: string,
+    functions: string[]
+  ): Promise<void>
 
   findMemberForDeletion(memberId: string): Promise<MemberForDeletionRecord | null>
 

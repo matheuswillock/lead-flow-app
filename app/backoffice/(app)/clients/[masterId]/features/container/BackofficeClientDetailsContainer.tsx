@@ -49,7 +49,9 @@ import { BackofficeMemberEditDialog } from "../components/BackofficeMemberEditDi
 import { BackofficeMemberDeleteDialog } from "../components/BackofficeMemberDeleteDialog"
 import { BackofficeAddMemberDialog } from "../components/BackofficeAddMemberDialog"
 import { BackofficeAddTeamDialog } from "../components/BackofficeAddTeamDialog"
-import type { BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
+import { BackofficeTeamEditDialog } from "../components/BackofficeTeamEditDialog"
+import { BackofficeTeamDeleteDialog } from "../components/BackofficeTeamDeleteDialog"
+import type { BackofficeClientTeam, BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { maskPhone } from "@/lib/masks"
@@ -165,6 +167,8 @@ export function BackofficeClientDetailsContainer() {
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
   const [addMemberOpen, setAddMemberOpen] = useState(false)
   const [addTeamOpen, setAddTeamOpen] = useState(false)
+  const [editingTeam, setEditingTeam] = useState<BackofficeClientTeam | null>(null)
+  const [deletingTeam, setDeletingTeam] = useState<BackofficeClientTeam | null>(null)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -381,10 +385,33 @@ export function BackofficeClientDetailsContainer() {
                     {teams.map((team) => (
                       <AccordionItem key={team.id} value={team.id}>
                         <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                          <div className="grid w-full grid-cols-[2fr_1fr_1fr] gap-3 text-sm pr-4 items-center">
+                          <div className="grid w-full grid-cols-[2fr_1fr_1fr_auto] gap-3 text-sm pr-4 items-center">
                             <span className="font-medium text-center">{team.name}</span>
                             <span className="text-center">{team.membersCount}</span>
                             <span className="text-center">{formatDate(team.createdAt, tz)}</span>
+                            <div
+                              className="flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-7"
+                                title="Editar time"
+                                onClick={() => setEditingTeam(team)}
+                              >
+                                <Pencil className="size-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-7 text-destructive hover:text-destructive"
+                                title="Excluir time"
+                                onClick={() => setDeletingTeam(team)}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
                           </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-4 pb-4">
@@ -828,6 +855,24 @@ export function BackofficeClientDetailsContainer() {
         service={service}
         onOpenChange={setAddTeamOpen}
         onSaved={reload}
+      />
+
+      <BackofficeTeamEditDialog
+        open={editingTeam !== null}
+        onOpenChange={(open) => { if (!open) setEditingTeam(null) }}
+        team={editingTeam}
+        masterId={masterId}
+        service={service}
+        onSuccess={() => { setEditingTeam(null); void reload() }}
+      />
+
+      <BackofficeTeamDeleteDialog
+        open={deletingTeam !== null}
+        onOpenChange={(open) => { if (!open) setDeletingTeam(null) }}
+        team={deletingTeam}
+        masterId={masterId}
+        service={service}
+        onSuccess={() => { setDeletingTeam(null); void reload() }}
       />
     </div>
   )

@@ -70,4 +70,15 @@ export interface IBackofficePlatformUsersUseCase {
     masterProfileId: string,
     data: { name: string }
   ): Promise<Output>
+
+  updateTeamForMasterUser(
+    masterProfileId: string,
+    teamId: string,
+    data: { name: string }
+  ): Promise<Output>
+
+  deleteTeamFromMasterUser(
+    masterProfileId: string,
+    teamId: string
+  ): Promise<Output>
 }
