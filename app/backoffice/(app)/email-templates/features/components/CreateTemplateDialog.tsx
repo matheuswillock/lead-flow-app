@@ -199,27 +199,33 @@ export function CreateTemplateDialog({ open, isCreating, onOpenChange, onSubmit 
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col gap-2 min-h-0">
-            <Tabs defaultValue="html" className="flex flex-col flex-1">
-              <TabsList className="self-start">
+          <div className="flex-1 flex flex-col min-h-0">
+            <Tabs defaultValue="html" className="flex flex-col flex-1 min-h-0">
+              <TabsList className="self-start shrink-0">
                 <TabsTrigger value="html">HTML</TabsTrigger>
                 <TabsTrigger value="preview">Preview</TabsTrigger>
               </TabsList>
-              <TabsContent value="html" className="mt-2 flex-1">
-                <div className="h-120 rounded-md overflow-hidden border">
+              <TabsContent
+                value="html"
+                className="mt-2 flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"
+              >
+                <div className="flex-1 min-h-0 rounded-md overflow-hidden border">
                   <MonacoCodeEditor
                     value={form.html}
                     onChange={(val) => handleChange("html", val)}
                     language="html"
-                    height={480}
+                    height="100%"
                     themeVariant="resend-dark"
                     placeholder="<p>Olá, {{{NOME}}}!</p>"
                   />
                 </div>
               </TabsContent>
-              <TabsContent value="preview" className="mt-2 flex-1">
-                <div className="h-120">
-                  <HtmlEmailPreview html={form.html} variables={form.variables} />
+              <TabsContent
+                value="preview"
+                className="mt-2 flex-1 min-h-0 data-[state=active]:flex data-[state=active]:flex-col"
+              >
+                <div className="flex-1 min-h-0">
+                  <HtmlEmailPreview html={form.html} variables={form.variables} className="h-full" />
                 </div>
               </TabsContent>
             </Tabs>
