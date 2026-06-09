@@ -142,4 +142,25 @@ export interface IBackofficePlatformUsersRepository {
     masterSupabaseId: string | null
     memberSupabaseIds: string[]
   }>
+
+  findDefaultTeamByMasterId(masterProfileId: string): Promise<{ id: string; name: string } | null>
+
+  createMemberForMaster(
+    masterProfileId: string,
+    data: {
+      fullName: string
+      email: string
+      phone?: string | null
+      role: "manager" | "backoffice" | "operator"
+      functions: ("SDR" | "CLOSER")[]
+    },
+    teamId: string
+  ): Promise<{ profileId: string; teamMemberId: string }>
+
+  createTeamForMaster(
+    masterProfileId: string,
+    name: string
+  ): Promise<{ id: string; name: string }>
+
+  updateSupabaseIdForProfile(profileId: string, supabaseId: string): Promise<void>
 }

@@ -187,4 +187,37 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
     }
     return json.result as { connected: boolean; scopes: string[] }
   }
+
+  async addMember(
+    masterId: string,
+    data: {
+      fullName: string
+      email: string
+      phone?: string | null
+      role: "manager" | "backoffice" | "operator"
+      functions: ("SDR" | "CLOSER")[]
+    }
+  ): Promise<void> {
+    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao adicionar usuário")
+    }
+  }
+
+  async addTeam(masterId: string, data: { name: string }): Promise<void> {
+    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/teams`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao criar time")
+    }
+  }
 }

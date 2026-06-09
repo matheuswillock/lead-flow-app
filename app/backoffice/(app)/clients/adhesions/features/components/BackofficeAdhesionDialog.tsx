@@ -26,10 +26,13 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Checkbox } from "@/components/ui/checkbox"
 import type { IBackofficeAdhesionsService } from "../services/IBackofficeAdhesionsService"
 import { BackofficeAdhesionsRequestError } from "../services/BackofficeAdhesionsService"
 import {
   BACKOFFICE_ADHESION_CYCLE_LABELS,
+  type BackofficeAdhesionAdditionalTeam,
+  type BackofficeAdhesionAdditionalUser,
   type BackofficeAdhesionBillingCycleKey,
   type BackofficeAdhesionCreationResult,
   type BackofficeAdhesionFormValues,
@@ -83,6 +86,26 @@ function resolveChargeBillingType(
   return billingType === "CREDIT_CARD" ? "CREDIT_CARD" : "PIX"
 }
 
+const ROLE_LABELS: Record<BackofficeAdhesionAdditionalUser["role"], string> = {
+  manager: "Gerente",
+  backoffice: "Backoffice",
+  operator: "Operador",
+}
+
+function defaultAdditionalUser(): BackofficeAdhesionAdditionalUser {
+  return { name: "", email: "", role: "operator", functions: [] }
+}
+
+function defaultAdditionalTeam(): BackofficeAdhesionAdditionalTeam {
+  return { name: "" }
+}
+
+function syncArrayLength<T>(arr: T[], length: number, factory: () => T): T[] {
+  if (arr.length === length) return arr
+  if (arr.length > length) return arr.slice(0, length)
+  return [...arr, ...Array.from({ length: length - arr.length }, factory)]
+}
+
 function defaultValues(): BackofficeAdhesionFormValues {
   return {
     leadId: "",
@@ -99,6 +122,8 @@ function defaultValues(): BackofficeAdhesionFormValues {
     activationMode: "checkout",
     userType: "common",
     memberProAccessDays: "",
+    additionalUsers: [],
+    additionalTeams: [],
   }
 }
 
@@ -123,6 +148,8 @@ function valuesFromAdhesion(adhesion: BackofficeAdhesionItem): BackofficeAdhesio
     activationMode: "checkout",
     userType: "common",
     memberProAccessDays: "",
+    additionalUsers: [],
+    additionalTeams: [],
   }
 }
 
@@ -301,7 +328,57 @@ export function BackofficeAdhesionDialog({
     key: K,
     value: BackofficeAdhesionFormValues[K]
   ) {
-    setValues((current) => ({ ...current, [key]: value }))
+    setValues((current) => {
+      const next = { ...current, [key]: value }
+      if (key === "extraUsers") {
+        next.additionalUsers = syncArrayLength(
+          current.additionalUsers,
+          value as number,
+          defaultAdditionalUser
+        )
+      }
+      if (key === "extraTeams") {
+        next.additionalTeams = syncArrayLength(
+          current.additionalTeams,
+          value as number,
+          defaultAdditionalTeam
+        )
+      }
+      return next
+    })
+  }
+
+  function updateAdditionalUser(
+    index: number,
+    field: keyof BackofficeAdhesionAdditionalUser,
+    value: string | string[]
+  ) {
+    setValues((current) => {
+      const users = [...current.additionalUsers]
+      users[index] = { ...users[index], [field]: value }
+      return { ...current, additionalUsers: users }
+    })
+  }
+
+  function updateAdditionalTeam(index: number, name: string) {
+    setValues((current) => {
+      const teams = [...current.additionalTeams]
+      teams[index] = { ...teams[index], name }
+      return { ...current, additionalTeams: teams }
+    })
+  }
+
+  function toggleAdditionalUserFunction(index: number, fn: "SDR" | "CLOSER") {
+    setValues((current) => {
+      const users = [...current.additionalUsers]
+      const user = users[index]
+      const has = user.functions.includes(fn)
+      users[index] = {
+        ...user,
+        functions: has ? user.functions.filter((f) => f !== fn) : [...user.functions, fn],
+      }
+      return { ...current, additionalUsers: users }
+    })
   }
 
   function handleLeadChange(leadId: string) {
@@ -703,6 +780,112 @@ export function BackofficeAdhesionDialog({
                 disabled={isSubmitting}
               />
             </div>
+
+            {mode === "create" && values.extraUsers > 0 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm font-medium">Usuários adicionais — dados opcionais</p>
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Preencha para convidar os usuários já na criação da adesão.
+                </p>
+                {values.additionalUsers.map((user, index) => (
+                  <div key={index} className="flex flex-col gap-3 rounded-md border p-3">
+                    <p className="text-xs font-medium text-muted-foreground">Usuário {index + 1}</p>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor={`add-user-name-${index}`}>Nome</Label>
+                        <Input
+                          id={`add-user-name-${index}`}
+                          value={user.name}
+                          onChange={(e) => updateAdditionalUser(index, "name", e.target.value)}
+                          disabled={isSubmitting}
+                          placeholder="Nome completo"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor={`add-user-email-${index}`}>E-mail</Label>
+                        <Input
+                          id={`add-user-email-${index}`}
+                          type="email"
+                          value={user.email}
+                          onChange={(e) => updateAdditionalUser(index, "email", e.target.value)}
+                          disabled={isSubmitting}
+                          placeholder="email@exemplo.com"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Label>Papel</Label>
+                      <Select
+                        value={user.role}
+                        onValueChange={(v) =>
+                          updateAdditionalUser(
+                            index,
+                            "role",
+                            v as BackofficeAdhesionAdditionalUser["role"]
+                          )
+                        }
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {(Object.entries(ROLE_LABELS) as [BackofficeAdhesionAdditionalUser["role"], string][]).map(
+                              ([role, label]) => (
+                                <SelectItem key={role} value={role}>
+                                  {label}
+                                </SelectItem>
+                              )
+                            )}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Label>Atribuições</Label>
+                      <div className="flex gap-4">
+                        {(["SDR", "CLOSER"] as const).map((fn) => (
+                          <div key={fn} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`add-user-fn-${index}-${fn}`}
+                              checked={user.functions.includes(fn)}
+                              onCheckedChange={() => toggleAdditionalUserFunction(index, fn)}
+                              disabled={isSubmitting}
+                            />
+                            <Label htmlFor={`add-user-fn-${index}-${fn}`}>{fn}</Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {mode === "create" && values.extraTeams > 0 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-sm font-medium">Times adicionais — dados opcionais</p>
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Preencha para nomear os times já na criação da adesão.
+                </p>
+                {values.additionalTeams.map((team, index) => (
+                  <div key={index} className="flex flex-col gap-3 rounded-md border p-3">
+                    <p className="text-xs font-medium text-muted-foreground">Time {index + 1}</p>
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor={`add-team-name-${index}`}>Nome do time</Label>
+                      <Input
+                        id={`add-team-name-${index}`}
+                        value={team.name}
+                        onChange={(e) => updateAdditionalTeam(index, e.target.value)}
+                        disabled={isSubmitting}
+                        placeholder="Ex.: Time de Vendas"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="rounded-md border bg-muted/30 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">

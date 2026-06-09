@@ -7919,7 +7919,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 0,\n  \"extraUsers\": 0,\n  \"activationMode\": \"external_paid\",\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T00:00:00.000Z\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\"\n}"
+                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 1,\n  \"extraUsers\": 1,\n  \"activationMode\": \"external_paid\",\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T00:00:00.000Z\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"additionalUsers\": [\n    {\n      \"name\": \"Usuário Adicional\",\n      \"email\": \"usuario.adicional@example.com\",\n      \"role\": \"operator\",\n      \"functions\": [\"SDR\"]\n    }\n  ],\n  \"additionalTeams\": [\n    {\n      \"name\": \"Time Adicional\"\n    }\n  ]\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/adhesions",
@@ -8235,6 +8235,88 @@
                   ]
                 },
                 "description": "Exclui permanentemente a conta do usuário master: remove do Supabase Auth, deleta Profile (cascade para times/membros/leads) e envia e-mail de encerramento ao master e managers."
+              }
+            },
+            {
+              "name": "POST Add Member to Platform User",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Nome do Usuário\",\n  \"email\": \"usuario@example.com\",\n  \"phone\": \"11999990000\",\n  \"role\": \"operator\",\n  \"functions\": [\"SDR\"]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/members",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users",
+                    ":masterId",
+                    "members"
+                  ],
+                  "variable": [
+                    {
+                      "key": "masterId",
+                      "value": "{{masterProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Adiciona um novo membro ao time padrão do usuário master. Cria o Profile, adiciona ao TeamMember e envia e-mail de convite. role: manager | backoffice | operator. functions: SDR | CLOSER."
+              }
+            },
+            {
+              "name": "POST Add Team to Platform User",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Nome do Time\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users",
+                    ":masterId",
+                    "teams"
+                  ],
+                  "variable": [
+                    {
+                      "key": "masterId",
+                      "value": "{{masterProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Cria um novo time para o usuário master e adiciona o master como membro do time."
               }
             }
           ]
