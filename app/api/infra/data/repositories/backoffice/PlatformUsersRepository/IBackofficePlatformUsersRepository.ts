@@ -145,6 +145,8 @@ export interface IBackofficePlatformUsersRepository {
 
   findDefaultTeamByMasterId(masterProfileId: string): Promise<{ id: string; name: string } | null>
 
+  findTeamByIdAndMasterId(teamId: string, masterId: string): Promise<{ id: string } | null>
+
   findProfileByEmail(email: string): Promise<{ id: string; isMaster: boolean; managerId: string | null } | null>
 
   createMemberForMaster(
@@ -165,7 +167,8 @@ export interface IBackofficePlatformUsersRepository {
     profileId: string,
     teamId: string,
     role: "manager" | "backoffice" | "operator",
-    functions: ("SDR" | "CLOSER")[]
+    functions: ("SDR" | "CLOSER")[],
+    permissions?: { canCreateAccountUsers: boolean; canManageAccountTeams: boolean }
   ): Promise<{ teamMemberId: string }>
 
   createTeamForMaster(

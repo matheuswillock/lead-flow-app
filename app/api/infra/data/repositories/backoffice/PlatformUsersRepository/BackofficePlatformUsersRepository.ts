@@ -573,6 +573,13 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     })
   }
 
+  async findTeamByIdAndMasterId(teamId: string, masterId: string): Promise<{ id: string } | null> {
+    return prisma.team.findFirst({
+      where: { id: teamId, masterId },
+      select: { id: true },
+    })
+  }
+
   async findProfileByEmail(email: string): Promise<{ id: string; isMaster: boolean; managerId: string | null } | null> {
     return prisma.profile.findUnique({
       where: { email },
@@ -627,13 +634,27 @@ export class BackofficePlatformUsersRepository implements IBackofficePlatformUse
     profileId: string,
     teamId: string,
     role: "manager" | "backoffice" | "operator",
-    functions: ("SDR" | "CLOSER")[]
+    functions: ("SDR" | "CLOSER")[],
+    permissions?: { canCreateAccountUsers: boolean; canManageAccountTeams: boolean }
   ): Promise<{ teamMemberId: string }> {
-    const teamMember = await prisma.teamMember.create({
-      data: { profileId, teamId, role: role as UserRole, functions: functions as UserFunction[] },
-      select: { id: true },
+    return prisma.$transaction(async (tx) => {
+      if (permissions) {
+        await tx.profile.update({
+          where: { id: profileId },
+          data: {
+            canCreateAccountUsers: permissions.canCreateAccountUsers,
+            canManageAccountTeams: permissions.canManageAccountTeams,
+          },
+        })
+      }
+
+      const teamMember = await tx.teamMember.create({
+        data: { profileId, teamId, role: role as UserRole, functions: functions as UserFunction[] },
+        select: { id: true },
+      })
+
+      return { teamMemberId: teamMember.id }
     })
-    return { teamMemberId: teamMember.id }
   }
 
   async createTeamForMaster(masterProfileId: string, name: string): Promise<{ id: string; name: string }> {

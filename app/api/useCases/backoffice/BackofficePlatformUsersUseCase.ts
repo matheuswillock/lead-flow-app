@@ -874,6 +874,11 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
+      const team = await this.platformUsersRepository.findTeamByIdAndMasterId(data.teamId, masterProfileId)
+      if (!team) {
+        return new Output(false, [], ["Time não encontrado ou não pertence ao master selecionado"], null)
+      }
+
       const existingProfile = await this.platformUsersRepository.findProfileByEmail(email)
 
       const emailService = createEmailService()
@@ -885,12 +890,16 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       }
       const roleLabel = roleLabels[data.role] ?? data.role
 
+      const delegatedPermissions = data.role === "manager"
+        ? { canCreateAccountUsers: data.canCreateAccountUsers ?? false, canManageAccountTeams: data.canManageAccountTeams ?? false }
+        : { canCreateAccountUsers: false, canManageAccountTeams: false }
+
       if (existingProfile) {
         if (existingProfile.isMaster) {
           return new Output(false, [], ["Este e-mail já possui uma conta master na plataforma"], null)
         }
 
-        await this.platformUsersRepository.addExistingProfileToTeam(existingProfile.id, data.teamId, data.role, data.functions)
+        await this.platformUsersRepository.addExistingProfileToTeam(existingProfile.id, data.teamId, data.role, data.functions, delegatedPermissions)
 
         await emailService.sendEmail({
           to: [email],
@@ -911,10 +920,6 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         console.info("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Usuário existente adicionado ao time:", email)
         return new Output(true, ["Usuário adicionado ao time com sucesso"], [], { profileId: existingProfile.id })
       }
-
-      const delegatedPermissions = data.role === "manager"
-        ? { canCreateAccountUsers: data.canCreateAccountUsers ?? false, canManageAccountTeams: data.canManageAccountTeams ?? false }
-        : { canCreateAccountUsers: false, canManageAccountTeams: false }
 
       const { profileId } = await this.platformUsersRepository.createMemberForMaster(
         masterProfileId,
