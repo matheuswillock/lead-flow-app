@@ -24,6 +24,14 @@ export type UpdateTemplateInput = Partial<Omit<CreateTemplateInput, "name">> & {
 
 import { backofficeEmailTemplatesService } from "@/app/api/services/backofficeEmailTemplates/BackofficeEmailTemplatesService"
 
+function translateResendError(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error)
+  if (msg.includes("improperly formatted variables") || msg.includes("correct syntax: {{{")) {
+    return "O campo 'html' contém variáveis com formatação incorreta. Use a sintaxe correta: {{{NOME_DA_VARIAVEL}}}"
+  }
+  return msg || "Erro inesperado"
+}
+
 export class BackofficeEmailTemplatesUseCase {
   constructor(private readonly service: BackofficeEmailTemplatesService) {}
 
@@ -62,7 +70,7 @@ export class BackofficeEmailTemplatesUseCase {
       return new Output(true, ["Template criado com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeEmailTemplatesUseCase][create]", error)
-      const message = error instanceof Error ? error.message : "Erro ao criar template de e-mail"
+      const message = translateResendError(error)
       return new Output(false, [], [message], null)
     }
   }
@@ -97,7 +105,7 @@ export class BackofficeEmailTemplatesUseCase {
       return new Output(true, ["Template atualizado com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeEmailTemplatesUseCase][update]", error)
-      const message = error instanceof Error ? error.message : "Erro ao atualizar template de e-mail"
+      const message = translateResendError(error)
       return new Output(false, [], [message], null)
     }
   }
@@ -108,7 +116,7 @@ export class BackofficeEmailTemplatesUseCase {
       return new Output(true, ["Template excluído com sucesso"], [], null)
     } catch (error) {
       console.error("[BackofficeEmailTemplatesUseCase][remove]", error)
-      const message = error instanceof Error ? error.message : "Erro ao excluir template de e-mail"
+      const message = translateResendError(error)
       return new Output(false, [], [message], null)
     }
   }
@@ -119,7 +127,7 @@ export class BackofficeEmailTemplatesUseCase {
       return new Output(true, ["Template publicado com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeEmailTemplatesUseCase][publish]", error)
-      const message = error instanceof Error ? error.message : "Erro ao publicar template de e-mail"
+      const message = translateResendError(error)
       return new Output(false, [], [message], null)
     }
   }
@@ -130,7 +138,7 @@ export class BackofficeEmailTemplatesUseCase {
       return new Output(true, ["Template duplicado com sucesso"], [], result)
     } catch (error) {
       console.error("[BackofficeEmailTemplatesUseCase][duplicate]", error)
-      const message = error instanceof Error ? error.message : "Erro ao duplicar template de e-mail"
+      const message = translateResendError(error)
       return new Output(false, [], [message], null)
     }
   }
