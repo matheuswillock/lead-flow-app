@@ -17,6 +17,87 @@ import {
 } from "@/lib/dates"
 import { IBackofficePlatformUsersRepository } from "../../infra/data/repositories/backoffice/PlatformUsersRepository/IBackofficePlatformUsersRepository"
 
+function buildMasterNotificationEmail(params: {
+  masterName: string
+  userName: string
+  userEmail: string
+  roleLabel: string
+}): string {
+  const { masterName, userName, userEmail, roleLabel } = params
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+      <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+        <table role="presentation" style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td align="center" style="padding:24px;">
+              <table role="presentation" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;">
+                <tr>
+                  <td style="background:#ff6900;color:#ffffff;padding:24px;text-align:center;">
+                    <h1 style="margin:0;font-size:22px;">Corretor Studio</h1>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:28px 24px;">
+                    <h2 style="margin:0 0 12px 0;color:#171717;font-size:20px;">Novo usuário adicionado</h2>
+                    <p style="margin:0 0 16px 0;color:#525252;line-height:1.5;">
+                      Olá, <strong>${masterName}</strong>. Um novo usuário foi adicionado à sua conta.
+                    </p>
+                    <div style="background:#fafafa;border:1px solid #e5e5e5;border-radius:8px;padding:16px;margin:16px 0;">
+                      <p style="margin:0 0 8px 0;color:#171717;"><strong>Nome:</strong> ${userName}</p>
+                      <p style="margin:0 0 8px 0;color:#171717;"><strong>E-mail:</strong> ${userEmail}</p>
+                      <p style="margin:0;color:#171717;"><strong>Papel:</strong> ${roleLabel}</p>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `
+}
+
+function buildAddedToTeamEmail(params: { userName: string; loginUrl: string }): string {
+  const { userName, loginUrl } = params
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+      <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+      <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+        <table role="presentation" style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td align="center" style="padding:24px;">
+              <table role="presentation" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;">
+                <tr>
+                  <td style="background:#ff6900;color:#ffffff;padding:24px;text-align:center;">
+                    <h1 style="margin:0;font-size:22px;">Corretor Studio</h1>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:28px 24px;">
+                    <h2 style="margin:0 0 12px 0;color:#171717;font-size:20px;">Você foi adicionado a um novo time</h2>
+                    <p style="margin:0 0 16px 0;color:#525252;line-height:1.5;">
+                      Olá, <strong>${userName}</strong>. Você foi adicionado a um novo time no Corretor Studio.
+                    </p>
+                    <div style="margin-top:24px;">
+                      <a href="${loginUrl}" style="display:inline-block;background:#ff6900;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">
+                        Acessar a plataforma
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+  `
+}
+
 interface PlanInfo {
   label: string
   amount: number | null
@@ -768,6 +849,9 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
       phone?: string | null
       role: "manager" | "backoffice" | "operator"
       functions: ("SDR" | "CLOSER")[]
+      teamId: string
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
     }
   ): Promise<Output> {
     try {
@@ -781,20 +865,66 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
         return new Output(false, [], ["E-mail inválido"], null)
       }
 
+      if (!data.teamId?.trim()) {
+        return new Output(false, [], ["Time é obrigatório"], null)
+      }
+
       const master = await this.platformUsersRepository.findMasterUserBillingById(masterProfileId)
       if (!master) {
         return new Output(false, [], ["Usuário master não encontrado"], null)
       }
 
-      const defaultTeam = await this.platformUsersRepository.findDefaultTeamByMasterId(masterProfileId)
-      if (!defaultTeam) {
-        return new Output(false, [], ["Time padrão do cliente não encontrado"], null)
+      const team = await this.platformUsersRepository.findTeamByIdAndMasterId(data.teamId, masterProfileId)
+      if (!team) {
+        return new Output(false, [], ["Time não encontrado ou não pertence ao master selecionado"], null)
+      }
+
+      const existingProfile = await this.platformUsersRepository.findProfileByEmail(email)
+
+      const emailService = createEmailService()
+      const appUrl = getAppUrl({ removeTrailingSlash: true })
+      const roleLabels: Record<string, string> = {
+        manager: "Gerente",
+        backoffice: "Backoffice",
+        operator: "Operador",
+      }
+      const roleLabel = roleLabels[data.role] ?? data.role
+
+      const delegatedPermissions = data.role === "manager"
+        ? { canCreateAccountUsers: data.canCreateAccountUsers ?? false, canManageAccountTeams: data.canManageAccountTeams ?? false }
+        : { canCreateAccountUsers: false, canManageAccountTeams: false }
+
+      if (existingProfile) {
+        if (existingProfile.isMaster) {
+          return new Output(false, [], ["Este e-mail já possui uma conta master na plataforma"], null)
+        }
+
+        await this.platformUsersRepository.addExistingProfileToTeam(existingProfile.id, data.teamId, data.role, data.functions, delegatedPermissions)
+
+        await emailService.sendEmail({
+          to: [email],
+          subject: "Corretor Studio - Você foi adicionado a um novo time",
+          html: buildAddedToTeamEmail({ userName: trimmedName, loginUrl: `${appUrl}/sign-in` }),
+        }).catch((err: unknown) => {
+          console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Erro ao enviar e-mail ao usuário existente:", err)
+        })
+
+        await emailService.sendEmail({
+          to: [master.email],
+          subject: "Corretor Studio - Novo usuário adicionado",
+          html: buildMasterNotificationEmail({ masterName: master.fullName ?? master.email, userName: trimmedName, userEmail: email, roleLabel }),
+        }).catch((err: unknown) => {
+          console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Erro ao enviar e-mail ao master:", err)
+        })
+
+        console.info("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Usuário existente adicionado ao time:", email)
+        return new Output(true, ["Usuário adicionado ao time com sucesso"], [], { profileId: existingProfile.id })
       }
 
       const { profileId } = await this.platformUsersRepository.createMemberForMaster(
         masterProfileId,
-        { ...data, fullName: trimmedName, email, phone: data.phone ?? null },
-        defaultTeam.id
+        { ...data, fullName: trimmedName, email, phone: data.phone ?? null, ...delegatedPermissions },
+        data.teamId
       )
 
       const supabaseAdmin = createSupabaseAdmin()
@@ -824,13 +954,20 @@ export class BackofficePlatformUsersUseCase implements IBackofficePlatformUsersU
 
       const inviteLink = buildSetPasswordEmailAuthLink(linkData, "invite")
 
-      const emailService = createEmailService()
       await emailService.sendOperatorInviteEmail({
         operatorName: trimmedName,
         operatorEmail: email,
         operatorRole: data.role,
         managerName: master.fullName ?? master.email,
         inviteUrl: inviteLink,
+      })
+
+      await emailService.sendEmail({
+        to: [master.email],
+        subject: "Corretor Studio - Novo usuário adicionado",
+        html: buildMasterNotificationEmail({ masterName: master.fullName ?? master.email, userName: trimmedName, userEmail: email, roleLabel }),
+      }).catch((err: unknown) => {
+        console.error("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Erro ao enviar e-mail ao master:", err)
       })
 
       console.info("[BackofficePlatformUsersUseCase][addMemberToMasterUser] Membro adicionado:", email)

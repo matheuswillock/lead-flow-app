@@ -816,6 +816,7 @@ export function BackofficeClientDetailsContainer() {
       <BackofficeAddMemberDialog
         open={addMemberOpen}
         masterId={masterId}
+        teams={(details?.teams ?? []).map((t) => ({ id: t.id, name: t.name }))}
         service={service}
         onOpenChange={setAddMemberOpen}
         onSaved={reload}

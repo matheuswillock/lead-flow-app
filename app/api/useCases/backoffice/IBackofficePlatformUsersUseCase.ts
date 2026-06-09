@@ -60,6 +60,9 @@ export interface IBackofficePlatformUsersUseCase {
       phone?: string | null
       role: "manager" | "backoffice" | "operator"
       functions: ("SDR" | "CLOSER")[]
+      teamId: string
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
     }
   ): Promise<Output>
 

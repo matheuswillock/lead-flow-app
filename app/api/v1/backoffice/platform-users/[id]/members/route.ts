@@ -44,6 +44,9 @@ export async function POST(
             typeof f === "string" && (VALID_FUNCTIONS as readonly string[]).includes(f)
         )
       : []
+    const teamId = typeof data.teamId === "string" ? data.teamId.trim() : ""
+    const canCreateAccountUsers = data.canCreateAccountUsers === true
+    const canManageAccountTeams = data.canManageAccountTeams === true
 
     if (!fullName) {
       return NextResponse.json(
@@ -59,6 +62,13 @@ export async function POST(
       )
     }
 
+    if (!teamId) {
+      return NextResponse.json(
+        new Output(false, [], ["Time é obrigatório"], null),
+        { status: 400 }
+      )
+    }
+
     const useCase = new BackofficePlatformUsersUseCase(new BackofficePlatformUsersRepository())
     const output = await useCase.addMemberToMasterUser(id, {
       fullName,
@@ -66,6 +76,9 @@ export async function POST(
       phone,
       role,
       functions,
+      teamId,
+      canCreateAccountUsers,
+      canManageAccountTeams,
     })
 
     return NextResponse.json(output, { status: output.isValid ? 201 : 400 })

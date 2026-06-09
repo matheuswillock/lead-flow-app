@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -22,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { maskPhone } from "@/lib/masks"
 import type { IBackofficeClientDetailsService } from "../services/IBackofficeClientDetailsService"
 
@@ -34,25 +34,43 @@ interface FormValues {
   phone: string
   role: MemberRole
   functions: MemberFunction[]
-}
-
-const ROLE_LABELS: Record<MemberRole, string> = {
-  manager: "Gerente",
-  backoffice: "Backoffice",
-  operator: "Operador",
+  teamId: string
+  canCreateAccountUsers: boolean
+  canManageAccountTeams: boolean
 }
 
 function defaultValues(): FormValues {
-  return { fullName: "", email: "", phone: "", role: "operator", functions: [] }
+  return {
+    fullName: "",
+    email: "",
+    phone: "",
+    role: "operator",
+    functions: [],
+    teamId: "",
+    canCreateAccountUsers: false,
+    canManageAccountTeams: false,
+  }
 }
 
 function sanitizePhone(value: string): string {
   return value.replace(/\D/g, "").slice(0, 11)
 }
 
+const ROLE_OPTIONS: { value: MemberRole; label: string; description: string }[] = [
+  { value: "manager", label: "Manager", description: "Gerencia usuários e configurações do time." },
+  { value: "backoffice", label: "Backoffice", description: "Acesso de gestão equivalente ao Manager (sem privilégios de master)." },
+  { value: "operator", label: "Operator", description: "Acesso operacional aos leads e atividades do time." },
+]
+
+const FUNCTION_OPTIONS: { value: MemberFunction; label: string; description: string }[] = [
+  { value: "SDR", label: "SDR", description: "Pode visualizar, editar e agendar os leads." },
+  { value: "CLOSER", label: "Closer", description: "Mesmo acesso do SDR nos leads, mas só ele pode fechar contratos." },
+]
+
 interface BackofficeAddMemberDialogProps {
   open: boolean
   masterId: string
+  teams: { id: string; name: string }[]
   service: IBackofficeClientDetailsService
   onOpenChange: (open: boolean) => void
   onSaved?: () => Promise<void> | void
@@ -61,6 +79,7 @@ interface BackofficeAddMemberDialogProps {
 export function BackofficeAddMemberDialog({
   open,
   masterId,
+  teams,
   service,
   onOpenChange,
   onSaved,
@@ -86,6 +105,7 @@ export function BackofficeAddMemberDialog({
   const canSubmit =
     values.fullName.trim().length >= 2 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim()) &&
+    values.teamId !== "" &&
     !isSubmitting
 
   async function handleSubmit() {
@@ -98,6 +118,9 @@ export function BackofficeAddMemberDialog({
         phone: sanitizePhone(values.phone) || null,
         role: values.role,
         functions: values.functions,
+        teamId: values.teamId,
+        canCreateAccountUsers: values.role === "manager" ? values.canCreateAccountUsers : false,
+        canManageAccountTeams: values.role === "manager" ? values.canManageAccountTeams : false,
       })
       toast.success("Convite enviado ao usuário")
       await onSaved?.()
@@ -158,20 +181,20 @@ export function BackofficeAddMemberDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Papel *</Label>
+            <Label>Time *</Label>
             <Select
-              value={values.role}
-              onValueChange={(v) => setValues((current) => ({ ...current, role: v as MemberRole }))}
+              value={values.teamId}
+              onValueChange={(v) => setValues((current) => ({ ...current, teamId: v }))}
               disabled={isSubmitting}
             >
               <SelectTrigger>
-                <SelectValue />
+                <SelectValue placeholder="Selecione um time" />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  {(Object.entries(ROLE_LABELS) as [MemberRole, string][]).map(([role, label]) => (
-                    <SelectItem key={role} value={role}>
-                      {label}
+                  {teams.map((team) => (
+                    <SelectItem key={team.id} value={team.id}>
+                      {team.name}
                     </SelectItem>
                   ))}
                 </SelectGroup>
@@ -180,21 +203,93 @@ export function BackofficeAddMemberDialog({
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label>Atribuições</Label>
-            <div className="flex gap-4">
-              {(["SDR", "CLOSER"] as const).map((fn) => (
-                <div key={fn} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`add-member-fn-${fn}`}
-                    checked={values.functions.includes(fn)}
-                    onCheckedChange={() => toggleFunction(fn)}
+            <Label>Nível de acesso</Label>
+            <div className="flex flex-col gap-2">
+              {ROLE_OPTIONS.map((item) => (
+                <div
+                  key={item.value}
+                  className="flex items-center justify-between rounded-md border border-input px-3 py-2"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium">{item.label}</span>
+                    <span className="text-xs text-muted-foreground">{item.description}</span>
+                  </div>
+                  <Switch
+                    checked={values.role === item.value}
+                    onCheckedChange={() => setValues((v) => ({ ...v, role: item.value }))}
                     disabled={isSubmitting}
                   />
-                  <Label htmlFor={`add-member-fn-${fn}`}>{fn}</Label>
                 </div>
               ))}
             </div>
+            <p className="text-xs text-muted-foreground">Define o nível de acesso do usuário na aplicação.</p>
           </div>
+
+          <div className="flex flex-col gap-2">
+            <Label>Funções</Label>
+            <div className="flex flex-col gap-2">
+              {FUNCTION_OPTIONS.map((item) => (
+                <div
+                  key={item.value}
+                  className="flex items-center justify-between rounded-md border border-input px-3 py-2"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium">{item.label}</span>
+                    <span className="text-xs text-muted-foreground">{item.description}</span>
+                  </div>
+                  <Switch
+                    checked={values.functions.includes(item.value)}
+                    onCheckedChange={() => toggleFunction(item.value)}
+                    disabled={isSubmitting}
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">Selecione SDR, Closer ou ambos.</p>
+          </div>
+
+          {values.role === "manager" ? (
+            <div className="flex flex-col gap-3">
+              <div>
+                <p className="text-sm font-medium">Permissões delegadas</p>
+                <p className="text-xs text-muted-foreground">
+                  Essas permissões adicionais só podem ser atribuídas pelo master da conta.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium">Pode cadastrar novos usuários</span>
+                  <span className="text-xs text-muted-foreground">
+                    Permite solicitar novos usuários da conta sujeitos à cobrança incremental.
+                  </span>
+                </div>
+                <Switch
+                  checked={values.canCreateAccountUsers}
+                  onCheckedChange={(checked) =>
+                    setValues((v) => ({ ...v, canCreateAccountUsers: checked }))
+                  }
+                  disabled={isSubmitting}
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium">Pode gerenciar times</span>
+                  <span className="text-xs text-muted-foreground">
+                    Permite criar, editar e deletar times da conta, sem transferir ownership.
+                  </span>
+                </div>
+                <Switch
+                  checked={values.canManageAccountTeams}
+                  onCheckedChange={(checked) =>
+                    setValues((v) => ({ ...v, canManageAccountTeams: checked }))
+                  }
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter className="border-t pt-4">
