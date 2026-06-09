@@ -173,6 +173,7 @@
       "app/api/v1/leads/[id]/schedule/route.ts",
       "app/api/v1/leads/[id]/status/route.ts",
       "app/api/v1/leads/[id]/transfer/route.ts",
+      "app/api/v1/leads/[id]/transfer-teams/route.ts",
       "app/api/v1/manager/[supabaseId]/users/route.ts",
       "app/api/v1/payments/validate/route.ts",
       "app/api/v1/profiles/[supabaseId]/permanent-subscription/route.ts",

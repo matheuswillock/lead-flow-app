@@ -3,6 +3,7 @@ import { Output } from "@/lib/output";
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
+import { TransferLeadBetweenTeamsRequest } from "../../v1/leads/DTO/requestToTransferLeadBetweenTeams";
 
 export interface LeadCreationActivityContext {
   body?: string;
@@ -69,5 +70,6 @@ export interface ILeadUseCase {
   ): Promise<Output>;
   assignLeadToOperator(supabaseId: string, id: string, operatorId: string): Promise<Output>;
   transferLead(supabaseId: string, id: string, data: TransferLeadRequest): Promise<Output>;
+  transferLeadBetweenTeams(supabaseId: string, id: string, data: TransferLeadBetweenTeamsRequest): Promise<Output>;
   getLeadsByStatus(supabaseId: string, status: LeadStatus): Promise<Output>;
 }

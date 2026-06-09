@@ -114,6 +114,10 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
   };
 }
 
+export function isManagerOrMaster(access: TeamAccess): boolean {
+  return access.isMaster || isManagerLikeRole(access.teamMember.role);
+}
+
 export function hasLeadAccess(teamMember: { role: UserRole; functions: UserFunction[] }) {
   if (isManagerLikeRole(teamMember.role)) {
     return true;
