@@ -74,7 +74,7 @@ function optionalInteger(data: Record<string, unknown>, key: string): number | u
 const VALID_ROLES = ["manager", "backoffice", "operator"] as const
 const VALID_FUNCTIONS = ["SDR", "CLOSER"] as const
 
-function parseAdditionalUsers(data: Record<string, unknown>): BackofficeAdhesionAdditionalUser[] {
+function parseAdditionalUsers(data: Record<string, unknown>): ParsedAdditionalUser[] {
   const raw = data.additionalUsers
   if (!Array.isArray(raw)) return []
   return raw.flatMap((item: unknown) => {
@@ -83,7 +83,7 @@ function parseAdditionalUsers(data: Record<string, unknown>): BackofficeAdhesion
     const name = typeof u.name === "string" ? u.name.trim() : ""
     const email = typeof u.email === "string" ? u.email.trim().toLowerCase() : ""
     const role = typeof u.role === "string" && (VALID_ROLES as readonly string[]).includes(u.role)
-      ? (u.role as BackofficeAdhesionAdditionalUser["role"])
+      ? (u.role as ParsedAdditionalUser["role"])
       : "operator"
     const functions = Array.isArray(u.functions)
       ? (u.functions as unknown[]).filter(
@@ -96,7 +96,7 @@ function parseAdditionalUsers(data: Record<string, unknown>): BackofficeAdhesion
   })
 }
 
-function parseAdditionalTeams(data: Record<string, unknown>): BackofficeAdhesionAdditionalTeam[] {
+function parseAdditionalTeams(data: Record<string, unknown>): ParsedAdditionalTeam[] {
   const raw = data.additionalTeams
   if (!Array.isArray(raw)) return []
   return raw.flatMap((item: unknown) => {
