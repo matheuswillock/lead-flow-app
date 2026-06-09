@@ -364,7 +364,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const adhesion = await this.repo.createAndMoveLeadToAdhesion({
       leadId: normalized.leadId,
       fullName: normalized.fullName,
-      phone: normalized.phone,
+      phone: normalized.phone ?? "",
       billingType: resolvedBillingType,
       plan: "crm",
       cycle: normalized.cycle,
@@ -407,11 +407,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           fullName: normalized.fullName,
           email: externalEmail,
           cpfCnpj: normalizedCpfCnpj,
-          phone: normalized.phone,
+          phone: normalized.phone ?? "",
         })
         const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
           fullName: normalized.fullName,
-          phone: normalized.phone,
+          phone: normalized.phone ?? "",
           email: externalEmail,
           cpfCnpj: normalizedCpfCnpj,
           paidAt,
@@ -529,7 +529,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     const updated = await this.repo.update(id, {
       fullName: next.fullName,
-      phone: next.phone,
+      phone: next.phone ?? undefined,
       email: next.email,
       cpfCnpj: next.cpfCnpj,
       cycle: next.cycle,
@@ -578,11 +578,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         fullName: next.fullName,
         email: next.email,
         cpfCnpj: normalizedCpfCnpj,
-        phone: next.phone,
+        phone: next.phone ?? "",
       })
       const paidAdhesion = await this.repo.markExternalPaid(persisted.id, {
         fullName: next.fullName,
-        phone: next.phone,
+        phone: next.phone ?? "",
         email: next.email,
         cpfCnpj: normalizedCpfCnpj,
         paidAt,
@@ -917,7 +917,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     const phone = normalizeDigits(input.phone, 11)
-    if (!/^\d{10,11}$/.test(phone)) {
+    if (phone && !/^\d{10,11}$/.test(phone)) {
       throw new Error("Celular deve conter 10 ou 11 dígitos")
     }
 
@@ -944,7 +944,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return {
       leadId: input.leadId,
       fullName,
-      phone,
+      phone: phone || "",
       email,
       cpfCnpj: cpfCnpj || null,
       cycle: input.cycle,
