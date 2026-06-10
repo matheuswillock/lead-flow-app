@@ -70,6 +70,14 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     };
   }
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(teamId)) {
+    return {
+      error: new Output(false, [], ["teamId inválido"], null),
+      status: 400,
+    };
+  }
+
   const teamMember = await prisma.teamMember.findUnique({
     where: {
       teamId_profileId: {

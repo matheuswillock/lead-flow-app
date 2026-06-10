@@ -26,6 +26,14 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(teamId)) {
+      return NextResponse.json(
+        new Output(false, [], ["teamId inválido"], null),
+        { status: 400 }
+      );
+    }
+
     const profile = await prisma.profile.findUnique({
       where: { supabaseId },
       select: { id: true }
