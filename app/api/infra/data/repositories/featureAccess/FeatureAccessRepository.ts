@@ -122,7 +122,7 @@ export class FeatureAccessRepository implements IFeatureAccessRepository {
         userType: { select: { slug: true } },
       },
     })
-    if (!assignment) return null
+    if (!assignment || !assignment.userType) return null
 
     return {
       slug: assignment.userType.slug,
