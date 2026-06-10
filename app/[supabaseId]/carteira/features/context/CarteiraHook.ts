@@ -174,6 +174,9 @@ export function useCarteiraHook() {
         rows: prev.rows.map((row: CarteiraRow) =>
           row.leadId === leadId ? { ...row, ...updateData } : row
         ),
+        renewals: prev.renewals.map((row: CarteiraRow) =>
+          row.leadId === leadId ? { ...row, ...updateData } : row
+        ),
       };
     });
 
@@ -184,6 +187,9 @@ export function useCarteiraHook() {
         return {
           ...prev,
           rows: prev.rows.map((row: CarteiraRow) =>
+            row.leadId === leadId ? updated : row
+          ),
+          renewals: prev.renewals.map((row: CarteiraRow) =>
             row.leadId === leadId ? updated : row
           ),
         };

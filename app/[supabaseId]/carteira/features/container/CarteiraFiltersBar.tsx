@@ -10,13 +10,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { LeadsDateFilter } from '@/app/[supabaseId]/components/leads-filters/LeadsDateFilter';
 import { LeadsFiltersLayout } from '@/app/[supabaseId]/components/leads-filters/LeadsFiltersLayout';
 import { LeadsMultiFilter } from '@/app/[supabaseId]/components/leads-filters/LeadsMultiFilter';
@@ -58,7 +51,7 @@ const normalizePresetFilters = (raw: unknown): CarteiraFiltersState => {
     sources: Array.isArray(data.sources) ? data.sources : [],
     sdrIds: Array.isArray(data.sdrIds) ? data.sdrIds : [],
     closerIds: Array.isArray(data.closerIds) ? data.closerIds : [],
-    operadora: typeof data.operadora === 'string' ? data.operadora : '',
+    operadoras: Array.isArray(data.operadoras) ? data.operadoras : [],
     contractDateStart: typeof data.contractDateStart === 'string' ? data.contractDateStart : '',
     contractDateEnd: typeof data.contractDateEnd === 'string' ? data.contractDateEnd : '',
     dueDateStart: typeof data.dueDateStart === 'string' ? data.dueDateStart : '',
@@ -78,6 +71,7 @@ const normalizeFiltersForComparison = (filters: CarteiraFiltersState): CarteiraF
   sources: [...filters.sources].sort(),
   sdrIds: [...filters.sdrIds].sort(),
   closerIds: [...filters.closerIds].sort(),
+  operadoras: [...filters.operadoras].sort(),
   page: 1,
   pageSize: DEFAULT_CARTEIRA_FILTERS.pageSize,
 });
@@ -344,6 +338,14 @@ export function CarteiraFiltersBar() {
 
   return (
     <LeadsFiltersLayout>
+      {/* Unified search: nome + documento (primeiro item) */}
+      <Input
+        placeholder="Nome do cliente ou CPF / CNPJ / RG..."
+        defaultValue={filters.search || filters.documentSearch}
+        onChange={(e) => handleUnifiedSearchChange(e.target.value)}
+        className="h-8 w-72 text-xs"
+      />
+
       {/* Status multi-select */}
       <LeadsMultiFilter
         title="Status"
@@ -379,24 +381,14 @@ export function CarteiraFiltersBar() {
         />
       )}
 
-      {/* Operadora filter */}
+      {/* Operadora filter (multi, padrão Status) */}
       {availableOperadoras.length > 0 && (
-        <Select
-          value={filters.operadora || '__all__'}
-          onValueChange={(v) => setFilter('operadora', v === '__all__' ? '' : v)}
-        >
-          <SelectTrigger className="w-44 border-dashed text-xs">
-            <SelectValue placeholder="Operadora" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">Todas operadoras</SelectItem>
-            {availableOperadoras.map((op) => (
-              <SelectItem key={op} value={op}>
-                {op}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <LeadsMultiFilter
+          title="Operadora"
+          options={availableOperadoras.map((op) => ({ value: op, label: op }))}
+          selectedValues={filters.operadoras}
+          onChange={(v) => setFilter('operadoras', v)}
+        />
       )}
 
       {/* Contract date range */}
@@ -495,14 +487,6 @@ export function CarteiraFiltersBar() {
           </div>
         </SheetContent>
       </Sheet>
-
-      {/* Unified search: nome + documento */}
-      <Input
-        placeholder="Nome do cliente ou CPF / CNPJ / RG..."
-        defaultValue={filters.search || filters.documentSearch}
-        onChange={(e) => handleUnifiedSearchChange(e.target.value)}
-        className="h-8 w-72 text-xs"
-      />
 
       {/* Clear */}
       {showClear && (

@@ -319,6 +319,16 @@ brokerage_transfer brokerage_transfer
     
 
 
+        renewal_status {
+            to_renew to_renew
+contacted contacted
+proposal proposal
+renewed renewed
+lost lost
+        }
+    
+
+
         email_credit_plan {
             starter starter
 plus plus
@@ -770,6 +780,8 @@ unsubscribed unsubscribed
   "corretor_studio_lead_portfolio" {
     String id "🗝️"
     PortfolioStatus portfolioStatus 
+    RenewalStatus renewalStatus 
+    Decimal renewalAmount "❓"
     PortfolioSource source 
     String note "❓"
     DateTime lastContactAt "❓"
@@ -1200,6 +1212,7 @@ unsubscribed unsubscribed
     "corretor_studio_lead_finalized_holders" |o--|| corretor_studio_lead_finalized : "leadFinalized"
     "corretor_studio_lead_finalized_dependents" }o--|| corretor_studio_lead_finalized : "leadFinalized"
     "corretor_studio_lead_portfolio" |o--|| "PortfolioStatus" : "enum:portfolioStatus"
+    "corretor_studio_lead_portfolio" |o--|| "RenewalStatus" : "enum:renewalStatus"
     "corretor_studio_lead_portfolio" |o--|| "PortfolioSource" : "enum:source"
     "corretor_studio_lead_portfolio" |o--|| corretor_studio_leads : "lead"
     "corretor_studio_lead_portfolio" }o--|| corretor_studio_teams : "team"
