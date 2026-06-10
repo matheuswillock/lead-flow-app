@@ -21,12 +21,15 @@ import { useTeamContext } from "@/app/context/TeamContext";
 import { Lead } from "../context/BoardTypes";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { useTimezone } from "@/app/context/TimezoneContext";
+import { Info } from "lucide-react";
 
 interface TeamMemberOption {
   id: string;
+  profileId: string;
   name: string;
   email: string | null;
   functions: ("SDR" | "CLOSER")[];
+  googleCalendarConnected: boolean;
 }
 
 interface TransferBetweenTeamsDialogProps {
@@ -56,8 +59,10 @@ export function TransferBetweenTeamsDialog({
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [meetingDate, setMeetingDate] = useState<Date | undefined>(undefined);
   const [meetingTitle, setMeetingTitle] = useState("");
-  const [meetingLink, setMeetingLink] = useState("");
   const [meetingType, setMeetingType] = useState<"online" | "call" | "whatsapp">("call");
+
+  const [availableTimes, setAvailableTimes] = useState<string[]>([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -74,8 +79,9 @@ export function TransferBetweenTeamsDialog({
       setScheduleEnabled(false);
       setMeetingDate(undefined);
       setMeetingTitle("");
-      setMeetingLink("");
       setMeetingType("call");
+      setAvailableTimes([]);
+      setAvailabilityLoading(false);
     }
   }, [open]);
 
@@ -103,15 +109,19 @@ export function TransferBetweenTeamsDialog({
         if (!active) return;
         const members: TeamMemberOption[] = (data?.result?.members ?? []).map((m: {
           id: string;
+          profileId?: string;
           fullName?: string | null;
           name?: string | null;
           email?: string | null;
           functions?: ("SDR" | "CLOSER")[];
+          googleCalendarConnected?: boolean;
         }) => ({
           id: m.id,
+          profileId: m.profileId ?? m.id,
           name: m.fullName ?? m.name ?? "",
           email: m.email ?? null,
           functions: m.functions ?? [],
+          googleCalendarConnected: m.googleCalendarConnected ?? false,
         }));
         setTeamMembers(members);
       })
@@ -128,6 +138,51 @@ export function TransferBetweenTeamsDialog({
     };
   }, [targetTeamId, supabaseId, activeTeamId]);
 
+  const meetingDateKey = meetingDate
+    ? [
+        meetingDate.getFullYear(),
+        String(meetingDate.getMonth() + 1).padStart(2, "0"),
+        String(meetingDate.getDate()).padStart(2, "0"),
+      ].join("-")
+    : null;
+
+  useEffect(() => {
+    if (!scheduleEnabled || !closerId || !meetingDateKey || !supabaseId) {
+      setAvailableTimes([]);
+      return;
+    }
+
+    let active = true;
+    setAvailabilityLoading(true);
+    setAvailableTimes([]);
+
+    fetch("/api/v1/calendar/availability", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-supabase-user-id": supabaseId,
+        "x-team-id": activeTeamId ?? "",
+      },
+      body: JSON.stringify({ closerId, date: meetingDateKey }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        setAvailableTimes(data?.result?.availableTimes ?? []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setAvailableTimes([]);
+      })
+      .finally(() => {
+        if (active) setAvailabilityLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [scheduleEnabled, closerId, meetingDateKey, supabaseId, activeTeamId]);
+
   const canSubmit = !!targetTeamId && !!closerId && !submitting;
 
   const handleSubmit = async () => {
@@ -140,7 +195,7 @@ export function TransferBetweenTeamsDialog({
         schedulePayload = {
           date: meetingDate.toISOString(),
           meetingTitle: meetingTitle || undefined,
-          meetingLink: meetingLink || undefined,
+          meetingLink: undefined,
           meetingType,
           transitionStatusToScheduled: true,
         };
@@ -221,7 +276,7 @@ export function TransferBetweenTeamsDialog({
                   <SelectItem value="_none" disabled>Nenhum closer neste time</SelectItem>
                 ) : (
                   closers.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                    <SelectItem key={m.id} value={m.profileId}>{m.name}</SelectItem>
                   ))
                 )}
               </SelectContent>
@@ -237,7 +292,7 @@ export function TransferBetweenTeamsDialog({
               <SelectContent>
                 <SelectItem value="_none">Sem SDR</SelectItem>
                 {sdrs.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  <SelectItem key={m.id} value={m.profileId}>{m.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -262,6 +317,9 @@ export function TransferBetweenTeamsDialog({
                   date={meetingDate}
                   onDateChange={setMeetingDate}
                   tz={tz}
+                  availableTimes={availableTimes}
+                  timeLoading={availabilityLoading}
+                  timeLoadingText="Carregando agenda do closer..."
                 />
               </div>
 
@@ -290,14 +348,9 @@ export function TransferBetweenTeamsDialog({
               </div>
 
               {meetingType === "online" && (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="meetingLink">Link da reunião</Label>
-                  <Input
-                    id="meetingLink"
-                    value={meetingLink}
-                    onChange={(e) => setMeetingLink(e.target.value)}
-                    placeholder="https://meet.google.com/..."
-                  />
+                <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                  <Info className="size-4 shrink-0" />
+                  <span>O link do Google Meet será gerado automaticamente após a transferência.</span>
                 </div>
               )}
             </div>
