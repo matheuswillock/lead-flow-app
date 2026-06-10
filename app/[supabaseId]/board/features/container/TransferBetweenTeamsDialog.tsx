@@ -161,7 +161,7 @@ export function TransferBetweenTeamsDialog({
       headers: {
         "Content-Type": "application/json",
         "x-supabase-user-id": supabaseId,
-        "x-team-id": activeTeamId ?? "",
+        "x-team-id": targetTeamId,
       },
       body: JSON.stringify({ closerId, date: meetingDateKey }),
     })
@@ -181,9 +181,9 @@ export function TransferBetweenTeamsDialog({
     return () => {
       active = false;
     };
-  }, [scheduleEnabled, closerId, meetingDateKey, supabaseId, activeTeamId]);
+  }, [scheduleEnabled, closerId, meetingDateKey, supabaseId, targetTeamId]);
 
-  const canSubmit = !!targetTeamId && !!closerId && !submitting;
+  const canSubmit = !!targetTeamId && !!closerId && !submitting && (!scheduleEnabled || !!meetingDate);
 
   const handleSubmit = async () => {
     if (!canSubmit || !supabaseId) return;
