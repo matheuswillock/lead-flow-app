@@ -46,9 +46,11 @@ export interface IBackofficeUserRepository {
   create(data: CreateBackofficeUserInput): Promise<BackofficeUser>
   findMany(params?: { isActive?: boolean }): Promise<BackofficeUserWithProfile[]>
   findById(id: string): Promise<BackofficeUser | null>
+  findManyByIds(ids: string[]): Promise<BackofficeUser[]>
   findByEmail(email: string): Promise<BackofficeUser | null>
   findByProfileId(profileId: string): Promise<BackofficeUser | null>
   findByIdWithGoogleContext(id: string): Promise<BackofficeUserWithGoogleContext | null>
+  findManyByIdsWithGoogleContext(ids: string[]): Promise<BackofficeUserWithGoogleContext[]>
   findByGoogleConnectionId(googleConnectionId: string): Promise<BackofficeUserConnectionDependent[]>
   findByLinkedProfileId(profileId: string): Promise<BackofficeUserConnectionDependent[]>
   findLinkedDependentsWithoutOwnConnection(profileId: string): Promise<BackofficeUserConnectionDependent[]>

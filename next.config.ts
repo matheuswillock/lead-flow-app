@@ -22,6 +22,7 @@ if (process.env.CI !== 'true') {
 }
 
 const nextConfig: NextConfig = {
+  cacheComponents: true,
   allowedDevOrigins: (
     process.env.NEXT_ALLOWED_DEV_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? [
       "nonzero-rodrick-mentholated.ngrok-free.dev",

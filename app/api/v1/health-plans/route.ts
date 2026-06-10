@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
+import { invalidateHealthPlansCache } from "@/lib/cache/invalidation";
 import {
   healthPlanUseCase,
   HEALTH_PLAN_ERROR_MESSAGES,
@@ -63,6 +64,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(output, { status: 400 });
     }
 
+    invalidateHealthPlansCache();
     return NextResponse.json(output, { status: 201 });
   } catch (error) {
     console.error("[HealthPlansRoute][POST] Erro ao criar plano de saúde:", error);

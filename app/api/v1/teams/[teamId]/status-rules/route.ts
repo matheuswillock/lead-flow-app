@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
+import { invalidateTeamStatusRulesCache } from "@/lib/cache/invalidation";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { teamStatusRulesUseCase } from "@/app/api/useCases/teamStatusRules/TeamStatusRulesUseCase";
 import { isManagerLikeRole } from "@/lib/roles";
@@ -131,6 +132,9 @@ export async function PUT(
         })),
       }
     );
+    if (output.isValid) {
+      invalidateTeamStatusRulesCache({ teamId });
+    }
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
     console.error("[TeamStatusRulesRoute][PUT] Erro ao atualizar regras:", error);

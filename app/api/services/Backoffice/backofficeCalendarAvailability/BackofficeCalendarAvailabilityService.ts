@@ -38,7 +38,7 @@ export class BackofficeCalendarAvailabilityService
   ): Promise<BackofficeCalendarAvailabilityResult> {
     const timezone = resolveTimezone(input.userTimezone ?? DEFAULT_TZ)
     const closerIds = Array.from(new Set(input.closerIds))
-    const closers = await Promise.all(closerIds.map((id) => this.userRepo.findById(id)))
+    const closers = await this.userRepo.findManyByIds(closerIds)
     const activeClosers = closers.filter(
       (closer): closer is NonNullable<(typeof closers)[number]> =>
         !!closer?.isActive && closer.isCloser
@@ -115,10 +115,13 @@ export class BackofficeCalendarAvailabilityService
 
     const perCloser: Record<string, string[]> = {}
     let source: "google" | "internal" = "internal"
+    const organizersByCloser = await this.googleResolver.resolveForBackofficeUsers(
+      activeClosers.map((closer) => closer.id)
+    )
 
     for (const closer of activeClosers) {
       let busyIntervals = internalBusyByCloser[closer.id] ?? []
-      const organizer = await this.googleResolver.resolveForBackofficeUser(closer.id)
+      const organizer = organizersByCloser.get(closer.id)
       if (organizer) {
         try {
           busyIntervals = await this.googleCalendarService.getBusyIntervals({

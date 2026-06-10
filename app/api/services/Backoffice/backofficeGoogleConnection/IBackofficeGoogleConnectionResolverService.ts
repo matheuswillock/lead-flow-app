@@ -11,4 +11,5 @@ export type ResolvedBackofficeGoogleOrganizer = {
 
 export interface IBackofficeGoogleConnectionResolverService {
   resolveForBackofficeUser(backofficeUserId: string): Promise<ResolvedBackofficeGoogleOrganizer | null>
+  resolveForBackofficeUsers(backofficeUserIds: string[]): Promise<Map<string, ResolvedBackofficeGoogleOrganizer>>
 }

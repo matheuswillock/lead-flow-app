@@ -1,15 +1,28 @@
 import { TeamStatusRuleType } from "@prisma/client";
 import { Output } from "@/lib/output";
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import type { ITeamStatusRuleService } from "@/app/api/services/teamStatusRule/ITeamStatusRuleService";
 import { teamStatusRuleService } from "@/app/api/services/teamStatusRule/TeamStatusRuleService";
 import type { ITeamStatusRulesUseCase, TeamStatusRuleSet } from "./ITeamStatusRulesUseCase";
+
+async function listCachedTeamStatusRules(teamId: string) {
+  "use cache";
+  cacheTag(cacheTags.teamStatusRules(teamId));
+  cacheLife("minutes");
+
+  return teamStatusRuleService.listByTeam(teamId);
+}
 
 export class TeamStatusRulesUseCase implements ITeamStatusRulesUseCase {
   constructor(private readonly service: ITeamStatusRuleService = teamStatusRuleService) {}
 
   async getRules(teamId: string): Promise<Output> {
     try {
-      const rules = await this.service.listByTeam(teamId);
+      const rules =
+        this.service === teamStatusRuleService
+          ? await listCachedTeamStatusRules(teamId)
+          : await this.service.listByTeam(teamId);
 
       const result: TeamStatusRuleSet = {
         disabledStatuses: rules
