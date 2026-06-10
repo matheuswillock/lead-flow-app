@@ -20,7 +20,7 @@ import { CreateLeadRequest } from "@/app/api/v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "@/app/api/v1/leads/DTO/requestToUpdateLead";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Calendar, CheckCircle, ClipboardList, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
+import { ArrowRightLeft, Calendar, CheckCircle, ClipboardList, Mail, MessageCircle, MessageSquare, Phone, Smile, X } from "lucide-react";
 import { TaskFormDialog } from "@/components/task-form-dialog";
 import { CopyIcon } from "@/components/ui/copy";
 import { FinalizeContractDialog, FinalizeContractData } from "@/app/[supabaseId]/board/features/container/FinalizeContractDialog";
@@ -60,6 +60,7 @@ import { isManagerLikeRole } from "@/lib/roles";
 import { isMeetingOverdue } from "@/lib/lead-meeting";
 import { useTimezone } from "@/app/context/TimezoneContext";
 import { MeetingHealdBlockedDialog, MeetingHealdConfirmDialog } from "@/app/[supabaseId]/components/MeetingHealdGateDialog";
+import { TransferBetweenTeamsDialog } from "@/app/[supabaseId]/board/features/container/TransferBetweenTeamsDialog";
 import {
   SalesInfoRequirementDialog,
   type MissingSalesField,
@@ -206,6 +207,7 @@ export default function LeadDialog({
   const [leadInfoDialogOpen, setLeadInfoDialogOpen] = useState(false);
   const [leadInfoSaving, setLeadInfoSaving] = useState(false);
   const [pendingLeadInfoGate, setPendingLeadInfoGate] = useState<PendingLeadInfoGate | null>(null);
+  const [showTransferBetweenTeamsDialog, setShowTransferBetweenTeamsDialog] = useState(false);
 
   useEffect(() => {
     setLocalLead(lead);
@@ -2269,6 +2271,25 @@ export default function LeadDialog({
                     )}
                   </div>
                   <div className="ml-4 flex items-center gap-2">
+                    {currentLead && currentLead.status === "new_opportunity" && (isTeamMaster || activeRole === "manager") && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => setShowTransferBetweenTeamsDialog(true)}
+                              className="h-9 w-9"
+                              aria-label="Transferir lead entre times"
+                            >
+                              <ArrowRightLeft className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Transferir entre times</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -3091,6 +3112,19 @@ export default function LeadDialog({
           </div>
         </DialogContent>
       </Dialog>
+
+      {currentLead && (
+        <TransferBetweenTeamsDialog
+          open={showTransferBetweenTeamsDialog}
+          onOpenChange={setShowTransferBetweenTeamsDialog}
+          lead={currentLead}
+          onSuccess={async (updatedLead) => {
+            await applyLocalLeadPatch(updatedLead.id, updatedLead);
+            await refreshLeads();
+            setOpen(false);
+          }}
+        />
+      )}
 
     </>
   );

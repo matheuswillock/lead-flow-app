@@ -1411,6 +1411,50 @@
                   ]
                 }
               }
+            },
+            {
+              "name": "13. Transferir Lead Entre Times",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"targetTeamId\": \"{{targetTeamId}}\",\n  \"closerId\": \"{{closerId}}\",\n  \"sdrId\": null,\n  \"schedule\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/transfer-teams",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "leads",
+                    "{{leadId}}",
+                    "transfer-teams"
+                  ]
+                },
+                "description": "Transfere um lead para outro time do mesmo master. O closer é obrigatório; o SDR é opcional. Pode incluir agendamento no ato da transferência."
+              },
+              "response": []
             }
           ]
         }

@@ -16,7 +16,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -77,6 +77,21 @@ function restoreLocal() {
   }
 }
 
+function repairUserTypeAssignments() {
+  step("Repair profile_user_type_assignments FK references");
+  const sqlFile = resolve(DUMP_DIR, "repair-user-types.sql");
+  writeFileSync(
+    sqlFile,
+    `UPDATE profile_user_type_assignments a
+SET "userTypeId" = t.id
+FROM profile_user_types t
+WHERE t.slug = 'common'
+  AND NOT EXISTS (SELECT 1 FROM profile_user_types pt WHERE pt.id = a."userTypeId");
+`
+  );
+  run("psql", [LOCAL_DB_URL, "-v", "ON_ERROR_STOP=1", "-f", sqlFile]);
+}
+
 function cleanup() {
   if (keepDumps) {
     console.info(`\nKeeping dumps under ${DUMP_DIR} (passed --keep-dumps).`);
@@ -93,6 +108,7 @@ async function main() {
   dumpRemote();
   resetLocal();
   restoreLocal();
+  repairUserTypeAssignments();
   cleanup();
   const seconds = Math.round((Date.now() - started) / 1000);
   console.info(`\n✅ Done in ${seconds}s. Local DB now mirrors remote data.`);

@@ -72,6 +72,19 @@ const IGNORED_DIRECTORIES = new Set([
   "coverage",
   "test-results",
   "worktrees", // Claude Code worktrees — temporary isolated copies, not project code
+  // Agent tool configuration directories — not project source code
+  ".agents",
+  ".claude",
+  ".codestudio",
+  ".commandcode",
+  ".continue",
+  ".hermes",
+  ".mcpjam",
+  ".openhands",
+  ".tabnine",
+  ".windsurf",
+  ".zencoder",
+  "skills", // top-level plugin skill reference files
 ]);
 
 interface FrontendPatternRequirement {

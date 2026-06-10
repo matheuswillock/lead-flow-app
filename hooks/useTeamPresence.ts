@@ -138,7 +138,7 @@ export function useTeamPresence({
   const lastTrackAtRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!enabled || !activeTeamId || !supabaseId) {
+    if (!enabled || !activeTeamId || activeTeamId.startsWith("pending-") || !supabaseId) {
       setMembers([]);
       setIsLoadingMembers(false);
       return;
