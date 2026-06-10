@@ -1,20 +1,18 @@
 "use client";
 
 import { type DragEvent, useMemo, useRef, useState } from 'react';
-import { format } from 'date-fns';
+import { differenceInCalendarDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CircleOff,
-  Clock,
   Eye,
   MoreHorizontal,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -134,33 +132,41 @@ function compareValues(a: string | number, b: string | number): number {
   return String(a).localeCompare(String(b), 'pt-BR', { sensitivity: 'base' });
 }
 
-const STATUS_CONFIG: Record<
-  PortfolioStatusValue,
-  { icon: React.ReactNode; className: string }
-> = {
-  active: {
-    icon: <CheckCircle2 className="size-4" />,
-    className: 'text-[var(--semantic-success)]',
-  },
-  pending: {
-    icon: <Clock className="size-4" />,
-    className: 'text-[var(--semantic-warning)]',
-  },
-  canceled: {
-    icon: <CircleOff className="size-4" />,
-    className: 'text-destructive',
-  },
+const STATUS_BADGE: Record<PortfolioStatusValue, { label: string; className: string }> = {
+  active:   { label: 'Ativo',     className: 'bg-[var(--semantic-success-surface)] text-[var(--semantic-success)] border-[var(--semantic-success-border)]' },
+  pending:  { label: 'Pendente',  className: 'bg-[var(--semantic-warning-surface)] text-[var(--semantic-warning)] border-[var(--semantic-warning-border)]' },
+  canceled: { label: 'Cancelado', className: 'bg-[var(--semantic-danger-surface)] text-[var(--semantic-danger)] border-[var(--semantic-danger-border)]' },
 };
 
+
 function StatusCell({ status }: { status: PortfolioStatusValue }) {
-  const config = STATUS_CONFIG[status];
+  const { label, className } = STATUS_BADGE[status] ?? STATUS_BADGE.canceled;
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className={`inline-flex ${config.className}`}>{config.icon}</span>
-      </TooltipTrigger>
-      <TooltipContent>{PORTFOLIO_STATUS_LABELS[status]}</TooltipContent>
-    </Tooltip>
+    <Badge variant="outline" className={cn('text-xs font-medium', className)}>
+      {label}
+    </Badge>
+  );
+}
+
+function OperadoraChip({ name }: { name: string | null }) {
+  if (!name) return <span className="text-sm text-muted-foreground">—</span>;
+  return <span className="text-xs font-medium text-foreground">{name}</span>;
+}
+
+function DueDateCell({ date }: { date: string | null }) {
+  if (!date) return <span className="text-sm text-muted-foreground">—</span>;
+  const days = differenceInCalendarDays(new Date(date), new Date());
+  const isExpired = days < 0;
+  const isSoon = days >= 0 && days <= 90;
+  const colorClass =
+    isExpired ? 'text-[var(--semantic-danger)]' :
+    isSoon    ? 'text-[var(--semantic-warning)]' : '';
+  const label = isExpired ? 'Vencido' : isSoon ? 'Expira em breve' : null;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className={cn('text-sm font-medium', colorClass)}>{formatDate(date)}</span>
+      {label && <span className={cn('text-[10px] font-semibold', colorClass)}>{label}</span>}
+    </div>
   );
 }
 
@@ -180,18 +186,18 @@ function ProfileCell({ person }: { person: { id: string; name: string } | null }
 
 function renderDataCell(
   column: CarteiraTableColumnKey,
-  row: CarteiraRow
+  row: CarteiraRow,
 ): React.ReactNode {
   switch (column) {
     case 'client':
       return (
-        <div className="flex flex-col items-center text-center">
+        <div className="flex flex-col items-start">
           <p className="font-medium text-sm">{row.leadName}</p>
           <p className="text-xs text-muted-foreground">{row.leadCode}</p>
         </div>
       );
     case 'operadora':
-      return <span className="text-sm text-muted-foreground">{row.operadora ?? '—'}</span>;
+      return <OperadoraChip name={row.operadora} />;
     case 'source':
       return <span className="text-sm text-muted-foreground">{PORTFOLIO_SOURCE_LABELS[row.source]}</span>;
     case 'contractDate':
@@ -199,7 +205,7 @@ function renderDataCell(
     case 'value':
       return <span className="text-sm font-medium">{formatBRL(row.saleValue)}</span>;
     case 'dueDate':
-      return <span className="text-sm">{formatDate(row.contractDueDate)}</span>;
+      return <DueDateCell date={row.contractDueDate} />;
     case 'status':
       return (
         <div className="flex justify-center">

@@ -8,6 +8,8 @@ import { invalidatePortfolioCache } from '@/lib/cache/invalidation';
 
 const patchSchema = z.object({
   portfolioStatus: z.enum(['active', 'pending', 'canceled']).optional(),
+  renewalStatus: z.enum(['to_renew', 'contacted', 'proposal', 'renewed', 'lost']).optional(),
+  renewalAmount: z.number().nonnegative().nullable().optional(),
   note: z.string().nullable().optional(),
   lastContactAt: z.string().nullable().optional(),
 });
@@ -35,7 +37,13 @@ export async function PATCH(
   }
 
   const { leadId } = await params;
-  const body = await request.json();
+  let body: unknown = {};
+  try {
+    const raw = await request.text();
+    body = raw ? JSON.parse(raw) : {};
+  } catch {
+    return NextResponse.json(new Output(false, [], ['Corpo da requisição inválido'], null), { status: 400 });
+  }
 
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
@@ -45,7 +53,7 @@ export async function PATCH(
     );
   }
 
-  const { portfolioStatus, note, lastContactAt } = parsed.data;
+  const { portfolioStatus, renewalStatus, renewalAmount, note, lastContactAt } = parsed.data;
 
   const result = await portfolioUseCase.updatePortfolioEntry(
     leadId,
@@ -54,7 +62,9 @@ export async function PATCH(
     isManager,
     isCloser,
     {
-      portfolioStatus: portfolioStatus as 'active' | 'pending' | 'canceled' | undefined,
+      portfolioStatus,
+      renewalStatus: renewalStatus as 'to_renew' | 'contacted' | 'proposal' | 'renewed' | 'lost' | undefined,
+      renewalAmount,
       note,
       lastContactAt: lastContactAt === undefined ? undefined : lastContactAt === null ? null : new Date(lastContactAt),
     }

@@ -6728,8 +6728,8 @@
                   "disabled": true
                 },
                 {
-                  "key": "health-plan",
-                  "value": "Hapvida",
+                  "key": "operadoras",
+                  "value": "Amil,Bradesco",
                   "disabled": true
                 },
                 {
@@ -6747,7 +6747,7 @@
                 }
               ]
             },
-            "description": "Lista carteira paginada. Filtros: portfolioStatus, sdrId, closerId, search (nome), contractDateStart/End (yyyy-MM-dd), dueDateStart/End (yyyy-MM-dd), documentSearch (CPF/CNPJ/RG). Permissão: manager/backoffice (tudo) ou closer (somente próprios clientes)."
+            "description": "Lista carteira paginada. Filtros: portfolioStatuses, sources, sdrIds, closerIds, search (nome), operadoras (CSV, ex: Amil,Bradesco), contractDateStart/End (yyyy-MM-dd), dueDateStart/End (yyyy-MM-dd), documentSearch (CPF/CNPJ/RG). Permissão: manager/backoffice (tudo) ou closer (somente próprios clientes)."
           }
         },
         {
@@ -6800,7 +6800,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"portfolioStatus\": \"active\",\n  \"note\": \"Observação\",\n  \"lastContactAt\": null\n}"
+              "raw": "{\n  \"portfolioStatus\": \"active\",\n  \"renewalStatus\": \"renewed\",\n  \"renewalAmount\": 10540.00,\n  \"note\": \"Observação\",\n  \"lastContactAt\": null\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/portfolio/{{leadId}}",
@@ -6814,7 +6814,7 @@
                 "{{leadId}}"
               ]
             },
-            "description": "Atualiza status, nota e último contato de um lead na carteira."
+            "description": "Atualiza status da carteira (portfolioStatus), status de renovação (renewalStatus), valor renovado (renewalAmount), nota e último contato. Ao definir renewalStatus=renewed, o valor de venda do contrato passa a ser o renewalAmount e o renewalAmount é zerado."
           }
         }
       ]

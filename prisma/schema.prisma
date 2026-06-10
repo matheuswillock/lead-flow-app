@@ -331,6 +331,16 @@ enum PortfolioSource {
   @@map("portfolio_source")
 }
 
+enum RenewalStatus {
+  to_renew
+  contacted
+  proposal
+  renewed
+  lost
+
+  @@map("renewal_status")
+}
+
 enum EmailCreditPlan {
   starter
   plus
@@ -1098,6 +1108,8 @@ model LeadPortfolio {
   leadId          String          @unique @db.Uuid
   teamId          String          @db.Uuid
   portfolioStatus PortfolioStatus @default(active)
+  renewalStatus   RenewalStatus   @default(to_renew)
+  renewalAmount   Decimal?        @db.Decimal(12, 2)
   source          PortfolioSource @default(crm)
   note            String?         @db.Text
   lastContactAt   DateTime?       @db.Timestamptz(6)
