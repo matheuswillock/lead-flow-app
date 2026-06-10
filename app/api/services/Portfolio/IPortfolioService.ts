@@ -1,4 +1,6 @@
-import type { PortfolioSource, PortfolioStatus } from '@prisma/client';
+import type { PortfolioSource, PortfolioStatus, RenewalStatus } from '@prisma/client';
+
+export type { RenewalStatus };
 
 export interface PortfolioFilters {
   teamId: string;
@@ -10,7 +12,7 @@ export interface PortfolioFilters {
   sdrIds?: string[];
   closerIds?: string[];
   sources?: PortfolioSource[];
-  operadora?: string;
+  operadoras?: string[];
   contractDateStart?: Date;
   contractDateEnd?: Date;
   dueDateStart?: Date;
@@ -79,6 +81,8 @@ export interface UpdatePortfolioDetailPayload {
 
 export interface UpdatePortfolioData {
   portfolioStatus?: PortfolioStatus;
+  renewalStatus?: RenewalStatus;
+  renewalAmount?: number | null;
   note?: string | null;
   lastContactAt?: Date | null;
 }
@@ -90,6 +94,8 @@ export interface PortfolioRow {
   leadName: string;
   source: PortfolioSource;
   portfolioStatus: PortfolioStatus;
+  renewalStatus: RenewalStatus;
+  renewalAmount: number | null;
   note: string | null;
   lastContactAt: Date | null;
   sdr: { id: string; name: string } | null;
