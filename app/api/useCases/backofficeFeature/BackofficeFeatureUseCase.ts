@@ -1,4 +1,6 @@
 import { Output } from "@/lib/output"
+import { cacheLife, cacheTag } from "next/cache"
+import { cacheTags } from "@/lib/cache/cacheTags"
 import type {
   BackofficeAccessPrincipal,
   BackofficeFeatureAccessLevel,
@@ -36,12 +38,30 @@ export interface UpdateBackofficeFeatureInput {
   accessRules?: Array<{ principal: string; accessLevel: string }>
 }
 
+const backofficeFeatureRepository = new BackofficeFeatureRepository()
+
+export async function listCachedBackofficeFeatures() {
+  "use cache"
+  cacheTag(cacheTags.backofficeFeatures())
+  cacheLife({ revalidate: 300, expire: 900 })
+
+  return backofficeFeatureRepository.findAll()
+}
+
+export async function listCachedBackofficeFeatureSlugs() {
+  "use cache"
+  cacheTag(cacheTags.backofficeFeatures())
+  cacheLife({ revalidate: 300, expire: 900 })
+
+  return backofficeFeatureRepository.listAvailableSlugs()
+}
+
 export class BackofficeFeatureUseCase {
   constructor(private readonly featureRepo: IBackofficeFeatureRepository) {}
 
   async list(): Promise<Output> {
     try {
-      const features = await this.featureRepo.findAll()
+      const features = await listCachedBackofficeFeatures()
       return new Output(true, [], [], features)
     } catch (error) {
       console.error("[BackofficeFeatureUseCase][list]", error)
@@ -204,7 +224,7 @@ export class BackofficeFeatureUseCase {
 
   async listSlugs(): Promise<Output> {
     try {
-      const slugs = await this.featureRepo.listAvailableSlugs()
+      const slugs = await listCachedBackofficeFeatureSlugs()
       return new Output(true, [], [], slugs)
     } catch (error) {
       console.error("[BackofficeFeatureUseCase][listSlugs]", error)
@@ -307,5 +327,5 @@ export class BackofficeFeatureUseCase {
 }
 
 export const backofficeFeatureUseCase = new BackofficeFeatureUseCase(
-  new BackofficeFeatureRepository()
+  backofficeFeatureRepository
 )

@@ -1,19 +1,14 @@
 import { NextResponse } from "next/server";
 import { Output } from "@/lib/output";
-import { healthPlanService } from "@/app/api/services/healthPlans/HealthPlanService";
+import { listCachedHealthPlanOptions } from "@/app/api/useCases/healthPlans/HealthPlanUseCase";
 
 export async function GET() {
   try {
-    const options = await healthPlanService.listOptions();
+    const options = await listCachedHealthPlanOptions();
 
     return NextResponse.json(
       new Output(true, [], [], {
-        healthPlans: options.map((option) => ({
-          id: option.id,
-          name: option.name,
-          iconUrl: option.iconUrl,
-          isDefault: option.isDefault,
-        })),
+        healthPlans: options,
       }),
       { status: 200 }
     );

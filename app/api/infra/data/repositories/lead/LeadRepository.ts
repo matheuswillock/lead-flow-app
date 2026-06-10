@@ -220,28 +220,7 @@ export class LeadRepository implements ILeadRepository {
     const [leads, total] = await Promise.all([
       prisma.lead.findMany({
         where,
-        include: {
-          manager: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-            },
-          },
-          assignee: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-              profileIconUrl: true,
-            },
-          },
-          _count: {
-            select: {
-              attachments: true,
-            },
-          },
-        },
+        select: CRM_LEAD_LIST_SELECT,
         orderBy: {
           createdAt: 'desc',
         },

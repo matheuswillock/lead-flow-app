@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { Suspense } from "react"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Analytics } from "@vercel/analytics/next"
@@ -62,22 +63,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
-          <AuthProvider>
-            <TimezoneProvider>
-            {children}
-            <Toaster
-              position="top-center"
-              richColors
-              closeButton
-              expand={true}
-              toastOptions={{
-                style: {
-                  zIndex: 9999,
-                },
-              }}
-            />
-            </TimezoneProvider>
-          </AuthProvider>
+          <Suspense fallback={null}>
+            <AuthProvider>
+              <TimezoneProvider>
+                {children}
+                <Toaster
+                  position="top-center"
+                  richColors
+                  closeButton
+                  expand={true}
+                  toastOptions={{
+                    style: {
+                      zIndex: 9999,
+                    },
+                  }}
+                />
+              </TimezoneProvider>
+            </AuthProvider>
+          </Suspense>
         </ThemeProvider>
         <Analytics />
       </body>

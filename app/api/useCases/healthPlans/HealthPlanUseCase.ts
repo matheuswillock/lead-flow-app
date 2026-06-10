@@ -1,5 +1,7 @@
 import { healthPlanService } from "@/app/api/services/healthPlans/HealthPlanService";
 import { Output } from "@/lib/output";
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import type { IHealthPlanUseCase } from "./IHealthPlanUseCase";
 
 export const HEALTH_PLAN_ERROR_MESSAGES = {
@@ -14,6 +16,41 @@ export const HEALTH_PLAN_ERROR_MESSAGES = {
 
 const HEALTH_PLAN_ADMIN_EMAIL = "matheuswillock@gmail.com";
 
+export interface HealthPlanOptionDto {
+  id: string;
+  name: string;
+  iconUrl: string | null;
+  isDefault: boolean;
+}
+
+export async function listCachedDefaultHealthPlanOptions(): Promise<HealthPlanOptionDto[]> {
+  "use cache";
+  cacheTag(cacheTags.healthPlans());
+  cacheLife({ stale: 300, revalidate: 900, expire: 3600 });
+
+  const options = await healthPlanService.listOptions({ defaultOnly: true });
+  return options.map((option) => ({
+    id: option.id,
+    name: option.name,
+    iconUrl: option.iconUrl,
+    isDefault: option.isDefault,
+  }));
+}
+
+export async function listCachedHealthPlanOptions(): Promise<HealthPlanOptionDto[]> {
+  "use cache";
+  cacheTag(cacheTags.healthPlans());
+  cacheLife({ stale: 300, revalidate: 900, expire: 3600 });
+
+  const options = await healthPlanService.listOptions();
+  return options.map((option) => ({
+    id: option.id,
+    name: option.name,
+    iconUrl: option.iconUrl,
+    isDefault: option.isDefault,
+  }));
+}
+
 export class HealthPlanUseCase implements IHealthPlanUseCase {
   async listHealthPlans(supabaseId: string): Promise<Output> {
     try {
@@ -27,15 +64,10 @@ export class HealthPlanUseCase implements IHealthPlanUseCase {
         return new Output(false, [], [HEALTH_PLAN_ERROR_MESSAGES.PROFILE_NOT_FOUND], null);
       }
 
-      const options = await healthPlanService.listOptions({ defaultOnly: true });
+      const options = await listCachedDefaultHealthPlanOptions();
 
       return new Output(true, [], [], {
-        healthPlans: options.map((option) => ({
-          id: option.id,
-          name: option.name,
-          iconUrl: option.iconUrl,
-          isDefault: option.isDefault,
-        })),
+        healthPlans: options,
       });
     } catch (error) {
       console.error("[HealthPlanUseCase][listHealthPlans] Erro ao listar planos de saúde:", error);
