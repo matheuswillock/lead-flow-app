@@ -101,7 +101,7 @@ export function TransferBetweenTeamsDialog({
       .then((res) => res.json())
       .then((data) => {
         if (!active) return;
-        const members: TeamMemberOption[] = (data?.result ?? []).map((m: {
+        const members: TeamMemberOption[] = (data?.result?.members ?? []).map((m: {
           id: string;
           fullName?: string | null;
           name?: string | null;

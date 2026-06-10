@@ -1589,6 +1589,10 @@ export class LeadUseCase implements ILeadUseCase {
         return new Output(false, [], ["Lead não encontrado"], null);
       }
 
+      if (lead.status !== "new_opportunity") {
+        return new Output(false, [], ["O lead só pode ser transferido quando estiver com o status Nova Oportunidade"], null);
+      }
+
       // P1: non-master managers can only transfer leads from their own team
       if (!profileInfo.isMaster && lead.teamId !== callerTeamId) {
         return new Output(false, [], ["Acesso negado: o lead não pertence ao seu time"], null);

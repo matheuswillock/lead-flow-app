@@ -2271,7 +2271,7 @@ export default function LeadDialog({
                     )}
                   </div>
                   <div className="ml-4 flex items-center gap-2">
-                    {currentLead && (isTeamMaster || activeRole === "manager") && (
+                    {currentLead && currentLead.status === "new_opportunity" && (isTeamMaster || activeRole === "manager") && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
