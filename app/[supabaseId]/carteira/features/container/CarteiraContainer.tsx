@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { AlertCircle, GripVertical, Settings, UserPlus } from 'lucide-react';
-import { differenceInCalendarDays } from 'date-fns';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -86,13 +85,7 @@ export function CarteiraContainer() {
   } = useCarteiraContext();
   const [isAddOpen, setIsAddOpen] = useState(false);
 
-  const renewalCount = useMemo(() => {
-    return (data?.rows ?? []).filter((r) => {
-      if (!r.contractDueDate) return false;
-      const days = differenceInCalendarDays(new Date(r.contractDueDate), new Date());
-      return days <= 90;
-    }).length;
-  }, [data]);
+  const renewalCount = data?.renewals.length ?? 0;
   const sensors = useSensors(useSensor(PointerSensor));
 
   const orderedColumnOptions = (() => {

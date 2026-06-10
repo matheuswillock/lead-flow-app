@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle2, Clock, Info, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
 import { differenceInCalendarDays, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -460,14 +460,7 @@ export function CarteiraRenovacoesView() {
   const { data, updateEntry } = useCarteiraContext();
   const [selectedRow, setSelectedRow] = useState<CarteiraRow | null>(null);
 
-  const renewalClients = useMemo(() => {
-    const rows = data?.rows ?? [];
-    return rows.filter((r) => {
-      if (!r.contractDueDate) return false;
-      const days = differenceInCalendarDays(new Date(r.contractDueDate), new Date());
-      return days <= 90;
-    });
-  }, [data]);
+  const renewalClients = data?.renewals ?? [];
 
   const handleStatusChange = (portfolioId: string, status: RenewalStatus) => {
     const row = renewalClients.find((r) => r.portfolioId === portfolioId);

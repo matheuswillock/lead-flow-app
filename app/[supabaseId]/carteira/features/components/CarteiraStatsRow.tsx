@@ -1,8 +1,6 @@
 "use client";
 
-import { useMemo } from 'react';
 import { CheckCircle2, Clock, Info, Users, Wallet } from 'lucide-react';
-import { differenceInCalendarDays } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -21,19 +19,14 @@ function formatBRL(value: number): string {
 export function CarteiraStatsRow() {
   const { data, isLoading } = useCarteiraContext();
 
-  const stats = useMemo(() => {
-    const rows = data?.rows ?? [];
-    const total = data?.pagination.totalRows ?? 0;
-    const valor = rows.reduce((sum, r) => sum + r.saleValue, 0);
-    const ativos = rows.filter((r) => r.portfolioStatus === 'active').length;
-    const vencendo = rows.filter((r) => {
-      if (!r.contractDueDate) return false;
-      const days = differenceInCalendarDays(new Date(r.contractDueDate), new Date());
-      return days >= 0 && days <= 90;
-    }).length;
-    const ativosPct = total > 0 ? Math.round((ativos / total) * 100) : 0;
-    return { total, valor, ativos, vencendo, ativosPct };
-  }, [data]);
+  const total = data?.stats.totalClients ?? 0;
+  const stats = {
+    total,
+    valor: data?.stats.totalValue ?? 0,
+    ativos: data?.stats.activeCount ?? 0,
+    vencendo: data?.stats.dueSoonCount ?? 0,
+    ativosPct: total > 0 ? Math.round(((data?.stats.activeCount ?? 0) / total) * 100) : 0,
+  };
 
   return (
     <TooltipProvider delayDuration={200}>

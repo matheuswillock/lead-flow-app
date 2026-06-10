@@ -169,8 +169,17 @@ export interface CarteiraPagination {
   totalPages: number;
 }
 
+export interface CarteiraStats {
+  totalClients: number;
+  totalValue: number;
+  activeCount: number;
+  dueSoonCount: number;
+}
+
 export interface CarteiraData {
   rows: CarteiraRow[];
+  renewals: CarteiraRow[];
+  stats: CarteiraStats;
   availableOperadoras: string[];
   pagination: CarteiraPagination;
 }

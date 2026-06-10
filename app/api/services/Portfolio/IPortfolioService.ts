@@ -111,8 +111,17 @@ export interface PortfolioRow {
   updatedAt: Date;
 }
 
+export interface PortfolioStats {
+  totalClients: number;
+  totalValue: number;
+  activeCount: number;
+  dueSoonCount: number;
+}
+
 export interface PortfolioListResult {
   rows: PortfolioRow[];
+  renewals: PortfolioRow[];
+  stats: PortfolioStats;
   availableOperadoras: string[];
   pagination: {
     page: number;

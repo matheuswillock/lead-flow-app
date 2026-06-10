@@ -158,7 +158,22 @@ export class PortfolioService implements IPortfolioService {
       operadora: { not: null },
     };
 
-    const [totalRows, entries, operadoraRecords] = await Promise.all([
+    // Janela de renovação: vencimento já vencido ou em até 90 dias (todos os matches, sem paginação).
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const dueSoonLimit = new Date(now);
+    dueSoonLimit.setDate(dueSoonLimit.getDate() + 90);
+
+    const renewalWhere: Prisma.LeadPortfolioWhereInput = {
+      ...where,
+      lead: {
+        ...(where.lead as Prisma.LeadWhereInput),
+        contractDueDate: { not: null, lte: dueSoonLimit },
+      },
+    };
+
+    const [totalRows, entries, operadoraRecords, statsRows, renewalEntries] = await Promise.all([
       prisma.leadPortfolio.count({ where }),
       prisma.leadPortfolio.findMany({
         where,
@@ -173,6 +188,20 @@ export class PortfolioService implements IPortfolioService {
         distinct: ['operadora'],
         orderBy: { operadora: 'asc' },
       }),
+      // Agregados de todos os matches (não apenas a página atual).
+      prisma.leadPortfolio.findMany({
+        where,
+        select: {
+          portfolioStatus: true,
+          lead: { select: { ticket: true, currentValue: true, contractDueDate: true } },
+        },
+      }),
+      // Renovações completas de todos os matches dentro da janela.
+      prisma.leadPortfolio.findMany({
+        where: renewalWhere,
+        include: leadInclude,
+        orderBy: { updatedAt: 'desc' },
+      }),
     ]);
 
     const availableOperadoras = operadoraRecords
@@ -180,8 +209,27 @@ export class PortfolioService implements IPortfolioService {
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
+    let totalValue = 0;
+    let activeCount = 0;
+    let dueSoonCount = 0;
+    for (const r of statsRows) {
+      const ticket = r.lead.ticket ? r.lead.ticket.toNumber() : 0;
+      const currentValue = r.lead.currentValue ? r.lead.currentValue.toNumber() : 0;
+      totalValue += ticket > 0 ? ticket : currentValue;
+      if (r.portfolioStatus === 'active') activeCount += 1;
+      const due = r.lead.contractDueDate;
+      if (due && due >= todayStart && due <= dueSoonLimit) dueSoonCount += 1;
+    }
+
     return {
       rows: entries.map(mapToPortfolioRow),
+      renewals: renewalEntries.map(mapToPortfolioRow),
+      stats: {
+        totalClients: totalRows,
+        totalValue,
+        activeCount,
+        dueSoonCount,
+      },
       availableOperadoras,
       pagination: {
         page,
