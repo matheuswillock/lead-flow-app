@@ -1680,7 +1680,7 @@ export class LeadUseCase implements ILeadUseCase {
 
         if (!scheduleOutput.isValid) {
           return new Output(
-            false,
+            true,
             [],
             ["Lead transferido, mas o agendamento falhou: " + (scheduleOutput.errorMessages?.[0] ?? "erro desconhecido")],
             this.transformToDTO(transferredLead)

@@ -224,7 +224,11 @@ export function TransferBetweenTeamsDialog({
         throw new Error(message);
       }
 
-      toast.success("Lead transferido com sucesso");
+      if (Array.isArray(result.errorMessages) && result.errorMessages.length > 0) {
+        toast.warning(result.errorMessages[0]);
+      } else {
+        toast.success("Lead transferido com sucesso");
+      }
       onSuccess(result.result as Lead);
       onOpenChange(false);
     } catch (error) {
