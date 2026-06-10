@@ -5,6 +5,7 @@ import { RegisterNewUserProfile } from "../../../../useCases/profiles/ProfileUse
 import { Output } from "@/lib/output";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import { invalidateLeadCache } from "@/lib/cache/invalidation";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -59,6 +60,9 @@ export async function PATCH(
     }
 
     const output = await leadUseCase.assignLeadToOperator(teamAccess.access.supabaseId, id, operatorId);
+    if (output.isValid) {
+      invalidateLeadCache({ leadId: id, teamId: teamAccess.access.teamId });
+    }
     const responseStatus = output.isValid ? 200 : 400;
     return NextResponse.json(output, { status: responseStatus });
 

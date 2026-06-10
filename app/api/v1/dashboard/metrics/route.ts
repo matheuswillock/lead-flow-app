@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { IMetricsUseCase, MetricsFilters } from '@/app/api/useCases/metrics/IMetricsUseCase';
+import type { MetricsFilters } from '@/app/api/useCases/metrics/IMetricsUseCase';
 import type { TeamContext } from '@/app/api/infra/data/repositories/metrics/IMetricsRepository';
-import { IDashboardInfosService } from '@/app/api/services/DashboardInfos/IDashboardInfosService';
-import { DashboardInfosService } from '@/app/api/services/DashboardInfos/DashboardInfosService';
-import { MetricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
+import { metricsUseCase } from '@/app/api/useCases/metrics/MetricsUseCase';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
-
-const dashboardInfosService: IDashboardInfosService = new DashboardInfosService();
-const metricsUseCase: IMetricsUseCase = new MetricsUseCase(dashboardInfosService);
 
 export async function GET(request: NextRequest) {
   try {

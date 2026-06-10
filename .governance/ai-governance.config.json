@@ -195,7 +195,6 @@
       "app/api/v1/backoffice/users/route.ts",
       "app/api/v1/billing/summary/route.ts",
       "app/api/v1/dashboard/metrics/detailed/[supabaseId]/route.ts",
-      "app/api/v1/dashboard/metrics/route.ts",
       "app/api/v1/leads/import/route.ts",
       "app/api/v1/leads/[id]/activities/route.ts",
       "app/api/v1/leads/[id]/activities/[activityId]/reactions/route.ts",

@@ -1,16 +1,48 @@
+import { cacheLife, cacheTag } from "next/cache";
 import { Output } from "@/lib/output";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import type { IMetricsUseCase, MetricsFilters } from "./IMetricsUseCase";
 import type { TeamContext } from "@/app/api/infra/data/repositories/metrics/IMetricsRepository";
-import { DashboardFilters } from "../../services/DashboardInfos/types/DashboardFilters";
-import { IDashboardInfosService } from "../../services";
+import type { IDashboardInfosService } from "../../services";
+import { DashboardInfosService } from "../../services/DashboardInfos/DashboardInfosService";
+import type { DashboardFilters } from "../../services/DashboardInfos/types/DashboardFilters";
+import type { DashboardMetrics } from "../../services/DashboardInfos/types/DashboardMetrics";
 import { addDaysInTz, endOfDayInTz, startOfDayInTz, addMonthsInTz, DEFAULT_TZ } from "@/lib/dates";
 
-export class MetricsUseCase implements IMetricsUseCase {
-  constructor(private dashboardInfosService: IDashboardInfosService) {}
+const defaultDashboardInfosService = new DashboardInfosService();
 
-  /**
-   * Converte período em datas startDate e endDate respeitando o TZ do usuário
-   */
+async function getCachedDashboardMetrics(
+  teamId: string,
+  profileId: string,
+  role: string,
+  functionsKey: string,
+  userTimezone: string,
+  period: string,
+  startDateISO: string,
+  endDateISO: string,
+): Promise<DashboardMetrics> {
+  "use cache";
+  cacheTag(cacheTags.teamDashboard(teamId));
+  cacheLife({ stale: 30, revalidate: 60 });
+
+  const ctx: TeamContext = {
+    profileId,
+    userTimezone,
+    teamMember: { role, functions: functionsKey ? functionsKey.split(",") : [] },
+  };
+  const serviceFilters: DashboardFilters = {
+    supabaseId: profileId,
+    teamId,
+    period: period as DashboardFilters["period"],
+    startDate: new Date(startDateISO),
+    endDate: new Date(endDateISO),
+  };
+  return defaultDashboardInfosService.getDashboardMetrics(serviceFilters, ctx);
+}
+
+export class MetricsUseCase implements IMetricsUseCase {
+  constructor(private readonly dashboardInfosService: IDashboardInfosService) {}
+
   private convertPeriodToDates(period: '7d' | '30d' | '3m' | '6m' | '1y', tz: string): { startDate: Date; endDate: Date } {
     const now = new Date();
     const endDate = endOfDayInTz(now, tz);
@@ -37,30 +69,15 @@ export class MetricsUseCase implements IMetricsUseCase {
     return { startDate, endDate };
   }
 
-  /**
-   * Busca métricas do dashboard
-   */
   async getDashboardMetrics(filters: MetricsFilters, ctx: TeamContext): Promise<Output> {
     try {
-      // Validar entrada
       if (!filters.supabaseId) {
-        return new Output(
-          false,
-          [],
-          ['supabaseId é obrigatório'],
-          null
-        );
+        return new Output(false, [], ['supabaseId é obrigatório'], null);
       }
       if (!filters.teamId) {
-        return new Output(
-          false,
-          [],
-          ['teamId é obrigatório'],
-          null
-        );
+        return new Output(false, [], ['teamId é obrigatório'], null);
       }
 
-      // Converter período em datas se necessário
       let startDate = filters.startDate;
       let endDate = filters.endDate;
 
@@ -71,78 +88,55 @@ export class MetricsUseCase implements IMetricsUseCase {
         endDate = dates.endDate;
       }
 
-      // Converter para o formato do serviço
-      const serviceFilters: DashboardFilters = {
-        supabaseId: filters.supabaseId,
-        teamId: filters.teamId,
-        period: filters.period || '30d',
-        ...(startDate && { startDate }),
-        ...(endDate && { endDate }),
-      };
+      const resolvedStart = startDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const resolvedEnd = endDate ?? new Date();
 
-      // Chamar o serviço
-      const metrics = await this.dashboardInfosService.getDashboardMetrics(serviceFilters, ctx);
+      const metrics =
+        this.dashboardInfosService === defaultDashboardInfosService
+          ? await getCachedDashboardMetrics(
+              filters.teamId,
+              filters.supabaseId,
+              ctx.teamMember.role,
+              ctx.teamMember.functions.join(","),
+              ctx.userTimezone ?? DEFAULT_TZ,
+              filters.period || "30d",
+              resolvedStart.toISOString(),
+              resolvedEnd.toISOString(),
+            )
+          : await this.dashboardInfosService.getDashboardMetrics(
+              {
+                supabaseId: filters.supabaseId,
+                teamId: filters.teamId,
+                period: filters.period || "30d",
+                ...(startDate && { startDate }),
+                ...(endDate && { endDate }),
+              },
+              ctx,
+            );
 
-      return new Output(
-        true,
-        ['Métricas do dashboard carregadas com sucesso'],
-        [],
-        metrics
-      );
-
+      return new Output(true, ['Métricas do dashboard carregadas com sucesso'], [], metrics);
     } catch (error) {
       console.error('Erro ao buscar métricas do dashboard:', error);
-      
-      return new Output(
-        false,
-        [],
-        ['Erro interno do servidor ao buscar métricas'],
-        null
-      );
+      return new Output(false, [], ['Erro interno do servidor ao buscar métricas'], null);
     }
   }
 
-  /**
-   * Busca métricas detalhadas por status
-   */
   async getDetailedStatusMetrics(supabaseId: string, teamId: string, ctx: TeamContext): Promise<Output> {
     try {
-      // Validar entrada
       if (!supabaseId) {
-        return new Output(
-          false,
-          [],
-          ['supabaseId é obrigatório'],
-          null
-        );
+        return new Output(false, [], ['supabaseId é obrigatório'], null);
       }
       if (!teamId) {
-        return new Output(
-          false,
-          [],
-          ['teamId é obrigatório'],
-          null
-        );
+        return new Output(false, [], ['teamId é obrigatório'], null);
       }
 
-      // Chamar o serviço
       const detailedMetrics = await this.dashboardInfosService.getDetailedStatusMetrics(supabaseId, teamId, ctx);
-
-      return new Output(
-        true,
-        ['Métricas detalhadas carregadas com sucesso'],
-        [],
-        detailedMetrics
-      );
-
+      return new Output(true, ['Métricas detalhadas carregadas com sucesso'], [], detailedMetrics);
     } catch (error) {
       console.error('Erro ao buscar métricas detalhadas:', error);
-      return new Output(
-        false,
-        [],
-        ['Erro interno do servidor ao buscar métricas detalhadas'],
-        null
-      );
+      return new Output(false, [], ['Erro interno do servidor ao buscar métricas detalhadas'], null);
     }
   }
 }
+
+export const metricsUseCase = new MetricsUseCase(defaultDashboardInfosService);
