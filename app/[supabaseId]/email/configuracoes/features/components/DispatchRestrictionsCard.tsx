@@ -1,21 +1,30 @@
 "use client"
 
 import { useState } from "react"
-import { X } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
+import { Ban, LoaderCircle, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldSeparator,
+} from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
 import { useEmailSettingsContext } from "../context/EmailSettingsContext"
 import type { BlockedDateRange } from "../context/EmailSettingsTypes"
+import { EmailSettingsSectionCard } from "./EmailSettingsSectionCard"
 
 function formatBlockedEntry(entry: BlockedDateRange): string {
   if ("date" in entry) return entry.date
-  return `${entry.from} – ${entry.to}`
+  return `${entry.from} até ${entry.to}`
 }
+
+const days = Array.from({ length: 31 }, (_, index) => index + 1)
 
 export function DispatchRestrictionsCard() {
   const {
@@ -24,12 +33,13 @@ export function DispatchRestrictionsCard() {
     dispatchBlockedDates,
     dispatchTimeFrom,
     dispatchTimeTo,
+    blockedDispatchDays,
     setDispatchTimeFrom,
     setDispatchTimeTo,
     addBlockedDate,
     removeBlockedDate,
+    toggleBlockedDispatchDay,
   } = useEmailSettingsContext()
-
   const [singleDate, setSingleDate] = useState("")
   const [rangeFrom, setRangeFrom] = useState("")
   const [rangeTo, setRangeTo] = useState("")
@@ -40,155 +50,190 @@ export function DispatchRestrictionsCard() {
       if (!singleDate) return
       addBlockedDate({ date: singleDate })
       setSingleDate("")
-    } else {
-      if (!rangeFrom || !rangeTo) return
-      addBlockedDate({ from: rangeFrom, to: rangeTo })
-      setRangeFrom("")
-      setRangeTo("")
+      return
     }
+
+    if (!rangeFrom || !rangeTo) return
+    addBlockedDate({ from: rangeFrom, to: rangeTo })
+    setRangeFrom("")
+    setRangeTo("")
   }
 
   return (
-    <Card className="max-w-2xl">
-      <CardHeader>
-        <CardTitle>Restrições de disparo</CardTitle>
-        <CardDescription>
-          Bloqueie datas específicas ou defina uma janela de horário para envio de campanhas.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
+    <EmailSettingsSectionCard
+      icon={Ban}
+      title="Restrições de disparo"
+      description="Defina janelas seguras para envio, bloqueie datas específicas e evite dias fixos do mês."
+      contentClassName="flex flex-col gap-6"
+    >
+      {loading ? (
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-24 w-full rounded-2xl" />
+          <Skeleton className="h-52 w-full rounded-2xl" />
+        </div>
+      ) : (
+        <>
+          <FieldGroup>
+            <Field>
+              <FieldLabel>Janela de horário permitida</FieldLabel>
+              <FieldContent>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="dispatch-time-from">Início</FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id="dispatch-time-from"
+                        type="time"
+                        value={dispatchTimeFrom}
+                        onChange={(event) => setDispatchTimeFrom(event.target.value)}
+                        disabled={saving}
+                      />
+                    </FieldContent>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="dispatch-time-to">Fim</FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id="dispatch-time-to"
+                        type="time"
+                        value={dispatchTimeTo}
+                        onChange={(event) => setDispatchTimeTo(event.target.value)}
+                        disabled={saving}
+                      />
+                    </FieldContent>
+                  </Field>
+                </div>
+                <FieldDescription>Deixe ambos em branco para não restringir disparos por horário.</FieldDescription>
+              </FieldContent>
+            </Field>
+          </FieldGroup>
+
+          <FieldSeparator />
+
           <div className="flex flex-col gap-4">
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-3">
-              <Label>Janela de horário permitido (UTC)</Label>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="timeFrom" className="text-xs text-muted-foreground">
-                    Início
-                  </Label>
-                  <Input
-                    id="timeFrom"
-                    type="time"
-                    value={dispatchTimeFrom}
-                    onChange={(e) => setDispatchTimeFrom(e.target.value)}
-                    disabled={saving}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="timeTo" className="text-xs text-muted-foreground">
-                    Fim
-                  </Label>
-                  <Input
-                    id="timeTo"
-                    type="time"
-                    value={dispatchTimeTo}
-                    onChange={(e) => setDispatchTimeTo(e.target.value)}
-                    disabled={saving}
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Deixe em branco para não restringir por horário.
-              </p>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-foreground">Datas bloqueadas</p>
+              <p className="text-sm text-muted-foreground">Cadastre feriados, campanhas pausadas ou períodos de exceção.</p>
             </div>
 
-            <Separator />
+            {dispatchBlockedDates.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {dispatchBlockedDates.map((entry, index) => (
+                  <Badge key={`${formatBlockedEntry(entry)}-${index}`} variant="outline" className="gap-1.5 rounded-lg border-border bg-background/90 pr-1.5 text-foreground">
+                    {formatBlockedEntry(entry)}
+                    <button
+                      type="button"
+                      onClick={() => removeBlockedDate(index)}
+                      disabled={saving}
+                      className="rounded-sm p-0.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
 
-            <div className="flex flex-col gap-3">
-              <Label>Datas bloqueadas</Label>
+            <div className="flex flex-wrap gap-2">
+                <Button type="button" variant={mode === "single" ? "default" : "outline"} size="sm" onClick={() => setMode("single")}>
+                Data única
+              </Button>
+              <Button type="button" variant={mode === "range" ? "default" : "outline"} size="sm" onClick={() => setMode("range")}>
+                Período
+              </Button>
+            </div>
 
-              {dispatchBlockedDates.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {dispatchBlockedDates.map((entry, i) => (
-                    <Badge key={i} variant="secondary" className="gap-1.5 pr-1.5">
-                      {formatBlockedEntry(entry)}
-                      <button
-                        type="button"
-                        onClick={() => removeBlockedDate(i)}
-                        className="rounded-sm hover:text-destructive"
-                        disabled={saving}
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={mode === "single" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setMode("single")}
-                >
-                  Data única
-                </Button>
-                <Button
-                  type="button"
-                  variant={mode === "range" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setMode("range")}
-                >
-                  Período
+            {mode === "single" ? (
+              <div className="flex flex-wrap items-end gap-3">
+                <Field className="min-w-[220px]">
+                  <FieldLabel htmlFor="dispatch-single-date">Data</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      id="dispatch-single-date"
+                      type="date"
+                      value={singleDate}
+                      onChange={(event) => setSingleDate(event.target.value)}
+                      disabled={saving}
+                    />
+                  </FieldContent>
+                </Field>
+                <Button type="button" variant="outline" onClick={handleAdd} disabled={!singleDate || saving}>
+                  Adicionar
                 </Button>
               </div>
-
-              {mode === "single" ? (
-                <div className="flex gap-2">
-                  <Input
-                    type="date"
-                    value={singleDate}
-                    onChange={(e) => setSingleDate(e.target.value)}
-                    disabled={saving}
-                    className="max-w-48"
-                  />
-                  <Button type="button" variant="outline" size="sm" onClick={handleAdd} disabled={!singleDate || saving}>
-                    Adicionar
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2 items-end">
-                  <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs text-muted-foreground">De</Label>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                <Field>
+                  <FieldLabel htmlFor="dispatch-range-from">De</FieldLabel>
+                  <FieldContent>
                     <Input
+                      id="dispatch-range-from"
                       type="date"
                       value={rangeFrom}
-                      onChange={(e) => setRangeFrom(e.target.value)}
+                      onChange={(event) => setRangeFrom(event.target.value)}
                       disabled={saving}
-                      className="w-40"
                     />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs text-muted-foreground">Até</Label>
+                  </FieldContent>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="dispatch-range-to">Até</FieldLabel>
+                  <FieldContent>
                     <Input
+                      id="dispatch-range-to"
                       type="date"
                       value={rangeTo}
-                      onChange={(e) => setRangeTo(e.target.value)}
+                      onChange={(event) => setRangeTo(event.target.value)}
                       disabled={saving}
-                      className="w-40"
                     />
-                  </div>
-                  <Button
+                  </FieldContent>
+                </Field>
+                <Button type="button" variant="outline" onClick={handleAdd} disabled={!rangeFrom || !rangeTo || saving}>
+                  Adicionar
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <FieldSeparator />
+
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-foreground">Dias do mês bloqueados</p>
+              <p className="text-sm text-muted-foreground">Use para impedir disparos recorrentes em dias específicos, como fechamento ou faturamento.</p>
+            </div>
+
+            <div className="grid grid-cols-7 gap-2 md:grid-cols-10">
+              {days.map((day) => {
+                const active = blockedDispatchDays.includes(day)
+
+                return (
+                  <button
+                    key={day}
                     type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAdd}
-                    disabled={!rangeFrom || !rangeTo || saving}
+                    onClick={() => toggleBlockedDispatchDay(day)}
+                    disabled={saving}
+                    className={cn(
+                      "flex h-10 items-center justify-center rounded-xl border text-sm font-medium transition",
+                      active
+                        ? "border-primary bg-primary text-primary-foreground shadow-[var(--precision-shadow-1)]"
+                        : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:bg-primary/10 hover:text-primary"
+                    )}
                   >
-                    Adicionar
-                  </Button>
-                </div>
-              )}
+                    {day}
+                  </button>
+                )
+              })}
             </div>
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {saving ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <LoaderCircle className="size-4 animate-spin" />
+              Salvando restrições...
+            </div>
+          ) : null}
+        </>
+      )}
+    </EmailSettingsSectionCard>
   )
 }

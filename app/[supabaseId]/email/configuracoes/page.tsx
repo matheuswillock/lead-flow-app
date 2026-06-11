@@ -7,8 +7,10 @@ export default async function EmailConfiguracoesPage({ params }: Props) {
   await params
   return (
     <EmailSettingsProvider>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="min-h-screen bg-[color:var(--surface-0)]">
+        <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-6 md:py-10">
         <EmailSettingsContainer />
+        </div>
       </div>
     </EmailSettingsProvider>
   )

@@ -25,6 +25,14 @@ export type DomainConnectResult = {
   records: DomainRecord[]
 }
 
+export type EmailSender = {
+  id: string
+  name: string
+  email: string
+  replyTo: string | null
+  isDefault: boolean
+}
+
 export type EmailSettings = {
   fromName: string
   fromEmail: string
@@ -35,7 +43,11 @@ export type EmailSettings = {
   dispatchAllowedRoles: string[]
   templateCreateRoles: string[]
   templateApprovalRequired: boolean
+  templateApprovalRoles: string[]
+  blockedDispatchDays: number[]
   resendDomainId: string | null
   resendDomainName: string | null
   resendDomainStatus: ResendDomainStatus | null
+  senders: EmailSender[]
+  defaultSenderId: string | null
 }

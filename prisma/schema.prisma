@@ -1210,6 +1210,7 @@ model Team {
   emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
   emailSettings     EmailTeamSettings? @relation("TeamEmailSettings")
+  emailSenders      EmailTeamSender[]  @relation("TeamEmailSenders")
 
   @@index([masterId])
   @@map("corretor_studio_teams")
@@ -1751,6 +1752,8 @@ model EmailTeamSettings {
   dispatchAllowedRoles     String[] @default(["manager", "backoffice"])
   templateCreateRoles      String[] @default(["manager", "backoffice"])
   templateApprovalRequired Boolean  @default(false)
+  templateApprovalRoles    String[] @default(["manager", "backoffice"])
+  blockedDispatchDays      Int[]    @default([])
 
   resendDomainId     String? @db.Text
   resendDomainName   String? @db.Text
@@ -1762,6 +1765,22 @@ model EmailTeamSettings {
   team Team @relation("TeamEmailSettings", fields: [teamId], references: [id], onDelete: Cascade)
 
   @@map("email_team_settings")
+}
+
+model EmailTeamSender {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId     String   @db.Uuid
+  name       String   @db.Text
+  email      String   @db.Text
+  replyTo    String?  @db.Text
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamEmailSenders", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, isDefault])
+  @@map("email_team_senders")
 }
 
 // -----------------------------

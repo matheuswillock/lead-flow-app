@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { EmailSettingsService } from "../services/EmailSettingsService"
-import type { BlockedDateRange, DomainConnectResult, DomainRecord, EmailSettings, ResendDomainStatus } from "./EmailSettingsTypes"
+import type { UpsertEmailSenderData } from "../services/IEmailSettingsService"
+import type {
+  BlockedDateRange,
+  DomainConnectResult,
+  DomainRecord,
+  EmailSender,
+  EmailSettings,
+  ResendDomainStatus,
+} from "./EmailSettingsTypes"
 
 const service = new EmailSettingsService()
 
@@ -12,37 +20,39 @@ export type EmailSettingsHookReturn = {
   loading: boolean
   saving: boolean
 
-  // Sender
-  fromName: string
-  fromEmail: string
-  replyTo: string
-  setFromName: (v: string) => void
-  setFromEmail: (v: string) => void
-  setReplyTo: (v: string) => void
-
-  // Dispatch restrictions
   dispatchBlockedDates: BlockedDateRange[]
   dispatchTimeFrom: string
   dispatchTimeTo: string
+  blockedDispatchDays: number[]
   setDispatchTimeFrom: (v: string) => void
   setDispatchTimeTo: (v: string) => void
   addBlockedDate: (entry: BlockedDateRange) => void
   removeBlockedDate: (index: number) => void
+  toggleBlockedDispatchDay: (day: number) => void
 
-  // Permissions
   dispatchAllowedRoles: string[]
   templateCreateRoles: string[]
   toggleDispatchRole: (role: string) => void
   toggleTemplateCreateRole: (role: string) => void
 
-  // Template approval
   templateApprovalRequired: boolean
+  templateApprovalRoles: string[]
   setTemplateApprovalRequired: (v: boolean) => void
+  toggleTemplateApprovalRole: (role: string) => void
 
-  // Save (non-domain)
   handleSave: () => Promise<void>
 
-  // Domain
+  senders: EmailSender[]
+  defaultSenderId: string | null
+  creatingSender: boolean
+  updatingSenderId: string | null
+  deletingSenderId: string | null
+  settingDefaultSenderId: string | null
+  handleCreateSender: (data: UpsertEmailSenderData) => Promise<void>
+  handleUpdateSender: (senderId: string, data: UpsertEmailSenderData) => Promise<void>
+  handleDeleteSender: (senderId: string) => Promise<void>
+  handleSetDefaultSender: (senderId: string) => Promise<void>
+
   domainInput: string
   setDomainInput: (v: string) => void
   domainRecords: DomainRecord[]
@@ -63,24 +73,24 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Sender
-  const [fromName, setFromName] = useState("")
-  const [fromEmail, setFromEmail] = useState("")
-  const [replyTo, setReplyTo] = useState("")
-
-  // Dispatch restrictions
   const [dispatchBlockedDates, setDispatchBlockedDates] = useState<BlockedDateRange[]>([])
   const [dispatchTimeFrom, setDispatchTimeFrom] = useState("")
   const [dispatchTimeTo, setDispatchTimeTo] = useState("")
+  const [blockedDispatchDays, setBlockedDispatchDays] = useState<number[]>([])
 
-  // Permissions
   const [dispatchAllowedRoles, setDispatchAllowedRoles] = useState<string[]>(["manager", "backoffice"])
   const [templateCreateRoles, setTemplateCreateRoles] = useState<string[]>(["manager", "backoffice"])
 
-  // Template approval
   const [templateApprovalRequired, setTemplateApprovalRequired] = useState(false)
+  const [templateApprovalRoles, setTemplateApprovalRoles] = useState<string[]>(["manager", "backoffice"])
 
-  // Domain
+  const [senders, setSenders] = useState<EmailSender[]>([])
+  const [defaultSenderId, setDefaultSenderId] = useState<string | null>(null)
+  const [creatingSender, setCreatingSender] = useState(false)
+  const [updatingSenderId, setUpdatingSenderId] = useState<string | null>(null)
+  const [deletingSenderId, setDeletingSenderId] = useState<string | null>(null)
+  const [settingDefaultSenderId, setSettingDefaultSenderId] = useState<string | null>(null)
+
   const [domainInput, setDomainInput] = useState("")
   const [domainRecords, setDomainRecords] = useState<DomainRecord[]>([])
   const [domainStatus, setDomainStatus] = useState<ResendDomainStatus | null>(null)
@@ -94,17 +104,18 @@ export function useEmailSettings(): EmailSettingsHookReturn {
 
   const applySettings = useCallback((result: EmailSettings) => {
     setSettings(result)
-    setFromName(result.fromName)
-    setFromEmail(result.fromEmail)
-    setReplyTo(result.replyTo ?? "")
     setDispatchBlockedDates(result.dispatchBlockedDates ?? [])
     setDispatchTimeFrom(result.dispatchTimeFrom ?? "")
     setDispatchTimeTo(result.dispatchTimeTo ?? "")
+    setBlockedDispatchDays(result.blockedDispatchDays ?? [])
     setDispatchAllowedRoles(result.dispatchAllowedRoles ?? ["manager", "backoffice"])
     setTemplateCreateRoles(result.templateCreateRoles ?? ["manager", "backoffice"])
     setTemplateApprovalRequired(result.templateApprovalRequired ?? false)
+    setTemplateApprovalRoles(result.templateApprovalRoles ?? ["manager", "backoffice"])
     setDomainStatus(result.resendDomainStatus)
     setDomainName(result.resendDomainName)
+    setSenders(result.senders ?? [])
+    setDefaultSenderId(result.defaultSenderId ?? null)
   }, [])
 
   const fetchSettings = useCallback(async () => {
@@ -128,26 +139,30 @@ export function useEmailSettings(): EmailSettingsHookReturn {
   }, [fetchSettings])
 
   const handleSave = useCallback(async () => {
-    if (!fromName.trim() || !fromEmail.trim()) {
-      toast.error("Nome e email do remetente são obrigatórios")
-      return
-    }
     if (dispatchAllowedRoles.length === 0) {
       toast.error("Pelo menos uma role deve ter permissão de disparo")
       return
     }
+    if (templateCreateRoles.length === 0) {
+      toast.error("Pelo menos uma role deve poder criar templates")
+      return
+    }
+    if (templateApprovalRequired && templateApprovalRoles.length === 0) {
+      toast.error("Selecione pelo menos uma role aprovadora")
+      return
+    }
+
     setSaving(true)
     try {
       const updated = await service.update({
-        fromName: fromName.trim(),
-        fromEmail: fromEmail.trim(),
-        replyTo: replyTo.trim() || null,
         dispatchBlockedDates: dispatchBlockedDates.length > 0 ? dispatchBlockedDates : null,
         dispatchTimeFrom: dispatchTimeFrom.trim() || null,
         dispatchTimeTo: dispatchTimeTo.trim() || null,
         dispatchAllowedRoles,
         templateCreateRoles,
         templateApprovalRequired,
+        templateApprovalRoles,
+        blockedDispatchDays: blockedDispatchDays.length > 0 ? blockedDispatchDays : null,
       })
       applySettings(updated)
       toast.success("Configurações salvas com sucesso")
@@ -157,7 +172,17 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     } finally {
       setSaving(false)
     }
-  }, [fromName, fromEmail, replyTo, dispatchBlockedDates, dispatchTimeFrom, dispatchTimeTo, dispatchAllowedRoles, templateCreateRoles, templateApprovalRequired, applySettings])
+  }, [
+    applySettings,
+    blockedDispatchDays,
+    dispatchAllowedRoles,
+    dispatchBlockedDates,
+    dispatchTimeFrom,
+    dispatchTimeTo,
+    templateApprovalRequired,
+    templateApprovalRoles,
+    templateCreateRoles,
+  ])
 
   const addBlockedDate = useCallback((entry: BlockedDateRange) => {
     setDispatchBlockedDates((prev) => [...prev, entry])
@@ -165,6 +190,12 @@ export function useEmailSettings(): EmailSettingsHookReturn {
 
   const removeBlockedDate = useCallback((index: number) => {
     setDispatchBlockedDates((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+
+  const toggleBlockedDispatchDay = useCallback((day: number) => {
+    setBlockedDispatchDays((prev) =>
+      prev.includes(day) ? prev.filter((item) => item !== day) : [...prev, day].sort((a, b) => a - b)
+    )
   }, [])
 
   const toggleDispatchRole = useCallback((role: string) => {
@@ -178,6 +209,68 @@ export function useEmailSettings(): EmailSettingsHookReturn {
       prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
     )
   }, [])
+
+  const toggleTemplateApprovalRole = useCallback((role: string) => {
+    setTemplateApprovalRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+    )
+  }, [])
+
+  const handleCreateSender = useCallback(async (data: UpsertEmailSenderData) => {
+    setCreatingSender(true)
+    try {
+      await service.createSender(data)
+      await fetchSettings()
+      toast.success("Remetente criado com sucesso")
+    } catch (err) {
+      console.error("[useEmailSettings] handleCreateSender error", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao criar remetente")
+    } finally {
+      setCreatingSender(false)
+    }
+  }, [fetchSettings])
+
+  const handleUpdateSender = useCallback(async (senderId: string, data: UpsertEmailSenderData) => {
+    setUpdatingSenderId(senderId)
+    try {
+      await service.updateSender(senderId, data)
+      await fetchSettings()
+      toast.success("Remetente atualizado com sucesso")
+    } catch (err) {
+      console.error("[useEmailSettings] handleUpdateSender error", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar remetente")
+    } finally {
+      setUpdatingSenderId(null)
+    }
+  }, [fetchSettings])
+
+  const handleDeleteSender = useCallback(async (senderId: string) => {
+    setDeletingSenderId(senderId)
+    try {
+      await service.deleteSender(senderId)
+      await fetchSettings()
+      toast.success("Remetente removido com sucesso")
+    } catch (err) {
+      console.error("[useEmailSettings] handleDeleteSender error", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao remover remetente")
+    } finally {
+      setDeletingSenderId(null)
+    }
+  }, [fetchSettings])
+
+  const handleSetDefaultSender = useCallback(async (senderId: string) => {
+    setSettingDefaultSenderId(senderId)
+    try {
+      const updated = await service.setDefaultSender(senderId)
+      applySettings(updated)
+      toast.success("Remetente padrão atualizado")
+    } catch (err) {
+      console.error("[useEmailSettings] handleSetDefaultSender error", err)
+      toast.error(err instanceof Error ? err.message : "Erro ao definir remetente padrão")
+    } finally {
+      setSettingDefaultSenderId(null)
+    }
+  }, [applySettings])
 
   const handleConnectDomain = useCallback(async () => {
     if (!domainInput.trim()) {
@@ -248,18 +341,46 @@ export function useEmailSettings(): EmailSettingsHookReturn {
     settings,
     loading,
     saving,
-    fromName, fromEmail, replyTo,
-    setFromName, setFromEmail, setReplyTo,
-    dispatchBlockedDates, dispatchTimeFrom, dispatchTimeTo,
-    setDispatchTimeFrom, setDispatchTimeTo,
-    addBlockedDate, removeBlockedDate,
-    dispatchAllowedRoles, templateCreateRoles,
-    toggleDispatchRole, toggleTemplateCreateRole,
-    templateApprovalRequired, setTemplateApprovalRequired,
+    dispatchBlockedDates,
+    dispatchTimeFrom,
+    dispatchTimeTo,
+    blockedDispatchDays,
+    setDispatchTimeFrom,
+    setDispatchTimeTo,
+    addBlockedDate,
+    removeBlockedDate,
+    toggleBlockedDispatchDay,
+    dispatchAllowedRoles,
+    templateCreateRoles,
+    toggleDispatchRole,
+    toggleTemplateCreateRole,
+    templateApprovalRequired,
+    templateApprovalRoles,
+    setTemplateApprovalRequired,
+    toggleTemplateApprovalRole,
     handleSave,
-    domainInput, setDomainInput,
-    domainRecords, domainStatus, domainName,
-    connectingDomain, verifyingDomain, loadingRecords, disconnectingDomain,
-    handleConnectDomain, handleDisconnectDomain, handleVerifyDomain, handleLoadDomainRecords,
+    senders,
+    defaultSenderId,
+    creatingSender,
+    updatingSenderId,
+    deletingSenderId,
+    settingDefaultSenderId,
+    handleCreateSender,
+    handleUpdateSender,
+    handleDeleteSender,
+    handleSetDefaultSender,
+    domainInput,
+    setDomainInput,
+    domainRecords,
+    domainStatus,
+    domainName,
+    connectingDomain,
+    verifyingDomain,
+    loadingRecords,
+    disconnectingDomain,
+    handleConnectDomain,
+    handleDisconnectDomain,
+    handleVerifyDomain,
+    handleLoadDomainRecords,
   }
 }

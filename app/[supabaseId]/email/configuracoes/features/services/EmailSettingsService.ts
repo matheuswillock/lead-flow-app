@@ -1,5 +1,11 @@
-import type { IEmailSettingsService, UpdateEmailSettingsData, DomainConnectResult, ResendDomainStatus } from "./IEmailSettingsService"
-import type { EmailSettings } from "../context/EmailSettingsTypes"
+import type {
+  DomainConnectResult,
+  IEmailSettingsService,
+  ResendDomainStatus,
+  UpdateEmailSettingsData,
+  UpsertEmailSenderData,
+} from "./IEmailSettingsService"
+import type { EmailSender, EmailSettings } from "../context/EmailSettingsTypes"
 
 export class EmailSettingsService implements IEmailSettingsService {
   private readonly base = "/api/v1/email/settings"
@@ -18,6 +24,53 @@ export class EmailSettingsService implements IEmailSettingsService {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
+    return json.result as EmailSettings
+  }
+
+  async getSenders(): Promise<EmailSender[]> {
+    const res = await fetch(`${this.base}/senders`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
+    return json.result as EmailSender[]
+  }
+
+  async createSender(data: UpsertEmailSenderData): Promise<EmailSender> {
+    const res = await fetch(`${this.base}/senders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
+    return json.result as EmailSender
+  }
+
+  async updateSender(senderId: string, data: UpsertEmailSenderData): Promise<EmailSender> {
+    const res = await fetch(`${this.base}/senders/${senderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
+    return json.result as EmailSender
+  }
+
+  async deleteSender(senderId: string): Promise<void> {
+    const res = await fetch(`${this.base}/senders/${senderId}`, { method: "DELETE" })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")
+  }
+
+  async setDefaultSender(senderId: string): Promise<EmailSettings> {
+    const res = await fetch(`${this.base}/senders/${senderId}/default`, { method: "POST" })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const json = await res.json()
     if (!json.isValid) throw new Error(json.errorMessages?.join(", ") ?? "Erro")

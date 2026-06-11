@@ -1144,9 +1144,22 @@ unsubscribed unsubscribed
     String dispatchAllowedRoles 
     String templateCreateRoles 
     Boolean templateApprovalRequired 
+    String templateApprovalRoles 
+    Int blockedDispatchDays 
     String resendDomainId "❓"
     String resendDomainName "❓"
     String resendDomainStatus "❓"
+    DateTime createdAt 
+    DateTime updatedAt 
+    }
+  
+
+  "email_team_senders" {
+    String id "🗝️"
+    String name 
+    String email 
+    String replyTo "❓"
+    Boolean isDefault 
     DateTime createdAt 
     DateTime updatedAt 
     }
@@ -1319,6 +1332,7 @@ unsubscribed unsubscribed
     "corretor_studio_profile_subscriptions" }o--|o backoffice_products : "product"
     "corretor_studio_profile_subscription_capacities" |o--|| corretor_studio_profile_subscriptions : "profileSubscription"
     "email_team_settings" |o--|| corretor_studio_teams : "team"
+    "email_team_senders" }o--|| corretor_studio_teams : "team"
     "profile_user_type_assignments" |o--|| corretor_studio_profiles : "profile"
     "profile_user_type_assignments" }o--|| profile_user_types : "userType"
     "profile_user_type_assignments" }o--|o corretor_studio_profiles : "assignedBy"
