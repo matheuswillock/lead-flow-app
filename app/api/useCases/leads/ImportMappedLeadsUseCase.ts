@@ -81,20 +81,17 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
         continue;
       }
 
-      let email = row.email?.trim() ?? "";
+      let email = row.email ? normalizeEmail(row.email) : "";
       const phone = row.phone?.trim() ?? "";
-      let cnpj = row.cnpj?.trim() ?? "";
+      let cnpj = row.cnpj ? normalizeDigits(row.cnpj) : "";
       const status = mapStatus(row.status);
       const currentHealthPlan = mapHealthPlan(row.currentHealthPlan, healthPlanOptionNameByNormalized);
       const currentValue = row.currentValue ? parseCurrency(row.currentValue) : undefined;
       const ticket = row.ticket ? parseCurrency(row.ticket) : undefined;
       const contractDueDate = row.contractDueDate ? parseImportDate(row.contractDueDate) : undefined;
 
-      const normalizedEmail = email ? normalizeEmail(email) : "";
-      const normalizedCnpj = cnpj ? normalizeDigits(cnpj) : "";
-
-      const emailConflict = normalizedEmail ? existingByEmail.get(normalizedEmail) : null;
-      const cnpjConflict = normalizedCnpj ? existingByCnpj.get(normalizedCnpj) : null;
+      const emailConflict = email ? existingByEmail.get(email) : null;
+      const cnpjConflict = cnpj ? existingByCnpj.get(cnpj) : null;
 
       const canReuseEmail = emailConflict && isLostStatus(emailConflict.status) && isLostStatus(status);
       const canReuseCnpj = cnpjConflict && isLostStatus(cnpjConflict.status) && isLostStatus(status);
@@ -151,11 +148,11 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
 
       created += 1;
 
-      if (normalizedEmail && !canReuseEmail) {
-        existingByEmail.set(normalizedEmail, { id: "", email, cnpj, status });
+      if (email) {
+        existingByEmail.set(email, { id: "", email, cnpj, status });
       }
-      if (normalizedCnpj && !canReuseCnpj) {
-        existingByCnpj.set(normalizedCnpj, { id: "", email, cnpj, status });
+      if (cnpj) {
+        existingByCnpj.set(cnpj, { id: "", email, cnpj, status });
       }
     }
 
