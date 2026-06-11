@@ -862,6 +862,30 @@ export class LeadRepository implements ILeadRepository {
       assignee: lead.assignee,
     };
   }
+
+  async findImportConflicts(
+    teamId: string,
+    emails: string[],
+    cnpjs: string[]
+  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus }>> {
+    const conflictFilters: Prisma.LeadWhereInput[] = [];
+    if (emails.length) conflictFilters.push({ email: { in: emails } });
+    if (cnpjs.length) conflictFilters.push({ cnpj: { in: cnpjs } });
+    if (!conflictFilters.length) return [];
+
+    return await prisma.lead.findMany({
+      where: {
+        teamId,
+        OR: conflictFilters,
+      },
+      select: {
+        id: true,
+        email: true,
+        cnpj: true,
+        status: true,
+      },
+    });
+  }
 }
 
 // Singleton export
