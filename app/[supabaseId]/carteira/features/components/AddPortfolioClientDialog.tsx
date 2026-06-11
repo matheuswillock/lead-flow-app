@@ -245,8 +245,10 @@ export function AddPortfolioClientDialog({ open, onOpenChange }: AddPortfolioCli
       !!contract.operadora &&
       !!contract.startDateAt &&
       !!contract.finalizedDateAt &&
+      contract.finalizedDateAt >= contract.startDateAt &&
       !!contract.holderName.trim() &&
-      !!contract.holderBirthDate
+      !!contract.holderBirthDate &&
+      !!sanitizeRgCpfDigits(contract.holderDocument)
     );
   }, [contract]);
 

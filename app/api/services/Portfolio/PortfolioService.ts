@@ -165,11 +165,13 @@ export class PortfolioService implements IPortfolioService {
     const dueSoonLimit = new Date(now);
     dueSoonLimit.setDate(dueSoonLimit.getDate() + 90);
 
+    const existingLeadWhere = where.lead as Prisma.LeadWhereInput;
+    const existingDueDateBounds = existingLeadWhere.contractDueDate as Record<string, unknown> | undefined;
     const renewalWhere: Prisma.LeadPortfolioWhereInput = {
       ...where,
       lead: {
-        ...(where.lead as Prisma.LeadWhereInput),
-        contractDueDate: { not: null, lte: dueSoonLimit },
+        ...existingLeadWhere,
+        contractDueDate: { ...existingDueDateBounds, not: null, lte: dueSoonLimit },
       },
     };
 
