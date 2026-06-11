@@ -21,6 +21,7 @@ import {
   History,
   BarChart3,
   Calculator,
+  PhoneCall,
 } from "lucide-react"
 
 import {
@@ -111,6 +112,7 @@ export function AppSidebar({ supabaseId, ...sidebarProps }: React.ComponentProps
     { title: "Performance", url: `/${supabaseId}/performance`, icon: BarChart3, closerOrManager: true, featureSlug: FEATURE_SLUGS.CRM_PERFORMANCE },
     { title: "Simulador de Planos", url: `/${supabaseId}/pme-simulador`, icon: Calculator, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.CRM_SIMULATOR },
     { title: "Carteira", url: `/${supabaseId}/carteira`, icon: Briefcase, managerOnly: true, featureSlug: FEATURE_SLUGS.CRM_WALLET },
+    { title: "Discadora", url: `/${supabaseId}/dialer`, icon: PhoneCall, sdrCloserOrManager: true, featureSlug: FEATURE_SLUGS.VOICE },
   ];
 
   const emailItems: SidebarItem[] = [

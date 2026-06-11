@@ -18,5 +18,10 @@ export const cacheTags = {
   teamCalendar: (teamId: string) => `team-calendar:${teamId}`,
   teamTasks: (teamId: string) => `team-tasks:${teamId}`,
   publicFormBootstrap: (teamId: string) => `public-form-bootstrap:${teamId}`,
+  dialerCampaigns: (teamId: string) => `dialer-campaigns:${teamId}`,
+  dialerCampaign: (campaignId: string) => `dialer-campaign:${campaignId}`,
+  dialerCalls: (campaignId: string) => `dialer-calls:${campaignId}`,
+  dialerUsage: (teamId: string) => `dialer-usage:${teamId}`,
+  dialerSubscription: (teamId: string) => `dialer-subscription:${teamId}`,
 } as const;
 

@@ -485,6 +485,10 @@ model Profile {
   emailContactListsCreated EmailContactList[]       @relation("EmailContactListCreator")
   emailCampaignsCreated    EmailCampaign[]          @relation("EmailCampaignCreator")
 
+  // Dialer relations
+  dialerCampaignsManaged DialerCampaign[] @relation("DialerCampaignManager")
+  dialerCallsAsOperator  DialerCall[]     @relation("DialerCallOperator")
+
   // Backoffice subscriptions
   backofficeSubscriptions BackofficeUserSubscription[] @relation("BackofficeUserSubscriptions")
   backofficeFeatureGrants BackofficeFeatureGrant[]     @relation("BackofficeFeatureProfileGrants")
@@ -504,12 +508,12 @@ model Profile {
 }
 
 model HealthPlanOption {
-  id             String   @id @default(uuid()) @db.Uuid
-  name           String   @db.Text
-  normalizedName String   @unique @db.Text
-  isActive       Boolean  @default(true)
-  isDefault      Boolean  @default(false)
-  iconUrl        String?  @db.Text
+  id             String    @id @default(uuid()) @db.Uuid
+  name           String    @db.Text
+  normalizedName String    @unique @db.Text
+  isActive       Boolean   @default(true)
+  isDefault      Boolean   @default(false)
+  iconUrl        String?   @db.Text
   createdBy      String?   @db.Uuid
   createdAt      DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt      DateTime  @updatedAt @db.Timestamptz(6)
@@ -529,34 +533,34 @@ model HealthPlanOption {
 // -----------------------------
 
 model BackofficeUser {
-  id                      String    @id @default(uuid()) @db.Uuid
-  profileId               String    @unique @map("profileId") @db.Uuid
-  email                   String    @unique @db.Text
-  fullAccess              Boolean   @default(false) @map("fullAccess")
-  isActive                Boolean   @default(true) @map("isActive")
-  isSdr                   Boolean   @default(true) @map("isSdr")
-  isCloser                Boolean   @default(true) @map("isCloser")
-  googleConnectionId      String?   @map("googleConnectionId") @db.Uuid
-  linkedCorretorStudioProfileId String? @map("linkedCorretorStudioProfileId") @db.Uuid
-  timezone                String    @default("America/Sao_Paulo") @db.Text
-  mailboxStatus           String    @default("pending_manual_action") @map("mailboxStatus") @db.Text
-  mailboxAddress          String?   @map("mailboxAddress") @db.Text
-  mailboxProvisionedAt    DateTime? @map("mailboxProvisionedAt") @db.Timestamptz(6)
-  createdByProfileId      String?   @map("createdByProfileId") @db.Uuid
-  createdAt               DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt               DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
+  id                            String    @id @default(uuid()) @db.Uuid
+  profileId                     String    @unique @map("profileId") @db.Uuid
+  email                         String    @unique @db.Text
+  fullAccess                    Boolean   @default(false) @map("fullAccess")
+  isActive                      Boolean   @default(true) @map("isActive")
+  isSdr                         Boolean   @default(true) @map("isSdr")
+  isCloser                      Boolean   @default(true) @map("isCloser")
+  googleConnectionId            String?   @map("googleConnectionId") @db.Uuid
+  linkedCorretorStudioProfileId String?   @map("linkedCorretorStudioProfileId") @db.Uuid
+  timezone                      String    @default("America/Sao_Paulo") @db.Text
+  mailboxStatus                 String    @default("pending_manual_action") @map("mailboxStatus") @db.Text
+  mailboxAddress                String?   @map("mailboxAddress") @db.Text
+  mailboxProvisionedAt          DateTime? @map("mailboxProvisionedAt") @db.Timestamptz(6)
+  createdByProfileId            String?   @map("createdByProfileId") @db.Uuid
+  createdAt                     DateTime  @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                     DateTime  @default(now()) @map("updatedAt") @db.Timestamptz(6)
 
-  profile                Profile                  @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
-  creator                Profile?                 @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
-  googleConnection       GoogleOAuthConnection?   @relation("BackofficeUserGoogleConnection", fields: [googleConnectionId], references: [id], onDelete: SetNull)
-  linkedCorretorStudioProfile Profile?            @relation("BackofficeUserLinkedProfile", fields: [linkedCorretorStudioProfileId], references: [id], onDelete: SetNull)
-  generatedWebhookTokens BackofficeWebhookToken[] @relation("BackofficeWebhookTokenGenerator")
-  sdrLeads               BackofficeLead[]         @relation("BackofficeLeadSdr")
-  closerLeads            BackofficeLead[]         @relation("BackofficeLeadCloser")
-  schedulesAsCloser      BackofficeLeadSchedule[] @relation("BackofficeLeadScheduleCloser")
-  sdrAdhesions           BackofficeAdhesion[]     @relation("BackofficeAdhesionSdr")
-  closerAdhesions        BackofficeAdhesion[]     @relation("BackofficeAdhesionCloser")
-  createdAdhesions       BackofficeAdhesion[]     @relation("BackofficeAdhesionCreator")
+  profile                     Profile                  @relation("BackofficeUserProfile", fields: [profileId], references: [id], onDelete: Cascade)
+  creator                     Profile?                 @relation("BackofficeUserCreator", fields: [createdByProfileId], references: [id], onDelete: SetNull)
+  googleConnection            GoogleOAuthConnection?   @relation("BackofficeUserGoogleConnection", fields: [googleConnectionId], references: [id], onDelete: SetNull)
+  linkedCorretorStudioProfile Profile?                 @relation("BackofficeUserLinkedProfile", fields: [linkedCorretorStudioProfileId], references: [id], onDelete: SetNull)
+  generatedWebhookTokens      BackofficeWebhookToken[] @relation("BackofficeWebhookTokenGenerator")
+  sdrLeads                    BackofficeLead[]         @relation("BackofficeLeadSdr")
+  closerLeads                 BackofficeLead[]         @relation("BackofficeLeadCloser")
+  schedulesAsCloser           BackofficeLeadSchedule[] @relation("BackofficeLeadScheduleCloser")
+  sdrAdhesions                BackofficeAdhesion[]     @relation("BackofficeAdhesionSdr")
+  closerAdhesions             BackofficeAdhesion[]     @relation("BackofficeAdhesionCloser")
+  createdAdhesions            BackofficeAdhesion[]     @relation("BackofficeAdhesionCreator")
 
   @@index([isActive], map: "backoffice_users_is_active_idx")
   @@index([isSdr], map: "backoffice_users_is_sdr_idx")
@@ -581,8 +585,8 @@ model GoogleOAuthConnection {
   createdAt        DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt        DateTime  @updatedAt @db.Timestamptz(6)
 
-  ownerProfile   Profile?         @relation("GoogleConnectionOwnerProfile", fields: [ownerProfileId], references: [id], onDelete: SetNull)
-  profiles       Profile[]        @relation("ProfileGoogleConnection")
+  ownerProfile    Profile?         @relation("GoogleConnectionOwnerProfile", fields: [ownerProfileId], references: [id], onDelete: SetNull)
+  profiles        Profile[]        @relation("ProfileGoogleConnection")
   backofficeUsers BackofficeUser[] @relation("BackofficeUserGoogleConnection")
 
   @@index([ownerProfileId])
@@ -683,58 +687,58 @@ model BackofficeLead {
 }
 
 model BackofficeAdhesion {
-  id                        String                         @id @default(uuid()) @db.Uuid
-  leadId                    String                         @unique @map("leadId") @db.Uuid
-  fullName                  String                         @map("fullName") @db.Text
-  phone                     String                         @db.Text
-  email                     String?                        @db.Text
-  cpfCnpj                   String?                        @map("cpfCnpj") @db.Text
-  postalCode                String?                        @map("postalCode") @db.Text
-  address                   String?                        @db.Text
-  addressNumber             String?                        @map("addressNumber") @db.Text
-  neighborhood              String?                        @db.Text
-  complement                String?                        @db.Text
-  city                      String?                        @db.Text
-  state                     String?                        @db.Text
-  plan                      BackofficeAdhesionPlan         @default(crm)
-  cycle                     BackofficeAdhesionBillingCycle
-  modules                   String[]                       @default(["crm"])
-  extraTeams                Int                            @default(0) @map("extraTeams")
-  extraUsers                Int                            @default(0) @map("extraUsers")
-  monthlyBaseAmount         Decimal                        @map("monthlyBaseAmount") @db.Decimal(12, 2)
-  monthlyExtraTeamsAmount   Decimal                        @map("monthlyExtraTeamsAmount") @db.Decimal(12, 2)
-  monthlyExtraUsersAmount   Decimal                        @map("monthlyExtraUsersAmount") @db.Decimal(12, 2)
-  monthlyTotalAmount        Decimal                        @map("monthlyTotalAmount") @db.Decimal(12, 2)
-  totalAmount               Decimal                        @map("totalAmount") @db.Decimal(12, 2)
-  tokenHash                 String                         @unique @map("tokenHash") @db.Text
-  tokenPreview              String                         @map("tokenPreview") @db.Text
-  expiresAt                 DateTime                       @map("expiresAt") @db.Timestamptz(6)
-  status                    BackofficeAdhesionStatus       @default(pending)
-  tokenPlain                String?                        @map("tokenPlain") @db.Text
-  sdrBackofficeUserId       String?                        @map("sdrBackofficeUserId") @db.Uuid
-  closerBackofficeUserId    String?                        @map("closerBackofficeUserId") @db.Uuid
-  createdByBackofficeUserId String?                        @map("createdByBackofficeUserId") @db.Uuid
-  asaasCustomerId           String?                        @map("asaasCustomerId") @db.Text
-  asaasPaymentId            String?                        @unique @map("asaasPaymentId") @db.Text
-  asaasInstallmentId        String?                        @unique(map: "backoffice_adhesions_asaasinstallmentid_key") @map("asaasInstallmentId") @db.Text
-  installmentCount          Int?                           @map("installmentCount")
-  billingType               String?                        @map("billingType") @db.Text
-  paymentDueDate            DateTime?                      @map("paymentDueDate") @db.Timestamptz(6)
-  invoiceUrl                String?                        @map("invoiceUrl") @db.Text
-  bankSlipUrl               String?                        @map("bankSlipUrl") @db.Text
-  pixQrCode                 String?                        @map("pixQrCode") @db.Text
-  pixPayload                String?                        @map("pixPayload") @db.Text
-  paidAt                    DateTime?                      @map("paidAt") @db.Timestamptz(6)
-  overdueAt                 DateTime?                      @map("overdueAt") @db.Timestamptz(6)
-  canceledAt                DateTime?                      @map("canceledAt") @db.Timestamptz(6)
-  createdProfileId          String?                        @map("createdProfileId") @db.Uuid
-  createdSupabaseId         String?                        @map("createdSupabaseId") @db.Uuid
-  requestedUserTypeSlug             String?   @map("requestedUserTypeSlug") @db.Text
-  requestedMemberProAccessExpiresAt DateTime? @map("requestedMemberProAccessExpiresAt") @db.Timestamptz(6)
-  additionalUsersData       Json                           @default("[]") @map("additional_users_data")
-  additionalTeamsData       Json                           @default("[]") @map("additional_teams_data")
-  createdAt                 DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
-  updatedAt                 DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
+  id                                String                         @id @default(uuid()) @db.Uuid
+  leadId                            String                         @unique @map("leadId") @db.Uuid
+  fullName                          String                         @map("fullName") @db.Text
+  phone                             String                         @db.Text
+  email                             String?                        @db.Text
+  cpfCnpj                           String?                        @map("cpfCnpj") @db.Text
+  postalCode                        String?                        @map("postalCode") @db.Text
+  address                           String?                        @db.Text
+  addressNumber                     String?                        @map("addressNumber") @db.Text
+  neighborhood                      String?                        @db.Text
+  complement                        String?                        @db.Text
+  city                              String?                        @db.Text
+  state                             String?                        @db.Text
+  plan                              BackofficeAdhesionPlan         @default(crm)
+  cycle                             BackofficeAdhesionBillingCycle
+  modules                           String[]                       @default(["crm"])
+  extraTeams                        Int                            @default(0) @map("extraTeams")
+  extraUsers                        Int                            @default(0) @map("extraUsers")
+  monthlyBaseAmount                 Decimal                        @map("monthlyBaseAmount") @db.Decimal(12, 2)
+  monthlyExtraTeamsAmount           Decimal                        @map("monthlyExtraTeamsAmount") @db.Decimal(12, 2)
+  monthlyExtraUsersAmount           Decimal                        @map("monthlyExtraUsersAmount") @db.Decimal(12, 2)
+  monthlyTotalAmount                Decimal                        @map("monthlyTotalAmount") @db.Decimal(12, 2)
+  totalAmount                       Decimal                        @map("totalAmount") @db.Decimal(12, 2)
+  tokenHash                         String                         @unique @map("tokenHash") @db.Text
+  tokenPreview                      String                         @map("tokenPreview") @db.Text
+  expiresAt                         DateTime                       @map("expiresAt") @db.Timestamptz(6)
+  status                            BackofficeAdhesionStatus       @default(pending)
+  tokenPlain                        String?                        @map("tokenPlain") @db.Text
+  sdrBackofficeUserId               String?                        @map("sdrBackofficeUserId") @db.Uuid
+  closerBackofficeUserId            String?                        @map("closerBackofficeUserId") @db.Uuid
+  createdByBackofficeUserId         String?                        @map("createdByBackofficeUserId") @db.Uuid
+  asaasCustomerId                   String?                        @map("asaasCustomerId") @db.Text
+  asaasPaymentId                    String?                        @unique @map("asaasPaymentId") @db.Text
+  asaasInstallmentId                String?                        @unique(map: "backoffice_adhesions_asaasinstallmentid_key") @map("asaasInstallmentId") @db.Text
+  installmentCount                  Int?                           @map("installmentCount")
+  billingType                       String?                        @map("billingType") @db.Text
+  paymentDueDate                    DateTime?                      @map("paymentDueDate") @db.Timestamptz(6)
+  invoiceUrl                        String?                        @map("invoiceUrl") @db.Text
+  bankSlipUrl                       String?                        @map("bankSlipUrl") @db.Text
+  pixQrCode                         String?                        @map("pixQrCode") @db.Text
+  pixPayload                        String?                        @map("pixPayload") @db.Text
+  paidAt                            DateTime?                      @map("paidAt") @db.Timestamptz(6)
+  overdueAt                         DateTime?                      @map("overdueAt") @db.Timestamptz(6)
+  canceledAt                        DateTime?                      @map("canceledAt") @db.Timestamptz(6)
+  createdProfileId                  String?                        @map("createdProfileId") @db.Uuid
+  createdSupabaseId                 String?                        @map("createdSupabaseId") @db.Uuid
+  requestedUserTypeSlug             String?                        @map("requestedUserTypeSlug") @db.Text
+  requestedMemberProAccessExpiresAt DateTime?                      @map("requestedMemberProAccessExpiresAt") @db.Timestamptz(6)
+  additionalUsersData               Json                           @default("[]") @map("additional_users_data")
+  additionalTeamsData               Json                           @default("[]") @map("additional_teams_data")
+  createdAt                         DateTime                       @default(now()) @map("createdAt") @db.Timestamptz(6)
+  updatedAt                         DateTime                       @updatedAt @map("updatedAt") @db.Timestamptz(6)
 
   lead                    BackofficeLead  @relation(fields: [leadId], references: [id], onDelete: Restrict)
   sdrBackofficeUser       BackofficeUser? @relation("BackofficeAdhesionSdr", fields: [sdrBackofficeUserId], references: [id], onDelete: SetNull)
@@ -888,10 +892,10 @@ model Lead {
   soldPlan        String?   @db.Text // Plano vendido
 
   // Indicação / Referral
-  isReferral      Boolean?  @default(false)
-  referrerLeadId  String?   @db.Uuid
-  referrerName    String?   @db.Text
-  referrerPhone   String?   @db.Text
+  isReferral     Boolean? @default(false)
+  referrerLeadId String?  @db.Uuid
+  referrerName   String?  @db.Text
+  referrerPhone  String?  @db.Text
 
   createdBy String?  @db.Uuid
   updatedBy String?  @db.Uuid
@@ -913,6 +917,7 @@ model Lead {
   LeadFinalized LeadFinalized[]
   portfolio     LeadPortfolio?
   attachments   LeadAttachment[]
+  dialerCalls   DialerCall[]     @relation("DialerCallLead")
 
   // Unique per tenant
   @@unique([teamId, email])
@@ -999,15 +1004,15 @@ model Task {
 }
 
 model TaskAssignee {
-  id             String             @id @default(uuid()) @db.Uuid
-  taskId         String             @db.Uuid
-  profileId      String             @db.Uuid
-  status         TaskAssigneeStatus @default(PENDING)
-  googleEventId  String?            @db.Text
-  googleCalendarId String?          @db.Text
-  googleSynced   Boolean            @default(false)
-  assignedAt     DateTime           @default(now()) @db.Timestamptz(6)
-  updatedAt      DateTime           @updatedAt @db.Timestamptz(6)
+  id               String             @id @default(uuid()) @db.Uuid
+  taskId           String             @db.Uuid
+  profileId        String             @db.Uuid
+  status           TaskAssigneeStatus @default(PENDING)
+  googleEventId    String?            @db.Text
+  googleCalendarId String?            @db.Text
+  googleSynced     Boolean            @default(false)
+  assignedAt       DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(6)
 
   task    Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
   profile Profile @relation("TaskAssigneeProfile", fields: [profileId], references: [id], onDelete: Restrict)
@@ -1136,6 +1141,7 @@ model LeadAttachment {
   storagePath String   @default("") @db.Text // Caminho do arquivo no storage: "leadId/timestamp-random-filename"
   fileType    String   @db.Text // mime type: application/pdf, image/png, etc
   fileSize    Int // size in bytes
+  isProtected Boolean  @default(false) // anexos protegidos (ex: gravacao da discadora) nao podem ser excluidos
   uploadedBy  String   @db.Uuid
   uploadedAt  DateTime @default(now()) @db.Timestamptz(6)
 
@@ -1190,6 +1196,16 @@ model Team {
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @db.Timestamptz(6)
 
+  // Dialer (Studio Voice) — provisionamento Twilio por time
+  dialerEnabled         Boolean @default(false)
+  twilioSubaccountSid   String? @db.Text
+  twilioSubaccountToken String? @db.Text // cifrado com AES-256-GCM (lib/dialer/secret-crypto)
+  twilioApiKeySid       String? @db.Text
+  twilioApiKeySecret    String? @db.Text // cifrado com AES-256-GCM (lib/dialer/secret-crypto)
+  twilioAppSid          String? @db.Text
+  twilioNumberSid       String? @db.Text
+  twilioPhoneNumber     String? @db.Text
+
   master                   Profile                       @relation("TeamMaster", fields: [masterId], references: [id], onDelete: Cascade)
   members                  TeamMember[]
   leads                    Lead[]
@@ -1207,6 +1223,11 @@ model Team {
   emailContactLists EmailContactList[] @relation("TeamEmailContactLists")
   emailCampaigns    EmailCampaign[]    @relation("TeamEmailCampaigns")
   emailLogs         EmailLog[]         @relation("TeamEmailLogs")
+
+  // Dialer relations
+  dialerCampaigns    DialerCampaign[]    @relation("TeamDialerCampaigns")
+  dialerUsages       DialerUsage[]       @relation("TeamDialerUsage")
+  dialerSubscription DialerSubscription? @relation("TeamDialerSubscription")
 
   @@index([masterId])
   @@map("corretor_studio_teams")
@@ -1573,25 +1594,25 @@ model BackofficeProduct {
 }
 
 model BackofficeFeature {
-  id                 String                       @id @default(uuid()) @db.Uuid
-  slug               String                       @unique @db.Text
-  name               String                       @db.Text
-  description        String?                      @db.Text
-  parentId           String?                      @db.Uuid
-  productSlug        String?                      @db.Text
-  accessMode         BackofficeFeatureAccessMode  @default(PUBLIC)
-  defaultAccessLevel BackofficeFeatureAccessLevel @default(FULL)
-  betaEnabled        Boolean                      @default(false)
-  inheritParentSettings Boolean                   @default(false)
-  isActive           Boolean                      @default(true)
-  sortOrder          Int                          @default(0)
-  createdAt          DateTime                     @default(now()) @db.Timestamptz(6)
-  updatedAt          DateTime                     @updatedAt @db.Timestamptz(6)
+  id                    String                       @id @default(uuid()) @db.Uuid
+  slug                  String                       @unique @db.Text
+  name                  String                       @db.Text
+  description           String?                      @db.Text
+  parentId              String?                      @db.Uuid
+  productSlug           String?                      @db.Text
+  accessMode            BackofficeFeatureAccessMode  @default(PUBLIC)
+  defaultAccessLevel    BackofficeFeatureAccessLevel @default(FULL)
+  betaEnabled           Boolean                      @default(false)
+  inheritParentSettings Boolean                      @default(false)
+  isActive              Boolean                      @default(true)
+  sortOrder             Int                          @default(0)
+  createdAt             DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime                     @updatedAt @db.Timestamptz(6)
 
-  parent   BackofficeFeature?  @relation("BackofficeFeatureTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children BackofficeFeature[] @relation("BackofficeFeatureTree")
-  product  BackofficeProduct?  @relation(fields: [productSlug], references: [slug], onDelete: SetNull)
-  grants   BackofficeFeatureGrant[]
+  parent      BackofficeFeature?            @relation("BackofficeFeatureTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    BackofficeFeature[]           @relation("BackofficeFeatureTree")
+  product     BackofficeProduct?            @relation(fields: [productSlug], references: [slug], onDelete: SetNull)
+  grants      BackofficeFeatureGrant[]
   accessRules BackofficeFeatureAccessRule[]
 
   @@index([parentId], map: "backoffice_features_parent_id_idx")
@@ -1698,9 +1719,9 @@ model ProfileSubscription {
   createdAt                DateTime            @default(now()) @db.Timestamptz(6)
   updatedAt                DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
 
-  profile  Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscriptions_profileId_fkey")
-  adhesion BackofficeAdhesion? @relation(fields: [adhesionId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_adhesionId_fkey")
-  product  BackofficeProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_productId_fkey")
+  profile  Profile                      @relation(fields: [profileId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscriptions_profileId_fkey")
+  adhesion BackofficeAdhesion?          @relation(fields: [adhesionId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_adhesionId_fkey")
+  product  BackofficeProduct?           @relation(fields: [productId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_subscriptions_productId_fkey")
   capacity ProfileSubscriptionCapacity?
 
   @@index([adhesionId], map: "profile_subscriptions_adhesion_id_idx")
@@ -1710,14 +1731,14 @@ model ProfileSubscription {
 }
 
 model ProfileSubscriptionCapacity {
-  id                              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profileSubscriptionId           String              @unique @db.Uuid
-  includedExtraTeams              Int                 @default(0)
-  includedExtraUsers              Int                 @default(0)
-  manualAdjustmentExtraTeams      Int                 @default(0)
-  manualAdjustmentExtraUsers      Int                 @default(0)
-  createdAt                       DateTime            @default(now()) @db.Timestamptz(6)
-  updatedAt                       DateTime            @default(now()) @updatedAt @db.Timestamptz(6)
+  id                         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profileSubscriptionId      String   @unique @db.Uuid
+  includedExtraTeams         Int      @default(0)
+  includedExtraUsers         Int      @default(0)
+  manualAdjustmentExtraTeams Int      @default(0)
+  manualAdjustmentExtraUsers Int      @default(0)
+  createdAt                  DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt                  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   profileSubscription ProfileSubscription @relation(fields: [profileSubscriptionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "profile_subscription_capacities_subscription_id_fkey")
 
@@ -1753,12 +1774,169 @@ model ProfileUserTypeAssignment {
   createdAt           DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt           DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
-  profile     Profile         @relation("ProfileUserTypeAssignment", fields: [profileId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "profile_user_type_assignments_profile_id_fkey")
-  userType    ProfileUserType @relation(fields: [userTypeId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "profile_user_type_assignments_user_type_id_fkey")
-  assignedBy  Profile?        @relation("ProfileUserTypeAssignmentAssignedBy", fields: [assignedByProfileId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_user_type_assignments_assigned_by_profile_id_fkey")
+  profile    Profile         @relation("ProfileUserTypeAssignment", fields: [profileId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "profile_user_type_assignments_profile_id_fkey")
+  userType   ProfileUserType @relation(fields: [userTypeId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "profile_user_type_assignments_user_type_id_fkey")
+  assignedBy Profile?        @relation("ProfileUserTypeAssignmentAssignedBy", fields: [assignedByProfileId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "profile_user_type_assignments_assigned_by_profile_id_fkey")
 
   @@index([userTypeId])
   @@index([accessExpiresAt])
   @@map("profile_user_type_assignments")
 }
 
+// ============================================
+// Dialer module (Studio Voice)
+// ============================================
+
+enum DialerCampaignStatus {
+  draft
+  ready
+  running
+  paused
+  completed
+  canceled
+  limit_reached
+
+  @@map("dialer_campaign_status")
+}
+
+enum DialerCallStatus {
+  pending
+  calling
+  answered
+  transferred
+  completed
+  no_answer
+  busy
+  failed
+  machine
+
+  @@map("dialer_call_status")
+}
+
+enum DialerPlan {
+  dialer_basic
+  dialer_pro
+  dialer_unlimited
+
+  @@map("dialer_plan")
+}
+
+enum DialerSubscriptionStatus {
+  pending
+  active
+  suspended
+  canceled
+
+  @@map("dialer_subscription_status")
+}
+
+model DialerCampaign {
+  id                String               @id @default(uuid()) @db.Uuid
+  teamId            String               @db.Uuid
+  managerId         String               @db.Uuid
+  name              String               @db.Text
+  description       String?              @db.Text
+  status            DialerCampaignStatus @default(draft)
+  totalContacts     Int                  @default(0)
+  contactsProcessed Int                  @default(0)
+  contactsAnswered  Int                  @default(0)
+  minutesUsed       Decimal              @default(0) @db.Decimal(10, 2)
+  createdAt         DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime             @updatedAt @db.Timestamptz(6)
+
+  team     Team            @relation("TeamDialerCampaigns", fields: [teamId], references: [id], onDelete: Cascade)
+  manager  Profile         @relation("DialerCampaignManager", fields: [managerId], references: [id], onDelete: Cascade)
+  contacts DialerContact[]
+  calls    DialerCall[]
+
+  @@index([teamId, status])
+  @@index([managerId])
+  @@map("corretor_studio_dialer_campaigns")
+}
+
+model DialerContact {
+  id         String   @id @default(uuid()) @db.Uuid
+  campaignId String   @db.Uuid
+  name       String   @db.Text
+  phone      String   @db.Text
+  email      String?  @db.Text
+  metadata   Json?
+  processed  Boolean  @default(false)
+  position   Int
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+
+  campaign DialerCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  calls    DialerCall[]
+
+  @@index([campaignId, processed])
+  @@map("corretor_studio_dialer_contacts")
+}
+
+model DialerCall {
+  id              String           @id @default(uuid()) @db.Uuid
+  campaignId      String           @db.Uuid
+  contactId       String           @db.Uuid
+  operatorId      String           @db.Uuid
+  leadId          String?          @db.Uuid
+  twilioCallSid   String?          @unique @db.Text
+  status          DialerCallStatus @default(pending)
+  durationSeconds Int?
+  recordingSid    String?          @db.Text
+  recordingUrl    String?          @db.Text // URL temporaria no Twilio
+  recordingPath   String?          @db.Text // path permanente no Supabase Storage
+  startedAt       DateTime?        @db.Timestamptz(6)
+  answeredAt      DateTime?        @db.Timestamptz(6)
+  transferredAt   DateTime?        @db.Timestamptz(6)
+  endedAt         DateTime?        @db.Timestamptz(6)
+  notes           String?          @db.Text
+  createdAt       DateTime         @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @db.Timestamptz(6)
+
+  campaign DialerCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  DialerContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  operator Profile        @relation("DialerCallOperator", fields: [operatorId], references: [id], onDelete: Restrict)
+  lead     Lead?          @relation("DialerCallLead", fields: [leadId], references: [id], onDelete: SetNull)
+
+  // Indice unico parcial (1 chamada ativa por operador) criado via SQL manual na migration:
+  // corretor_studio_dialer_calls_one_active_call_per_operator
+  @@index([campaignId, status])
+  @@index([contactId])
+  @@index([operatorId])
+  @@index([leadId])
+  @@map("corretor_studio_dialer_calls")
+}
+
+model DialerUsage {
+  id           String   @id @default(uuid()) @db.Uuid
+  teamId       String   @db.Uuid
+  billingMonth String   @db.Text // formato "YYYY-MM"
+  minutesUsed  Decimal  @default(0) @db.Decimal(10, 2)
+  minutesLimit Decimal  @db.Decimal(10, 2)
+  callsCount   Int      @default(0)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamDialerUsage", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, billingMonth])
+  @@map("corretor_studio_dialer_usage")
+}
+
+model DialerSubscription {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  teamId              String                   @unique @db.Uuid
+  plan                DialerPlan
+  status              DialerSubscriptionStatus @default(pending)
+  asaasSubscriptionId String?                  @db.Text
+  monthlyMinutes      Int
+  currentPeriodStart  DateTime?                @db.Timestamptz(6)
+  currentPeriodEnd    DateTime?                @db.Timestamptz(6)
+  canceledAt          DateTime?                @db.Timestamptz(6)
+  createdAt           DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime                 @updatedAt @db.Timestamptz(6)
+
+  team Team @relation("TeamDialerSubscription", fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([asaasSubscriptionId])
+  @@map("corretor_studio_dialer_subscriptions")
+}

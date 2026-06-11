@@ -21,6 +21,7 @@ const routeMatchers: RouteMatcher[] = [
   { prefix: "/email/historico", slug: FEATURE_SLUGS.EMAIL_HISTORY },
   { prefix: "/email/analytics", slug: FEATURE_SLUGS.EMAIL_ANALYTICS },
   { prefix: "/email", slug: FEATURE_SLUGS.EMAIL },
+  { prefix: "/dialer", slug: FEATURE_SLUGS.VOICE },
 ]
 
 export function getFeatureSlugForAppPath(pathname: string): string | null {

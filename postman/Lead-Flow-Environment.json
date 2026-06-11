@@ -225,6 +225,12 @@
       "type": "default",
       "enabled": true,
       "description": "Token ativo retornado pelo endpoint POST /api/v1/backoffice/integrations/meta. Usado no path do webhook Meta backoffice."
+    },
+    {
+      "key": "dialerCampaignId",
+      "value": "",
+      "type": "default",
+      "enabled": true
     }
   ],
   "_postman_variable_scope": "environment"

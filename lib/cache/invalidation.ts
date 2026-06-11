@@ -87,3 +87,22 @@ export function invalidateTeamStatusRulesCache(input: { teamId: string }) {
   revalidateDefinedTags([cacheTags.teamStatusRules(input.teamId)]);
 }
 
+export function invalidateDialerCampaignCache(input: {
+  teamId: string;
+  campaignId?: string | null;
+}) {
+  revalidateDefinedTags([
+    cacheTags.dialerCampaigns(input.teamId),
+    input.campaignId ? cacheTags.dialerCampaign(input.campaignId) : null,
+    input.campaignId ? cacheTags.dialerCalls(input.campaignId) : null,
+  ]);
+}
+
+export function invalidateDialerUsageCache(input: { teamId: string }) {
+  revalidateDefinedTags([cacheTags.dialerUsage(input.teamId)]);
+}
+
+export function invalidateDialerSubscriptionCache(input: { teamId: string }) {
+  revalidateDefinedTags([cacheTags.dialerSubscription(input.teamId)]);
+}
+

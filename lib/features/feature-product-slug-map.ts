@@ -16,5 +16,7 @@ export const FEATURE_PRODUCT_SLUG_MAP: Record<string, string> = {
   [FEATURE_SLUGS.EMAIL_CAMPAIGNS]: "email",
   [FEATURE_SLUGS.EMAIL_HISTORY]: "email",
   [FEATURE_SLUGS.EMAIL_ANALYTICS]: "email",
+  [FEATURE_SLUGS.VOICE]: "voice",
+  [FEATURE_SLUGS.VOICE_CAMPAIGNS]: "voice",
   [FEATURE_SLUGS.CONFIGURATION]: "configuration",
 }
