@@ -6,6 +6,7 @@ import { Output } from "@/lib/output";
 import { getTeamAccess, hasLeadActivityAccess } from "@/app/api/v1/utils/teamAccess";
 import { notificationService } from "@/app/api/services/notifications/NotificationService";
 import { createTaskUseCase } from "@/app/api/useCases/task/CreateTaskUseCase";
+import { invalidateLeadActivitiesCache } from "@/lib/cache/invalidation";
 
 const mentionSchema = z.object({
   profileId: z.string().uuid("profileId deve ser um UUID válido"),
@@ -88,6 +89,7 @@ export async function POST(
         return NextResponse.json(result, { status: statusCode });
       }
 
+      invalidateLeadActivitiesCache({ leadId });
       return NextResponse.json(result, { status: 201 });
     }
 
@@ -186,6 +188,7 @@ export async function POST(
     }
 
     const output = new Output(true, ["Atividade adicionada com sucesso"], [], activity);
+    invalidateLeadActivitiesCache({ leadId });
     return NextResponse.json(output, { status: 201 });
   } catch (error) {
     console.error("[LeadActivitiesRoute][POST] Erro ao adicionar atividade:", error);

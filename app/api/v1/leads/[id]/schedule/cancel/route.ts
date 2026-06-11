@@ -5,6 +5,7 @@ import { prisma } from "@/app/api/infra/data/prisma";
 import { cancelCalendarEvent } from "@/app/api/services/googleCalendar/GoogleCalendarService";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
 
 export async function POST(
   request: NextRequest,
@@ -103,6 +104,7 @@ export async function POST(
       successMessages.push("Aviso: evento no Google Calendar não foi removido.");
     }
     const output = new Output(true, successMessages, [], null);
+    invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
     console.error("Erro ao cancelar agendamento:", error);

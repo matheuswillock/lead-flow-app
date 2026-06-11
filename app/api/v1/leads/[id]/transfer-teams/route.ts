@@ -6,6 +6,7 @@ import { RegisterNewUserProfile } from "../../../../useCases/profiles/ProfileUse
 import { TransferLeadBetweenTeamsRequestSchema } from "../../DTO/requestToTransferLeadBetweenTeams";
 import { Output } from "@/lib/output";
 import { getTeamAccess, isManagerOrMaster } from "@/app/api/v1/utils/teamAccess";
+import { invalidateLeadCache, invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -42,6 +43,12 @@ export async function POST(
     const { id } = await params;
     const output = await leadUseCase.transferLeadBetweenTeams(access.supabaseId, access.teamId, id, validation.data);
 
+    if (output.isValid) {
+      const targetTeamId = validation.data.targetTeamId;
+      invalidateLeadCache({ leadId: id, teamId: targetTeamId, previousTeamId: access.teamId });
+      invalidateTeamCalendarCache({ teamId: access.teamId, leadId: id });
+      invalidateTeamCalendarCache({ teamId: targetTeamId, leadId: id });
+    }
     return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
   } catch (error) {
     console.error("[TransferLeadBetweenTeamsRoute][POST] Erro interno:", error);

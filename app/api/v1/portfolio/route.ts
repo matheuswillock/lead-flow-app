@@ -4,6 +4,7 @@ import { Output } from '@/lib/output';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
 import { isManagerLikeRole } from '@/lib/roles';
 import { portfolioUseCase } from '@/app/api/useCases/portfolio/PortfolioUseCase';
+import { invalidatePortfolioCache } from '@/lib/cache/invalidation';
 import type { PortfolioFilters } from '@/app/api/services/Portfolio/IPortfolioService';
 
 const dependentSchema = z.object({
@@ -184,5 +185,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result, { status });
   }
 
+  invalidatePortfolioCache({ teamId });
   return NextResponse.json(result, { status: 201 });
 }

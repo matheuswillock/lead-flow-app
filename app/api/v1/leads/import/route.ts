@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { LeadStatus } from "@prisma/client";
 import { Output } from "@/lib/output";
+import { invalidateTeamLeadsCache } from "@/lib/cache/invalidation";
 import { readXlsxRowsFromBuffer } from "@/lib/spreadsheet/readXlsxRows";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { LeadRepository } from "@/app/api/infra/data/repositories/lead/LeadRepository";
@@ -327,6 +328,9 @@ export async function POST(request: NextRequest) {
       errors: errors.slice(0, 10),
     };
 
+    if (created > 0) {
+      invalidateTeamLeadsCache({ teamId });
+    }
     const output = new Output(true, ["Importacao concluida"], [], result);
     return NextResponse.json(output);
   } catch (error) {

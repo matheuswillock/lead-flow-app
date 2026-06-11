@@ -6,6 +6,7 @@ import { Output } from "@/lib/output";
 import { LeadStatus } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
+import { invalidateLeadCache, invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
 import type {
   LeadStatusTransitionMode,
   UpdateLeadStatusTriggerInput,
@@ -61,7 +62,7 @@ export async function handleLeadStatusTransition(
 
     const lead = await prisma.lead.findUnique({
       where: { id },
-      select: { id: true, teamId: true, closerId: true },
+      select: { id: true, teamId: true, closerId: true, status: true },
     });
 
     if (!lead || lead.teamId !== teamAccess.access.teamId) {
@@ -93,6 +94,13 @@ export async function handleLeadStatusTransition(
       trigger,
       mode
     );
+    if (output.isValid && mode !== "validate") {
+      const teamId = teamAccess.access.teamId;
+      invalidateLeadCache({ leadId: id, teamId });
+      if (status === "scheduled" || lead.status === "scheduled") {
+        invalidateTeamCalendarCache({ teamId, leadId: id });
+      }
+    }
     const responseStatus = output.isValid ? 200 : isTransitionConflict(output) ? 409 : 400;
     return NextResponse.json(output, { status: responseStatus });
 
