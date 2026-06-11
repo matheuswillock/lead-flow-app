@@ -51,4 +51,34 @@ export interface IBackofficePlatformUsersUseCase {
   ): Promise<Output>
 
   deleteMasterUser(masterProfileId: string): Promise<Output>
+
+  addMemberToMasterUser(
+    masterProfileId: string,
+    data: {
+      fullName: string
+      email: string
+      phone?: string | null
+      role: "manager" | "backoffice" | "operator"
+      functions: ("SDR" | "CLOSER")[]
+      teamId: string
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+    }
+  ): Promise<Output>
+
+  addTeamToMasterUser(
+    masterProfileId: string,
+    data: { name: string }
+  ): Promise<Output>
+
+  updateTeamForMasterUser(
+    masterProfileId: string,
+    teamId: string,
+    data: { name: string }
+  ): Promise<Output>
+
+  deleteTeamFromMasterUser(
+    masterProfileId: string,
+    teamId: string
+  ): Promise<Output>
 }

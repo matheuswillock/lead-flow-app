@@ -5,10 +5,16 @@ import { createEmailService } from "@/lib/services/EmailService"
 import { BackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/BackofficeMemberRepository"
 import type { IBackofficeMemberRepository } from "@/app/api/infra/data/repositories/backoffice/MemberRepository/IBackofficeMemberRepository"
 
+type MemberRole = "manager" | "backoffice" | "operator"
+
 interface UpdateMemberInput {
   fullName?: string | null
   phone?: string | null
   email?: string
+  role?: MemberRole
+  functions?: string[]
+  canCreateAccountUsers?: boolean
+  canManageAccountTeams?: boolean
 }
 
 function createSupabaseAdmin() {
@@ -87,6 +93,11 @@ export class BackofficeMemberUseCase {
         }
       }
 
+      if (data.role !== undefined) payload.role = data.role
+      if (data.functions !== undefined) payload.functions = data.functions
+      if (data.canCreateAccountUsers !== undefined) payload.canCreateAccountUsers = data.canCreateAccountUsers
+      if (data.canManageAccountTeams !== undefined) payload.canManageAccountTeams = data.canManageAccountTeams
+
       if (Object.keys(payload).length === 0) {
         return new Output(true, ["Nenhuma alteração necessária"], [], { id: memberId })
       }
@@ -94,6 +105,10 @@ export class BackofficeMemberUseCase {
       const updated = await this.repository.updateMemberProfile(memberId, payload)
       if (!updated) {
         return new Output(false, [], ["Não foi possível atualizar o membro"], null)
+      }
+
+      if (data.role !== undefined && data.functions !== undefined) {
+        await this.repository.updateAllTeamMembershipsRoleAndFunctions(memberId, data.role, data.functions)
       }
 
       if (emailChanged && member.supabaseId) {

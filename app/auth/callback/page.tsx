@@ -80,7 +80,7 @@ function AuthCallbackContent() {
           description.toLowerCase().includes("already linked")
         ) {
           setError("Esta conta Google já está vinculada. Tente reconectar novamente.");
-        } else if (description.toLowerCase().includes("conta nao encontrada")) {
+        } else if (description.toLowerCase().includes("conta não encontrada")) {
           setError(
             "Conta não encontrada. Crie sua conta com e-mail e senha ou fale com o suporte."
           );
@@ -130,7 +130,7 @@ function AuthCallbackContent() {
       ) {
         sessionStorage.removeItem("googleConnectContext");
         setError(
-          "A autenticacao retornou para um usuario diferente do esperado. Tente reconectar novamente."
+          "A autenticação retornou para um usuário diferente do esperado. Tente reconectar novamente."
         );
         return;
       }
@@ -151,7 +151,7 @@ function AuthCallbackContent() {
         if (isAccountReconnectFlow || isBackofficeAccountConnectFlow) {
           sessionStorage.removeItem("googleConnectContext");
           setError(
-            "Nao foi possivel vincular a conta Google ao usuario atual. Tente novamente na tela de conta."
+            "Não foi possível vincular a conta Google ao usuário atual. Tente novamente na tela de conta."
           );
           return;
         }

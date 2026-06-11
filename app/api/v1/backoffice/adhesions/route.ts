@@ -5,6 +5,16 @@ import {
   backofficeAdhesionUseCase,
   isBackofficeAdhesionStatusValue,
 } from "@/app/api/useCases/backofficeAdhesion/BackofficeAdhesionUseCase"
+type ParsedAdditionalUser = {
+  name: string
+  email: string
+  role: "manager" | "backoffice" | "operator"
+  functions: ("SDR" | "CLOSER")[]
+}
+
+type ParsedAdditionalTeam = {
+  name: string
+}
 
 const ADHESION_CYCLES = ["monthly", "quarterly", "semiannual", "annual"] as const
 const ACTIVATION_MODES = ["checkout", "external_paid"] as const
@@ -13,6 +23,15 @@ type BackofficeAdhesionActivationMode = (typeof ACTIVATION_MODES)[number]
 
 const BILLING_TYPES = ["PIX", "CREDIT_CARD"] as const
 type BackofficeAdhesionBillingTypeValue = (typeof BILLING_TYPES)[number]
+
+const USER_TYPES = ["common", "member_pro"] as const
+type BackofficeAdhesionUserTypeValue = (typeof USER_TYPES)[number]
+
+function parseUserType(value: unknown): BackofficeAdhesionUserTypeValue | undefined {
+  return typeof value === "string" && (USER_TYPES as readonly string[]).includes(value)
+    ? (value as BackofficeAdhesionUserTypeValue)
+    : undefined
+}
 
 function parsePositiveInt(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10)
@@ -50,6 +69,43 @@ function optionalInteger(data: Record<string, unknown>, key: string): number | u
     if (Number.isFinite(parsed)) return parsed
   }
   return undefined
+}
+
+const VALID_ROLES = ["manager", "backoffice", "operator"] as const
+const VALID_FUNCTIONS = ["SDR", "CLOSER"] as const
+
+function parseAdditionalUsers(data: Record<string, unknown>): ParsedAdditionalUser[] {
+  const raw = data.additionalUsers
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((item: unknown) => {
+    if (!item || typeof item !== "object") return []
+    const u = item as Record<string, unknown>
+    const name = typeof u.name === "string" ? u.name.trim() : ""
+    const email = typeof u.email === "string" ? u.email.trim().toLowerCase() : ""
+    const role = typeof u.role === "string" && (VALID_ROLES as readonly string[]).includes(u.role)
+      ? (u.role as ParsedAdditionalUser["role"])
+      : "operator"
+    const functions = Array.isArray(u.functions)
+      ? (u.functions as unknown[]).filter(
+          (f): f is "SDR" | "CLOSER" =>
+            typeof f === "string" && (VALID_FUNCTIONS as readonly string[]).includes(f)
+        )
+      : []
+    if (!name || !email) return []
+    return [{ name, email, role, functions }]
+  })
+}
+
+function parseAdditionalTeams(data: Record<string, unknown>): ParsedAdditionalTeam[] {
+  const raw = data.additionalTeams
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((item: unknown) => {
+    if (!item || typeof item !== "object") return []
+    const t = item as Record<string, unknown>
+    const name = typeof t.name === "string" ? t.name.trim() : ""
+    if (!name) return []
+    return [{ name }]
+  })
 }
 
 export async function GET(request: NextRequest) {
@@ -108,6 +164,10 @@ export async function POST(request: NextRequest) {
         sdrBackofficeUserId: optionalString(data, "sdrBackofficeUserId"),
         closerBackofficeUserId: optionalString(data, "closerBackofficeUserId"),
         activationMode: parseActivationMode(data.activationMode),
+        userType: parseUserType(data.userType),
+        accessExpiresAt: optionalString(data, "accessExpiresAt"),
+        additionalUsers: parseAdditionalUsers(data),
+        additionalTeams: parseAdditionalTeams(data),
       },
       access.access.backofficeUserId
     )

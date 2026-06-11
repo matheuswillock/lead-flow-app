@@ -35,7 +35,7 @@ export class FeatureAccessService implements IFeatureAccessService {
   async resolveAllowedSlugs(data: ResolveFeatureAccessInput): Promise<FeatureAccessResult> {
     const ownerProfileId = data.managerId || data.profileId
 
-    const [features, ownerProfile, ownerProfileSubscription, userSubscriptions, ownerSubscriptions, betaGrants, currentUserRole] =
+    const [features, ownerProfile, ownerProfileSubscription, userSubscriptions, ownerSubscriptions, betaGrants, currentUserRole, ownerUserType] =
       await Promise.all([
         this.repository.listActiveFeatures(),
         this.repository.findOwnerProfile(ownerProfileId),
@@ -44,7 +44,14 @@ export class FeatureAccessService implements IFeatureAccessService {
         this.repository.listActiveUserSubscriptions(ownerProfileId),
         this.repository.listActiveBetaGrantsForProfile(data.profileId),
         this.repository.findCurrentUserRoleInfo(data.profileId),
+        this.repository.findUserTypeAssignment(ownerProfileId),
       ])
+
+    const userTypeSlug = ownerUserType?.slug ?? "common"
+    const memberProExpiresAt = ownerUserType?.accessExpiresAt ?? null
+    const memberProActive =
+      userTypeSlug === "member_pro" &&
+      (memberProExpiresAt === null || new Date(memberProExpiresAt).getTime() > Date.now())
 
     const hasPermanentAccess =
       ownerProfile?.hasPermanentSubscription === true ||
@@ -124,12 +131,20 @@ export class FeatureAccessService implements IFeatureAccessService {
       })
       .map((feature) => feature.slug)
 
-    const safeUserRole: UserRoleInfo = currentUserRole ?? {
-      isMaster: false,
-      role: "operator",
-      functions: [],
-      canManageAccountTeams: false,
-      canCreateAccountUsers: false,
+    const safeUserRole: UserRoleInfo = {
+      ...(currentUserRole ?? {
+        isMaster: false,
+        role: "operator",
+        functions: [],
+        canManageAccountTeams: false,
+        canCreateAccountUsers: false,
+        userTypeSlug: "common",
+        memberProActive: false,
+        memberProExpiresAt: null,
+      }),
+      userTypeSlug,
+      memberProActive,
+      memberProExpiresAt,
     }
     const resolvedUserPrincipals = principalsForUser(safeUserRole)
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { AlertCircle, Crown, Eye, MoreHorizontal, Pencil, Trash2, X } from "lucide-react"
+import { AlertCircle, Crown, Eye, MoreHorizontal, Pencil, Sparkles, Trash2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -46,8 +46,10 @@ import type {
   BackofficeAllUsersFilters,
   BackofficeAllUsersPlanFilter,
   BackofficeAllUsersRoleFilter,
+  BackofficeAllUsersUserTypeFilter,
 } from "../context/BackofficeAllUsersTypes"
 import { BackofficeAllUsersDetailSheet } from "../components/BackofficeAllUsersDetailSheet"
+import { BackofficeProfileUserTypeDialog } from "../components/BackofficeProfileUserTypeDialog"
 
 const PAGE_SIZE_OPTIONS = [5, 10, 15, 20, 30, 40, 50]
 
@@ -64,6 +66,12 @@ const PLAN_OPTIONS: { value: BackofficeAllUsersPlanFilter | "all"; label: string
   { value: "monthly", label: "Mensal" },
   { value: "trial", label: "Trial" },
   { value: "none", label: "Sem plano ativo" },
+]
+
+const USER_TYPE_OPTIONS: { value: BackofficeAllUsersUserTypeFilter | "all"; label: string }[] = [
+  { value: "all", label: "Todos os tipos" },
+  { value: "common", label: "Comum" },
+  { value: "member_pro", label: "Member PRO" },
 ]
 
 function formatDate(value: string, tz: string) {
@@ -95,6 +103,16 @@ function getRoleBadge(role: string, isMaster: boolean) {
   return <Badge variant="secondary">Operador</Badge>
 }
 
+function getUserTypeBadge(userType: BackofficeAllUsersItem["userType"]) {
+  if (userType.slug !== "member_pro") return null
+
+  return (
+    <Badge variant={userType.isExpired ? "secondary" : "default"} className="uppercase">
+      {userType.label}
+    </Badge>
+  )
+}
+
 export function BackofficeAllUsersContainer() {
   const { tz } = useTimezone()
   const clientDetailsService = useMemo(() => new BackofficeClientDetailsService(), [])
@@ -117,6 +135,7 @@ export function BackofficeAllUsersContainer() {
   const [selectedDetails, setSelectedDetails] = useState<BackofficeClientDetails | null>(null)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
+  const [userTypeDialogItem, setUserTypeDialogItem] = useState<BackofficeAllUsersItem | null>(null)
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -152,9 +171,10 @@ export function BackofficeAllUsersContainer() {
     return (
       localFilters.query.trim().length > 0 ||
       localFilters.role !== "all" ||
-      localFilters.plan !== "all"
+      localFilters.plan !== "all" ||
+      localFilters.userType !== "all"
     )
-  }, [localFilters.plan, localFilters.query, localFilters.role])
+  }, [localFilters.plan, localFilters.query, localFilters.role, localFilters.userType])
 
   function handleQueryChange(value: string) {
     setLocalFilters((prev) => ({ ...prev, query: value }))
@@ -178,14 +198,33 @@ export function BackofficeAllUsersContainer() {
     void fetchUsers({ filters: updated, page: 1 })
   }
 
+  function handleUserTypeChange(values: string[]) {
+    const selected = values[values.length - 1]
+    const next = (selected ?? "all") as BackofficeAllUsersUserTypeFilter | "all"
+    const updated = { ...localFilters, userType: next }
+    setLocalFilters(updated)
+    setFilters(updated)
+    void fetchUsers({ filters: updated, page: 1 })
+  }
+
   async function handleClear() {
     const cleared: BackofficeAllUsersFilters = {
       query: "",
       role: "all",
       plan: "all",
+      userType: "all",
     }
     setLocalFilters(cleared)
     await clearFilters()
+  }
+
+  async function handleUserTypeDialogSuccess() {
+    setUserTypeDialogItem(null)
+    await fetchUsers({
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      filters,
+    })
   }
 
   function buildFallbackMember(item: BackofficeAllUsersItem): BackofficeClientTeamMember {
@@ -200,6 +239,8 @@ export function BackofficeAllUsersContainer() {
       googleEmail: null,
       functions: [],
       isMaster: item.isMaster,
+      canCreateAccountUsers: false,
+      canManageAccountTeams: false,
     }
   }
 
@@ -310,6 +351,12 @@ export function BackofficeAllUsersContainer() {
           selectedValues={localFilters.plan === "all" ? [] : [localFilters.plan]}
           onChange={handlePlanChange}
         />
+        <LeadsMultiFilter
+          title="Tipo"
+          options={USER_TYPE_OPTIONS.filter((option) => option.value !== "all")}
+          selectedValues={localFilters.userType === "all" ? [] : [localFilters.userType]}
+          onChange={handleUserTypeChange}
+        />
         {isFiltered ? (
           <Button
             size="sm"
@@ -348,6 +395,7 @@ export function BackofficeAllUsersContainer() {
               <TableHead>E-mail</TableHead>
               <TableHead>Telefone</TableHead>
               <TableHead>Papel</TableHead>
+              <TableHead>Tipo</TableHead>
               <TableHead>Funções</TableHead>
               <TableHead>Master vinculado</TableHead>
               <TableHead>Plano do master</TableHead>
@@ -359,7 +407,7 @@ export function BackofficeAllUsersContainer() {
             {isLoading ? (
               Array.from({ length: 6 }).map((_, index) => (
                 <TableRow key={index}>
-                  <TableCell colSpan={8}>
+                  <TableCell colSpan={9}>
                     <Skeleton className="h-6 w-full" />
                   </TableCell>
                 </TableRow>
@@ -377,6 +425,7 @@ export function BackofficeAllUsersContainer() {
                   <TableCell>{item.email}</TableCell>
                   <TableCell>{maskPhone(item.phone ?? "") || "—"}</TableCell>
                   <TableCell>{getRoleBadge(item.role, item.isMaster)}</TableCell>
+                  <TableCell>{getUserTypeBadge(item.userType)}</TableCell>
                   <TableCell>
                     {item.functions && item.functions.length > 0
                       ? item.functions.map((func) => func.label || func.name).join(", ")
@@ -403,6 +452,12 @@ export function BackofficeAllUsersContainer() {
                           <Pencil />
                           Editar
                         </DropdownMenuItem>
+                        {item.isMaster ? (
+                          <DropdownMenuItem onClick={() => setUserTypeDialogItem(item)}>
+                            <Sparkles />
+                            Gerenciar tipo de usuário
+                          </DropdownMenuItem>
+                        ) : null}
                         {!item.isMaster ? (
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive focus:bg-destructive/10"
@@ -492,6 +547,14 @@ export function BackofficeAllUsersContainer() {
         member={selectedMember}
         service={clientDetailsService}
         onSuccess={() => void handleActionSuccess()}
+      />
+      <BackofficeProfileUserTypeDialog
+        open={userTypeDialogItem !== null}
+        onOpenChange={(open) => {
+          if (!open) setUserTypeDialogItem(null)
+        }}
+        item={userTypeDialogItem}
+        onSuccess={() => void handleUserTypeDialogSuccess()}
       />
     </div>
   )

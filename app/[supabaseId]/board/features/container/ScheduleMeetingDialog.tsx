@@ -372,7 +372,7 @@ export function ScheduleMeetingDialog({
       return;
     }
     if (isOnlineMeeting && !isValidEmail(leadEmailDraft)) {
-      toast.error("Informe um email válido para agendamento online.");
+      toast.error("Informe um e-mail válido para agendamento online.");
       return;
     }
     if (isOnlineMeeting && requiresManualMeetingLink && !meetingLink.trim()) {
@@ -595,7 +595,7 @@ export function ScheduleMeetingDialog({
                         ? "Carregando closers..."
                         : availableClosers.length
                           ? "Selecione um closer"
-                          : "Sem closers disponiveis"
+                          : "Sem closers disponíveis"
                     }
                   />
                 </SelectTrigger>
@@ -644,7 +644,7 @@ export function ScheduleMeetingDialog({
 
             {isOnlineMeeting && (
               <div className="grid gap-2">
-                <Label htmlFor="lead-email">Email do lead</Label>
+                <Label htmlFor="lead-email">E-mail do lead</Label>
                 <Input
                   id="lead-email"
                   type="email"
@@ -655,7 +655,7 @@ export function ScheduleMeetingDialog({
                 />
                 {!isValidEmail(leadEmailDraft) && (
                   <p className="text-xs text-muted-foreground">
-                    Informe um email válido para concluir o agendamento online.
+                    Informe um e-mail válido para concluir o agendamento online.
                   </p>
                 )}
               </div>

@@ -4,6 +4,7 @@ import { Output } from '@/lib/output';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
 import { isManagerLikeRole } from '@/lib/roles';
 import { portfolioUseCase } from '@/app/api/useCases/portfolio/PortfolioUseCase';
+import { invalidatePortfolioCache } from '@/lib/cache/invalidation';
 
 const dependentSchema = z.object({
   id: z.string().uuid().optional(),
@@ -126,5 +127,6 @@ export async function PATCH(
     return NextResponse.json(result, { status });
   }
 
+  invalidatePortfolioCache({ teamId, leadId });
   return NextResponse.json(result, { status: 200 });
 }

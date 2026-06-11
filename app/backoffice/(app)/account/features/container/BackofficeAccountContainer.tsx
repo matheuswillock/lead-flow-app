@@ -327,7 +327,7 @@ export function BackofficeAccountContainer() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="backoffice-account-email">Email</Label>
+                  <Label htmlFor="backoffice-account-email">E-mail</Label>
                   <Input
                     id="backoffice-account-email"
                     value={form.email}

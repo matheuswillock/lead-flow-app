@@ -102,7 +102,7 @@ export class BackofficeProductRepository implements IBackofficeProductRepository
   }
 
   async upsertPaymentRules(productId: string, rules: UpsertPaymentRuleInput[]): Promise<void> {
-    await Promise.all(
+    await prisma.$transaction(
       rules.map((rule) =>
         prisma.backofficeProductPaymentRule.upsert({
           where: {

@@ -47,7 +47,11 @@ import { BackofficeClientDeleteDialog } from "../components/BackofficeClientDele
 import { BackofficeMemberProfileSheet } from "../components/BackofficeMemberProfileSheet"
 import { BackofficeMemberEditDialog } from "../components/BackofficeMemberEditDialog"
 import { BackofficeMemberDeleteDialog } from "../components/BackofficeMemberDeleteDialog"
-import type { BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
+import { BackofficeAddMemberDialog } from "../components/BackofficeAddMemberDialog"
+import { BackofficeAddTeamDialog } from "../components/BackofficeAddTeamDialog"
+import { BackofficeTeamEditDialog } from "../components/BackofficeTeamEditDialog"
+import { BackofficeTeamDeleteDialog } from "../components/BackofficeTeamDeleteDialog"
+import type { BackofficeClientTeam, BackofficeClientTeamMember } from "../context/BackofficeClientDetailsTypes"
 import { useTimezone } from "@/app/context/TimezoneContext"
 import { formatIntimezone, parseDateKeyToUtc } from "@/lib/dates"
 import { maskPhone } from "@/lib/masks"
@@ -161,6 +165,10 @@ export function BackofficeClientDetailsContainer() {
   const [memberSheetOpen, setMemberSheetOpen] = useState(false)
   const [memberEditOpen, setMemberEditOpen] = useState(false)
   const [memberDeleteOpen, setMemberDeleteOpen] = useState(false)
+  const [addMemberOpen, setAddMemberOpen] = useState(false)
+  const [addTeamOpen, setAddTeamOpen] = useState(false)
+  const [editingTeam, setEditingTeam] = useState<BackofficeClientTeam | null>(null)
+  const [deletingTeam, setDeletingTeam] = useState<BackofficeClientTeam | null>(null)
 
   useEffect(() => {
     setLocalFilters(filters)
@@ -314,7 +322,7 @@ export function BackofficeClientDetailsContainer() {
               placeholder="Buscar por time, nome ou e-mail de membro"
               value={localFilters.query}
               onChange={(e) => updateFilter(e.target.value)}
-              className="h-8 w-[250px] lg:w-[420px]"
+              className="h-8 w-62.5 lg:w-105"
             />
             <Button size="sm" onClick={handleSearch} disabled={isTeamsLoading}>
               <Search className="mr-1 h-4 w-4" />
@@ -340,6 +348,15 @@ export function BackofficeClientDetailsContainer() {
             </TabsList>
 
             <TabsContent value="teams" className="mt-4">
+              <div className="mb-3 flex justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => setAddTeamOpen(true)}>
+                  Adicionar time
+                </Button>
+                <Button size="sm" onClick={() => setAddMemberOpen(true)}>
+                  Adicionar usuário
+                </Button>
+              </div>
+
               <div className="rounded-md border overflow-hidden">
                 <div className="grid grid-cols-[2fr_1fr_1fr] gap-3 border-b bg-muted/30 px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <span className="text-center">Time</span>
@@ -368,10 +385,33 @@ export function BackofficeClientDetailsContainer() {
                     {teams.map((team) => (
                       <AccordionItem key={team.id} value={team.id}>
                         <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                          <div className="grid w-full grid-cols-[2fr_1fr_1fr] gap-3 text-sm pr-4 items-center">
+                          <div className="grid w-full grid-cols-[2fr_1fr_1fr_auto] gap-3 text-sm pr-4 items-center">
                             <span className="font-medium text-center">{team.name}</span>
                             <span className="text-center">{team.membersCount}</span>
                             <span className="text-center">{formatDate(team.createdAt, tz)}</span>
+                            <div
+                              className="flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-7"
+                                title="Editar time"
+                                onClick={() => setEditingTeam(team)}
+                              >
+                                <Pencil className="size-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-7 text-destructive hover:text-destructive"
+                                title="Excluir time"
+                                onClick={() => setDeletingTeam(team)}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </div>
                           </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-4 pb-4">
@@ -474,7 +514,7 @@ export function BackofficeClientDetailsContainer() {
                       }}
                       disabled={isTeamsLoading}
                     >
-                      <SelectTrigger className="w-[92px]">
+                      <SelectTrigger className="w-23">
                         <SelectValue placeholder="10" />
                       </SelectTrigger>
                       <SelectContent>
@@ -554,7 +594,7 @@ export function BackofficeClientDetailsContainer() {
                       }}
                       disabled={isInvoicesLoading}
                     >
-                      <SelectTrigger className="w-[210px]">
+                      <SelectTrigger className="w-52.5">
                         <SelectValue placeholder="Status" />
                       </SelectTrigger>
                       <SelectContent>
@@ -575,7 +615,7 @@ export function BackofficeClientDetailsContainer() {
                       }}
                       disabled={isInvoicesLoading}
                     >
-                      <SelectTrigger className="w-[210px]">
+                      <SelectTrigger className="w-52.5">
                         <SelectValue placeholder="Período" />
                       </SelectTrigger>
                       <SelectContent>
@@ -798,6 +838,41 @@ export function BackofficeClientDetailsContainer() {
         member={selectedMember}
         service={service}
         onSuccess={reload}
+      />
+
+      <BackofficeAddMemberDialog
+        open={addMemberOpen}
+        masterId={masterId}
+        teams={(details?.teams ?? []).map((t) => ({ id: t.id, name: t.name }))}
+        service={service}
+        onOpenChange={setAddMemberOpen}
+        onSaved={reload}
+      />
+
+      <BackofficeAddTeamDialog
+        open={addTeamOpen}
+        masterId={masterId}
+        service={service}
+        onOpenChange={setAddTeamOpen}
+        onSaved={reload}
+      />
+
+      <BackofficeTeamEditDialog
+        open={editingTeam !== null}
+        onOpenChange={(open) => { if (!open) setEditingTeam(null) }}
+        team={editingTeam}
+        masterId={masterId}
+        service={service}
+        onSuccess={() => { setEditingTeam(null); void reload() }}
+      />
+
+      <BackofficeTeamDeleteDialog
+        open={deletingTeam !== null}
+        onOpenChange={(open) => { if (!open) setDeletingTeam(null) }}
+        team={deletingTeam}
+        masterId={masterId}
+        service={service}
+        onSuccess={() => { setDeletingTeam(null); void reload() }}
       />
     </div>
   )

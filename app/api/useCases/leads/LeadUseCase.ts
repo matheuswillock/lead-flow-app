@@ -12,6 +12,7 @@ import { LeadStatus, ActivityType, InviteDispatchStatus, Prisma, TeamStatusRuleT
 import { CreateLeadRequest } from "../../v1/leads/DTO/requestToCreateLead";
 import { UpdateLeadRequest } from "../../v1/leads/DTO/requestToUpdateLead";
 import { TransferLeadRequest } from "../../v1/leads/DTO/requestToTransferLead";
+import { TransferLeadBetweenTeamsRequest } from "../../v1/leads/DTO/requestToTransferLeadBetweenTeams";
 import { LeadResponseDTO } from "../../v1/leads/DTO/leadResponseDTO";
 import { leadFinalizedRepository } from "../../infra/data/repositories/leadFinalized/LeadFinalizedRepository";
 import { leadScheduleRepository } from "../../infra/data/repositories/leadSchedule/LeadScheduleRepository";
@@ -1017,7 +1018,8 @@ export class LeadUseCase implements ILeadUseCase {
         isCurrentStatusScheduled &&
         status !== LeadStatus.scheduled &&
         status !== LeadStatus.no_show &&
-        status !== LeadStatus.new_opportunity;
+        status !== LeadStatus.new_opportunity &&
+        status !== LeadStatus.opportunityLost;
 
       if (isLeavingScheduled && existingLead.meetingHeald !== "yes") {
         const team = existingLead.teamId
@@ -1563,6 +1565,133 @@ export class LeadUseCase implements ILeadUseCase {
     } catch (error) {
       console.error("Erro ao transferir lead:", error);
       return new Output(false, [], ["Erro interno do servidor"], null);
+    }
+  }
+
+  async transferLeadBetweenTeams(
+    supabaseId: string,
+    callerTeamId: string,
+    id: string,
+    data: TransferLeadBetweenTeamsRequest
+  ): Promise<Output> {
+    try {
+      const profileInfo = await this.profileUseCase.getProfileInfoBySupabaseId(supabaseId);
+      if (!profileInfo) {
+        return new Output(false, [], ["Perfil do usuário não encontrado"], null);
+      }
+
+      if (!profileInfo.isMaster && !isManagerLikeRole(profileInfo.role)) {
+        return new Output(false, [], ["Apenas managers e masters podem transferir leads entre times"], null);
+      }
+
+      const lead = await this.leadRepository.findById(id);
+      if (!lead) {
+        return new Output(false, [], ["Lead não encontrado"], null);
+      }
+
+      if (lead.status !== "new_opportunity") {
+        return new Output(false, [], ["O lead só pode ser transferido quando estiver com o status Nova Oportunidade"], null);
+      }
+
+      // P1: non-master managers can only transfer leads from their own team
+      if (!profileInfo.isMaster && lead.teamId !== callerTeamId) {
+        return new Output(false, [], ["Acesso negado: o lead não pertence ao seu time"], null);
+      }
+
+      const sourceTeam = lead.teamId
+        ? await prisma.team.findUnique({ where: { id: lead.teamId }, select: { masterId: true } })
+        : null;
+      const masterProfileId = profileInfo.isMaster
+        ? profileInfo.id
+        : (sourceTeam?.masterId ?? null);
+
+      if (!masterProfileId) {
+        return new Output(false, [], ["Não foi possível identificar o master do time de origem"], null);
+      }
+
+      const targetTeam = await prisma.team.findUnique({
+        where: { id: data.targetTeamId },
+        select: { id: true, masterId: true },
+      });
+      if (!targetTeam || targetTeam.masterId !== masterProfileId) {
+        return new Output(false, [], ["Time destino não encontrado ou não pertence ao mesmo master"], null);
+      }
+
+      if (data.targetTeamId === lead.teamId) {
+        return new Output(false, [], ["O lead já pertence a este time"], null);
+      }
+
+      const closerMember = await prisma.teamMember.findUnique({
+        where: { teamId_profileId: { teamId: data.targetTeamId, profileId: data.closerId } },
+        select: { functions: true },
+      });
+      if (!closerMember || !closerMember.functions.includes("CLOSER")) {
+        return new Output(false, [], ["O closer selecionado não pertence ao time destino ou não possui função CLOSER"], null);
+      }
+
+      if (data.sdrId) {
+        const sdrMember = await prisma.teamMember.findUnique({
+          where: { teamId_profileId: { teamId: data.targetTeamId, profileId: data.sdrId } },
+          select: { functions: true },
+        });
+        if (!sdrMember || !sdrMember.functions.includes("SDR")) {
+          return new Output(false, [], ["O SDR selecionado não pertence ao time destino ou não possui função SDR"], null);
+        }
+      }
+
+      let assigneeEmail: string | null = null;
+      if (data.sdrId) {
+        const sdrProfile = await prisma.profile.findUnique({
+          where: { id: data.sdrId },
+          select: { email: true },
+        });
+        assigneeEmail = sdrProfile?.email ?? null;
+      }
+
+      const transferredLead = await this.leadRepository.transferToTeam(
+        id,
+        data.targetTeamId,
+        data.closerId,
+        data.sdrId ?? null
+      );
+
+      if (data.schedule) {
+        const scheduleOutput = await leadScheduleService.createSchedule({
+          leadId: transferredLead.id,
+          leadName: transferredLead.name,
+          leadEmail: transferredLead.email ?? null,
+          leadStatus: transferredLead.status,
+          leadManagerId: transferredLead.managerId,
+          leadAssignedTo: transferredLead.assignedTo ?? null,
+          leadAssigneeEmail: assigneeEmail,
+          leadCurrentCloserId: data.closerId,
+          leadCode: transferredLead.leadCode ?? null,
+          closerId: data.closerId,
+          teamId: data.targetTeamId,
+          meetingDate: data.schedule.date,
+          meetingTitle: data.schedule.meetingTitle ?? "",
+          meetingNotes: data.schedule.meetingNotes,
+          meetingLink: data.schedule.meetingLink,
+          meetingType: data.schedule.meetingType ?? null,
+          extraGuests: data.schedule.extraGuests,
+          createdByProfileId: profileInfo.id,
+          transitionStatusToScheduled: data.schedule.transitionStatusToScheduled,
+        });
+
+        if (!scheduleOutput.isValid) {
+          return new Output(
+            true,
+            [],
+            ["Lead transferido, mas o agendamento falhou: " + (scheduleOutput.errorMessages?.[0] ?? "erro desconhecido")],
+            this.transformToDTO(transferredLead)
+          );
+        }
+      }
+
+      return new Output(true, [], ["Lead transferido entre times com sucesso"], this.transformToDTO(transferredLead));
+    } catch (error) {
+      console.error("[transferLeadBetweenTeams] Erro ao transferir lead entre times:", error);
+      return new Output(false, [], ["Erro interno do servidor ao transferir lead entre times"], null);
     }
   }
 

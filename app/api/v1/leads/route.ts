@@ -5,6 +5,7 @@ import { RegisterNewUserProfile } from "../../useCases/profiles/ProfileUseCase";
 import { CreateLeadRequestSchema } from "./DTO/requestToCreateLead";
 import { Output } from "@/lib/output";
 import { LeadStatus } from "@prisma/client";
+import { invalidateLeadCache } from "@/lib/cache/invalidation";
 
 const leadRepository = new LeadRepository();
 const profileUseCase = new RegisterNewUserProfile();
@@ -35,6 +36,9 @@ export async function POST(request: NextRequest) {
     }
 
     const output = await leadUseCase.createLead(supabaseId, validatedData, teamId);
+    if (output.isValid && output.result && typeof output.result === "object" && "id" in output.result) {
+      invalidateLeadCache({ leadId: (output.result as { id: string }).id, teamId });
+    }
     const status = output.isValid ? 201 : 400;
     return NextResponse.json(output, { status });
 

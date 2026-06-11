@@ -1,0 +1,171 @@
+---
+mode: 'agent'
+description: 'Skill de implementação frontend em produção para o Corretor Studio. Usar quando o usuário pede para criar um componente, tela, página, formulário, card, dialog, tabela ou qualquer elemento visual em código de produção (TSX/JSX). Cobre o fluxo completo: shadcn MCP → tokens → implementação → validação.'
+---
+
+<!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
+<!-- Source: .claude/skills/corretor-studio-ui.md -->
+<!-- Regenerate with: bun run skills:sync -->
+
+
+Implemente componentes e telas de produção para o Corretor Studio seguindo o design system canônico e a arquitetura frontend do projeto.
+
+## Referências obrigatórias
+
+Ler antes de implementar qualquer UI:
+
+1. **`CorretorStudioDesignSystem/README.md`** — fundações visuais completas: cores, tipografia, cards, botões, borders, shadows, motion, iconografia, copy. É a fonte de verdade para decisões estéticas.
+2. **`DESIGN.md`** (raiz do projeto) — contrato de tokens normativo para `bun run design:sync`. Prevalece em caso de conflito.
+3. **`CLAUDE.md`** — regras de composição shadcn e governança de código.
+
+## Fluxo de implementação (MUST seguir esta ordem)
+
+### 1. Gerar o design brief
+Invocar a skill `corretor-studio-design` para obter o brief JSON antes de escrever JSX. Não pular esta etapa para novas telas ou componentes com superfície própria.
+
+### 2. Workflow shadcn MCP (MUST para todo componente visual)
+
+```
+mcp__shadcn__search_items_in_registries   ← buscar o componente
+mcp__shadcn__view_items_in_registries     ← inspecionar API e variantes
+mcp__shadcn__get_add_command_for_items    ← obter o comando de instalação
+bunx --bun shadcn@latest add <component>  ← instalar com Bun (nunca npm/yarn)
+```
+
+Só criar markup customizado se o componente **não existir** no registry.
+
+### 3. Superfície: app vs. marketing
+
+| Regra | App / CRM | Marketing / Landing |
+|---|---|---|
+| Blur (`backdrop-filter`) | ❌ nunca | ✅ `blur(8–12px)` em cards e header |
+| Orbs / dot grid | ❌ nunca | ✅ apenas no hero |
+| Tipografia | Poppins para tudo | Poppins headings + Inter body (`.landing-page`) |
+| Cards | `bg-card border rounded-xl shadow-sm` | `border bg-card/85 backdrop-blur-[8px] rounded-2xl shadow-primary/22` |
+| Framer Motion | Não usar | `whileInView opacity 0→1 y 20→0` com `once: true` |
+
+### 4. Regras de composição shadcn
+
+- Formulários: `FieldGroup` + `Field`. Nunca `div` com `space-y-*`.
+- Espaçamento: `gap-*`. Nunca `space-y-*` ou `space-x-*`.
+- Tamanho igual: `size-*`. Nunca `w-* h-*` separados.
+- Cores: tokens semânticos (`bg-primary`, `text-muted-foreground`). Nunca `bg-blue-500` ou `text-gray-600`.
+- Dark mode: **nunca** prefixo `dark:` manual. Os tokens OKLch tratam automaticamente.
+- z-index: **nunca** em `Dialog`, `Sheet`, `Drawer`, `Popover`, `Tooltip`.
+- Classes condicionais: `cn()` de `@/lib/utils`. Nunca ternários manuais de string.
+- Ícones dentro de `Button`: `data-icon="inline-start"` ou `data-icon="inline-end"`. Sem `size-4`, `w-4`, `h-4`.
+- `Avatar`: sempre com `AvatarFallback`.
+- `Dialog` / `Sheet` / `Drawer`: sempre com `Title` (pode ser `sr-only`).
+- Loading states: `Skeleton`. Nunca `animate-pulse` customizado.
+- Status indicators: `Badge`. Nunca `span` estilizado.
+- Divisórias: `Separator`. Nunca `<hr>` ou `div className="border-t"`.
+- Toasts: `sonner`. Nunca `alert()` nativo.
+- `DialogContent` com conteúdo não-trivial: `max-h-[90vh] flex flex-col` no `DialogContent`, `div` scrollável com `overflow-y-auto flex-1` em volta dos campos, `DialogFooter` fixo fora da área scrollável.
+
+### 5. Tokens: o que usar onde
+
+| Elemento | Token / Classe |
+|---|---|
+| Cor de ênfase / CTA | `var(--primary)` → `bg-primary`, `text-primary` |
+| Botão primário shadow | `shadow-[0_12px_28px_-8px_color-mix(in_srgb,var(--primary)_60%,transparent)]` |
+| Hover card | `hover:shadow-xl hover:-translate-y-0.5 hover:border-primary/30` |
+| Superfície de profundidade | `var(--surface-0)` … `var(--surface-4)` |
+| Status success/warning/danger/info | `var(--semantic-success)` etc. |
+| Gradiente de marca | Só no logo e em **uma** palavra por headline — nunca em botões/backgrounds |
+| Frosted-glass | `color-mix(in srgb, var(--card) 85%, transparent)` — nunca `rgba()` |
+
+### 6. Tipografia e iconografia
+
+**Pesos usados em produção:** 400, 500, 600, 700, 800. Nunca 100/200/300, nunca itálico.
+
+**Tracking de display:** `tracking-tight` (`-0.024em`) em headlines. Normal no body.
+
+**Ícones:** Lucide React exclusivamente. Tamanhos:
+- `size-4` (16px) — inline com texto, em botões, sidebar
+- `size-5` (20px) — cabeçalhos de card compactos
+- `size-7` (28px) — feature icon tiles grandes
+
+Container de ícone feature: `inline-flex size-10 items-center justify-center rounded-xl bg-primary/15 text-primary`
+
+### 7. Copy e microcopy
+
+- Idioma: **pt-BR** exclusivamente.
+- Sentence case. CAPS só na palavra de destaque no gradiente.
+- `você` como pronome padrão.
+- Separadores inline: `·` (U+00B7). Nunca pipes ou traços.
+- Sem emoji na produção.
+- `ArrowRight` do Lucide para setas — nunca `→` raw.
+
+### 8. Bordas e raios
+
+| Elemento | Classe |
+|---|---|
+| Inputs, badges, chips | `rounded-md` |
+| Cards e containers app | `rounded-xl` |
+| Botões CTA e cards landing | `rounded-2xl` |
+| Hero product frame | `rounded-3xl` |
+| Avatars, dots | `rounded-full` |
+
+### 9. Motion
+
+- `--motion-duration-fast: 150ms` — hover/active
+- `--motion-duration-base: 220ms` — mudanças de estado
+- `--motion-duration-slow: 320ms` — reveal/entrada
+- `--motion-ease-standard: cubic-bezier(0.2,0,0,1)` — state changes
+- `--motion-ease-entrance: cubic-bezier(0.16,1,0.3,1)` — deceleração de reveal
+
+Sempre respeitar `prefers-reduced-motion`: desabilitar transforms, preservar opacity.
+
+### 10. Estrutura de página (feature folder)
+
+```
+app/[route]/
+  page.tsx          ← thin: só monta provider + container
+  loading.tsx       ← usa <Skeleton>
+  features/
+    context/        ← *Types.ts, *Hook.ts, *Context.tsx
+    services/       ← I*Service.ts + *Service.ts
+    container/      ← *Container.tsx (composição visual)
+    components/     ← subcomponentes apresentacionais (opcional)
+```
+
+`container/` não chama APIs diretamente — usa o context.
+
+## Sequência de validação (MUST rodar após cada mudança de UI)
+
+```bash
+bun run typecheck 2>&1 | head -20
+bun run lint
+bun run governance:check
+bun run design:check
+```
+
+Se `design:check` falhar: `bun run design:sync` e commitar o resultado.
+
+## Checklist de entrega
+
+- [ ] shadcn MCP workflow executado antes de criar markup customizado
+- [ ] Brief de design gerado (skill `corretor-studio-design`)
+- [ ] Tokens semânticos usados (zero hex hardcoded em UI temável)
+- [ ] Superfície correta aplicada (blur/orbs só em marketing)
+- [ ] Formulários com `FieldGroup + Field`, espaçamento com `gap-*`
+- [ ] `Avatar` com `AvatarFallback`, `Dialog/Sheet/Drawer` com `Title`
+- [ ] `Skeleton` para loading, `Badge` para status, `Separator` para divisórias
+- [ ] `DialogContent` com suporte a scroll se conteúdo não-trivial
+- [ ] Ícones Lucide com tamanho correto, sem sizing manual dentro de Button
+- [ ] Copy em pt-BR, sentence case, sem emoji, separadores `·`
+- [ ] `cn()` para classes condicionais
+- [ ] `bun run design:check` passou
+
+## Anti-padrões (MUST NOT)
+
+- Hex hardcoded (`#ff6900`) em JSX/TSX para UI temável.
+- `dark:` manual em classes Tailwind.
+- `z-index` em componentes de overlay shadcn.
+- `space-y-*` / `space-x-*` para espaçamento.
+- `w-* h-*` separados quando width == height.
+- `animate-pulse` customizado para loading states.
+- `alert()` / `confirm()` / `prompt()` do browser.
+- `npm install` ou `yarn add` para componentes shadcn.
+- Gradiente brand em botões ou seções de fundo.
+- Blur ou orbs dentro da superfície app/CRM.

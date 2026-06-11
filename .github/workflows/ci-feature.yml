@@ -88,6 +88,11 @@ jobs:
         continue-on-error: true
         run: bun run typecheck
 
+      - name: Spellcheck PT-BR
+        id: spellcheck-pt-br
+        continue-on-error: true
+        run: bun run lint:pt-br
+
       - name: Resolve Quality Result
         id: quality-result
         if: always()
@@ -96,6 +101,7 @@ jobs:
           echo "governance-check=${{ steps['governance-check'].outcome }}" >> "$GITHUB_OUTPUT"
           echo "lint=${{ steps.lint.outcome }}" >> "$GITHUB_OUTPUT"
           echo "typecheck=${{ steps.typecheck.outcome }}" >> "$GITHUB_OUTPUT"
+          echo "spellcheck-pt-br=${{ steps['spellcheck-pt-br'].outcome }}" >> "$GITHUB_OUTPUT"
 
           if [[ "${{ steps['governance-sync'].outcome }}" == "success" && "${{ steps['governance-check'].outcome }}" == "success" && "${{ steps.lint.outcome }}" == "success" && "${{ steps.typecheck.outcome }}" == "success" ]]; then
             echo "passed=true" >> "$GITHUB_OUTPUT"
@@ -162,7 +168,37 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Check Migration Status
-        run: bunx supabase migration list --db-url "$DIRECT_URL"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          migration_list="$(bunx supabase migration list --db-url "$DIRECT_URL")"
+          echo "$migration_list"
+
+          if MIGRATION_LIST="$migration_list" node -e '
+            const input = process.env.MIGRATION_LIST ?? "";
+            let bad = false;
+
+            for (const line of input.split(/\r?\n/)) {
+              if (!/\d{14}/.test(line)) {
+                continue;
+              }
+
+              const [local = "", remote = ""] = line.split(/[│|]/).map((value) => value.trim());
+
+              if (!local || !remote || local !== remote) {
+                bad = true;
+                break;
+              }
+            }
+
+            process.exit(bad ? 1 : 0);
+          '; then
+            exit 0
+          fi
+
+          echo "Migration history is out of sync. Apply the missing migrations or repair the remote history before merging."
+          exit 1
         env:
           DIRECT_URL: ${{ secrets.DIRECT_URL }}
 

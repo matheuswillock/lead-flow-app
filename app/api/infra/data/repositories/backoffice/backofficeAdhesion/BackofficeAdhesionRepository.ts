@@ -52,7 +52,7 @@ const backofficeAdhesionInclude = {
   },
 } satisfies Prisma.BackofficeAdhesionInclude
 
-const eligibleLeadStatuses = ["new_opportunity", "scheduled", "no_show"] as const
+const eligibleLeadStatuses = ["new_opportunity", "scheduled", "no_show", "new_adhesion"] as const
 
 function toDecimal(value: number): Prisma.Decimal {
   return new Prisma.Decimal(value)
@@ -87,6 +87,10 @@ export class BackofficeAdhesionRepository implements IBackofficeAdhesionReposito
           sdrBackofficeUserId: data.sdrBackofficeUserId ?? null,
           closerBackofficeUserId: data.closerBackofficeUserId ?? null,
           createdByBackofficeUserId: data.createdByBackofficeUserId ?? null,
+          requestedUserTypeSlug: data.requestedUserTypeSlug ?? null,
+          requestedMemberProAccessExpiresAt: data.requestedMemberProAccessExpiresAt ?? null,
+          additionalUsersData: (data.additionalUsersData ?? []) as Prisma.InputJsonValue,
+          additionalTeamsData: (data.additionalTeamsData ?? []) as Prisma.InputJsonValue,
         },
         include: backofficeAdhesionInclude,
       })

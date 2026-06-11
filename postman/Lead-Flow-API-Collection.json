@@ -1411,6 +1411,50 @@
                   ]
                 }
               }
+            },
+            {
+              "name": "13. Transferir Lead Entre Times",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{supabaseUserId}}"
+                  },
+                  {
+                    "key": "x-team-id",
+                    "value": "{{teamId}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"targetTeamId\": \"{{targetTeamId}}\",\n  \"closerId\": \"{{closerId}}\",\n  \"sdrId\": null,\n  \"schedule\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/leads/{{leadId}}/transfer-teams",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "leads",
+                    "{{leadId}}",
+                    "transfer-teams"
+                  ]
+                },
+                "description": "Transfere um lead para outro time do mesmo master. O closer é obrigatório; o SDR é opcional. Pode incluir agendamento no ato da transferência."
+              },
+              "response": []
             }
           ]
         }
@@ -6684,8 +6728,8 @@
                   "disabled": true
                 },
                 {
-                  "key": "health-plan",
-                  "value": "Hapvida",
+                  "key": "operadoras",
+                  "value": "Amil,Bradesco",
                   "disabled": true
                 },
                 {
@@ -6703,7 +6747,7 @@
                 }
               ]
             },
-            "description": "Lista carteira paginada. Filtros: portfolioStatus, sdrId, closerId, search (nome), contractDateStart/End (yyyy-MM-dd), dueDateStart/End (yyyy-MM-dd), documentSearch (CPF/CNPJ/RG). Permissão: manager/backoffice (tudo) ou closer (somente próprios clientes)."
+            "description": "Lista carteira paginada. Filtros: portfolioStatuses, sources, sdrIds, closerIds, search (nome), operadoras (CSV, ex: Amil,Bradesco), contractDateStart/End (yyyy-MM-dd), dueDateStart/End (yyyy-MM-dd), documentSearch (CPF/CNPJ/RG). Permissão: manager/backoffice (tudo) ou closer (somente próprios clientes)."
           }
         },
         {
@@ -6756,7 +6800,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"portfolioStatus\": \"active\",\n  \"note\": \"Observação\",\n  \"lastContactAt\": null\n}"
+              "raw": "{\n  \"portfolioStatus\": \"active\",\n  \"renewalStatus\": \"renewed\",\n  \"renewalAmount\": 10540.00,\n  \"note\": \"Observação\",\n  \"lastContactAt\": null\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/portfolio/{{leadId}}",
@@ -6770,7 +6814,7 @@
                 "{{leadId}}"
               ]
             },
-            "description": "Atualiza status, nota e último contato de um lead na carteira."
+            "description": "Atualiza status da carteira (portfolioStatus), status de renovação (renewalStatus), valor renovado (renewalAmount), nota e último contato. Ao definir renewalStatus=renewed, o valor de venda do contrato passa a ser o renewalAmount e o renewalAmount é zerado."
           }
         }
       ]
@@ -7919,7 +7963,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 0,\n  \"extraUsers\": 0,\n  \"activationMode\": \"external_paid\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\"\n}"
+                  "raw": "{\n  \"leadId\": \"{{backofficeLeadId}}\",\n  \"fullName\": \"Cliente Nova Adesão\",\n  \"phone\": \"11999999999\",\n  \"email\": \"cliente.adesao@example.com\",\n  \"cpfCnpj\": \"12345678901\",\n  \"cycle\": \"monthly\",\n  \"extraTeams\": 1,\n  \"extraUsers\": 1,\n  \"activationMode\": \"external_paid\",\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T00:00:00.000Z\",\n  \"sdrBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"closerBackofficeUserId\": \"{{backofficeUserId}}\",\n  \"additionalUsers\": [\n    {\n      \"name\": \"Usuário Adicional\",\n      \"email\": \"usuario.adicional@example.com\",\n      \"role\": \"operator\",\n      \"functions\": [\"SDR\"]\n    }\n  ],\n  \"additionalTeams\": [\n    {\n      \"name\": \"Time Adicional\"\n    }\n  ]\n}"
                 },
                 "url": {
                   "raw": "{{baseUrl}}/api/v1/backoffice/adhesions",
@@ -8236,6 +8280,88 @@
                 },
                 "description": "Exclui permanentemente a conta do usuário master: remove do Supabase Auth, deleta Profile (cascade para times/membros/leads) e envia e-mail de encerramento ao master e managers."
               }
+            },
+            {
+              "name": "POST Add Member to Platform User",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"fullName\": \"Nome do Usuário\",\n  \"email\": \"usuario@example.com\",\n  \"phone\": \"11999990000\",\n  \"role\": \"operator\",\n  \"functions\": [\"SDR\"]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/members",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users",
+                    ":masterId",
+                    "members"
+                  ],
+                  "variable": [
+                    {
+                      "key": "masterId",
+                      "value": "{{masterProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Adiciona um novo membro ao time padrão do usuário master. Cria o Profile, adiciona ao TeamMember e envia e-mail de convite. role: manager | backoffice | operator. functions: SDR | CLOSER."
+              }
+            },
+            {
+              "name": "POST Add Team to Platform User",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Nome do Time\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/platform-users/:masterId/teams",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "platform-users",
+                    ":masterId",
+                    "teams"
+                  ],
+                  "variable": [
+                    {
+                      "key": "masterId",
+                      "value": "{{masterProfileId}}"
+                    }
+                  ]
+                },
+                "description": "Cria um novo time para o usuário master e adiciona o master como membro do time."
+              }
             }
           ]
         },
@@ -8326,6 +8452,48 @@
                   ]
                 },
                 "description": "Detalhes de um profile específico: dados básicos, plano do master vinculado, status do Google Calendar e lista de times em que participa."
+              }
+            },
+            {
+              "name": "PATCH User Type (convert to Member PRO / Comum)",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "x-supabase-user-id",
+                    "value": "{{backofficeSupabaseId}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"userType\": \"member_pro\",\n  \"accessExpiresAt\": \"2026-12-31T23:59:59.000Z\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v1/backoffice/clients/all-users/:profileId/user-type",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "backoffice",
+                    "clients",
+                    "all-users",
+                    ":profileId",
+                    "user-type"
+                  ],
+                  "variable": [
+                    {
+                      "key": "profileId",
+                      "value": "{{profileId}}"
+                    }
+                  ]
+                },
+                "description": "Converte/configura o tipo de usuário do profile (Comum <-> Member PRO). Exige backoffice com fullAccess. Para 'member_pro', accessExpiresAt é obrigatório (entre 1 dia e 1 ano a partir de agora) e os limites de usuários/times devem ser informados quando não ilimitados. Para 'common', os campos Member PRO são zerados."
               }
             }
           ]

@@ -27,10 +27,36 @@ export async function PATCH(
       return undefined
     }
 
+    const VALID_ROLES = ["manager", "backoffice", "operator"] as const
+    const VALID_FUNCTIONS = ["SDR", "CLOSER"] as const
+
+    const rawRole = body.role
+    const role =
+      typeof rawRole === "string" && (VALID_ROLES as readonly string[]).includes(rawRole)
+        ? (rawRole as (typeof VALID_ROLES)[number])
+        : undefined
+
+    const rawFunctions = body.functions
+    const functions =
+      Array.isArray(rawFunctions)
+        ? rawFunctions.filter((f): f is (typeof VALID_FUNCTIONS)[number] =>
+            (VALID_FUNCTIONS as readonly string[]).includes(f as string)
+          )
+        : undefined
+
+    const canCreateAccountUsers =
+      typeof body.canCreateAccountUsers === "boolean" ? body.canCreateAccountUsers : undefined
+    const canManageAccountTeams =
+      typeof body.canManageAccountTeams === "boolean" ? body.canManageAccountTeams : undefined
+
     const data = {
       fullName: optionalString(body.fullName),
       phone: nullableString(body.phone),
       email: optionalString(body.email),
+      role,
+      functions,
+      canCreateAccountUsers,
+      canManageAccountTeams,
     }
 
     const output = await backofficeMemberUseCase.updateMember(memberId, data)

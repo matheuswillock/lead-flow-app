@@ -62,6 +62,7 @@ export interface ILeadRepository {
   updateStatus(id: string, status: LeadStatus, extraData?: Prisma.LeadUpdateInput): Promise<Lead>;
   assignToOperator(id: string, operatorId: string): Promise<Lead>;
   transferToManager(id: string, newManagerId: string, reason?: string): Promise<Lead>;
+  transferToTeam(id: string, targetTeamId: string, closerId: string, sdrId: string | null): Promise<Lead>;
   getLeadsByStatus(managerId: string, status: LeadStatus): Promise<Lead[]>;
   reassignLeadsToMaster(deletedUserId: string, masterId: string): Promise<number>;
   /** Busca apenas os dados do closer com tokens OAuth — usado pelo calendário para RSVP do Google */

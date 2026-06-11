@@ -128,7 +128,7 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
   }, [supabaseId]);
 
   const setActiveTeamId = useCallback(async (teamId: string) => {
-    if (!teamId || teamId === activeTeamId) {
+    if (!teamId || teamId === activeTeamId || teamId.startsWith("pending-")) {
       return;
     }
 
@@ -149,20 +149,20 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
 
     if (typeof window !== "undefined") {
       const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored && teams.some((team) => team.id === stored)) {
+      if (stored && !stored.startsWith("pending-") && teams.some((team) => team.id === stored)) {
         nextTeamId = stored;
       }
     }
 
     if (!nextTeamId && serverActiveTeamIdRef.current) {
       const serverTeamId = serverActiveTeamIdRef.current;
-      if (teams.some((team) => team.id === serverTeamId)) {
+      if (!serverTeamId.startsWith("pending-") && teams.some((team) => team.id === serverTeamId)) {
         nextTeamId = serverTeamId;
       }
     }
 
     if (!nextTeamId) {
-      nextTeamId = teams[0]?.id ?? null;
+      nextTeamId = teams.find((team) => !team.id.startsWith("pending-"))?.id ?? null;
     }
 
     if (nextTeamId) {
@@ -198,7 +198,7 @@ export const TeamProvider = ({ children, supabaseId }: TeamProviderProps) => {
   useEffect(() => {
     if (!activeTeamId || !activeTeam) return;
     if (activeRole === "operator" && activeFunctions.length === 0) {
-      toast.info("Seu time atual nao possui funcoes atribuídas.");
+      toast.info("Seu time atual não possui funções atribuídas.");
     }
   }, [activeTeamId, activeTeam, activeRole, activeFunctions]);
 

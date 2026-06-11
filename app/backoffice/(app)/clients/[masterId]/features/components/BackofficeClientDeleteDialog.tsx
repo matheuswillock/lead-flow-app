@@ -126,7 +126,7 @@ export function BackofficeClientDeleteDialog({
 
   return (
     <Dialog open={open} onOpenChange={isDeleting ? undefined : onOpenChange}>
-      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-[520px]">
+      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-130">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="h-5 w-5" />

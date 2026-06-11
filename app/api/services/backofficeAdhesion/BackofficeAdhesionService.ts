@@ -27,6 +27,8 @@ import type { IBackofficeProductRepository } from "@/app/api/infra/data/reposito
 import { BackofficeProductRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeProduct/BackofficeProductRepository"
 import type { IBackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/IBackofficeUserSubscriptionRepository"
 import { BackofficeUserSubscriptionRepository } from "@/app/api/infra/data/repositories/backoffice/backofficeUserSubscription/BackofficeUserSubscriptionRepository"
+import type { IBackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/IBackofficeAllUsersRepository"
+import { BackofficeAllUsersRepository } from "@/app/api/infra/data/repositories/backoffice/AllUsersRepository/BackofficeAllUsersRepository"
 import type {
   BackofficeAdhesionCheckoutInput,
   BackofficeAdhesionCreateInput,
@@ -259,7 +261,8 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
   constructor(
     private readonly repo: IBackofficeAdhesionRepository = new BackofficeAdhesionRepository(),
     private readonly productRepo: IBackofficeProductRepository = new BackofficeProductRepository(),
-    private readonly userSubscriptionRepo: IBackofficeUserSubscriptionRepository = new BackofficeUserSubscriptionRepository()
+    private readonly userSubscriptionRepo: IBackofficeUserSubscriptionRepository = new BackofficeUserSubscriptionRepository(),
+    private readonly allUsersRepo: IBackofficeAllUsersRepository = new BackofficeAllUsersRepository()
   ) {}
 
   async list(input: {
@@ -361,7 +364,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     const adhesion = await this.repo.createAndMoveLeadToAdhesion({
       leadId: normalized.leadId,
       fullName: normalized.fullName,
-      phone: normalized.phone,
+      phone: normalized.phone ?? "",
       billingType: resolvedBillingType,
       plan: "crm",
       cycle: normalized.cycle,
@@ -379,6 +382,13 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       closerBackofficeUserId:
         normalized.closerBackofficeUserId ?? lead.closerBackofficeUserId,
       createdByBackofficeUserId,
+      requestedUserTypeSlug: normalized.userType === "member_pro" ? "member_pro" : null,
+      requestedMemberProAccessExpiresAt:
+        normalized.userType === "member_pro" && normalized.accessExpiresAt
+          ? new Date(normalized.accessExpiresAt)
+          : null,
+      additionalUsersData: normalized.additionalUsers ?? [],
+      additionalTeamsData: normalized.additionalTeams ?? [],
     })
 
     if (normalized.activationMode === "external_paid") {
@@ -397,11 +407,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
           fullName: normalized.fullName,
           email: externalEmail,
           cpfCnpj: normalizedCpfCnpj,
-          phone: normalized.phone,
+          phone: normalized.phone ?? "",
         })
         const paidAdhesion = await this.repo.markExternalPaid(adhesion.id, {
           fullName: normalized.fullName,
-          phone: normalized.phone,
+          phone: normalized.phone ?? "",
           email: externalEmail,
           cpfCnpj: normalizedCpfCnpj,
           paidAt,
@@ -519,7 +529,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
 
     const updated = await this.repo.update(id, {
       fullName: next.fullName,
-      phone: next.phone,
+      phone: next.phone ?? undefined,
       email: next.email,
       cpfCnpj: next.cpfCnpj,
       cycle: next.cycle,
@@ -568,11 +578,11 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         fullName: next.fullName,
         email: next.email,
         cpfCnpj: normalizedCpfCnpj,
-        phone: next.phone,
+        phone: next.phone ?? "",
       })
       const paidAdhesion = await this.repo.markExternalPaid(persisted.id, {
         fullName: next.fullName,
-        phone: next.phone,
+        phone: next.phone ?? "",
         email: next.email,
         cpfCnpj: normalizedCpfCnpj,
         paidAt,
@@ -907,7 +917,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     }
 
     const phone = normalizeDigits(input.phone, 11)
-    if (!/^\d{10,11}$/.test(phone)) {
+    if (phone && !/^\d{10,11}$/.test(phone)) {
       throw new Error("Celular deve conter 10 ou 11 dígitos")
     }
 
@@ -934,7 +944,7 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
     return {
       leadId: input.leadId,
       fullName,
-      phone,
+      phone: phone || "",
       email,
       cpfCnpj: cpfCnpj || null,
       cycle: input.cycle,
@@ -944,6 +954,10 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
       closerBackofficeUserId: normalizeText(input.closerBackofficeUserId),
       activationMode,
       billingType,
+      userType: input.userType ?? "common",
+      accessExpiresAt: input.accessExpiresAt ?? null,
+      additionalUsers: input.additionalUsers ?? [],
+      additionalTeams: input.additionalTeams ?? [],
     }
   }
 
@@ -1253,6 +1267,14 @@ export class BackofficeAdhesionService implements IBackofficeAdhesionService {
         createdProfileId: createdProfile.profileId,
         createdSupabaseId: createdProfile.supabaseId,
       })
+
+      if (adhesion.requestedUserTypeSlug === "member_pro" && adhesion.requestedMemberProAccessExpiresAt) {
+        await this.allUsersRepo.upsertUserTypeAssignment(createdProfile.profileId, {
+          userType: "member_pro",
+          accessExpiresAt: adhesion.requestedMemberProAccessExpiresAt,
+          assignedByProfileId: null,
+        })
+      }
 
       await this.ensureUserSubscriptionForPaidAdhesion(adhesion, createdProfile.profileId)
 

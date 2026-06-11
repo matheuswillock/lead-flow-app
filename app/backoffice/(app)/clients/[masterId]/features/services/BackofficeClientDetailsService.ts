@@ -141,7 +141,15 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
 
   async updateMember(
     memberId: string,
-    data: { fullName?: string; phone?: string | null; email?: string }
+    data: {
+      fullName?: string
+      phone?: string | null
+      email?: string
+      role?: "manager" | "backoffice" | "operator"
+      functions?: ("SDR" | "CLOSER")[]
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+    }
   ): Promise<void> {
     const res = await fetch(`/api/v1/backoffice/members/${memberId}`, {
       method: "PATCH",
@@ -186,5 +194,67 @@ export class BackofficeClientDetailsService implements IBackofficeClientDetailsS
       throw new Error(json.errorMessages?.[0] ?? "Erro ao buscar escopos Google do membro")
     }
     return json.result as { connected: boolean; scopes: string[] }
+  }
+
+  async addMember(
+    masterId: string,
+    data: {
+      fullName: string
+      email: string
+      phone?: string | null
+      role: "manager" | "backoffice" | "operator"
+      functions: ("SDR" | "CLOSER")[]
+      teamId: string
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+    }
+  ): Promise<void> {
+    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/members`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao adicionar usuário")
+    }
+  }
+
+  async addTeam(masterId: string, data: { name: string }): Promise<void> {
+    const res = await fetch(`/api/v1/backoffice/platform-users/${masterId}/teams`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao criar time")
+    }
+  }
+
+  async updateTeam(masterId: string, teamId: string, data: { name: string }): Promise<void> {
+    const res = await fetch(
+      `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }
+    )
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao atualizar time")
+    }
+  }
+
+  async deleteTeam(masterId: string, teamId: string): Promise<void> {
+    const res = await fetch(
+      `/api/v1/backoffice/platform-users/${masterId}/teams/${teamId}`,
+      { method: "DELETE" }
+    )
+    const json = await res.json()
+    if (!json.isValid) {
+      throw new Error(json.errorMessages?.[0] ?? "Erro ao excluir time")
+    }
   }
 }

@@ -13,7 +13,9 @@ export interface IBackofficeAdhesionsService {
     pageSize?: number
   }): Promise<BackofficeAdhesionListResult>
   getOptions(): Promise<BackofficeAdhesionOptions>
-  create(values: BackofficeAdhesionFormValues): Promise<BackofficeAdhesionCreationResult>
+  create(
+    values: BackofficeAdhesionFormValues & { accessExpiresAt?: string | null }
+  ): Promise<BackofficeAdhesionCreationResult>
   update(id: string, values: Partial<Omit<BackofficeAdhesionFormValues, "leadId">>): Promise<void>
   deletePending(id: string): Promise<void>
   resend(id: string): Promise<BackofficeAdhesionCreationResult>

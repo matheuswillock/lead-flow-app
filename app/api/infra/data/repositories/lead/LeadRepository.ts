@@ -220,28 +220,7 @@ export class LeadRepository implements ILeadRepository {
     const [leads, total] = await Promise.all([
       prisma.lead.findMany({
         where,
-        include: {
-          manager: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-            },
-          },
-          assignee: {
-            select: {
-              id: true,
-              fullName: true,
-              email: true,
-              profileIconUrl: true,
-            },
-          },
-          _count: {
-            select: {
-              attachments: true,
-            },
-          },
-        },
+        select: CRM_LEAD_LIST_SELECT,
         orderBy: {
           createdAt: 'desc',
         },
@@ -468,6 +447,30 @@ export class LeadRepository implements ILeadRepository {
             createdAt: 'desc',
           },
         },
+      },
+    });
+  }
+
+  async transferToTeam(id: string, targetTeamId: string, closerId: string, sdrId: string | null): Promise<Lead> {
+    return await prisma.lead.update({
+      where: { id },
+      data: {
+        teamId: targetTeamId,
+        closerId,
+        assignedTo: sdrId ?? null,
+        updatedAt: new Date(),
+        activities: {
+          create: {
+            type: 'status_change',
+            body: 'Lead transferido para outro time',
+            createdAt: new Date(),
+          },
+        },
+      },
+      include: {
+        manager: { select: { id: true, fullName: true, email: true } },
+        assignee: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
+        closer: { select: { id: true, fullName: true, email: true, profileIconUrl: true } },
       },
     });
   }

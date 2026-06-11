@@ -18,6 +18,8 @@ export interface TeamMemberRecord {
   googleEmail: string | null
   functions: string[]
   isMaster: boolean
+  canCreateAccountUsers: boolean
+  canManageAccountTeams: boolean
 }
 
 export interface MasterPlatformUserRecord {
@@ -142,4 +144,47 @@ export interface IBackofficePlatformUsersRepository {
     masterSupabaseId: string | null
     memberSupabaseIds: string[]
   }>
+
+  findDefaultTeamByMasterId(masterProfileId: string): Promise<{ id: string; name: string } | null>
+
+  findTeamByIdAndMasterId(teamId: string, masterId: string): Promise<{ id: string } | null>
+
+  findProfileByEmail(email: string): Promise<{ id: string; isMaster: boolean; managerId: string | null } | null>
+
+  createMemberForMaster(
+    masterProfileId: string,
+    data: {
+      fullName: string
+      email: string
+      phone?: string | null
+      role: "manager" | "backoffice" | "operator"
+      functions: ("SDR" | "CLOSER")[]
+      canCreateAccountUsers?: boolean
+      canManageAccountTeams?: boolean
+    },
+    teamId: string
+  ): Promise<{ profileId: string; teamMemberId: string }>
+
+  addExistingProfileToTeam(
+    profileId: string,
+    teamId: string,
+    role: "manager" | "backoffice" | "operator",
+    functions: ("SDR" | "CLOSER")[],
+    permissions?: { canCreateAccountUsers: boolean; canManageAccountTeams: boolean }
+  ): Promise<{ teamMemberId: string }>
+
+  createTeamForMaster(
+    masterProfileId: string,
+    name: string
+  ): Promise<{ id: string; name: string }>
+
+  updateTeam(
+    teamId: string,
+    masterId: string,
+    data: { name: string }
+  ): Promise<{ id: string } | null>
+
+  deleteTeam(teamId: string, masterId: string): Promise<void>
+
+  updateSupabaseIdForProfile(profileId: string, supabaseId: string): Promise<void>
 }

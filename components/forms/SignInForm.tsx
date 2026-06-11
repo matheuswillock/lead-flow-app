@@ -76,7 +76,7 @@ export function SignInForm({
               name="email"
               render={({ field }) => (
                 <FormItem className="grid gap-2">
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel>E-mail</FormLabel>
                   <FormControl>
                     <Input placeholder="email@exemplo.com" {...field} className="border-2 border-gray-300 rounded-md p-2"/>
                   </FormControl>

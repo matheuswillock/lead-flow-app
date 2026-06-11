@@ -38,7 +38,7 @@ export function LandingFooter() {
               <span className="text-lg font-bold tracking-tight">Corretor Studio</span>
             </Link>
             <p className="text-sm text-muted-foreground mb-4 max-w-sm leading-relaxed">
-              CRM para corretores de saúde que precisam de mais clareza, mais velocidade e mais conversão. Modulo de campanhas de email em breve.
+              CRM para corretores de saúde que precisam de mais clareza, mais velocidade e mais conversão. Módulo de campanhas de e-mail em breve.
             </p>
             <p className="text-sm text-muted-foreground inline-flex items-baseline gap-2">
               <span>Made with</span>

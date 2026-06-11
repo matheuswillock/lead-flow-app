@@ -87,6 +87,7 @@ After every edit, automatically run in this order:
 bun run typecheck 2>&1 | head -20
 bun run lint
 bun run governance:check
+bun run lint:pt-br
 ```
 
   Rules:
@@ -95,6 +96,7 @@ bun run governance:check
     - Do NOT report the task as done if any command fails.
     - Fix all errors immediately before moving to the next file or task.
     - If `governance:check` fails, fix the violation before continuing — do not add to allowlist unless explicitly instructed.
+    - If `lint:pt-br` fails, fix the accentuation in the flagged UI text — only add the word to `IGNORE_WORDS` in `scripts/lint-pt-br.ts` when it is a proper noun/brand/technical term that is correct as written.
 
 ## Visual Implementation (FOR NEW FEATURES)
 

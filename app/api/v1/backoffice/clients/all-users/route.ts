@@ -5,10 +5,12 @@ import {
   backofficeAllUsersUseCase,
   type BackofficeAllUsersPlanFilter,
   type BackofficeAllUsersRoleFilter,
+  type BackofficeAllUsersUserTypeFilter,
 } from "@/app/api/useCases/backoffice/BackofficeAllUsersUseCase"
 
 const ROLE_VALUES = ["master", "manager", "operator"] as const
 const PLAN_VALUES = ["lifetime", "monthly", "trial", "none"] as const
+const USER_TYPE_VALUES = ["common", "member_pro"] as const
 
 function parsePositiveInt(value: string | null, fallback: number): number {
   const parsed = Number.parseInt(value ?? "", 10)
@@ -29,6 +31,13 @@ function parsePlan(value: string | null): BackofficeAllUsersPlanFilter | undefin
     : undefined
 }
 
+function parseUserType(value: string | null): BackofficeAllUsersUserTypeFilter | undefined {
+  if (!value) return undefined
+  return (USER_TYPE_VALUES as readonly string[]).includes(value)
+    ? (value as BackofficeAllUsersUserTypeFilter)
+    : undefined
+}
+
 export async function GET(request: NextRequest) {
   try {
     const accessResult = await getBackofficeAccess(request)
@@ -40,11 +49,12 @@ export async function GET(request: NextRequest) {
     const query = searchParams.get("q")?.trim() ?? undefined
     const role = parseRole(searchParams.get("role"))
     const plan = parsePlan(searchParams.get("plan"))
+    const userType = parseUserType(searchParams.get("userType"))
     const page = parsePositiveInt(searchParams.get("page"), 1)
     const pageSize = Math.min(Math.max(parsePositiveInt(searchParams.get("pageSize"), 10), 5), 100)
 
     const output = await backofficeAllUsersUseCase.list({
-      filters: { query, role, plan },
+      filters: { query, role, plan, userType },
       page,
       pageSize,
     })

@@ -238,7 +238,7 @@ function SetPasswordContent() {
         'Link inválido ou expirado. Solicite um novo link de redefinição.',
       'Token has expired': 
         'Este link expirou. Por favor, solicite um novo link de redefinição de senha.',
-      'Unable to validate email address: invalid format': 
+      'Unable to validate e-mail address: invalid format': 
         'Formato de e-mail inválido.',
       'User not found': 
         'Usuário não encontrado.',

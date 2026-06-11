@@ -30,8 +30,8 @@ const DOCS_SECTIONS = [
 ] as const
 
 const SIDEBAR_LABELS: Record<string, string> = {
-  inicio: "Indice",
-  "visao-geral": "Visao Geral",
+  inicio: "Índice",
+  "visao-geral": "Visão Geral",
   "criar-conta": "Criar conta",
   login: "Fazer login",
   "alterar-senha": "Alterar senha",
@@ -104,7 +104,7 @@ export function DocsIndex({ chapters, activeChapterId, className, onSelect }: Do
           <span className="text-sm font-semibold tracking-tight text-foreground">Corretor Studio</span>
         </div>
         <p className="mt-3 text-[9px] font-medium uppercase tracking-[0.24em] text-primary/80">
-          Manual de Usuario — v1.0 2026
+          Manual de Usuário — v1.0 2026
         </p>
       </div>
 

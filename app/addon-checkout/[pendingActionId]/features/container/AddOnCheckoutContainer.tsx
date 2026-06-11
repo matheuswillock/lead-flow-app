@@ -52,7 +52,7 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
     const dueDate = addMonths(startDate, Math.max(1, data.pricing.remainingMonths ?? 1))
     const totalCharge = data.pricing.totalCharge ?? 0
 
-    const title = data.addonType === "team" ? "Add-on Time" : "Add-on Usuario"
+    const title = data.addonType === "team" ? "Add-on Time" : "Add-on Usuário"
     const subtitle =
       data.pricing.remainingMonths > 1
         ? `Cobranca proporcional por ${data.pricing.remainingMonths} meses`
@@ -93,12 +93,12 @@ export function AddOnCheckoutContainer({ pendingActionId }: AddOnCheckoutContain
       invoiceSummary: {
         monthlyTotal: data.pricing.monthlyPrice ?? 0,
         totalDueNow: totalCharge,
-        billingHint: preset === "CREDIT_CARD" ? "Cartao de credito" : "PIX",
+        billingHint: preset === "CREDIT_CARD" ? "Cartão de crédito" : "PIX",
       },
       monthlyTotalLabel: "Total Mensal",
       monthlyTotalValue: `${formatCurrency(data.pricing.monthlyPrice)} / mes`,
       totalTitle: "TOTAL",
-      totalSubtitle: "Pagamento unico",
+      totalSubtitle: "Pagamento único",
       totalValue: formatCurrency(totalCharge),
       totalHint: preset === "CREDIT_CARD" ? `em ate ${Math.max(1, data.pricing.maxInstallments)}x no cartao` : "via PIX",
       startLabel: "Inicio",

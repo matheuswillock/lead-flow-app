@@ -1,4 +1,5 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
+import { cache } from "react";
 import { UserFunction, UserRole } from "@prisma/client";
 import { prisma } from "@/app/api/infra/data/prisma";
 import { Output } from "@/lib/output";
@@ -26,16 +27,8 @@ export type TeamAccessResult =
   | { access: TeamAccess; error?: never; status?: never }
   | { access?: never; error: Output; status: number };
 
-export async function getTeamAccess(request: NextRequest): Promise<TeamAccessResult> {
-  const supabaseId = request.headers.get("x-supabase-user-id");
-  if (!supabaseId) {
-    return {
-      error: new Output(false, [], ["ID do usuário é obrigatório"], null),
-      status: 401,
-    };
-  }
-
-  const profile = await prisma.profile.findUnique({
+const resolveProfileForTeamAccess = cache(async (supabaseId: string) => {
+  return prisma.profile.findUnique({
     where: { supabaseId },
     select: {
       id: true,
@@ -49,6 +42,38 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       timezone: true,
     },
   });
+});
+
+const resolveTeamMembershipForAccess = cache(async (teamId: string, profileId: string) => {
+  return prisma.teamMember.findUnique({
+    where: {
+      teamId_profileId: {
+        teamId,
+        profileId,
+      },
+    },
+    select: {
+      role: true,
+      functions: true,
+      team: {
+        select: {
+          masterId: true,
+        },
+      },
+    },
+  });
+});
+
+export async function getTeamAccess(request: NextRequest): Promise<TeamAccessResult> {
+  const supabaseId = request.headers.get("x-supabase-user-id");
+  if (!supabaseId) {
+    return {
+      error: new Output(false, [], ["ID do usuário é obrigatório"], null),
+      status: 401,
+    };
+  }
+
+  const profile = await resolveProfileForTeamAccess(supabaseId);
 
   if (!profile) {
     return {
@@ -70,23 +95,15 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
     };
   }
 
-  const teamMember = await prisma.teamMember.findUnique({
-    where: {
-      teamId_profileId: {
-        teamId,
-        profileId: profile.id,
-      },
-    },
-    select: {
-      role: true,
-      functions: true,
-      team: {
-        select: {
-          masterId: true,
-        },
-      },
-    },
-  });
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(teamId)) {
+    return {
+      error: new Output(false, [], ["teamId inválido"], null),
+      status: 400,
+    };
+  }
+
+  const teamMember = await resolveTeamMembershipForAccess(teamId, profile.id);
 
   if (!teamMember) {
     return {
@@ -112,6 +129,10 @@ export async function getTeamAccess(request: NextRequest): Promise<TeamAccessRes
       teamMember,
     },
   };
+}
+
+export function isManagerOrMaster(access: TeamAccess): boolean {
+  return access.isMaster || isManagerLikeRole(access.teamMember.role);
 }
 
 export function hasLeadAccess(teamMember: { role: UserRole; functions: UserFunction[] }) {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { Output } from "@/lib/output";
+import { cacheLife, cacheTag } from "next/cache";
+import { cacheTags } from "@/lib/cache/cacheTags";
 import { getTeamAccess } from "@/app/api/v1/utils/teamAccess";
 import { isManagerLikeRole } from "@/lib/roles";
 import { pmePlanSimulatorUseCase, PME_SIMULATOR_ERROR_MESSAGES } from "@/app/api/useCases/pmePlanSimulator/PmePlanSimulatorUseCase";
@@ -27,6 +29,18 @@ function hasPmeSimulatorAccess(role: string, functions: string[]) {
   return functions.includes("SDR") || functions.includes("CLOSER");
 }
 
+async function getCachedPmeCatalog() {
+  "use cache";
+  cacheTag(cacheTags.pmeSimulator());
+  cacheLife("max");
+
+  const output = await pmePlanSimulatorUseCase.getCatalog();
+  if (!output.isValid) {
+    throw new Error(output.errorMessages.join("; ") || PME_SIMULATOR_ERROR_MESSAGES.INTERNAL_CATALOG_ERROR);
+  }
+  return output.result;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const teamAccess = await getTeamAccess(request);
@@ -46,8 +60,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const output = await pmePlanSimulatorUseCase.getCatalog();
-    return NextResponse.json(output, { status: output.isValid ? 200 : 400 });
+    const catalog = await getCachedPmeCatalog();
+    return NextResponse.json(new Output(true, [], [], catalog), { status: 200 });
   } catch (error) {
     console.error("[PmePlanSimulatorRoute][GET] Erro:", error);
     return NextResponse.json(

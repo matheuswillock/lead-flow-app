@@ -9,6 +9,7 @@ import { buildUniqueEmails, resolveParticipantDispatchGroups } from "@/app/api/s
 import { emailService } from "@/lib/services/EmailService";
 import { getTeamAccess, hasLeadAccess } from "@/app/api/v1/utils/teamAccess";
 import { isGoogleConnectionActive } from "@/lib/google/connection";
+import { invalidateTeamCalendarCache } from "@/lib/cache/invalidation";
 
 const resendSchema = z.object({
   target: z.enum(["all", "single", "new"]),
@@ -678,6 +679,7 @@ export async function POST(
     }
 
     const output = new Output(true, successMessages, [], { inviteDispatch });
+    invalidateTeamCalendarCache({ teamId: teamAccess.access.teamId, leadId });
     return NextResponse.json(output, { status: 200 });
   } catch (error) {
     console.error("[LeadScheduleResendRoute][POST] Erro ao reenviar convite:", error);

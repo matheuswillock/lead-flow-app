@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import { maskPhone, unmask } from "@/lib/masks"
 import type {
   BackofficeClientDetails,
@@ -23,10 +24,37 @@ import type {
 } from "../context/BackofficeClientDetailsTypes"
 import type { IBackofficeClientDetailsService } from "../services/IBackofficeClientDetailsService"
 
+type MemberRole = "manager" | "backoffice" | "operator"
+type MemberFunction = "SDR" | "CLOSER"
+
+const ROLE_OPTIONS: { value: MemberRole; label: string; description: string }[] = [
+  { value: "manager", label: "Manager", description: "Gerencia usuários e configurações do time." },
+  { value: "backoffice", label: "Backoffice", description: "Acesso de gestão equivalente ao Manager (sem privilégios de master)." },
+  { value: "operator", label: "Operator", description: "Acesso operacional aos leads e atividades do time." },
+]
+
+const FUNCTION_OPTIONS: { value: MemberFunction; label: string; description: string }[] = [
+  { value: "SDR", label: "SDR", description: "Pode visualizar, editar e agendar os leads." },
+  { value: "CLOSER", label: "Closer", description: "Mesmo acesso do SDR nos leads, mas só ele pode fechar contratos." },
+]
+
 interface FormState {
   fullName: string
   phone: string
   email: string
+  role: MemberRole
+  functions: MemberFunction[]
+  canCreateAccountUsers: boolean
+  canManageAccountTeams: boolean
+}
+
+function toRole(value: string): MemberRole {
+  if (value === "manager" || value === "backoffice" || value === "operator") return value
+  return "operator"
+}
+
+function toFunctions(values: string[]): MemberFunction[] {
+  return values.filter((v): v is MemberFunction => v === "SDR" || v === "CLOSER")
 }
 
 function initForm(member: BackofficeClientTeamMember): FormState {
@@ -34,6 +62,10 @@ function initForm(member: BackofficeClientTeamMember): FormState {
     fullName: member.fullName ?? "",
     phone: member.phone ?? "",
     email: member.email,
+    role: toRole(member.role),
+    functions: toFunctions(member.functions),
+    canCreateAccountUsers: member.canCreateAccountUsers,
+    canManageAccountTeams: member.canManageAccountTeams,
   }
 }
 
@@ -64,7 +96,9 @@ export function BackofficeMemberEditDialog({
   onDeleteRequest,
 }: BackofficeMemberEditDialogProps) {
   const [form, setForm] = useState<FormState>(() =>
-    member ? initForm(member) : { fullName: "", phone: "", email: "" }
+    member
+      ? initForm(member)
+      : { fullName: "", phone: "", email: "", role: "operator", functions: [], canCreateAccountUsers: false, canManageAccountTeams: false }
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [removingTeamId, setRemovingTeamId] = useState<string | null>(null)
@@ -97,17 +131,30 @@ export function BackofficeMemberEditDialog({
       const memberPhoneRaw = member.phone ?? ""
       const phoneChanged = phoneRaw !== memberPhoneRaw
       const emailChanged = form.email.trim().toLowerCase() !== member.email.toLowerCase()
+      const roleChanged = form.role !== toRole(member.role)
+      const functionsChanged =
+        JSON.stringify([...form.functions].sort()) !==
+        JSON.stringify([...toFunctions(member.functions)].sort())
+      const canCreateChanged = form.canCreateAccountUsers !== member.canCreateAccountUsers
+      const canManageChanged = form.canManageAccountTeams !== member.canManageAccountTeams
 
-      if (!fullNameChanged && !phoneChanged && !emailChanged) {
+      if (!fullNameChanged && !phoneChanged && !emailChanged && !roleChanged && !functionsChanged && !canCreateChanged && !canManageChanged) {
         toast.info("Nenhuma alteração para salvar")
         onOpenChange(false)
         return
       }
 
+      const effectiveCanCreate = form.role === "manager" ? form.canCreateAccountUsers : false
+      const effectiveCanManage = form.role === "manager" ? form.canManageAccountTeams : false
+
       await service.updateMember(member.id, {
         ...(fullNameChanged ? { fullName: form.fullName.trim() } : {}),
         ...(phoneChanged ? { phone: phoneRaw.length > 0 ? phoneRaw : null } : {}),
         ...(emailChanged ? { email: form.email.trim().toLowerCase() } : {}),
+        role: form.role,
+        functions: form.functions,
+        canCreateAccountUsers: effectiveCanCreate,
+        canManageAccountTeams: effectiveCanManage,
       })
 
       toast.success("Membro atualizado com sucesso")
@@ -137,7 +184,7 @@ export function BackofficeMemberEditDialog({
 
   return (
     <Dialog open={open} onOpenChange={isSubmitting ? undefined : onOpenChange}>
-      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-[560px]">
+      <DialogContent className="max-h-[90vh] flex flex-col sm:max-w-140">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Editar membro
@@ -205,6 +252,106 @@ export function BackofficeMemberEditDialog({
                 )}
               </div>
             </div>
+
+            {!member.isMaster ? (
+              <>
+                <Separator />
+
+                <div className="flex flex-col gap-2">
+                  <Label>Nível de acesso</Label>
+                  <div className="flex flex-col gap-2">
+                    {ROLE_OPTIONS.map((item) => (
+                      <div
+                        key={item.value}
+                        className="flex items-center justify-between rounded-md border border-input px-3 py-2"
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-medium">{item.label}</span>
+                          <span className="text-xs text-muted-foreground">{item.description}</span>
+                        </div>
+                        <Switch
+                          checked={form.role === item.value}
+                          onCheckedChange={() => setForm((prev) => ({ ...prev, role: item.value }))}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Label>Funções</Label>
+                  <div className="flex flex-col gap-2">
+                    {FUNCTION_OPTIONS.map((item) => (
+                      <div
+                        key={item.value}
+                        className="flex items-center justify-between rounded-md border border-input px-3 py-2"
+                      >
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-medium">{item.label}</span>
+                          <span className="text-xs text-muted-foreground">{item.description}</span>
+                        </div>
+                        <Switch
+                          checked={form.functions.includes(item.value)}
+                          onCheckedChange={() =>
+                            setForm((prev) => ({
+                              ...prev,
+                              functions: prev.functions.includes(item.value)
+                                ? prev.functions.filter((f) => f !== item.value)
+                                : [...prev.functions, item.value],
+                            }))
+                          }
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {form.role === "manager" ? (
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <p className="text-sm font-medium">Permissões delegadas</p>
+                      <p className="text-xs text-muted-foreground">
+                        Essas permissões adicionais só podem ser atribuídas pelo master da conta.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium">Pode cadastrar novos usuários</span>
+                        <span className="text-xs text-muted-foreground">
+                          Permite solicitar novos usuários da conta sujeitos à cobrança incremental.
+                        </span>
+                      </div>
+                      <Switch
+                        checked={form.canCreateAccountUsers}
+                        onCheckedChange={(checked) =>
+                          setForm((prev) => ({ ...prev, canCreateAccountUsers: checked }))
+                        }
+                        disabled={isSubmitting}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-md border border-input px-3 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-sm font-medium">Pode gerenciar times</span>
+                        <span className="text-xs text-muted-foreground">
+                          Permite criar, editar e deletar times da conta, sem transferir ownership.
+                        </span>
+                      </div>
+                      <Switch
+                        checked={form.canManageAccountTeams}
+                        onCheckedChange={(checked) =>
+                          setForm((prev) => ({ ...prev, canManageAccountTeams: checked }))
+                        }
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
 
             <Separator />
 

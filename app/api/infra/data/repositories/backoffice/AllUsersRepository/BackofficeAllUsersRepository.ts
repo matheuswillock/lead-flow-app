@@ -6,8 +6,23 @@ import type {
   BackofficeAllUsersListRecord,
   BackofficeAllUsersListResult,
   BackofficeAllUsersPaginationInput,
+  BackofficeAllUsersUserTypeRef,
+  BackofficeUpsertUserTypeAssignmentInput,
   IBackofficeAllUsersRepository,
 } from "./IBackofficeAllUsersRepository"
+
+function mapUserType(assignment: { accessExpiresAt: Date | null; userType: { slug: string } } | null): BackofficeAllUsersUserTypeRef {
+  const slug: "common" | "member_pro" = assignment?.userType.slug === "member_pro" ? "member_pro" : "common"
+  const accessExpiresAt = assignment?.accessExpiresAt ? assignment.accessExpiresAt.toISOString() : null
+  const isExpired = slug === "member_pro" && accessExpiresAt !== null && new Date(accessExpiresAt).getTime() <= Date.now()
+
+  let label = "Comum"
+  if (slug === "member_pro") {
+    label = isExpired ? "MEMBER PRO (EXPIRADO)" : "MEMBER PRO"
+  }
+
+  return { slug, label, accessExpiresAt, isExpired }
+}
 
 const PROFILE_LIST_SELECT = {
   id: true,
@@ -28,11 +43,23 @@ const PROFILE_LIST_SELECT = {
       hasPermanentSubscription: true,
       subscription: { select: { subscriptionPlan: true } },
       _count: { select: { operators: true } },
+      userTypeAssignment: {
+        select: {
+          accessExpiresAt: true,
+          userType: { select: { slug: true } },
+        },
+      },
     },
   },
   hasPermanentSubscription: true,
   subscription: { select: { subscriptionPlan: true } },
   _count: { select: { operators: true } },
+  userTypeAssignment: {
+    select: {
+      accessExpiresAt: true,
+      userType: { select: { slug: true } },
+    },
+  },
 } satisfies Prisma.ProfileSelect
 
 type ProfileListRow = Prisma.ProfileGetPayload<{ select: typeof PROFILE_LIST_SELECT }>
@@ -69,6 +96,7 @@ function mapRow(profile: ProfileListRow): BackofficeAllUsersListRecord {
     googleCalendarConnected: !!profile.googleConnection?.refreshToken && !profile.googleConnection?.revokedAt,
     createdAt: profile.createdAt,
     master: masterRef,
+    userType: mapUserType(profile.isMaster ? profile.userTypeAssignment : profile.manager?.userTypeAssignment ?? null),
   }
 }
 
@@ -162,6 +190,37 @@ function buildWhere(filters: BackofficeAllUsersFiltersInput): Prisma.ProfileWher
   const planFilter = buildPlanFilter(filters.plan)
   if (planFilter) andClauses.push(planFilter)
 
+  if (filters.userType === "member_pro") {
+    andClauses.push({
+      OR: [
+        { isMaster: true, userTypeAssignment: { is: { userType: { is: { slug: "member_pro" } } } } },
+        {
+          isMaster: false,
+          manager: { is: { userTypeAssignment: { is: { userType: { is: { slug: "member_pro" } } } } } },
+        },
+      ],
+    })
+  } else if (filters.userType === "common") {
+    andClauses.push({
+      OR: [
+        {
+          isMaster: true,
+          OR: [
+            { userTypeAssignment: { is: null } },
+            { userTypeAssignment: { is: { userType: { is: { slug: "common" } } } } },
+          ],
+        },
+        {
+          isMaster: false,
+          OR: [
+            { manager: { is: { userTypeAssignment: { is: null } } } },
+            { manager: { is: { userTypeAssignment: { is: { userType: { is: { slug: "common" } } } } } } },
+          ],
+        },
+      ],
+    })
+  }
+
   return { AND: andClauses }
 }
 
@@ -229,5 +288,42 @@ export class BackofficeAllUsersRepository implements IBackofficeAllUsersReposito
         masterFullName: membership.team.master?.fullName ?? null,
       })),
     }
+  }
+
+  async findIsMaster(profileId: string): Promise<boolean | null> {
+    const profile = await prisma.profile.findUnique({
+      where: { id: profileId },
+      select: { isMaster: true },
+    })
+
+    return profile?.isMaster ?? null
+  }
+
+  async upsertUserTypeAssignment(
+    profileId: string,
+    data: BackofficeUpsertUserTypeAssignmentInput
+  ): Promise<BackofficeAllUsersUserTypeRef> {
+    const userType = await prisma.profileUserType.findUniqueOrThrow({
+      where: { slug: data.userType },
+      select: { id: true },
+    })
+
+    const assignmentData = {
+      userTypeId: userType.id,
+      accessExpiresAt: data.accessExpiresAt,
+      assignedByProfileId: data.assignedByProfileId,
+    }
+
+    const assignment = await prisma.profileUserTypeAssignment.upsert({
+      where: { profileId },
+      update: assignmentData,
+      create: { profileId, ...assignmentData },
+      select: {
+        accessExpiresAt: true,
+        userType: { select: { slug: true } },
+      },
+    })
+
+    return mapUserType(assignment)
   }
 }

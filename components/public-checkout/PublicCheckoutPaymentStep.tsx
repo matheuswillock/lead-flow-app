@@ -228,7 +228,7 @@ export function PublicCheckoutPaymentStep({
                 toast.success("Copiado.")
               }}
             >
-              Copiar codigo PIX
+              Copiar código PIX
             </Button>
           </div>
 
@@ -279,7 +279,7 @@ export function PublicCheckoutPaymentStep({
         <h2 className="text-lg font-semibold text-foreground">Dados do Pagador</h2>
         <p className="text-sm text-muted-foreground">
           Confirme seus dados para finalizar o pagamento via{" "}
-          {billingType === "PIX" ? "PIX" : "cartao de credito"}.
+          {billingType === "PIX" ? "PIX" : "cartão de crédito"}.
         </p>
       </div>
 
@@ -400,8 +400,8 @@ export function PublicCheckoutPaymentStep({
         <div className="flex flex-col gap-6">
           <Separator />
           <div className="flex flex-col gap-1">
-            <h3 className="text-lg font-semibold text-foreground">Cartao de credito</h3>
-            <p className="text-sm text-muted-foreground">Preencha os dados do cartao para cobrar agora.</p>
+            <h3 className="text-lg font-semibold text-foreground">Cartão de crédito</h3>
+            <p className="text-sm text-muted-foreground">Preencha os dados do cartão para cobrar agora.</p>
           </div>
 
           <FieldGroup>
@@ -414,7 +414,7 @@ export function PublicCheckoutPaymentStep({
               />
             </Field>
 
-            <Field label="Numero do cartao">
+            <Field label="Número do cartão">
               <Input
                 value={maskCardNumber(form.creditCard.number)}
                 onChange={(e) => updateCardField("number", unmask(maskCardNumber(e.target.value)))}

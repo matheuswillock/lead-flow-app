@@ -4,6 +4,7 @@ import { Output } from '@/lib/output';
 import { getTeamAccess } from '@/app/api/v1/utils/teamAccess';
 import { isManagerLikeRole } from '@/lib/roles';
 import { portfolioUseCase } from '@/app/api/useCases/portfolio/PortfolioUseCase';
+import { invalidatePortfolioCache } from '@/lib/cache/invalidation';
 import type { PortfolioFilters } from '@/app/api/services/Portfolio/IPortfolioService';
 
 const dependentSchema = z.object({
@@ -45,7 +46,7 @@ const listSchema = z.object({
   sdrIds: z.string().optional(),
   closerIds: z.string().optional(),
   sources: z.string().optional(),
-  operadora: z.string().optional(),
+  operadoras: z.string().optional(),
   contractDateStart: z.string().optional(),
   contractDateEnd: z.string().optional(),
   dueDateStart: z.string().optional(),
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest) {
     sdrIds: sdrIdsRaw,
     closerIds: closerIdsRaw,
     sources: sourcesRaw,
-    operadora,
+    operadoras: operadorasRaw,
     contractDateStart,
     contractDateEnd,
     dueDateStart,
@@ -135,7 +136,7 @@ export async function GET(request: NextRequest) {
     sdrIds: splitCSV(sdrIdsRaw),
     closerIds: splitCSV(closerIdsRaw),
     sources: parseSources(sourcesRaw) as PortfolioFilters['sources'],
-    operadora,
+    operadoras: splitCSV(operadorasRaw),
     contractDateStart: parseDateBound(contractDateStart, 'start'),
     contractDateEnd: parseDateBound(contractDateEnd, 'end'),
     dueDateStart: parseDateBound(dueDateStart, 'start'),
@@ -184,5 +185,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result, { status });
   }
 
+  invalidatePortfolioCache({ teamId });
   return NextResponse.json(result, { status: 201 });
 }

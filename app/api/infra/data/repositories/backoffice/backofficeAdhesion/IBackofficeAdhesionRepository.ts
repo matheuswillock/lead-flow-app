@@ -57,6 +57,10 @@ export interface CreateBackofficeAdhesionInput {
   sdrBackofficeUserId?: string | null
   closerBackofficeUserId?: string | null
   createdByBackofficeUserId?: string | null
+  requestedUserTypeSlug?: "common" | "member_pro" | null
+  requestedMemberProAccessExpiresAt?: Date | null
+  additionalUsersData?: unknown[]
+  additionalTeamsData?: unknown[]
 }
 
 export interface UpdateBackofficeAdhesionInput {

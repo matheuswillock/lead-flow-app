@@ -127,8 +127,3 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * Configurações do route handler
- */
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';

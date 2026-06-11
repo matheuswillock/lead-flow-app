@@ -9,6 +9,8 @@ export interface BackofficeClientTeamMember {
   googleEmail: string | null
   functions: string[]
   isMaster: boolean
+  canCreateAccountUsers: boolean
+  canManageAccountTeams: boolean
 }
 
 export interface BackofficeClientTeam {

@@ -21,7 +21,7 @@ export function AnalyticsContainer() {
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <BarChart3 className="h-6 w-6" />
-        <h1 className="text-2xl font-semibold">Analytics de Email</h1>
+        <h1 className="text-2xl font-semibold">Analytics de E-mail</h1>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
