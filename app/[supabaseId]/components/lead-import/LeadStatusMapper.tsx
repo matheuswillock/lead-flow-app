@@ -53,20 +53,13 @@ export function LeadStatusMapper({
       </Alert>
 
       <div className="flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        <span>Status do seu arquivo</span>
         <span>Status no Corretor Studio</span>
+        <span>Status do seu arquivo</span>
       </div>
 
       <FieldGroup className="gap-4">
         {distinctValues.map(({ value, count }) => (
           <Field key={value} orientation="responsive">
-            <FieldContent>
-              <FieldTitle>&ldquo;{value}&rdquo;</FieldTitle>
-              <FieldDescription>
-                {count} {count === 1 ? "linha usa este status" : "linhas usam este status"} no
-                arquivo.
-              </FieldDescription>
-            </FieldContent>
             <Select
               value={statusMapping[value] ?? "new_opportunity"}
               onValueChange={(next) =>
@@ -85,6 +78,13 @@ export function LeadStatusMapper({
                 ))}
               </SelectContent>
             </Select>
+            <FieldContent className="@md/field-group:items-end @md/field-group:text-right">
+              <FieldTitle>&ldquo;{value}&rdquo;</FieldTitle>
+              <FieldDescription>
+                {count} {count === 1 ? "linha usa este status" : "linhas usam este status"} no
+                arquivo.
+              </FieldDescription>
+            </FieldContent>
           </Field>
         ))}
       </FieldGroup>

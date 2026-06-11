@@ -98,14 +98,14 @@ export function LeadImportSummary({
           <div className="flex flex-col gap-2">
             <p className="text-sm font-medium">Status mapeados</p>
             <div className="flex items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <span>Status do seu arquivo</span>
               <span>Status no Corretor Studio</span>
+              <span>Status do seu arquivo</span>
             </div>
             <div className="flex flex-col gap-1.5">
               {statusEntries.map(([fileValue, status]) => (
                 <div key={fileValue} className="flex items-center justify-between gap-2 text-sm">
-                  <span>&ldquo;{fileValue}&rdquo;</span>
-                  <Badge variant="outline">{getLeadImportStatusLabel(status)}</Badge>
+                  <span>{getLeadImportStatusLabel(status)}</span>
+                  <Badge variant="outline">&ldquo;{fileValue}&rdquo;</Badge>
                 </div>
               ))}
             </div>
