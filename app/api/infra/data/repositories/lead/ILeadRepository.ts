@@ -69,4 +69,10 @@ export interface ILeadRepository {
   findCloserForCalendar(leadId: string): Promise<LeadCloserForCalendar | null>;
   /** Busca os dados mínimos necessários para montar o roleMap de participantes */
   findForAttendeesRoleMap(leadId: string): Promise<LeadForAttendeesRoleMap | null>;
+  /** Busca leads do time com email ou CNPJ em conflito — usado pela importação para dedupe */
+  findImportConflicts(
+    teamId: string,
+    emails: string[],
+    cnpjs: string[]
+  ): Promise<Array<{ id: string; email: string | null; cnpj: string | null; status: LeadStatus }>>;
 }
