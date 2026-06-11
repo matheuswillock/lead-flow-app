@@ -76,13 +76,13 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
 
     for (const row of rows) {
       const name = row.name?.trim() ?? "";
-      if (!name) {
+      const phone = row.phone?.trim() ?? "";
+      if (!name || !phone) {
         skipped += 1;
         continue;
       }
 
       let email = row.email ? normalizeEmail(row.email) : "";
-      const phone = row.phone?.trim() ?? "";
       let cnpj = row.cnpj ? normalizeDigits(row.cnpj) : "";
       const status = mapStatus(row.status);
       const currentHealthPlan = mapHealthPlan(row.currentHealthPlan, healthPlanOptionNameByNormalized);

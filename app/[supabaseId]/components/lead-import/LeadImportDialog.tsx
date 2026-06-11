@@ -18,26 +18,35 @@ import {
   type LeadImportFieldKey,
   type LeadImportRow,
 } from "@/lib/leadImport/leadImportFields";
+import { suggestLeadStatus, type LeadImportStatusKey } from "@/lib/leadImport/leadImportStatus";
 import { LeadFileDropzone } from "./LeadFileDropzone";
 import { LeadFieldMapper } from "./LeadFieldMapper";
+import {
+  LeadStatusMapper,
+  type LeadStatusMapping,
+  type LeadStatusValueCount,
+} from "./LeadStatusMapper";
 import { LeadImportSummary } from "./LeadImportSummary";
 import { autoMapColumns, type LeadImportMapping } from "./autoMapColumns";
 import { parseLeadFile } from "./leadFileParser";
 import { leadImportService } from "./LeadImportService";
 import type { LeadImportResult } from "./ILeadImportService";
 
-type LeadImportStep = "upload" | "mapping" | "summary";
+type LeadImportStep = "upload" | "mapping" | "statuses" | "summary";
 
 const STEP_TITLES: Record<LeadImportStep, string> = {
   upload: "Enviar arquivo",
   mapping: "Mapear campos",
+  statuses: "Mapear status",
   summary: "Confirmar importação",
 };
 
 const STEP_DESCRIPTIONS: Record<LeadImportStep, string> = {
   upload: "Envie uma planilha Excel (.xlsx) ou um arquivo JSON com os seus leads.",
   mapping:
-    "Relacione as colunas do seu arquivo com os campos do CRM. Cada campo explica para que serve.",
+    "Relacione as colunas do seu arquivo com os campos do Corretor Studio. Cada campo explica para que serve.",
+  statuses:
+    "Relacione os status encontrados no seu arquivo com os status do funil do Corretor Studio.",
   summary: "Revise o mapeamento antes de concluir a importação.",
 };
 
@@ -61,6 +70,7 @@ export function LeadImportDialog({
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = useState<LeadImportMapping>({});
+  const [statusMapping, setStatusMapping] = useState<LeadStatusMapping>({});
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<LeadImportResult | null>(null);
@@ -71,6 +81,7 @@ export function LeadImportDialog({
     setColumns([]);
     setRows([]);
     setMapping({});
+    setStatusMapping({});
     setIsParsing(false);
     setIsSubmitting(false);
     setResult(null);
@@ -121,6 +132,39 @@ export function LeadImportDialog({
       }
       return next;
     });
+    if (field === "status") {
+      setStatusMapping({});
+    }
+  };
+
+  const getDistinctStatusValues = (): LeadStatusValueCount[] => {
+    const statusColumn = mapping.status;
+    if (!statusColumn) return [];
+    const counts = new Map<string, number>();
+    rows.forEach((row) => {
+      const value = row[statusColumn]?.trim();
+      if (!value) return;
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    });
+    return Array.from(counts.entries()).map(([value, count]) => ({ value, count }));
+  };
+
+  const distinctStatusValues = getDistinctStatusValues();
+  const hasStatusStep = distinctStatusValues.length > 0;
+
+  const goToStatusStep = () => {
+    setStatusMapping((prev) => {
+      const next: LeadStatusMapping = {};
+      distinctStatusValues.forEach(({ value }) => {
+        next[value] = prev[value] ?? suggestLeadStatus(value);
+      });
+      return next;
+    });
+    setStep("statuses");
+  };
+
+  const handleStatusMappingChange = (fileValue: string, status: LeadImportStatusKey) => {
+    setStatusMapping((prev) => ({ ...prev, [fileValue]: status }));
   };
 
   const buildMappedRows = (): LeadImportRow[] => {
@@ -134,9 +178,12 @@ export function LeadImportDialog({
             mapped[field] = value;
           }
         });
+        if (mapped.status && statusMapping[mapped.status]) {
+          mapped.status = statusMapping[mapped.status];
+        }
         return mapped;
       })
-      .filter((mapped) => Boolean(mapped.name));
+      .filter((mapped) => Boolean(mapped.name) && Boolean(mapped.phone));
   };
 
   const handleImport = async () => {
@@ -152,7 +199,9 @@ export function LeadImportDialog({
 
     const mappedRows = buildMappedRows();
     if (mappedRows.length === 0) {
-      toast.error("Nenhuma linha do arquivo tem valor na coluna mapeada para o nome do lead");
+      toast.error(
+        "Nenhuma linha do arquivo tem valor nas colunas mapeadas para nome e telefone do lead"
+      );
       return;
     }
 
@@ -175,8 +224,10 @@ export function LeadImportDialog({
     }
   };
 
-  const isNameMapped = Boolean(mapping.name);
-  const stepIndex = step === "upload" ? 1 : step === "mapping" ? 2 : 3;
+  const areRequiredFieldsMapped = Boolean(mapping.name) && Boolean(mapping.phone);
+  const totalSteps = hasStatusStep ? 4 : 3;
+  const stepIndex =
+    step === "upload" ? 1 : step === "mapping" ? 2 : step === "statuses" ? 3 : totalSteps;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -184,7 +235,9 @@ export function LeadImportDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Importar leads
-            <Badge variant="secondary">Etapa {stepIndex} de 3</Badge>
+            <Badge variant="secondary">
+              Etapa {stepIndex} de {totalSteps}
+            </Badge>
           </DialogTitle>
           <DialogDescription>
             {STEP_TITLES[step]} — {STEP_DESCRIPTIONS[step]}
@@ -207,11 +260,19 @@ export function LeadImportDialog({
               onMappingChange={handleMappingChange}
             />
           )}
+          {step === "statuses" && (
+            <LeadStatusMapper
+              distinctValues={distinctStatusValues}
+              statusMapping={statusMapping}
+              onStatusMappingChange={handleStatusMappingChange}
+            />
+          )}
           {step === "summary" && (
             <LeadImportSummary
               fileName={fileName}
               totalRows={buildMappedRows().length}
               mapping={mapping}
+              statusMapping={statusMapping}
               result={result}
             />
           )}
@@ -229,14 +290,30 @@ export function LeadImportDialog({
                 <ArrowLeft className="mr-2 size-4" />
                 Trocar arquivo
               </Button>
-              <Button onClick={() => setStep("summary")} disabled={!isNameMapped}>
+              <Button
+                onClick={() => (hasStatusStep ? goToStatusStep() : setStep("summary"))}
+                disabled={!areRequiredFieldsMapped}
+              >
                 Continuar
               </Button>
             </>
           )}
+          {step === "statuses" && (
+            <>
+              <Button variant="ghost" onClick={() => setStep("mapping")}>
+                <ArrowLeft className="mr-2 size-4" />
+                Voltar
+              </Button>
+              <Button onClick={() => setStep("summary")}>Continuar</Button>
+            </>
+          )}
           {step === "summary" && !result && (
             <>
-              <Button variant="ghost" onClick={() => setStep("mapping")} disabled={isSubmitting}>
+              <Button
+                variant="ghost"
+                onClick={() => setStep(hasStatusStep ? "statuses" : "mapping")}
+                disabled={isSubmitting}
+              >
                 <ArrowLeft className="mr-2 size-4" />
                 Voltar
               </Button>

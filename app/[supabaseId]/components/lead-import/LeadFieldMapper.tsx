@@ -55,7 +55,11 @@ export function LeadFieldMapper({
 
   return (
     <TooltipProvider delayDuration={0}>
-      <FieldGroup className="gap-5">
+      <div className="sticky top-0 z-10 -mt-1 flex items-center justify-between gap-2 border-b border-border bg-background py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <span>Campo do Corretor Studio</span>
+        <span>Coluna do seu arquivo</span>
+      </div>
+      <FieldGroup className="gap-5 pt-4">
         {LEAD_IMPORT_FIELDS.map((field) => {
           const selectedColumn = mapping[field.key];
           const sampleValues = selectedColumn ? sampleValuesByColumn.get(selectedColumn) ?? [] : [];

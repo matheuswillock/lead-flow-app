@@ -33,7 +33,7 @@ export const LEAD_IMPORT_FIELDS: LeadImportFieldDef[] = [
   {
     key: "name",
     label: "Nome do lead",
-    description: "Nome da pessoa ou razão social da empresa. É o único campo obrigatório: linhas sem nome são ignoradas.",
+    description: "Nome da pessoa ou razão social da empresa. Campo obrigatório: linhas sem nome são ignoradas.",
     required: true,
     type: "text",
     aliases: ["nome", "name", "lead", "razao social", "empresa", "cliente", "task name"],
@@ -49,8 +49,8 @@ export const LEAD_IMPORT_FIELDS: LeadImportFieldDef[] = [
   {
     key: "phone",
     label: "Telefone",
-    description: "Telefone ou WhatsApp de contato do lead, com DDD.",
-    required: false,
+    description: "Telefone ou WhatsApp de contato do lead, com DDD. Campo obrigatório: linhas sem telefone são ignoradas.",
+    required: true,
     formatHint: "Aceita com ou sem máscara, ex.: (11) 99999-9999",
     type: "text",
     aliases: ["telefone", "phone", "celular", "whatsapp", "fone", "telefone (phone)"],
