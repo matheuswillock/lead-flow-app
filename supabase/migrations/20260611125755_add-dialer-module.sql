@@ -145,6 +145,10 @@ create index if not exists "corretor_studio_dialer_campaigns_teamId_status_idx"
 create index if not exists "corretor_studio_dialer_campaigns_managerId_idx"
   on "public"."corretor_studio_dialer_campaigns" using btree ("managerId");
 
+-- Garante unicidade de telefone por campanha (backstop para uploads concorrentes)
+create unique index if not exists "corretor_studio_dialer_contacts_campaignId_phone_key"
+  on "public"."corretor_studio_dialer_contacts" using btree ("campaignId", "phone");
+
 create index if not exists "corretor_studio_dialer_contacts_campaignId_processed_idx"
   on "public"."corretor_studio_dialer_contacts" using btree ("campaignId", "processed");
 

@@ -119,6 +119,13 @@ export class DialerRepository implements IDialerRepository {
     contacts: CreateDialerContactData[]
   ): Promise<{ inserted: number; totalContacts: number }> {
     return prisma.$transaction(async (tx) => {
+      // Lock pessimista na campanha: serializa uploads concorrentes (evita
+      // janela de corrida no dedupe de telefones e colisão de positions)
+      await tx.$queryRaw`
+        select "id" from "public"."corretor_studio_dialer_campaigns"
+        where "id" = ${campaignId}::uuid for update
+      `;
+
       const campaign = await tx.dialerCampaign.findFirst({
         where: { id: campaignId, teamId: ctx.teamId },
         select: { status: true },
@@ -141,6 +148,8 @@ export class DialerRepository implements IDialerRepository {
           metadata: contact.metadata,
           position: basePosition + index,
         })),
+        // Backstop da unique (campaignId, phone) para corridas com o pré-filtro
+        skipDuplicates: true,
       });
 
       const totalContacts = await tx.dialerContact.count({ where: { campaignId } });

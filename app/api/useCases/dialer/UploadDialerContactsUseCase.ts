@@ -64,7 +64,6 @@ export class UploadDialerContactsUseCase implements IUploadDialerContactsUseCase
       const newContacts = parseResult.contacts.filter(
         (contact) => !existingPhones.has(contact.phone)
       );
-      const duplicates = parseResult.contacts.length - newContacts.length;
 
       if (newContacts.length === 0) {
         return new Output(
@@ -92,6 +91,9 @@ export class UploadDialerContactsUseCase implements IUploadDialerContactsUseCase
       );
 
       invalidateDialerCampaignCache({ teamId: ctx.teamId, campaignId });
+
+      // Inclui duplicados barrados pela unique (campaignId, phone) em uploads concorrentes
+      const duplicates = parseResult.contacts.length - inserted;
 
       console.info(
         `[UploadDialerContactsUseCase] Campanha ${campaignId}: ${inserted} contatos importados de "${input.fileName}" (${parseResult.skipped} inválidos, ${duplicates} duplicados)`

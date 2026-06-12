@@ -1868,6 +1868,7 @@ model DialerContact {
   campaign DialerCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   calls    DialerCall[]
 
+  @@unique([campaignId, phone])
   @@index([campaignId, processed])
   @@map("corretor_studio_dialer_contacts")
 }

@@ -27,7 +27,8 @@ export function useDialer(supabaseId: string): UseDialerReturn {
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
 
-  const isFetchingRef = useRef(false)
+  const requestSeqRef = useRef(0)
+  const inFlightTeamRef = useRef<string | null>(null)
   const lastFetchedTeamRef = useRef<string | null>(null)
 
   const fetchCampaigns = useCallback(async () => {
@@ -39,27 +40,32 @@ export function useDialer(supabaseId: string): UseDialerReturn {
       return
     }
 
-    if (isFetchingRef.current) {
-      console.info('[useDialer] Fetch already in-flight, skipping')
+    if (inFlightTeamRef.current === activeTeamId) {
+      console.info('[useDialer] Fetch already in-flight for this team, skipping')
       return
     }
 
-    isFetchingRef.current = true
+    const requestSeq = ++requestSeqRef.current
+    inFlightTeamRef.current = activeTeamId
     setLoading(true)
     setError(null)
 
     try {
       console.info('[useDialer] Fetching campaigns')
       const data = await service.listCampaigns(supabaseId, activeTeamId)
+      if (requestSeq !== requestSeqRef.current) return
       setCampaigns(data)
       lastFetchedTeamRef.current = activeTeamId
     } catch (err) {
+      if (requestSeq !== requestSeqRef.current) return
       const message = err instanceof Error ? err.message : 'Erro ao carregar campanhas'
       console.error('[useDialer] Failed to fetch campaigns', err)
       setError(message)
     } finally {
-      isFetchingRef.current = false
-      setLoading(false)
+      if (requestSeq === requestSeqRef.current) {
+        inFlightTeamRef.current = null
+        setLoading(false)
+      }
     }
   }, [supabaseId, activeTeamId, teamLoading])
 
