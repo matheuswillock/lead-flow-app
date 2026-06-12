@@ -67,6 +67,12 @@ function renderGeneratedHeader(sourceName: string): string {
   ].join("\n");
 }
 
+// Quote a value for a YAML double-quoted scalar so descriptions containing
+// `: `, `#`, or other YAML-significant characters stay valid frontmatter.
+function yamlDoubleQuote(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
 function renderCursorAdapter(
   description: string,
   sourceName: string,
@@ -74,7 +80,7 @@ function renderCursorAdapter(
 ): string {
   return [
     "---",
-    `description: ${description}`,
+    `description: ${yamlDoubleQuote(description)}`,
     "alwaysApply: false",
     "---",
     "",
@@ -92,7 +98,7 @@ function renderCopilotAdapter(
   return [
     "---",
     "mode: 'agent'",
-    `description: '${description.replace(/'/g, "\\'")}'`,
+    `description: ${yamlDoubleQuote(description)}`,
     "---",
     "",
     renderGeneratedHeader(sourceName),
@@ -134,16 +140,52 @@ async function writeIfChanged(
 // Main sync
 // ---------------------------------------------------------------------------
 
+interface SkillSource {
+  // Skill identifier used to name the generated adapters.
+  baseName: string;
+  // Absolute path to the canonical skill content.
+  sourcePath: string;
+  // Stable label used in the generated-file header comment.
+  sourceLabel: string;
+}
+
 async function syncSkills(): Promise<void> {
-  let entries: string[];
+  let entries: SkillSource[];
   try {
     const dirents = await fs.readdir(SKILLS_SOURCE_DIR, {
       withFileTypes: true,
     });
-    entries = dirents
+
+    // Two canonical layouts are supported:
+    //   - flat file:   .claude/skills/<name>.md
+    //   - folder skill: .claude/skills/<name>/SKILL.md (also loaded natively
+    //     by Claude Code as a skill)
+    const flat: SkillSource[] = dirents
       .filter((d) => d.isFile() && d.name.endsWith(".md"))
-      .map((d) => d.name)
-      .sort();
+      .map((d) => ({
+        baseName: d.name.replace(/\.md$/, ""),
+        sourcePath: path.join(SKILLS_SOURCE_DIR, d.name),
+        sourceLabel: d.name,
+      }));
+
+    const folders: SkillSource[] = [];
+    for (const d of dirents.filter((d) => d.isDirectory())) {
+      const skillPath = path.join(SKILLS_SOURCE_DIR, d.name, "SKILL.md");
+      try {
+        await fs.access(skillPath);
+        folders.push({
+          baseName: d.name,
+          sourcePath: skillPath,
+          sourceLabel: `${d.name}/SKILL.md`,
+        });
+      } catch {
+        // directory without a SKILL.md — not a skill source
+      }
+    }
+
+    entries = [...flat, ...folders].sort((a, b) =>
+      a.baseName.localeCompare(b.baseName),
+    );
   } catch {
     console.error(
       "[skills:sync] ERROR: could not read",
@@ -161,19 +203,17 @@ async function syncSkills(): Promise<void> {
   await ensureDir(CURSOR_SKILLS_DIR);
   await ensureDir(COPILOT_PROMPTS_DIR);
 
-  for (const filename of entries) {
-    const sourcePath = path.join(SKILLS_SOURCE_DIR, filename);
+  for (const { baseName, sourcePath, sourceLabel } of entries) {
     const rawContent = await fs.readFile(sourcePath, "utf8");
     const { frontmatter, body } = parseFrontmatter(rawContent);
 
-    const description = frontmatter.description ?? filename.replace(".md", "");
-    const baseName = filename.replace(/\.md$/, "");
+    const description = frontmatter.description ?? baseName;
 
     // Cursor adapter
     const cursorPath = path.join(CURSOR_SKILLS_DIR, `${baseName}.mdc`);
     await writeIfChanged(
       cursorPath,
-      renderCursorAdapter(description, filename, body),
+      renderCursorAdapter(description, sourceLabel, body),
       `.cursor/skills/${baseName}.mdc`,
     );
 
@@ -184,7 +224,7 @@ async function syncSkills(): Promise<void> {
     );
     await writeIfChanged(
       copilotPath,
-      renderCopilotAdapter(description, filename, body),
+      renderCopilotAdapter(description, sourceLabel, body),
       `.github/prompts/${baseName}.prompt.md`,
     );
   }

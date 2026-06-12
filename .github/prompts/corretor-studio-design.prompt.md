@@ -1,6 +1,6 @@
 ---
 mode: 'agent'
-description: 'Agente interno para criação de propostas visuais do Corretor Studio com base no design system canônico. Usar quando o usuário pede para criar uma tela, propor direção visual, gerar brief de design, especificar tokens para uma nova interface ou revisar consistência visual.'
+description: "Agente interno para criação de propostas visuais do Corretor Studio com base no design system canônico. Usar quando o usuário pede para criar uma tela, propor direção visual, gerar brief de design, especificar tokens para uma nova interface ou revisar consistência visual."
 ---
 
 <!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->

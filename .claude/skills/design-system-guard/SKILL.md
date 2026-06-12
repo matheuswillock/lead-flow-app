@@ -1,4 +1,5 @@
 ---
+name: design-system-guard
 description: Guardrail do Design System do Corretor Studio para TODA mudança de frontend. Usar SEMPRE que for criar OU alterar qualquer código visual em produção (TSX/JSX, componente, tela, página, modal, formulário, card, tabela, badge, layout, classes Tailwind, estilos, tokens) no lead-flow-app — inclusive em edições pequenas de UI já existente. Garante uso dos tokens semânticos do DESIGN.md/globals.css, componentes shadcn/ui via MCP, ícones Lucide, tipografia Poppins/Inter e validação design:check antes de finalizar.
 ---
 

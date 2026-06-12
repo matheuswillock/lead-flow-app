@@ -1,6 +1,6 @@
 ---
 mode: 'agent'
-description: 'Skill de implementação frontend em produção para o Corretor Studio. Usar quando o usuário pede para criar um componente, tela, página, formulário, card, dialog, tabela ou qualquer elemento visual em código de produção (TSX/JSX). Cobre o fluxo completo: shadcn MCP → tokens → implementação → validação.'
+description: "Skill de implementação frontend em produção para o Corretor Studio. Usar quando o usuário pede para criar um componente, tela, página, formulário, card, dialog, tabela ou qualquer elemento visual em código de produção (TSX/JSX). Cobre o fluxo completo: shadcn MCP → tokens → implementação → validação."
 ---
 
 <!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->

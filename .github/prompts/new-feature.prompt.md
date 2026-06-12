@@ -1,6 +1,6 @@
 ---
 mode: 'agent'
-description: 'Scaffold e implementação de nova feature seguindo a arquitetura Lead Flow'
+description: "Scaffold e implementação de nova feature seguindo a arquitetura Lead Flow"
 ---
 
 <!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
