@@ -1,10 +1,10 @@
 # Especificação — Módulo Discadora Automática (Twilio)
 
-**Versão:** 2.0.0
-**Data:** 2026-06-11
+**Versão:** 2.1.0
+**Data:** 2026-06-12
 **Status:** Plano de implementação aprovado
 **Produto:** Lead Flow — Corretor Studio
-**Substitui:** v1.1.0 (2026-03-30, branch `claude/twilio-auto-dialer-G9DOm`)
+**Substitui:** v2.0.0 (2026-06-11) — troca a infra de jobs Upstash QStash pelo padrão **Vercel Cron + tabela de jobs no banco**, alinhando à estratégia de email (`docs/specs/email-dispatch.md`): sem fila externa.
 
 ---
 
@@ -20,7 +20,7 @@ O módulo de **Discadora Automática** permite que operadores executem campanhas
 - Billing: add-on por time via **Asaas**.
 - Feature **gerenciada pelo backoffice** com slug próprio, no mesmo modelo de Email e CRM.
 - Gravação de ligação que origina um lead é **anexada ao lead e não pode ser removida**.
-- Jobs assíncronos com **Upstash QStash** (infra compartilhada com o disparo agendado de email).
+- Jobs assíncronos com **Vercel Cron + tabela de jobs no banco** (`DialerJob`), sem fila externa — mesmo padrão da estratégia de email (`docs/specs/email-dispatch.md`).
 
 ### Fluxo principal
 
@@ -72,11 +72,13 @@ Migrations via Supabase CLI (`bun run db:migrate:new <nome>`; SQL idempotente; s
 - `DialerCampaignStatus`: `draft | ready | running | paused | completed | canceled | limit_reached`.
 - `DialerCallStatus`: `pending | calling | answered | transferred | completed | no_answer | busy | failed | machine`.
 - `DialerPlan`: `dialer_basic | dialer_pro | dialer_unlimited`.
+- `DialerJobType`: `archive_recording` (extensível). `DialerJobStatus`: `pending | processing | done | failed`.
 - `DialerCampaign` → `@@map("corretor_studio_dialer_campaigns")`: teamId, managerId, name, description, status, totalContacts, contactsProcessed, contactsAnswered, minutesUsed.
 - `DialerContact` → `corretor_studio_dialer_contacts`: campaignId, name, phone (E.164), email?, metadata Json, processed, position. Índice `[campaignId, processed]`.
 - `DialerCall` → `corretor_studio_dialer_calls`: campaignId, contactId, operatorId, twilioCallSid @unique, status, durationSeconds, recordingSid/Url/Path, startedAt/answeredAt/transferredAt/endedAt, notes, `leadId String? @db.Uuid` (lead criado a partir da ligação, FK para `Lead` com `onDelete: SetNull`).
 - `DialerUsage` → `corretor_studio_dialer_usage`: `@@unique([teamId, billingMonth])`, minutesUsed, minutesLimit, callsCount.
 - `DialerSubscription` → `corretor_studio_dialer_subscriptions`: teamId @unique, plan, status, asaasSubscriptionId, currentPeriodStart/End, monthlyMinutes (modelo `EmailCreditSubscription`).
+- `DialerJob` → `corretor_studio_dialer_jobs`: id, teamId, type (`DialerJobType`), status (`DialerJobStatus`, default `pending`), payload Json (ex.: `{ callId, recordingSid }`), attempts (default 0), maxAttempts (default 5), lockedAt?, lastError?, createdAt, updatedAt. Índice `[status, createdAt]`. Fila de trabalho durável para jobs disparados por evento (drenada por cron); `[teamId, type]` indexável p/ dedupe. É o equivalente discadora de `scheduled_email_jobs` (`docs/specs/email-dispatch.md`).
 - Campos novos em `Team`: `dialerEnabled`, `twilioSubaccountSid`, `twilioSubaccountToken` (cifrado), `twilioApiKeySid`, `twilioApiKeySecret` (cifrado), `twilioAppSid`, `twilioNumberSid`, `twilioPhoneNumber`. **Não** adicionar token Twilio em `Profile` (a v1.1.0 previa; token de client é efêmero — anti-pattern persisti-lo).
 - Campo novo em `LeadAttachment`: `isProtected Boolean @default(false)` — anexos protegidos (gravações de ligação que originaram o lead) não podem ser excluídos; `LeadAttachmentService.deleteAttachment` recusa quando `isProtected = true`.
 
@@ -105,11 +107,9 @@ Migrations via Supabase CLI (`bun run db:migrate:new <nome>`; SQL idempotente; s
 | `api/v1/dialer/calls/[callId]/create-lead` | POST | cria Lead no CRM a partir da ligação + anexa gravação |
 | `api/v1/dialer/token` | GET | Access Token Twilio Client do operador |
 | `api/v1/dialer/subscription` | POST/DELETE | ativar/cancelar add-on (manager) |
-| `api/v1/dialer/cron/reconcile` | GET | watchdog scanner (auth `CRON_SECRET`) |
+| `api/v1/dialer/cron/maintenance` | GET | watchdog (reconcilia chamadas órfãs) + drena `DialerJob` pendentes; auth `CRON_SECRET` (seção 8) |
 | `api/webhooks/twilio/voice` | POST | TwiML (Conference quando `AnsweredBy=human`) |
-| `api/webhooks/twilio/status` | POST | atualiza `DialerCall`, soma minutos, dispara próxima discagem, broadcast |
-| `api/jobs/dialer/reconcile-call` | POST | worker QStash do watchdog |
-| `api/jobs/dialer/archive-recording` | POST | worker QStash de migração de gravação |
+| `api/webhooks/twilio/status` | POST | atualiza `DialerCall`, soma minutos, dispara próxima discagem, broadcast, enfileira `DialerJob` de gravação |
 
 Todas as rotas `/api/v1/dialer/*` usam `getTeamAccess()` (`app/api/v1/utils/teamAccess.ts`) e propagam `TeamAccess` (Route → UseCase → Service → Repository `WithCtx`), retornando `Output` (`lib/output/index.ts`).
 
@@ -128,7 +128,7 @@ O motor é dirigido por webhook: **cada callback de término dispara a próxima 
 3. **Webhook `voice`**: `AnsweredBy=human` → TwiML `<Dial><Conference record="record-from-start">dialer-{callId}</Conference></Dial>` na perna do contato + cria perna do operador via REST (`to: "client:operator-" + profileId`); machine → `<Hangup/>`.
 4. **Webhook `status`**: idempotente por `twilioCallSid` + transições válidas (nunca regredir estado); em evento terminal soma `ceil(CallDuration/60)` no `DialerUsage` e chama `DialNextContactUseCase`.
 5. **Pause/Resume**: só muda flag no banco; chamada corrente termina naturalmente; broadcast `campaign_update` imediato.
-6. **Watchdog** (obrigatório): cron Vercel 5/5min `GET /api/v1/dialer/cron/reconcile` — scanner que acha `DialerCall` ativa com `updatedAt` > 3min e publica 1 job QStash por chamada (`jobs/dialer/reconcile-call`, seção 8); o worker consulta `client.calls(sid).fetch()`, corrige estado e re-dispara a fila. Sem isso, um webhook perdido trava a campanha silenciosamente.
+6. **Watchdog** (obrigatório): cron Vercel 5/5min `GET /api/v1/dialer/cron/maintenance` — escaneia `DialerCall` ativa com `updatedAt` > 3min, **claim atômico** (`FOR UPDATE SKIP LOCKED`, `take` limitado por run), consulta `client.calls(sid).fetch()`, corrige estado e re-dispara a fila — tudo inline (a própria linha de `DialerCall` órfã é a fila; reconcile é idempotente). Sem isso, um webhook perdido trava a campanha silenciosamente. O mesmo cron drena os `DialerJob` pendentes (seção 8).
 
 ### Painel realtime — broadcast (decisão: broadcast > postgres_changes)
 
@@ -142,7 +142,7 @@ Motivos: o webhook de status é o único ponto de escrita e conhece o estado joi
 - `POST /api/v1/dialer/calls/[callId]/create-lead` → `CreateLeadFromCallUseCase`: reusa `LeadUseCase.createLead()` com os dados do `DialerContact` (name, phone, email) e contexto de origem "discadora" na atividade de criação; grava `DialerCall.leadId`.
 - Em seguida anexa a gravação ao lead via `LeadAttachmentService` com `isProtected: true` — `ALLOWED_TYPES` ganha `audio/mpeg`/`audio/wav` (Twilio entrega .mp3/.wav). A `LeadActivity` do anexo identifica a origem (ligação + campanha).
 - **A gravação anexada não pode ser removida**: `deleteAttachment` recusa `isProtected = true` (backend) e o frontend oculta a ação de excluir nesses anexos. A cópia em `dialer-recordings` segue o ciclo normal; a cópia anexada ao lead em `lead-attachments` é permanente.
-- Se o lead for criado antes da gravação ficar disponível (callback de recording é assíncrono), o worker de recording verifica `DialerCall.leadId` e anexa retroativamente.
+- Se o lead for criado antes da gravação ficar disponível (callback de recording é assíncrono), o drenador do `DialerJob` de gravação (seção 8) verifica `DialerCall.leadId` e anexa retroativamente.
 
 ### Segurança dos webhooks Twilio
 
@@ -152,7 +152,7 @@ Motivos: o webhook de status é o único ponto de escrita e conhece o estado joi
 
 ### Env vars novas
 
-`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_BUNDLE_SID`, `TWILIO_ADDRESS_SID`, `DIALER_ENCRYPTION_KEY`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` (+ atualizar `postman/Lead-Flow-API-Collection.json` e `postman/Lead-Flow-Environment.json` a cada endpoint novo).
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_BUNDLE_SID`, `TWILIO_ADDRESS_SID`, `DIALER_ENCRYPTION_KEY`, `CRON_SECRET` (reusa o mesmo do email) (+ atualizar `postman/Lead-Flow-API-Collection.json` e `postman/Lead-Flow-Environment.json` a cada endpoint novo). Sem QStash — nenhuma env var de fila externa.
 
 ---
 
@@ -218,36 +218,40 @@ Princípio: **listagens e dados históricos cacheados com tags; tudo que é "ao 
 
 ---
 
-## 8. Jobs assíncronos com Upstash (QStash) — infra compartilhada (email + discadora)
+## 8. Jobs assíncronos — Vercel Cron + tabela de jobs no banco (sem fila externa)
 
-Padrão **scheduler → fila → worker**, multi-tenant e idempotente, sobre Vercel serverless:
+Mesmo padrão da estratégia de email (`docs/specs/email-dispatch.md`): **um cron orquestrador leve + estado durável no Postgres**, sem QStash nem qualquer fila externa. A fonte da verdade da fila é o banco; o Vercel Cron só escaneia e drena.
 
 ```
-Vercel Cron (*/5min) — scanner leve
-   └─ busca no Supabase agendamentos vencidos na janela (scheduledAt <= now, status=scheduled)
-   └─ para cada item: JobQueueService.publish() → QStash (1 mensagem por time/campanha,
-      deduplicationId determinístico)
-QStash → POST https://app/api/jobs/<dominio>/<job>  (assinatura verificada, retry automático + DLQ)
-   └─ worker processa UM tenant: lock compare-and-set no banco → executa → marca resultado
+Vercel Cron (*/5min) — GET /api/v1/dialer/cron/maintenance (auth CRON_SECRET)
+   ├─ Passo 1 — Watchdog (inline): DialerCall ativa com updatedAt > 3min
+   │     └─ claim FOR UPDATE SKIP LOCKED (take limitado) → client.calls(sid).fetch()
+   │        → corrige estado → re-dispara a fila (idempotente por natureza)
+   └─ Passo 2 — Drenar DialerJob: status=pending, ordenado por createdAt (take limitado)
+         └─ claim compare-and-set (pending→processing) → processa por type → done
+            (erro: attempts++ + lastError; volta a pending se attempts < maxAttempts, senão failed)
 ```
 
-### Infra nova
+### Infra (sem dependência nova)
 
-- `bun add @upstash/qstash`; env vars `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`.
-- `app/api/services/JobQueue/IJobQueueService.ts` + `JobQueueService.ts`: `publish({ url, body, deduplicationId, delay?, retries? })` usando `Client` do `@upstash/qstash`. Em dev local (sem QStash), modo fallback que chama o worker direto via `fetch` — mantém o fluxo testável localmente.
-- Workers em **`app/api/jobs/<dominio>/<job>/route.ts`** — namespace de infraestrutura ao lado de `/api/webhooks/*` (endpoints invocados por sistema externo, não produto; documentar na seção de API Routing do `agents.md`). Helper `lib/jobs/verifyQStashSignature.ts` com `Receiver.verify()` (chaves current/next) — request sem assinatura válida → 403.
-- **Idempotência em duas camadas**: (1) `deduplicationId` no publish (QStash descarta duplicatas — ex.: `email-campaign:{campaignId}:{scheduledAt ISO}`); (2) lock compare-and-set no worker (`updateMany({ where: { id, status: "scheduled" }, data: { status: "sending" } })` — padrão que o cron atual já usa). Reentrega do QStash vira no-op.
+- **Nenhum pacote novo, nenhuma env var de fila.** Reusa `CRON_SECRET` (já usado pelo email) e o `vercel.json` para a entrada de cron.
+- Tabela `DialerJob` (seção 3) é a fila durável: jobs disparados por evento (ex.: término de chamada) viram linhas `pending`; o cron as drena com retry baseado em `attempts`/`maxAttempts`.
+- `app/api/services/DialerJob/IDialerJobService.ts` + `DialerJobService.ts` (interface + impl): `enqueue({ teamId, type, payload, dedupeKey? })` e `claimPending({ take })` (claim compare-and-set numa transação). `enqueue` é idempotente por `dedupeKey` (ex.: `archive-recording:{callId}`): se já existe job `pending|processing|done` para a chave, no-op.
+- O endpoint `cron/maintenance` é **infra, não produto**: protegido por `CRON_SECRET` (header/Bearer), nunca cacheado, sem `getTeamAccess()` (roda como sistema com `createSupabaseAdmin()`). Documentar na seção de API Routing do `agents.md` junto do cron de email.
 
-### Aplicação no módulo de email (motivador)
+### Idempotência em duas camadas
 
-- `EmailCampaignUseCase`: validar `scheduledAt` em **janelas de 30 min** (minutos ∈ {00, 30}) na criação/edição; UI do agendamento oferece só esses slots. Recorrência **diária** opcional: campos `recurrence: "none" | "daily"` + `nextRunAt` em `EmailCampaign` (migration); ao concluir um disparo recorrente, o worker recalcula `nextRunAt` (+24h, mesma janela) e devolve o status para `scheduled` em vez de `sent`.
-- `app/api/v1/email/cron/dispatch-scheduled/route.ts` (cron existente) vira **scanner**: busca `status=scheduled AND scheduledAt <= now` (sem `take: 5`), publica 1 job por campanha com `deduplicationId` e responde — sem processar nada inline.
-- Novo worker `app/api/jobs/email/dispatch-campaign/route.ts`: move para cá a lógica atual do cron (créditos, lock, contatos, `EmailCampaignDispatchService.dispatchBatch`, `EmailLog`, débito de créditos) para **uma** campanha por invocação — elimina o gargalo de 5 campanhas/run e o risco de timeout; o retry do QStash cobre falha transitória de um tenant sem afetar os demais.
+1. **Enqueue dedup**: `dedupeKey` determinístico evita job duplicado para o mesmo evento (ex.: dois callbacks de gravação para o mesmo `callId`).
+2. **Claim compare-and-set**: `updateMany({ where: { id, status: "pending" }, data: { status: "processing", lockedAt: now } })` garante que só um run pega o job mesmo com crons sobrepostos (mesmo padrão do lock do dispatch de email e do `FOR UPDATE SKIP LOCKED` da discagem). Cada worker é idempotente: archive-recording que encontra `recordingPath` já setado vira no-op.
 
-### Reuso pela discadora
+### Jobs da discadora
 
-- **Watchdog `reconcile`**: o cron escaneia chamadas órfãs e publica 1 job `jobs/dialer/reconcile-call` por chamada (dedupe por `callSid:updatedAt`), em vez de consultar a API Twilio inline para N times.
-- **Migração de gravações**: término de chamada publica job `jobs/dialer/archive-recording` (download Twilio → Supabase Storage → anexo protegido retroativo se `leadId` → delete no Twilio), com retry automático — remove esse trabalho pesado do webhook.
+- **Watchdog `reconcile`** (Passo 1, inline): a própria `DialerCall` órfã é a fila — não precisa de linha em `DialerJob`. O cron lê chamadas ativas e obsoletas, faz o claim e reconcilia contra a API Twilio. Bounded por `take` por run.
+- **Migração de gravações** (Passo 2, via `DialerJob`): o webhook `status`/recording callback enfileira `DialerJob(type=archive_recording, payload={ callId, recordingSid })` (dedupe por `callId`) em vez de fazer o trabalho pesado inline. O drenador faz download Twilio → Supabase Storage (`dialer-recordings`) → anexo protegido retroativo se `DialerCall.leadId` → delete no Twilio; falha transitória reabre o job para o próximo run (`attempts < maxAttempts`).
+
+### Dev local
+
+- Sem QStash para emular: o cron é um `GET` autenticado por `CRON_SECRET` — chamável direto via `curl`/Postman em desenvolvimento (`bun run dev` + `CRON_SECRET` local). Opcionalmente, o `enqueue` pode processar inline quando `NODE_ENV !== "production"` para encurtar o loop de teste, mantendo a linha em `DialerJob` para auditoria.
 
 ---
 
@@ -273,14 +277,15 @@ QStash → POST https://app/api/jobs/<dominio>/<job>  (assinatura verificada, re
 
 ## 10. Fases (PRs incrementais — cada uma passa typecheck/lint/governance/design-check)
 
+> O disparo agendado e o analytics de email saíram do escopo desta spec e viraram artefatos próprios (`docs/specs/email-dispatch.md` e `docs/specs/email-analytics.md`), cada um com seu próprio roadmap. A discadora não introduz mais infra de jobs compartilhada — usa o mesmo padrão (Vercel Cron + tabela `DialerJob`), porém isolado no módulo. Não há mais "PR 0" de infra compartilhada.
+
 | PR | Escopo | Destaques |
 |---|---|---|
-| **0 — Infra de jobs (Upstash QStash) + disparo agendado de email** | `bun add @upstash/qstash`; `JobQueueService` (interface+impl) + `lib/jobs/verifyQStashSignature.ts`; namespace `app/api/jobs/**`; refatorar cron `dispatch-scheduled` em scanner + worker `jobs/email/dispatch-campaign`; janelas de 30 min + recorrência diária (`recurrence`/`nextRunAt` em `EmailCampaign`, migration); env vars QSTASH_* + Postman | Independente da discadora — entrega valor ao email primeiro; idempotência: dedupe QStash + lock compare-and-set |
-| **1 — Fundação** | Schema Prisma + migration `add-dialer-module` (RLS + índice parcial + `LeadAttachment.isProtected` + `DialerCall.leadId`); rotas/useCases/services/repository de campanhas + upload Excel/JSON; scaffold frontend (lista de campanhas, upload, contatos); feature backoffice `voice` (slugs + product map + route access + registro via backoffice) + sidebar + `proxy.ts`; tags/invalidation de cache; Postman | Sem Twilio ainda — tudo testável local |
+| **1 — Fundação** | Schema Prisma + migration `add-dialer-module` (RLS + índice parcial + `LeadAttachment.isProtected` + `DialerCall.leadId` + tabela `DialerJob` + enums `DialerJobType`/`DialerJobStatus`); rotas/useCases/services/repository de campanhas + upload Excel/JSON; scaffold frontend (lista de campanhas, upload, contatos); feature backoffice `voice` (slugs + product map + route access + registro via backoffice) + sidebar + `proxy.ts`; tags/invalidation de cache; Postman | Sem Twilio ainda — tudo testável local |
 | **2 — Provisionamento Twilio** | `bun add twilio @twilio/voice-sdk`; `lib/dialer/secret-crypto.ts` (AES-256-GCM); `TwilioSubaccountService` (compra de número com `bundleSid`/`addressSid` da mestre) + `TwilioVoiceService`; `GET /dialer/token`; `lib/webhooks/twilioWebhookSecurity.ts` + stubs dos webhooks; rota `setup` provisória (isMaster, com modo trial `useMasterAccount` fora de produção); env vars | Iniciar **Bundle regulatório BR** na conta mestre já (aprovação leva dias) |
-| **3 — Core da discagem** | `StartDialerUseCase`, `DialNextContactUseCase`, `DialerCallProgressUseCase`; rotas start/pause; webhooks completos (TwiML Conference / status); `DialerDeviceHook` + `DialerControls`; **watchdog `reconcile`** (cron scanner + job QStash `jobs/dialer/reconcile-call`) | Claim atômico SKIP LOCKED; idempotência por CallSid; AMD + `timeout: 15` |
+| **3 — Core da discagem** | `StartDialerUseCase`, `DialNextContactUseCase`, `DialerCallProgressUseCase`; rotas start/pause; webhooks completos (TwiML Conference / status); `DialerDeviceHook` + `DialerControls`; **watchdog** `GET /api/v1/dialer/cron/maintenance` (Passo 1: reconcilia chamadas órfãs inline) + entrada no `vercel.json` | Claim atômico SKIP LOCKED; idempotência por CallSid; AMD + `timeout: 15` |
 | **4 — Painel realtime** | Migration policy `realtime.messages`; `DialerRealtimeService` (broadcast); `lib/dialer/realtime-types.ts`; `GET .../live`; `hooks/useDialerRealtime.ts`; `TeamCallsPanel` + ticker de duração | 2 browsers veem chamadas um do outro <1s; reconexão re-sincroniza; outro time não assina o canal |
-| **5 — Gravações, histórico e lead a partir da ligação** | Recording callback; job QStash `jobs/dialer/archive-recording` move gravação Twilio → Supabase Storage (`dialer-recordings`) e apaga no Twilio (retry automático); `GET calls` (operador só vê as próprias) + signed URL; `POST calls/[callId]/create-lead` (`CreateLeadFromCallUseCase` + anexo da gravação com `isProtected: true`, anexação retroativa pelo recording callback); bloqueio de exclusão de anexo protegido no `LeadAttachmentService` + UI; `CallLogTable`/`RecordingPlayer`/`CampaignReport` (com cache + tags) | Gravação anexada ao lead é permanente |
+| **5 — Gravações, histórico e lead a partir da ligação** | Recording callback enfileira `DialerJob(archive_recording)`; `DialerJobService` (interface+impl) + Passo 2 do `cron/maintenance` drena os jobs: gravação Twilio → Supabase Storage (`dialer-recordings`) e apaga no Twilio (retry por `attempts`); `GET calls` (operador só vê as próprias) + signed URL; `POST calls/[callId]/create-lead` (`CreateLeadFromCallUseCase` + anexo da gravação com `isProtected: true`, anexação retroativa pelo drenador); bloqueio de exclusão de anexo protegido no `LeadAttachmentService` + UI; `CallLogTable`/`RecordingPlayer`/`CampaignReport` (com cache + tags) | Gravação anexada ao lead é permanente |
 | **6 — Billing Asaas** | `DialerBillingService`; rotas subscription; roteamento `dialer:` no `PaymentValidationService`; enforcement de limite ativo; `DialerUsageCard` + tela de ativação; cron reset mensal; remover/restringir rota `setup` | Regressão: webhook Asaas dos planos base continua OK |
 | **7 — Hardening** | Suspensão/reativação de subconta amarrada ao ciclo; mascaramento de telefone no painel; rate limit nos webhooks e workers; revisão final Postman/governança | |
 
@@ -311,12 +316,11 @@ Cliente paga o Lead Flow via Asaas (mensalidade + excedentes) → Lead Flow paga
 ## 12. Verificação
 
 - Cada PR: `bun run typecheck && bun run lint && bun run governance:check && bun run lint:pt-br` (+ `bun run design:check` em mudanças de UI).
-- PR 0: agendar campanha de email num slot de 30 min → cron publica no QStash → worker dispara exatamente 1 vez (forçar reentrega para provar idempotência); worker rejeita request sem assinatura QStash (403); recorrência diária reagenda `nextRunAt` +24h; cron antigo não processa mais nada inline.
 - PR 1: upload Excel (.xlsx) e JSON cria contatos normalizados; rotas respeitam roles (manager cria, operador só lê); feature `voice` registrada no backoffice controla a visibilidade no sidebar.
 - PR 2: token decodifica com VoiceGrant correto; webhook rejeita assinatura inválida (403) e aceita assinada (script local com `getExpectedTwilioSignature` ou ngrok).
-- PR 3: teste manual com conta trial Twilio + ngrok (guia da seção 9 — Verified Caller IDs, magic numbers para testes sem custo): atendida conecta operador no browser; não atendida avança fila; pause interrompe após chamada corrente; matar webhook → watchdog destrava em ≤5min.
+- PR 3: teste manual com conta trial Twilio + ngrok (guia da seção 9 — Verified Caller IDs, magic numbers para testes sem custo): atendida conecta operador no browser; não atendida avança fila; pause interrompe após chamada corrente; matar webhook → watchdog (`cron/maintenance` Passo 1) destrava em ≤5min; `cron/maintenance` sem `CRON_SECRET` → 401/403.
 - PR 4: 2 browsers/operadores; reconexão; isolamento por time via policy.
-- PR 5: criar lead a partir de uma ligação anexa a gravação com `isProtected: true`; tentativa de excluir o anexo retorna erro e a UI não exibe a ação.
+- PR 5: criar lead a partir de uma ligação anexa a gravação com `isProtected: true`; tentativa de excluir o anexo retorna erro e a UI não exibe a ação; `DialerJob(archive_recording)` drena exatamente 1 vez (reprocessar é no-op quando `recordingPath` já existe) e falha transitória reabre o job (`attempts < maxAttempts`).
 - PR 6: sandbox Asaas (confirmado habilita, overdue suspende e bloqueia start).
 - Migrations: apenas locais (`bun run db:migrate:reset:local`); push remoto **somente com autorização do owner**.
 
@@ -324,7 +328,7 @@ Cliente paga o Lead Flow via Asaas (mensalidade + excedentes) → Lead Flow paga
 
 1. **Regulatório Twilio BR**: número local exige Regulatory Bundle aprovado — iniciar o processo na conta mestre antes do PR 2 (seção 9); o bundle da mestre é reutilizado pelas subcontas na compra dos números (sem número compartilhado entre times).
 2. **Assinatura de webhook com subconta**: mismatch de host/URL atrás do proxy Vercel é o erro mais comum — validar com ngrok no PR 2.
-3. **Webhook perdido trava campanha**: o watchdog `reconcile` é parte obrigatória do PR 3.
+3. **Webhook perdido trava campanha**: o watchdog (`cron/maintenance` Passo 1) é parte obrigatória do PR 3.
 4. **`@twilio/voice-sdk` não suporta SSR**: dynamic import client-only.
 5. **Custo**: ~R$ 0,57/chamada atendida de 3 min; AMD ativado; gravações migradas para Supabase Storage para reduzir armazenamento Twilio.
 6. **Evento de broadcast perdido**: coberto por snapshot de re-sync + polling de segurança quando há campanha `running`.
@@ -337,7 +341,7 @@ Cliente paga o Lead Flow via Asaas (mensalidade + excedentes) → Lead Flow paga
 - [Twilio Conference Rooms](https://www.twilio.com/docs/voice/twiml/conference)
 - [Twilio Voice SDK (Browser)](https://www.twilio.com/docs/voice/sdks/javascript)
 - [Twilio Subaccounts](https://www.twilio.com/docs/iam/api/subaccounts)
-- [Upstash QStash](https://upstash.com/docs/qstash/overall/getstarted)
+- Padrão de jobs (Vercel Cron + DB, sem fila externa): `docs/specs/email-dispatch.md` · analytics correlato: `docs/specs/email-analytics.md`
 - Billing atual: `app/api/services/AsaasSubscription/AsaasSubscriptionService.ts` · `app/api/services/PaymentValidation/PaymentValidationService.ts`
 - Realtime de referência: `hooks/useLeadActivitiesRealtime.ts` · `hooks/useTeamPresence.ts`
 - Cache: `lib/cache/cacheTags.ts` · `lib/cache/invalidation.ts`
