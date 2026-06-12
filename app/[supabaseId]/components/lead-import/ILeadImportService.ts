@@ -5,21 +5,12 @@ export interface LeadImportContext {
   teamId: string;
 }
 
-export type LeadImportOutcomeKind = "created" | "created_default_status" | "skipped";
-
-export interface LeadImportOutcome {
-  name: string;
-  outcome: LeadImportOutcomeKind;
-  reason?: string;
-}
-
 export interface LeadImportResult {
   created: number;
   createdWithDefaultStatus: number;
   skipped: number;
   sanitized: number;
   errors: string[];
-  leads: LeadImportOutcome[];
 }
 
 export interface ILeadImportService {

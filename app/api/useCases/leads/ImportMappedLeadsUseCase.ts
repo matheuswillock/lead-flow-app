@@ -22,21 +22,12 @@ export interface ImportMappedLeadsContext {
   teamId: string;
 }
 
-export type ImportedLeadOutcomeKind = "created" | "created_default_status" | "skipped";
-
-export interface ImportedLeadOutcome {
-  name: string;
-  outcome: ImportedLeadOutcomeKind;
-  reason?: string;
-}
-
 export interface ImportMappedLeadsResult {
   created: number;
   createdWithDefaultStatus: number;
   skipped: number;
   sanitized: number;
   errors: string[];
-  leads: ImportedLeadOutcome[];
 }
 
 export interface IImportMappedLeadsUseCase {
@@ -84,18 +75,12 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
     let skipped = 0;
     let sanitized = 0;
     const errors: string[] = [];
-    const leadOutcomes: ImportedLeadOutcome[] = [];
 
     for (const row of rows) {
       const name = row.name?.trim() ?? "";
       const phone = row.phone?.trim() ?? "";
       if (!name || !phone) {
         skipped += 1;
-        leadOutcomes.push({
-          name: name || "(sem nome)",
-          outcome: "skipped",
-          reason: "Linha sem nome ou telefone",
-        });
         continue;
       }
 
@@ -115,14 +100,6 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
 
       if ((emailConflict && !canReuseEmail) || (cnpjConflict && !canReuseCnpj)) {
         skipped += 1;
-        leadOutcomes.push({
-          name,
-          outcome: "skipped",
-          reason:
-            emailConflict && !canReuseEmail
-              ? "Já existe um lead no time com o mesmo e-mail"
-              : "Já existe um lead no time com o mesmo CNPJ",
-        });
         continue;
       }
 
@@ -165,8 +142,6 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
 
       if (!output.isValid) {
         skipped += 1;
-        const reason = output.errorMessages?.[0] || "Não foi possível criar o lead";
-        leadOutcomes.push({ name, outcome: "skipped", reason });
         if (output.errorMessages?.[0]) {
           errors.push(output.errorMessages[0]);
         }
@@ -178,9 +153,6 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
         status === "new_opportunity" && (row.status?.trim() ?? "") !== "new_opportunity";
       if (statusFellBackToDefault) {
         createdWithDefaultStatus += 1;
-        leadOutcomes.push({ name, outcome: "created_default_status" });
-      } else {
-        leadOutcomes.push({ name, outcome: "created" });
       }
 
       if (email) {
@@ -201,7 +173,6 @@ export class ImportMappedLeadsUseCase implements IImportMappedLeadsUseCase {
       skipped,
       sanitized,
       errors: errors.slice(0, 10),
-      leads: leadOutcomes,
     };
 
     return new Output(true, ["Importação concluída"], [], result);

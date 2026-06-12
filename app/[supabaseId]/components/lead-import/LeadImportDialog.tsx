@@ -82,7 +82,7 @@ export function LeadImportDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<LeadImportResult | null>(null);
 
-  const { healthPlans } = useHealthPlans(open ? supabaseId : undefined, teamId);
+  const { healthPlans } = useHealthPlans(supabaseId, teamId);
 
   const resetState = () => {
     setStep("upload");

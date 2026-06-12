@@ -10,7 +10,7 @@ import { getLeadImportStatusLabel } from "@/lib/leadImport/leadImportStatus";
 import type { LeadImportMapping } from "./autoMapColumns";
 import type { LeadStatusMapping } from "./LeadStatusMapper";
 import type { LeadSoldPlanMapping } from "./LeadSoldPlanMapper";
-import type { LeadImportOutcome, LeadImportResult } from "./ILeadImportService";
+import type { LeadImportResult } from "./ILeadImportService";
 
 interface LeadImportSummaryProps {
   fileName: string;
@@ -19,55 +19,6 @@ interface LeadImportSummaryProps {
   statusMapping: LeadStatusMapping;
   planMapping: LeadSoldPlanMapping;
   result: LeadImportResult | null;
-}
-
-const OUTCOME_BADGES: Record<
-  LeadImportOutcome["outcome"],
-  { label: string; className: string; icon: typeof CheckCircle2 }
-> = {
-  created: {
-    label: "Criado",
-    className: "border-semantic-success-border bg-semantic-success-surface text-semantic-success",
-    icon: CheckCircle2,
-  },
-  created_default_status: {
-    label: "Criado como Nova oportunidade",
-    className: "border-semantic-warning-border bg-semantic-warning-surface text-semantic-warning",
-    icon: TriangleAlert,
-  },
-  skipped: {
-    label: "Recusado",
-    className: "border-semantic-danger-border bg-semantic-danger-surface text-semantic-danger",
-    icon: XCircle,
-  },
-};
-
-function LeadOutcomeList({ leads }: { leads: LeadImportOutcome[] }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      {leads.map((lead, index) => {
-        const badge = OUTCOME_BADGES[lead.outcome];
-        const BadgeIcon = badge.icon;
-        return (
-          <div
-            key={`${lead.name}-${index}`}
-            className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm"
-          >
-            <div className="flex min-w-0 flex-col">
-              <span className="truncate font-medium">{lead.name}</span>
-              {lead.reason && (
-                <span className="text-xs text-muted-foreground">{lead.reason}</span>
-              )}
-            </div>
-            <Badge variant="outline" className={cn("shrink-0 gap-1", badge.className)}>
-              <BadgeIcon className="size-3" />
-              {badge.label}
-            </Badge>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 export function LeadImportSummary({
@@ -121,7 +72,11 @@ export function LeadImportSummary({
           )}
           {result.sanitized > 0 && <Badge variant="secondary">Ajustados: {result.sanitized}</Badge>}
         </div>
-        {result.leads.length > 0 && <LeadOutcomeList leads={result.leads} />}
+        {result.createdWithDefaultStatus > 0 && (
+          <p className="text-sm text-muted-foreground">
+            Leads marcados como Nova oportunidade tinham status sem mapeamento válido no arquivo.
+          </p>
+        )}
         {result.skipped > 0 && (
           <p className="text-sm text-muted-foreground">
             Linhas recusadas incluem leads sem nome ou telefone e leads que já existem no time com
