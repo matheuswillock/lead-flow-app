@@ -1,5 +1,5 @@
 ---
-description: Consultar o schema do banco de dados Lead Flow sem exploração desnecessária de arquivos
+description: "Consultar o schema do banco de dados Lead Flow sem exploração desnecessária de arquivos"
 alwaysApply: false
 ---
 

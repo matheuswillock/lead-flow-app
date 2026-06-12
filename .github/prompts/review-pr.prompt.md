@@ -1,6 +1,6 @@
 ---
 mode: 'agent'
-description: 'Review de PR com checklist completo do Lead Flow antes de abrir ou mergear'
+description: "Review de PR com checklist completo do Lead Flow antes de abrir ou mergear"
 ---
 
 <!-- GENERATED FILE - DO NOT EDIT DIRECTLY -->
