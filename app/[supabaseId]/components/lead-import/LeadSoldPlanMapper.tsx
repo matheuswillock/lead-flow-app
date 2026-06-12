@@ -17,14 +17,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export const SOLD_PLAN_IGNORE_VALUE = "__nao_importar__";
-
 export interface LeadSoldPlanValueCount {
   value: string;
   count: number;
 }
 
-/** Valor vazio significa "não importar o plano vendido" para as linhas com aquele valor. */
 export type LeadSoldPlanMapping = Record<string, string>;
 
 interface LeadSoldPlanMapperProps {
@@ -48,8 +45,7 @@ export function LeadSoldPlanMapper({
         <ArrowRight className="size-4" />
         <AlertDescription>
           Relacione cada plano vendido encontrado no seu arquivo com uma operadora cadastrada no
-          Corretor Studio. Valores marcados como &ldquo;Não importar&rdquo; deixam o plano vendido
-          em branco naquelas linhas.
+          Corretor Studio. Quando não houver correspondência, use &ldquo;Outros&rdquo;.
         </AlertDescription>
       </Alert>
 
@@ -62,17 +58,14 @@ export function LeadSoldPlanMapper({
         {distinctValues.map(({ value, count }) => (
           <Field key={value} orientation="responsive">
             <Select
-              value={planMapping[value] || SOLD_PLAN_IGNORE_VALUE}
-              onValueChange={(next) =>
-                onPlanMappingChange(value, next === SOLD_PLAN_IGNORE_VALUE ? "" : next)
-              }
+              value={planMapping[value] || undefined}
+              onValueChange={(next) => onPlanMappingChange(value, next)}
               disabled={disabled}
             >
               <SelectTrigger className="w-full sm:w-56">
                 <SelectValue placeholder="Selecione o plano" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={SOLD_PLAN_IGNORE_VALUE}>Não importar</SelectItem>
                 {planOptions.map((plan) => (
                   <SelectItem key={plan} value={plan}>
                     {plan}

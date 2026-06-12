@@ -185,11 +185,14 @@ export function LeadImportDialog({
       });
     }
     if (next === "plans") {
-      const planOptionMap = buildHealthPlanOptionMap(healthPlans.map((plan) => plan.name));
+      const planNames = healthPlans.map((plan) => plan.name);
+      const planOptionMap = buildHealthPlanOptionMap(planNames);
+      const othersPlan =
+        planNames.find((plan) => plan.trim().toLowerCase() === "outros") ?? "Outros";
       setPlanMapping((prev) => {
         const initialized: LeadSoldPlanMapping = {};
         distinctSoldPlanValues.forEach(({ value }) => {
-          initialized[value] = prev[value] ?? mapHealthPlan(value, planOptionMap) ?? "";
+          initialized[value] = prev[value] || (mapHealthPlan(value, planOptionMap) ?? othersPlan);
         });
         return initialized;
       });
@@ -228,13 +231,8 @@ export function LeadImportDialog({
       if (mapped.status && statusMapping[mapped.status]) {
         mapped.status = statusMapping[mapped.status];
       }
-      if (mapped.soldPlan !== undefined) {
-        const mappedPlan = planMapping[mapped.soldPlan];
-        if (mappedPlan) {
-          mapped.soldPlan = mappedPlan;
-        } else {
-          delete mapped.soldPlan;
-        }
+      if (mapped.soldPlan && planMapping[mapped.soldPlan]) {
+        mapped.soldPlan = planMapping[mapped.soldPlan];
       }
       return mapped;
     });

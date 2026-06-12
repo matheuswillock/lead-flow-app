@@ -188,9 +188,7 @@ export function LeadImportSummary({
             <div className="flex flex-col gap-1.5">
               {planEntries.map(([fileValue, planName]) => (
                 <div key={fileValue} className="flex items-center justify-between gap-2 text-sm">
-                  <span className={cn(!planName && "text-muted-foreground")}>
-                    {planName || "Não importar"}
-                  </span>
+                  <span>{planName}</span>
                   <Badge variant="outline">&ldquo;{fileValue}&rdquo;</Badge>
                 </div>
               ))}
