@@ -1,11 +1,5 @@
 import { LeadStatus } from "@prisma/client";
 import { suggestLeadStatus } from "@/lib/leadImport/leadImportStatus";
-import {
-  containsHealthPlanTerm,
-  hasConcatenatedHealthPlanPrefix,
-  HEALTH_PLAN_ALIAS_HINTS,
-  normalizeHealthPlanName,
-} from "@/lib/healthPlans";
 
 export const normalizeText = (value: string) =>
   value
@@ -55,35 +49,7 @@ export const parseImportDate = (value: string): string | undefined => {
   return parsed.toISOString();
 };
 
-export const mapHealthPlan = (
-  value: string | null | undefined,
-  optionNameByNormalized: Map<string, string>
-): string | null => {
-  if (!value) return null;
-  const normalized = normalizeHealthPlanName(value);
-  if (!normalized) return null;
-
-  const exact = optionNameByNormalized.get(normalized);
-  if (exact) return exact;
-
-  for (const alias of HEALTH_PLAN_ALIAS_HINTS) {
-    if (!containsHealthPlanTerm(value, alias.keyword)) continue;
-    const canonical = optionNameByNormalized.get(normalizeHealthPlanName(alias.canonicalName));
-    if (canonical) return canonical;
-  }
-
-  for (const [normalizedOptionName, optionName] of optionNameByNormalized.entries()) {
-    if (
-      containsHealthPlanTerm(value, optionName) ||
-      normalized.startsWith(normalizedOptionName) ||
-      hasConcatenatedHealthPlanPrefix(value, optionName)
-    ) {
-      return optionName;
-    }
-  }
-
-  return null;
-};
+export { mapHealthPlan } from "@/lib/leadImport/healthPlanMapping";
 
 export const mapStatus = (value: string | null | undefined): LeadStatus =>
   LeadStatus[suggestLeadStatus(value)];

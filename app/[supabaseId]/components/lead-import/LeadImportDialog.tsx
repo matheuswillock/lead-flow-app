@@ -19,6 +19,8 @@ import {
   type LeadImportRow,
 } from "@/lib/leadImport/leadImportFields";
 import { suggestLeadStatus, type LeadImportStatusKey } from "@/lib/leadImport/leadImportStatus";
+import { buildHealthPlanOptionMap, mapHealthPlan } from "@/lib/leadImport/healthPlanMapping";
+import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { LeadFileDropzone } from "./LeadFileDropzone";
 import { LeadFieldMapper } from "./LeadFieldMapper";
 import {
@@ -26,18 +28,20 @@ import {
   type LeadStatusMapping,
   type LeadStatusValueCount,
 } from "./LeadStatusMapper";
+import { LeadSoldPlanMapper, type LeadSoldPlanMapping } from "./LeadSoldPlanMapper";
 import { LeadImportSummary } from "./LeadImportSummary";
 import { autoMapColumns, type LeadImportMapping } from "./autoMapColumns";
 import { parseLeadFile } from "./leadFileParser";
 import { leadImportService } from "./LeadImportService";
 import type { LeadImportResult } from "./ILeadImportService";
 
-type LeadImportStep = "upload" | "mapping" | "statuses" | "summary";
+type LeadImportStep = "upload" | "mapping" | "statuses" | "plans" | "summary";
 
 const STEP_TITLES: Record<LeadImportStep, string> = {
   upload: "Enviar arquivo",
   mapping: "Mapear campos",
   statuses: "Mapear status",
+  plans: "Mapear planos vendidos",
   summary: "Confirmar importação",
 };
 
@@ -47,6 +51,8 @@ const STEP_DESCRIPTIONS: Record<LeadImportStep, string> = {
     "Relacione as colunas do seu arquivo com os campos do Corretor Studio. Cada campo explica para que serve.",
   statuses:
     "Relacione os status encontrados no seu arquivo com os status do funil do Corretor Studio.",
+  plans:
+    "Relacione os planos vendidos encontrados no seu arquivo com as operadoras do Corretor Studio.",
   summary: "Revise o mapeamento antes de concluir a importação.",
 };
 
@@ -71,9 +77,12 @@ export function LeadImportDialog({
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [mapping, setMapping] = useState<LeadImportMapping>({});
   const [statusMapping, setStatusMapping] = useState<LeadStatusMapping>({});
+  const [planMapping, setPlanMapping] = useState<LeadSoldPlanMapping>({});
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<LeadImportResult | null>(null);
+
+  const { healthPlans } = useHealthPlans(open ? supabaseId : undefined, teamId);
 
   const resetState = () => {
     setStep("upload");
@@ -82,6 +91,7 @@ export function LeadImportDialog({
     setRows([]);
     setMapping({});
     setStatusMapping({});
+    setPlanMapping({});
     setIsParsing(false);
     setIsSubmitting(false);
     setResult(null);
@@ -135,36 +145,74 @@ export function LeadImportDialog({
     if (field === "status") {
       setStatusMapping({});
     }
+    if (field === "soldPlan") {
+      setPlanMapping({});
+    }
   };
 
-  const getDistinctStatusValues = (): LeadStatusValueCount[] => {
-    const statusColumn = mapping.status;
-    if (!statusColumn) return [];
+  const getDistinctColumnValues = (column: string | undefined): LeadStatusValueCount[] => {
+    if (!column) return [];
     const counts = new Map<string, number>();
     rows.forEach((row) => {
-      const value = row[statusColumn]?.trim();
+      const value = row[column]?.trim();
       if (!value) return;
       counts.set(value, (counts.get(value) ?? 0) + 1);
     });
     return Array.from(counts.entries()).map(([value, count]) => ({ value, count }));
   };
 
-  const distinctStatusValues = getDistinctStatusValues();
+  const distinctStatusValues = getDistinctColumnValues(mapping.status);
+  const distinctSoldPlanValues = getDistinctColumnValues(mapping.soldPlan);
   const hasStatusStep = distinctStatusValues.length > 0;
+  const hasPlanStep = distinctSoldPlanValues.length > 0;
 
-  const goToStatusStep = () => {
-    setStatusMapping((prev) => {
-      const next: LeadStatusMapping = {};
-      distinctStatusValues.forEach(({ value }) => {
-        next[value] = prev[value] ?? suggestLeadStatus(value);
+  const stepsOrder: LeadImportStep[] = [
+    "upload",
+    "mapping",
+    ...(hasStatusStep ? (["statuses"] as const) : []),
+    ...(hasPlanStep ? (["plans"] as const) : []),
+    "summary",
+  ];
+
+  const goToStep = (next: LeadImportStep) => {
+    if (next === "statuses") {
+      setStatusMapping((prev) => {
+        const initialized: LeadStatusMapping = {};
+        distinctStatusValues.forEach(({ value }) => {
+          initialized[value] = prev[value] ?? suggestLeadStatus(value);
+        });
+        return initialized;
       });
-      return next;
-    });
-    setStep("statuses");
+    }
+    if (next === "plans") {
+      const planOptionMap = buildHealthPlanOptionMap(healthPlans.map((plan) => plan.name));
+      setPlanMapping((prev) => {
+        const initialized: LeadSoldPlanMapping = {};
+        distinctSoldPlanValues.forEach(({ value }) => {
+          initialized[value] = prev[value] ?? mapHealthPlan(value, planOptionMap) ?? "";
+        });
+        return initialized;
+      });
+    }
+    setStep(next);
+  };
+
+  const goToNextStep = () => {
+    const nextStep = stepsOrder[stepsOrder.indexOf(step) + 1];
+    if (nextStep) goToStep(nextStep);
+  };
+
+  const goToPreviousStep = () => {
+    const previousStep = stepsOrder[stepsOrder.indexOf(step) - 1];
+    if (previousStep) goToStep(previousStep);
   };
 
   const handleStatusMappingChange = (fileValue: string, status: LeadImportStatusKey) => {
     setStatusMapping((prev) => ({ ...prev, [fileValue]: status }));
+  };
+
+  const handlePlanMappingChange = (fileValue: string, planName: string) => {
+    setPlanMapping((prev) => ({ ...prev, [fileValue]: planName }));
   };
 
   const buildMappedRows = (): LeadImportRow[] => {
@@ -180,6 +228,14 @@ export function LeadImportDialog({
         });
         if (mapped.status && statusMapping[mapped.status]) {
           mapped.status = statusMapping[mapped.status];
+        }
+        if (mapped.soldPlan !== undefined) {
+          const mappedPlan = planMapping[mapped.soldPlan];
+          if (mappedPlan) {
+            mapped.soldPlan = mappedPlan;
+          } else {
+            delete mapped.soldPlan;
+          }
         }
         return mapped;
       })
@@ -225,9 +281,8 @@ export function LeadImportDialog({
   };
 
   const areRequiredFieldsMapped = Boolean(mapping.name) && Boolean(mapping.phone);
-  const totalSteps = hasStatusStep ? 4 : 3;
-  const stepIndex =
-    step === "upload" ? 1 : step === "mapping" ? 2 : step === "statuses" ? 3 : totalSteps;
+  const totalSteps = stepsOrder.length;
+  const stepIndex = stepsOrder.indexOf(step) + 1;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -267,12 +322,21 @@ export function LeadImportDialog({
               onStatusMappingChange={handleStatusMappingChange}
             />
           )}
+          {step === "plans" && (
+            <LeadSoldPlanMapper
+              distinctValues={distinctSoldPlanValues}
+              planOptions={healthPlans.map((plan) => plan.name)}
+              planMapping={planMapping}
+              onPlanMappingChange={handlePlanMappingChange}
+            />
+          )}
           {step === "summary" && (
             <LeadImportSummary
               fileName={fileName}
               totalRows={buildMappedRows().length}
               mapping={mapping}
               statusMapping={statusMapping}
+              planMapping={planMapping}
               result={result}
             />
           )}
@@ -290,30 +354,23 @@ export function LeadImportDialog({
                 <ArrowLeft className="mr-2 size-4" />
                 Trocar arquivo
               </Button>
-              <Button
-                onClick={() => (hasStatusStep ? goToStatusStep() : setStep("summary"))}
-                disabled={!areRequiredFieldsMapped}
-              >
+              <Button onClick={goToNextStep} disabled={!areRequiredFieldsMapped}>
                 Continuar
               </Button>
             </>
           )}
-          {step === "statuses" && (
+          {(step === "statuses" || step === "plans") && (
             <>
-              <Button variant="ghost" onClick={() => setStep("mapping")}>
+              <Button variant="ghost" onClick={goToPreviousStep}>
                 <ArrowLeft className="mr-2 size-4" />
                 Voltar
               </Button>
-              <Button onClick={() => setStep("summary")}>Continuar</Button>
+              <Button onClick={goToNextStep}>Continuar</Button>
             </>
           )}
           {step === "summary" && !result && (
             <>
-              <Button
-                variant="ghost"
-                onClick={() => setStep(hasStatusStep ? "statuses" : "mapping")}
-                disabled={isSubmitting}
-              >
+              <Button variant="ghost" onClick={goToPreviousStep} disabled={isSubmitting}>
                 <ArrowLeft className="mr-2 size-4" />
                 Voltar
               </Button>
