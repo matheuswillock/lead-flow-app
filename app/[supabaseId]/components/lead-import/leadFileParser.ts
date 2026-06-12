@@ -1,6 +1,12 @@
+export interface ParsedLeadRow {
+  /** Linha original no arquivo (planilha) ou posição do item (JSON), começando em 1. */
+  line: number;
+  values: Record<string, string>;
+}
+
 export interface ParsedLeadFile {
   columns: string[];
-  rows: Record<string, string>[];
+  rows: ParsedLeadRow[];
 }
 
 const toCellString = (value: unknown): string => {
@@ -17,16 +23,16 @@ const toCellString = (value: unknown): string => {
   return String(value).trim();
 };
 
-const buildRows = (columns: string[], matrix: unknown[][]): Record<string, string>[] =>
+const buildRows = (columns: string[], matrix: unknown[][], firstLine: number): ParsedLeadRow[] =>
   matrix
-    .map((cells) => {
-      const row: Record<string, string> = {};
-      columns.forEach((column, index) => {
-        row[column] = toCellString(cells[index]);
+    .map((cells, index) => {
+      const values: Record<string, string> = {};
+      columns.forEach((column, columnIndex) => {
+        values[column] = toCellString(cells[columnIndex]);
       });
-      return row;
+      return { line: firstLine + index, values };
     })
-    .filter((row) => Object.values(row).some((value) => value !== ""));
+    .filter((row) => Object.values(row.values).some((value) => value !== ""));
 
 const parseXlsxFile = async (file: File): Promise<ParsedLeadFile> => {
   const XLSX = await import("xlsx");
@@ -41,7 +47,7 @@ const parseXlsxFile = async (file: File): Promise<ParsedLeadFile> => {
   const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
     defval: "",
-    blankrows: false,
+    blankrows: true,
   });
 
   const headerRow = matrix[0] ?? [];
@@ -53,7 +59,7 @@ const parseXlsxFile = async (file: File): Promise<ParsedLeadFile> => {
     throw new Error("Não foi possível identificar as colunas da planilha");
   }
 
-  return { columns, rows: buildRows(columns, matrix.slice(1)) };
+  return { columns, rows: buildRows(columns, matrix.slice(1), 2) };
 };
 
 const parseJsonFile = async (file: File): Promise<ParsedLeadFile> => {
@@ -94,14 +100,14 @@ const parseJsonFile = async (file: File): Promise<ParsedLeadFile> => {
   const columns = Array.from(columnSet);
 
   const rows = objects
-    .map((item) => {
-      const row: Record<string, string> = {};
+    .map((item, index) => {
+      const values: Record<string, string> = {};
       columns.forEach((column) => {
-        row[column] = toCellString(item[column]);
+        values[column] = toCellString(item[column]);
       });
-      return row;
+      return { line: index + 1, values };
     })
-    .filter((row) => Object.values(row).some((value) => value !== ""));
+    .filter((row) => Object.values(row.values).some((value) => value !== ""));
 
   return { columns, rows };
 };

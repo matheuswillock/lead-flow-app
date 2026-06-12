@@ -18,27 +18,30 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { LEAD_IMPORT_FIELDS, type LeadImportFieldKey } from "@/lib/leadImport/leadImportFields";
-import type { LeadImportMapping } from "./autoMapColumns";
+import {
+  PORTFOLIO_IMPORT_FIELDS,
+  type PortfolioImportFieldKey,
+} from "@/lib/portfolioImport/portfolioImportFields";
+import type { PortfolioImportMapping } from "./autoMapPortfolioColumns";
 
 const IGNORE_COLUMN_VALUE = "__ignore__";
 const SAMPLE_VALUES_LIMIT = 3;
 
-interface LeadFieldMapperProps {
+interface PortfolioFieldMapperProps {
   columns: string[];
   rows: Record<string, string>[];
-  mapping: LeadImportMapping;
-  onMappingChange: (field: LeadImportFieldKey, column: string | undefined) => void;
+  mapping: PortfolioImportMapping;
+  onMappingChange: (field: PortfolioImportFieldKey, column: string | undefined) => void;
   disabled?: boolean;
 }
 
-export function LeadFieldMapper({
+export function PortfolioFieldMapper({
   columns,
   rows,
   mapping,
   onMappingChange,
   disabled,
-}: LeadFieldMapperProps) {
+}: PortfolioFieldMapperProps) {
   const sampleValuesByColumn = useMemo(() => {
     const samples = new Map<string, string[]>();
     columns.forEach((column) => {
@@ -60,7 +63,7 @@ export function LeadFieldMapper({
         <span>Coluna do seu arquivo</span>
       </div>
       <FieldGroup className="gap-5 pt-4">
-        {LEAD_IMPORT_FIELDS.map((field) => {
+        {PORTFOLIO_IMPORT_FIELDS.map((field) => {
           const selectedColumn = mapping[field.key];
           const sampleValues = selectedColumn ? sampleValuesByColumn.get(selectedColumn) ?? [] : [];
 

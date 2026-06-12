@@ -5,11 +5,20 @@ export interface LeadImportContext {
   teamId: string;
 }
 
+export interface LeadImportRowIssue {
+  line: number | null;
+  name: string;
+  kind: "not_imported" | "default_status";
+  reason: string;
+}
+
 export interface LeadImportResult {
   created: number;
+  createdWithDefaultStatus: number;
   skipped: number;
   sanitized: number;
   errors: string[];
+  issues: LeadImportRowIssue[];
 }
 
 export interface ILeadImportService {

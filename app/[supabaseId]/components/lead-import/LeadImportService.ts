@@ -25,9 +25,11 @@ export class LeadImportService implements ILeadImportService {
 
     return {
       created: output.result?.created ?? 0,
+      createdWithDefaultStatus: output.result?.createdWithDefaultStatus ?? 0,
       skipped: output.result?.skipped ?? 0,
       sanitized: output.result?.sanitized ?? 0,
       errors: output.result?.errors ?? [],
+      issues: output.result?.issues ?? [],
     };
   }
 }

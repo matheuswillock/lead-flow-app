@@ -18,26 +18,41 @@ import {
   type LeadImportFieldKey,
   type LeadImportRow,
 } from "@/lib/leadImport/leadImportFields";
+import { suggestLeadStatus, type LeadImportStatusKey } from "@/lib/leadImport/leadImportStatus";
+import { buildHealthPlanOptionMap, mapHealthPlan } from "@/lib/leadImport/healthPlanMapping";
+import { useHealthPlans } from "@/hooks/useHealthPlans";
 import { LeadFileDropzone } from "./LeadFileDropzone";
 import { LeadFieldMapper } from "./LeadFieldMapper";
+import {
+  LeadStatusMapper,
+  type LeadStatusMapping,
+  type LeadStatusValueCount,
+} from "./LeadStatusMapper";
+import { LeadSoldPlanMapper, type LeadSoldPlanMapping } from "./LeadSoldPlanMapper";
 import { LeadImportSummary } from "./LeadImportSummary";
 import { autoMapColumns, type LeadImportMapping } from "./autoMapColumns";
-import { parseLeadFile } from "./leadFileParser";
+import { parseLeadFile, type ParsedLeadRow } from "./leadFileParser";
 import { leadImportService } from "./LeadImportService";
 import type { LeadImportResult } from "./ILeadImportService";
 
-type LeadImportStep = "upload" | "mapping" | "summary";
+type LeadImportStep = "upload" | "mapping" | "statuses" | "plans" | "summary";
 
 const STEP_TITLES: Record<LeadImportStep, string> = {
   upload: "Enviar arquivo",
   mapping: "Mapear campos",
+  statuses: "Mapear status",
+  plans: "Mapear planos vendidos",
   summary: "Confirmar importação",
 };
 
 const STEP_DESCRIPTIONS: Record<LeadImportStep, string> = {
   upload: "Envie uma planilha Excel (.xlsx) ou um arquivo JSON com os seus leads.",
   mapping:
-    "Relacione as colunas do seu arquivo com os campos do CRM. Cada campo explica para que serve.",
+    "Relacione as colunas do seu arquivo com os campos do Corretor Studio. Cada campo explica para que serve.",
+  statuses:
+    "Relacione os status encontrados no seu arquivo com os status do funil do Corretor Studio.",
+  plans:
+    "Relacione os planos vendidos encontrados no seu arquivo com as operadoras do Corretor Studio.",
   summary: "Revise o mapeamento antes de concluir a importação.",
 };
 
@@ -59,11 +74,15 @@ export function LeadImportDialog({
   const [step, setStep] = useState<LeadImportStep>("upload");
   const [fileName, setFileName] = useState("");
   const [columns, setColumns] = useState<string[]>([]);
-  const [rows, setRows] = useState<Record<string, string>[]>([]);
+  const [rows, setRows] = useState<ParsedLeadRow[]>([]);
   const [mapping, setMapping] = useState<LeadImportMapping>({});
+  const [statusMapping, setStatusMapping] = useState<LeadStatusMapping>({});
+  const [planMapping, setPlanMapping] = useState<LeadSoldPlanMapping>({});
   const [isParsing, setIsParsing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<LeadImportResult | null>(null);
+
+  const { healthPlans } = useHealthPlans(supabaseId, teamId);
 
   const resetState = () => {
     setStep("upload");
@@ -71,6 +90,8 @@ export function LeadImportDialog({
     setColumns([]);
     setRows([]);
     setMapping({});
+    setStatusMapping({});
+    setPlanMapping({});
     setIsParsing(false);
     setIsSubmitting(false);
     setResult(null);
@@ -121,22 +142,100 @@ export function LeadImportDialog({
       }
       return next;
     });
+    if (field === "status") {
+      setStatusMapping({});
+    }
+    if (field === "soldPlan") {
+      setPlanMapping({});
+    }
+  };
+
+  const getDistinctColumnValues = (column: string | undefined): LeadStatusValueCount[] => {
+    if (!column) return [];
+    const counts = new Map<string, number>();
+    rows.forEach((row) => {
+      const value = row.values[column]?.trim();
+      if (!value) return;
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    });
+    return Array.from(counts.entries()).map(([value, count]) => ({ value, count }));
+  };
+
+  const distinctStatusValues = getDistinctColumnValues(mapping.status);
+  const distinctSoldPlanValues = getDistinctColumnValues(mapping.soldPlan);
+  const hasStatusStep = distinctStatusValues.length > 0;
+  const hasPlanStep = distinctSoldPlanValues.length > 0;
+
+  const stepsOrder: LeadImportStep[] = [
+    "upload",
+    "mapping",
+    ...(hasStatusStep ? (["statuses"] as const) : []),
+    ...(hasPlanStep ? (["plans"] as const) : []),
+    "summary",
+  ];
+
+  const goToStep = (next: LeadImportStep) => {
+    if (next === "statuses") {
+      setStatusMapping((prev) => {
+        const initialized: LeadStatusMapping = {};
+        distinctStatusValues.forEach(({ value }) => {
+          initialized[value] = prev[value] ?? suggestLeadStatus(value);
+        });
+        return initialized;
+      });
+    }
+    if (next === "plans") {
+      const planNames = healthPlans.map((plan) => plan.name);
+      const planOptionMap = buildHealthPlanOptionMap(planNames);
+      const othersPlan =
+        planNames.find((plan) => plan.trim().toLowerCase() === "outros") ?? "Outros";
+      setPlanMapping((prev) => {
+        const initialized: LeadSoldPlanMapping = {};
+        distinctSoldPlanValues.forEach(({ value }) => {
+          initialized[value] = prev[value] || (mapHealthPlan(value, planOptionMap) ?? othersPlan);
+        });
+        return initialized;
+      });
+    }
+    setStep(next);
+  };
+
+  const goToNextStep = () => {
+    const nextStep = stepsOrder[stepsOrder.indexOf(step) + 1];
+    if (nextStep) goToStep(nextStep);
+  };
+
+  const goToPreviousStep = () => {
+    const previousStep = stepsOrder[stepsOrder.indexOf(step) - 1];
+    if (previousStep) goToStep(previousStep);
+  };
+
+  const handleStatusMappingChange = (fileValue: string, status: LeadImportStatusKey) => {
+    setStatusMapping((prev) => ({ ...prev, [fileValue]: status }));
+  };
+
+  const handlePlanMappingChange = (fileValue: string, planName: string) => {
+    setPlanMapping((prev) => ({ ...prev, [fileValue]: planName }));
   };
 
   const buildMappedRows = (): LeadImportRow[] => {
     const entries = Object.entries(mapping) as [LeadImportFieldKey, string][];
-    return rows
-      .map((row) => {
-        const mapped: LeadImportRow = {};
-        entries.forEach(([field, column]) => {
-          const value = row[column]?.trim();
-          if (value) {
-            mapped[field] = value;
-          }
-        });
-        return mapped;
-      })
-      .filter((mapped) => Boolean(mapped.name));
+    return rows.map((row) => {
+      const mapped: LeadImportRow = { line: row.line };
+      entries.forEach(([field, column]) => {
+        const value = row.values[column]?.trim();
+        if (value) {
+          mapped[field] = value;
+        }
+      });
+      if (mapped.status && statusMapping[mapped.status]) {
+        mapped.status = statusMapping[mapped.status];
+      }
+      if (mapped.soldPlan && planMapping[mapped.soldPlan]) {
+        mapped.soldPlan = planMapping[mapped.soldPlan];
+      }
+      return mapped;
+    });
   };
 
   const handleImport = async () => {
@@ -151,8 +250,11 @@ export function LeadImportDialog({
     }
 
     const mappedRows = buildMappedRows();
-    if (mappedRows.length === 0) {
-      toast.error("Nenhuma linha do arquivo tem valor na coluna mapeada para o nome do lead");
+    const hasImportableRow = mappedRows.some((row) => Boolean(row.name) && Boolean(row.phone));
+    if (!hasImportableRow) {
+      toast.error(
+        "Nenhuma linha do arquivo tem valor nas colunas mapeadas para nome e telefone do lead"
+      );
       return;
     }
 
@@ -175,8 +277,9 @@ export function LeadImportDialog({
     }
   };
 
-  const isNameMapped = Boolean(mapping.name);
-  const stepIndex = step === "upload" ? 1 : step === "mapping" ? 2 : 3;
+  const areRequiredFieldsMapped = Boolean(mapping.name) && Boolean(mapping.phone);
+  const totalSteps = stepsOrder.length;
+  const stepIndex = stepsOrder.indexOf(step) + 1;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -184,7 +287,9 @@ export function LeadImportDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Importar leads
-            <Badge variant="secondary">Etapa {stepIndex} de 3</Badge>
+            <Badge variant="secondary">
+              Etapa {stepIndex} de {totalSteps}
+            </Badge>
           </DialogTitle>
           <DialogDescription>
             {STEP_TITLES[step]} — {STEP_DESCRIPTIONS[step]}
@@ -202,9 +307,24 @@ export function LeadImportDialog({
           {step === "mapping" && (
             <LeadFieldMapper
               columns={columns}
-              rows={rows}
+              rows={rows.map((row) => row.values)}
               mapping={mapping}
               onMappingChange={handleMappingChange}
+            />
+          )}
+          {step === "statuses" && (
+            <LeadStatusMapper
+              distinctValues={distinctStatusValues}
+              statusMapping={statusMapping}
+              onStatusMappingChange={handleStatusMappingChange}
+            />
+          )}
+          {step === "plans" && (
+            <LeadSoldPlanMapper
+              distinctValues={distinctSoldPlanValues}
+              planOptions={healthPlans.map((plan) => plan.name)}
+              planMapping={planMapping}
+              onPlanMappingChange={handlePlanMappingChange}
             />
           )}
           {step === "summary" && (
@@ -212,6 +332,8 @@ export function LeadImportDialog({
               fileName={fileName}
               totalRows={buildMappedRows().length}
               mapping={mapping}
+              statusMapping={statusMapping}
+              planMapping={planMapping}
               result={result}
             />
           )}
@@ -229,14 +351,23 @@ export function LeadImportDialog({
                 <ArrowLeft className="mr-2 size-4" />
                 Trocar arquivo
               </Button>
-              <Button onClick={() => setStep("summary")} disabled={!isNameMapped}>
+              <Button onClick={goToNextStep} disabled={!areRequiredFieldsMapped}>
                 Continuar
               </Button>
             </>
           )}
+          {(step === "statuses" || step === "plans") && (
+            <>
+              <Button variant="ghost" onClick={goToPreviousStep}>
+                <ArrowLeft className="mr-2 size-4" />
+                Voltar
+              </Button>
+              <Button onClick={goToNextStep}>Continuar</Button>
+            </>
+          )}
           {step === "summary" && !result && (
             <>
-              <Button variant="ghost" onClick={() => setStep("mapping")} disabled={isSubmitting}>
+              <Button variant="ghost" onClick={goToPreviousStep} disabled={isSubmitting}>
                 <ArrowLeft className="mr-2 size-4" />
                 Voltar
               </Button>

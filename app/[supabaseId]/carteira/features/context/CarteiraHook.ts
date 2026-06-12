@@ -211,6 +211,11 @@ export function useCarteiraHook() {
     return created;
   }, [supabaseId, activeTeamId, fetchData, filters]);
 
+  const refresh = useCallback(async () => {
+    lastFetchKey.current = '';
+    await fetchData(filters);
+  }, [fetchData, filters]);
+
   const getEntryDetail = useCallback(async (leadId: string): Promise<CarteiraDetailData> => {
     if (!supabaseId || !activeTeamId) throw new Error('Sessão não disponível');
     return carteiraService.getEntryDetail(supabaseId, activeTeamId, leadId);
@@ -242,5 +247,6 @@ export function useCarteiraHook() {
     updateEntry,
     getEntryDetail,
     updateEntryDetail,
+    refresh,
   };
 }

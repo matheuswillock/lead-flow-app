@@ -30,6 +30,7 @@ type CarteiraContextValue = {
   updateEntry: (leadId: string, data: UpdateCarteiraData) => Promise<void>;
   getEntryDetail: (leadId: string) => Promise<CarteiraDetailData>;
   updateEntryDetail: (leadId: string, payload: UpdateCarteiraDetailPayload) => Promise<CarteiraDetailData>;
+  refresh: () => Promise<void>;
 };
 
 const CarteiraContext = createContext<CarteiraContextValue | undefined>(undefined);
